@@ -66,9 +66,6 @@ const Profile = (props) => {
                 Email
               </th>
               <th>
-                Phone
-              </th>
-              <th>
                 Password/Token
               </th>
           </tr>
@@ -90,9 +87,6 @@ const Profile = (props) => {
                     </td>
                     <td>
                       {user.email}
-                    </td>
-                    <td>
-                      {user.phone}
                     </td>
                     <td>
                       {

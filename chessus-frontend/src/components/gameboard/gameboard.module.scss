@@ -1,3 +1,11 @@
+.game-board-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
 .game-board {
   padding: 15px;
   margin: 20px 15px;

@@ -61,7 +61,8 @@ const Login = (props) => {
   }
 
   if (isLoggedIn) {
-    return <Navigate to="/profile" />;
+    var path=`/profile/${username}`;
+    return <Navigate to={path} />;
   }
 
   return (

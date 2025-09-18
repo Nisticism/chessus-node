@@ -9,34 +9,31 @@
 
 .container {
   display: flex;
-  justify-content: space-around;
+  justify-content: space-evenly;
 }
 
 .game-form {
   width: 30vw;
-  margin: 20px 20px 0px 0px;
+  margin: 20px 0px 0px 0px;
   align-items: center;
   display: flex;
   flex-direction: column;
 }
 
-.game-description {
-  min-height: 200px;
-  max-width: 400px;
-}
-
 .game-validation {
   color: rgb(237, 93, 45);
-  font-size: 14px;
+  font-size: 16px;
   padding: 5px;
-  max-width: 400px;
+  width: 90%;
+  min-width: 400px;
 }
 
-input {
-  width: 90%;
+.game-create-input {
+  width: 100%;
   margin: 5px 5px;
   padding: 5px 5px;
-  max-width: 400px;
+  min-width: 400px;
+  font-size: 18px;
 }
 
 .checkbox-style {
@@ -53,14 +50,16 @@ input {
   padding: 5px 10px;
 }
 
-textarea {
-  width: 90%;
-  margin: 5px 5px;
+.game-create-textarea {
   padding: 5px 5px;
-  max-width: 400px;
+  width: 100%;
+  margin: 5px 5px;
+  min-width: 400px;
+  min-height: 200px;
+  font-size: 16px;
 }
 
-label {
+.game-create-label {
   padding: 5px 5px;
   max-width: 400px;
 }
@@ -135,88 +134,88 @@ label {
 
 
 
-@media screen and (max-width: 912px) {
+// @media screen and (max-width: 912px) {
 
-  .game-board {
-    height: max(90vw, 300px);
-    width: max(90vw, 300px);
-    margin-left: auto;
-    margin-right: auto;
-    margin-top: 20px;
-    margin-bottom: 20px;
-    padding: 15px;
-    border: 2px solid rgb(202, 213, 232);
-  }
+//   .game-board {
+//     height: max(90vw, 300px);
+//     width: max(90vw, 300px);
+//     margin-left: auto;
+//     margin-right: auto;
+//     margin-top: 20px;
+//     margin-bottom: 20px;
+//     padding: 15px;
+//     border: 2px solid rgb(202, 213, 232);
+//   }
   
-  .wrapper {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-  }
+//   .wrapper {
+//     width: 100%;
+//     display: flex;
+//     justify-content: center;
+//   }
   
-  .container {
-    display: block;
-  }
+//   .container {
+//     display: block;
+//   }
   
-  .game-form {
-    width: 100%;
-    margin: 20px 0px;
-    align-items: center;
-    display: flex;
-    flex-direction: column;
-  }
+//   .game-form {
+//     width: 100%;
+//     margin: 20px 0px;
+//     align-items: center;
+//     display: flex;
+//     flex-direction: column;
+//   }
   
-  .game-description {
-    min-height: 200px;
-    max-width: 400px;
-  }
+//   .game-description {
+//     min-height: 200px;
+//     max-width: 400px;
+//   }
   
-  .game-validation {
-    color: rgb(237, 93, 45);
-    font-size: 14px;
-    padding: 5px;
-    max-width: 400px;
-  }
+//   .game-validation {
+//     color: rgb(237, 93, 45);
+//     font-size: 14px;
+//     padding: 5px;
+//     max-width: 400px;
+//   }
   
-  input {
-    width: 90%;
-    margin: 5px 5px;
-    padding: 5px 5px;
-    max-width: 400px;
-  }
+//   input {
+//     width: 90%;
+//     margin: 5px 5px;
+//     padding: 5px 5px;
+//     max-width: 400px;
+//   }
   
-  textarea {
-    width: 90%;
-    margin: 5px 5px;
-    padding: 5px 5px;
-    max-width: 300px;
-  }
+//   textarea {
+//     width: 90%;
+//     margin: 5px 5px;
+//     padding: 5px 5px;
+//     max-width: 300px;
+//   }
   
-  label {
-    padding: 5px 5px;
-    max-width: 400px;
-  }
+//   label {
+//     padding: 5px 5px;
+//     max-width: 400px;
+//   }
 
-  .game-create-tips {
-    margin-left: auto;
-    margin-right: auto;
-  }
+//   .game-create-tips {
+//     margin-left: auto;
+//     margin-right: auto;
+//   }
 
-  .checkbox-label {
-    max-width: 350px;
-    padding: 5px 5px;
-  }
-}
+//   .checkbox-label {
+//     max-width: 350px;
+//     padding: 5px 5px;
+//   }
+// }
 
-@media screen and (max-width: 600px) {
-  .game-board {
-    height: max(85vw, 300px);
-    width: max(85vw, 300px);
-    margin-left: auto;
-    margin-right: auto;
-    margin-top: 20px;
-    margin-bottom: 20px;
-    padding: 15px;
-    border: 2px solid rgb(202, 213, 232);
-  }
-}
+// @media screen and (max-width: 600px) {
+//   .game-board {
+//     height: max(85vw, 300px);
+//     width: max(85vw, 300px);
+//     margin-left: auto;
+//     margin-right: auto;
+//     margin-top: 20px;
+//     margin-bottom: 20px;
+//     padding: 15px;
+//     border: 2px solid rgb(202, 213, 232);
+//   }
+// }

@@ -78,7 +78,7 @@ const Register = () => {
   const handleRegister = (e) => {
     e.preventDefault();
     setSuccessful(false);
-    form.current.validateAll();
+    //form.current.validateAll();
     // if (checkBtn.current.context._errors.length === 0) {
     dispatch(register(username, password, email))
       .then(() => {

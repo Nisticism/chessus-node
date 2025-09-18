@@ -1,0 +1,72 @@
+.registration {
+  display: flex;
+  flex-direction: column;
+  padding: 0px 10px;
+}
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 90%;
+  background: var(--forum-background);
+  border: 2px solid var(--forum-border);
+  margin-top: 25px;
+  min-width: 380px;
+  border-radius: 10px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.container {
+  display: flex;
+  justify-content: center;
+}
+
+.create-field-label {
+  min-width: 120px;
+}
+
+.signup-button {
+  background-color: rgb(75, 77, 124);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 18px;
+  padding: 10px;
+  margin: 10px 10px 15px 10px;
+  width: 320px;
+  border-radius: 4px;
+  border: 2px solid rgb(117, 124, 252);
+}
+
+.signup-button:hover {
+  background-color: rgb(59, 61, 131);
+  cursor: pointer;
+}
+
+.form-group {
+  display: flex;
+  align-items: center;
+  // justify-content: center;
+  padding: 10px 40px;
+}
+
+.create-forum {
+  textarea {
+    width: -webkit-fill-available;
+    width: -moz-available;
+    min-height: 200px;
+  }
+  .field-label {
+    min-width: 100px;
+  }
+}
+
+.forum-title-input {
+  width: 300px;
+}
+
+.create-form-control {
+  width: -webkit-fill-available;
+  width: -moz-available;
+  min-height: 200px;
+}

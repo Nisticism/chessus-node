@@ -20,6 +20,8 @@ const GameCreate = () => {
   const [gameDescriptionValidation, setGameDescriptionValidation] = useState("");
   const [gameName, setGameName] = useState("Chessus");
   const [gameNameValidation, setGameNameValidation] = useState("");
+  const [gameWidthValidation, setGameWidthValidation] = useState("");
+  const [gameHeightValidation, setGameHeightValidation] = useState("");
   const [newGame, setNewGame] = useState(null);
   const [pieceCount, setPieceCount] = useState(0);
   const [captureOrCheckmate, setCaptureOrCheckmate] = useState(true);
@@ -52,6 +54,24 @@ const GameCreate = () => {
   //  })
   }
 
+
+  const handleWidthClick = () => {
+    let widthSelect;
+    document.getElementById("game-width-id") ? widthSelect = document.getElementById("game-width-id") : console.log("we tried");
+    if (widthSelect) {
+      widthSelect.select();
+    }
+  }
+
+    const handleHeightClick = () => {
+    let heightSelect;
+    document.getElementById("game-height-id") ? heightSelect = document.getElementById("game-height-id") : console.log("we tried");
+    if (heightSelect) {
+      heightSelect.select();
+    }
+  }
+  
+
   return (
     <div className={styles["outer-container"]}>
     <div className={styles["container"]}>
@@ -60,8 +80,11 @@ const GameCreate = () => {
       </div>
       <form className={styles["game-form"]} onSubmit={handleSubmitGame} ref={form}>
         <label>Game name: </label>
-        <p className={styles["game-validation"]} defaultValue="">{gameNameValidation}</p>
-        <input onChange={e => 
+          <p className={styles["game-validation"]} defaultValue="">{gameNameValidation}</p>
+
+        <input 
+        className={styles["game-create-input"]}
+        onChange={e => 
           {
             if(e.target.value.length < 3 || e.target.value.length > 50) {
               setGameName(e.target.value);
@@ -73,9 +96,12 @@ const GameCreate = () => {
           }
         }
         value={gameName}/>
+
         <label>Description: </label>
         <p className={styles["game-validation"]} defaultValue="">{gameDescriptionValidation}</p>
-        <textarea onChange={e => 
+        <textarea 
+        className={styles["game-create-textarea"]}
+        onChange={e => 
           {
             if(e.target.value.length < 50 || e.target.value.length >= 1000) {
               setGameDescription(e.target.value);
@@ -86,34 +112,59 @@ const GameCreate = () => {
             }
           }
         }
-        
-        className={styles["game-description"]} 
         value={gameDescription}/>
 
-        <label>Game width (2 - 60): </label>
-        <input onChange={e => 
+        <label>Game width (1 - 96): </label>
+
+        <input
+        id="game-width-id"
+        className={styles["game-create-input"]}
+        onChange={e => 
           {
             const nums = /^[0-9\b]+$/;
-            if(nums.test(e.target.value) && e.target.value > 1 && e.target.value <= 60) {
+            if(nums.test(e.target.value) && e.target.value > 0 && e.target.value <= 96) {
               setHorizontal(parseInt(e.target.value));
             } else {
-              setHorizontal(8);
+              if (e.target.value <= 0) {
+                setHorizontal(1);
+              }
+              if (e.target.value > 96 ) {
+                setHorizontal(96);
+              }
             }
           }
-        } value={horizontal}/>
-        <label>Game height (2 - 60): </label>
-        <input onChange={e => 
+        }
+        onClick={handleWidthClick}
+        value={horizontal}/>
+
+        <p className={styles["game-validation"]} defaultValue="">{gameWidthValidation}</p>
+
+        <label>Game height (1 - 96): </label>
+        <input 
+        id="game-height-id"
+        className={styles["game-create-input"]}
+        onChange={e => 
           {
             const nums = /^[0-9\b]+$/;
-            if(nums.test(e.target.value) && e.target.value > 1 && e.target.value <= 60) {
+            if(nums.test(e.target.value) && e.target.value > 0 && e.target.value <= 96) {
               setVertical(parseInt(e.target.value));
             } else {
-              setVertical(8);
+              if (e.target.value <= 0) {
+                setVertical(1);
+              }
+              if (e.target.value > 96) {
+                setVertical(96);
+              }
             }
           }
-        } value={vertical}/>
+        } 
+        onClick={handleHeightClick}
+        value={vertical}/>
+        <p className={styles["game-validation"]} defaultValue="">{gameHeightValidation}</p>
         {/* <label>Player count (2 - 8): </label>
-        <input onChange={e => 
+        <input 
+        className={styles["game-create-input"]}
+        onChange={e => 
           {
             const nums = /^[0-9\b]+$/;
             if(nums.test(e.target.value) && e.target.value > 0 && e.target.value <= 8) {
@@ -124,7 +175,9 @@ const GameCreate = () => {
           }
         }/> */}
         {/* <label>Actions (moves) each player takes per turn: </label>
-        <input onChange={e => 
+        <input 
+        className={styles["game-create-input"]}
+        onChange={e => 
           {
             const nums = /^[0-9\b]+$/;
             if(nums.test(e.target.value) && e.target.value > 0 && e.target.value <= 8) {
@@ -142,7 +195,7 @@ const GameCreate = () => {
         */}
         <div className={styles["conditions-container"]}>
           <div className={styles["conditions-label"]}>
-            <label className={styles["conditions-label"]}>Win Conditions (select all that apply):&nbsp;</label>
+            <label className={styles["conditions-label"]}>Win Conditions (select one):&nbsp;</label>
           </div>
           <div className={styles["checkbox-container"]}>
           <label className={styles["checkbox-label"]}>Capture or checkmate pieces or a particular piece:&nbsp;</label>
@@ -159,7 +212,11 @@ const GameCreate = () => {
           <input type="radio" className={styles["checkbox-style"]} checked={winCondition === "CheckmateAll"}
           onChange={handleWinConditionChange} value="CheckmateAll"/>
           </div>
+
           <div className={captureOrCheckmate ? styles["display-block"] : styles["hidden"]}>
+          <div className={styles["conditions-label"]}>
+            <label className={styles["conditions-label"]}>Win Conditions (select all that apply):&nbsp;</label>
+          </div>
             <div className={styles["checkbox-container"]}>
             <label className={styles["checkbox-label"]}>Capture a particular piece:&nbsp;</label>
             <input type="checkbox" className={styles["checkbox-style"]}/>

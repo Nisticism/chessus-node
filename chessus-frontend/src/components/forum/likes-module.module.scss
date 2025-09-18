@@ -1,0 +1,23 @@
+.likes-module {
+  display: flex;
+  background-color: var(--forum-background);
+  max-width: 100px;
+  border-radius: 5px;
+  padding: 10px;
+  border: 2px solid var(--light-gray);
+  margin-top: 30px;
+}
+
+.likes {
+  font-size: 25px;
+  // background: orange;
+}
+
+.likes:hover {
+  cursor: pointer;
+}
+
+.likes-count {
+  font-size: 20px;
+  margin-right: 10px;
+}

@@ -3,8 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
     first_name VARCHAR(50) NOT NULL,
     last_name VARCHAR(50),
     email VARCHAR(50),
-    last_active_at DATETIME,
-    phone VARCHAR(20)
+    last_active_at DATETIME
 );
 
 CREATE TABLE IF NOT EXISTS game_types (

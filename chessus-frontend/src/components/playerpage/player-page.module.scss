@@ -44,3 +44,20 @@
   align-items: center;
   width: 100%;
 }
+
+.alert-style {
+  background-color: var(--forum-background);
+  color: white;
+  padding: 15px 25px;
+  border-radius: 5px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  opacity: 1;
+  transition: opacity 0.5s ease-in-out;
+}
+
+#alert-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000; /* Ensure it's on top of other content */
+}

@@ -2,11 +2,13 @@ import {
   REGISTER_SUCCESS,
   REGISTER_FAIL,
   EDIT_SUCCESS,
+  EDIT_SUCCESS_ADMIN,
   EDIT_FAIL,
   LOGIN_SUCCESS,
   LOGIN_FAIL,
   LOGOUT,
   DELETE_USER,
+  DELETE_USER_ADMIN,
 } from "../actions/types";
 
 const user = JSON.parse(localStorage.getItem("user"));
@@ -32,8 +34,17 @@ export default function (state = initialState, action) {
       return {
         ...state,
         user: payload.user,
+        message: payload.message,
+      }
+    case EDIT_SUCCESS_ADMIN:
+      console.log("in edit success admin");
+      return {
+        ...state,
+        adminId: payload.admin_id,
+        message: payload.message,
       }
     case EDIT_FAIL:
+      console.log("in edit reducer - edit fail");
       return {
         ...state,
       }
@@ -60,6 +71,10 @@ export default function (state = initialState, action) {
         ...state,
         isLoggedIn: false,
         user: null,
+      }
+    case DELETE_USER_ADMIN:
+      return {
+        ...state,
       }
     default:
       return state;

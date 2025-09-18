@@ -22,26 +22,29 @@ const updateUser = (updatedData) => {
   localStorage.setItem('user', JSON.stringify(user));
 }
 
-const edit = (username, password, email, first_name, last_name, phone, id) => {
+const edit = (current_user, username, password, email, first_name, last_name, id, admin_id) => {
   console.log("in auth service");
-  console.log("btw the password is still: " + password);
+  console.log("password attempting to change to: " + password);
   if (email === "") {
     email = null;
   }
-  if (phone === "") {
-    phone = null;
+    if (first_name === "") {
+    first_name = null;
+  }
+  if (last_name === "") {
+    last_name = null;
   }
   return axios.post(API_URL + "profile/edit", {
+    current_user,
     username,
     password,
     email,
     first_name, 
     last_name,
-    phone,
     id,
   })
   .then((response) => {
-    if (response.data.result.username) {
+    if (response.data.result.username && !admin_id) {
       updateUser(response.data.result);
     }
     return response.data;
@@ -69,11 +72,14 @@ const logout = () => {
   });
 };
 
-const deleteUser = (username) => {
-  localStorage.removeItem("user");
+const deleteUser = (username, admin_id) => {
+  if (!admin_id) {
+    localStorage.removeItem("user");
+  }
   return axios
     .post(API_URL + "delete", {
       username,
+      admin_id,
     })
     .then((response) => {
       return response.data;

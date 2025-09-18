@@ -102,16 +102,20 @@ const GameBoard = (props) => {
   // Max squares is 60 for both dimensions:
 
   const getHorizontal = (horizontal) => {
-    if (horizontal > 60) {
-      return 60;
+    if (horizontal > 96) {
+      return 96;
+    } else if (horizontal < 1) {
+      return 1;
     } else {
       return horizontal;
     }
   }
 
   const getVertical = (vertical) => {
-    if (vertical > 60) {
-      return 60;
+    if (vertical > 96) {
+      return 96;
+    } else if (vertical < 1) {
+      return 1;
     } else {
       return vertical;
     }
@@ -129,7 +133,7 @@ const GameBoard = (props) => {
   createGrid();
 
   return (
-    <div>
+    <div className={styles["game-board-wrapper"]}>
       <div className={styles["game-board"]}>
         <div style= { boardStyle } >
           { board }

@@ -6,8 +6,10 @@ import {
   LOGOUT,
   SET_MESSAGE,
   DELETE_USER,
+  DELETE_USER_ADMIN,
   REMOVE_USERS,
   EDIT_SUCCESS,
+  EDIT_SUCCESS_ADMIN,
   EDIT_FAIL,
 } from "./types";
 import AuthService from "../services/auth.service";
@@ -43,17 +45,26 @@ export const register = (username, password, email) => (dispatch) => {
   );
 };
 
-export const edit = (username, password, email, first_name, last_name, phone, id) => (dispatch) => {
-  return AuthService.edit(username, password, email, first_name, last_name, phone, id).then(
+export const edit = (current_user, username, password, email, first_name, last_name, id, admin_id) => (dispatch) => {
+  console.log(id);
+  return AuthService.edit(current_user, username, password, email, first_name, last_name, id, admin_id).then(
     (response) => {
       console.log("in edit action");
+      console.log(response.message);
+      if (!admin_id) {
       dispatch({
         type: EDIT_SUCCESS,
         payload: { user: response.result },
       });
+      } else {
+        dispatch({
+        type: EDIT_SUCCESS_ADMIN,
+        payload: { admin_id: admin_id },
+      });
+      }
       dispatch({
         type: SET_MESSAGE,
-        payload: response.data.message,
+        payload: response.message,
       });
       return Promise.resolve();
     },
@@ -111,11 +122,31 @@ export const logout = () => (dispatch) => {
   });
 };
 
-export const deleteUser = (username) => (dispatch) => {
-  AuthService.deleteUser(username);
-  dispatch({
-    type: DELETE_USER,
-  });
+export const deleteUser = (username, admin_id) => (dispatch) => {
+  AuthService.deleteUser(username, admin_id).then(
+    (response) => {
+      if (admin_id) {
+        console.log("admin attempting delete user from state")
+          dispatch({
+            type: DELETE_USER_ADMIN,
+          });
+          dispatch({
+            type: SET_MESSAGE,
+            payload: "User successfully deleted",
+          })
+          return Promise.resolve();
+        } else {
+          console.log("regular person attempting delete user from state")
+          dispatch({
+            type: DELETE_USER,
+          });
+          return Promise.resolve();
+        }
+    },
+    (err) => {
+      return Promise.reject();
+    }
+  ).then(console.log("User deleted"));
 };
 
 export const removeUsers = () => (dispatch) => {

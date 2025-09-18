@@ -1,28 +1,28 @@
 import React from "react";
-import styles from "./createhub.module.scss";
+import styles from "./community.module.scss";
 import StandardButton from "../../components/standardbutton/StardardButton";
 import { useNavigate } from "react-router-dom";
-const CreateHub = () => {
+const Community = () => {
 
   const navigate = useNavigate();
 
-  const gameCreate = () => {
-    navigate("/create/game");
+  const playerList = () => {
+    navigate("/community/players");
   }
 
   return (
     <div className="container">
       <div className={styles["home-container"]}>
-        <h2>Our Create Hub Page Is Under Construction</h2>
+        <h2>Our Community Page Is Under Construction</h2>
         {/* <h3>{content}</h3> */}
-        <div className={styles["create-hub-description-main"]}>
+        <div className={styles["community-description-main"]}>
           <div>
-            In the mean time, feel free to check out our Design Game progress.
+            In the mean time, feel free to check out our list of players.
 
             <br/>
             <br/>
 
-            <StandardButton buttonText={"Design Game"} onClick={gameCreate}/>
+            <StandardButton buttonText={"Player List"} onClick={playerList}/>
             
 
           </div>
@@ -35,4 +35,4 @@ const CreateHub = () => {
     </div>
   );
 };
-export default CreateHub;
+export default Community;

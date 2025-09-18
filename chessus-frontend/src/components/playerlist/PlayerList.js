@@ -27,9 +27,9 @@ const PlayerList = () => {
   }
   return (
     <div className={styles["player-list-container"]}>
-      <p>
+      {/* <p>
         <strong>Your Id:</strong> {currentUser.id}
-      </p>
+      </p> */}
       <h1 className={styles["accounts-found"]}>{allUsers.usersList ? allUsers.usersList.length : 0} accounts found</h1>
       <div className={styles["players-table"]}>
         { allUsers.usersList ?
@@ -51,9 +51,6 @@ const PlayerList = () => {
               </th>
               <th>
                 Email
-              </th>
-              <th>
-                Phone
               </th>
               <th>
                 Password/Token
@@ -79,9 +76,6 @@ const PlayerList = () => {
                     </td>
                     <td>
                       {user.email}
-                    </td>
-                    <td>
-                      {user.phone}
                     </td>
                     <td>
                       {

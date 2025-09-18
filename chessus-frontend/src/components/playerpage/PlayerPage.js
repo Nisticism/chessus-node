@@ -5,6 +5,7 @@ import styles from "./player-page.module.scss";
 import { deleteUser } from "../../actions/auth";
 import StandardButton from "../standardbutton/StardardButton";
 import axios from "axios";
+import NotFound from "../notfound/NotFound";
 
 const PlayerPage = (props) => {
   const { user: currentUser } = useSelector((state) => state.auth);
@@ -16,10 +17,17 @@ const PlayerPage = (props) => {
   const [firstRender, setFirstRender] = useState(false);
   const [userInfo, setUserInfo] = useState(null);
   const [realUser, setRealUser] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [postDeleteUsername, setPostDeleteUsername] = useState("");
   
   const navigate = useNavigate();
 
   const { username } = useParams();
+
+  const handleHome = () => {
+    navigate("/");
+  }
 
   useEffect(() => {
     if (!firstRender) {
@@ -28,27 +36,61 @@ const PlayerPage = (props) => {
     }
   }, [firstRender]);
 
+  useEffect(() => {
+    let timer;
+    if (showAlert) {
+      timer = setTimeout(() => {
+        setShowAlert(false);
+        setAlertMessage(''); // Clear message after hiding
+        navigate('/community/players');
+      }, 2000); // 2000 milliseconds = 2 seconds
+    }
+
+    // Cleanup function to clear the timeout if the component unmounts or showAlert changes
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [showAlert]); // Re-run effect when showAlert changes
+
   if (!currentUser) {
     return <Navigate to="/login" />;
   }
 
-  const handleDelete = (e) => {
+  const handleDelete = async(e) => {
     e.preventDefault();
-    dispatch(deleteUser(currentUser.username))
+    if (currentUser.role !== "Admin") {
+      dispatch(deleteUser(currentUser.username))
+    } else {
+      setPostDeleteUsername(username);
+      await new Promise(resolve => dispatch(deleteUser(username, currentUser.id))).then(setAlertMessage("User Deleted"))
+      .then(setShowAlert(true)).then(console.log("finally deleting worked")).then(setRealUser(false));
+      setAlertMessage("User Deleted")
+      setShowAlert(true);
+      // navigate(`/`);
+      // checkIfRealUser(username);
+      // console.log(realUser);
+      // console.log("what is this")
+    }
   };
 
   const handleEdit = (e) => {
     e.preventDefault();
-    navigate("/profile/edit");
+    if (currentUser.role !== "Admin") {
+      navigate("/profile/edit");
+    } else {
+      navigate(`/profile/${username}/edit`);
+    }
   }
 
   const checkIfRealUser = (username) => {
+    console.log(username);
     axios.get('http://localhost:3001/user', 
      {params: { username: username}})
     .then (res => {
-        setUserInfo(currentUser);
-        setUserInfo(res.data.result);
+        // setUserInfo(currentUser);
+      setUserInfo(res.data.result);
       setRealUser(true);
+      console.log("setting real user as true");
     })
     .catch(
       err => {
@@ -59,6 +101,13 @@ const PlayerPage = (props) => {
 
   return (
     <div className="container">
+      {showAlert  &&
+      (<div id="alert-container">
+        <div className={styles["alert-style"]}>
+          { alertMessage }
+        </div>
+      </div>
+      )}
           {realUser ? 
           <div className={styles["player-page-table-container"]}>
             <div className={styles["player-info"]}>Player Information</div>
@@ -84,11 +133,6 @@ const PlayerPage = (props) => {
                   : userInfo.email ? userInfo.email : "N/A"}</td>
                 </tr>
                 <tr>
-                  <td>Phone:</td>
-                  <td>{username === currentUser.username ? (currentUser.phone ? currentUser.phone : "N/A") 
-                  : userInfo.phone ? userInfo.phone : "N/A"}</td>
-                </tr>
-                <tr>
                   <td>Role:</td>
                   <td>{username === currentUser.username ? (currentUser.role ? currentUser.role : "N/A")
                   : userInfo.role ? userInfo.role : "N/A"}</td>
@@ -107,9 +151,10 @@ const PlayerPage = (props) => {
                 <header>
                   Player with username "{username}" not found!
                 </header>
+                <StandardButton buttonText={"Return Home"} onClick={handleHome}/>
               </strong>
            </div>}
-      {currentUser.username === username ?
+      {((currentUser.username === username || currentUser.role === "Admin") && realUser) ?
             <div className={styles["profile-buttons"]}>
               <div className={styles["profile-button"]}>
                 <StandardButton buttonText={"Delete Account"} onClick={handleDelete} />
@@ -118,7 +163,8 @@ const PlayerPage = (props) => {
                 <StandardButton buttonText={"Edit Account"} onClick={handleEdit} />
               </div>
             </div>
-            : ""}
+            : "" }
+            {}
     </div>
   );
 };

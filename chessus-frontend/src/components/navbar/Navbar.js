@@ -124,7 +124,7 @@ const Navbar = () => {
       <div className="navbar" id="navbar">
         <div className="navbar-links">
           <div className="nav-container">
-            <Link to="/" className="main-logo">CHESSUS</Link>
+            <Link to="/" className="main-logo">SQUARESTRAT</Link>
             <div className="navbar-links-container">
               <Menu />
             </div>

@@ -26,4 +26,14 @@ code {
   --navigation-focus: #9bc23b;
   --scrollbar-color: #6cacd4;
   --scrollbar-background: #285c94;
+
+  --light-button:   rgb(47, 70, 119);
+  --dark-button:   rgb(43, 56, 134);
+
+  --forum-background: #26374e;
+  --forum-border: #44618a;
+  --forum-title-color: #5a80aa;
+
+  --forum-link-hover: #5888be;
+  
 }
