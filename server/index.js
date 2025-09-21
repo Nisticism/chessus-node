@@ -1,4 +1,5 @@
 require("dotenv").config();
+// require("../configs/db.js");
 
 //  Constants
 
@@ -21,18 +22,20 @@ const PORT = process.env.PORT || 3001;
 const app = express();
 
 const path = require('path');
+const db = require("../configs/db");
 
 app.use(express.json());
 app.use(cors());
 
 //  DB
 
-const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: 'password',
-  port: '3306'
-});
+// const db = mysql.createConnection({
+//   host: 'localhost',
+//   user: 'root',
+//   password: 'password',
+//   port: '3306'
+// });
+
 
 db.connect(err => {
   if (err) {
@@ -480,7 +483,7 @@ app.get("/forums", (req, res) => {
           if (err) {
             res.send({ err: err });
           } else {
-            author_name = result[0].username;
+            (result[0] && result[0].username) ? author_name = result[0].username : author_name = "User Deleted";
             forum.author_name = author_name;
             forum.comment_count = comment_count;
             forum.likes = likes;

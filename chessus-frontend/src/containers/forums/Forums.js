@@ -91,9 +91,15 @@ const Forums = () => {
                     </td>
                     <td>
                       <div className={styles["forums-link"]}>
-                        <Link to={`/profile/${forum.author_name}`}>
+                        { forum.author_name ? 
+                                              <Link to={`/profile/${forum.author_name}`}>
                           <div className={styles["forums-username"]}>{ forum.author_name }</div>
                         </Link>
+                        :                         <Link to={"/community/players"}>
+                          <div className={styles["forums-username"]}>User Deleted</div>
+                        </Link>
+                      
+                      }
                       </div>
                     </td>
                     <td>
