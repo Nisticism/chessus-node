@@ -1,7 +1,10 @@
 import axios from "axios";
 // import { response } from "express";
 
-const API_URL = "http://localhost:3001/";
+// const API_URL = "http://localhost:3001/";
+
+const API_URL = require("../configs/global.js");
+// const API_URL = global.api_url;
 
 const register = (username, password, email) => {
   if (email === "") {
