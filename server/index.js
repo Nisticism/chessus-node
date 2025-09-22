@@ -20,6 +20,12 @@ const PORT = process.env.PORT || 3001;
 
 const app = express();
 
+// Some day I will set up a router to change this /api crap, but today is not that day.
+// const router = express.Router();
+// router.post('/login', app.login());
+
+//app.use("/api", "*");
+
 // const corsOptions = {
 //   origin: ['http://squarestrat.com', 'https://squarestrat.com', 'http://localhost:3000'], // Specify allowed origins
 //   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
@@ -46,7 +52,7 @@ db.connect(err => {
 
 // Create Database
 
-// app.get('/create-db', (req, res) => {
+// app.get('/api/create-db', (req, res) => {
 //   let sql = 'CREATE DATABASE IF NOT EXISTS ChessusNode'
 //   db.query(sql, err => {
 //     if (err) {
@@ -65,7 +71,7 @@ db.connect(err => {
 // })
 
 // // Run tables-seed.sql.  Go to /create-tables to create the tables.
-// app.get('/create-tables', (req, res) => {
+// app.get('/api/create-tables', (req, res) => {
 //   let sql = tableQuery;
 //   db.query(sql, err => {
 //     if (err) {
@@ -81,7 +87,7 @@ db.connect(err => {
 // })
 
 // // Run seed.sql.  Go to /seed to create seed data.
-// app.get('/seed', (req, res) => {
+// app.get('/api/seed', (req, res) => {
 //   let sql = seedQuery;
 //   db.query(sql, err => {
 //     if (err) {
@@ -102,15 +108,15 @@ db.connect(err => {
 
 //  ------------------ Routes --------------------------
 
-app.get("/api", (req, res) => {
+app.get("/api/api", (req, res) => {
   res.json({ message: "Hello from server!" });
 });
 
-app.get("/", (req, res) => {
+app.get("/api/", (req, res) => {
   res.json({ message: "Home page!" });
 })
 
-app.get("/user", async (params, res) => {
+app.get("/api/user", async (params, res) => {
   const username = params.query.username;
   db.query("SELECT * FROM chessusnode.users WHERE username = ?",
   [username],
@@ -130,7 +136,7 @@ app.get("/user", async (params, res) => {
   })
 });
 
-app.get("/users", async (req, res) => {
+app.get("/api/users", async (req, res) => {
 
   db.query("SELECT * FROM chessusnode.users",
   (err, result) => {
@@ -142,7 +148,7 @@ app.get("/users", async (req, res) => {
   });
 })
 
-app.get("/pieces", (req, res) => {
+app.get("/api/pieces", (req, res) => {
 
   db.query("SELECT * FROM chessusnode.pieces",
   (err, result) => {
@@ -154,11 +160,11 @@ app.get("/pieces", (req, res) => {
   });
 })
 
-// app.post("/users", (req, res) => {
+// app.post("/api/users", (req, res) => {
 
 // })
 
-app.post("/register", async (req, res) => {
+app.post("/api/register", async (req, res) => {
   const username = req.body.username;
   const password = req.body.password;
   const email = req.body.email;
@@ -210,7 +216,7 @@ app.post("/register", async (req, res) => {
   });
 });
 
-app.post("/profile/edit", async (req, res) => {
+app.post("/api/profile/edit", async (req, res) => {
   const username = req.body.username;
   const logged_in_username = req.body.current_user.username;
   const logged_in_email = req.body.current_user.email;
@@ -333,7 +339,7 @@ app.post("/profile/edit", async (req, res) => {
   });
 });
 
-app.post("/login", async (req, res) => {
+app.post("/api/login", async (req, res) => {
 
   const username = req.body.username;
   const password = req.body.password;
@@ -366,7 +372,7 @@ app.post("/login", async (req, res) => {
   })
 });
 
-app.post("/delete", async (req, res) => {
+app.post("/api/delete", async (req, res) => {
   const username = req.body.username;
   const admin_id = req.body.admin_id;
   console.log("attempting to delete user with username " + username);
@@ -385,7 +391,7 @@ app.post("/delete", async (req, res) => {
   })
 })
 
-app.post('/logout', (req, res) => {
+app.post('/api/logout', (req, res) => {
   console.log("You have been logged out");
 });
 
@@ -398,13 +404,13 @@ const posts = [{
   title: "Post 2"
 }]
 
-// app.get('/posts', authenticateToken, (req, res) => {
+// app.get('/api/posts', authenticateToken, (req, res) => {
 //   res.json(posts.filter(post => post.username === req.user.username))
 // })
 
 //  ---------------------- Forums ---------------------------------
 
-app.post("/articles/new", async (req, res) => {
+app.post("/api/articles/new", async (req, res) => {
   const title = req.body.title;
   const genre = req.body.genre;
   const content = req.body.content;
@@ -429,7 +435,7 @@ app.post("/articles/new", async (req, res) => {
   );
 });
 
-app.get('/articles', (req, res) => {
+app.get('/api/articles', (req, res) => {
   db.query("SELECT * FROM chessusnode.articles"), (err, result) => {
     if (err) {
       res.send({ err: err});
@@ -439,7 +445,7 @@ app.get('/articles', (req, res) => {
   }
 })
 
-app.get("/article", (params, res) => {
+app.get("/api/article", (params, res) => {
   const article_id = params.query.article_id;
   db.query("SELECT * FROM chessusnode.articles WHERE id = ?",
   [article_id],
@@ -461,7 +467,7 @@ app.get("/article", (params, res) => {
 
 //  ---------------------- Forums ---------------------------------
 
-app.post("/forums/new", async (req, res) => {
+app.post("/api/forums/new", async (req, res) => {
   const title = req.body.title;
   // const genre = req.body.genre;
   const content = req.body.content;
@@ -486,7 +492,7 @@ app.post("/forums/new", async (req, res) => {
   );
 });
 
-app.get("/forums", (req, res) => {
+app.get("/api/forums", (req, res) => {
   db.query("SELECT * FROM chessusnode.articles",
   (err, result) => {
     if (err) {
@@ -532,7 +538,7 @@ app.get("/forums", (req, res) => {
   });
 });
 
-app.get("/forum", (params, res) => {
+app.get("/api/forum", (params, res) => {
   console.log("in get forum route");
   const forum_id = params.query.forum_id;
   console.log("forum id: " + forum_id);
@@ -635,7 +641,7 @@ app.get("/forum", (params, res) => {
   })
 });
 
-app.put("/forums/edit", async (req, res) => {
+app.put("/api/forums/edit", async (req, res) => {
   const title = req.body.title;
   const id = req.body.id;
   const content = req.body.content;
@@ -656,7 +662,7 @@ app.put("/forums/edit", async (req, res) => {
   );
 });
 
-app.post("/forums/delete", async (req, res) => {
+app.post("/api/forums/delete", async (req, res) => {
   console.log("in delete post route")
   console.log(req.body);
   const id = req.body.id;
@@ -697,7 +703,7 @@ app.post("/forums/delete", async (req, res) => {
 // ----------------------- Comments ---------------------------
 
 
-app.post("/comments/new", async (req, res) => {
+app.post("/api/comments/new", async (req, res) => {
   const author_id = req.body.author_id;
   const forum_id = req.body.forum_id;
   const content = req.body.content;
@@ -718,7 +724,7 @@ app.post("/comments/new", async (req, res) => {
   );
 });
 
-app.post("/delete-comment", async (req, res) => {
+app.post("/api/delete-comment", async (req, res) => {
   console.log("in delete comment route")
   const id = req.body.id;
   db.query("DELETE FROM chessusnode.comments WHERE id = ?",
@@ -733,7 +739,7 @@ app.post("/delete-comment", async (req, res) => {
   })
 });
 
-app.put("/comments/edit", async (req, res) => {
+app.put("/api/comments/edit", async (req, res) => {
   const id = req.body.id;
   const content = req.body.content;
   const last_updated_at = req.body.last_updated_at;
@@ -756,7 +762,7 @@ app.put("/comments/edit", async (req, res) => {
 
 // ----------------------- Likes ----------------------------
 
-app.post("/likes/new", async (req, res) => {
+app.post("/api/likes/new", async (req, res) => {
   const user_id = req.body.user_id;
   const article_id = req.body.article_id;
   const liked = true;
@@ -774,7 +780,7 @@ app.post("/likes/new", async (req, res) => {
   );
 });
 
-app.post("/likes/delete", async (req, res) => {
+app.post("/api/likes/delete", async (req, res) => {
   console.log("in delete likes route")
   const id = req.body.id;
   db.query("DELETE FROM chessusnode.likes WHERE id = ?",
@@ -792,7 +798,7 @@ app.post("/likes/delete", async (req, res) => {
 
 //  ---------------------- News ------------------------------
 
-app.post("/news/new", async (req, res) => {
+app.post("/api/news/new", async (req, res) => {
   const author = req.body.author;
   const article_id = req.body.article_id;
   const liked = true;
@@ -811,7 +817,7 @@ app.post("/news/new", async (req, res) => {
 });
 
 
-app.get("/news", (req, res) => {
+app.get("/api/news", (req, res) => {
   db.query("SELECT * FROM chessusnode.news",
   (err, result) => {
     if (err) {
@@ -830,7 +836,7 @@ app.get("/news", (req, res) => {
 
 //  ---------------------- Token -----------------------------
 
-app.post('/token', (req, res) => {
+app.post('/api/token', (req, res) => {
   const refreshToken = req.body.token
 })
 
@@ -856,7 +862,7 @@ function generateAccessToken(user) {
 //  -----------------------  Other/Port -------------------------
 
 // All other GET requests not handled before will return our React app
-app.get('*', (req, res) => {
+app.get('/api/*', (req, res) => {
   res.json({ message: "No data to return from this endpoint!" });
 });
 
