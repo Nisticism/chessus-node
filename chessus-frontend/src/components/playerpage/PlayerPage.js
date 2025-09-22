@@ -5,6 +5,7 @@ import styles from "./player-page.module.scss";
 import { deleteUser, getUser } from "../../actions/auth";
 import StandardButton from "../standardbutton/StardardButton";
 import axios from "axios";
+import API_URL from "../../global/global";
 // import NotFound from "../notfound/NotFound";
 
 const PlayerPage = (props) => {
@@ -103,7 +104,7 @@ const PlayerPage = (props) => {
 
   const checkIfRealUser = (username) => {
     console.log(username);
-    axios.get('http://localhost:3001/user', 
+    axios.get((API_URL + 'user'), 
      {params: { username: username}})
     .then (res => {
       setRealUser(true);

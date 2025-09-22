@@ -10,6 +10,7 @@ import { clearMessage } from "../../actions/message.js";
 import styles from "./edit-account.module.scss";
 import NotFound from "../notfound/NotFound";
 import axios from "axios";
+import API_URL from "../../global/global";
 
 const required = (value) => {
   if (!value) {
@@ -151,7 +152,7 @@ const EditAccount = (props) => {
 
   const checkIfRealUser = (username) => {
     console.log(username);
-    axios.get('http://localhost:3001/user', 
+    axios.get(API_URL + 'user', 
      {params: { username: username}})
     .then (res => {
         // setUserInfo(currentUser);
