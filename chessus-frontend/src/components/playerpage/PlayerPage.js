@@ -5,21 +5,21 @@ import styles from "./player-page.module.scss";
 import { deleteUser, getUser } from "../../actions/auth";
 import StandardButton from "../standardbutton/StardardButton";
 import axios from "axios";
-import NotFound from "../notfound/NotFound";
+// import NotFound from "../notfound/NotFound";
 
 const PlayerPage = (props) => {
   const { user: currentUser } = useSelector((state) => state.auth);
 
   
-  const [loading, setLoading] = useState(false);
-  const [ messageDisplay, setMessageDisplay ] = useState(false);
+  // const [loading, setLoading] = useState(false);
+  // const [ messageDisplay, setMessageDisplay ] = useState(false);
   const dispatch = useDispatch();
   const [firstRender, setFirstRender] = useState(false);
-  const [userInfo, setUserInfo] = useState(null);
+  // const [userInfo, setUserInfo] = useState(null);
   const [realUser, setRealUser] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
-  const [postDeleteUsername, setPostDeleteUsername] = useState("");
+  // const [postDeleteUsername, setPostDeleteUsername] = useState("");
   const playerPageUser = useSelector((state) => state.auth.playerPage);
   
   const navigate = useNavigate();
@@ -30,13 +30,13 @@ const PlayerPage = (props) => {
     navigate("/");
   }
 
-  useEffect(() => {
+  useEffect((currentUser) => {
     if (!firstRender) {
       if (currentUser.username === username) {
         console.log(currentUser);
         console.log("setting as real user");
         setRealUser(true);
-        setUserInfo(currentUser);
+        // setUserInfo(currentUser);
       } else {
         checkIfRealUser(username);
         getPlayerPage();
@@ -75,7 +75,7 @@ const PlayerPage = (props) => {
     if (currentUser.role !== "Admin") {
       dispatch(deleteUser(currentUser.username))
     } else {
-      setPostDeleteUsername(username);
+      // setPostDeleteUsername(username);
       await new Promise(resolve => dispatch(deleteUser(username, currentUser.id))).then(setAlertMessage("User Deleted"))
       .then(setShowAlert(true)).then(console.log("finally deleting worked")).then(setRealUser(false));
       setAlertMessage("User Deleted")

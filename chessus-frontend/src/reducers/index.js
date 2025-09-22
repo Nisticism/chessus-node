@@ -1,12 +1,12 @@
 import { combineReducers } from "redux";
-import auth from "./auth";
+import authReducer from "./auth";
 import message from "./message";
 import chessReducer from "./chessReducer";
 import users from "./users";
 import forums from "./forums";
 import news from "./news";
 export default combineReducers({
-  auth,
+  authReducer,
   message,
   chessReducer,
   users,
