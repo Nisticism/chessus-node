@@ -44,7 +44,7 @@ app.get('/create-db', (req, res) => {
     }
     res.send("Database Created or Exists");
   })
-})
+});
 
 
 //  -----------  Seeding/Tables -----------------
