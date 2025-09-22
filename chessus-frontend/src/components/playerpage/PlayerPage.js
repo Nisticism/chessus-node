@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./player-page.module.scss";
-import { deleteUser } from "../../actions/auth";
+import { deleteUser, getUser } from "../../actions/auth";
 import StandardButton from "../standardbutton/StardardButton";
 import axios from "axios";
 import NotFound from "../notfound/NotFound";
@@ -20,6 +20,7 @@ const PlayerPage = (props) => {
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
   const [postDeleteUsername, setPostDeleteUsername] = useState("");
+  const playerPageUser = useSelector((state) => state.auth.playerPage);
   
   const navigate = useNavigate();
 
@@ -31,10 +32,19 @@ const PlayerPage = (props) => {
 
   useEffect(() => {
     if (!firstRender) {
-      checkIfRealUser(username);
-      setFirstRender(true);
+      if (currentUser.username === username) {
+        console.log(currentUser);
+        console.log("setting as real user");
+        setRealUser(true);
+        setUserInfo(currentUser);
+      } else {
+        checkIfRealUser(username);
+        getPlayerPage();
+      }
     }
-  }, [firstRender]);
+  }, [firstRender, username]);
+
+
 
   useEffect(() => {
     let timer;
@@ -54,6 +64,10 @@ const PlayerPage = (props) => {
 
   if (!currentUser) {
     return <Navigate to="/login" />;
+  }
+
+  const getPlayerPage = () => {
+    dispatch(getUser(username))
   }
 
   const handleDelete = async(e) => {
@@ -82,19 +96,23 @@ const PlayerPage = (props) => {
     }
   }
 
+  const handleLogInfo = (e) => {
+    e.preventDefault();
+    console.log(playerPageUser);
+  }
+
   const checkIfRealUser = (username) => {
     console.log(username);
     axios.get('http://localhost:3001/user', 
      {params: { username: username}})
     .then (res => {
-        // setUserInfo(currentUser);
-      setUserInfo(res.data.result);
       setRealUser(true);
       console.log("setting real user as true");
     })
     .catch(
       err => {
         setRealUser(false);
+        console.log("setting real user as false");
         console.log(err);
     })
   }
@@ -120,27 +138,27 @@ const PlayerPage = (props) => {
                 <tr>
                   <td>First name:</td>
                   <td>{username === currentUser.username ? (currentUser.first_name ? currentUser.first_name : "N/A") 
-                  : userInfo.first_name ? userInfo.first_name : "N/A"}</td>
+                  : playerPageUser && playerPageUser.first_name ? playerPageUser.first_name : "N/A"}</td>
                 </tr>
                 <tr>
                   <td>Last name:</td>
                   <td>{username === currentUser.username ? (currentUser.last_name ? currentUser.last_name : "N/A") 
-                  : userInfo.last_name ? userInfo.last_name : "N/A"}</td>
+                  : playerPageUser && playerPageUser.last_name ? playerPageUser.last_name : "N/A"}</td>
                 </tr>
                 <tr>
                   <td>Email:</td>
                   <td>{username === currentUser.username ? (currentUser.email ? currentUser.email : "N/A") 
-                  : userInfo.email ? userInfo.email : "N/A"}</td>
+                  : playerPageUser && playerPageUser.email ? playerPageUser.email : "N/A"}</td>
                 </tr>
                 <tr>
                   <td>Role:</td>
                   <td>{username === currentUser.username ? (currentUser.role ? currentUser.role : "N/A")
-                  : userInfo.role ? userInfo.role : "N/A"}</td>
+                  : playerPageUser && playerPageUser.role ? playerPageUser.role : "N/A"}</td>
                 </tr>
                 <tr>
                   <td>Last Active:</td>
                   <td>{username === currentUser.username ? (currentUser.last_active_at ? currentUser.last_active_at : "N/A") 
-                  : userInfo.last_active_at ? userInfo.last_active_at : "N/A"}</td>
+                  : playerPageUser && playerPageUser.last_active_at ? playerPageUser.last_active_at : "N/A"}</td>
                 </tr>
               </tbody>
             </table>

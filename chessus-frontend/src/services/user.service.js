@@ -3,6 +3,32 @@ import authHeader from "./auth-header";
 
 const API_URL = "http://localhost:3001/";
 
+
+const getUser = async(username) => {
+  console.log("in get User service")
+  return axios
+    .get(API_URL + "user", {
+      params: { username: username}
+    }).then((response) => {
+      return response.data;
+  });
+};
+
+    // axios.get('http://localhost:3001/user', 
+    //  {params: { username: username}})
+    // .then (res => {
+    //     // setUserInfo(currentUser);
+    //   setUserInfo(res.data.result);
+    //   setRealUser(true);
+    //   console.log("setting real user as true");
+    // })
+    // .catch(
+    //   err => {
+    //     setRealUser(false);
+    //     console.log("setting real user as false");
+    //     console.log(err);
+    // })
+
 const getPublicContent = () => {
   return axios.get(API_URL + "all");
 };
@@ -19,9 +45,8 @@ const getAdminBoard = () => {
   return axios.get(API_URL + "admin", { headers: authHeader() });
 };
 
-export default {
-  getPublicContent,
-  getUserBoard,
-  getModeratorBoard,
-  getAdminBoard,
-};
+const UserService = {
+  getUser,
+}
+
+export default UserService;

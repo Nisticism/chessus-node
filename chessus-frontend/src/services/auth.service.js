@@ -44,7 +44,7 @@ const edit = (current_user, username, password, email, first_name, last_name, id
     id,
   })
   .then((response) => {
-    if (response.data.result.username && !admin_id) {
+    if (response.data.result.username && (!admin_id || (response.data.result.id && response.data.result.id === admin_id))) {
       updateUser(response.data.result);
     }
     return response.data;

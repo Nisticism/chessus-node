@@ -6,6 +6,7 @@ import CheckButton from "react-validation/build/button";
 import { useNavigate, Navigate, useParams } from "react-router-dom";
 import { isEmail } from "validator";
 import { edit } from "../../actions/auth";
+import { clearMessage } from "../../actions/message.js";
 import styles from "./edit-account.module.scss";
 import NotFound from "../notfound/NotFound";
 import axios from "axios";
@@ -107,6 +108,7 @@ const EditAccount = (props) => {
       console.log(profileUsername);
       checkIfRealUser(profileUsername);
     }
+      dispatch(clearMessage());
       setFirstRender(true);
     }
   }, [firstRender]);

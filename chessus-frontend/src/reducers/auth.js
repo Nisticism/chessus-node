@@ -9,6 +9,8 @@ import {
   LOGOUT,
   DELETE_USER,
   DELETE_USER_ADMIN,
+  GET_USER_SUCCESS,
+  GET_USER_FAILURE,
 } from "../actions/types";
 
 const user = JSON.parse(localStorage.getItem("user"));
@@ -19,6 +21,20 @@ const initialState = user
 export default function (state = initialState, action) {
   const { type, payload } = action;
   switch (type) {
+    case GET_USER_SUCCESS:
+      console.log("in get user success");
+      return {
+        ...state,
+        playerPage: payload.response,
+        message: payload.message,
+      }
+    case GET_USER_FAILURE:
+      console.log("in get user failure");
+      return {
+        ...state,
+        playerPage: payload.response,
+        message: payload.message
+      }
     case REGISTER_SUCCESS:
       return {
         ...state,
@@ -38,10 +54,23 @@ export default function (state = initialState, action) {
       }
     case EDIT_SUCCESS_ADMIN:
       console.log("in edit success admin");
-      return {
-        ...state,
-        adminId: payload.admin_id,
-        message: payload.message,
+      if (payload.user && payload.user.id && payload.user.id !== payload.admin_id) {
+        console.log("editting someone else");
+        return {
+          ...state,
+          playerPage: payload.user,
+          adminId: payload.admin_id,
+          message: payload.message,
+        }
+      } else {
+        console.log("editting yourself");
+        return {
+          ...state,
+          user: payload.user,
+          playerPage: payload.user,
+          adminId: payload.admin_id,
+          message: payload.message,
+        }
       }
     case EDIT_FAIL:
       console.log("in edit reducer - edit fail");

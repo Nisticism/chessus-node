@@ -1,5 +1,4 @@
 require("dotenv").config();
-// require("../configs/db.js");
 
 //  Constants
 
@@ -26,15 +25,6 @@ const db = require("../configs/db");
 
 app.use(express.json());
 app.use(cors());
-
-//  DB
-
-// const db = mysql.createConnection({
-//   host: 'localhost',
-//   user: 'root',
-//   password: 'password',
-//   port: '3306'
-// });
 
 
 db.connect(err => {
@@ -110,7 +100,7 @@ app.get("/", (req, res) => {
   res.json({ message: "Home page!" });
 })
 
-app.get("/user", (params, res) => {
+app.get("/user", async (params, res) => {
   const username = params.query.username;
   db.query("SELECT * FROM chessusnode.users WHERE username = ?",
   [username],
@@ -130,7 +120,7 @@ app.get("/user", (params, res) => {
   })
 });
 
-app.get("/users", (req, res) => {
+app.get("/users", async (req, res) => {
 
   db.query("SELECT * FROM chessusnode.users",
   (err, result) => {
@@ -226,6 +216,19 @@ app.post("/profile/edit", async (req, res) => {
 
   let user;
   let hashedPassword;
+  let updatedUser = null;
+
+  db.query("SELECT * FROM chessusnode.users WHERE username = ?", [logged_in_username], (err, result) => {
+    if (err) {
+      res.send({err: err});
+    } else {
+      if (!result[0]) {
+        res.send("For some reason the user no longer exists");
+      } else {
+        updatedUser = result[0];
+      }
+    }
+  });
 
   db.query("SELECT * FROM chessusnode.users WHERE username = ?",
   [username],
@@ -233,6 +236,7 @@ app.post("/profile/edit", async (req, res) => {
     if (err) {
       res.send({ err: err});
     }
+    //  If there's already a user with that username and it's not the one whose account is getting updated
     if (result.length > 0 && result[0].username != logged_in_username) {
       console.log("in already taken username failed area");
         res.status(500).send({ message: "Username already taken" });
@@ -242,6 +246,7 @@ app.post("/profile/edit", async (req, res) => {
         res.status(500).send({ message: "Username must be between 1 and 20 characters" });
       }
       console.log("username not taken or too short at least");
+      console.log("trying to update " + updatedUser);
       db.query("SELECT * FROM chessusnode.users WHERE email = ?",
       [email],
         (err, result) => {
@@ -262,6 +267,15 @@ app.post("/profile/edit", async (req, res) => {
               hashedPassword = bcrypt.hashSync(password, salt)
               // console.log(hashedPassword);
               user = { username: username, password: hashedPassword, email: email, first_name: first_name, last_name: last_name, id: id}
+              if (updatedUser) {
+                updatedUser.username = username;
+                updatedUser.password = hashedPassword;
+                updatedUser.email = email;
+                updatedUser.first_name = first_name;
+                updatedUser.last_name = last_name;
+              } else {
+                updatedUser = user;
+              }
             } catch {
               res.status(500).send()
             }
@@ -271,7 +285,7 @@ app.post("/profile/edit", async (req, res) => {
               (err, result) => {
                 console.log(err);
                 console.log(result);
-                res.json({ auth: true, result: user, message: "User successfully updated" });
+                res.json({ auth: true, result: updatedUser, message: "User successfully updated" });
                 // res.status(201).send(user);
               }
             );
@@ -281,18 +295,26 @@ app.post("/profile/edit", async (req, res) => {
             //  If they don't change the password, don't set the password to an empty string
 
             else {
-            console.log("about to attempt update on id of: " + id + " with no password change");
-            user = { username: username, email: email, first_name: first_name, last_name: last_name, id: id}
-            db.query("UPDATE chessusnode.users SET username = ?, email = ?, first_name = ?, last_name = ? WHERE id = ?",
-            [username, email, first_name, last_name, id],
-              (err, result) => {
-                console.log(err);
-                console.log(result);
-                res.json({ auth: true, result: user, message: "User successfully updated"});
-                // res.status(201).send(user);
+              console.log("about to attempt update on id of: " + id + " with no password change");
+              user = { username: username, email: email, first_name: first_name, last_name: last_name, id: id}
+              if (updatedUser) {
+                updatedUser.username = username;
+                updatedUser.email = email;
+                updatedUser.first_name = first_name;
+                updatedUser.last_name = last_name;
               }
-            );
-
+              else {
+                updatedUser = user;
+              }
+              db.query("UPDATE chessusnode.users SET username = ?, email = ?, first_name = ?, last_name = ? WHERE id = ?",
+              [username, email, first_name, last_name, id],
+                (err, result) => {
+                  console.log(err);
+                  console.log(result);
+                  res.json({ auth: true, result: updatedUser, message: "User successfully updated"});
+                  // res.status(201).send(user);
+                }
+              );
             }
           }
         }
@@ -517,7 +539,7 @@ app.get("/forum", (params, res) => {
         let forum = result[0];
 
         // get author name
-
+        result[0].author_id ? 
         db.query("SELECT * FROM chessusnode.users WHERE id = ?",
         [forum.author_id],
         (err, result) => {
@@ -535,7 +557,7 @@ app.get("/forum", (params, res) => {
               res.status(500).send()
             }
           }
-        })
+        }) : forum.author_name="User Deleted";
 
         // get likes
 

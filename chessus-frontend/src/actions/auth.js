@@ -11,8 +11,11 @@ import {
   EDIT_SUCCESS,
   EDIT_SUCCESS_ADMIN,
   EDIT_FAIL,
+  GET_USER_SUCCESS,
+  GET_USER_FAILURE,
 } from "./types";
 import AuthService from "../services/auth.service";
+import UserService from "../services/user.service";
 
 export const register = (username, password, email) => (dispatch) => {
   return AuthService.register(username, password, email).then(
@@ -45,6 +48,41 @@ export const register = (username, password, email) => (dispatch) => {
   );
 };
 
+export const getUser = (username) => (dispatch) => {
+  return UserService.getUser(username).then(
+    (response) => {
+      console.log("in getUser action");
+      dispatch({
+        type: GET_USER_SUCCESS,
+        payload: {response: response.result, message: response.message}
+      });
+      dispatch({
+        type: SET_MESSAGE,
+        payload: response.message,
+      });
+      return Promise.resolve();
+    },
+    (error) => {
+      const message =
+        (error.response &&
+          error.response.data &&
+          error.response.data.message) ||
+        error.message ||
+        error.toString();
+        console.log(message);
+      dispatch({
+        type: GET_USER_FAILURE,
+        payload: {response: null, message: message},
+      });
+      dispatch({
+        type: SET_MESSAGE,
+        payload: message,
+      });
+      return Promise.reject();
+    }
+  );
+};
+
 export const edit = (current_user, username, password, email, first_name, last_name, id, admin_id) => (dispatch) => {
   console.log(id);
   return AuthService.edit(current_user, username, password, email, first_name, last_name, id, admin_id).then(
@@ -59,7 +97,7 @@ export const edit = (current_user, username, password, email, first_name, last_n
       } else {
         dispatch({
         type: EDIT_SUCCESS_ADMIN,
-        payload: { admin_id: admin_id },
+        payload: { admin_id: admin_id, user: response.result, message: response.message },
       });
       }
       dispatch({
@@ -146,7 +184,7 @@ export const deleteUser = (username, admin_id) => (dispatch) => {
     (err) => {
       return Promise.reject();
     }
-  ).then(console.log("User deleted"));
+  ).then(console.log("Issue with user deletion"));
 };
 
 export const removeUsers = () => (dispatch) => {
