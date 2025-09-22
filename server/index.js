@@ -20,14 +20,15 @@ const PORT = process.env.PORT || 3001;
 
 const app = express();
 
-const corsOptions = {
-  origin: ['http://squarestrat.com', 'https://squarestrat.com', 'http://localhost:3000'], // Specify allowed origins
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  credentials: true, // Allow sending cookies/authorization headers
-  optionsSuccessStatus: 204 // Some legacy browsers require 204 for preflight success
-};
+// const corsOptions = {
+//   origin: ['http://squarestrat.com', 'https://squarestrat.com', 'http://localhost:3000'], // Specify allowed origins
+//   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+//   credentials: true, // Allow sending cookies/authorization headers
+//   optionsSuccessStatus: 204 // Some legacy browsers require 204 for preflight success
+// };
 
-app.use(cors(corsOptions));
+// app.use(cors(corsOptions));
+app.use(cors());
 
 // const path = require('path');
 const db = require("../configs/db");
