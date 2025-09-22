@@ -23,7 +23,7 @@ const Login = (props) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const { isLoggedIn } = useSelector(state => state.auth);
+  const { isLoggedIn } = useSelector(state => state.authReducer);
   const { message } = useSelector(state => state.message);
   const [ messageDisplay, setMessageDisplay ] = useState(false);
 

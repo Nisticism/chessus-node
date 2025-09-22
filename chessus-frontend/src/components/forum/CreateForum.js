@@ -42,7 +42,7 @@ const validContent = (value) => {
 };
 
 const CreateForum = () => {
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
   const form = useRef();
   const checkBtn = useRef();
   const [title, setTitle] = useState("");

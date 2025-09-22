@@ -105,7 +105,7 @@ const Menu = () => (
 const Navbar = () => {
   const [toggleMenu, setToggleMenu] = useState(false);
 
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
   const dispatch = useDispatch();
 
   useEffect(() => {

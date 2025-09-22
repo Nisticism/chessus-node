@@ -7,7 +7,7 @@ import styles from "./pieces.module.scss";
 import { pieces as pieceImages } from '../../assets/pieces.js';
 
 const Pieces = () => {
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
   const allUsers = useSelector((state) => state.users);
   const [loading, setLoading] = useState(false);
   const { message } = useSelector(state => state.message);

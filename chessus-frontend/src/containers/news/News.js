@@ -5,7 +5,7 @@ import styles from "./news.module.scss";
 import StandardButton from "../../components/standardbutton/StardardButton";
 import { news } from "../../actions/news";
 const News = () => {
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
   const allNews = useSelector((state) => state.news);
   const navigate = useNavigate();
   const [firstRender, setFirstRender] = useState(false);

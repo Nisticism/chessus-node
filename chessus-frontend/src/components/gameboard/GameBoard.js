@@ -39,7 +39,7 @@ const GameBoard = (props) => {
 
   const { windowHeight, windowWidth } = useWindowDimensions();
 
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
   if (!currentUser) {
     alert("Must be logged in");
     return <Navigate to="/login" />;

@@ -7,7 +7,7 @@ import styles from "./playerlist.module.scss";
 // import e from "express";
 
 const PlayerList = () => {
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
   const allUsers = useSelector((state) => state.users);
   const [loading, setLoading] = useState(false);
   const { message } = useSelector(state => state.message);

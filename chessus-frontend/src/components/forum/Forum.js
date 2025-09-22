@@ -11,7 +11,7 @@ import { FaTrash } from "react-icons/fa";
 import LikesModule from "./LikesModule";
 
 const Forum = () => {
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
 
   
   const [loading, setLoading] = useState(false);

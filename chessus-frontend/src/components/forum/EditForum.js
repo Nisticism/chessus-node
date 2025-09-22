@@ -8,7 +8,7 @@ import { getForum, editForum } from "../../actions/forums";
 import axios from "axios";
 
 const EditForum = () => {
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
   const form = useRef();
   const checkBtn = useRef();
   const [title, setTitle] = useState(null);

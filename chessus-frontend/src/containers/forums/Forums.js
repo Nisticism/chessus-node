@@ -5,7 +5,7 @@ import styles from "./forums.module.scss";
 import StandardButton from "../../components/standardbutton/StardardButton";
 import { forums, deleteForum, firstForumsRender } from "../../actions/forums";
 const Forums = () => {
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
   const allForums = useSelector((state) => state.forums);
   const navigate = useNavigate();
   const firstRender = useSelector((state) => state.forums.first_forums_render);

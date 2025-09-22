@@ -6,7 +6,7 @@ import { deleteUser } from "../../actions/auth";
 import StandardButton from "../standardbutton/StardardButton";
 
 const Profile = (props) => {
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
 
   
   const [loading, setLoading] = useState(false);

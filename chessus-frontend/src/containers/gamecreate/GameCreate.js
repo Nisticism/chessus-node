@@ -7,7 +7,7 @@ import styles from "./gamecreate.module.scss";
 
 const GameCreate = () => {
 
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
 
   const form = useRef();
   const [horizontal, setHorizontal] = useState(7);

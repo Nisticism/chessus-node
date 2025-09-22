@@ -8,7 +8,7 @@ import axios from "axios";
 // import NotFound from "../notfound/NotFound";
 
 const PlayerPage = (props) => {
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
 
   
   // const [loading, setLoading] = useState(false);
@@ -20,7 +20,7 @@ const PlayerPage = (props) => {
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
-  const playerPageUser = useSelector((state) => state.auth.playerPage);
+  const playerPageUser = useSelector((state) => state.authReducer.playerPage);
   
   const navigate = useNavigate();
 
@@ -30,7 +30,7 @@ const PlayerPage = (props) => {
     navigate("/");
   }
 
-  useEffect((currentUser) => {
+  useEffect(() => {
     if (!firstRender) {
       if (currentUser.username === username) {
         console.log(currentUser);

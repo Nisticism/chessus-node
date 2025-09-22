@@ -4,7 +4,7 @@ require("dotenv").config();
 
 const express = require("express");
 
-const mysql = require("mysql");
+// const mysql = require("mysql");
 
 const fs = require("fs");
 
@@ -20,7 +20,7 @@ const PORT = process.env.PORT || 3001;
 
 const app = express();
 
-const path = require('path');
+// const path = require('path');
 const db = require("../configs/db");
 
 app.use(express.json());
@@ -36,15 +36,15 @@ db.connect(err => {
 
 // Create Database
 
-app.get('/create-db', (req, res) => {
-  let sql = 'CREATE DATABASE IF NOT EXISTS ChessusNode'
-  db.query(sql, err => {
-    if (err) {
-      throw err;
-    }
-    res.send("Database Created or Exists");
-  })
-});
+// app.get('/create-db', (req, res) => {
+//   let sql = 'CREATE DATABASE IF NOT EXISTS ChessusNode'
+//   db.query(sql, err => {
+//     if (err) {
+//       throw err;
+//     }
+//     res.send("Database Created or Exists");
+//   })
+// });
 
 
 //  -----------  Seeding/Tables -----------------
@@ -86,7 +86,7 @@ app.get('/create-db', (req, res) => {
 
 
 // Have Node serve the files for our built React app
-app.use(express.static(path.resolve(__dirname, '../chessus-frontend/public')));
+// app.use(express.static(path.resolve(__dirname, '../chessus-frontend/public')));
 
 
 

@@ -37,7 +37,7 @@ function App() {
 
   // const [showModeratorBoard, setShowModeratorBoard] = useState(false);
   // const [showAdminBoard, setShowAdminBoard] = useState(false);
-  const { user: currentUser } = useSelector((state) => state.auth);
+  // const { user: currentUser } = useSelector((state) => state.authReducer);
   const dispatch = useDispatch();
 
   useEffect(() => {

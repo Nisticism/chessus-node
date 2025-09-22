@@ -73,7 +73,7 @@ const vpassword = (value) => {
 
 const EditAccount = (props) => {
 
-  const { user: currentUser } = useSelector((state) => state.auth);
+  const { user: currentUser } = useSelector((state) => state.authReducer);
   const [userInfo, setUserInfo] = useState(null);
 
   const form = useRef();
