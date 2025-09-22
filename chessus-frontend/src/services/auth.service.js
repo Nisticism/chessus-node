@@ -3,7 +3,7 @@ import axios from "axios";
 
 // const API_URL = "http://localhost:3001/";
 
-const API_URL = require("../configs/global.js");
+const API_URL = require("../global/global.js");
 // const API_URL = global.api_url;
 
 const register = (username, password, email) => {
