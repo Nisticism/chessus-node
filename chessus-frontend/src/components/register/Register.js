@@ -6,7 +6,7 @@ import CheckButton from "react-validation/build/button";
 import { useNavigate } from "react-router-dom";
 import { isEmail } from "validator";
 import { register, login } from "../../actions/auth";
-import styles from "./signup.module.scss";
+import styles from "./register.module.scss";
 
 const required = (value) => {
   if (!value) {

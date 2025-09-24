@@ -16,7 +16,8 @@ export const DELETE_USER_ADMIN = "DELETE_USER_ADMIN";
 export const REMOVE_USERS = "REMOVE_USERS";
 export const EDIT_SUCCESS = "EDIT_SUCCESS";
 export const EDIT_SUCCESS_ADMIN = "EDIT_SUCCESS_ADMIN";
-export const EDIT_FAIL = "EDIT_FAIL"
+export const EDIT_FAIL = "EDIT_FAIL";
+export const RESET_EDIT = "RESET_EDIT";
 
 export const POST_SUCCESS = "POST_SUCCESS";
 export const POST_FAILURE = "POST_FAILURE";

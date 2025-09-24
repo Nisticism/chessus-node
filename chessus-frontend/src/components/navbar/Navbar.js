@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { RiMenu3Line, RiCloseLine } from 'react-icons/ri';
 import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
-import { clearMessage } from "../../actions/message";
+import { clearMessage } from "../../actions/general";
 import { history } from "../../helpers/history";
 import './navbar.scss';
 
@@ -107,12 +107,6 @@ const Navbar = () => {
 
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const dispatch = useDispatch();
-
-  useEffect(() => {
-    history.listen((location) => {
-      dispatch(clearMessage()); // clear message when changing location
-    });
-  }, [dispatch]);
 
   const logOut = () => {
     dispatch(removeUsers());

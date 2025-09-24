@@ -11,12 +11,14 @@ import {
   DELETE_USER_ADMIN,
   GET_USER_SUCCESS,
   GET_USER_FAILURE,
+  RESET_EDIT,
 } from "../actions/types";
 
 const user = JSON.parse(localStorage.getItem("user"));
+const initialEditSuccess = false;
 const initialState = user
-  ? { isLoggedIn: true, user }
-  : { isLoggedIn: false, user: null};
+  ? { isLoggedIn: true, user: user, editSuccess: initialEditSuccess }
+  : { isLoggedIn: false, user: null, editSuccess: initialEditSuccess };
   
 const authReducer = (state = initialState, action) => {
   const { type, payload } = action;
@@ -51,6 +53,7 @@ const authReducer = (state = initialState, action) => {
         ...state,
         user: payload.user,
         message: payload.message,
+        editSuccess: true,
       }
     case EDIT_SUCCESS_ADMIN:
       console.log("in edit success admin");
@@ -61,6 +64,7 @@ const authReducer = (state = initialState, action) => {
           playerPage: payload.user,
           adminId: payload.admin_id,
           message: payload.message,
+          editSuccess: true,
         }
       } else {
         console.log("editting yourself");
@@ -70,12 +74,19 @@ const authReducer = (state = initialState, action) => {
           playerPage: payload.user,
           adminId: payload.admin_id,
           message: payload.message,
+          editSuccess: true,
         }
       }
     case EDIT_FAIL:
       console.log("in edit reducer - edit fail");
       return {
         ...state,
+        editSuccess: false,
+      }
+    case RESET_EDIT:
+      return {
+        ...state,
+        editSuccess: false,
       }
     case LOGIN_SUCCESS:
       return {

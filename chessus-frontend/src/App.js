@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import React, { useEffect } from "react";
+import { useDispatch } from "react-redux";
+import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 import Navbar from './components/navbar/Navbar';
 import Home from './components/home/Home';
-// import SignUp from './components/signup/SignUp';
 import Login from "./components/signin/Login";
-import Register from "./components/signup/Register";
-import Profile from "./components/profile/Profile";
+import Register from "./components/register/Register";
 import PlayerPage from "./components/playerpage/PlayerPage";
 import Pieces from "./components/pieces/Pieces";
 import GameCreate from "./containers/gamecreate/GameCreate";
@@ -27,50 +25,35 @@ import News from "./containers/news/News";
 import DeletedAccount from "./components/deletedaccount/DeletedAccount";
 import NotFound from './components/notfound/NotFound';
 
-import { logout } from "./actions/auth";
-import { clearMessage } from "./actions/message";
+import { clearMessage, resetEdit } from "./actions/general";
 import { history } from "./helpers/history";
 import "./App.css";
 import Media from "./containers/media/Media";
 
 function App() {
 
-  // const [showModeratorBoard, setShowModeratorBoard] = useState(false);
-  // const [showAdminBoard, setShowAdminBoard] = useState(false);
-  // const { user: currentUser } = useSelector((state) => state.authReducer);
   const dispatch = useDispatch();
+  const location = useLocation();
 
   useEffect(() => {
-    history.listen((location) => {
-      dispatch(clearMessage()); // clear message when changing location
-    });
-  }, [dispatch]);
 
-  // useEffect(() => {
-  //   if (currentUser) {
-  //     setShowModeratorBoard(currentUser.roles.includes("ROLE_MODERATOR"));
-  //     setShowAdminBoard(currentUser.roles.includes("ROLE_ADMIN"));
-  //   }
-  // }, [currentUser]);
+    dispatch(clearMessage()); // clear message when changing location
+    dispatch(resetEdit());    // set editSuccess = to false when changing locations (so that we can base things off of the edit Success state)
 
-  const logOut = () => {
-    dispatch(logout());
-  };
+  }, [location, dispatch]);
 
   return (
-    <Router history={history}>
       <div className="app">
         <div className="app-header">
           <Navbar />
         </div>
         <div className="content">
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<Home props={location}/>} />
             <Route path="/home" element={<Home />} />
-            {/* <Route path="/signup" element={<SignUp />} /> */}
             <Route exact path="/login" element={<Login />} />
             <Route exact path="/register" element={<Register />} />
-            {/* <Route exact path="/profile" element={<Profile />} /> */}
+            <Route exact path="/profile" element={<PlayerPage />} />
             <Route exact path="/create/game" element={<GameCreate />} />
             <Route exact path="/create" element={<CreateHub />} />
             <Route exact path="/community" element={<Community />} />
@@ -94,7 +77,6 @@ function App() {
           </Routes>
         </div>
       </div>
-    </Router>
   );
 }
 

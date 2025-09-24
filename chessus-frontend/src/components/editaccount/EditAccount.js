@@ -1,16 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import Form from "react-validation/build/form";
-import Input from "react-validation/build/input";
-import CheckButton from "react-validation/build/button";
 import { useNavigate, Navigate, useParams } from "react-router-dom";
 import { isEmail } from "validator";
 import { edit } from "../../actions/auth";
-import { clearMessage } from "../../actions/message.js";
 import styles from "./edit-account.module.scss";
 import NotFound from "../notfound/NotFound";
 import axios from "axios";
 import API_URL from "../../global/global";
+import StandardButton from "../standardbutton/StardardButton";
 
 const required = (value) => {
   if (!value) {
@@ -87,14 +84,15 @@ const EditAccount = (props) => {
   const [firstName, setFirstName] = useState(currentUser && currentUser.first_name ? currentUser.first_name : "");
   const [lastName, setLastName] = useState(currentUser && currentUser.last_name ? currentUser.last_name : "");
   const [successful, setSuccessful] = useState(false);
-  const [messageDisplay, setMessageDisplay] = useState(true);
-  const { message } = useSelector(state => state.message);
+  const { message: message } = useSelector((state) => state.message);
+  const { editSuccess: editSuccess } = useSelector((state) => state.authReducer);
+  const { username: usernameNav } = useSelector((state) => state.authReducer.user);
+  const { username: playerPageNav } = useSelector((state) => state.authReducer.playerPage ? state.authReducer.playerPage : "");
   const dispatch = useDispatch();
 
   const navigate = useNavigate();
 
   const [firstRender, setFirstRender] = useState(false);
-  const [realUser, setRealUser] = useState(false);
   const [editAuth, setEditAuth] = useState(false);
 
   const { profileUsername } = useParams();
@@ -109,7 +107,6 @@ const EditAccount = (props) => {
       console.log(profileUsername);
       checkIfRealUser(profileUsername);
     }
-      dispatch(clearMessage());
       setFirstRender(true);
     }
   }, [firstRender]);
@@ -155,72 +152,66 @@ const EditAccount = (props) => {
     axios.get(API_URL + 'user', 
      {params: { username: username}})
     .then (res => {
-        // setUserInfo(currentUser);
-      if (res.data.result.id != currentUser.id && currentUser.role !== "Admin") {
+      if (res.data.result.id !== currentUser.id && currentUser.role !== "Admin") {
         console.log("not admin or authorized");
-        // display not found
       } else {
         if (currentUser.role === "Admin") {
+          console.log("admin logged in, setting up editable user")
           setUserInfo(res.data.result);
           setUsername(res.data.result.username);
           setEmail(res.data.result.email);
           setFirstName(res.data.result.first_name);
           setLastName(res.data.result.last_name);
-          setRealUser(true);
         }
       }
     })
     .catch(
       err => {
-        setRealUser(false);
         console.log(err);
+        navigate(`/profile/${username}`);
     })
   }
 
-  const handleAccountUpdate = (e) => {
+  const handleViewProfile = () => {
+    if (currentUser.role === "Admin" && (editSuccess && currentUser.username !== playerPageNav)) {
+      navigate(`/profile/${playerPageNav}`);
+      console.log("1");
+    } else if (currentUser.role === "Admin" && !editSuccess) {
+      navigate(`/profile/${profileUsername}`);
+      console.log("2")
+    }
+    else {
+      navigate(`/profile/${usernameNav}`);
+      console.log("3")
+    }
+  }
+
+  const handleAccountUpdate = async(e) => {
     e.preventDefault();
     console.log("edit submit clicked");
-    setSuccessful(false);
     // form.current.validateAll();
     // if (checkBtn.current.context._errors.length === 0) {
       console.log("old password: " + oldPassword + " new password: " + password);
       console.log("logged in password: " + currentUser.password);
     if (currentUser.role === "Admin") {
-      // console.log ("userInfo username: " + userInfo.username);
-      // console.log("userInfo first name: " + userInfo.first_name);
-      // console.log ("userInfo last_name: " + userInfo.last_name);
-      // console.log("userInfo email: " + userInfo.email);
-      // console.log("username var: " + username);
-      // console.log("email var: " + email);
-      // console.log("firstName var: " + firstName);
-      // console.log("lastName var: " + lastName);
-      // console.log("id of user: " + userInfo.id);
     dispatch(edit(userInfo, username, password, email, firstName, lastName, userInfo.id, currentUser.id))
       .then(() => {
-        setSuccessful(true)
-        .then(() => {
-          console.log("navigating to profile")
-          navigate("/profile/" + username);
-        })
+        console.log("user updated by adimn from the editaccount.js page")
+        // navigate("/profile/" + username);
       })
-      .catch(() => {
-        setMessageDisplay(true);
-        setSuccessful(false);
+      .catch((error) => {
+        console.log(error);
       });
     }
     else {
       console.log(id);
       dispatch(edit(currentUser, username, password, email, firstName, lastName, id))
-      .then(() => {
-        setSuccessful(true)
         .then(() => {
-          console.log("navigating to profile")
-          navigate("/profile/" + username);
+          console.log("user updated from the editaccount.js page")
+          //navigate("/profile/" + username);
         })
-      })
-      .catch(() => {
-        setMessageDisplay(true);
-        setSuccessful(false);
+      .catch((error) => {
+        console.log(error);
       });
     }
     // }
@@ -325,9 +316,12 @@ const EditAccount = (props) => {
                 </div>
               </div>
             )}
-            {message && messageDisplay && (
+            <div>
+              <StandardButton buttonType="button" buttonText={"View Profile"} onClick={handleViewProfile}/>
+            </div>
+            {message && (
               <div className="form-group">
-                <div className={ successful ? "alert alert-success" : "alert alert-danger" } role="alert">
+                <div className={ editSuccess ? "alert alert-success" : "alert alert-danger" } role="alert">
                   {message}
                 </div>
               </div>
