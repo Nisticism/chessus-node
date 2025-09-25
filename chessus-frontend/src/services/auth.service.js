@@ -25,7 +25,7 @@ const updateUser = (updatedData) => {
   localStorage.setItem('user', JSON.stringify(user));
 }
 
-const edit = (current_user, username, password, email, first_name, last_name, id, admin_id) => {
+const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id) => {
   console.log("in auth service");
   console.log("password attempting to change to: " + password);
   if (email === "") {
@@ -37,6 +37,9 @@ const edit = (current_user, username, password, email, first_name, last_name, id
   if (last_name === "") {
     last_name = null;
   }
+  if (bio === "") {
+    bio = null;
+  }
   return axios.post(API_URL + "profile/edit", {
     current_user,
     username,
@@ -44,6 +47,7 @@ const edit = (current_user, username, password, email, first_name, last_name, id
     email,
     first_name, 
     last_name,
+    bio,
     id,
   })
   .then((response) => {

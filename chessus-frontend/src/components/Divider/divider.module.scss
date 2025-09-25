@@ -1,0 +1,12 @@
+.divider-container {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0px;
+}
+
+.divider {
+  height: 2px;
+  background-color: white;
+  width: 60%;
+  min-width: 200px;
+}

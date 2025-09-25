@@ -6,6 +6,8 @@ import { deleteUser, getUser } from "../../actions/auth";
 import StandardButton from "../standardbutton/StardardButton";
 import axios from "axios";
 import API_URL from "../../global/global";
+import StandardTextBlock from "../StandardTextBlock/StandardTextBlock";
+import Divider from "../Divider/Divider";
 // import NotFound from "../notfound/NotFound";
 
 const PlayerPage = (props) => {
@@ -68,7 +70,7 @@ const PlayerPage = (props) => {
   }
 
   const getPlayerPage = () => {
-    dispatch(getUser(username))
+    dispatch(getUser(username));
   }
 
   const handleDelete = async(e) => {
@@ -129,7 +131,7 @@ const PlayerPage = (props) => {
       )}
           {realUser ? 
           <div className={styles["player-page-table-container"]}>
-            <div className={styles["player-info"]}>Player Information</div>
+            <div className={styles["player-info"]}>{username}</div>
             <table className={styles["player-page-table"]}>
               <tbody>
                 <tr>
@@ -161,8 +163,17 @@ const PlayerPage = (props) => {
                   <td>{username === currentUser.username ? (currentUser.last_active_at ? currentUser.last_active_at : "N/A") 
                   : playerPageUser && playerPageUser.last_active_at ? playerPageUser.last_active_at : "N/A"}</td>
                 </tr>
+                <tr>
+                  <td>Bio:</td>
+                  <td><StandardTextBlock text=
+                  {`${username === currentUser.username ? 
+                  (currentUser.bio ? currentUser.bio : "*User has not set a bio yet!*") 
+                  : (playerPageUser && playerPageUser.bio ? playerPageUser.bio : "*User has not set a bio yet!*")
+                  }`}/></td>
+                </tr>
               </tbody>
             </table>
+            {/* <StandardTextBlock text={`${username === currentUser.username ? (currentUser.bio ? currentUser.bio : "Bio") : (playerPageUser && playerPageUser.bio ? playerPageUser.bio : "Bio")}`}/> */}
           </div>
            : 
            <div className={styles["user-not-found"]}>
@@ -173,6 +184,7 @@ const PlayerPage = (props) => {
                 <StandardButton buttonText={"Return Home"} onClick={handleHome}/>
               </strong>
            </div>}
+           <Divider />
       {((currentUser.username === username || currentUser.role === "Admin") && realUser) ?
             <div className={styles["profile-buttons"]}>
               <div className={styles["profile-button"]}>

@@ -8,6 +8,7 @@ import NotFound from "../notfound/NotFound";
 import axios from "axios";
 import API_URL from "../../global/global";
 import StandardButton from "../standardbutton/StardardButton";
+// import { response } from "express";
 
 const required = (value) => {
   if (!value) {
@@ -83,6 +84,7 @@ const EditAccount = (props) => {
   const [oldPassword, setOldPassword] = useState("");
   const [firstName, setFirstName] = useState(currentUser && currentUser.first_name ? currentUser.first_name : "");
   const [lastName, setLastName] = useState(currentUser && currentUser.last_name ? currentUser.last_name : "");
+  const [bio, setBio] = useState(currentUser && currentUser.bio ? currentUser.bio : "");
   const [successful, setSuccessful] = useState(false);
   const { message: message } = useSelector((state) => state.message);
   const { editSuccess: editSuccess } = useSelector((state) => state.authReducer);
@@ -147,6 +149,11 @@ const EditAccount = (props) => {
     setOldPassword(oldPassword);
   }
 
+  const onChangeBio = (e) => {
+    const bio = e.target.value;
+    setBio(bio);
+  }
+
   const checkIfRealUser = (username) => {
     console.log(username);
     axios.get(API_URL + 'user', 
@@ -162,6 +169,7 @@ const EditAccount = (props) => {
           setEmail(res.data.result.email);
           setFirstName(res.data.result.first_name);
           setLastName(res.data.result.last_name);
+          setBio((res.data.result.bio ? res.data.result.bio : ""));
         }
       }
     })
@@ -194,7 +202,7 @@ const EditAccount = (props) => {
       console.log("old password: " + oldPassword + " new password: " + password);
       console.log("logged in password: " + currentUser.password);
     if (currentUser.role === "Admin") {
-    dispatch(edit(userInfo, username, password, email, firstName, lastName, userInfo.id, currentUser.id))
+    dispatch(edit(userInfo, username, password, email, firstName, lastName, bio, userInfo.id, currentUser.id))
       .then(() => {
         console.log("user updated by adimn from the editaccount.js page")
         // navigate("/profile/" + username);
@@ -205,7 +213,7 @@ const EditAccount = (props) => {
     }
     else {
       console.log(id);
-      dispatch(edit(currentUser, username, password, email, firstName, lastName, id))
+      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id))
         .then(() => {
           console.log("user updated from the editaccount.js page")
           //navigate("/profile/" + username);
@@ -240,7 +248,7 @@ const EditAccount = (props) => {
           /> */}
           <form onSubmit={handleAccountUpdate} ref={form}>
             {!successful && (
-              <div>
+              <div className={styles["edit-form"]}>
                 <div className="form-group">
                   <label htmlFor="username" className={styles["field-label"]}>Username</label>
                   <input
@@ -283,6 +291,17 @@ const EditAccount = (props) => {
                     value={lastName}
                     onChange={onChangeLastName}
                     validations={[required, vLastName]}
+                  />
+              </div>
+                <div className={styles["bio-group"]}>
+                  <label htmlFor="Bio" className={styles["field-label-textarea"]}>Bio</label>
+                  <textarea
+                    type="text"
+                    className="form-control-textarea"
+                    name="bio"
+                    value={bio}
+                    onChange={onChangeBio}
+                    validations={[required]}
                   />
                 </div>
                 <div className={styles["current-new-password-message-container"]}>

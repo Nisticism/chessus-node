@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { useDispatch } from "react-redux";
-import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import Navbar from './components/navbar/Navbar';
 import Home from './components/home/Home';
 import Login from "./components/signin/Login";
@@ -26,7 +26,6 @@ import DeletedAccount from "./components/deletedaccount/DeletedAccount";
 import NotFound from './components/notfound/NotFound';
 
 import { clearMessage, resetEdit } from "./actions/general";
-import { history } from "./helpers/history";
 import "./App.css";
 import Media from "./containers/media/Media";
 

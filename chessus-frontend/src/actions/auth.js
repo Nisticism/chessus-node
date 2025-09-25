@@ -83,9 +83,9 @@ export const getUser = (username) => (dispatch) => {
   );
 };
 
-export const edit = (current_user, username, password, email, first_name, last_name, id, admin_id) => (dispatch) => {
+export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id) => (dispatch) => {
   console.log(id);
-  return AuthService.edit(current_user, username, password, email, first_name, last_name, id, admin_id).then(
+  return AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id).then(
     (response) => {
       console.log("in edit action");
       console.log(response.message);

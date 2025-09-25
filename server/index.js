@@ -221,6 +221,7 @@ app.post("/api/profile/edit", async (req, res) => {
   const logged_in_username = req.body.current_user.username;
   const logged_in_email = req.body.current_user.email;
   const password = req.body.password;
+  const bio = req.body.bio;
   console.log("the password is still " + password);
   const email = req.body.email;
   const first_name = req.body.first_name;
@@ -282,13 +283,14 @@ app.post("/api/profile/edit", async (req, res) => {
               const salt = bcrypt.genSaltSync();
               hashedPassword = bcrypt.hashSync(password, salt)
               // console.log(hashedPassword);
-              user = { username: username, password: hashedPassword, email: email, first_name: first_name, last_name: last_name, id: id}
+              user = { username: username, password: hashedPassword, email: email, first_name: first_name, last_name: last_name, bio: bio, id: id}
               if (updatedUser) {
                 updatedUser.username = username;
                 updatedUser.password = hashedPassword;
                 updatedUser.email = email;
                 updatedUser.first_name = first_name;
                 updatedUser.last_name = last_name;
+                updatedUser.bio = bio;
               } else {
                 updatedUser = user;
               }
@@ -296,8 +298,8 @@ app.post("/api/profile/edit", async (req, res) => {
               res.status(500).send()
             }
             console.log("about to attempt update on id of: " + id + " WITH a password change");
-            db.query("UPDATE chessusnode.users SET username = ?, password = ?, email = ?, first_name = ?, last_name = ? WHERE id = ?",
-            [username, hashedPassword, email, first_name, last_name, id],
+            db.query("UPDATE chessusnode.users SET username = ?, password = ?, email = ?, first_name = ?, last_name = ?, bio = ? WHERE id = ?",
+            [username, hashedPassword, email, first_name, last_name, bio, id],
               (err, result) => {
                 console.log(err);
                 console.log(result);
@@ -312,18 +314,19 @@ app.post("/api/profile/edit", async (req, res) => {
 
             else {
               console.log("about to attempt update on id of: " + id + " with no password change");
-              user = { username: username, email: email, first_name: first_name, last_name: last_name, id: id}
+              user = { username: username, email: email, first_name: first_name, last_name: last_name, bio: bio, id: id}
               if (updatedUser) {
                 updatedUser.username = username;
                 updatedUser.email = email;
                 updatedUser.first_name = first_name;
                 updatedUser.last_name = last_name;
+                updatedUser.bio = bio;
               }
               else {
                 updatedUser = user;
               }
-              db.query("UPDATE chessusnode.users SET username = ?, email = ?, first_name = ?, last_name = ? WHERE id = ?",
-              [username, email, first_name, last_name, id],
+              db.query("UPDATE chessusnode.users SET username = ?, email = ?, first_name = ?, last_name = ?, bio = ? WHERE id = ?",
+              [username, email, first_name, last_name, bio, id],
                 (err, result) => {
                   console.log(err);
                   console.log(result);

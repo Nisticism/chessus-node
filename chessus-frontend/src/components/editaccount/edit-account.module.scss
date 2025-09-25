@@ -43,3 +43,32 @@
   padding-left: 10px;
   padding-right: 10px;
 }
+
+.field-label-textarea {
+  display: inline-block;
+  width: 150px;
+  text-align: left;
+}
+
+.form-control-textarea {
+  width: 180px;
+}
+
+.bio-group {
+  display: flex;
+  justify-content: center;
+  vertical-align: center;
+  align-items: center;
+  padding: 10px;
+  textarea {
+    width: 200px;
+    min-width: 200px;
+    max-width: 500px;
+  }
+}
+
+.edit-form {
+  input {
+    width: 200px;
+  }
+}
