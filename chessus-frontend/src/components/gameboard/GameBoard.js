@@ -137,6 +137,7 @@ const GameBoard = (props) => {
       <div className={styles["game-board"]}>
         <div style= { boardStyle } >
           { board }
+          
         </div>
       </div>
       <div>

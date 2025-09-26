@@ -353,7 +353,7 @@ app.post("/api/login", async (req, res) => {
     if (err) {
       res.send({ err: err});
     }
-    if (!result.length > 0) {
+    else if (!result.length > 0) {
       res.status(400).send({ auth: false, message: "Username does not exist" });
     } else {
       //  If the username exists, check everything else:

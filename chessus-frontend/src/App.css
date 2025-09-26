@@ -35,3 +35,18 @@ a {
 .form-group {
   padding: 10px;
 }
+
+.tester {
+  background-color: aqua;
+  background-color: #f0c285;
+  background-color: #eef085;
+  background-color: #9ef085;
+  background-color: #90f3ca;
+  background-color: #85f0d0;
+  background-color: #85d7f0;
+  background-color: #85aaf0;
+  background-color: #9585f0;
+  background-color: #ce85f0;
+  background-color: #f085ba;
+  background-color: #f08585;
+}

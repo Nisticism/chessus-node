@@ -3,7 +3,7 @@ import styles from "./standardtextblock.module.scss";
 function StandardTextBlock ({text}) {
   return (
     <div className={styles["text-block-container"]}>
-      <div className={styles["standard-text-block"]} text={text}>{text}</div>
+      <div className={styles["standard-text-block"]}>{text}</div>
     </div>
   );
 };

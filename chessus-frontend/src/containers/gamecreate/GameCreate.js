@@ -4,6 +4,8 @@ import { useSelector } from "react-redux";
 import GameBoard from "../../components/gameboard/GameBoard"
 import axios from 'axios';
 import styles from "./gamecreate.module.scss";
+import ColorBlock from "../../components/colorblock/ColorBlock";
+import Divider from "../../components/Divider/Divider";
 
 const GameCreate = () => {
 
@@ -69,6 +71,44 @@ const GameCreate = () => {
     if (heightSelect) {
       heightSelect.select();
     }
+  }
+
+    const lightColorArray = [
+  "white",
+  "#cad5e8",
+  "lightgray",
+  "#f0c285",
+  "#eef085",
+  "#9ef085",
+  "#85f0d0",
+  "aqua",
+  "#85d7f0",
+  "#85aaf0",
+  "#9585f0",
+  "#ce85f0",
+  "#f085ba",
+  "#f08585"]
+
+  const BoardColorSelector = () => {
+    return (
+      <div className={styles["color-selector-container"]}>
+        <div className={styles["light-selector-container"]}>
+          <div>Light Square Color</div>
+          { lightColorArray.map((color, index) => {
+              return(<ColorBlock mainColor={color} textColor="black" text="" key={index}/>)
+            })
+          }
+          <div>Dark Square Color</div>
+          { lightColorArray.map((color, index) => {
+              return(<ColorBlock mainColor={color} textColor="black" text="" key={index}/>)
+            })
+          }
+        </div>
+        <div className={styles["dark-selector-container"]}>
+
+        </div>
+      </div>
+    )
   }
   
 
@@ -195,7 +235,9 @@ const GameCreate = () => {
         */}
         <div className={styles["conditions-container"]}>
           <div className={styles["conditions-label"]}>
-            <label className={styles["conditions-label"]}>Win Conditions (select one):&nbsp;</label>
+            <label className={styles["conditions-label"]}>Win Conditions&nbsp;</label>
+            <Divider />
+            <label className={styles["conditions-label"]}>Select One:&nbsp;</label>
           </div>
           <div className={styles["checkbox-container"]}>
           <label className={styles["checkbox-label"]}>Capture or checkmate pieces or a particular piece:&nbsp;</label>
@@ -215,7 +257,7 @@ const GameCreate = () => {
 
           <div className={captureOrCheckmate ? styles["display-block"] : styles["hidden"]}>
           <div className={styles["conditions-label"]}>
-            <label className={styles["conditions-label"]}>Win Conditions (select all that apply):&nbsp;</label>
+            <label className={styles["conditions-label"]}>Select All That Apply:&nbsp;</label>
           </div>
             <div className={styles["checkbox-container"]}>
             <label className={styles["checkbox-label"]}>Capture a particular piece:&nbsp;</label>
@@ -230,6 +272,9 @@ const GameCreate = () => {
         <div>
           Total Piece Count: {pieceCount}
         </div>
+            <div>
+        <BoardColorSelector />
+    </div>
         <div className="form-group">
           <button className={styles["submit-button"]}>Create Game</button>
         </div>
