@@ -65,6 +65,9 @@ const login = (username, password) => {
       password,
     })
     .then((response) => {
+      console.log(response && response.data.result ? response.data.result : "can't display anything here");
+    })
+    .then((response) => {
       if (response.data.result.username) {
         localStorage.setItem("user", JSON.stringify(response.data.result));
       }

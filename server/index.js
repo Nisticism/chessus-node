@@ -355,7 +355,9 @@ app.post("/api/login", async (req, res) => {
     }
     else if (result && !result.length > 0) {
       res.status(400).send({ auth: false, message: "Username does not exist" });
-    } else {
+      console.log("username does not exist");
+    } 
+    else {
       //  If the username exists, check everything else:
       try {
         if (bcrypt.compareSync(password, result[0].password)) {
@@ -365,7 +367,7 @@ app.post("/api/login", async (req, res) => {
           result[0].accessToken = accessToken;
           res.json({ auth: true, result: result[0] });
         } else {
-          console.log("we are in the failed login backend method");
+          console.log("we are in the failed login backend method - possibly incorrect password");
           res.status(400).send({auth: false, message: "Incorrect password"});
         }
       } catch {
