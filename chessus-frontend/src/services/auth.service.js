@@ -63,6 +63,10 @@ const login = (username, password) => {
     .post(API_URL + "login", {
       username,
       password,
+    }).catch(function(error) {
+      console.error(error.response.data);
+      console.error(error.response.status);
+      console.error(error.response.headers);
     })
     .then((response) => {
       console.log(response && response.data.result ? response.data.result : "can't display anything here");
