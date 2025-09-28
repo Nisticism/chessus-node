@@ -135,6 +135,7 @@ export const login = (username, password) => (dispatch) => {
       return Promise.resolve();
     },
     (error) => {
+      console.log("logging error in auth actions");
       const message =
         (error.response &&
           error.response.data &&

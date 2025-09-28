@@ -177,7 +177,7 @@ app.post("/api/register", async (req, res) => {
     if (err) {
       res.send({ err: err});
     }
-    if (result.length > 0) {
+    if (result && result.length > 0) {
       if (result[0].username.length === 0) {
         res.status(500).send({ message: "Username cannot be blank" });
       } else {
@@ -190,7 +190,7 @@ app.post("/api/register", async (req, res) => {
           if (err) {
             res.send({message: "error", err: err});
           }
-          if (result.length > 0) {
+          if (result && result.length > 0) {
             res.status(500).send({ message: "Email already taken" });
           } else {
             try {
@@ -354,12 +354,13 @@ app.post("/api/login", async (req, res) => {
       res.send({ err: err});
     }
     else if (result && !result.length > 0) {
-      res.status(400).send({ auth: false, message: "Username does not exist" });
       console.log("username does not exist");
+      res.status(400).send({ auth: false, message: "Username does not exist" });
     } 
     else {
       //  If the username exists, check everything else:
       try {
+        console.log("trying to compare passwords");
         if (bcrypt.compareSync(password, result[0].password)) {
           const user = { username: username, password: password };
           const accessToken = generateAccessToken(user);

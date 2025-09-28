@@ -69,7 +69,7 @@ const login = (username, password) => {
       console.log(error);
     })
     .then((response) => {
-      console.log(response && response.data.result ? response.data.result : "can't display anything here");
+      console.log(response && response.data && response.data.result ? response.data.result : "can't display anything here");
     })
     .then((response) => {
       if (response.data.result.username) {
