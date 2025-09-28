@@ -365,6 +365,8 @@ app.post("/api/login", async (req, res) => {
           console.log("login should be successful now");
           const user = { username: username, password: password };
           console.log("testing 1")
+          console.log(process.env.TESTING);
+          console.log("testing env");
           const accessToken = generateAccessToken(user);
           console.log("testing 2");
           // const refreshToken = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET);
