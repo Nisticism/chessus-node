@@ -74,7 +74,7 @@ const login = (username, password) => {
           }
 
       } catch (error) {
-          console.error(error && error.response && error.response && error.response.data ? error.response.data : "could not display full error");
+          console.log(error && error.response && error.response && error.response.data ? error.response.data : "could not display full error");
       } finally {
         console.log("finally");
       }
