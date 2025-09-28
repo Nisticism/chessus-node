@@ -362,6 +362,7 @@ app.post("/api/login", async (req, res) => {
       try {
         console.log("trying to compare passwords");
         if (bcrypt.compareSync(password, result[0].password)) {
+          console.log("login should be successful now");
           const user = { username: username, password: password };
           const accessToken = generateAccessToken(user);
           // const refreshToken = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET);
