@@ -67,6 +67,7 @@ const login = (username, password) => {
       // need to see why response isn't returning
       console.error(error && error.response && error.response && error.response.data ? error.response.data : "could not display full error");
       console.log(error);
+      return error;
     })
     .then((response) => {
       console.log(response);
