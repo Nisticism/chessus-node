@@ -65,10 +65,11 @@ const login = (username, password) => {
       password,
     }).catch((error) => {
       // need to see why response isn't returning
-      console.error(error & error.response & error.response.data ? error.response.data : "could not display full error");
+      console.error(error && error.response && error.response && error.response.data ? error.response.data : "could not display full error");
       console.log(error);
     })
     .then((response) => {
+      console.log(response);
       console.log(response && response.data && response.data.result ? response.data.result : "can't display anything here");
     })
     .then((response) => {
