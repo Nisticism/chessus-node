@@ -53,7 +53,7 @@ const PlayerList = () => {
                 Email
               </th>
               <th>
-                Password/Token
+                Role
               </th>
           </tr>
             {
@@ -78,8 +78,7 @@ const PlayerList = () => {
                       {user.email}
                     </td>
                     <td>
-                      {
-                      user.password.length >= 15 ? user.password.substring(0, 15) + "..." : user.password}
+                      {user.role}
                     </td>
                   </tr>
                 )
