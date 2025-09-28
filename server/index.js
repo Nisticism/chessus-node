@@ -866,7 +866,11 @@ function authenticateToken(req, res, next) {
 }
 
 function generateAccessToken(user) {
-  return jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '500s' });
+  console.log("in generate access token method");
+  return jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '500s' })
+  .catch (error => {
+    console.log(error);
+  })
 }
 
 //  -----------------------  Other/Port -------------------------
