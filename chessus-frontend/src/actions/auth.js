@@ -149,6 +149,7 @@ export const login = (username, password) => (dispatch) => {
         type: SET_MESSAGE,
         payload: message,
       });
+      console.log("message set");
       return Promise.reject();
     }
   );
