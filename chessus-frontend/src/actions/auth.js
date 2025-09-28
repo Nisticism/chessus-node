@@ -142,6 +142,7 @@ export const login = (username, password) => (dispatch) => {
           error.response.data.message) ||
         error.message ||
         error.toString();
+      console.log(message);
       dispatch({
         type: LOGIN_FAIL,
       });

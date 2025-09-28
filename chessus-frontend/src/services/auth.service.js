@@ -73,7 +73,7 @@ const login = (username, password) => {
       console.log(response && response.data && response.data.result ? response.data.result : "can't display anything here");
     })
     .then((response) => {
-      if (response.data.result.username) {
+      if (response && response.data.result.username) {
         localStorage.setItem("user", JSON.stringify(response.data.result));
       }
       return response.data;
