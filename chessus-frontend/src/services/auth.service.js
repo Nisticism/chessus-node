@@ -63,22 +63,40 @@ const login = (username, password) => {
     .post(API_URL + "login", {
       username,
       password,
-    }).catch((error) => {
-      // need to see why response isn't returning
-      console.error(error && error.response && error.response && error.response.data ? error.response.data : "could not display full error");
-      console.log(error);
-      return error;
-    })
-    .then((response) => {
-      console.log(response);
-      console.log(response && response.data && response.data.result ? response.data.result : "can't display anything here");
-    })
-    .then((response) => {
-      if (response && response.data.result.username) {
-        localStorage.setItem("user", JSON.stringify(response.data.result));
+    }).then((response) => {
+        try {
+          if (response && response.data) {
+            console.log("seems like it was successful in getting response data, returning")
+            if (response.data.result.username) {
+              localStorage.setItem("user", JSON.stringify(response.data.result));
+            }
+            return response.data;
+          }
+
+      } catch (error) {
+          console.error(error && error.response && error.response && error.response.data ? error.response.data : "could not display full error");
+      } finally {
+        console.log("finally");
       }
-      return response.data;
-    });
+    }
+  )
+    
+    // .catch((error) => {
+    //   // need to see why response isn't returning
+    //   console.error(error && error.response && error.response && error.response.data ? error.response.data : "could not display full error");
+    //   console.log(error);
+    //   return error;
+    // })
+    // .then((response) => {
+    //   console.log(response);
+    //   console.log(response && response.data && response.data.result ? response.data.result : "can't display anything here");
+    // })
+    // .then((response) => {
+    //   if (response && response.data.result.username) {
+    //     localStorage.setItem("user", JSON.stringify(response.data.result));
+    //   }
+    //   return response.data;
+    // });
 };
 
 const logout = () => {
