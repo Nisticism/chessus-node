@@ -870,10 +870,9 @@ function authenticateToken(req, res, next) {
 
 function generateAccessToken(user) {
   console.log("in generate access token method");
-  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '500s' })
-  .catch (error => {
-    console.log(error);
-  })
+  console.log(user);
+  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '5s'})
+  console.log("should return token now")
   return token;
 }
 
