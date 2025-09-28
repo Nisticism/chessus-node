@@ -366,9 +366,10 @@ app.post("/api/login", async (req, res) => {
           const user = { username: username, password: password };
           console.log("testing 1")
           const accessToken = generateAccessToken(user);
+          console.log("testing 2");
           // const refreshToken = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET);
           console.log("result: " + result[0] + " username: " + result[0].username);
-          console.log("testing 2");
+          console.log("testing 3");
           result[0].accessToken = accessToken;
           res.json({ auth: true, result: result[0] });
         } else {
