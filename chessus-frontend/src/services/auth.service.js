@@ -68,6 +68,7 @@ const login = (username, password) => {
           if (response && response.data) {
             console.log("seems like it was successful in getting response data, returning")
             console.log(response.data);
+            console.log(response.data.result);
             if (response.data.result.username) {
               localStorage.setItem("user", JSON.stringify(response.data.result));
             }
