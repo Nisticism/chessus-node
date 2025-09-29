@@ -67,6 +67,7 @@ const login = (username, password) => {
         try {
           if (response && response.data) {
             console.log("seems like it was successful in getting response data, returning")
+            console.log(response.data);
             if (response.data.result.username) {
               localStorage.setItem("user", JSON.stringify(response.data.result));
             }
@@ -74,6 +75,7 @@ const login = (username, password) => {
           }
 
       } catch (error) {
+        console.log(error);
           console.log(error && error.response && error.response && error.response.data ? error.response.data : "could not display full error");
       } finally {
         console.log("finally");
