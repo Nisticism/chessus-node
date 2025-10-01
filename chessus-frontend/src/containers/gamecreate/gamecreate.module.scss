@@ -13,7 +13,7 @@
 }
 
 .game-form {
-  width: 90vw;
+  width: 30vw;
   margin: 20px 0px 0px 0px;
   align-items: center;
   display: flex;
@@ -127,17 +127,21 @@
   justify-content: center;
   flex-direction: column;
   background-color: var(--forum-background);
-  margin-top: 20px;
+  margin-top: 10px;
+  border-radius: 5px;
 }
 
 .light-selector-container {
-
+  padding: 10px;
 }
 
 .dark-selector-container {
-
+  padding: 10px;
 }
 
+.color-selector-label {
+  margin-bottom: 10px;
+}
 
 
 

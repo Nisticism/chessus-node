@@ -1,6 +1,6 @@
 import React from "react";
 import styles from "./colorblock.module.scss";
-function ColorBlock ({mainColor, textColor, text}) {
+function ColorBlock ({mainColor, textColor, text, setHandle}) {
 
     
       const colorBlockStyles = {
@@ -13,7 +13,7 @@ function ColorBlock ({mainColor, textColor, text}) {
     
 
   return (
-    <div style={ colorBlockStyles } className={styles["color-block-style"]}>{ text }</div>
+    <div style={ colorBlockStyles } className={styles["color-block-style"]} onClick={setHandle}>{ text }</div>
   );
 };
 

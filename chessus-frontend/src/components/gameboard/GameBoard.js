@@ -6,6 +6,9 @@ import styles from "./gameboard.module.scss";
 
 const GameBoard = (props) => {
 
+  const [lightSquareColor, setLightSquareColor] = useState(props.lightSquareColor);
+  const [darkSquareColor, setDarkSquareColor] = useState(props.darkSquareColor);
+
   function getWindowDimensions() {
     const { innerWidth: windowWidth, innerHeight: windowHeight } = window;
     return {
@@ -50,6 +53,7 @@ const GameBoard = (props) => {
   const handleBoardClick = (e) => {
     e.preventDefault();
     console.log("light square clicked");
+    setLightSquareColor("#000000");
   }
 
   function createGrid() {
@@ -57,11 +61,11 @@ const GameBoard = (props) => {
       for (let j = 0; j < props.horizontal; j ++) {
         if ((i + j)%2 === 0) {
           board.push(
-            <div key={"r" + i + "c" + j} className={styles["light-square"]} onClick={handleBoardClick}/>
+            <div key={"r" + i + "c" + j} className={styles["light-square"]} style={{background: props.lightSquareColor}} onClick={handleBoardClick}/>
           )
         } else {
           board.push(
-            <div key={"r" + i + "c" + j} className={styles["dark-square"]} />
+            <div key={"r" + i + "c" + j} className={styles["dark-square"]} style={{background: props.darkSquareColor}} />
           )
         }
       }

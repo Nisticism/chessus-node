@@ -28,6 +28,8 @@ const GameCreate = () => {
   const [pieceCount, setPieceCount] = useState(0);
   const [captureOrCheckmate, setCaptureOrCheckmate] = useState(true);
   const [winCondition, setWinCondition] = useState("Capture");
+  const [lightSquareColor, setLightSquareColor] = useState("#cad5e8");
+  const [darkSquareColor, setDarkSquareColor] = useState("#08234d");
 
   if (!currentUser) {
     return <Navigate to="/login" />;
@@ -89,23 +91,40 @@ const GameCreate = () => {
   "#f085ba",
   "#f08585"]
 
+  const darkColorArray = [
+  "#505050",
+  "#08234d",
+  "#000000",
+  "#725c3f",
+  "#606136",
+  "#3f6135",
+  "#335c50",
+  "#005050",
+  "#2e4d57",
+  "#344361",
+  "#312b52",
+  "#482e55",
+  "#522b3f",
+  "#532d2d"
+  ]
+
   const BoardColorSelector = () => {
+
     return (
       <div className={styles["color-selector-container"]}>
         <div className={styles["light-selector-container"]}>
-          <div>Light Square Color</div>
+          <div className={styles["color-selector-label"]}>Light Square Color</div>
           { lightColorArray.map((color, index) => {
-              return(<ColorBlock mainColor={color} textColor="black" text="" key={index}/>)
-            })
-          }
-          <div>Dark Square Color</div>
-          { lightColorArray.map((color, index) => {
-              return(<ColorBlock mainColor={color} textColor="black" text="" key={index}/>)
+              return(<ColorBlock mainColor={color} textColor="black" text="" key={index} setHandle={() => setLightSquareColor(color)}/>)
             })
           }
         </div>
         <div className={styles["dark-selector-container"]}>
-
+          <div className={styles["color-selector-label"]}>Dark Square Color</div>
+          { darkColorArray.map((color, index) => {
+              return(<ColorBlock mainColor={color} textColor="black" text="" key={index} setHandle={() => setDarkSquareColor(color)}/>)
+            })
+          }
         </div>
       </div>
     )
@@ -116,7 +135,8 @@ const GameCreate = () => {
     <div className={styles["outer-container"]}>
     <div className={styles["container"]}>
       <div className={styles["wrapper"]}>
-        <GameBoard horizontal={ horizontal } vertical = { vertical } topLeftLight = { topLeftLight } squareLength = { squareLength } />
+        <GameBoard horizontal={ horizontal } vertical = { vertical } topLeftLight = { topLeftLight } squareLength = { squareLength } 
+        lightSquareColor={ lightSquareColor } darkSquareColor = { darkSquareColor }/>
       </div>
       <form className={styles["game-form"]} onSubmit={handleSubmitGame} ref={form}>
         <label>Game name: </label>

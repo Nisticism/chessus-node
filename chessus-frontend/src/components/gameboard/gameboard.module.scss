@@ -21,19 +21,21 @@
 }
 
 .light-square {
-  background: rgb(202, 213, 232);
+  // background: rgb(202, 213, 232);
 }
 
 .light-square:hover {
-  background: rgb(132, 156, 196);
+  // background: rgb(132, 156, 196);
+  opacity: 50%;
   border: 2px solid rgb(49, 83, 141);
 }
 
 .dark-square {
-  background: rgb(8, 35, 77);
+  // background: #08234d;
 }
 
 .dark-square:hover {
-  background: rgb(18, 58, 122);
+  // background: #123a7a;
+  opacity: 50%;
   border: 2px solid rgb(77, 129, 212);
 }
