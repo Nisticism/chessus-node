@@ -37,17 +37,17 @@ const app = express();
 app.use(cors());
 
 // const path = require('path');
+const db_pool = require("../configs/db");
 const db = require("../configs/db");
 
 app.use(express.json());
 
-
-db.connect(err => {
-  if (err) {
-    throw err;
-  }
-  console.log('MySQL Connected')
-});
+// db.connect(err => {
+//   if (err) {
+//     throw err;
+//   }
+//   console.log('MySQL Connected')
+// });
 
 
 // Create Database
@@ -137,7 +137,6 @@ app.get("/api/user", async (params, res) => {
 });
 
 app.get("/api/users", async (req, res) => {
-
   db.query("SELECT * FROM chessusnode.users",
   (err, result) => {
     if (err) {
@@ -149,7 +148,6 @@ app.get("/api/users", async (req, res) => {
 })
 
 app.get("/api/pieces", (req, res) => {
-
   db.query("SELECT * FROM chessusnode.pieces",
   (err, result) => {
     if (err) {

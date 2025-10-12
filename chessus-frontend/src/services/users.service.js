@@ -5,7 +5,9 @@ import authHeader from "./auth-header";
 const API_URL = require("../global/global.js");
 
 const getUsers = () => {
-  return axios.get(API_URL + "users", { headers: authHeader() });
+  return axios.get(API_URL + "users"
+  // , { headers: authHeader() }
+  );
 };
 
 const UsersService = {
