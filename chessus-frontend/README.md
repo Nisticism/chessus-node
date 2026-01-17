@@ -1,64 +1,305 @@
-In the project directory, you can run:
+# Chessus Frontend
 
-### `npm start`
+React-based frontend for the Chessus chess variant platform.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## 🚀 Quick Start
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### Prerequisites
+- Node.js v17.9.0 or higher
+- Backend server running on port 3001
 
-### `npm test`
+### Installation
+```bash
+npm install
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Development
+```bash
+npm start
+```
+Opens the app at [http://localhost:3000](http://localhost:3000) with hot-reloading enabled.
 
-### `npm run build`
+### Build for Production
+```bash
+npm run build
+```
+Creates an optimized production build in the `build` folder.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 📦 Available Commands
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+| Command | Description |
+|---------|-------------|
+| `npm start` | Start development server (port 3000) |
+| `npm run build` | Create production build |
+| `npm test` | Run tests in interactive watch mode |
+| `npm run eject` | Eject from Create React App (⚠️ irreversible) |
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## 🏗️ Project Structure
 
-### `npm run eject`
+```
+src/
+├── actions/           # Redux action creators
+│   ├── auth.js       # Authentication actions
+│   ├── forums.js     # Forum CRUD actions
+│   ├── news.js       # News article actions
+│   └── users.js      # User management actions
+├── reducers/         # Redux reducers
+│   ├── authReducer.js
+│   ├── forums.js
+│   ├── news.js
+│   └── users.js
+├── services/         # API service layer
+│   ├── auth.service.js
+│   ├── forums.service.js
+│   ├── news.service.js
+│   └── user.service.js
+├── components/       # Reusable UI components
+│   ├── navbar/
+│   ├── forum/
+│   ├── chess/
+│   └── ...
+├── containers/       # Page-level components
+│   ├── news/
+│   ├── forums/
+│   ├── gamecreate/
+│   └── ...
+├── assets/          # Static assets (images, sounds)
+├── index.css        # Global styles & CSS variables
+├── store.js         # Redux store configuration
+└── App.js           # Main app component with routing
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## 🎨 Styling
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### CSS Variables
+Global colors are defined in `src/index.css` using CSS custom properties:
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```css
+:root {
+  /* Buttons */
+  --button-primary-bg: rgb(75, 77, 124);
+  --button-primary-hover: rgb(59, 61, 131);
+  --button-border: rgb(117, 124, 252);
+  
+  /* Text */
+  --text-white: #ffffff;
+  --text-dark: rgb(54, 54, 54);
+  --text-gray: rgb(128, 128, 128);
+  
+  /* Backgrounds */
+  --bg-dark: #1e2129;
+  --bg-card: #20242e;
+  --content-bg: rgb(150, 187, 175);
+  
+  /* More variables... */
+}
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### SCSS Modules
+Components use SCSS modules for scoped styling. Import and use variables:
 
-## Learn More
+```scss
+.button {
+  background-color: var(--button-primary-bg);
+  color: var(--text-white);
+  border: 2px solid var(--button-border);
+  
+  &:hover {
+    background-color: var(--button-primary-hover);
+  }
+}
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## 🔌 API Integration
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Base URL
+The frontend connects to the backend at `http://localhost:3001`.
 
-### Code Splitting
+### Service Layer
+All API calls go through service files that use axios:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```javascript
+// Example: services/auth.service.js
+const API_URL = "http://localhost:3001/";
 
-### Analyzing the Bundle Size
+const login = async (username, password) => {
+  const response = await axios.post(API_URL + "login", {
+    username,
+    password,
+  });
+  if (response.data.accessToken) {
+    localStorage.setItem("user", JSON.stringify(response.data));
+  }
+  return response.data;
+};
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+### Redux Actions
+Actions dispatch service calls and update the store:
 
-### Making a Progressive Web App
+```javascript
+// Example: actions/auth.js
+export const login = (username, password) => async (dispatch) => {
+  try {
+    const data = await AuthService.login(username, password);
+    dispatch({
+      type: LOGIN_SUCCESS,
+      payload: { user: data },
+    });
+    return Promise.resolve();
+  } catch (error) {
+    dispatch({ type: LOGIN_FAIL });
+    return Promise.reject();
+  }
+};
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+## 🛡️ Authentication
 
-### Advanced Configuration
+### Protected Routes
+Pages requiring authentication redirect to `/login`:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+```javascript
+if (!currentUser) {
+  return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+}
+```
 
-### Deployment
+### Token Storage
+JWT tokens are stored in `localStorage` and attached to requests via auth headers.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+## 🧪 Testing
 
-### `npm run build` fails to minify
+Run the test suite:
+```bash
+npm test
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Create tests alongside components:
+```
+components/
+├── MyComponent.js
+└── MyComponent.test.js
+```
+
+## 📱 Features
+
+### User Features
+- User registration and authentication
+- Profile management
+- Custom chess variant creation
+- Forum discussions with likes/comments
+- News articles
+
+### Technical Features
+- Redux state management
+- React Router v6 navigation
+- Protected routes with authentication
+- Real-time UI updates
+- Responsive design
+- SCSS module styling with CSS variables
+
+## 🔧 Configuration
+
+### Proxy (if needed)
+Add to `package.json` to proxy API requests:
+```json
+"proxy": "http://localhost:3001"
+```
+
+### Environment Variables
+Create `.env` file for custom configuration:
+```
+REACT_APP_API_URL=http://localhost:3001
+```
+
+## 🐛 Troubleshooting
+
+### Port 3000 in Use
+```bash
+# Find and kill process
+# Windows
+netstat -ano | findstr :3000
+taskkill /PID <PID> /F
+
+# Mac/Linux
+lsof -ti:3000 | xargs kill -9
+```
+
+### Module Not Found
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### Build Errors
+```bash
+# Clear cache
+npm cache clean --force
+rm -rf node_modules build
+npm install
+npm run build
+```
+
+### CORS Errors
+Ensure backend has CORS enabled for `http://localhost:3000`.
+
+## 📦 Dependencies
+
+### Core
+- **React 18.0** - UI framework
+- **React Router DOM 6.3** - Routing
+- **Redux 4.2** - State management
+- **Redux Thunk 2.4** - Async actions
+- **Axios 0.27** - HTTP client
+
+### UI
+- **React Icons 4.4** - Icon library
+- **Sass 1.54** - CSS preprocessor
+
+### Development
+- **React Scripts 5.0** - Build tooling (Create React App)
+- **Redux DevTools Extension** - State debugging
+
+## 🚀 Deployment
+
+### Build
+```bash
+npm run build
+```
+
+### Serve Static Files
+The `build` folder can be served with any static file server:
+
+```bash
+# Using serve
+npx serve -s build
+
+# Using Node.js express
+# (see root README for backend deployment)
+```
+
+### Production Checklist
+- [ ] Update API URLs for production
+- [ ] Enable production mode in Redux
+- [ ] Optimize images and assets
+- [ ] Configure HTTPS
+- [ ] Set up environment variables
+- [ ] Enable gzip compression
+- [ ] Configure caching headers
+
+## 🤝 Contributing
+
+1. Follow the existing code style (SCSS modules + CSS variables)
+2. Update tests for new features
+3. Use async/await for all async operations
+4. Keep components small and focused
+5. Document complex logic with comments
+
+## 📚 Learn More
+
+- [React Documentation](https://reactjs.org/)
+- [Create React App](https://create-react-app.dev/)
+- [Redux Toolkit](https://redux-toolkit.js.org/)
+- [React Router](https://reactrouter.com/)
+- [SCSS Documentation](https://sass-lang.com/)
