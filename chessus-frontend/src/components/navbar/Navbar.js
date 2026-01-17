@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { RiMenu3Line, RiCloseLine } from 'react-icons/ri';
 import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
@@ -104,6 +104,7 @@ const Menu = () => (
 
 const Navbar = () => {
   const [toggleMenu, setToggleMenu] = useState(false);
+  const navigate = useNavigate();
 
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const dispatch = useDispatch();
@@ -111,6 +112,7 @@ const Navbar = () => {
   const logOut = () => {
     dispatch(removeUsers());
     dispatch(logout());
+    navigate('/');
   };
 
   return (

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Form from "react-validation/build/form";
 import Input from "react-validation/build/input";
 import CheckButton from "react-validation/build/button";
@@ -26,6 +26,8 @@ const Login = (props) => {
   const { isLoggedIn } = useSelector(state => state.authReducer);
   const { message } = useSelector(state => state.message);
   const [ messageDisplay, setMessageDisplay ] = useState(false);
+  const location = useLocation();
+  const authMessage = location.state?.message;
 
   const dispatch = useDispatch();
 
@@ -73,6 +75,13 @@ const Login = (props) => {
           alt="profile-img"
           className="profile-img-card"
         /> */}
+        {authMessage && (
+          <div className={styles["form-group"]}>
+            <div className="alert alert-info" role="alert">
+              {authMessage}
+            </div>
+          </div>
+        )}
         <form onSubmit={handleLogin} ref={form}>
           <div className={styles["form-group"]}>
             <label htmlFor="username" className={styles["field-label"]}>Username: </label>

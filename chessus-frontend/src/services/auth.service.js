@@ -83,9 +83,15 @@ const login = async (username, password) => {
 };
 
 const logout = async () => {
-  localStorage.removeItem("user");
-  const response = await axios.post(API_URL + "logout");
-  return response.data;
+  try {
+    const response = await axios.post(API_URL + "logout");
+    localStorage.removeItem("user");
+    return response.data;
+  } catch (error) {
+    // Even if the API call fails, remove the user from localStorage
+    localStorage.removeItem("user");
+    console.log("Logout API call failed, but user removed from localStorage");
+  }
 };
 
 const deleteUser = async (username, admin_id) => {

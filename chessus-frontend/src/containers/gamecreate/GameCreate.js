@@ -32,7 +32,7 @@ const GameCreate = () => {
   const [darkSquareColor, setDarkSquareColor] = useState("#08234d");
 
   if (!currentUser) {
-    return <Navigate to="/login" />;
+    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
   }
 
   const handleWinConditionChange = (e) => {

@@ -23,7 +23,7 @@ const PlayerList = () => {
   }, [firstRender]);
 
   if (!currentUser) {
-    return <Navigate to="/login" />;
+    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
   }
   return (
     <div className={styles["player-list-container"]}>

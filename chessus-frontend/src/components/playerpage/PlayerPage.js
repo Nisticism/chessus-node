@@ -66,7 +66,7 @@ const PlayerPage = (props) => {
   }, [showAlert]); // Re-run effect when showAlert changes
 
   if (!currentUser) {
-    return <Navigate to="/login" />;
+    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
   }
 
   const getPlayerPage = () => {

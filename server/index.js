@@ -313,6 +313,7 @@ app.post("/api/delete", async (req, res) => {
 
 app.post('/api/logout', (req, res) => {
   console.log("You have been logged out");
+  res.status(200).json({ message: "Logged out successfully" });
 });
 
 const posts = [{
