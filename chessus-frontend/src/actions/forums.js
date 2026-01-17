@@ -95,7 +95,6 @@ export const forums = () => async (dispatch) => {
     });
     return Promise.reject();
   }
-  );
 };
 
 export const getForum = (id) => async (dispatch) => {

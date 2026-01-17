@@ -6,6 +6,11 @@
 echo "🚀 Starting Chessus Project..."
 echo ""
 
+# Clean up any existing processes on ports 3000 and 3001
+if [ -f "cleanup.sh" ]; then
+    bash cleanup.sh
+fi
+
 # Check if MySQL is running
 echo "📊 Checking MySQL status..."
 if command -v mysql.server &> /dev/null; then

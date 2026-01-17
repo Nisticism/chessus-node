@@ -8,6 +8,11 @@ echo   Starting Chessus Project
 echo ========================================
 echo.
 
+REM Clean up any existing processes
+if exist cleanup.bat (
+    call cleanup.bat
+)
+
 REM Check if MySQL service is running
 echo Checking MySQL status...
 sc query MySQL 2>nul | find "RUNNING" >nul
