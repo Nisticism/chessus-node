@@ -6,13 +6,11 @@ const API_URL = require("../global/global.js");
 
 
 const getUser = async(username) => {
-  console.log("in get User service")
-  return axios
-    .get(API_URL + "user", {
-      params: { username: username}
-    }).then((response) => {
-      return response.data;
+  console.log("in get User service");
+  const response = await axios.get(API_URL + "user", {
+    params: { username: username}
   });
+  return response.data;
 };
 
     // axios.get('http://localhost:3001/user', 

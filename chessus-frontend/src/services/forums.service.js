@@ -4,124 +4,118 @@ import authHeader from "./auth-header";
 // const API_URL = "http://localhost:3001/";
 const API_URL = require("../global/global.js");
 
-const getForums = () => {
+const getForums = async () => {
   console.log("in forums service");
-  return axios.get(API_URL + "forums", { 
-    headers: authHeader() });
-};
-
-const getForum = (id) => {
-  return axios.get(API_URL + "forum", {params: { forum_id: id}})
-  .then((response) => {
-    return (response.data);
+  const response = await axios.get(API_URL + "forums", { 
+    headers: authHeader() 
   });
+  return response;
 };
 
-const newForum = (author_id, title, content, created_at) => {
+const getForum = async (id) => {
+  const response = await axios.get(API_URL + "forum", {
+    params: { forum_id: id }
+  });
+  return response.data;
+};
+
+const newForum = async (author_id, title, content, created_at) => {
   if (content === "") {
     content = null;
   }
   console.log("making new forum post request");
-  return axios.post(API_URL + "forums/new", {
+  const response = await axios.post(API_URL + "forums/new", {
     author_id,
     title,
     content,
     created_at,
     headers: authHeader(),
-  }).then((response) => {
-    return (response.data);
   });
+  return response.data;
 };
 
-const editForum = (title, content, last_updated_at, id) => {
+const editForum = async (title, content, last_updated_at, id) => {
   if (content === "") {
     content = null;
   }
   console.log("making update forum put request");
-  return axios.put(API_URL + "forums/edit", {
+  const response = await axios.put(API_URL + "forums/edit", {
     title,
     content, 
     last_updated_at,
     id,
     headers: authHeader(),
-  }).then((response) => {
-    console.log(response.data);
-    return (response.data);
   });
+  console.log(response.data);
+  return response.data;
 };
 
-const deleteForum = (id) => {
+const deleteForum = async (id) => {
   console.log("delete forum request " + "id: " + id);
-  return axios.post(API_URL + "forums/delete", {
+  const response = await axios.post(API_URL + "forums/delete", {
     id,
     headers: authHeader(),
-  }).then((response) => {
-    console.log(response.data);
-    return (response.data);
   });
+  console.log(response.data);
+  return response.data;
 };
 
-const newComment = (author_id, forum_id, content, created_at, author_name) => {
+const newComment = async (author_id, forum_id, content, created_at, author_name) => {
   if (content === "") {
     content = null;
   }
   console.log("making new comment post request");
-  return axios.post(API_URL + "comments/new", {
+  const response = await axios.post(API_URL + "comments/new", {
     author_id,
     forum_id,
     content,
     created_at,
     author_name,
     headers: authHeader(),
-  }).then((response) => {
-    return (response.data);
   });
+  return response.data;
 };
 
-const editComment = (id, content, last_updated_at) => {
+const editComment = async (id, content, last_updated_at) => {
   if (content === "") {
     content = null;
   }
   console.log("making edit forum put request");
-  return axios.put(API_URL + "comments/edit", {
+  const response = await axios.put(API_URL + "comments/edit", {
     id,
     content,
     last_updated_at,
     headers: authHeader(),
-  }).then((response) => {
-    return (response.data);
   });
+  return response.data;
 };
 
-const deleteComment = (id) => {
+const deleteComment = async (id) => {
   console.log("delete comment post request");
-  return axios.post(API_URL + "delete-comment", {
+  const response = await axios.post(API_URL + "delete-comment", {
     id,
     headers: authHeader(),
-  }).then((response) => {
-    return (response.data);
   });
+  return response.data;
 };
 
-const newLike = (user_id, article_id) => {
+const newLike = async (user_id, article_id) => {
   console.log("making new like post request");
-  return axios.post(API_URL + "likes/new", {
+  const response = await axios.post(API_URL + "likes/new", {
     user_id,
     article_id,
     headers: authHeader(),
-  }).then((response) => {
-    return (response.data);
   });
+  return response.data;
 };
 
-const deleteLike = (id) => {
+const deleteLike = async (id) => {
   console.log("delete like post request");
-  return axios.post(API_URL + "likes/delete", {
+  const response = await axios.post(API_URL + "likes/delete", {
     id,
     headers: authHeader(),
-  }).then((response) => {
-    return (response.data);
   });
+  return response.data;
 };
 
 

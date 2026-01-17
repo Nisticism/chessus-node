@@ -4,28 +4,22 @@ import {
   SET_MESSAGE,
 } from "./types";
 import UsersService from "../services/users.service";
+import { getErrorMessage } from "../helpers/error-handler";
 
-export const users = () => (dispatch) => {
-  return UsersService.getUsers().then(
-    (response) => {
-      console.log("users action");
-      dispatch({
-        type: LIST_USERS,
-        payload: response.data,
-      });
-      return Promise.resolve();
-    },
-    (error) => {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString();
-      dispatch({
-        type: LIST_USERS_FAIL,
-      });
-      return Promise.reject();
-    }
-  );
+export const users = () => async (dispatch) => {
+  try {
+    const response = await UsersService.getUsers();
+    console.log("users action");
+    dispatch({
+      type: LIST_USERS,
+      payload: response.data,
+    });
+    return Promise.resolve();
+  } catch (error) {
+    const message = getErrorMessage(error);
+    dispatch({
+      type: LIST_USERS_FAIL,
+    });
+    return Promise.reject();
+  }
 };
