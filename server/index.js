@@ -39,6 +39,7 @@ app.use(cors());
 // const path = require('path');
 const db_pool = require("../configs/db");
 const db = require("../configs/db");
+const dbHelpers = require("./db-helpers");
 
 app.use(express.json());
 
@@ -117,290 +118,198 @@ app.get("/api/", (req, res) => {
 })
 
 app.get("/api/user", async (params, res) => {
-  const username = params.query.username;
-  db.query("SELECT * FROM chessusnode.users WHERE username = ?",
-  [username],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
+  try {
+    const username = params.query.username;
+    const user = await dbHelpers.findUserByUsername(username);
+    
+    if (!user) {
+      return res.status(400).send({ auth: false, message: "Username does not exist" });
     }
-    if (!result.length > 0) {
-      res.status(400).send({ auth: false, message: "Username does not exist" });
-    } else {
-      try {
-        res.json({ result: result[0], message: "User found" });
-      } catch {
-        res.status(500).send()
-      }
-    }
-  })
+    
+    res.json({ result: user, message: "User found" });
+  } catch (err) {
+    console.error("Error in /api/user:", err);
+    res.status(500).send({ err: err.message });
+  }
 });
 
 app.get("/api/users", async (req, res) => {
-  db.query("SELECT * FROM chessusnode.users",
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
-    }
-    let users = result;
+  try {
+    const users = await dbHelpers.getAllUsers();
     res.json(users);
-  });
-})
+  } catch (err) {
+    console.error("Error in /api/users:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
 
-app.get("/api/pieces", (req, res) => {
-  db.query("SELECT * FROM chessusnode.pieces",
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
-    }
-    let pieces = result;
+app.get("/api/pieces", async (req, res) => {
+  try {
+    const pieces = await dbHelpers.getAllPieces();
     res.json(pieces);
-  });
-})
+  } catch (err) {
+    console.error("Error in /api/pieces:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
 
 // app.post("/api/users", (req, res) => {
 
 // })
 
 app.post("/api/register", async (req, res) => {
-  const username = req.body.username;
-  const password = req.body.password;
-  const email = req.body.email;
-  let user;
-  let hashedPassword;
+  try {
+    const { username, password, email } = req.body;
 
-  db.query("SELECT * FROM chessusnode.users WHERE username = ?",
-  [username],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
+    if (!username || username.length === 0) {
+      return res.status(500).send({ message: "Username cannot be blank" });
     }
-    if (result && result.length > 0) {
-      if (result[0].username.length === 0) {
-        res.status(500).send({ message: "Username cannot be blank" });
-      } else {
-        res.status(500).send({ message: "Username already exists" });
-      }
-    } else {
-      db.query("SELECT * FROM chessusnode.users WHERE email = ?",
-      [email],
-        (err, result) => {
-          if (err) {
-            res.send({message: "error", err: err});
-          }
-          if (result && result.length > 0) {
-            res.status(500).send({ message: "Email already taken" });
-          } else {
-            try {
-              const salt = bcrypt.genSaltSync();
-              hashedPassword = bcrypt.hashSync(password, salt)
-              console.log(hashedPassword);
-              user = { username: username, password: hashedPassword, email: email }
-            } catch {
-              res.status(500).send()
-            }
-            db.query("INSERT INTO chessusnode.users (username, password, email) VALUES (?,?,?)",
-            [username, hashedPassword, email],
-              (err, result) => {
-                console.log(err);
-                console.log(result);
-                res.status(201).send(user);
-              }
-            );
-          }
-        }
-      );
+
+    // Check if username already exists
+    const existingUser = await dbHelpers.findUserByUsername(username);
+    if (existingUser) {
+      return res.status(500).send({ message: "Username already exists" });
     }
-  });
+
+    // Check if email already taken
+    const existingEmail = await dbHelpers.findUserByEmail(email);
+    if (existingEmail) {
+      return res.status(500).send({ message: "Email already taken" });
+    }
+
+    // Create new user
+    const salt = bcrypt.genSaltSync();
+    const hashedPassword = bcrypt.hashSync(password, salt);
+    const user = await dbHelpers.createUser(username, hashedPassword, email);
+    
+    res.status(201).send(user);
+  } catch (err) {
+    console.error("Error in /api/register:", err);
+    res.status(500).send({ message: "Registration failed", err: err.message });
+  }
 });
 
 app.post("/api/profile/edit", async (req, res) => {
-  const username = req.body.username;
-  const logged_in_username = req.body.current_user.username;
-  const logged_in_email = req.body.current_user.email;
-  const password = req.body.password;
-  const bio = req.body.bio;
-  console.log("the password is still " + password);
-  const email = req.body.email;
-  const first_name = req.body.first_name;
-  const last_name = req.body.last_name;
-  const id = req.body.id;
-  console.log("in the edit backend");
-  console.log("username: " + username + " id: " + id);
-  console.log("previous username: " + logged_in_username);
+  try {
+    const { username, current_user, password, bio, email, first_name, last_name, id } = req.body;
+    const logged_in_username = current_user.username;
+    const logged_in_email = current_user.email;
 
-  let user;
-  let hashedPassword;
-  let updatedUser = null;
+    console.log("in the edit backend");
+    console.log("username: " + username + " id: " + id);
+    console.log("previous username: " + logged_in_username);
+    console.log("the password is still " + password);
 
-  db.query("SELECT * FROM chessusnode.users WHERE username = ?", [logged_in_username], (err, result) => {
-    if (err) {
-      res.send({err: err});
+    // Verify the user exists
+    const currentUser = await dbHelpers.findUserByUsername(logged_in_username);
+    if (!currentUser) {
+      return res.status(404).send({ message: "User no longer exists" });
+    }
+
+    // Check if new username is already taken by another user
+    const usernameCheck = await dbHelpers.findUserByUsername(username);
+    if (usernameCheck && usernameCheck.username !== logged_in_username) {
+      return res.status(500).send({ message: "Username already taken" });
+    }
+
+    // Check username length
+    if (!username || username.length < 1) {
+      return res.status(500).send({ message: "Username must be between 1 and 20 characters" });
+    }
+
+    // Check if new email is already taken by another user
+    const emailCheck = await dbHelpers.findUserByEmail(email);
+    if (emailCheck && emailCheck.email !== logged_in_email) {
+      return res.status(500).send({ message: "Email already taken" });
+    }
+
+    // Prepare user data
+    let updatedUser = {
+      username,
+      email,
+      first_name,
+      last_name,
+      bio,
+      id
+    };
+
+    // Hash password if provided
+    if (password && password.length > 0) {
+      const salt = bcrypt.genSaltSync();
+      const hashedPassword = bcrypt.hashSync(password, salt);
+      updatedUser.password = hashedPassword;
+      console.log("about to attempt update on id of: " + id + " WITH a password change");
     } else {
-      if (!result[0]) {
-        res.send("For some reason the user no longer exists");
-      } else {
-        updatedUser = result[0];
-      }
+      console.log("about to attempt update on id of: " + id + " with no password change");
     }
-  });
 
-  db.query("SELECT * FROM chessusnode.users WHERE username = ?",
-  [username],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
-    }
-    //  If there's already a user with that username and it's not the one whose account is getting updated
-    if (result.length > 0 && result[0].username != logged_in_username) {
-      console.log("in already taken username failed area");
-        res.status(500).send({ message: "Username already taken" });
-    } else {
-      if (username.length < 1) {
-        console.log("in the too short username area");
-        res.status(500).send({ message: "Username must be between 1 and 20 characters" });
-      }
-      console.log("username not taken or too short at least");
-      console.log("trying to update " + updatedUser);
-      db.query("SELECT * FROM chessusnode.users WHERE email = ?",
-      [email],
-        (err, result) => {
-          if (err) {
-            res.send({message: "error", err: err});
-          }
-          if (result.length > 0 && result[0].email != logged_in_email) {
-              res.status(500).send({ message: "Email already taken" });
-          } else {
+    // Update user in database
+    await dbHelpers.updateUser(updatedUser, id);
 
-
-            // add password logic
-            console.log("email not taken at least");
-            
-            if (password.length > 0) {
-              try {
-              const salt = bcrypt.genSaltSync();
-              hashedPassword = bcrypt.hashSync(password, salt)
-              // console.log(hashedPassword);
-              user = { username: username, password: hashedPassword, email: email, first_name: first_name, last_name: last_name, bio: bio, id: id}
-              if (updatedUser) {
-                updatedUser.username = username;
-                updatedUser.password = hashedPassword;
-                updatedUser.email = email;
-                updatedUser.first_name = first_name;
-                updatedUser.last_name = last_name;
-                updatedUser.bio = bio;
-              } else {
-                updatedUser = user;
-              }
-            } catch {
-              res.status(500).send()
-            }
-            console.log("about to attempt update on id of: " + id + " WITH a password change");
-            db.query("UPDATE chessusnode.users SET username = ?, password = ?, email = ?, first_name = ?, last_name = ?, bio = ? WHERE id = ?",
-            [username, hashedPassword, email, first_name, last_name, bio, id],
-              (err, result) => {
-                console.log(err);
-                console.log(result);
-                res.json({ auth: true, result: updatedUser, message: "User successfully updated" });
-                // res.status(201).send(user);
-              }
-            );
-
-            }
-
-            //  If they don't change the password, don't set the password to an empty string
-
-            else {
-              console.log("about to attempt update on id of: " + id + " with no password change");
-              user = { username: username, email: email, first_name: first_name, last_name: last_name, bio: bio, id: id}
-              if (updatedUser) {
-                updatedUser.username = username;
-                updatedUser.email = email;
-                updatedUser.first_name = first_name;
-                updatedUser.last_name = last_name;
-                updatedUser.bio = bio;
-              }
-              else {
-                updatedUser = user;
-              }
-              db.query("UPDATE chessusnode.users SET username = ?, email = ?, first_name = ?, last_name = ?, bio = ? WHERE id = ?",
-              [username, email, first_name, last_name, bio, id],
-                (err, result) => {
-                  console.log(err);
-                  console.log(result);
-                  res.json({ auth: true, result: updatedUser, message: "User successfully updated"});
-                  // res.status(201).send(user);
-                }
-              );
-            }
-          }
-        }
-      );
-    }
-  });
+    // Return updated user (without password in response)
+    const responseUser = { ...currentUser, ...updatedUser };
+    delete responseUser.password;
+    
+    res.json({ auth: true, result: responseUser, message: "User successfully updated" });
+  } catch (err) {
+    console.error("Error in /api/profile/edit:", err);
+    res.status(500).send({ message: "Update failed", err: err.message });
+  }
 });
 
 app.post("/api/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
 
-  const username = req.body.username;
-  const password = req.body.password;
-
-  db.query("SELECT * FROM chessusnode.users WHERE username = ?",
-  [username],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
-    }
-    else if (result && !result.length > 0) {
+    // Find user
+    const user = await dbHelpers.findUserByUsername(username);
+    if (!user) {
       console.log("username does not exist");
-      res.status(400).send({ auth: false, message: "Username does not exist" });
-    } 
-    else {
-      //  If the username exists, check everything else:
-      try {
-        console.log("trying to compare passwords");
-        if (bcrypt.compareSync(password, result[0].password)) {
-          console.log("login should be successful now");
-          const user = { username: username, password: password };
-          console.log("testing 1")
-          console.log(process.env.TESTING);
-          console.log("testing env");
-          const accessToken = generateAccessToken(user);
-          console.log("testing 2");
-          // const refreshToken = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET);
-          console.log("result: " + result[0] + " username: " + result[0].username);
-          console.log("testing 3");
-          result[0].accessToken = accessToken;
-          res.json({ auth: true, result: result[0] });
-        } else {
-          console.log("we are in the failed login backend method - possibly incorrect password");
-          res.status(400).send({auth: false, message: "Incorrect password"});
-        }
-      } catch {
-        res.status(500).send()
-      }
+      return res.status(400).send({ auth: false, message: "Username does not exist" });
     }
-  })
+
+    // Compare passwords
+    console.log("trying to compare passwords");
+    const passwordMatch = bcrypt.compareSync(password, user.password);
+    if (!passwordMatch) {
+      console.log("we are in the failed login backend method - possibly incorrect password");
+      return res.status(400).send({ auth: false, message: "Incorrect password" });
+    }
+
+    // Generate token
+    console.log("login should be successful now");
+    const userForToken = { username, password };
+    console.log("testing 1");
+    console.log(process.env.TESTING);
+    console.log("testing env");
+    const accessToken = generateAccessToken(userForToken);
+    console.log("testing 2");
+    console.log("result: " + user + " username: " + user.username);
+    console.log("testing 3");
+    
+    user.accessToken = accessToken;
+    res.json({ auth: true, result: user });
+  } catch (err) {
+    console.error("Error in /api/login:", err);
+    res.status(500).send({ auth: false, message: "Login failed", err: err.message });
+  }
 });
 
 app.post("/api/delete", async (req, res) => {
-  const username = req.body.username;
-  const admin_id = req.body.admin_id;
-  console.log("attempting to delete user with username " + username);
-  if (admin_id) {
-    console.log("admin with id of " + admin_id + " attempting deletion of user");
+  try {
+    const { username, admin_id } = req.body;
+    console.log("attempting to delete user with username " + username);
+    if (admin_id) {
+      console.log("admin with id of " + admin_id + " attempting deletion of user");
+    }
+    
+    await dbHelpers.deleteUser(username);
+    res.json({ message: "Account deleted" });
+  } catch (err) {
+    console.error("Error in /api/delete:", err);
+    res.status(500).send({ message: "Deletion failed", err: err.message });
   }
-  db.query("DELETE FROM chessusnode.users WHERE username = ?",
-  [username],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
-    }
-    else {
-      res.json({message: "Account deleted"});
-    }
-  })
-})
+});
 
 app.post('/api/logout', (req, res) => {
   console.log("You have been logged out");
@@ -422,28 +331,30 @@ const posts = [{
 //  ---------------------- Forums ---------------------------------
 
 app.post("/api/articles/new", async (req, res) => {
-  const title = req.body.title;
-  const genre = req.body.genre;
-  const content = req.body.content;
-  const created_at = req.body.created_at;
-  const author_id = req.body.author_id;
-  const game_type_id = req.body.game_type_id;
-  const public = req.body.public_setting;
-  const description = req.body.description;
-  let article;
-  article = { game_type_id: game_type_id, author_id: author_id, title: title, description: description,
-  content: content, created_at: created_at, genre: genre, public: public}
+  try {
+    const { title, genre, content, created_at, author_id, game_type_id, public_setting, description } = req.body;
+    
+    const article = {
+      game_type_id,
+      author_id,
+      title,
+      description,
+      content,
+      created_at,
+      genre,
+      public: public_setting
+    };
 
-  db.query("INSERT INTO chessusnode.articles (game_type_id, author_id, title, descript, content, created_at, genre, public) VALUES (?,?,?,?,?,?,?,?)",
-    [game_type_id, author_id, title, description, content, created_at, genre, public],
-    (err, result) => {
-      if (err) {
-        res.send({ err: err});
-      }
-      console.log(result);
-      res.status(201).send(article);
-    }
-  );
+    await dbHelpers.query(
+      "INSERT INTO chessusnode.articles (game_type_id, author_id, title, descript, content, created_at, genre, public) VALUES (?,?,?,?,?,?,?,?)",
+      [game_type_id, author_id, title, description, content, created_at, genre, public_setting]
+    );
+    
+    res.status(201).send(article);
+  } catch (err) {
+    console.error("Error in /api/articles/new:", err);
+    res.status(500).send({ message: "Article creation failed", err: err.message });
+  }
 });
 
 app.get('/api/articles', (req, res) => {
@@ -456,256 +367,143 @@ app.get('/api/articles', (req, res) => {
   }
 })
 
-app.get("/api/article", (params, res) => {
-  const article_id = params.query.article_id;
-  db.query("SELECT * FROM chessusnode.articles WHERE id = ?",
-  [article_id],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
+app.get("/api/article", async (params, res) => {
+  try {
+    const article_id = params.query.article_id;
+    const article = await dbHelpers.findArticleById(article_id);
+    
+    if (!article) {
+      return res.status(400).send({ auth: false, message: "Article does not exist" });
     }
-    if (!result.length > 0) {
-      res.status(400).send({ auth: false, message: "Article does not exist" });
-    } else {
-      try {
-        res.json({ result: result[0], message: "Article found" });
-      } catch {
-        res.status(500).send()
-      }
-    }
-  })
+    
+    res.json({ result: article, message: "Article found" });
+  } catch (err) {
+    console.error("Error in /api/article:", err);
+    res.status(500).send({ err: err.message });
+  }
 });
 
 //  ---------------------- Forums ---------------------------------
 
 app.post("/api/forums/new", async (req, res) => {
-  const title = req.body.title;
-  // const genre = req.body.genre;
-  const content = req.body.content;
-  const created_at = req.body.created_at;
-  const author_id = req.body.author_id;
-  console.log(content);
-  // const game_type_id = req.body.game_type_id;
-  // const public = req.body.public_setting;
-  // const description = req.body.description;
-  let forum;
-  forum = { author_id: author_id, title: title, content: content, created_at: created_at}
-
-  db.query("INSERT INTO chessusnode.articles (author_id, title, content, created_at) VALUES (?,?,?,?)",
-    [author_id, title, content, created_at],
-    (err, result) => {
-      if (err) {
-        res.send({ err: err});
-      }
-      console.log(result);
-      res.json({result: forum });
-    }
-  );
+  try {
+    const { title, content, created_at, author_id } = req.body;
+    console.log(content);
+    
+    const forum = await dbHelpers.createForum({ author_id, title, content, created_at });
+    res.json({ result: forum });
+  } catch (err) {
+    console.error("Error in /api/forums/new:", err);
+    res.status(500).send({ message: "Forum creation failed", err: err.message });
+  }
 });
 
-app.get("/api/forums", (req, res) => {
-  db.query("SELECT * FROM chessusnode.articles",
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
-    } else {
-      let forums = [];
-      result.forEach((forum, index, array) => {
-        let author_name = "";
-        let comment_count = 0;
-        let likes;
-        db.query("SELECT * FROM chessusnode.comments WHERE article_id = ?", [forum.id], (err, result) => {
-          if (err) {
-            res.send({ err: err });
-          } else {
-            comment_count = result.length;
-          }
-        })
-        db.query("SELECT * FROM chessusnode.likes WHERE article_id = ?", [forum.id], (err, result) => {
-          if (err) {
-            res.send({ err: err });
-          } else {
-            likes = result;
-          }
-        })
-        db.query("SELECT * FROM chessusnode.users WHERE id = ?", [forum.author_id], (err, result) => {
-          if (err) {
-            res.send({ err: err });
-          } else {
-            (result[0] && result[0].username) ? author_name = result[0].username : author_name = "User Deleted";
-            forum.author_name = author_name;
-            forum.comment_count = comment_count;
-            forum.likes = likes;
-            forums.push(forum);
-            // On the last iteraction, run this
-            if (index === array.length - 1) {
-              res.json(forums);
-            }
-          }
-        })
-      })
-      console.log("in get all forums route.  Forums: " + forums)
-    }
-  });
+app.get("/api/forums", async (req, res) => {
+  try {
+    const articles = await dbHelpers.getAllArticles();
+    
+    // Enrich each forum with author name, comment count, and likes
+    const forums = await Promise.all(articles.map(async (forum) => {
+      // Get comment count
+      const comments = await dbHelpers.getCommentsByArticleId(forum.id);
+      forum.comment_count = comments.length;
+      
+      // Get likes
+      const likes = await dbHelpers.getLikesByArticleId(forum.id);
+      forum.likes = likes;
+      
+      // Get author name
+      const author = await dbHelpers.findUserById(forum.author_id);
+      forum.author_name = author ? author.username : "User Deleted";
+      
+      return forum;
+    }));
+    
+    console.log("in get all forums route. Forums: " + forums.length);
+    res.json(forums);
+  } catch (err) {
+    console.error("Error in /api/forums:", err);
+    res.status(500).send({ err: err.message });
+  }
 });
 
-app.get("/api/forum", (params, res) => {
-  console.log("in get forum route");
-  const forum_id = params.query.forum_id;
-  console.log("forum id: " + forum_id);
-  db.query("SELECT * FROM chessusnode.articles WHERE id = ?",
-  [forum_id],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
+app.get("/api/forum", async (params, res) => {
+  try {
+    console.log("in get forum route");
+    const forum_id = params.query.forum_id;
+    console.log("forum id: " + forum_id);
+    
+    const forum = await dbHelpers.findArticleById(forum_id);
+    if (!forum) {
+      return res.status(400).send({ auth: false, message: "Forum post does not exist" });
     }
-    if (!result.length > 0) {
-      res.status(400).send({ auth: false, message: "Forum post does not exist" });
+
+    // Get author name
+    if (forum.author_id) {
+      const author = await dbHelpers.findUserById(forum.author_id);
+      forum.author_name = author ? author.username : "User Deleted";
     } else {
-      try {
-        let forum = result[0];
-
-        // get author name
-        result[0].author_id ? 
-        db.query("SELECT * FROM chessusnode.users WHERE id = ?",
-        [forum.author_id],
-        (err, result) => {
-          if (err) {
-            res.send({ err: err});
-          }
-          if (!result.length > 0) {
-            res.status(400).send({ auth: false, message: "Author of forum post does not exist" });
-          } else {
-            try {
-              let author = result[0].username;
-              forum.author_name = author;
-              console.log(forum);
-            } catch {
-              res.status(500).send()
-            }
-          }
-        }) : forum.author_name="User Deleted";
-
-        // get likes
-
-        db.query("SELECT * FROM chessusnode.likes WHERE article_id = ?",
-        [forum_id],
-        (err, result) => {
-          if (err) {
-            res.send({ err: err});
-          } else {
-            try {
-              forum.likes = result;
-            } catch {
-              res.status(500).send()
-            }
-          }
-        })
-
-        // get all comments of forum
-
-        db.query("SELECT * FROM chessusnode.comments WHERE article_id = ?",
-        [forum.id],
-        (err, result) => {
-          if (err) {
-            res.send({ err: err});
-          } else {
-            try {
-              let comments = result;
-              console.log("got the comments")
-              console.log(comments);
-
-              //  get all the author names of all the comments
-              if (comments.length > 0) {
-                comments.forEach((comment, index, array) => {
-                  db.query("SELECT * FROM chessusnode.users WHERE id = ?", [comment.author_id], (err, result) => {
-                    if (err) {
-                      res.send({ err: err });
-                    } else {
-                      console.log("in getting author names of comments")
-                      comment.author_name = result[0].username;
-                      //  On the last iteration, run this
-                      if (index === array.length - 1) {
-                        forum.comments = comments;
-                        //  Send result
-                        console.log("Forum before json send: " + forum);
-                        res.json({ result: forum, message: "Forum found" });
-                      }
-                    }
-                  })
-                })
-              } else {
-                console.log("Forum before json send: " + forum);
-                res.json({ result: forum, message: "Forum found" });
-              }
-
-            } catch {
-              res.status(500).send()
-            }
-          }
-        })
-
-      } catch {
-        res.status(500).send()
-      }
+      forum.author_name = "User Deleted";
     }
-  })
+
+    // Get likes
+    const likes = await dbHelpers.getLikesByArticleId(forum_id);
+    forum.likes = likes;
+
+    // Get all comments
+    const comments = await dbHelpers.getCommentsByArticleId(forum.id);
+    console.log("got the comments");
+    console.log(comments);
+
+    // Get author names for all comments
+    if (comments.length > 0) {
+      const enrichedComments = await Promise.all(comments.map(async (comment) => {
+        const commentAuthor = await dbHelpers.findUserById(comment.author_id);
+        comment.author_name = commentAuthor ? commentAuthor.username : "User Deleted";
+        return comment;
+      }));
+      forum.comments = enrichedComments;
+    }
+
+    console.log("Forum before json send: " + forum);
+    res.json({ result: forum, message: "Forum found" });
+  } catch (err) {
+    console.error("Error in /api/forum:", err);
+    res.status(500).send({ err: err.message });
+  }
 });
 
 app.put("/api/forums/edit", async (req, res) => {
-  const title = req.body.title;
-  const id = req.body.id;
-  const content = req.body.content;
-  const last_updated_at = req.body.last_updated_at;
-  console.log(content);
-  console.log("in edit forum route")
-  let forum = {title: title, content: content, last_updated_at: last_updated_at, id: id};
-  db.query("UPDATE chessusnode.articles SET title = ?, content = ?, last_updated_at = ? WHERE id = ?",
-    [title, content, last_updated_at, id],
-    (err, result) => {
-      if (err) {
-        res.send({ err: err});
-      }
-      console.log(result);
-      console.log("forum: " + forum.title + "content: " + forum.content + "last updated: " + forum.last_updated_at, "id: " + id)
-      res.json({result: forum });
-    }
-  );
+  try {
+    const { title, id, content, last_updated_at } = req.body;
+    console.log(content);
+    console.log("in edit forum route");
+    
+    await dbHelpers.updateForum({ title, content, last_updated_at, id });
+    
+    const forum = { title, content, last_updated_at, id };
+    console.log("forum: " + forum.title + "content: " + forum.content + "last updated: " + forum.last_updated_at + ", id: " + id);
+    res.json({ result: forum });
+  } catch (err) {
+    console.error("Error in /api/forums/edit:", err);
+    res.status(500).send({ message: "Forum edit failed", err: err.message });
+  }
 });
 
 app.post("/api/forums/delete", async (req, res) => {
-  console.log("in delete post route")
-  console.log(req.body);
-  const id = req.body.id;
-  console.log(id);
-  db.query("DELETE FROM chessusnode.comments WHERE article_id = ?",
-  [id],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
-    }
-    else {
-      db.query("DELETE FROM chessusnode.likes WHERE article_id = ?",
-      [id],
-      (err, result) => {
-        if (err) {
-          res.send({ err: err});
-        } else {
-          db.query("DELETE FROM chessusnode.articles WHERE id = ?",
-          [id],
-          (err, result) => {
-            if (err) {
-              res.send({ err: err});
-            }
-            else {
-              console.log("post deleted");
-              res.json({message: "Post deleted"});
-            }
-          })
-        }
-      })
-    }
-  })
+  try {
+    console.log("in delete post route");
+    console.log(req.body);
+    const id = req.body.id;
+    console.log(id);
+    
+    await dbHelpers.deleteForum(id);
+    console.log("post deleted");
+    res.json({ message: "Post deleted" });
+  } catch (err) {
+    console.error("Error in /api/forums/delete:", err);
+    res.status(500).send({ message: "Forum deletion failed", err: err.message });
+  }
 });
 
 
@@ -715,58 +513,47 @@ app.post("/api/forums/delete", async (req, res) => {
 
 
 app.post("/api/comments/new", async (req, res) => {
-  const author_id = req.body.author_id;
-  const forum_id = req.body.forum_id;
-  const content = req.body.content;
-  const created_at = req.body.created_at;
-  const author_name = req.body.author_name;
-
-  db.query("INSERT INTO chessusnode.comments (author_id, article_id, content, created_at, last_updated_at) VALUES (?,?,?,?,?)",
-    [author_id, forum_id, content, created_at, created_at],
-    (err, result) => {
-      if (err) {
-        res.send({ err: err});
-      }
-      let comment;
-      comment = { id: result.insertId, author_id: author_id, article_id: forum_id, content: content, created_at: created_at, last_updated_at: created_at, author_name: author_name}
-      console.log(result);
-      res.json({result: comment });
-    }
-  );
+  try {
+    const { author_id, forum_id, content, created_at, author_name } = req.body;
+    
+    const comment = await dbHelpers.createComment({
+      author_id,
+      article_id: forum_id,
+      content,
+      created_at,
+      author_name
+    });
+    
+    res.json({ result: comment });
+  } catch (err) {
+    console.error("Error in /api/comments/new:", err);
+    res.status(500).send({ message: "Comment creation failed", err: err.message });
+  }
 });
 
 app.post("/api/delete-comment", async (req, res) => {
-  console.log("in delete comment route")
-  const id = req.body.id;
-  db.query("DELETE FROM chessusnode.comments WHERE id = ?",
-  [id],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
-    }
-    else {
-      res.json({message: "Comment deleted"});
-    }
-  })
+  try {
+    console.log("in delete comment route");
+    const id = req.body.id;
+    
+    await dbHelpers.deleteComment(id);
+    res.json({ message: "Comment deleted" });
+  } catch (err) {
+    console.error("Error in /api/delete-comment:", err);
+    res.status(500).send({ message: "Comment deletion failed", err: err.message });
+  }
 });
 
 app.put("/api/comments/edit", async (req, res) => {
-  const id = req.body.id;
-  const content = req.body.content;
-  const last_updated_at = req.body.last_updated_at;
-
-  db.query("UPDATE chessusnode.comments SET content = ?, last_updated_at = ? WHERE id = ?",
-    [content, last_updated_at, id],
-    (err, result) => {
-      if (err) {
-        res.send({ err: err});
-      }
-      let comment_update;
-      comment_update = { id: id, content: content, last_updated_at: last_updated_at};
-      console.log(result);
-      res.json({result: comment_update });
-    }
-  );
+  try {
+    const { id, content, last_updated_at } = req.body;
+    
+    const comment_update = await dbHelpers.updateComment({ id, content, last_updated_at });
+    res.json({ result: comment_update });
+  } catch (err) {
+    console.error("Error in /api/comments/edit:", err);
+    res.status(500).send({ message: "Comment edit failed", err: err.message });
+  }
 });
 
 
@@ -774,36 +561,28 @@ app.put("/api/comments/edit", async (req, res) => {
 // ----------------------- Likes ----------------------------
 
 app.post("/api/likes/new", async (req, res) => {
-  const user_id = req.body.user_id;
-  const article_id = req.body.article_id;
-  const liked = true;
-  db.query("INSERT INTO chessusnode.likes (user_id, article_id, liked) VALUES (?,?,?)",
-    [user_id, article_id, liked],
-    (err, result) => {
-      if (err) {
-        res.send({ err: err});
-      }
-      let like;
-      like = { id: result.insertId, user_id: user_id, article_id: article_id, liked: liked}
-      console.log(result);
-      res.json({result: like });
-    }
-  );
+  try {
+    const { user_id, article_id } = req.body;
+    
+    const like = await dbHelpers.createLike({ user_id, article_id });
+    res.json({ result: like });
+  } catch (err) {
+    console.error("Error in /api/likes/new:", err);
+    res.status(500).send({ message: "Like creation failed", err: err.message });
+  }
 });
 
 app.post("/api/likes/delete", async (req, res) => {
-  console.log("in delete likes route")
-  const id = req.body.id;
-  db.query("DELETE FROM chessusnode.likes WHERE id = ?",
-  [id],
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
-    }
-    else {
-      res.json({message: "Like deleted"});
-    }
-  })
+  try {
+    console.log("in delete likes route");
+    const id = req.body.id;
+    
+    await dbHelpers.deleteLike(id);
+    res.json({ message: "Like deleted" });
+  } catch (err) {
+    console.error("Error in /api/likes/delete:", err);
+    res.status(500).send({ message: "Like deletion failed", err: err.message });
+  }
 });
 
 
@@ -828,21 +607,20 @@ app.post("/api/news/new", async (req, res) => {
 });
 
 
-app.get("/api/news", (req, res) => {
-  db.query("SELECT * FROM chessusnode.news",
-  (err, result) => {
-    if (err) {
-      res.send({ err: err});
+app.get("/api/news", async (req, res) => {
+  try {
+    const news = await dbHelpers.getAllNews();
+    
+    if (news.length > 0) {
+      console.log("In get news route");
+      res.json({ news });
     } else {
-      if (result.length > 0) {
-        console.log("In get news route");
-        let news = result;
-        res.json({news: news});
-      } else {
-        res.json({message: "No news to be found"})
-      }
+      res.json({ message: "No news to be found" });
     }
-  });
+  } catch (err) {
+    console.error("Error in /api/news:", err);
+    res.status(500).send({ err: err.message });
+  }
 });
 
 //  ---------------------- Token -----------------------------
