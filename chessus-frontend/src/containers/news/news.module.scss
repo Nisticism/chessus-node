@@ -14,7 +14,7 @@
   }
   td {
     padding: 20px;
-    background-color: rgb(150, 187, 175);
+    background-color: var(--content-bg);
   }
 
   .date-td {
@@ -37,12 +37,12 @@
 .news-page-title {
   font-size: 50px;
   font-weight: 800;
-  color:rgb(78, 95, 93);
+  color: var(--content-text);
 }
 
 .news-link {
   a {
-    color: rgb(54, 54, 54);
+    color: var(--text-dark);
     text-decoration: none !important;
     display: block;
   }
@@ -50,9 +50,9 @@
 
 .news-link:hover {
   a {
-    color: rgb(83, 126, 110);
+    color: var(--content-accent);
     .news-title {
-      color: rgb(83, 126, 110);
+      color: var(--content-accent);
     }
   }
 }
@@ -70,7 +70,7 @@
   font-size: 22px;
   font-weight: 600;
   min-width: 150px;
-  color: rgb(68, 85, 68);
+  color: var(--content-dark-text);
 }
 
 .news-username {
@@ -81,7 +81,7 @@
 .news-row {
   margin-top: 20px;
   border-radius: 10px;
-  border: 2px solid rgb(62, 107, 100);
+  border: 2px solid var(--content-border);
 }
 
 .image-button {

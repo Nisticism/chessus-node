@@ -12,7 +12,7 @@ button {
   display: flex;
   flex-direction: column;
   width: 40%;
-  background: #1e2129;
+  background: var(--bg-dark);
   margin-top: 25px;
   min-width: 380px;
   border-radius: 10px;
@@ -31,18 +31,18 @@ button {
 }
 
 .signup-button {
-  background-color: rgb(75, 77, 124);
-  color: #ffffff;
+  background-color: var(--button-primary-bg);
+  color: var(--text-white);
   font-weight: 600;
   font-size: 18px;
   padding: 10px;
   margin: 10px 10px 15px 10px;
   width: 320px;
   border-radius: 4px;
-  border: 2px solid rgb(117, 124, 252);
+  border: 2px solid var(--button-border);
 }
 
 .signup-button:hover {
-  background-color: rgb(59, 61, 131);
+  background-color: var(--button-primary-hover);
   cursor: pointer;
 }

@@ -269,23 +269,14 @@ app.post("/api/login", async (req, res) => {
     }
 
     // Compare passwords
-    console.log("trying to compare passwords");
     const passwordMatch = bcrypt.compareSync(password, user.password);
     if (!passwordMatch) {
-      console.log("we are in the failed login backend method - possibly incorrect password");
       return res.status(400).send({ auth: false, message: "Incorrect password" });
     }
 
     // Generate token
-    console.log("login should be successful now");
     const userForToken = { username, password };
-    console.log("testing 1");
-    console.log(process.env.TESTING);
-    console.log("testing env");
     const accessToken = generateAccessToken(userForToken);
-    console.log("testing 2");
-    console.log("result: " + user + " username: " + user.username);
-    console.log("testing 3");
     
     user.accessToken = accessToken;
     res.json({ auth: true, result: user });
@@ -312,7 +303,6 @@ app.post("/api/delete", async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
-  console.log("You have been logged out");
   res.status(200).json({ message: "Logged out successfully" });
 });
 
@@ -646,10 +636,7 @@ function authenticateToken(req, res, next) {
 }
 
 function generateAccessToken(user) {
-  console.log("in generate access token method");
-  console.log(user);
-  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '5s'})
-  console.log("should return token now")
+  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
   return token;
 }
 

@@ -1,7 +1,7 @@
 $nav-height: calc(9vh + 2px);
-$nav-hover-color: rgb(51, 55, 147);
-$nav-background: #20242e;
-$lighter-hover: rgb(117, 124, 252);
+$nav-hover-color: var(--nav-hover);
+$nav-background: var(--bg-card);
+$lighter-hover: var(--nav-light-hover);
 
 .navbar {
   display: flex;
@@ -11,7 +11,7 @@ $lighter-hover: rgb(117, 124, 252);
 }
 
 .navbar-border {
-  background: rgb(202, 213, 232);
+  background: var(--nav-menu-bg);
   height: 2px;
   display: flex;
   width: 100%;

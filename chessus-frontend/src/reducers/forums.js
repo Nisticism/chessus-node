@@ -159,12 +159,18 @@ const forumsReducer = (state = initialState, action) => {
       }
     case DELETE_FORUM_FAILURE:
     case LIKE_SUCCESS:
+      const updatedForumsWithLike = state.forums.map(forum => 
+        forum.id === state.forum?.id 
+          ? { ...forum, likes: forum.likes ? forum.likes.concat(payload) : [payload] }
+          : forum
+      );
       return {
         ...state,
         forum: {
           ...state.forum,
           likes: state.forum.likes ? state.forum.likes.concat(payload) : [payload]
-        }
+        },
+        forums: updatedForumsWithLike
       }
     case LIKE_FAILURE:
       return {
@@ -173,12 +179,18 @@ const forumsReducer = (state = initialState, action) => {
       }
     case DELETE_LIKE:
       const newLikes = state.forum.likes.filter((like) => like.id != payload);
+      const updatedForumsWithoutLike = state.forums.map(forum =>
+        forum.id === state.forum?.id
+          ? { ...forum, likes: newLikes }
+          : forum
+      );
       return {
         ...state,
         forum: {
           ...state.forum,
           likes: newLikes
-        }
+        },
+        forums: updatedForumsWithoutLike
       }
     default:
       return state;

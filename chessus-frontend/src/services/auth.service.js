@@ -27,8 +27,6 @@ const updateUser = (updatedData) => {
 }
 
 const edit = async (current_user, username, password, email, first_name, last_name, bio, id, admin_id) => {
-  console.log("in auth service");
-  console.log("password attempting to change to: " + password);
   if (email === "") {
     email = null;
   }
@@ -67,17 +65,12 @@ const login = async (username, password) => {
     });
     
     if (response && response.data) {
-      console.log("seems like it was successful in getting response data, returning");
-      console.log(response.data);
-      console.log(response.data.result);
       if (response.data.result.username) {
         localStorage.setItem("user", JSON.stringify(response.data.result));
       }
       return response.data;
     }
   } catch (error) {
-    console.log(error);
-    console.log(error && error.response && error.response && error.response.data ? error.response.data : "could not display full error");
     throw error;
   }
 };

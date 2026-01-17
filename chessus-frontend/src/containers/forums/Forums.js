@@ -13,13 +13,10 @@ const Forums = () => {
   const dispatch = useDispatch();
 
   useEffect(() => {
-  console.log("before entering inner use effect, first render is: " + firstRender);
     if (!firstRender) {
-      console.log("in useeffect forums page");
       // dispatch(users());
       dispatch(forums());
       dispatch(firstForumsRender());
-      console.log("after entering inner use effect, first render is: " + firstRender);
     }
   }, [firstRender]);
 
@@ -29,6 +26,14 @@ const Forums = () => {
 
   function createNewPost() {
     navigate("/forums/new");
+  }
+
+  function handleRowClick(forumId, e) {
+    // Don't navigate if clicking on a link
+    if (e.target.tagName === 'A' || e.target.closest('a')) {
+      return;
+    }
+    navigate(`/forums/${forumId}`);
   }
 
   function formatDateFromString(date) {
@@ -81,47 +86,44 @@ const Forums = () => {
           {
             allForums.forums.map(function(forum) {
               return (
-                <tr key={forum.id} className={styles["forum-row"]}>
+                <tr 
+                  key={forum.id} 
+                  className={styles["forum-row"]}
+                  onClick={(e) => handleRowClick(forum.id, e)}
+                >
                     <td>
                       <div className={styles["forums-link"]}>
-                        <Link to={`/forums/${forum.id}`}>
-                          <strong><div className={styles["forum-title"]}>{ forum.title }</div></strong> <br/> <div className={styles["forums-comments-likes"]}></div>
-                        </Link>
+                        <strong><div className={styles["forum-title"]}>{ forum.title }</div></strong> <br/> <div className={styles["forums-comments-likes"]}></div>
                       </div>
                     </td>
                     <td>
                       <div className={styles["forums-link"]}>
                         { forum.author_name ? 
-                                              <Link to={`/profile/${forum.author_name}`}>
-                          <div className={styles["forums-username"]}>{ forum.author_name }</div>
-                        </Link>
-                        :                         <Link to={"/community/players"}>
-                          <div className={styles["forums-username"]}>User Deleted</div>
-                        </Link>
+                          <Link to={`/profile/${forum.author_name}`} onClick={(e) => e.stopPropagation()}>
+                            <div className={styles["forums-username"]}>{ forum.author_name }</div>
+                          </Link>
+                        : 
+                          <Link to={"/community/players"} onClick={(e) => e.stopPropagation()}>
+                            <div className={styles["forums-username"]}>User Deleted</div>
+                          </Link>
                       
                       }
                       </div>
                     </td>
                     <td>
-                    <div className={styles["forums-link"]}>
-                        <Link to={`/forums/${forum.id}`}>
-                          <div className={styles["forums-comment-likes"]}>{forum.comment_count}</div>
-                        </Link>
+                      <div className={styles["forums-link"]}>
+                        <div className={styles["forums-comment-likes"]}>{forum.comment_count}</div>
                       </div>
                     </td>
                     <td>
                       <div className={styles["forums-link"]}>
-                        <Link to={`/forums/${forum.id}`}>
-                          <div className={styles["forums-comment-likes"]}>{forum.likes ? forum.likes.length : 0}</div>
-                        </Link>
+                        <div className={styles["forums-comment-likes"]}>{forum.likes ? forum.likes.length : 0}</div>
                       </div>
                     </td>
                     <td className={styles["forums-link-content"]}>
-                      <Link to={`/forums/${forum.id}`}>
-                        <div className={styles["forum-content"]}>
-                          {forum.content}
-                        </div>
-                      </Link>
+                      <div className={styles["forum-content"]}>
+                        {forum.content}
+                      </div>
                     </td>
                     <td className={styles["date-td"]}>
                       <div className={styles["forums-date"]}>

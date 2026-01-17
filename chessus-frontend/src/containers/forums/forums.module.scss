@@ -99,6 +99,17 @@
   text-decoration: underline;
 }
 
+.forum-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  
+  &:hover {
+    td {
+      background-color: rgba(100, 150, 255, 0.15);
+    }
+  }
+}
+
 // .forum-row {
 //   margin-top: 20px;
 //   border-radius: 5px;

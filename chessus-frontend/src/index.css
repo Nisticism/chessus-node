@@ -35,5 +35,43 @@ code {
   --forum-title-color: #5a80aa;
 
   --forum-link-hover: #5888be;
+  --forum-row-hover: rgba(100, 150, 255, 0.15);
+
+  /* Button colors */
+  --button-primary-bg: rgb(75, 77, 124);
+  --button-primary-hover: rgb(59, 61, 131);
+  --button-border: rgb(117, 124, 252);
+  --button-border-alt: rgb(81, 107, 192);
+
+  /* Text colors */
+  --text-white: #ffffff;
+  --text-dark: rgb(54, 54, 54);
+  --text-gray: rgb(128, 128, 128);
+  --text-light-gray: rgb(211, 211, 211);
+
+  /* Background colors */
+  --bg-dark: #1e2129;
+  --bg-card: #20242e;
+
+  /* News/Content colors */
+  --content-bg: rgb(150, 187, 175);
+  --content-text: rgb(78, 95, 93);
+  --content-accent: rgb(83, 126, 110);
+  --content-dark-text: rgb(68, 85, 68);
+  --content-border: rgb(62, 107, 100);
+
+  /* Game board colors */
+  --board-bg: rgb(82, 94, 117);
+  --board-border: rgb(125, 147, 184);
+  --square-dark-border: rgb(49, 83, 141);
+  --square-light-border: rgb(77, 129, 212);
+
+  /* Navbar colors */
+  --nav-hover: rgb(51, 55, 147);
+  --nav-light-hover: rgb(117, 124, 252);
+  --nav-menu-bg: rgb(202, 213, 232);
+
+  /* Accent colors */
+  --accent-orange: rgb(237, 93, 45);
   
 }

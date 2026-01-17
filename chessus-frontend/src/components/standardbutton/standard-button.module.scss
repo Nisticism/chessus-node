@@ -1,11 +1,11 @@
 .standard-button {
   background-color: var(--light-button);
-  color: #ffffff;
+  color: var(--text-white);
   font-weight: 600;
   font-size: 18px;
   padding: 10px;
   border-radius: 4px;
-  border: 2px solid rgb(81, 107, 192);
+  border: 2px solid var(--button-border-alt);
   width: 250px;
 }
 

@@ -13,9 +13,7 @@ const News = () => {
   const dispatch = useDispatch();
 
   useEffect(() => {
-    console.log("testing")
     if (!firstRender) {
-      console.log("in useeffect news page");
       // dispatch(users());
       dispatch(news());
       setFirstRender(true);

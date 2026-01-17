@@ -11,9 +11,9 @@
   margin: 20px 15px;
   width: fit-content;
   height: fit-content;
-  background: rgb(82, 94, 117);
+  background: var(--board-bg);
   // background: rgb(109, 138, 190);
-  border: 1px solid rgb(125, 147, 184);
+  border: 1px solid var(--board-border);
   border-radius: 5px;
   display: flex;
   justify-content: center;
@@ -27,7 +27,7 @@
 .light-square:hover {
   // background: rgb(132, 156, 196);
   opacity: 50%;
-  border: 2px solid rgb(49, 83, 141);
+  border: 2px solid var(--square-dark-border);
 }
 
 .dark-square {
@@ -37,5 +37,5 @@
 .dark-square:hover {
   // background: #123a7a;
   opacity: 50%;
-  border: 2px solid rgb(77, 129, 212);
+  border: 2px solid var(--square-light-border);
 }
