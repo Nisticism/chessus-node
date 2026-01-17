@@ -16,178 +16,150 @@ import {
 } from "./types";
 import AuthService from "../services/auth.service";
 import UserService from "../services/user.service";
+import { getErrorMessage } from "../helpers/error-handler";
 
-export const register = (username, password, email) => (dispatch) => {
-  return AuthService.register(username, password, email).then(
-    (response) => {
-      dispatch({
-        type: REGISTER_SUCCESS,
-      });
-      dispatch({
-        type: SET_MESSAGE,
-        payload: response.data.message,
-      });
-      return Promise.resolve();
-    },
-    (error) => {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString();
-      dispatch({
-        type: REGISTER_FAIL,
-      });
-      dispatch({
-        type: SET_MESSAGE,
-        payload: message,
-      });
-      return Promise.reject();
-    }
-  );
+export const register = (username, password, email) => async (dispatch) => {
+  try {
+    const response = await AuthService.register(username, password, email);
+    dispatch({
+      type: REGISTER_SUCCESS,
+    });
+    dispatch({
+      type: SET_MESSAGE,
+      payload: response.data.message,
+    });
+    return Promise.resolve();
+  } catch (error) {
+    const message = getErrorMessage(error);
+    dispatch({
+      type: REGISTER_FAIL,
+    });
+    dispatch({
+      type: SET_MESSAGE,
+      payload: message,
+    });
+    return Promise.reject();
+  }
 };
 
-export const getUser = (username) => (dispatch) => {
-  return UserService.getUser(username).then(
-    (response) => {
-      console.log("in getUser action");
-      dispatch({
-        type: GET_USER_SUCCESS,
-        payload: {response: response.result, message: response.message}
-      });
-      dispatch({
-        type: SET_MESSAGE,
-        payload: response.message,
-      });
-      return Promise.resolve();
-    },
-    (error) => {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString();
-        console.log(message);
-      dispatch({
-        type: GET_USER_FAILURE,
-        payload: {response: null, message: message},
-      });
-      dispatch({
-        type: SET_MESSAGE,
-        payload: message,
-      });
-      return Promise.reject();
-    }
-  );
+export const getUser = (username) => async (dispatch) => {
+  try {
+    const response = await UserService.getUser(username);
+    console.log("in getUser action");
+    dispatch({
+      type: GET_USER_SUCCESS,
+      payload: {response: response.result, message: response.message}
+    });
+    dispatch({
+      type: SET_MESSAGE,
+      payload: response.message,
+    });
+    return Promise.resolve();
+  } catch (error) {
+    const message = getErrorMessage(error);
+    console.log(message);
+    dispatch({
+      type: GET_USER_FAILURE,
+      payload: {response: null, message: message},
+    });
+    dispatch({
+      type: SET_MESSAGE,
+      payload: message,
+    });
+    return Promise.reject();
+  }
 };
 
-export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id) => (dispatch) => {
-  console.log(id);
-  return AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id).then(
-    (response) => {
-      console.log("in edit action");
-      console.log(response.message);
-      if (!admin_id) {
+export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id) => async (dispatch) => {
+  try {
+    console.log(id);
+    const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id);
+    console.log("in edit action");
+    console.log(response.message);
+    if (!admin_id) {
       dispatch({
         type: EDIT_SUCCESS,
         payload: { user: response.result },
       });
-      } else {
-        dispatch({
+    } else {
+      dispatch({
         type: EDIT_SUCCESS_ADMIN,
         payload: { admin_id: admin_id, user: response.result, message: response.message },
       });
-      }
-      dispatch({
-        type: SET_MESSAGE,
-        payload: response.message,
-      });
-      return Promise.resolve();
-    },
-    (error) => {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString();
-      dispatch({
-        type: EDIT_FAIL,
-      });
-      dispatch({
-        type: SET_MESSAGE,
-        payload: message,
-      });
-      return Promise.reject();
     }
-  );
+    dispatch({
+      type: SET_MESSAGE,
+      payload: response.message,
+    });
+    return Promise.resolve();
+  } catch (error) {
+    const message = getErrorMessage(error);
+    dispatch({
+      type: EDIT_FAIL,
+    });
+    dispatch({
+      type: SET_MESSAGE,
+      payload: message,
+    });
+    return Promise.reject();
+  }
 };
 
-export const login = (username, password) => (dispatch) => {
-  return AuthService.login(username, password).then(
-    (data) => {
-      dispatch({
-        type: LOGIN_SUCCESS,
-        payload: { user: data.result },
-      });
-      return Promise.resolve();
-    },
-    (error) => {
-      console.log("logging error in auth actions");
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString();
-      console.log(message);
-      dispatch({
-        type: LOGIN_FAIL,
-      });
-      dispatch({
-        type: SET_MESSAGE,
-        payload: message,
-      });
-      console.log("message set");
-      return Promise.reject();
-    }
-  );
+export const login = (username, password) => async (dispatch) => {
+  try {
+    const data = await AuthService.login(username, password);
+    dispatch({
+      type: LOGIN_SUCCESS,
+      payload: { user: data.result },
+    });
+    return Promise.resolve();
+  } catch (error) {
+    console.log("logging error in auth actions");
+    const message = getErrorMessage(error);
+    console.log(message);
+    dispatch({
+      type: LOGIN_FAIL,
+    });
+    dispatch({
+      type: SET_MESSAGE,
+      payload: message,
+    });
+    console.log("message set");
+    return Promise.reject();
+  }
 };
 
-export const logout = () => (dispatch) => {
-  AuthService.logout();
+export const logout = () => async (dispatch) => {
+  await AuthService.logout();
   dispatch({
     type: LOGOUT,
   });
 };
 
-export const deleteUser = (username, admin_id) => (dispatch) => {
-  AuthService.deleteUser(username, admin_id).then(
-    (response) => {
-      if (admin_id) {
-        console.log("admin attempting delete user from state")
-          dispatch({
-            type: DELETE_USER_ADMIN,
-          });
-          dispatch({
-            type: SET_MESSAGE,
-            payload: "User successfully deleted",
-          })
-          return Promise.resolve();
-        } else {
-          console.log("regular person attempting delete user from state")
-          dispatch({
-            type: DELETE_USER,
-          });
-          return Promise.resolve();
-        }
-    },
-    (err) => {
-      return Promise.reject();
+export const deleteUser = (username, admin_id) => async (dispatch) => {
+  try {
+    const response = await AuthService.deleteUser(username, admin_id);
+    if (admin_id) {
+      console.log("admin attempting delete user from state");
+      dispatch({
+        type: DELETE_USER_ADMIN,
+      });
+      dispatch({
+        type: SET_MESSAGE,
+        payload: "User successfully deleted",
+      });
+      return Promise.resolve();
+    } else {
+      console.log("regular person attempting delete user from state");
+      dispatch({
+        type: DELETE_USER,
+      });
+      return Promise.resolve();
     }
-  ).then(console.log("Issue with user deletion"));
+  } catch (err) {
+    console.log("Issue with user deletion");
+    return Promise.reject();
+  }
 };
 
 export const removeUsers = () => (dispatch) => {

@@ -1,20 +1,13 @@
 import PiecesService from "../services/pieces.service";
+import { getErrorMessage } from "../helpers/error-handler";
 
-export const getAllPieces = () => {
-  return PiecesService.getPieces().then(
-    (response) => {
-      console.log("pieces action");
-
-      return response.data;
-    },
-    (error) => {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString();
-      return Promise.reject();
-    }
-  );
+export const getAllPieces = async () => {
+  try {
+    const response = await PiecesService.getPieces();
+    console.log("pieces action");
+    return response.data;
+  } catch (error) {
+    const message = getErrorMessage(error);
+    return Promise.reject();
+  }
 };

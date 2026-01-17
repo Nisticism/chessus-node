@@ -4,10 +4,12 @@ import authHeader from "./auth-header";
 // const API_URL = "http://localhost:3001/";
 const API_URL = require("../global/global.js");
 
-const getNews = () => {
+const getNews = async () => {
   console.log("in news service");
-  return axios.get(API_URL + "news", { 
-    headers: authHeader() });
+  const response = await axios.get(API_URL + "news", { 
+    headers: authHeader() 
+  });
+  return response;
 };
 
 const NewsService = {
