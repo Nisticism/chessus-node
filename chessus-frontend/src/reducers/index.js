@@ -5,6 +5,7 @@ import chessReducer from "./chessReducer";
 import users from "./users";
 import forums from "./forums";
 import news from "./news";
+import pieces from "./pieces";
 export default combineReducers({
   authReducer,
   message,
@@ -12,4 +13,5 @@ export default combineReducers({
   users,
   forums,
   news,
+  pieces,
 });

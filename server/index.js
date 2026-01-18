@@ -3,6 +3,7 @@ require("dotenv").config();
 //  Constants
 
 const express = require("express");
+const path = require("path");
 
 // const mysql = require("mysql");
 
@@ -42,6 +43,9 @@ const db = require("../configs/db");
 const dbHelpers = require("./db-helpers");
 
 app.use(express.json());
+
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // db.connect(err => {
 //   if (err) {
@@ -304,6 +308,28 @@ app.post("/api/delete", async (req, res) => {
 
 app.post('/api/logout', (req, res) => {
   res.status(200).json({ message: "Logged out successfully" });
+});
+
+app.post("/api/preferences/colors", async (req, res) => {
+  try {
+    const { user_id, light_square_color, dark_square_color } = req.body;
+    
+    if (!user_id) {
+      return res.status(400).send({ message: "User ID is required" });
+    }
+    
+    const sql = "UPDATE users SET light_square_color = ?, dark_square_color = ? WHERE id = ?";
+    await db_pool.query(sql, [light_square_color, dark_square_color, user_id]);
+    
+    res.json({ 
+      message: "Preferences saved successfully",
+      light_square_color,
+      dark_square_color
+    });
+  } catch (err) {
+    console.error("Error in /api/preferences/colors:", err);
+    res.status(500).send({ message: "Failed to save preferences", err: err.message });
+  }
 });
 
 const posts = [{
@@ -619,6 +645,299 @@ app.get("/api/news", async (req, res) => {
 app.post('/api/token', (req, res) => {
   const refreshToken = req.body.token
 })
+
+// ----------------------- Games/Game Types ------------------------------
+
+app.post("/api/games/create", authenticateToken, async (req, res) => {
+  try {
+    const gameData = req.body;
+    const creator_id = gameData.creator_id;
+
+    // Validate required fields
+    if (!gameData.game_name || gameData.game_name.length < 3) {
+      return res.status(400).send({ message: "Game name must be at least 3 characters" });
+    }
+
+    if (!gameData.descript || gameData.descript.length < 50) {
+      return res.status(400).send({ message: "Description must be at least 50 characters" });
+    }
+
+    if (!gameData.rules || gameData.rules.length === 0) {
+      return res.status(400).send({ message: "Rules are required" });
+    }
+
+    // Build the SQL query
+    const sql = `
+      INSERT INTO game_types (
+        creator_id, game_name, descript, rules,
+        mate_condition, mate_piece, capture_condition, capture_piece,
+        value_condition, value_piece, value_max, value_title,
+        squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
+        actions_per_turn, board_width, board_height, player_count,
+        starting_piece_count, pieces_string, range_squares_string,
+        promotion_squares_string, special_squares_string,
+        randomized_starting_positions, other_game_data, optional_condition
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const values = [
+      creator_id,
+      gameData.game_name,
+      gameData.descript,
+      gameData.rules,
+      gameData.mate_condition || false,
+      gameData.mate_piece || null,
+      gameData.capture_condition || false,
+      gameData.capture_piece || null,
+      gameData.value_condition || false,
+      gameData.value_piece || null,
+      gameData.value_max || null,
+      gameData.value_title || null,
+      gameData.squares_condition || false,
+      gameData.squares_count || null,
+      gameData.hill_condition || false,
+      gameData.hill_x || null,
+      gameData.hill_y || null,
+      gameData.hill_turns || null,
+      gameData.actions_per_turn || 1,
+      gameData.board_width || 8,
+      gameData.board_height || 8,
+      gameData.player_count || 2,
+      gameData.starting_piece_count || 0,
+      gameData.pieces_string || "[]",
+      gameData.range_squares_string || null,
+      gameData.promotion_squares_string || null,
+      gameData.special_squares_string || null,
+      gameData.randomized_starting_positions || null,
+      gameData.other_game_data || null,
+      gameData.optional_condition || null
+    ];
+
+    const [result] = await db_pool.query(sql, values);
+
+    res.status(201).send({
+      message: "Game created successfully!",
+      result: {
+        id: result.insertId,
+        game_name: gameData.game_name
+      }
+    });
+
+  } catch (err) {
+    console.error("Error in /api/games/create:", err);
+    res.status(500).send({ message: "Failed to create game", err: err.message });
+  }
+});
+
+// ----------------------- Pieces Create ------------------------------
+
+const multer = require('multer');
+
+// Configure multer for piece image uploads
+const pieceStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '../uploads/pieces');
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'piece-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const pieceUpload = multer({ 
+  storage: pieceStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = /jpeg|jpg|png|gif/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'));
+    }
+  }
+});
+
+app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req, res) => {
+  try {
+    const pieceData = req.body;
+    const imageFiles = req.files;
+
+    if (!imageFiles || imageFiles.length === 0) {
+      return res.status(400).send({ message: "At least one piece image is required" });
+    }
+
+    const imagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
+    const imagesJSON = JSON.stringify(imagePaths);
+
+    // Insert into pieces table (basic info only)
+    const pieceSql = `
+      INSERT INTO pieces (
+        piece_name, image_location, piece_width, piece_height, creator_id, piece_description
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    const pieceValues = [
+      pieceData.piece_name,
+      imagesJSON,
+      parseInt(pieceData.piece_width) || 1,
+      parseInt(pieceData.piece_height) || 1,
+      parseInt(pieceData.creator_id) || null,
+      pieceData.piece_description || null
+    ];
+
+    const result = await db_pool.query(pieceSql, pieceValues);
+    const pieceId = result.insertId;
+
+    // Insert into piece_movement table
+    const movementSql = `
+      INSERT INTO piece_movement (
+        piece_id,
+        directional_movement_style,
+        repeating_movement,
+        max_directional_movement_iterations,
+        min_directional_movement_iterations,
+        up_left_movement, up_movement, up_right_movement,
+        right_movement, down_right_movement, down_movement, down_left_movement, left_movement,
+        ratio_movement_style, ratio_one_movement, ratio_two_movement,
+        repeating_ratio,
+        max_ratio_iterations,
+        min_ratio_iterations,
+        step_by_step_movement_style, step_by_step_movement_value,
+        can_hop_over_allies, can_hop_over_enemies,
+        min_turns_per_move,
+        max_turns_per_move,
+        special_scenario_moves
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const movementValues = [
+      pieceId,
+      pieceData.directional_movement_style === 'true',
+      pieceData.repeating_movement === 'true',
+      parseInt(pieceData.max_directional_movement_iterations) || null,
+      parseInt(pieceData.min_directional_movement_iterations) || null,
+      parseInt(pieceData.up_left_movement) || 0,
+      parseInt(pieceData.up_movement) || 0,
+      parseInt(pieceData.up_right_movement) || 0,
+      parseInt(pieceData.right_movement) || 0,
+      parseInt(pieceData.down_right_movement) || 0,
+      parseInt(pieceData.down_movement) || 0,
+      parseInt(pieceData.down_left_movement) || 0,
+      parseInt(pieceData.left_movement) || 0,
+      pieceData.ratio_movement_style === 'true',
+      parseInt(pieceData.ratio_one_movement) || null,
+      parseInt(pieceData.ratio_two_movement) || null,
+      pieceData.repeating_ratio === 'true',
+      parseInt(pieceData.max_ratio_iterations) || null,
+      parseInt(pieceData.min_ratio_iterations) || null,
+      pieceData.step_by_step_movement_style === 'true',
+      parseInt(pieceData.step_by_step_movement_value) || null,
+      pieceData.can_hop_over_allies === 'true',
+      pieceData.can_hop_over_enemies === 'true',
+      parseInt(pieceData.min_turns_per_move) || null,
+      parseInt(pieceData.max_turns_per_move) || null,
+      pieceData.special_scenario_movement || null
+    ];
+
+    await db_pool.query(movementSql, movementValues);
+
+    // Insert into piece_capture table
+    const captureSql = `
+      INSERT INTO piece_capture (
+        piece_id,
+        can_capture_enemy_via_range,
+        can_capture_ally_via_range,
+        can_capture_enemy_on_move,
+        can_capture_ally_on_range,
+        can_attack_on_iteration,
+        up_left_capture, up_capture, up_right_capture,
+        right_capture, down_right_capture, down_capture, down_left_capture, left_capture,
+        ratio_one_capture, ratio_two_capture, step_by_step_capture,
+        up_left_attack_range, up_attack_range, up_right_attack_range,
+        right_attack_range, down_right_attack_range, down_attack_range, down_left_attack_range, left_attack_range,
+        repeating_directional_ranged_attack,
+        max_directional_ranged_attack_iterations,
+        min_directional_ranged_attack_iterations,
+        ratio_one_attack_range, ratio_two_attack_range,
+        repeating_ratio_ranged_attack,
+        max_ratio_ranged_attack_iterations,
+        min_ratio_ranged_attack_iterations,
+        step_by_step_attack_style,
+        step_by_step_attack_value,
+        max_piece_captures_per_move,
+        max_piece_captures_per_ranged_attack,
+        special_scenario_captures
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const captureValues = [
+      pieceId,
+      pieceData.can_capture_enemy_via_range === 'true',
+      pieceData.can_capture_ally_via_range === 'true',
+      pieceData.can_capture_enemy_on_move === 'true',
+      pieceData.can_capture_ally_on_range === 'true',
+      pieceData.can_attack_on_iteration === 'true',
+      parseInt(pieceData.up_left_capture) || 0,
+      parseInt(pieceData.up_capture) || 0,
+      parseInt(pieceData.up_right_capture) || 0,
+      parseInt(pieceData.right_capture) || 0,
+      parseInt(pieceData.down_right_capture) || 0,
+      parseInt(pieceData.down_capture) || 0,
+      parseInt(pieceData.down_left_capture) || 0,
+      parseInt(pieceData.left_capture) || 0,
+      parseInt(pieceData.ratio_one_capture) || null,
+      parseInt(pieceData.ratio_two_capture) || null,
+      parseInt(pieceData.step_by_step_capture) || null,
+      parseInt(pieceData.up_left_attack_range) || 0,
+      parseInt(pieceData.up_attack_range) || 0,
+      parseInt(pieceData.up_right_attack_range) || 0,
+      parseInt(pieceData.right_attack_range) || 0,
+      parseInt(pieceData.down_right_attack_range) || 0,
+      parseInt(pieceData.down_attack_range) || 0,
+      parseInt(pieceData.down_left_attack_range) || 0,
+      parseInt(pieceData.left_attack_range) || 0,
+      pieceData.repeating_directional_ranged_attack === 'true',
+      parseInt(pieceData.max_directional_ranged_attack_iterations) || null,
+      parseInt(pieceData.min_directional_ranged_attack_iterations) || null,
+      parseInt(pieceData.ratio_one_attack_range) || null,
+      parseInt(pieceData.ratio_two_attack_range) || null,
+      pieceData.repeating_ratio_ranged_attack === 'true',
+      parseInt(pieceData.max_ratio_ranged_attack_iterations) || null,
+      parseInt(pieceData.min_ratio_ranged_attack_iterations) || null,
+      pieceData.step_by_step_attack_style === 'true',
+      parseInt(pieceData.step_by_step_attack_value) || null,
+      parseInt(pieceData.max_captures_per_move) || null,
+      parseInt(pieceData.max_captures_via_ranged_attack) || null,
+      pieceData.special_scenario_capture || null
+    ];
+
+    await db_pool.query(captureSql, captureValues);
+
+    res.status(201).send({
+      message: "Piece created successfully!",
+      result: {
+        id: pieceId,
+        piece_name: pieceData.piece_name,
+        piece_images: imagePaths
+      }
+    });
+
+  } catch (err) {
+    console.error("Error in /api/pieces/create:", err);
+    res.status(500).send({ message: "Failed to create piece", err: err.message });
+  }
+});
+
+// Serve uploaded images
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ----------------------- Middleware ------------------------------
 

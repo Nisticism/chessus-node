@@ -7,20 +7,33 @@
 }
 
 .game-board {
-  padding: 15px;
-  margin: 20px 15px;
-  width: fit-content;
-  height: fit-content;
-  background: var(--board-bg);
-  // background: rgb(109, 138, 190);
-  border: 1px solid var(--board-border);
-  border-radius: 5px;
+  margin: 20px auto;
+  width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
+.board-grid {
+  display: grid;
+  gap: 0;
+  width: 90%;
+  max-width: 800px;
+  aspect-ratio: 1;
+  min-width: 280px;
+  margin: 0 auto;
+  border: 1px solid var(--board-border, #333);
+  border-radius: 5px;
+  padding: 15px;
+  background: var(--board-bg, transparent);
+  box-sizing: border-box;
+}
+
 .light-square {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1;
+  box-sizing: border-box;
   // background: rgb(202, 213, 232);
 }
 
@@ -31,6 +44,10 @@
 }
 
 .dark-square {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1;
+  box-sizing: border-box;
   // background: #08234d;
 }
 
@@ -38,4 +55,33 @@
   // background: #123a7a;
   opacity: 50%;
   border: 2px solid var(--square-light-border);
+}
+
+// Mobile devices
+@media (max-width: 768px) {
+  .board-grid {
+    width: 95%;
+    max-width: 100%;
+    min-width: 250px;
+  }
+  
+  .game-board {
+    padding: 10px;
+  }
+}
+
+// Tablet landscape / smaller desktops
+@media (min-width: 769px) and (max-width: 1024px) {
+  .board-grid {
+    width: 90%;
+    max-width: 800px;
+  }
+}
+
+// Large screens
+@media (min-width: 1400px) {
+  .board-grid {
+    width: 90%;
+    max-width: 800px;
+  }
 }

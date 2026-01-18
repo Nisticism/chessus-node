@@ -66,3 +66,78 @@
   right: 20px;
   z-index: 1000; /* Ensure it's on top of other content */
 }
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+// Board Preview Section
+.board-preview-section {
+  margin: 30px auto;
+  max-width: 600px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+
+.board-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+
+  h3 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--light-gray, #e0e0e0);
+    margin: 0;
+  }
+}
+
+.preferences-link {
+  color: #4a90e2;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 600;
+  transition: color 0.3s;
+
+  &:hover {
+    color: #63b3ed;
+    text-decoration: underline;
+  }
+}
+
+.mini-board-preview {
+  display: inline-block;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  margin: 0 auto;
+}
+
+.mini-board-row {
+  display: flex;
+}
+
+.mini-board-square {
+  width: 50px;
+  height: 50px;
+  transition: transform 0.2s;
+
+  &:hover {
+    transform: scale(1.05);
+  }
+}
+
+@media (max-width: 768px) {
+  .mini-board-square {
+    width: 40px;
+    height: 40px;
+  }
+}

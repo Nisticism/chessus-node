@@ -14,6 +14,7 @@ const EditForum = () => {
   const [title, setTitle] = useState(null);
   const [content, setContent] = useState(null);
   const [date, setDate] = useState("");
+  const [loading, setLoading] = useState(true);
   const [successful, setSuccessful] = useState(false);
   const [messageDisplay, setMessageDisplay] = useState(false);
   const { message } = useSelector(state => state.message);
@@ -27,7 +28,8 @@ const EditForum = () => {
   useEffect(() => {
     if (!firstRender) {
       console.log(forumId)
-      dispatch(getForum(forumId));
+      setLoading(true);
+      dispatch(getForum(forumId)).finally(() => setLoading(false));
       setFirstRender(true);
     }
   }, [firstRender]);
@@ -93,6 +95,11 @@ const EditForum = () => {
 
   return (
     <div className={styles["container"]}>
+      {loading ? (
+        <div className={styles["loading-container"]}>
+          <p>Loading forum...</p>
+        </div>
+      ) : (
       <div className={styles["wrapper"]}>
         {/* <img
           src="//ssl.gstatic.com/accounts/ui/avatar_2x.png"
@@ -167,6 +174,7 @@ const EditForum = () => {
           }
         </div>
       </div>
+      )}
     </div>
   );
 };

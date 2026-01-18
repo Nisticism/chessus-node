@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS pieces (
     min_turns_per_move BOOLEAN,
     piece_width INT,
     piece_height INT,
+    piece_images TEXT,
     --  Foreign keys
     FOREIGN KEY game_type_id
       REFERENCES game_types(id),
@@ -180,6 +181,59 @@ CREATE TABLE articles (
       REFERENCES users(id),
     FOREIGN KEY game_type_id
       REFERENCES game_types(id) DEFAULT NULL
+);
+
+CREATE TABLE IF NOT EXISTS piece_capture (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    piece_id INT UNSIGNED NOT NULL,
+    -- Capture type flags
+    can_capture_enemy_via_range TINYINT(1) DEFAULT NULL,
+    can_capture_ally_via_range TINYINT(1) DEFAULT NULL,
+    can_capture_enemy_on_move TINYINT(1) DEFAULT NULL,
+    can_capture_ally_on_range TINYINT(1) DEFAULT NULL,
+    can_attack_on_iteration TINYINT(1) DEFAULT NULL,
+    -- Directional capture on move
+    up_left_capture INT DEFAULT 0,
+    up_capture INT DEFAULT 0,
+    up_right_capture INT DEFAULT 0,
+    right_capture INT DEFAULT 0,
+    down_right_capture INT DEFAULT 0,
+    down_capture INT DEFAULT 0,
+    down_left_capture INT DEFAULT 0,
+    left_capture INT DEFAULT 0,
+    -- Ratio capture (L-shape)
+    ratio_one_capture INT DEFAULT NULL,
+    ratio_two_capture INT DEFAULT NULL,
+    -- Step by step capture
+    step_by_step_capture INT DEFAULT NULL,
+    -- Directional ranged attack
+    up_left_attack_range INT DEFAULT NULL,
+    up_attack_range INT DEFAULT NULL,
+    up_right_attack_range INT DEFAULT NULL,
+    right_attack_range INT DEFAULT NULL,
+    down_right_attack_range INT DEFAULT NULL,
+    down_attack_range INT DEFAULT NULL,
+    down_left_attack_range INT DEFAULT NULL,
+    left_attack_range INT DEFAULT NULL,
+    repeating_directional_ranged_attack TINYINT(1) DEFAULT NULL,
+    max_directional_ranged_attack_iterations INT DEFAULT NULL,
+    min_directional_ranged_attack_iterations INT DEFAULT NULL,
+    -- Ratio ranged attack
+    ratio_one_attack_range INT DEFAULT NULL,
+    ratio_two_attack_range INT DEFAULT NULL,
+    repeating_ratio_ranged_attack TINYINT(1) DEFAULT NULL,
+    max_ratio_ranged_attack_iterations INT DEFAULT NULL,
+    min_ratio_ranged_attack_iterations INT DEFAULT NULL,
+    -- Step by step attack
+    step_by_step_attack_style TINYINT(1) DEFAULT NULL,
+    step_by_step_attack_value TINYINT(1) DEFAULT NULL,
+    -- Max captures
+    max_piece_captures_per_move INT DEFAULT NULL,
+    max_piece_captures_per_ranged_attack INT DEFAULT NULL,
+    -- Special scenarios
+    special_scenario_captures VARCHAR(1000) DEFAULT NULL,
+    FOREIGN KEY (piece_id)
+      REFERENCES pieces(id) ON DELETE CASCADE
 );
 
 CREATE TABLE comments IF NOT EXISTS (

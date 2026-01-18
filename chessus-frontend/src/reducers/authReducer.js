@@ -12,6 +12,7 @@ import {
   GET_USER_SUCCESS,
   GET_USER_FAILURE,
   RESET_EDIT,
+  UPDATE_USER_PREFERENCES,
 } from "../actions/types";
 
 const user = JSON.parse(localStorage.getItem("user"));
@@ -115,6 +116,11 @@ const authReducer = (state = initialState, action) => {
     case DELETE_USER_ADMIN:
       return {
         ...state,
+      }
+    case UPDATE_USER_PREFERENCES:
+      return {
+        ...state,
+        user: payload.user,
       }
     default:
       return state;

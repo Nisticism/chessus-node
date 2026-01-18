@@ -40,13 +40,13 @@ const Menu = () => (
         <Link as="div" className="inner-menu-item upper-right-corner" to="/create/game">
           Design a game
         </Link>
-        <Link as="div" className="inner-menu-item" to="/home">
+        <Link as="div" className="inner-menu-item" to="/create/piece">
           Design a piece
         </Link>
         <Link as="div" className="inner-menu-item" to="/games">
           View games
         </Link>
-        <Link as="div" className="inner-menu-item lower-corner" to="/pieces">
+        <Link as="div" className="inner-menu-item lower-corner" to="/community/pieces">
           View pieces
         </Link>
       </div>
@@ -134,7 +134,7 @@ const Navbar = () => {
               </div>
               <div className="nav-item">
                 <Link to="/login" className="nav-item-inner" onClick={logOut}>
-                  LogOut
+                  Log Out
                 </Link>
               </div>
             </div>

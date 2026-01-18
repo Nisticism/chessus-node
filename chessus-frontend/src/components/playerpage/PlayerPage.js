@@ -14,7 +14,7 @@ const PlayerPage = (props) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
 
   
-  // const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   // const [ messageDisplay, setMessageDisplay ] = useState(false);
   const dispatch = useDispatch();
   const [firstRender, setFirstRender] = useState(false);
@@ -35,10 +35,12 @@ const PlayerPage = (props) => {
 
   useEffect(() => {
     if (!firstRender) {
+      setLoading(true);
       if (currentUser.username === username) {
         console.log(currentUser);
         console.log("setting as real user");
         setRealUser(true);
+        setLoading(false);
         // setUserInfo(currentUser);
       } else {
         checkIfRealUser(username);
@@ -70,7 +72,7 @@ const PlayerPage = (props) => {
   }
 
   const getPlayerPage = () => {
-    dispatch(getUser(username));
+    dispatch(getUser(username)).finally(() => setLoading(false));
   }
 
   const handleDelete = async(e) => {
@@ -99,6 +101,11 @@ const PlayerPage = (props) => {
     }
   }
 
+  const handlePreferences = (e) => {
+    e.preventDefault();
+    navigate("/preferences");
+  }
+
   const handleLogInfo = (e) => {
     e.preventDefault();
     console.log(playerPageUser);
@@ -115,6 +122,7 @@ const PlayerPage = (props) => {
     .catch(
       err => {
         setRealUser(false);
+        setLoading(false);
         console.log("setting real user as false");
         console.log(err);
     })
@@ -129,6 +137,12 @@ const PlayerPage = (props) => {
         </div>
       </div>
       )}
+      {loading ? (
+        <div className={styles["loading-container"]}>
+          <p>Loading profile...</p>
+        </div>
+      ) : (
+          <>
           {realUser ? 
           <div className={styles["player-page-table-container"]}>
             <div className={styles["player-info"]}>{username}</div>
@@ -193,9 +207,16 @@ const PlayerPage = (props) => {
               <div className={styles["profile-button"]}>
                 <StandardButton buttonText={"Edit Account"} onClick={handleEdit} />
               </div>
+              {currentUser.username === username && (
+                <div className={styles["profile-button"]}>
+                  <StandardButton buttonText={"Preferences"} onClick={handlePreferences} />
+                </div>
+              )}
             </div>
             : "" }
             {}
+          </>
+      )}
     </div>
   );
 };

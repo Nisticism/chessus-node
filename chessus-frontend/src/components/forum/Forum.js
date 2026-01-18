@@ -14,7 +14,7 @@ const Forum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
 
   
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [ messageDisplay, setMessageDisplay ] = useState(false);
   const dispatch = useDispatch();
   const [firstRender, setFirstRender] = useState(false);
@@ -30,7 +30,8 @@ const Forum = () => {
   useEffect(() => {
     if (!firstRender) {
       console.log(forumId)
-      dispatch(getForum(forumId));
+      setLoading(true);
+      dispatch(getForum(forumId)).finally(() => setLoading(false));
       setFirstRender(true);
     }
   }, [firstRender]);
@@ -136,6 +137,12 @@ const Forum = () => {
 
   return (
     <div className="container">
+      {loading ? (
+        <div className={styles["loading-container"]}>
+          <p>Loading forum...</p>
+        </div>
+      ) : (
+        <>
       { currentForum ? 
           <div className={styles["forum-container"]}>
             
@@ -222,6 +229,8 @@ const Forum = () => {
               </strong>
            </div>
 }
+        </>
+      )}
       {/* {currentUser.username === username ?
             <div className={styles["profile-buttons"]}>
               <div className={styles["profile-button"]}>

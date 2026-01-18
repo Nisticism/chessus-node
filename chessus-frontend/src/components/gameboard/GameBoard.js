@@ -1,47 +1,9 @@
 import React from "react";
-import { useState, useEffect } from "react";
 import { Navigate } from 'react-router-dom';
 import { useSelector } from "react-redux";
 import styles from "./gameboard.module.scss";
 
 const GameBoard = (props) => {
-
-  const [lightSquareColor, setLightSquareColor] = useState(props.lightSquareColor);
-  const [darkSquareColor, setDarkSquareColor] = useState(props.darkSquareColor);
-
-  function getWindowDimensions() {
-    const { innerWidth: windowWidth, innerHeight: windowHeight } = window;
-    return {
-      windowWidth,
-      windowHeight
-    };
-  }
-  
-  function useWindowDimensions() {
-    const [windowDimensions, setWindowDimensions] = useState(getWindowDimensions());
-  
-    useEffect(() => {
-      function handleResize() {
-        setWindowDimensions(getWindowDimensions());
-      }
-  
-      window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
-    }, []);
-  
-    return windowDimensions;
-  }
-
-  // function isScrollBarPresent() {
-  //   useEffect(() => {
-  //     if (document.body.clientHeight > windowHeight) {
-
-  //     }
-  //   })
-  // }
-
-  const { windowHeight, windowWidth } = useWindowDimensions();
-
   const { user: currentUser } = useSelector((state) => state.authReducer);
   if (!currentUser) {
     alert("Must be logged in");
@@ -53,7 +15,6 @@ const GameBoard = (props) => {
   const handleBoardClick = (e) => {
     e.preventDefault();
     console.log("light square clicked");
-    setLightSquareColor("#000000");
   }
 
   function createGrid() {
@@ -72,66 +33,13 @@ const GameBoard = (props) => {
     }
   }
 
-  const getWidth = (squares, windowWidth) => {
-    if (squares * windowWidth > 600) {
-      return 600;
-    } else {
-      return squares * windowWidth;
-    }
-  }
-
-  const getBoardSize = () => {
-    let length = windowWidth * 0.6;
-    if (windowWidth <= 912) {
-      length = windowWidth * 0.85;
-    }
-    if (length + 250 > windowHeight) {
-      length = windowHeight - 250;
-    }
-    if (length < 350) {
-      return 350;
-    } else {
-      return length;
-    }
-  }
-  
-  const getSquareLength = (horizontal, vertical, length) => {
-    if (horizontal > vertical) {
-      return (length/horizontal)
-    } else {
-      return (length/vertical)
-    }
-  }
-
-  // Max squares is 60 for both dimensions:
-
+  // Clamp values to valid range
   const getHorizontal = (horizontal) => {
-    if (horizontal > 96) {
-      return 96;
-    } else if (horizontal < 1) {
-      return 1;
-    } else {
-      return horizontal;
-    }
+    return Math.max(1, Math.min(96, horizontal || 8));
   }
 
   const getVertical = (vertical) => {
-    if (vertical > 96) {
-      return 96;
-    } else if (vertical < 1) {
-      return 1;
-    } else {
-      return vertical;
-    }
-  }
-
-  const boardStyle = {
-    display: "grid",
-    gridTemplateRows: `repeat(${getHorizontal(props.vertical)}, ${getSquareLength(props.horizontal, props.vertical, getBoardSize())}px)`,
-    gridTemplateColumns: `repeat(${getVertical(props.horizontal)}, ${getSquareLength(props.horizontal, props.vertical, getBoardSize())}px)`,
-    width: "max-content",
-    height: "max-content",
-    boxShadow: "0px 0px 8px 8px rgb(109, 138, 190)",
+    return Math.max(1, Math.min(96, vertical || 8));
   }
 
   createGrid();
@@ -139,9 +47,14 @@ const GameBoard = (props) => {
   return (
     <div className={styles["game-board-wrapper"]}>
       <div className={styles["game-board"]}>
-        <div style= { boardStyle } >
+        <div 
+          className={styles["board-grid"]}
+          style={{
+            gridTemplateRows: `repeat(${getVertical(props.vertical)}, 1fr)`,
+            gridTemplateColumns: `repeat(${getHorizontal(props.horizontal)}, 1fr)`
+          }}
+        >
           { board }
-          
         </div>
       </div>
       <div>

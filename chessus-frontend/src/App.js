@@ -8,8 +8,10 @@ import Register from "./components/register/Register";
 import PlayerPage from "./components/playerpage/PlayerPage";
 import Pieces from "./components/pieces/Pieces";
 import GameCreate from "./containers/gamecreate/GameCreate";
+import PieceCreate from "./containers/piececreate/PieceCreate";
 import CreateHub from "./containers/createhub/CreateHub";
 import PlayerList from "./components/playerlist/PlayerList";
+import PieceList from "./components/piecelist/PieceList";
 import Forums from "./containers/forums/Forums";
 import ChessBoard from "./components/chess/ChessBoard";
 import EditAccount from "./components/editaccount/EditAccount";
@@ -23,6 +25,7 @@ import EditForum from "./components/forum/EditForum";
 import News from "./containers/news/News";
 
 import DeletedAccount from "./components/deletedaccount/DeletedAccount";
+import Preferences from "./components/preferences/Preferences";
 import NotFound from './components/notfound/NotFound';
 
 import { clearMessage, resetEdit } from "./actions/general";
@@ -54,9 +57,11 @@ function App() {
             <Route exact path="/register" element={<Register />} />
             <Route exact path="/profile" element={<PlayerPage />} />
             <Route exact path="/create/game" element={<GameCreate />} />
+            <Route exact path="/create/piece" element={<PieceCreate />} />
             <Route exact path="/create" element={<CreateHub />} />
             <Route exact path="/community" element={<Community />} />
             <Route exact path="/community/players" element={<PlayerList />} />
+            <Route exact path="/community/pieces" element={<PieceList />} />
             <Route exact path="/media" element={<Media />} />
             <Route exact path="/media/forums" element={<Forums />} />
             <Route exact path="/create" element={<CreateHub />} />
@@ -72,6 +77,7 @@ function App() {
             <Route exact path="/forums/:forumId" element={<Forum />} />
             <Route exact path="/forums/:forumId/edit" element={<EditForum />} />
             <Route exact path="/news" element={<News />} />
+            <Route exact path="/preferences" element={<Preferences />} />
             <Route path="/*" element={<NotFound />} />
           </Routes>
         </div>

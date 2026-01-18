@@ -63,3 +63,6 @@ null,
 null,
 null,
 null);
+-- Add color preference columns to users table
+ALTER TABLE users ADD COLUMN light_square_color VARCHAR(20) DEFAULT '#cad5e8' AFTER bio;
+ALTER TABLE users ADD COLUMN dark_square_color VARCHAR(20) DEFAULT '#08234d' AFTER light_square_color;
