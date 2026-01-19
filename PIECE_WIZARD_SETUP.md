@@ -126,18 +126,18 @@ When viewing the board preview:
 ## File Locations
 
 ### Frontend Components:
-- `chessus-frontend/src/components/piecewizard/PieceWizard.js`
-- `chessus-frontend/src/components/piecewizard/PieceStep1BasicInfo.js`
-- `chessus-frontend/src/components/piecewizard/PieceStep2Movement.js`
-- `chessus-frontend/src/components/piecewizard/PieceStep3Attack.js`
-- `chessus-frontend/src/components/piecewizard/PieceStep4Special.js`
-- `chessus-frontend/src/components/piecewizard/PieceBoardPreview.js`
-- `chessus-frontend/src/components/piecewizard/piecewizard.module.scss`
+- `squarestrat-frontend/src/components/piecewizard/PieceWizard.js`
+- `squarestrat-frontend/src/components/piecewizard/PieceStep1BasicInfo.js`
+- `squarestrat-frontend/src/components/piecewizard/PieceStep2Movement.js`
+- `squarestrat-frontend/src/components/piecewizard/PieceStep3Attack.js`
+- `squarestrat-frontend/src/components/piecewizard/PieceStep4Special.js`
+- `squarestrat-frontend/src/components/piecewizard/PieceBoardPreview.js`
+- `squarestrat-frontend/src/components/piecewizard/piecewizard.module.scss`
 
 ### Frontend Services:
-- `chessus-frontend/src/actions/pieces.js`
-- `chessus-frontend/src/services/pieces.service.js`
-- `chessus-frontend/src/containers/piececreate/PieceCreate.js`
+- `squarestrat-frontend/src/actions/pieces.js`
+- `squarestrat-frontend/src/services/pieces.service.js`
+- `squarestrat-frontend/src/containers/piececreate/PieceCreate.js`
 
 ### Backend:
 - `server/index.js` (POST `/api/pieces/create` endpoint)

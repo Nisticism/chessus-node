@@ -1,6 +1,6 @@
-# Chessus Frontend
+# Squarestrat Frontend
 
-React-based frontend for the Chessus chess variant platform.
+React-based frontend for the Squarestrat chess variant platform.
 
 ## 🚀 Quick Start
 

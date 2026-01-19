@@ -1,11 +1,11 @@
 import React from "react";
-import { Navigate } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import { useSelector } from "react-redux";
 import GameWizard from "../../components/gamewizard/GameWizard";
 import styles from "./gamecreate.module.scss";
 
 const GameCreate = () => {
-
+  const { gameId } = useParams();
   const { user: currentUser } = useSelector((state) => state.authReducer);
 
   if (!currentUser) {
@@ -14,7 +14,7 @@ const GameCreate = () => {
 
   return (
     <div className={styles["outer-container"]}>
-      <GameWizard />
+      <GameWizard editGameId={gameId} />
     </div>
   );
 };

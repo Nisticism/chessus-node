@@ -118,6 +118,52 @@ const getAllPieces = async () => {
 };
 
 /**
+ * Get piece by ID with all related data
+ * @param {number} pieceId - Piece ID
+ * @returns {Promise<Object|null>} Piece object or null
+ */
+const getPieceById = async (pieceId) => {
+  const result = await query(`
+    SELECT p.*, pm.*, pc.*, u.username as creator_username, u.id as creator_user_id, gt.game_name as game_type_name
+    FROM chessusnode.pieces p
+    LEFT JOIN chessusnode.piece_movement pm ON p.id = pm.piece_id
+    LEFT JOIN chessusnode.piece_capture pc ON p.id = pc.piece_id
+    LEFT JOIN chessusnode.users u ON p.creator_id = u.id
+    LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id
+    WHERE p.id = ?
+  `, [pieceId]);
+  return result.length > 0 ? result[0] : null;
+};
+
+/**
+ * Get all games
+ * @returns {Promise<Array>} Array of games with creator information
+ */
+const getAllGames = async () => {
+  return await query(`
+    SELECT gt.*, u.username as creator_username, u.id as creator_user_id
+    FROM chessusnode.game_types gt
+    LEFT JOIN chessusnode.users u ON gt.creator_id = u.id
+    ORDER BY gt.id DESC
+  `);
+};
+
+/**
+ * Get game by ID
+ * @param {number} gameId - Game ID
+ * @returns {Promise<Object|null>} Game object or null
+ */
+const getGameById = async (gameId) => {
+  const result = await query(`
+    SELECT gt.*, u.username as creator_username, u.id as creator_user_id
+    FROM chessusnode.game_types gt
+    LEFT JOIN chessusnode.users u ON gt.creator_id = u.id
+    WHERE gt.id = ?
+  `, [gameId]);
+  return result.length > 0 ? result[0] : null;
+};
+
+/**
  * Find article by ID
  * @param {number} articleId - Article ID
  * @returns {Promise<Object|null>} Article object or null
@@ -277,6 +323,9 @@ module.exports = {
   deleteUser,
   getAllUsers,
   getAllPieces,
+  getPieceById,
+  getAllGames,
+  getGameById,
   findArticleById,
   getAllArticles,
   createForum,

@@ -385,7 +385,7 @@ const PieceBoardPreview = ({ pieceData }) => {
         // Add icon for ranged attack
         let icon = null;
         if (!isCenter && isHovering && canRangedAttack) {
-          icon = <span className={styles["ranged-icon"]}>🎯</span>;
+          icon = <span className={styles["ranged-icon"]}>💥</span>;
         }
         
         squares.push(

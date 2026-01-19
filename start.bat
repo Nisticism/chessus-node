@@ -41,9 +41,9 @@ if not exist "node_modules\" (
     call npm install
 )
 
-if not exist "chessus-frontend\node_modules\" (
+if not exist "squarestrat-frontend\node_modules\" (
     echo Installing frontend dependencies...
-    cd chessus-frontend
+    cd squarestrat-frontend
     call npm install
     cd ..
 )

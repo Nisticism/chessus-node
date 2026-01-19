@@ -8,6 +8,7 @@ import NotFound from "../notfound/NotFound";
 import axios from "axios";
 import API_URL from "../../global/global";
 import StandardButton from "../standardbutton/StardardButton";
+import BioSection from "../biosection/BioSection";
 // import { response } from "express";
 
 const required = (value) => {
@@ -85,7 +86,13 @@ const EditAccount = (props) => {
   const [firstName, setFirstName] = useState(currentUser && currentUser.first_name ? currentUser.first_name : "");
   const [lastName, setLastName] = useState(currentUser && currentUser.last_name ? currentUser.last_name : "");
   const [bio, setBio] = useState(currentUser && currentUser.bio ? currentUser.bio : "");
+  const [profilePicture, setProfilePicture] = useState(null);
+  const [profilePicturePreview, setProfilePicturePreview] = useState(currentUser && currentUser.profile_picture ? currentUser.profile_picture : null);
+  const [uploadingPicture, setUploadingPicture] = useState(false);
   const [successful, setSuccessful] = useState(false);
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const { message: message } = useSelector((state) => state.message);
   const { editSuccess: editSuccess } = useSelector((state) => state.authReducer);
   const { username: usernameNav } = useSelector((state) => state.authReducer.user);
@@ -149,9 +156,53 @@ const EditAccount = (props) => {
     setOldPassword(oldPassword);
   }
 
-  const onChangeBio = (e) => {
-    const bio = e.target.value;
-    setBio(bio);
+  const onChangeProfilePicture = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setProfilePicture(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfilePicturePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  const handleProfilePictureUpload = async () => {
+    if (!profilePicture) {
+      return;
+    }
+
+    setUploadingPicture(true);
+    const formData = new FormData();
+    formData.append('profile_picture', profilePicture);
+    formData.append('user_id', userInfo ? userInfo.id : currentUser.id);
+
+    try {
+      const response = await axios.post(API_URL + 'profile/upload-picture', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      if (response.data.success && response.data.user) {
+        // Update user in localStorage if it's the current user
+        if (!userInfo || userInfo.id === currentUser.id) {
+          const user = JSON.parse(localStorage.getItem('user'));
+          const updatedUser = { ...user, profile_picture: response.data.profile_picture };
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+        
+        setProfilePicturePreview(response.data.profile_picture);
+        alert('Profile picture uploaded successfully!');
+        setProfilePicture(null);
+      }
+    } catch (error) {
+      console.error('Error uploading profile picture:', error);
+      alert('Failed to upload profile picture');
+    } finally {
+      setUploadingPicture(false);
+    }
   }
 
   const checkIfRealUser = (username) => {
@@ -213,9 +264,13 @@ const EditAccount = (props) => {
     }
     else {
       console.log(id);
-      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id))
+      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id, oldPassword))
         .then(() => {
           console.log("user updated from the editaccount.js page")
+          // Clear password fields after successful update
+          setPassword("");
+          setOldPassword("");
+          setShowPasswordSection(false);
           //navigate("/profile/" + username);
         })
       .catch((error) => {
@@ -228,126 +283,201 @@ const EditAccount = (props) => {
   return (
     <>
       { editAuth ? 
-      <div className={styles["container"]}>
-        <div className={styles["wrapper"]}>
-          <div>
-            {currentUser.role === "Admin" ?
-            <h1 className={styles["account-info-header"]}>
-              Account Information For {userInfo && userInfo.username ? userInfo.username : ""}
-              </h1>
-              :
-            <h1 className={styles["account-info-header"]}>
-              Your Account Information
-            </h1>
-              }
-          </div>
-          {/* <img
-            src="//ssl.gstatic.com/accounts/ui/avatar_2x.png"
-            alt="profile-img"
-            className="profile-img-card"
-          /> */}
-          <form onSubmit={handleAccountUpdate} ref={form}>
-            {!successful && (
-              <div className={styles["edit-form"]}>
-                <div className="form-group">
-                  <label htmlFor="username" className={styles["field-label"]}>Username</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    name="username"
-                    value={username}
-                    onChange={onChangeUsername}
-                    validations={[required, vusername]}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="email" className={styles["field-label"]}>Email</label>
-                  <input
-                    type="email"
-                    className="form-control"
-                    name="email"
-                    value={email}
-                    onChange={onChangeEmail}
-                    validations={[required, validEmail]}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="firstName" className={styles["field-label"]}>First Name</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    name="first_name"
-                    value={firstName}
-                    onChange={onChangeFirstName}
-                    validations={[required, vFirstName]}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="lastName" className={styles["field-label"]}>Last Name</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    name="last_name"
-                    value={lastName}
-                    onChange={onChangeLastName}
-                    validations={[required, vLastName]}
-                  />
-              </div>
-                <div className={styles["bio-group"]}>
-                  <label htmlFor="Bio" className={styles["field-label-textarea"]}>Bio</label>
-                  <textarea
-                    type="text"
-                    className="form-control-textarea"
-                    name="bio"
-                    value={bio}
-                    onChange={onChangeBio}
-                    validations={[required]}
-                  />
-                </div>
-                <div className={styles["current-new-password-message-container"]}>
-
-                  <div className={styles["current-new-password-message"]}><i>Only enter your current and new password if you would like to change your password.</i></div>
-                </div>
-                <div className="form-group">
-                  <label htmlFor="password" className={styles["field-label"]}>Current Password</label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    name="password"
-                    value={oldPassword}
-                    onChange={onChangeOldPassword}
-                    validations={[required, vpassword]}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="password" className={styles["field-label"]}>New Password</label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    name="password"
-                    value={password}
-                    onChange={onChangePassword}
-                    validations={[required, vpassword]}
-                  />
-                </div>
-                <div className="form-group">
-                  <button className={styles["update-button"]}>Update Account</button>
-                </div>
-              </div>
-            )}
-            <div>
-              <StandardButton buttonType="button" buttonText={"View Profile"} onClick={handleViewProfile}/>
-            </div>
-            {message && (
-              <div className="form-group">
-                <div className={ editSuccess ? "alert alert-success" : "alert alert-danger" } role="alert">
-                  {message}
-                </div>
-              </div>
-            )}
-            <button style={{ display: "none" }} ref={checkBtn} />
-          </form>
+      <div className={styles["edit-account-container"]}>
+        <div className={styles["edit-account-header"]}>
+          {currentUser.role === "Admin" ?
+            <h1>Edit Account: {userInfo && userInfo.username ? userInfo.username : ""}</h1>
+            :
+            <h1>Edit Your Account</h1>
+          }
+          <p className={styles["subtitle"]}>Update your personal information and preferences</p>
         </div>
+
+        <form onSubmit={handleAccountUpdate} ref={form} className={styles["modern-form"]}>
+          {!successful && (
+            <>
+              <div className={styles["form-card"]}>
+                <h2 className={styles["card-title"]}>Personal Information</h2>
+                <div className={styles["form-grid"]}>
+                  <div className={styles["form-group-modern"]}>
+                    <label htmlFor="username">Username</label>
+                    <input
+                      type="text"
+                      name="username"
+                      value={username}
+                      onChange={onChangeUsername}
+                      placeholder="Enter username"
+                    />
+                  </div>
+                  <div className={styles["form-group-modern"]}>
+                    <label htmlFor="email">Email Address</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={email}
+                      onChange={onChangeEmail}
+                      placeholder="Enter email"
+                    />
+                  </div>
+                  <div className={styles["form-group-modern"]}>
+                    <label htmlFor="firstName">First Name</label>
+                    <input
+                      type="text"
+                      name="first_name"
+                      value={firstName}
+                      onChange={onChangeFirstName}
+                      placeholder="Enter first name"
+                    />
+                  </div>
+                  <div className={styles["form-group-modern"]}>
+                    <label htmlFor="lastName">Last Name</label>
+                    <input
+                      type="text"
+                      name="last_name"
+                      value={lastName}
+                      onChange={onChangeLastName}
+                      placeholder="Enter last name"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <BioSection 
+                bio={bio}
+                isEditable={true}
+                onBioChange={setBio}
+                wrapperClassName={styles["form-card"]}
+              />
+
+              <div className={styles["form-card"]}>
+                <h2 className={styles["card-title"]}>Profile Picture Upload</h2>
+                <div className={styles["picture-upload-container"]}>
+                  <div className={styles["picture-preview"]}>
+                    {profilePicturePreview ? (
+                      <img src={typeof profilePicturePreview === 'string' && profilePicturePreview.startsWith('/uploads') ? `http://localhost:3001${profilePicturePreview}` : profilePicturePreview} alt="Profile preview" />
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '3rem',
+                        color: '#ffffff'
+                      }}>
+                        {currentUser.username[0].toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={onChangeProfilePicture}
+                    className={styles["file-input"]}
+                  />
+                  {profilePicture && (
+                    <button
+                      type="button"
+                      onClick={handleProfilePictureUpload}
+                      disabled={uploadingPicture}
+                      className={styles["upload-picture-button"]}
+                    >
+                      {uploadingPicture ? 'Uploading...' : 'Upload Picture'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles["form-card"]}>
+                <h2 className={styles["card-title"]}>Security</h2>
+                {!showPasswordSection ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordSection(true)}
+                    className={styles["show-password-section-button"]}
+                  >
+                    🔒 Change Password
+                  </button>
+                ) : (
+                  <>
+                    <p className={styles["password-hint"]}>
+                      Enter your current password and choose a new password (minimum 6 characters)
+                    </p>
+                    <div className={styles["form-grid"]}>
+                      <div className={styles["form-group-modern"]}>
+                        <label htmlFor="oldPassword">Current Password</label>
+                        <div className={styles["password-input-wrapper"]}>
+                          <input
+                            type={showOldPassword ? "text" : "password"}
+                            name="oldPassword"
+                            value={oldPassword}
+                            onChange={onChangeOldPassword}
+                            placeholder="Enter current password"
+                            autoComplete="off"
+                          />
+                          <button
+                            type="button"
+                            className={styles["password-toggle"]}
+                            onClick={() => setShowOldPassword(!showOldPassword)}
+                            tabIndex="-1"
+                          >
+                            {showOldPassword ? "👁️" : "👁️‍🗨️"}
+                          </button>
+                        </div>
+                      </div>
+                      <div className={styles["form-group-modern"]}>
+                        <label htmlFor="password">New Password</label>
+                        <div className={styles["password-input-wrapper"]}>
+                          <input
+                            type={showNewPassword ? "text" : "password"}
+                            name="password"
+                            value={password}
+                            onChange={onChangePassword}
+                            placeholder="Enter new password"
+                            autoComplete="new-password"
+                          />
+                          <button
+                            type="button"
+                            className={styles["password-toggle"]}
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            tabIndex="-1"
+                          >
+                            {showNewPassword ? "👁️" : "👁️‍🗨️"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPasswordSection(false);
+                        setPassword("");
+                        setOldPassword("");
+                      }}
+                      className={styles["cancel-password-button"]}
+                    >
+                      Cancel Password Change
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className={styles["form-actions"]}>
+                <StandardButton buttonType="submit" buttonText="Update Account" />
+                <StandardButton buttonType="button" buttonText="View Profile" onClick={handleViewProfile} />
+              </div>
+            </>
+          )}
+
+          {message && (
+            <div className={styles["message-alert"]}>
+              <div className={editSuccess ? styles["alert-success"] : styles["alert-error"]}>
+                {message}
+              </div>
+            </div>
+          )}
+          <button style={{ display: "none" }} ref={checkBtn} />
+        </form>
       </div>
       : <NotFound/> }
     </>

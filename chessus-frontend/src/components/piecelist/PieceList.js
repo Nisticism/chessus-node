@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, Link } from 'react-router-dom';
+import { Navigate, Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
-import { getPieces } from "../../actions/pieces";
+import { getPieces, deletePiece } from "../../actions/pieces";
 import styles from "./piecelist.module.scss";
 
 const PieceList = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allPieces = useSelector((state) => state.pieces);
   const [firstRender, setFirstRender] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [pieceToDelete, setPieceToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!firstRender) {
@@ -25,23 +29,18 @@ const PieceList = () => {
     if (!imageLocation) return null;
     
     try {
-      // Try to parse as JSON array first
       const images = JSON.parse(imageLocation);
       if (Array.isArray(images) && images.length > 0) {
-        // If it's a JSON array, get the first image and ensure it has the full URL
         const imagePath = images[0];
         return imagePath.startsWith('http') ? imagePath : `http://localhost:3001${imagePath}`;
       }
     } catch {
-      // If JSON parsing fails, treat as a plain string
       const imagePath = imageLocation;
-      // Check if it's already a full URL or needs the base URL
       if (imagePath.startsWith('http')) {
         return imagePath;
       } else if (imagePath.startsWith('/uploads/')) {
         return `http://localhost:3001${imagePath}`;
       } else {
-        // Legacy format - assume it's in uploads/pieces/
         return `http://localhost:3001/uploads/pieces/${imagePath}`;
       }
     }
@@ -49,64 +48,199 @@ const PieceList = () => {
     return null;
   };
 
-  return (
-    <div className={styles["piece-list-container"]}>
-      <h1 className={styles["pieces-found"]}>
-        {allPieces.piecesList ? allPieces.piecesList.length : 0} pieces found
-      </h1>
-      <div className={styles["pieces-table"]}>
-        {allPieces.piecesList ? (
-          <table>
-            <tbody>
-              <tr>
-                <th>Image</th>
-                <th>Piece Name</th>
-                <th>Description</th>
-                <th>Creator</th>
-                <th>Game Types</th>
-              </tr>
-              {allPieces.piecesList.map(function(piece) {
-                const firstImage = getFirstImage(piece.image_location);
-                console.log(`Piece: ${piece.piece_name}, image_location: ${piece.image_location}, firstImage: ${firstImage}`);
-                return (
-                  <tr key={piece.id}>
-                    <td>
-                      {firstImage ? (
-                        <img 
-                          src={firstImage} 
-                          alt={piece.piece_name} 
-                          className={styles["piece-image"]}
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextSibling.style.display = 'inline';
-                          }}
-                        />
-                      ) : null}
-                      <span style={{display: firstImage ? 'none' : 'inline'}}>
-                        {firstImage ? 'Image failed to load' : 'No image'}
-                      </span>
-                    </td>
-                    <td>{piece.piece_name || 'N/A'}</td>
-                    <td>{piece.piece_description || ''}</td>
-                    <td>
-                      {piece.creator_username ? (
-                        <Link to={"/profile/" + piece.creator_username}>
-                          {piece.creator_username}
-                        </Link>
-                      ) : (
-                        ''
-                      )}
-                    </td>
-                    <td>{piece.game_type_name || ''}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
-          <p>Loading pieces...</p>
-        )}
+  // Separate pieces into user's pieces and other pieces
+  const myPieces = allPieces.piecesList 
+    ? allPieces.piecesList.filter(piece => piece.creator_id === currentUser.id)
+    : [];
+  
+  const otherPieces = allPieces.piecesList 
+    ? allPieces.piecesList.filter(piece => piece.creator_id !== currentUser.id)
+    : [];
+
+  const canEditPiece = (piece) => {
+    return piece.creator_id === currentUser.id || currentUser.role === "Admin";
+  };
+
+  const handleEditPiece = (pieceId) => {
+    navigate(`/create/piece/edit/${pieceId}`);
+  };
+
+  const handleDeleteClick = (piece) => {
+    setPieceToDelete(piece);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pieceToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await deletePiece(pieceToDelete.id);
+      dispatch(getPieces()); // Refresh the list
+      setShowDeleteModal(false);
+      setPieceToDelete(null);
+    } catch (error) {
+      console.error("Error deleting piece:", error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const renderPieceCard = (piece, showEditButton = false) => {
+    const firstImage = getFirstImage(piece.image_location);
+    return (
+      <div key={piece.id} className={styles["piece-card"]}>
+        <div className={styles["piece-image-container"]}>
+          {firstImage ? (
+            <img 
+              src={firstImage} 
+              alt={piece.piece_name} 
+              className={styles["piece-image"]}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className={styles["piece-placeholder"]}>
+              <span>🎭</span>
+            </div>
+          )}
+        </div>
+        
+        <div className={styles["piece-content"]}>
+          <h3 className={styles["piece-name"]}>{piece.piece_name || 'Unnamed Piece'}</h3>
+          
+          <p className={styles["piece-description"]}>
+            {piece.piece_description || 'No description available'}
+          </p>
+
+          <div className={styles["piece-meta"]}>
+            {piece.creator_username && (
+              <div className={styles["meta-item"]}>
+                <span className={styles["meta-label"]}>Creator:</span>
+                <Link to={`/profile/${piece.creator_username}`} className={styles["creator-link"]}>
+                  {piece.creator_username}
+                </Link>
+              </div>
+            )}
+
+            {piece.game_type_name && (
+              <div className={styles["meta-item"]}>
+                <span className={styles["meta-label"]}>Game:</span>
+                <span>{piece.game_type_name}</span>
+              </div>
+            )}
+
+            <div className={styles["meta-item"]}>
+              <span className={styles["meta-label"]}>Size:</span>
+              <span>{piece.piece_width || 1}x{piece.piece_height || 1}</span>
+            </div>
+          </div>
+
+          {showEditButton && canEditPiece(piece) && (
+            <div className={styles["piece-actions"]}>
+              <button 
+                className={styles["edit-button"]}
+                onClick={() => handleEditPiece(piece.id)}
+              >
+                ✏️ Edit
+              </button>
+              <button 
+                className={styles["delete-button"]}
+                onClick={() => handleDeleteClick(piece)}
+              >
+                🗑️ Delete
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+    );
+  };
+
+  return (
+    <div className={styles["pieces-container"]}>
+      <div className={styles["page-header"]}>
+        <h1>Piece Library</h1>
+        <p className={styles["subtitle"]}>
+          Browse and manage custom pieces for your games
+        </p>
+        <Link to="/create/piece" className={styles["create-button"]}>
+          + Create New Piece
+        </Link>
+      </div>
+
+      {/* My Pieces Section */}
+      {myPieces.length > 0 && (
+        <section className={styles["pieces-section"]}>
+          <div className={styles["section-header"]}>
+            <h2>🎨 My Pieces</h2>
+            <span className={styles["piece-count"]}>{myPieces.length} piece{myPieces.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div className={styles["pieces-grid"]}>
+            {myPieces.map(piece => renderPieceCard(piece, true))}
+          </div>
+        </section>
+      )}
+
+      {/* Community Pieces Section */}
+      <section className={styles["pieces-section"]}>
+        <div className={styles["section-header"]}>
+          <h2>🌍 Community Pieces</h2>
+          <span className={styles["piece-count"]}>
+            {otherPieces.length} piece{otherPieces.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        
+        {otherPieces.length > 0 ? (
+          <div className={styles["pieces-grid"]}>
+            {otherPieces.map(piece => renderPieceCard(piece, currentUser.role === "Admin"))}
+          </div>
+        ) : (
+          <div className={styles["empty-section"]}>
+            <p>No community pieces yet. Be the first to share!</p>
+          </div>
+        )}
+      </section>
+
+      {/* All Pieces Empty State */}
+      {(!allPieces.piecesList || allPieces.piecesList.length === 0) && (
+        <div className={styles["empty-state"]}>
+          <div className={styles["empty-icon"]}>🧩</div>
+          <h3>No Pieces Yet</h3>
+          <p>Create your first custom piece to get started!</p>
+          <Link to="/create/piece" className={styles["create-button"]}>
+            Create a Piece
+          </Link>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className={styles["modal-overlay"]} onClick={() => setShowDeleteModal(false)}>
+          <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Piece</h3>
+            <p>Are you sure you want to delete "{pieceToDelete?.piece_name}"?</p>
+            <p className={styles["warning-text"]}>This action cannot be undone.</p>
+            <div className={styles["modal-actions"]}>
+              <button 
+                className={styles["cancel-button"]}
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button 
+                className={styles["confirm-delete-button"]}
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

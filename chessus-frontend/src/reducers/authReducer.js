@@ -11,6 +11,7 @@ import {
   DELETE_USER_ADMIN,
   GET_USER_SUCCESS,
   GET_USER_FAILURE,
+  CLEAR_PLAYER_PAGE,
   RESET_EDIT,
   UPDATE_USER_PREFERENCES,
 } from "../actions/types";
@@ -37,6 +38,11 @@ const authReducer = (state = initialState, action) => {
         ...state,
         playerPage: payload.response,
         message: payload.message
+      }
+    case CLEAR_PLAYER_PAGE:
+      return {
+        ...state,
+        playerPage: null,
       }
     case REGISTER_SUCCESS:
       return {
@@ -106,6 +112,7 @@ const authReducer = (state = initialState, action) => {
         ...state,
         isLoggedIn: false,
         user: null,
+        playerPage: null,
       };
     case DELETE_USER:
       return {

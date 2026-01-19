@@ -1,4 +1,4 @@
-# Chessus
+# Squarestrat
 
 A full-stack chess variant platform that allows users to create custom chess games, share them with the community, and engage in forums.
 
@@ -34,7 +34,7 @@ cd ..
 
 #### Create the Database
 ```sql
-CREATE DATABASE chessusnode;
+CREATE DATABASE squarestratnode;
 ```
 
 #### Configure Database Connection
@@ -52,7 +52,7 @@ const db = mysql.createPool({
 #### Initialize Database Tables
 Run the SQL script located at `db/tables-seed.sql` in your MySQL client, or:
 ```bash
-mysql -u root -p chessusnode < db/tables-seed.sql
+mysql -u root -p squarestratnode < db/tables-seed.sql
 ```
 
 ### 4. Start the Application
@@ -121,7 +121,7 @@ chessus-node/
 │   └── db.js          # MySQL database connection
 ├── db/                # Database scripts
 │   └── tables-seed.sql # Database schema
-├── chessus-frontend/  # React frontend application
+├── squarestrat-frontend/  # React frontend application
 │   ├── src/
 │   │   ├── actions/   # Redux actions
 │   │   ├── reducers/  # Redux reducers
@@ -197,13 +197,13 @@ lsof -ti:3001 | xargs kill -9
    ```
 
 2. Check credentials in `configs/db.js`
-3. Ensure database `chessusnode` exists
+3. Ensure database `squarestratnode` exists
 
 ### Module Not Found
 ```bash
 # Reinstall dependencies
 npm install
-cd chessus-frontend && npm install
+cd squarestrat-frontend && npm install
 ```
 
 ### MySQL Authentication Error
@@ -220,7 +220,7 @@ The project uses:
 - **CSS Variables** in `src/index.css` for global theming
 - Centralized color system for easy customization
 
-To customize colors, edit CSS variables in `chessus-frontend/src/index.css`:
+To customize colors, edit CSS variables in `squarestrat-frontend/src/index.css`:
 ```css
 :root {
   --button-primary-bg: rgb(75, 77, 124);

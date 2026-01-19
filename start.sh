@@ -51,13 +51,13 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-if [ ! -d "chessus-frontend/node_modules" ]; then
-    echo "Installing frontend dependencies..."
-    cd chessus-frontend && npm install && cd ..
+if [ ! -d "squarestrat-frontend/node_modules" ]; then
+    echo "📦 Installing frontend dependencies..."
+    cd squarestrat-frontend && npm install && cd ..
 fi
 
 echo ""
-echo "🎯 Starting Backend and Frontend servers..."
+echo "🚀 Starting Backend and Frontend servers..."
 echo "   Backend will run on: http://localhost:3001"
 echo "   Frontend will run on: http://localhost:3000"
 echo ""

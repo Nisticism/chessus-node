@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG to PNG Converter - Squarestrat Logo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #08234d;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        canvas {
+            border: 2px solid #4a90e2;
+            margin: 20px 0;
+            background: white;
+        }
+        button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #357abd;
+        }
+        .preview {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        h1 {
+            color: #4a90e2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Squarestrat Logo Generator</h1>
+        <p>Click the buttons below to download PNG versions of the logo:</p>
+        
+        <div class="preview">
+            <div>
+                <h3>Favicon (32x32)</h3>
+                <canvas id="canvas32" width="32" height="32"></canvas>
+                <br>
+                <button onclick="download(32, 'favicon-32x32.png')">Download 32x32</button>
+            </div>
+            
+            <div>
+                <h3>Small Icon (64x64)</h3>
+                <canvas id="canvas64" width="64" height="64"></canvas>
+                <br>
+                <button onclick="download(64, 'favicon-64x64.png')">Download 64x64</button>
+            </div>
+            
+            <div>
+                <h3>Medium Icon (192x192)</h3>
+                <canvas id="canvas192" width="192" height="192"></canvas>
+                <br>
+                <button onclick="download(192, 'logo192.png')">Download 192x192</button>
+            </div>
+            
+            <div>
+                <h3>Large Icon (512x512)</h3>
+                <canvas id="canvas512" width="512" height="512"></canvas>
+                <br>
+                <button onclick="download(512, 'logo512.png')">Download 512x512</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 32px favicon version with black borders and thicker stroke
+        const svgString32 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a90e2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357abd;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#5cb3e8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3a9bd9;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad3" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6bb8ec;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4a9ce0;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <rect x="28" y="30" width="135" height="135" 
+        fill="url(#grad1)" 
+        stroke="#000000" stroke-width="5.5"
+        transform="rotate(-8 95.5 97.5)"
+        rx="3"/>
+  
+  <rect x="53" y="45" width="120" height="120" 
+        fill="url(#grad2)" 
+        stroke="#000000" stroke-width="5.5"
+        transform="rotate(12 113 105)"
+        rx="3"
+        opacity="0.9"/>
+  
+  <rect x="78" y="65" width="95" height="95" 
+        fill="url(#grad3)" 
+        stroke="#000000" stroke-width="5.5"
+        transform="rotate(-5 125.5 112.5)"
+        rx="2"
+        opacity="0.95"/>
+</svg>`;
+
+        // 64px favicon version with darker borders
+        const svgString64 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a90e2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357abd;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#5cb3e8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3a9bd9;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad3" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6bb8ec;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4a9ce0;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <rect x="28" y="30" width="135" height="135" 
+        fill="url(#grad1)" 
+        stroke="#0a1e3a" stroke-width="4.5"
+        transform="rotate(-8 95.5 97.5)"
+        rx="3"/>
+  
+  <rect x="53" y="45" width="120" height="120" 
+        fill="url(#grad2)" 
+        stroke="#0a1e3a" stroke-width="4.5"
+        transform="rotate(12 113 105)"
+        rx="3"
+        opacity="0.9"/>
+  
+  <rect x="78" y="65" width="95" height="95" 
+        fill="url(#grad3)" 
+        stroke="#081729" stroke-width="4.5"
+        transform="rotate(-5 125.5 112.5)"
+        rx="2"
+        opacity="0.95"/>
+</svg>`;
+
+        // Regular version with semi-transparent borders for larger sizes
+        const svgStringLarge = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a90e2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357abd;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#5cb3e8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3a9bd9;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad3" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6bb8ec;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4a9ce0;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <rect x="28" y="30" width="135" height="135" 
+        fill="url(#grad1)" 
+        stroke="#0a1e3a" stroke-width="4.5" stroke-opacity="0.8"
+        transform="rotate(-8 95.5 97.5)"
+        rx="3"/>
+  
+  <rect x="53" y="45" width="120" height="120" 
+        fill="url(#grad2)" 
+        stroke="#0a1e3a" stroke-width="4.5" stroke-opacity="0.8"
+        transform="rotate(12 113 105)"
+        rx="3"
+        opacity="0.9"/>
+  
+  <rect x="78" y="65" width="95" height="95" 
+        fill="url(#grad3)" 
+        stroke="#081729" stroke-width="4.5" stroke-opacity="0.8"
+        transform="rotate(-5 125.5 112.5)"
+        rx="2"
+        opacity="0.95"/>
+</svg>`;
+
+        function renderSVG(size) {
+            const canvas = document.getElementById(`canvas${size}`);
+            const ctx = canvas.getContext('2d');
+            
+            // Use different versions based on size
+            let svgString;
+            if (size === 32) {
+                svgString = svgString32;  // Black borders, thicker stroke
+            } else if (size === 64) {
+                svgString = svgString64;  // Dark borders, normal stroke
+            } else {
+                svgString = svgStringLarge;  // Semi-transparent borders
+            }
+            
+            const img = new Image();
+            const blob = new Blob([svgString], {type: 'image/svg+xml'});
+            const url = URL.createObjectURL(blob);
+            
+            img.onload = function() {
+                ctx.clearRect(0, 0, size, size);
+                ctx.drawImage(img, 0, 0, size, size);
+                URL.revokeObjectURL(url);
+            };
+            
+            img.src = url;
+        }
+
+        function download(size, filename) {
+            const canvas = document.getElementById(`canvas${size}`);
+            canvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        // Render all sizes on page load
+        window.onload = function() {
+            renderSVG(32);
+            renderSVG(64);
+            renderSVG(192);
+            renderSVG(512);
+        };
+    </script>
+</body>
+</html>

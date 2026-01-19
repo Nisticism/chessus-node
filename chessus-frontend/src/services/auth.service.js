@@ -26,7 +26,7 @@ const updateUser = (updatedData) => {
   localStorage.setItem('user', JSON.stringify(user));
 }
 
-const edit = async (current_user, username, password, email, first_name, last_name, bio, id, admin_id) => {
+const edit = async (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword) => {
   if (email === "") {
     email = null;
   }
@@ -44,6 +44,7 @@ const edit = async (current_user, username, password, email, first_name, last_na
     current_user,
     username,
     password,
+    oldPassword,
     email,
     first_name, 
     last_name,

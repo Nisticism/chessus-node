@@ -11,6 +11,13 @@ const getPieces = async () => {
   return response;
 };
 
+const getPieceById = async (pieceId) => {
+  const response = await axios.get(API_URL + `pieces/${pieceId}`, {
+    headers: authHeader()
+  });
+  return response;
+};
+
 const createPiece = async (formData) => {
   const response = await axios.post(API_URL + "pieces/create", formData, {
     headers: {
@@ -21,9 +28,29 @@ const createPiece = async (formData) => {
   return response;
 };
 
+const updatePiece = async (pieceId, formData) => {
+  const response = await axios.put(API_URL + `pieces/${pieceId}`, formData, {
+    headers: {
+      ...authHeader(),
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  return response;
+};
+
+const deletePiece = async (pieceId) => {
+  const response = await axios.delete(API_URL + `pieces/${pieceId}`, {
+    headers: authHeader()
+  });
+  return response;
+};
+
 const PiecesService = {
   getPieces,
+  getPieceById,
   createPiece,
+  updatePiece,
+  deletePiece,
 }
 
 export default PiecesService;

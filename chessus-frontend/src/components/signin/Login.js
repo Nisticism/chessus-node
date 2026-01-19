@@ -47,8 +47,7 @@ const Login = (props) => {
     // form.current.validateAll();
     dispatch(login(username, password))
       .then(() => {
-        props.history.push("/profile");
-        window.location.reload();
+        navigate(`/profile/${username}`);
       })
       .catch(() => {
         setLoading(false);

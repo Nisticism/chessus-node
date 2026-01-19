@@ -70,10 +70,10 @@ export const getUser = (username) => async (dispatch) => {
   }
 };
 
-export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id) => async (dispatch) => {
+export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword) => async (dispatch) => {
   try {
     console.log(id);
-    const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id);
+    const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword);
     console.log("in edit action");
     console.log(response.message);
     if (!admin_id) {

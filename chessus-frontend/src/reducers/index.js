@@ -6,6 +6,7 @@ import users from "./users";
 import forums from "./forums";
 import news from "./news";
 import pieces from "./pieces";
+import games from "./games";
 export default combineReducers({
   authReducer,
   message,
@@ -14,4 +15,5 @@ export default combineReducers({
   forums,
   news,
   pieces,
+  games,
 });

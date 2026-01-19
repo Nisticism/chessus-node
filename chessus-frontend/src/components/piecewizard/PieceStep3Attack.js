@@ -718,7 +718,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                       {pieceData.piece_image_previews?.[0] ? (
                         <img src={pieceData.piece_image_previews[0]} alt="Piece" />
                       ) : (
-                        "🎯"
+                        "💥"
                       )}
                     </div>
                   </div>
@@ -945,7 +945,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
         <p className={styles["preview-legend"]}>
           <span className={styles["legend-movement"]}>Blue = Movement</span>
           <span className={styles["legend-capture"]}>Orange = Capture on Move</span>
-          <span className={styles["legend-ranged"]}>Red = Ranged Attack 🎯</span>
+          <span className={styles["legend-ranged"]}>Red = Ranged Attack 💥</span>
         </p>
         <PieceBoardPreview pieceData={pieceData} />
       </div>

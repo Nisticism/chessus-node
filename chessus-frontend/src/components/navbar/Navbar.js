@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
 import { clearMessage } from "../../actions/general";
 import { history } from "../../helpers/history";
+import logo from '../../assets/logo.svg';
 import './navbar.scss';
 
 const Menu = () => (
@@ -43,10 +44,10 @@ const Menu = () => (
         <Link as="div" className="inner-menu-item" to="/create/piece">
           Design a piece
         </Link>
-        <Link as="div" className="inner-menu-item" to="/games">
+        <Link as="div" className="inner-menu-item" to="/create/games">
           View games
         </Link>
-        <Link as="div" className="inner-menu-item lower-corner" to="/community/pieces">
+        <Link as="div" className="inner-menu-item lower-corner" to="/create/pieces">
           View pieces
         </Link>
       </div>
@@ -62,16 +63,16 @@ const Menu = () => (
         <Link as="div" className="inner-menu-item upper-right-corner" to="/forums">
           General forums
         </Link>
-        <Link as="div" className="inner-menu-item" to="/home">
+        <Link as="div" className="inner-menu-item" to="/forums/game">
           Game forums
         </Link>
-        <Link as="div" className="inner-menu-item" to="/home">
+        <Link as="div" className="inner-menu-item" to="/media/social">
           Social media
         </Link>
-        <Link as="div" className="inner-menu-item" to="/home">
+        <Link as="div" className="inner-menu-item" to="/media/streams">
           Streams
         </Link>
-        <Link as="div" className="inner-menu-item lower-corner" to="/home">
+        <Link as="div" className="inner-menu-item lower-corner" to="/news">
           News
         </Link>
       </div>
@@ -84,10 +85,10 @@ const Menu = () => (
         <Link as="div" className="inner-menu-item upper-right-corner" to="/community/players">
           Players
         </Link>
-        <Link as="div" className="inner-menu-item" to="/home">
+        <Link as="div" className="inner-menu-item" to="/community/leaderboard">
           Leaderboard
         </Link>
-        <Link as="div" className="inner-menu-item lower-corner" to="/home">
+        <Link as="div" className="inner-menu-item lower-corner" to="/donate">
           Donate
         </Link>
       </div>
@@ -120,7 +121,10 @@ const Navbar = () => {
       <div className="navbar" id="navbar">
         <div className="navbar-links">
           <div className="nav-container">
-            <Link to="/" className="main-logo">SQUARESTRAT</Link>
+            <Link to="/" className="main-logo">
+              <img src={logo} alt="Squarestrat" className="logo-icon" />
+              <span>SQUARESTRAT</span>
+            </Link>
             <div className="navbar-links-container">
               <Menu />
             </div>

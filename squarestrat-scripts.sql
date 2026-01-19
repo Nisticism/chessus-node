@@ -66,3 +66,12 @@ null);
 -- Add color preference columns to users table
 ALTER TABLE users ADD COLUMN light_square_color VARCHAR(20) DEFAULT '#cad5e8' AFTER bio;
 ALTER TABLE users ADD COLUMN dark_square_color VARCHAR(20) DEFAULT '#08234d' AFTER light_square_color;
+
+-- Add elo rating column to users table
+ALTER TABLE users ADD COLUMN elo INT DEFAULT 1000 AFTER bio;
+
+-- Update existing users to have 1000 elo if they don't have one
+UPDATE users SET elo = 1000 WHERE elo IS NULL;
+
+-- Add profile picture column to users table
+ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) AFTER elo;

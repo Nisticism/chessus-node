@@ -8,6 +8,8 @@ $lighter-hover: var(--nav-light-hover);
   justify-content: space-between;
   align-items: center;
   height: $nav-height;
+  position: relative;
+  z-index: 999;
 }
 
 .navbar-border {
@@ -40,6 +42,7 @@ p {
   height: $nav-height;
   display: flex;
   align-items: center;
+  gap: 12px;
   font-size: 30px;
   font-weight: 700;
 }
@@ -47,6 +50,17 @@ p {
 .main-logo:hover {
   color: $lighter-hover;
   cursor: pointer;
+}
+
+.logo-icon {
+  width: 40px;
+  height: 40px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  transition: transform 0.3s ease;
+}
+
+.main-logo:hover .logo-icon {
+  transform: scale(1.1) rotate(5deg);
 }
 
 .navbar-links-logo img {
@@ -118,6 +132,7 @@ p {
   min-width: 210px;
   border-radius: 10px !important;
   box-shadow: 0 0 5 rgba(0, 0, 0, 0.2);
+  z-index: 1000;
 }
 
 .navbar-menu-container p {

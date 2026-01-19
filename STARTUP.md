@@ -1,6 +1,6 @@
 # Startup Scripts
 
-This folder contains scripts to easily start the entire Chessus application stack.
+This folder contains scripts to easily start the entire Squarestrat application stack.
 
 ## Prerequisites
 
@@ -97,7 +97,7 @@ Press `Ctrl+C` in the terminal to stop all running services.
 ```bash
 # Reinstall all dependencies
 npm install
-cd chessus-frontend && npm install && cd ..
+cd squarestrat-frontend && npm install && cd ..
 ```
 
 ## Environment Variables

@@ -35,9 +35,39 @@ export const getAllPieces = async () => {
   }
 };
 
+export const getPieceById = async (pieceId) => {
+  try {
+    const response = await PiecesService.getPieceById(pieceId);
+    return response.data;
+  } catch (error) {
+    const message = getErrorMessage(error);
+    return Promise.reject(message);
+  }
+};
+
 export const createPiece = async (formData) => {
   try {
     const response = await PiecesService.createPiece(formData);
+    return response.data;
+  } catch (error) {
+    const message = getErrorMessage(error);
+    return Promise.reject(message);
+  }
+};
+
+export const updatePiece = async (pieceId, formData) => {
+  try {
+    const response = await PiecesService.updatePiece(pieceId, formData);
+    return response.data;
+  } catch (error) {
+    const message = getErrorMessage(error);
+    return Promise.reject(message);
+  }
+};
+
+export const deletePiece = async (pieceId) => {
+  try {
+    const response = await PiecesService.deletePiece(pieceId);
     return response.data;
   } catch (error) {
     const message = getErrorMessage(error);

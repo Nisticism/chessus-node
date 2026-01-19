@@ -1,5 +1,5 @@
 {
-  "name": "chessus-node",
+  "name": "squarestrat-node",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -7,9 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon server/index.js",
     "startAuth": "nodemon server/authServer.js",
-    "build": "cd chessus-frontend && npm install && npm run build",
+    "build": "cd squarestrat-frontend && npm install && npm run build",
     "seed": "node server/seed.js",
-    "frontend": "cd chessus-frontend && npm start",
+    "frontend": "cd squarestrat-frontend && npm start",
     "backend": "nodemon server/index.js",
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
     "start:all": "concurrently \"npm run backend\" \"npm run frontend\""

@@ -9,7 +9,7 @@ const Forums = () => {
   const allForums = useSelector((state) => state.forums);
   const navigate = useNavigate();
   const firstRender = useSelector((state) => state.forums.first_forums_render);
-  // const [forums, setForums] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const dispatch = useDispatch();
 
   useEffect(() => {
@@ -18,7 +18,7 @@ const Forums = () => {
       dispatch(forums());
       dispatch(firstForumsRender());
     }
-  }, [firstRender]);
+  }, [firstRender, dispatch]);
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
@@ -50,17 +50,39 @@ const Forums = () => {
     return month + "/" + day + "/" + year + " " + hoursTime + ":" + minutesTime + dayHalf;
   }
 
+  // Filter forums to only show general forums (those without game_type_id)
+  const generalForums = allForums.forums ? 
+    allForums.forums.filter(forum => forum.game_type_id === null) : [];
+
+  // Filter by search term
+  const filteredForums = generalForums.filter(forum => 
+    forum.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (forum.content && forum.content.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (forum.author_name && forum.author_name.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
   return (
     <div className="container">
       <header className="jumbotron">
         <h3 className={styles["forum-page-title"]}>
-          Forums
+          General Forums
         </h3>
       </header>
+      
+      <div className={styles["search-container"]}>
+        <input
+          type="text"
+          placeholder="Search forums..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className={styles["search-input"]}
+        />
+      </div>
+
     <div className={styles["forums"]}>
       {/* This line allows the fake forum with idk of -1 to load in upon deletion of the last article from state, immediately switching to
       rendering "No Forums Found" instead of having a blank table until refresh. */}
-      {allForums.forums && allForums.forums[0] && allForums.forums[0].id >= 0 ? 
+      {filteredForums && filteredForums.length > 0 ? 
     <table className={styles["forums-table"]}>
       <tbody>
         <tr>
@@ -84,7 +106,7 @@ const Forums = () => {
           </th>
         </tr>
           {
-            allForums.forums.map(function(forum) {
+            filteredForums.map(function(forum) {
               return (
                 <tr 
                   key={forum.id} 
@@ -139,7 +161,7 @@ const Forums = () => {
       </tbody>
     </table>
     : 
-    <h1>No Forums Found</h1>
+    <h1>{searchTerm ? "No forums found matching your search" : "No Forums Found"}</h1>
       }
     </div>
       <div className="buttons">
