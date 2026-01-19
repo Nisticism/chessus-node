@@ -4,6 +4,8 @@ import { useDispatch, useSelector } from "react-redux";
 import { getPieces, deletePiece } from "../../actions/pieces";
 import styles from "./piecelist.module.scss";
 
+const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
+
 const PieceList = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allPieces = useSelector((state) => state.pieces);
@@ -32,16 +34,16 @@ const PieceList = () => {
       const images = JSON.parse(imageLocation);
       if (Array.isArray(images) && images.length > 0) {
         const imagePath = images[0];
-        return imagePath.startsWith('http') ? imagePath : `http://localhost:3001${imagePath}`;
+        return imagePath.startsWith('http') ? imagePath : `${ASSET_URL}${imagePath}`;
       }
     } catch {
       const imagePath = imageLocation;
       if (imagePath.startsWith('http')) {
         return imagePath;
       } else if (imagePath.startsWith('/uploads/')) {
-        return `http://localhost:3001${imagePath}`;
+        return `${ASSET_URL}${imagePath}`;
       } else {
-        return `http://localhost:3001/uploads/pieces/${imagePath}`;
+        return `${ASSET_URL}/uploads/pieces/${imagePath}`;
       }
     }
     

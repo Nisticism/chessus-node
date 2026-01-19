@@ -118,7 +118,7 @@ const PieceWizard = ({ editPieceId = null }) => {
           try {
             const images = JSON.parse(piece.image_location || "[]");
             imagePreviews = images.map(img => 
-              img.startsWith('http') ? img : `http://localhost:3001${img}`
+              img.startsWith('http') ? img : `${process.env.REACT_APP_ASSET_URL || ""}${img}`
             );
             setExistingImages(images);
           } catch (e) {

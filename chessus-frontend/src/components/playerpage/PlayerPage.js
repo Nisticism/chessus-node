@@ -13,6 +13,8 @@ import BioSection from "../biosection/BioSection";
 import Divider from "../Divider/Divider";
 // import NotFound from "../notfound/NotFound";
 
+const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
+
 const PlayerPage = (props) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
 
@@ -182,7 +184,7 @@ const PlayerPage = (props) => {
         setProfilePicturePreview(null);
         
         // Set the display picture URL to force immediate visual update
-        setDisplayPictureUrl(`http://localhost:3001${response.data.profile_picture}?t=${Date.now()}`);
+        setDisplayPictureUrl(`${ASSET_URL}${response.data.profile_picture}?t=${Date.now()}`);
       }
     } catch (error) {
       console.error('Error uploading profile picture:', error);
@@ -237,7 +239,7 @@ const PlayerPage = (props) => {
                  (currentUser && username === currentUser.username && currentUser.profile_picture) || 
                  (playerPageUser && playerPageUser.username === username && playerPageUser.profile_picture) ? (
                   <img 
-                    src={displayPictureUrl || `http://localhost:3001${currentUser && username === currentUser.username ? currentUser.profile_picture : playerPageUser?.profile_picture}?t=${Date.now()}`}
+                    src={displayPictureUrl || `${ASSET_URL}${currentUser && username === currentUser.username ? currentUser.profile_picture : playerPageUser?.profile_picture}?t=${Date.now()}`}
                     alt={`${username}'s profile`}
                     className={styles["profile-avatar-img"]}
                   />
@@ -350,7 +352,7 @@ const PlayerPage = (props) => {
                   {profilePicturePreview ? (
                     <img src={profilePicturePreview} alt="Preview" />
                   ) : (currentUser && currentUser.profile_picture ? (
-                    <img src={`http://localhost:3001${currentUser.profile_picture}`} alt="Current" />
+                    <img src={`${ASSET_URL}${currentUser.profile_picture}`} alt="Current" />
                   ) : (
                     <span>{username.charAt(0).toUpperCase()}</span>
                   ))}

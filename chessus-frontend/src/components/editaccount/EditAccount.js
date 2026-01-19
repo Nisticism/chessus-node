@@ -354,7 +354,7 @@ const EditAccount = (props) => {
                 <div className={styles["picture-upload-container"]}>
                   <div className={styles["picture-preview"]}>
                     {profilePicturePreview ? (
-                      <img src={typeof profilePicturePreview === 'string' && profilePicturePreview.startsWith('/uploads') ? `http://localhost:3001${profilePicturePreview}` : profilePicturePreview} alt="Profile preview" />
+                      <img src={typeof profilePicturePreview === 'string' && profilePicturePreview.startsWith('/uploads') ? `${process.env.REACT_APP_ASSET_URL || ""}${profilePicturePreview}` : profilePicturePreview} alt="Profile preview" />
                     ) : (
                       <div style={{
                         width: '100%',

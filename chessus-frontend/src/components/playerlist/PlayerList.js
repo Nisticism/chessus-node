@@ -52,7 +52,7 @@ const PlayerList = () => {
                 }}>
                   {user.profile_picture ? (
                     <img 
-                      src={`http://localhost:3001${user.profile_picture}`}
+                      src={`${process.env.REACT_APP_ASSET_URL || ""}${user.profile_picture}`}
                       alt={user.username}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />

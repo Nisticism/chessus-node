@@ -1,7 +1,7 @@
 import axios from "axios";
 // import authHeader from "./auth-header";
 
-// const API_URL = "http://localhost:3001/";
+// const API_URL = process.env.REACT_APP_API_URL;
 const API_URL = require("../global/global.js");
 
 
@@ -13,7 +13,7 @@ const getUser = async(username) => {
   return response.data;
 };
 
-    // axios.get('http://localhost:3001/user', 
+    // axios.get(process.env.REACT_APP_API_URL + '/user', 
     //  {params: { username: username}})
     // .then (res => {
     //     // setUserInfo(currentUser);
