@@ -506,8 +506,8 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
     // Store relative path for database
     const imagePath = `/uploads/profile-pictures/${imageFile.filename}`;
 
-    // Update user's profile picture in database
-    await db_pool.query(
+    // Update user's profile picture in database using promise API
+    await db_pool.promise().query(
       "UPDATE chessusnode.users SET profile_picture = ? WHERE id = ?",
       [imagePath, userId]
     );
