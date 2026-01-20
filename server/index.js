@@ -27,15 +27,21 @@ const app = express();
 
 //app.use("/api", "*");
 
-// const corsOptions = {
-//   origin: ['http://squarestrat.com', 'https://squarestrat.com', 'http://localhost:3000'], // Specify allowed origins
-//   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-//   credentials: true, // Allow sending cookies/authorization headers
-//   optionsSuccessStatus: 204 // Some legacy browsers require 204 for preflight success
-// };
+const corsOptions = {
+  origin: ['http://squarestrat.com', 'https://squarestrat.com', 'http://localhost:3000', 'http://localhost:3001'], // Specify allowed origins
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  credentials: true, // Allow sending cookies/authorization headers
+  optionsSuccessStatus: 204, // Some legacy browsers require 204 for preflight success
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+};
 
-// app.use(cors(corsOptions));
-app.use(cors());
+app.use(cors(corsOptions));
+
+// Additional middleware to handle Private Network Access
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  next();
+});
 
 // const path = require('path');
 const db_pool = require("../configs/db");
@@ -44,8 +50,13 @@ const dbHelpers = require("./db-helpers");
 
 app.use(express.json());
 
-// Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Serve static files from uploads directory with CORS headers
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, '../uploads')));
 
 // Configure multer for file uploads
 const multer = require('multer');
@@ -587,8 +598,8 @@ app.post("/api/preferences/colors", async (req, res) => {
       return res.status(400).send({ message: "User ID is required" });
     }
     
-    const sql = "UPDATE users SET light_square_color = ?, dark_square_color = ? WHERE id = ?";
-    await db_pool.query(sql, [light_square_color, dark_square_color, user_id]);
+    const sql = "UPDATE chessusnode.users SET light_square_color = ?, dark_square_color = ? WHERE id = ?";
+    await dbHelpers.query(sql, [light_square_color, dark_square_color, user_id]);
     
     res.json({ 
       message: "Preferences saved successfully",
@@ -1400,9 +1411,6 @@ app.delete("/api/pieces/:pieceId", async (req, res) => {
     res.status(500).send({ message: "Failed to delete piece", err: err.message });
   }
 });
-
-// Serve uploaded images
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ----------------------- Middleware ------------------------------
 
