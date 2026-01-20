@@ -166,6 +166,8 @@ const PlayerPage = (props) => {
         }
       });
       
+      console.log('Upload response:', response.data);
+      
       if (response.data.success && response.data.user) {
         // Update user in localStorage with full user object from backend
         localStorage.setItem('user', JSON.stringify(response.data.user));
@@ -188,7 +190,9 @@ const PlayerPage = (props) => {
       }
     } catch (error) {
       console.error('Error uploading profile picture:', error);
+      console.error('Error response:', error.response?.data);
       setAlertMessage('Failed to upload profile picture');
+      setAlertType('error');
       setShowAlert(true);
     } finally {
       setUploadingPicture(false);
@@ -242,6 +246,10 @@ const PlayerPage = (props) => {
                     src={displayPictureUrl || `${ASSET_URL}${currentUser && username === currentUser.username ? currentUser.profile_picture : playerPageUser?.profile_picture}?t=${Date.now()}`}
                     alt={`${username}'s profile`}
                     className={styles["profile-avatar-img"]}
+                    onError={(e) => {
+                      console.error('Failed to load profile picture:', e.target.src);
+                      e.target.style.display = 'none';
+                    }}
                   />
                 ) : (
                   username.charAt(0).toUpperCase()
