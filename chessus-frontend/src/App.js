@@ -45,6 +45,16 @@ function App() {
   const dispatch = useDispatch();
   const location = useLocation();
 
+  // Clean up localhost URLs in user data on app load (one-time migration)
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (user && user.profile_picture && user.profile_picture.includes('localhost')) {
+      // Remove the localhost part, keeping just the relative path
+      user.profile_picture = user.profile_picture.replace(/https?:\/\/localhost:\d+/, '');
+      localStorage.setItem('user', JSON.stringify(user));
+    }
+  }, []);
+
   useEffect(() => {
 
     dispatch(clearMessage()); // clear message when changing location
