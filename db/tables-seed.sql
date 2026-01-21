@@ -1,9 +1,20 @@
 CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    first_name VARCHAR(50) NOT NULL,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(50),
     last_name VARCHAR(50),
+    username VARCHAR(50) NOT NULL,
     email VARCHAR(50),
-    last_active_at DATETIME
+    password VARCHAR(100),
+    role VARCHAR(20),
+    last_active_at DATETIME,
+    timezone VARCHAR(30),
+    lang VARCHAR(30),
+    country VARCHAR(30),
+    bio VARCHAR(500),
+    light_square_color VARCHAR(20) DEFAULT '#cad5e8',
+    dark_square_color VARCHAR(20) DEFAULT '#08234d',
+    elo INT DEFAULT 1000,
+    profile_picture VARCHAR(255)
 );
 
 CREATE TABLE IF NOT EXISTS game_types (

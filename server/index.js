@@ -125,60 +125,23 @@ const profilePictureUpload = multer({
   }
 });
 
-// db.connect(err => {
-//   if (err) {
-//     throw err;
-//   }
-//   console.log('MySQL Connected')
-// });
+//  -----------  Auto-create Tables on Startup -----------------
 
+// Read SQL table seed query
+const tableQuery = fs.readFileSync("db/tables-seed.sql", {
+  encoding: "utf-8",
+});
 
-// Create Database
+// Run tables-seed.sql on startup to ensure all tables exist
+db_pool.query(tableQuery, (err) => {
+  if (err) {
+    console.error("Error creating tables:", err);
+  } else {
+    console.log("Database tables checked/created successfully");
+  }
+});
 
-// app.get('/api/create-db', (req, res) => {
-//   let sql = 'CREATE DATABASE IF NOT EXISTS ChessusNode'
-//   db.query(sql, err => {
-//     if (err) {
-//       throw err;
-//     }
-//     res.send("Database Created or Exists");
-//   })
-// });
-
-
-//  -----------  Seeding/Tables -----------------
-
-// // Read SQL table seed query
-// const tableQuery = fs.readFileSync("db/tables-seed.sql", {
-//   encoding: "utf-8",
-// })
-
-// // Run tables-seed.sql.  Go to /create-tables to create the tables.
-// app.get('/api/create-tables', (req, res) => {
-//   let sql = tableQuery;
-//   db.query(sql, err => {
-//     if (err) {
-//       throw err;
-//     }
-//     res.send("Tables Created or Exist");
-//   })
-// })
-
-// // Read SQL seed query
-// const seedQuery = fs.readFileSync("db/seed.sql", {
-//   encoding: "utf-8",
-// })
-
-// // Run seed.sql.  Go to /seed to create seed data.
-// app.get('/api/seed', (req, res) => {
-//   let sql = seedQuery;
-//   db.query(sql, err => {
-//     if (err) {
-//       throw err;
-//     }
-//     res.send("Seed data created or exist");
-//   })
-// })
+//  -----------  End Auto-create Tables -----------------
 
 //  ----------------- End of seeding/tables ----------------------
 
@@ -514,6 +477,10 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
       return res.status(400).send({ message: "User ID is required" });
     }
 
+    // Get user's current profile picture before updating
+    const currentUser = await dbHelpers.findUserById(userId);
+    const oldPicturePath = currentUser?.profile_picture;
+
     // Store relative path for database
     const imagePath = `/uploads/profile-pictures/${imageFile.filename}`;
 
@@ -522,6 +489,19 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
       "UPDATE chessusnode.users SET profile_picture = ? WHERE id = ?",
       [imagePath, userId]
     );
+
+    // Delete old profile picture if it exists
+    if (oldPicturePath) {
+      const oldFilePath = path.join(__dirname, '..', oldPicturePath);
+      fs.unlink(oldFilePath, (err) => {
+        if (err) {
+          console.error("Error deleting old profile picture:", err);
+          // Don't fail the request if deletion fails
+        } else {
+          console.log("Deleted old profile picture:", oldFilePath);
+        }
+      });
+    }
 
     // Fetch and return the updated user
     const updatedUser = await dbHelpers.findUserById(userId);
@@ -1218,6 +1198,27 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
     // Handle images
     let imagesJSON = existingPiece.image_location; // Keep existing if no new images
     if (imageFiles && imageFiles.length > 0) {
+      // Delete old images before saving new ones
+      if (existingPiece.image_location) {
+        try {
+          const oldImages = JSON.parse(existingPiece.image_location);
+          if (Array.isArray(oldImages)) {
+            oldImages.forEach(imagePath => {
+              const oldFilePath = path.join(__dirname, '..', imagePath);
+              fs.unlink(oldFilePath, (err) => {
+                if (err) {
+                  console.error("Error deleting old piece image:", err);
+                } else {
+                  console.log("Deleted old piece image:", oldFilePath);
+                }
+              });
+            });
+          }
+        } catch (err) {
+          console.error("Error parsing old image paths:", err);
+        }
+      }
+      
       const imagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
       imagesJSON = JSON.stringify(imagePaths);
     }
