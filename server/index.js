@@ -45,7 +45,6 @@ app.use((req, res, next) => {
 
 // const path = require('path');
 const db_pool = require("../configs/db");
-const db = require("../configs/db");
 const dbHelpers = require("./db-helpers");
 
 app.use(express.json());
@@ -125,7 +124,9 @@ const profilePictureUpload = multer({
   }
 });
 
-//  -----------  Auto-create Tables on Startup -----------------
+//  -----------  Auto-create Tables and Run Migrations on Startup -----------------
+
+const { runMigrations } = require("./migrations");
 
 // Read SQL table seed query
 const tableQuery = fs.readFileSync("db/tables-seed.sql", {
@@ -133,11 +134,18 @@ const tableQuery = fs.readFileSync("db/tables-seed.sql", {
 });
 
 // Run tables-seed.sql on startup to ensure all tables exist
-db_pool.query(tableQuery, (err) => {
+db_pool.query(tableQuery, async (err) => {
   if (err) {
     console.error("Error creating tables:", err);
   } else {
-    console.log("Database tables checked/created successfully");
+    console.log("✓ Database tables checked/created successfully");
+    
+    // Run migrations to add any missing columns
+    try {
+      await runMigrations();
+    } catch (migrationErr) {
+      console.error("Migration error:", migrationErr);
+    }
   }
 });
 
@@ -635,7 +643,7 @@ app.post("/api/articles/new", async (req, res) => {
 });
 
 app.get('/api/articles', (req, res) => {
-  db.query("SELECT * FROM chessusnode.articles"), (err, result) => {
+  db_pool.query("SELECT * FROM chessusnode.articles"), (err, result) => {
     if (err) {
       res.send({ err: err});
     }
@@ -869,7 +877,7 @@ app.post("/api/news/new", async (req, res) => {
   const author = req.body.author;
   const article_id = req.body.article_id;
   const liked = true;
-  db.query("INSERT INTO chessusnode.news (user_id, article_id, liked) VALUES (?,?,?)",
+  db_pool.query("INSERT INTO chessusnode.news (user_id, article_id, liked) VALUES (?,?,?)",
     [user_id, article_id, liked],
     (err, result) => {
       if (err) {
