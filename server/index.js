@@ -129,7 +129,7 @@ const profilePictureUpload = multer({
 const { runMigrations } = require("./migrations");
 
 // Read SQL table seed query
-const tableQuery = fs.readFileSync("db/tables-seed.sql", {
+const tableQuery = fs.readFileSync(path.join(__dirname, "../db/tables-seed.sql"), {
   encoding: "utf-8",
 });
 
