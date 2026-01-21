@@ -251,8 +251,8 @@ CREATE TABLE IF NOT EXISTS comments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     content VARCHAR(1000) NOT NULL,
     created_at DATETIME,
-    FOREIGN KEY author_id
-      REFERENCES users(id),
-    FOREIGN KEY article_id
-      REFERENCES articles(id)
+    author_id INT,
+    article_id INT,
+    FOREIGN KEY (author_id) REFERENCES users(id),
+    FOREIGN KEY (article_id) REFERENCES articles(id)
 );
