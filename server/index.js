@@ -1025,7 +1025,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       pieceData.piece_description || null
     ];
 
-    const result = await db_pool.query(pieceSql, pieceValues);
+    const [result] = await db_pool.query(pieceSql, pieceValues);
     const pieceId = result.insertId;
 
     // Insert into piece_movement table
