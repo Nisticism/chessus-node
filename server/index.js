@@ -128,25 +128,9 @@ const profilePictureUpload = multer({
 
 const { runMigrations } = require("./migrations");
 
-// Read SQL table seed query
-const tableQuery = fs.readFileSync(path.join(__dirname, "../db/tables-seed.sql"), {
-  encoding: "utf-8",
-});
-
-// Run tables-seed.sql on startup to ensure all tables exist
-db_pool.query(tableQuery, async (err) => {
-  if (err) {
-    console.error("Error creating tables:", err);
-  } else {
-    console.log("✓ Database tables checked/created successfully");
-    
-    // Run migrations to add any missing columns
-    try {
-      await runMigrations();
-    } catch (migrationErr) {
-      console.error("Migration error:", migrationErr);
-    }
-  }
+// Run migrations to add any missing columns
+runMigrations().catch(err => {
+  console.error("Migration error:", err);
 });
 
 //  -----------  End Auto-create Tables -----------------
