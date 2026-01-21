@@ -61,6 +61,20 @@ async function createRook() {
 
     const imageLocation = JSON.stringify([`/uploads/pieces/${imageFilename}`]);
 
+    // Get a valid user ID or use NULL
+    let creatorId = null;
+    try {
+      const [users] = await db_pool.query('SELECT id FROM users LIMIT 1');
+      if (users.length > 0) {
+        creatorId = users[0].id;
+        console.log(`✓ Using creator_id: ${creatorId}`);
+      } else {
+        console.log('⚠ No users found, using NULL for creator_id');
+      }
+    } catch (err) {
+      console.log('⚠ Could not query users, using NULL for creator_id');
+    }
+
     // Insert into pieces table
     const pieceSql = `
       INSERT INTO pieces (
@@ -73,7 +87,7 @@ async function createRook() {
       imageLocation,
       1,
       1,
-      1, // creator_id - adjust if needed
+      creatorId,
       'A standard rook piece that moves horizontally and vertically any number of squares'
     ];
 
