@@ -4,36 +4,28 @@ const db_pool = require("../configs/db");
  * Check if a column exists in a table
  */
 const columnExists = async (tableName, columnName) => {
-  return new Promise((resolve, reject) => {
-    const sql = `
-      SELECT COUNT(*) as count 
-      FROM information_schema.COLUMNS 
-      WHERE TABLE_SCHEMA = ? 
-      AND TABLE_NAME = ? 
-      AND COLUMN_NAME = ?
-    `;
-    db_pool.query(sql, [process.env.DB_NAME || 'chessusnode', tableName, columnName], (err, results) => {
-      if (err) reject(err);
-      else resolve(results[0].count > 0);
-    });
-  });
+  const sql = `
+    SELECT COUNT(*) as count 
+    FROM information_schema.COLUMNS 
+    WHERE TABLE_SCHEMA = ? 
+    AND TABLE_NAME = ? 
+    AND COLUMN_NAME = ?
+  `;
+  const [results] = await db_pool.query(sql, [process.env.DB_NAME || 'chessusnode', tableName, columnName]);
+  return results[0].count > 0;
 };
 
 /**
  * Run a migration SQL statement
  */
 const runMigration = async (sql, description) => {
-  return new Promise((resolve, reject) => {
-    db_pool.query(sql, (err, result) => {
-      if (err) {
-        console.error(`Migration failed: ${description}`, err.message);
-        reject(err);
-      } else {
-        console.log(`✓ ${description}`);
-        resolve(result);
-      }
-    });
-  });
+  try {
+    await db_pool.query(sql);
+    console.log(`✓ ${description}`);
+  } catch (err) {
+    console.error(`Migration failed: ${description}`, err.message);
+    throw err;
+  }
 };
 
 /**

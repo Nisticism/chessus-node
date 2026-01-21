@@ -1,21 +1,14 @@
 const db = require("../configs/db");
 
 /**
- * Promisified database query wrapper
+ * Database query wrapper (now using promise-based pool)
  * @param {string} sql - SQL query string
  * @param {Array} params - Query parameters
  * @returns {Promise<Array>} Query results
  */
-const query = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.query(sql, params, (err, result) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(result);
-      }
-    });
-  });
+const query = async (sql, params = []) => {
+  const [rows] = await db.query(sql, params);
+  return rows;
 };
 
 /**
