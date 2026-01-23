@@ -25,12 +25,58 @@ const Home = () => {
 
   const [boardSize, setBoardSize] = useState(8);
   const [selectedLayout, setSelectedLayout] = useState('chess');
+  const [pieces, setPieces] = useState([]);
+  const [draggedPiece, setDraggedPiece] = useState(null);
+  
+  // Get user's board color preferences from user object, localStorage, or use defaults
+  const lightSquareColor = currentUser?.light_square_color || localStorage.getItem('boardLightColor') || '#cad5e8';
+  const darkSquareColor = currentUser?.dark_square_color || localStorage.getItem('boardDarkColor') || '#08234d';
 
   useEffect(() => {
     dispatch(getGames());
     dispatch(getPieces());
     dispatch(users());
   }, [dispatch]);
+
+  // Fetch and update user preferences if missing
+  useEffect(() => {
+    const fetchUserPreferences = async () => {
+      if (currentUser && !currentUser.light_square_color) {
+        try {
+          const axios = require('..//../services/axios-interceptor');
+          const authHeader = require('../../services/auth-header').default;
+          const API_URL = require('../../global/global');
+          
+          const response = await axios.get(
+            `${API_URL}users/${currentUser.username}`,
+            { headers: authHeader() }
+          );
+          
+          if (response.data && response.data.light_square_color) {
+            const updatedUser = {
+              ...currentUser,
+              light_square_color: response.data.light_square_color,
+              dark_square_color: response.data.dark_square_color,
+            };
+            localStorage.setItem("user", JSON.stringify(updatedUser));
+            dispatch({
+              type: "UPDATE_USER_PREFERENCES",
+              payload: { user: updatedUser },
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user preferences:", error);
+        }
+      }
+    };
+    
+    fetchUserPreferences();
+  }, [currentUser, dispatch]);
+
+  // Initialize pieces when layout changes
+  useEffect(() => {
+    setPieces(pieceLayouts[selectedLayout] || pieceLayouts.chess);
+  }, [selectedLayout]);
 
   // Different piece layouts for the interactive board
   const pieceLayouts = {
@@ -91,8 +137,8 @@ const Home = () => {
       { row: 1, col: 5, image: BlackKnight, name: 'Knight' },
       { row: 1, col: 7, image: BlackKnight, name: 'Knight' },
     ],
-    queens: [
-      // Queen's gambit style
+    royals: [
+      // Royal Showdown - Kings and Queens face off
       { row: 7, col: 3, image: WhiteQueen, name: 'Queen' },
       { row: 7, col: 4, image: WhiteKing, name: 'King' },
       { row: 6, col: 2, image: WhitePawn, name: 'Pawn' },
@@ -109,10 +155,40 @@ const Home = () => {
     ],
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (e, piece, index) => {
+    setDraggedPiece({ piece, index });
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, row, col) => {
+    e.preventDefault();
+    if (!draggedPiece) return;
+
+    // Update piece position
+    const newPieces = pieces.map((p, i) => 
+      i === draggedPiece.index ? { ...p, row, col } : p
+    );
+    setPieces(newPieces);
+    setDraggedPiece(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPiece(null);
+  };
+
   // Get piece at a specific position
   const getPieceAt = (row, col) => {
-    const layout = pieceLayouts[selectedLayout] || pieceLayouts.chess;
-    return layout.find(p => p.row === row && p.col === col);
+    return pieces.find(p => p.row === row && p.col === col);
+  };
+
+  const getPieceIndex = (row, col) => {
+    return pieces.findIndex(p => p.row === row && p.col === col);
   };
 
   // Generate the interactive board
@@ -122,11 +198,17 @@ const Home = () => {
       for (let col = 0; col < boardSize; col++) {
         const isLight = (row + col) % 2 === 0;
         const piece = getPieceAt(row, col);
+        const pieceIndex = getPieceIndex(row, col);
         
         squares.push(
           <div 
             key={`${row}-${col}`}
             className={`${styles.square} ${isLight ? styles.light : styles.dark}`}
+            style={{
+              backgroundColor: isLight ? lightSquareColor : darkSquareColor
+            }}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, row, col)}
           >
             {piece && (
               <img 
@@ -134,6 +216,9 @@ const Home = () => {
                 alt={piece.name}
                 className={styles["piece-image"]}
                 title={piece.name}
+                draggable
+                onDragStart={(e) => handleDragStart(e, piece, pieceIndex)}
+                onDragEnd={handleDragEnd}
               />
             )}
           </div>
@@ -220,10 +305,10 @@ const Home = () => {
                   Knight Battle
                 </button>
                 <button 
-                  className={`${styles["control-button"]} ${selectedLayout === 'queens' ? styles.active : ''}`}
-                  onClick={() => setSelectedLayout('queens')}
+                  className={`${styles["control-button"]} ${selectedLayout === 'royals' ? styles.active : ''}`}
+                  onClick={() => setSelectedLayout('royals')}
                 >
-                  Queen's Gambit
+                  Royal Showdown
                 </button>
               </div>
             </div>

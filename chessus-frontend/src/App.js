@@ -34,6 +34,7 @@ import Streams from "./containers/streams/Streams";
 import DeletedAccount from "./components/deletedaccount/DeletedAccount";
 import Preferences from "./components/preferences/Preferences";
 import Donate from "./components/donate/Donate";
+import AdminDashboard from "./components/admindashboard/AdminDashboard";
 import NotFound from './components/notfound/NotFound';
 
 import { clearMessage, resetEdit } from "./actions/general";
@@ -104,6 +105,7 @@ function App() {
             <Route exact path="/news" element={<News />} />
             <Route exact path="/preferences" element={<Preferences />} />
             <Route exact path="/donate" element={<Donate />} />
+            <Route exact path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/*" element={<NotFound />} />
           </Routes>
         </div>

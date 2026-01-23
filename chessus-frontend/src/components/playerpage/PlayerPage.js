@@ -50,16 +50,10 @@ const PlayerPage = (props) => {
       setLoading(true);
       setDisplayPictureUrl(null); // Clear display picture URL when loading new profile
       dispatch(clearPlayerPage()); // Clear previous player page data
-      if (currentUser.username === username) {
-        console.log(currentUser);
-        console.log("setting as real user");
-        setRealUser(true);
-        setLoading(false);
-        // setUserInfo(currentUser);
-      } else {
-        checkIfRealUser(username);
-        getPlayerPage();
-      }
+      // Always fetch fresh data from server, even for own profile
+      // This ensures admin updates are visible without logout/login
+      checkIfRealUser(username);
+      getPlayerPage();
     }
   }, [firstRender, username]);
 
@@ -312,7 +306,7 @@ const PlayerPage = (props) => {
               </div>
 
               <BioSection 
-                bio={currentUser && username === currentUser.username ? currentUser.bio : playerPageUser?.bio}
+                bio={playerPageUser?.bio}
                 isEditable={false}
                 emptyMessage={currentUser && username === currentUser.username ? "No bio yet. Tell the community about yourself!" : "This user hasn't written a bio yet."}
               />

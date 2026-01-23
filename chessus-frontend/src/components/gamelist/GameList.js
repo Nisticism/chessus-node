@@ -11,6 +11,9 @@ const GameList = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [gameToDelete, setGameToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertType, setAlertType] = useState(""); // "success" or "error"
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -21,17 +24,30 @@ const GameList = () => {
     }
   }, [firstRender, dispatch]);
 
+  useEffect(() => {
+    let timer;
+    if (showAlert) {
+      timer = setTimeout(() => {
+        setShowAlert(false);
+        setAlertMessage('');
+        setAlertType("");
+      }, 2000);
+    }
+    return () => clearTimeout(timer);
+  }, [showAlert]);
+
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
   }
 
   // Separate games into user's games and other games
+  // Filter out any games without valid IDs
   const myGames = allGames.gamesList 
-    ? allGames.gamesList.filter(game => game.creator_id === currentUser.id)
+    ? allGames.gamesList.filter(game => game.id && game.creator_id === currentUser.id)
     : [];
   
   const otherGames = allGames.gamesList 
-    ? allGames.gamesList.filter(game => game.creator_id !== currentUser.id)
+    ? allGames.gamesList.filter(game => game.id && game.creator_id !== currentUser.id)
     : [];
 
   const canEditGame = (game) => {
@@ -53,11 +69,20 @@ const GameList = () => {
     setIsDeleting(true);
     try {
       await dispatch(deleteGame(gameToDelete.id));
-      dispatch(getGames()); // Refresh the list
       setShowDeleteModal(false);
       setGameToDelete(null);
+      setAlertMessage(`Successfully deleted "${gameToDelete.game_name}"`);
+      setAlertType('success');
+      setShowAlert(true);
+      // Force a fresh fetch after delete
+      setTimeout(() => {
+        dispatch(getGames());
+      }, 100);
     } catch (error) {
       console.error("Error deleting game:", error);
+      setAlertMessage("Failed to delete game: " + (error.response?.data?.message || error.message));
+      setAlertType('error');
+      setShowAlert(true);
     } finally {
       setIsDeleting(false);
     }
@@ -136,6 +161,14 @@ const GameList = () => {
 
   return (
     <div className={styles["games-container"]}>
+      {showAlert && (
+        <div id="alert-container" className={styles["alert-container"]}>
+          <div className={`${styles["alert-style"]} ${styles[`alert-${alertType}`]}`}>
+            {alertMessage}
+          </div>
+        </div>
+      )}
+      
       <div className={styles["page-header"]}>
         <h1>Game Library</h1>
         <p className={styles["subtitle"]}>

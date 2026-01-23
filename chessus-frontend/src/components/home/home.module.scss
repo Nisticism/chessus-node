@@ -186,6 +186,12 @@
   filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.4));
   transition: transform 0.2s ease;
   cursor: grab;
+  user-select: none;
+
+  &:active {
+    cursor: grabbing;
+    opacity: 0.7;
+  }
 
   &:hover {
     transform: scale(1.1);

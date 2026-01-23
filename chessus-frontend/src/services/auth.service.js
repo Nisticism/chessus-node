@@ -67,11 +67,41 @@ const login = async (username, password) => {
     
     if (response && response.data) {
       if (response.data.result.username) {
-        localStorage.setItem("user", JSON.stringify(response.data.result));
+        // Store both access and refresh tokens
+        const userData = {
+          ...response.data.result,
+          accessToken: response.data.result.accessToken,
+          refreshToken: response.data.result.refreshToken
+        };
+        localStorage.setItem("user", JSON.stringify(userData));
       }
       return response.data;
     }
   } catch (error) {
+    throw error;
+  }
+};
+
+const refreshAccessToken = async () => {
+  try {
+    const user = getCurrentUser();
+    if (!user || !user.refreshToken) {
+      throw new Error("No refresh token available");
+    }
+
+    const response = await axios.post(API_URL + "token", {
+      refreshToken: user.refreshToken
+    });
+
+    if (response.data.accessToken) {
+      user.accessToken = response.data.accessToken;
+      localStorage.setItem("user", JSON.stringify(user));
+      return response.data.accessToken;
+    }
+  } catch (error) {
+    // If refresh fails, log out the user
+    localStorage.removeItem("user");
+    window.location.href = "/login";
     throw error;
   }
 };
@@ -110,6 +140,7 @@ const AuthService = {
   logout,
   getCurrentUser,
   deleteUser,
+  refreshAccessToken,
 }
 
 export default AuthService;

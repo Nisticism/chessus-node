@@ -208,6 +208,12 @@ const migrations = [
     column: 'profile_picture',
     sql: "ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) AFTER elo",
     description: "Add profile_picture column to users table"
+  },
+  {
+    table: 'users',
+    column: 'refresh_token',
+    sql: "ALTER TABLE users ADD COLUMN refresh_token TEXT AFTER profile_picture",
+    description: "Add refresh_token column to users table"
   }
 ];
 

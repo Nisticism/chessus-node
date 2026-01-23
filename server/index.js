@@ -476,8 +476,8 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
     // Store relative path for database
     const imagePath = `/uploads/profile-pictures/${imageFile.filename}`;
 
-    // Update user's profile picture in database using promise API
-    await db_pool.promise().query(
+    // Update user's profile picture in database
+    await db_pool.query(
       "UPDATE chessusnode.users SET profile_picture = ? WHERE id = ?",
       [imagePath, userId]
     );
@@ -530,15 +530,47 @@ app.post("/api/login", async (req, res) => {
       return res.status(400).send({ auth: false, message: "Incorrect password" });
     }
 
-    // Generate token
-    const userForToken = { username, password };
-    const accessToken = generateAccessToken(userForToken);
+    // Generate tokens
+    const userPayload = { id: user.id, username: user.username, role: user.role };
+    const accessToken = generateAccessToken(userPayload);
+    const refreshToken = generateRefreshToken(userPayload);
+    
+    // Store refresh token in database (ignore error if column doesn't exist yet)
+    try {
+      await db_pool.query(
+        "UPDATE users SET refresh_token = ? WHERE id = ?",
+        [refreshToken, user.id]
+      );
+    } catch (dbErr) {
+      console.warn("Could not store refresh token (column may not exist yet):", dbErr.message);
+    }
     
     user.accessToken = accessToken;
+    user.refreshToken = refreshToken;
+    delete user.password; // Don't send password to client
+    delete user.refresh_token; // Don't expose the stored token
+    
     res.json({ auth: true, result: user });
   } catch (err) {
     console.error("Error in /api/login:", err);
     res.status(500).send({ auth: false, message: "Login failed", err: err.message });
+  }
+});
+
+app.post("/api/logout", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Clear refresh token from database
+    await db_pool.query(
+      "UPDATE users SET refresh_token = NULL WHERE id = ?",
+      [userId]
+    );
+    
+    res.json({ message: "Logged out successfully" });
+  } catch (err) {
+    console.error("Error in /api/logout:", err);
+    res.status(500).send({ message: "Logout failed", err: err.message });
   }
 });
 
@@ -894,8 +926,40 @@ app.get("/api/news", async (req, res) => {
 
 //  ---------------------- Token -----------------------------
 
-app.post('/api/token', (req, res) => {
-  const refreshToken = req.body.token
+app.post('/api/token', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    
+    if (!refreshToken) {
+      return res.status(401).send({ message: "Refresh token required" });
+    }
+
+    // Verify the refresh token
+    jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, async (err, user) => {
+      if (err) {
+        return res.status(403).send({ message: "Invalid refresh token" });
+      }
+
+      // Check if refresh token exists in database
+      const [users] = await db_pool.query(
+        "SELECT id, username, role, refresh_token FROM users WHERE id = ?",
+        [user.id]
+      );
+
+      if (users.length === 0 || users[0].refresh_token !== refreshToken) {
+        return res.status(403).send({ message: "Refresh token not found or revoked" });
+      }
+
+      // Generate new access token
+      const userPayload = { id: user.id, username: user.username, role: user.role };
+      const accessToken = generateAccessToken(userPayload);
+
+      res.json({ accessToken });
+    });
+  } catch (err) {
+    console.error("Error in /api/token:", err);
+    res.status(500).send({ message: "Token refresh failed", err: err.message });
+  }
 })
 
 // ----------------------- Games/Game Types ------------------------------
@@ -1376,25 +1440,30 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
 
 // ----------------------- Pieces Delete ------------------------------
 
-app.delete("/api/pieces/:pieceId", async (req, res) => {
+app.delete("/api/pieces/:pieceId", authenticateToken, async (req, res) => {
   try {
     const { pieceId } = req.params;
-    const { userId, userRole } = req.body;
+    const userId = req.user.id;
+    const userRole = req.user.role;
 
     // Check if piece exists
-    const existingPiece = await dbHelpers.getPieceById(pieceId);
-    if (!existingPiece) {
+    const [existingPieceRows] = await db_pool.query(
+      "SELECT * FROM pieces WHERE id = ?", 
+      [pieceId]
+    );
+    
+    if (existingPieceRows.length === 0) {
       return res.status(404).send({ message: "Piece not found" });
     }
+    
+    const existingPiece = existingPieceRows[0];
 
     // Verify ownership
     if (existingPiece.creator_id !== parseInt(userId) && userRole !== 'Admin') {
       return res.status(403).send({ message: "You don't have permission to delete this piece" });
     }
 
-    // Delete from related tables first (due to foreign keys)
-    await db_pool.query("DELETE FROM piece_movement WHERE piece_id = ?", [pieceId]);
-    await db_pool.query("DELETE FROM piece_capture WHERE piece_id = ?", [pieceId]);
+    // Delete the piece (CASCADE will handle related tables)
     await db_pool.query("DELETE FROM pieces WHERE id = ?", [pieceId]);
 
     res.status(200).send({ message: "Piece deleted successfully" });
@@ -1411,7 +1480,7 @@ function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization']
   const token = authHeader && authHeader.split(' ')[1]
   if (token == null) {
-    res.send("No token!");
+    return res.status(401).send({ message: "No token provided" });
   }
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
     if (err) return res.sendStatus(403)
@@ -1420,10 +1489,354 @@ function authenticateToken(req, res, next) {
   })
 }
 
+function authenticateAdmin(req, res, next) {
+  authenticateToken(req, res, () => {
+    if (req.user.role !== 'Admin') {
+      return res.status(403).send({ message: "Admin access required" });
+    }
+    next();
+  });
+}
+
 function generateAccessToken(user) {
-  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
+  // Access tokens expire in 15 minutes
+  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
   return token;
 }
+
+function generateRefreshToken(user) {
+  // Refresh tokens expire in 7 days
+  const token = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+  return token;
+}
+
+// ----------------------- Admin Dashboard Routes ------------------------------
+
+// Get all users with pagination
+app.get("/api/admin/users", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const [users] = await db_pool.query(
+      `SELECT id, username, email, first_name, last_name, bio, role, profile_picture, 
+       last_active_at, timezone, lang, country, light_square_color, dark_square_color, elo
+       FROM users 
+       ORDER BY id DESC 
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM users");
+
+    res.json({
+      data: users,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/users:", err);
+    res.status(500).send({ message: "Failed to fetch users", err: err.message });
+  }
+});
+
+// Get all pieces with pagination (includes movement and attack data)
+app.get("/api/admin/pieces", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const [pieces] = await db_pool.query(
+      `SELECT p.id, p.piece_name, p.piece_category, p.piece_description, 
+       p.creator_id, p.image_location,
+       u.username as creator_name,
+       pm.directional_movement_style as movement_directional, 
+       pm.ratio_movement_style as movement_ratio,
+       pc.can_capture_enemy_on_move as can_capture
+       FROM pieces p
+       LEFT JOIN users u ON p.creator_id = u.id
+       LEFT JOIN piece_movement pm ON p.id = pm.piece_id
+       LEFT JOIN piece_capture pc ON p.id = pc.piece_id
+       ORDER BY p.id DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM pieces");
+
+    res.json({
+      data: pieces,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/pieces:", err);
+    res.status(500).send({ message: "Failed to fetch pieces", err: err.message });
+  }
+});
+
+// Get all games with pagination
+app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const [games] = await db_pool.query(
+      `SELECT g.id, g.game_name, g.descript, g.board_width, g.board_height, 
+       g.player_count, g.last_played_at, u.username as creator_name 
+       FROM game_types g
+       LEFT JOIN users u ON g.creator_id = u.id
+       ORDER BY g.id DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM game_types");
+
+    res.json({
+      data: games,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/games:", err);
+    res.status(500).send({ message: "Failed to fetch games", err: err.message });
+  }
+});
+
+// Get all forum articles with pagination
+app.get("/api/admin/forums", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const [forums] = await db_pool.query(
+      `SELECT a.id, a.title, a.descript, a.content, a.genre, a.public, a.created_at,
+       u.username as author_name, g.game_name
+       FROM articles a
+       LEFT JOIN users u ON a.author_id = u.id
+       LEFT JOIN game_types g ON a.game_type_id = g.id
+       ORDER BY a.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM articles");
+
+    res.json({
+      data: forums,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/forums:", err);
+    res.status(500).send({ message: "Failed to fetch forums", err: err.message });
+  }
+});
+
+// Get all news with pagination
+app.get("/api/admin/news", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const [news] = await db_pool.query(
+      `SELECT n.*, u.username as author_name
+       FROM news n
+       LEFT JOIN users u ON n.author_id = u.id
+       ORDER BY n.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM news");
+
+    res.json({
+      data: news,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/news:", err);
+    res.status(500).send({ message: "Failed to fetch news", err: err.message });
+  }
+});
+
+// Update any user field (admin only)
+app.put("/api/admin/users/:userId", authenticateAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const updates = req.body;
+    
+    // Build dynamic update query
+    const fields = Object.keys(updates).filter(key => key !== 'id');
+    if (fields.length === 0) {
+      return res.status(400).send({ message: "No fields to update" });
+    }
+
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    const values = fields.map(field => updates[field]);
+    values.push(userId);
+
+    await db_pool.query(
+      `UPDATE users SET ${setClause} WHERE id = ?`,
+      values
+    );
+
+    const [[updatedUser]] = await db_pool.query(
+      "SELECT * FROM users WHERE id = ?",
+      [userId]
+    );
+    delete updatedUser.password;
+
+    res.json({ success: true, user: updatedUser, message: "User updated successfully" });
+  } catch (err) {
+    console.error("Error in /api/admin/users/:userId (PUT):", err);
+    res.status(500).send({ message: "Failed to update user", err: err.message });
+  }
+});
+
+// Update any piece field (admin only)
+app.put("/api/admin/pieces/:pieceId", authenticateAdmin, async (req, res) => {
+  try {
+    const { pieceId } = req.params;
+    const updates = req.body;
+    
+    const fields = Object.keys(updates).filter(key => key !== 'id' && !key.includes('movement_') && !key.includes('attack_'));
+    if (fields.length > 0) {
+      const setClause = fields.map(field => `${field} = ?`).join(', ');
+      const values = fields.map(field => updates[field]);
+      values.push(pieceId);
+      await db_pool.query(`UPDATE pieces SET ${setClause} WHERE id = ?`, values);
+    }
+
+    // Update movement fields if present
+    const movementFields = Object.keys(updates).filter(key => key.startsWith('movement_'));
+    if (movementFields.length > 0) {
+      const setClause = movementFields.map(field => `${field.replace('movement_', '')} = ?`).join(', ');
+      const values = movementFields.map(field => updates[field]);
+      values.push(pieceId);
+      await db_pool.query(`UPDATE piece_movement SET ${setClause} WHERE piece_id = ?`, values);
+    }
+
+    // Update attack/capture fields if present
+    const attackFields = Object.keys(updates).filter(key => key.startsWith('attack_'));
+    if (attackFields.length > 0) {
+      const setClause = attackFields.map(field => `${field.replace('attack_', '')} = ?`).join(', ');
+      const values = attackFields.map(field => updates[field]);
+      values.push(pieceId);
+      await db_pool.query(`UPDATE piece_capture SET ${setClause} WHERE piece_id = ?`, values);
+    }
+
+    res.json({ success: true, message: "Piece updated successfully" });
+  } catch (err) {
+    console.error("Error in /api/admin/pieces/:pieceId (PUT):", err);
+    res.status(500).send({ message: "Failed to update piece", err: err.message });
+  }
+});
+
+// Update any game field (admin only)
+app.put("/api/admin/games/:gameId", authenticateAdmin, async (req, res) => {
+  try {
+    const { gameId } = req.params;
+    const updates = req.body;
+    
+    const fields = Object.keys(updates).filter(key => key !== 'id');
+    if (fields.length === 0) {
+      return res.status(400).send({ message: "No fields to update" });
+    }
+
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    const values = fields.map(field => updates[field]);
+    values.push(gameId);
+
+    await db_pool.query(`UPDATE game_types SET ${setClause} WHERE id = ?`, values);
+
+    const [[updatedGame]] = await db_pool.query("SELECT * FROM game_types WHERE id = ?", [gameId]);
+
+    res.json({ success: true, game: updatedGame, message: "Game updated successfully" });
+  } catch (err) {
+    console.error("Error in /api/admin/games/:gameId (PUT):", err);
+    res.status(500).send({ message: "Failed to update game", err: err.message });
+  }
+});
+
+// Update any forum article field (admin only)
+app.put("/api/admin/forums/:articleId", authenticateAdmin, async (req, res) => {
+  try {
+    const { articleId } = req.params;
+    const updates = req.body;
+    
+    const fields = Object.keys(updates).filter(key => key !== 'id');
+    if (fields.length === 0) {
+      return res.status(400).send({ message: "No fields to update" });
+    }
+
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    const values = fields.map(field => updates[field]);
+    values.push(articleId);
+
+    await db_pool.query(`UPDATE articles SET ${setClause} WHERE id = ?`, values);
+
+    const [[updatedArticle]] = await db_pool.query("SELECT * FROM articles WHERE id = ?", [articleId]);
+
+    res.json({ success: true, article: updatedArticle, message: "Forum article updated successfully" });
+  } catch (err) {
+    console.error("Error in /api/admin/forums/:articleId (PUT):", err);
+    res.status(500).send({ message: "Failed to update forum article", err: err.message });
+  }
+});
+
+// Update any news field (admin only)
+app.put("/api/admin/news/:newsId", authenticateAdmin, async (req, res) => {
+  try {
+    const { newsId } = req.params;
+    const updates = req.body;
+    
+    const fields = Object.keys(updates).filter(key => key !== 'id');
+    if (fields.length === 0) {
+      return res.status(400).send({ message: "No fields to update" });
+    }
+
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    const values = fields.map(field => updates[field]);
+    values.push(newsId);
+
+    await db_pool.query(`UPDATE news SET ${setClause} WHERE id = ?`, values);
+
+    const [[updatedNews]] = await db_pool.query("SELECT * FROM news WHERE id = ?", [newsId]);
+
+    res.json({ success: true, news: updatedNews, message: "News updated successfully" });
+  } catch (err) {
+    console.error("Error in /api/admin/news/:newsId (PUT):", err);
+    res.status(500).send({ message: "Failed to update news", err: err.message });
+  }
+});
 
 //  -----------------------  Other/Port -------------------------
 

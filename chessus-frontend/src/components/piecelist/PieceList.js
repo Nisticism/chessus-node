@@ -13,6 +13,9 @@ const PieceList = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [pieceToDelete, setPieceToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertType, setAlertType] = useState(""); // "success" or "error"
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -22,6 +25,18 @@ const PieceList = () => {
       setFirstRender(true);
     }
   }, [firstRender, dispatch]);
+
+  useEffect(() => {
+    let timer;
+    if (showAlert) {
+      timer = setTimeout(() => {
+        setShowAlert(false);
+        setAlertMessage('');
+        setAlertType("");
+      }, 2000);
+    }
+    return () => clearTimeout(timer);
+  }, [showAlert]);
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
@@ -51,12 +66,13 @@ const PieceList = () => {
   };
 
   // Separate pieces into user's pieces and other pieces
+  // Filter out any pieces without valid IDs
   const myPieces = allPieces.piecesList 
-    ? allPieces.piecesList.filter(piece => piece.creator_id === currentUser.id)
+    ? allPieces.piecesList.filter(piece => piece.id && piece.creator_id === currentUser.id)
     : [];
   
   const otherPieces = allPieces.piecesList 
-    ? allPieces.piecesList.filter(piece => piece.creator_id !== currentUser.id)
+    ? allPieces.piecesList.filter(piece => piece.id && piece.creator_id !== currentUser.id)
     : [];
 
   const canEditPiece = (piece) => {
@@ -78,11 +94,20 @@ const PieceList = () => {
     setIsDeleting(true);
     try {
       await deletePiece(pieceToDelete.id);
-      dispatch(getPieces()); // Refresh the list
       setShowDeleteModal(false);
       setPieceToDelete(null);
+      setAlertMessage(`Successfully deleted "${pieceToDelete.piece_name}"`);
+      setAlertType('success');
+      setShowAlert(true);
+      // Force a fresh fetch after delete
+      setTimeout(() => {
+        dispatch(getPieces());
+      }, 100);
     } catch (error) {
       console.error("Error deleting piece:", error);
+      setAlertMessage("Failed to delete piece: " + (error.response?.data?.message || error.message));
+      setAlertType('error');
+      setShowAlert(true);
     } finally {
       setIsDeleting(false);
     }
@@ -91,7 +116,7 @@ const PieceList = () => {
   const renderPieceCard = (piece, showEditButton = false) => {
     const firstImage = getFirstImage(piece.image_location);
     return (
-      <div key={piece.id} className={styles["piece-card"]}>
+      <div className={styles["piece-card"]}>
         <div className={styles["piece-image-container"]}>
           {firstImage ? (
             <img 
@@ -157,7 +182,15 @@ const PieceList = () => {
           )}
         </div>
       </div>
-    );
+    );{showAlert && (
+        <div id="alert-container" className={styles["alert-container"]}>
+          <div className={`${styles["alert-style"]} ${styles[`alert-${alertType}`]}`}>
+            {alertMessage}
+          </div>
+        </div>
+      )}
+      
+      
   };
 
   return (
@@ -180,7 +213,11 @@ const PieceList = () => {
             <span className={styles["piece-count"]}>{myPieces.length} piece{myPieces.length !== 1 ? 's' : ''}</span>
           </div>
           <div className={styles["pieces-grid"]}>
-            {myPieces.map(piece => renderPieceCard(piece, true))}
+            {myPieces.map(piece => (
+              <React.Fragment key={piece.id}>
+                {renderPieceCard(piece, true)}
+              </React.Fragment>
+            ))}
           </div>
         </section>
       )}
@@ -196,7 +233,11 @@ const PieceList = () => {
         
         {otherPieces.length > 0 ? (
           <div className={styles["pieces-grid"]}>
-            {otherPieces.map(piece => renderPieceCard(piece, currentUser.role === "Admin"))}
+            {otherPieces.map(piece => (
+              <React.Fragment key={piece.id}>
+                {renderPieceCard(piece, currentUser.role === "Admin")}
+              </React.Fragment>
+            ))}
           </div>
         ) : (
           <div className={styles["empty-section"]}>

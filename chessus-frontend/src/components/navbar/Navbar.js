@@ -136,6 +136,13 @@ const Navbar = () => {
                   {currentUser.username}
                 </Link>
               </div>
+              {currentUser.role === 'Admin' && (
+                <div className="nav-item">
+                  <Link to="/admin/dashboard" className="nav-item-inner admin-link">
+                    Admin
+                  </Link>
+                </div>
+              )}
               <div className="nav-item">
                 <Link to="/login" className="nav-item-inner" onClick={logOut}>
                   Log Out

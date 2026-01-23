@@ -101,12 +101,20 @@ const getAllUsers = async () => {
  */
 const getAllPieces = async () => {
   return await query(`
-    SELECT p.*, pm.*, pc.*, u.username as creator_username, u.id as creator_user_id, gt.game_name as game_type_name
+    SELECT 
+      p.id,
+      p.piece_name,
+      p.piece_description,
+      p.piece_width,
+      p.piece_height,
+      p.image_location,
+      p.creator_id,
+      u.username as creator_username,
+      gt.game_name as game_type_name
     FROM chessusnode.pieces p
-    LEFT JOIN chessusnode.piece_movement pm ON p.id = pm.piece_id
-    LEFT JOIN chessusnode.piece_capture pc ON p.id = pc.piece_id
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id
+    ORDER BY p.id DESC
   `);
 };
 

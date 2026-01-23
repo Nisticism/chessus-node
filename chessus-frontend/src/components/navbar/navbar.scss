@@ -144,6 +144,16 @@ p {
   justify-content: flex-end;
 }
 
+.admin-link {
+  color: #ffc107 !important;
+  font-weight: 700;
+  
+  &:hover {
+    color: #ffdb4d !important;
+    text-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+  }
+}
+
 .inner-menu {
   display: none;
   margin: 0;
