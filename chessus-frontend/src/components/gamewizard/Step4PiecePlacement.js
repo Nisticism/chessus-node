@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import styles from "./gamewizard.module.scss";
 import PieceSelector from "./PieceSelector";
+import { getAllPieces, getPieceById } from "../../actions/pieces";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -16,13 +17,48 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [showPieceSelector, setShowPieceSelector] = useState(false);
   const [draggedPiece, setDraggedPiece] = useState(null);
   const [useRandomizedPositions, setUseRandomizedPositions] = useState(false);
+  const [pieceDataMap, setPieceDataMap] = useState({});
+  const [hoveredSquare, setHoveredSquare] = useState(null);
+  const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
+  const [draggedPiecePosition, setDraggedPiecePosition] = useState(null);
+  const initializedRef = useRef(false);
   
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
   const darkSquareColor = localStorage.getItem('boardDarkColor') || '#08234d';
 
-  // Parse existing piece placements when component mounts
+  // Load all pieces for image fallback and movement data
   useEffect(() => {
+    const loadPieces = async () => {
+      try {
+        const allPieces = await getAllPieces();
+        const pieceMap = {};
+        
+        // Load full details for each piece (includes movement/capture data from JOINs)
+        await Promise.all(allPieces.map(async (piece) => {
+          try {
+            const fullPieceData = await getPieceById(piece.id);
+            pieceMap[piece.id] = fullPieceData;
+          } catch (err) {
+            console.error(`Error loading piece ${piece.id}:`, err);
+            // Fallback to basic piece data
+            pieceMap[piece.id] = piece;
+          }
+        }));
+        
+        setPieceDataMap(pieceMap);
+      } catch (error) {
+        console.error("Error loading pieces:", error);
+      }
+    };
+    loadPieces();
+  }, []);
+
+  // Parse existing piece placements ONLY on initial mount
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
     try {
       if (gameData.pieces_string) {
         const parsed = JSON.parse(gameData.pieces_string);
@@ -47,11 +83,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       setUseRandomizedPositions(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameData.pieces_string, gameData.randomized_starting_positions]);
+  }, []);
 
   // Update gameData whenever piecePlacements changes
   useEffect(() => {
-    updateGameData({ pieces_string: JSON.stringify(piecePlacements) });
+    const newValue = JSON.stringify(piecePlacements);
+    if (newValue !== gameData.pieces_string) {
+      updateGameData({ pieces_string: newValue });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [piecePlacements]);
 
@@ -95,17 +134,151 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     setSelectedSquare(null);
   }, []);
 
+  // Helper to check if a value allows movement at distance
+  const checkMovement = useCallback((value, distance) => {
+    if (value === 99) return true; // Infinite movement
+    if (value === 0 || value === null) return false;
+    if (value > 0) return distance <= value; // Up to that distance
+    if (value < 0) return distance === Math.abs(value); // Exact distance
+    return false;
+  }, []);
+
+  // Check if piece can move to target square
+  const canPieceMoveTo = useCallback((fromRow, fromCol, toRow, toCol, pieceData) => {
+    if (!pieceData) return true; // If no piece data, allow free movement (fallback)
+    if (fromRow === toRow && fromCol === toCol) return false;
+    
+    const rowDiff = toRow - fromRow;
+    const colDiff = toCol - fromCol;
+    
+    let directionalAllowed = false;
+    
+    // Directional movement
+    if (pieceData.directional_movement_style) {
+      if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff));
+      } else if (rowDiff < 0 && colDiff === 0) {
+        directionalAllowed = checkMovement(pieceData.up_movement, Math.abs(rowDiff));
+      } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff));
+      } else if (rowDiff === 0 && colDiff > 0) {
+        directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff));
+      } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff === 0) {
+        directionalAllowed = checkMovement(pieceData.down_movement, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff));
+      } else if (rowDiff === 0 && colDiff < 0) {
+        directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff));
+      }
+      
+      if (directionalAllowed) return true;
+    }
+
+    // Ratio movement (L-shape like knight)
+    if (pieceData.ratio_movement_style && pieceData.ratio_one_movement && pieceData.ratio_two_movement) {
+      const ratio1 = Math.abs(pieceData.ratio_one_movement);
+      const ratio2 = Math.abs(pieceData.ratio_two_movement);
+      
+      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
+          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
+        return true;
+      }
+    }
+
+    // Step-by-step movement
+    if (pieceData.step_by_step_movement_style && pieceData.step_by_step_movement_value) {
+      const maxSteps = Math.abs(pieceData.step_by_step_movement_value);
+      const noDiagonal = pieceData.step_by_step_movement_value < 0;
+      
+      if (noDiagonal) {
+        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
+        if (manhattanDistance <= maxSteps) return true;
+      } else {
+        const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+        if (chebyshevDistance <= maxSteps) return true;
+      }
+    }
+
+    return false;
+  }, [checkMovement]);
+
+  // Check if piece can capture on move to target square
+  const canCaptureOnMoveTo = useCallback((fromRow, fromCol, toRow, toCol, pieceData) => {
+    if (!pieceData) return false;
+    if (fromRow === toRow && fromCol === toCol) return false;
+    if (!pieceData.can_capture_enemy_on_move) return false;
+    
+    const rowDiff = toRow - fromRow;
+    const colDiff = toCol - fromCol;
+    
+    let directionalCaptureAllowed = false;
+    
+    // Check directional capture
+    if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+      directionalCaptureAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff));
+    } else if (rowDiff < 0 && colDiff === 0) {
+      directionalCaptureAllowed = checkMovement(pieceData.up_capture, Math.abs(rowDiff));
+    } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+      directionalCaptureAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff));
+    } else if (rowDiff === 0 && colDiff > 0) {
+      directionalCaptureAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff));
+    } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+      directionalCaptureAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff));
+    } else if (rowDiff > 0 && colDiff === 0) {
+      directionalCaptureAllowed = checkMovement(pieceData.down_capture, Math.abs(rowDiff));
+    } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+      directionalCaptureAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff));
+    } else if (rowDiff === 0 && colDiff < 0) {
+      directionalCaptureAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff));
+    }
+    
+    if (directionalCaptureAllowed) return true;
+    
+    // Ratio capture
+    if (pieceData.ratio_one_capture && pieceData.ratio_two_capture) {
+      const ratio1 = Math.abs(pieceData.ratio_one_capture);
+      const ratio2 = Math.abs(pieceData.ratio_two_capture);
+      
+      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
+          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
+        return true;
+      }
+    }
+    
+    // Step-by-step capture
+    if (pieceData.step_by_step_capture) {
+      const maxSteps = Math.abs(pieceData.step_by_step_capture);
+      const noDiagonal = pieceData.step_by_step_capture < 0;
+      
+      if (noDiagonal) {
+        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
+        if (manhattanDistance <= maxSteps) return true;
+      } else {
+        const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+        if (chebyshevDistance <= maxSteps) return true;
+      }
+    }
+
+    return false;
+  }, [checkMovement]);
+
   // Drag and drop handlers
   const handleDragStart = useCallback((e, key) => {
+    const [row, col] = key.split(',').map(Number);
     setDraggedPiece({ key, data: piecePlacements[key] });
+    setDraggedPiecePosition({ row, col });
+    setHoveredPiecePosition(null); // Clear hover when dragging starts
     e.dataTransfer.effectAllowed = 'move';
     // Make the dragged element semi-transparent
     e.currentTarget.style.opacity = '0.5';
   }, [piecePlacements]);
 
-  const handleDragOver = useCallback((e) => {
+  const handleDragOver = useCallback((e, row, col) => {
     e.preventDefault();
     e.stopPropagation();
+    setHoveredSquare({ row, col });
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
@@ -120,9 +293,12 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
 
     if (sourceKey === targetKey) {
       setDraggedPiece(null);
+      setDraggedPiecePosition(null);
+      setHoveredSquare(null);
       return;
     }
 
+    // Allow placement anywhere - validation is just for visual feedback
     setPiecePlacements(prev => {
       const newPlacements = { ...prev };
       // Remove from source
@@ -133,12 +309,17 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     });
 
     setDraggedPiece(null);
+    setDraggedPiecePosition(null);
+    setHoveredSquare(null);
   }, [draggedPiece]);
 
   const handleDragEnd = useCallback((e) => {
     // Reset opacity
     e.currentTarget.style.opacity = '1';
     setDraggedPiece(null);
+    setDraggedPiecePosition(null);
+    setHoveredSquare(null);
+    setHoveredPiecePosition(null);
   }, []);
 
   const handleRandomizedChange = (useRandomized) => {
@@ -161,11 +342,36 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     }
   };
 
+  // Helper function to get placement image URL with fallback
+  const getPlacementImageUrl = useCallback((placement) => {
+    // First try the database for current images
+    if (placement.piece_id && pieceDataMap[placement.piece_id]) {
+      const piece = pieceDataMap[placement.piece_id];
+      if (piece.image_location) {
+        try {
+          const images = JSON.parse(piece.image_location);
+          if (Array.isArray(images) && images.length > 0) {
+            return getImageUrl(images[0]);
+          }
+        } catch (e) {
+          console.error("Error parsing piece image_location:", e);
+        }
+      }
+    }
+    
+    // Fallback to saved image_url (might be broken)
+    if (placement.image_url) {
+      return getImageUrl(placement.image_url);
+    }
+    
+    return null;
+  }, [pieceDataMap]);
+
   // Helper function to get player color (must be defined before renderBoard)
-  const getPlayerColor = (playerId) => {
+  const getPlayerColor = useCallback((playerId) => {
     const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f7dc6f', '#bb8fce', '#52be80', '#ec7063', '#5dade2'];
     return colors[(playerId - 1) % colors.length] || '#999';
-  };
+  }, []);
 
   const renderBoard = useMemo(() => {
     const board = [];
@@ -177,20 +383,65 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         const key = `${row},${col}`;
         const placement = piecePlacements[key];
         
+        // Check if this square is valid for the hovered or dragged piece
+        let canMove = false;
+        let canCapture = false;
+        
+        // Check for dragged piece
+        if (draggedPiece && draggedPiecePosition) {
+          const pieceData = pieceDataMap[draggedPiece.data.piece_id];
+          if (pieceData) {
+            canMove = canPieceMoveTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData);
+            canCapture = canCaptureOnMoveTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData);
+          }
+        }
+        // Check for hovered piece (not dragging)
+        else if (hoveredPiecePosition && !draggedPiece) {
+          const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
+          if (pieceData) {
+            canMove = canPieceMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData);
+            canCapture = canCaptureOnMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData);
+          }
+        }
+        
+        let squareStyle = {
+          background: isLight ? lightSquareColor : darkSquareColor,
+          width: `${squareSize}px`,
+          height: `${squareSize}px`,
+          position: 'relative',
+          cursor: placement ? 'grab' : 'context-menu',
+          boxSizing: 'border-box'
+        };
+        
+        // Highlight valid moves and attacks - use border and box-shadow for offset borders
+        if (canMove && canCapture) {
+          // Outer border for movement (blue), inner border for attack (orange)
+          squareStyle.border = '4px solid #2196F3';
+          squareStyle.boxShadow = 'inset 0 0 0 3px #FF9800, inset 0 0 10px rgba(255, 152, 0, 0.3)';
+          squareStyle.zIndex = 10;
+        } else if (canMove) {
+          squareStyle.border = '5px solid #2196F3';
+          squareStyle.boxShadow = 'inset 0 0 10px rgba(33, 150, 243, 0.3)';
+          squareStyle.zIndex = 10;
+        } else if (canCapture) {
+          squareStyle.border = '3px solid #FF9800';
+          squareStyle.boxShadow = 'inset 0 0 10px rgba(255, 152, 0, 0.3)';
+          squareStyle.zIndex = 10;
+        }
+        
         board.push(
           <div
             key={key}
             className={styles["board-square"]}
-            style={{
-              background: isLight ? lightSquareColor : darkSquareColor,
-              width: `${squareSize}px`,
-              height: `${squareSize}px`,
-              position: 'relative',
-              cursor: placement ? 'grab' : 'context-menu'
-            }}
+            style={squareStyle}
             onContextMenu={(e) => handleSquareRightClick(e, row, col)}
-            onDragOver={handleDragOver}
+            onDragOver={(e) => handleDragOver(e, row, col)}
             onDrop={(e) => handleDrop(e, row, col)}
+            onMouseEnter={() => {
+              if (!placement) {
+                setHoveredSquare({ row, col });
+              }
+            }}
           >
             {placement && (
               <div 
@@ -198,11 +449,27 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                 draggable
                 onDragStart={(e) => handleDragStart(e, key)}
                 onDragEnd={handleDragEnd}
-                style={{ cursor: 'grab' }}
+                onMouseEnter={() => {
+                  setHoveredPiecePosition({ row, col, pieceId: placement.piece_id });
+                }}
+                onMouseLeave={() => {
+                  if (!draggedPiece) setHoveredPiecePosition(null);
+                }}
+                style={{ 
+                  cursor: 'grab',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
               >
-                {placement.image_url ? (
+                {getPlacementImageUrl(placement) ? (
                   <img 
-                    src={getImageUrl(placement.image_url)} 
+                    src={getPlacementImageUrl(placement)} 
                     alt={placement.piece_name}
                     style={{
                       width: '100%',
@@ -236,7 +503,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     }
     
     return board;
-  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor]);
+  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, canPieceMoveTo, canCaptureOnMoveTo]);
 
   const getPieceCounts = () => {
     const counts = {};
@@ -269,6 +536,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       </div>
 
       <div className={styles["board-placement-preview"]}>
+        <div className={styles["preview-legend"]} style={{
+          fontSize: `${Math.max(0.7, Math.min(1, gameData.board_width / 12))}rem`,
+          marginBottom: '1rem'
+        }}>
+          <span className={styles["legend-movement"]}>Blue = Movement</span>
+          <span className={styles["legend-capture"]}>Orange = Capture on Move</span>
+        </div>
         <div 
           className={styles["placement-board"]}
           style={{
@@ -288,7 +562,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         <h3>Instructions:</h3>
         <ul>
           <li>Right-click any square to add a piece</li>
-          <li>Click and drag pieces to move them to different squares</li>
+          <li>Hover over a piece to see where it can move and attack</li>
+          <li>Click and drag pieces to move them anywhere on the board</li>
+          <li>Blue highlights show valid movement squares, orange shows capture squares</li>
           <li>Search for pieces by name or ID</li>
           <li>Assign each piece to a player (1-{gameData.player_count})</li>
           <li>Choose an image for the piece from available uploads</li>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import styles from "./gamewizard.module.scss";
 import SpecialSquareSelector from "./SpecialSquareSelector";
 
@@ -9,6 +9,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showSquareSelector, setShowSquareSelector] = useState(false);
   const [draggedSquare, setDraggedSquare] = useState(null);
+  const initializedRef = useRef(false);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -22,8 +23,11 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     updateGameData({ [field]: parseInt(value) });
   };
 
-  // Parse existing special squares when component mounts
+  // Parse existing special squares ONLY on initial mount
   useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
     try {
       if (gameData.range_squares_string) {
         const parsed = JSON.parse(gameData.range_squares_string);
@@ -57,32 +61,58 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       console.error("Error parsing special_squares_string:", error);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameData.range_squares_string, gameData.promotion_squares_string, gameData.special_squares_string]);
+  }, []);
 
   // Update gameData whenever special squares change
   useEffect(() => {
-    updateGameData({ range_squares_string: JSON.stringify(rangeSquares) });
+    const newValue = JSON.stringify(rangeSquares);
+    if (newValue !== gameData.range_squares_string) {
+      updateGameData({ range_squares_string: newValue });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rangeSquares]);
 
   useEffect(() => {
-    updateGameData({ promotion_squares_string: JSON.stringify(promotionSquares) });
+    const newValue = JSON.stringify(promotionSquares);
+    if (newValue !== gameData.promotion_squares_string) {
+      updateGameData({ promotion_squares_string: newValue });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promotionSquares]);
 
   useEffect(() => {
-    updateGameData({ special_squares_string: JSON.stringify(specialSquares) });
+    const newValue = JSON.stringify(specialSquares);
+    if (newValue !== gameData.special_squares_string) {
+      updateGameData({ special_squares_string: newValue });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [specialSquares]);
 
-  const handleSquareRightClick = (e, row, col) => {
+  // Helper functions for square types and colors
+  const getSquareType = useCallback((key) => {
+    if (rangeSquares[key]) return 'range';
+    if (promotionSquares[key]) return 'promotion';
+    if (specialSquares[key]) return 'special';
+    return null;
+  }, [rangeSquares, promotionSquares, specialSquares]);
+
+  const getSquareColor = useCallback((type) => {
+    switch (type) {
+      case 'range': return '#ff8c00'; // Orange
+      case 'promotion': return '#4b0082'; // Purple
+      case 'special': return '#ffd700'; // Gold
+      default: return null;
+    }
+  }, []);
+
+  const handleSquareRightClick = useCallback((e, row, col) => {
     e.preventDefault();
     const key = `${row},${col}`;
     setSelectedSquare({ row, col, key });
     setShowSquareSelector(true);
-  };
+  }, []);
 
-  const handleSquareClick = (e, row, col) => {
+  const handleSquareClick = useCallback((e, row, col) => {
     // Only open selector if there's already a special square here
     const key = `${row},${col}`;
     const squareType = getSquareType(key);
@@ -90,7 +120,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       setSelectedSquare({ row, col, key });
       setShowSquareSelector(true);
     }
-  };
+  }, [getSquareType]);
 
   // Drag and drop handlers
   const handleDragStart = useCallback((e, key, squareType) => {
@@ -260,23 +290,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     setSelectedSquare(null);
   };
 
-  const getSquareType = (key) => {
-    if (rangeSquares[key]) return 'range';
-    if (promotionSquares[key]) return 'promotion';
-    if (specialSquares[key]) return 'special';
-    return null;
-  };
-
-  const getSquareColor = (type) => {
-    switch (type) {
-      case 'range': return '#ff8c00'; // Orange
-      case 'promotion': return '#4b0082'; // Purple
-      case 'special': return '#ffd700'; // Gold
-      default: return null;
-    }
-  };
-
-  const renderBoard = () => {
+  const renderBoard = React.useMemo(() => {
     const board = [];
     const squareSize = Math.min(60, 480 / Math.max(gameData.board_width, gameData.board_height));
 
@@ -338,7 +352,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     }
 
     return board;
-  };
+  }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, rangeSquares, promotionSquares, specialSquares, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd]);
 
   const getCounts = () => {
     return {
@@ -476,7 +490,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
             margin: '20px auto'
           }}
         >
-          {renderBoard()}
+          {renderBoard}
         </div>
       </div>
 
