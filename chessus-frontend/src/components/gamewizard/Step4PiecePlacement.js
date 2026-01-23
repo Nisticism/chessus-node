@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import styles from "./gamewizard.module.scss";
 import PieceSelector from "./PieceSelector";
 
@@ -14,6 +14,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [piecePlacements, setPiecePlacements] = useState({});
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
+  const [draggedPiece, setDraggedPiece] = useState(null);
+  const [useRandomizedPositions, setUseRandomizedPositions] = useState(false);
   
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -31,8 +33,21 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     } catch (error) {
       console.error("Error parsing pieces_string:", error);
     }
+
+    // Parse randomized_starting_positions to check if it's enabled
+    try {
+      if (gameData.randomized_starting_positions) {
+        const parsed = JSON.parse(gameData.randomized_starting_positions);
+        if (parsed && parsed.enabled === true) {
+          setUseRandomizedPositions(true);
+        }
+      }
+    } catch (error) {
+      // If it's not JSON, treat it as legacy string data
+      setUseRandomizedPositions(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameData.pieces_string]);
+  }, [gameData.pieces_string, gameData.randomized_starting_positions]);
 
   // Update gameData whenever piecePlacements changes
   useEffect(() => {
@@ -40,14 +55,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [piecePlacements]);
 
-  const handleSquareRightClick = (e, row, col) => {
+  const handleSquareRightClick = useCallback((e, row, col) => {
     e.preventDefault();
     const key = `${row},${col}`;
     setSelectedSquare({ row, col, key });
     setShowPieceSelector(true);
-  };
+  }, []);
 
-  const handlePieceSelected = (pieceData) => {
+  const handlePieceSelected = useCallback((pieceData) => {
     if (selectedSquare) {
       setPiecePlacements(prev => ({
         ...prev,
@@ -61,9 +76,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     }
     setShowPieceSelector(false);
     setSelectedSquare(null);
-  };
+  }, [selectedSquare]);
 
-  const handleRemovePiece = () => {
+  const handleRemovePiece = useCallback(() => {
     if (selectedSquare) {
       setPiecePlacements(prev => {
         const newPlacements = { ...prev };
@@ -73,14 +88,86 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     }
     setShowPieceSelector(false);
     setSelectedSquare(null);
-  };
+  }, [selectedSquare]);
 
-  const handleCancelSelector = () => {
+  const handleCancelSelector = useCallback(() => {
     setShowPieceSelector(false);
     setSelectedSquare(null);
+  }, []);
+
+  // Drag and drop handlers
+  const handleDragStart = useCallback((e, key) => {
+    setDraggedPiece({ key, data: piecePlacements[key] });
+    e.dataTransfer.effectAllowed = 'move';
+    // Make the dragged element semi-transparent
+    e.currentTarget.style.opacity = '0.5';
+  }, [piecePlacements]);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback((e, targetRow, targetCol) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!draggedPiece) return;
+
+    const targetKey = `${targetRow},${targetCol}`;
+    const sourceKey = draggedPiece.key;
+
+    if (sourceKey === targetKey) {
+      setDraggedPiece(null);
+      return;
+    }
+
+    setPiecePlacements(prev => {
+      const newPlacements = { ...prev };
+      // Remove from source
+      delete newPlacements[sourceKey];
+      // Add to target (overwrite if exists)
+      newPlacements[targetKey] = draggedPiece.data;
+      return newPlacements;
+    });
+
+    setDraggedPiece(null);
+  }, [draggedPiece]);
+
+  const handleDragEnd = useCallback((e) => {
+    // Reset opacity
+    e.currentTarget.style.opacity = '1';
+    setDraggedPiece(null);
+  }, []);
+
+  const handleRandomizedChange = (useRandomized) => {
+    setUseRandomizedPositions(useRandomized);
+    
+    if (useRandomized) {
+      // Save current board state with randomization enabled
+      const randomizedData = {
+        enabled: true,
+        startingPositions: piecePlacements
+      };
+      updateGameData({ randomized_starting_positions: JSON.stringify(randomizedData) });
+    } else {
+      // Disable randomization
+      const randomizedData = {
+        enabled: false,
+        startingPositions: {}
+      };
+      updateGameData({ randomized_starting_positions: JSON.stringify(randomizedData) });
+    }
   };
 
-  const renderBoard = () => {
+  // Helper function to get player color (must be defined before renderBoard)
+  const getPlayerColor = (playerId) => {
+    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f7dc6f', '#bb8fce', '#52be80', '#ec7063', '#5dade2'];
+    return colors[(playerId - 1) % colors.length] || '#999';
+  };
+
+  const renderBoard = useMemo(() => {
     const board = [];
     const squareSize = Math.min(60, 480 / Math.max(gameData.board_width, gameData.board_height));
     
@@ -99,12 +186,20 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               width: `${squareSize}px`,
               height: `${squareSize}px`,
               position: 'relative',
-              cursor: 'context-menu'
+              cursor: placement ? 'grab' : 'context-menu'
             }}
             onContextMenu={(e) => handleSquareRightClick(e, row, col)}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, row, col)}
           >
             {placement && (
-              <div className={styles["piece-on-square"]}>
+              <div 
+                className={styles["piece-on-square"]}
+                draggable
+                onDragStart={(e) => handleDragStart(e, key)}
+                onDragEnd={handleDragEnd}
+                style={{ cursor: 'grab' }}
+              >
                 {placement.image_url ? (
                   <img 
                     src={getImageUrl(placement.image_url)} 
@@ -112,11 +207,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                     style={{
                       width: '100%',
                       height: '100%',
-                      objectFit: 'contain'
+                      objectFit: 'contain',
+                      pointerEvents: 'none'
                     }}
+                    draggable={false}
                   />
                 ) : (
-                  <span style={{ fontSize: `${squareSize * 0.3}px`, color: '#fff' }}>
+                  <span style={{ fontSize: `${squareSize * 0.3}px`, color: '#fff', pointerEvents: 'none' }}>
                     {placement.piece_name?.charAt(0) || '?'}
                   </span>
                 )}
@@ -128,7 +225,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                   width: `${squareSize * 0.2}px`,
                   height: `${squareSize * 0.2}px`,
                   borderRadius: '50%',
-                  border: '1px solid #fff'
+                  border: '1px solid #fff',
+                  pointerEvents: 'none'
                 }} />
               </div>
             )}
@@ -138,12 +236,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     }
     
     return board;
-  };
-
-  const getPlayerColor = (playerId) => {
-    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f7dc6f', '#bb8fce', '#52be80', '#ec7063', '#5dade2'];
-    return colors[(playerId - 1) % colors.length] || '#999';
-  };
+  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor]);
 
   const getPieceCounts = () => {
     const counts = {};
@@ -161,7 +254,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     <div className={styles["step-container"]}>
       <h2>Piece Placement</h2>
       <p className={styles["step-description"]}>
-        Right-click on any square to add or remove pieces. Assign pieces to players and choose their images.
+        Right-click on any square to add or remove pieces. Drag pieces to move them. Assign pieces to players and choose their images.
       </p>
 
       <div className={styles["piece-stats"]}>
@@ -187,7 +280,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             margin: '20px auto'
           }}
         >
-          {renderBoard()}
+          {renderBoard}
         </div>
       </div>
 
@@ -195,11 +288,59 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         <h3>Instructions:</h3>
         <ul>
           <li>Right-click any square to add a piece</li>
+          <li>Click and drag pieces to move them to different squares</li>
           <li>Search for pieces by name or ID</li>
           <li>Assign each piece to a player (1-{gameData.player_count})</li>
           <li>Choose an image for the piece from available uploads</li>
           <li>Right-click an occupied square to remove or change the piece</li>
         </ul>
+      </div>
+
+      {/* Randomized Starting Positions */}
+      <div className={styles["form-group"]} style={{ marginTop: '30px' }}>
+        <label className={styles["form-label"]}>
+          Starting Position Mode
+        </label>
+        <div className={styles["radio-group"]}>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="randomized"
+              checked={!useRandomizedPositions}
+              onChange={() => handleRandomizedChange(false)}
+            />
+            <span>Fixed Starting Positions</span>
+            <p className={styles["radio-hint"]}>Pieces always start in the positions configured above</p>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="randomized"
+              checked={useRandomizedPositions}
+              onChange={() => handleRandomizedChange(true)}
+            />
+            <span>Randomized Starting Positions</span>
+            <p className={styles["radio-hint"]}>Pieces will be randomly placed each game (like Chess960)</p>
+          </label>
+        </div>
+      </div>
+
+      {/* Additional Game Data */}
+      {/* Additional Game Data */}
+      <div className={styles["form-group"]} style={{ marginTop: '30px' }}>
+        <label className={styles["form-label"]}>
+          Additional Game Data (JSON)
+        </label>
+        <textarea
+          className={styles["form-textarea-code"]}
+          value={gameData.other_game_data || ""}
+          onChange={(e) => updateGameData({ other_game_data: e.target.value })}
+          placeholder='{"custom_rules": [], "special_mechanics": {}}'
+          rows={6}
+        />
+        <p className={styles["field-hint"]}>
+          Any additional game configuration in JSON format for future extensions.
+        </p>
       </div>
 
       {showPieceSelector && (

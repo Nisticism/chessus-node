@@ -91,11 +91,6 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
         </div>
         <div className={styles["slider-labels"]}>
           <span>2</span>
-          <span>3</span>
-          <span>4</span>
-          <span>5</span>
-          <span>6</span>
-          <span>7</span>
           <span>8</span>
         </div>
       </div>
@@ -118,27 +113,6 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
         />
         <p className={styles["field-hint"]}>
           How many moves/actions each player can make per turn (typically 1)
-        </p>
-      </div>
-
-      {/* Starting Piece Count */}
-      <div className={styles["form-group"]}>
-        <label className={styles["form-label"]}>
-          Starting Piece Count
-        </label>
-        <input
-          type="number"
-          className={styles["form-input-small"]}
-          value={gameData.starting_piece_count}
-          onChange={(e) => {
-            const value = parseInt(e.target.value) || 0;
-            handleChange("starting_piece_count", Math.max(0, value));
-          }}
-          min="0"
-          placeholder="0"
-        />
-        <p className={styles["field-hint"]}>
-          Total number of pieces at the start of the game (will be configured in piece setup)
         </p>
       </div>
     </div>

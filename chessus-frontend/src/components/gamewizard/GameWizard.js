@@ -7,9 +7,8 @@ import Divider from "../Divider/Divider";
 import { createGame, getGameById, updateGame } from "../../actions/games";
 import Step1BasicInfo from "./Step1BasicInfo";
 import Step2WinConditions from "./Step2WinConditions";
-import Step3BoardPlayers from "./Step3BoardPlayers";
-import Step4Advanced from "./Step4Advanced";
-import Step5PiecePlacement from "./Step5PiecePlacement";
+import Step3BoardSpecialSquares from "./Step3BoardSpecialSquares";
+import Step4PiecePlacement from "./Step4PiecePlacement";
 
 const GameWizard = ({ editGameId }) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -62,7 +61,7 @@ const GameWizard = ({ editGameId }) => {
     other_game_data: "",
   });
 
-  const totalSteps = 5;
+  const totalSteps = 4;
 
   // Load existing game data when in edit mode
   useEffect(() => {
@@ -123,6 +122,11 @@ const GameWizard = ({ editGameId }) => {
     loadGameData();
   }, [editGameId, dispatch, currentUser]);
 
+  // Scroll to top when step changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentStep]);
+
   const updateGameData = (updates) => {
     setGameData(prev => ({ ...prev, ...updates }));
   };
@@ -130,12 +134,14 @@ const GameWizard = ({ editGameId }) => {
   const nextStep = () => {
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   const prevStep = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -143,16 +149,30 @@ const GameWizard = ({ editGameId }) => {
     setIsSubmitting(true);
     
     try {
+      // Calculate starting_piece_count from pieces_string
+      let pieceCount = 0;
+      try {
+        const pieces = JSON.parse(gameData.pieces_string || '{}');
+        pieceCount = Object.keys(pieces).length;
+      } catch (e) {
+        pieceCount = 0;
+      }
+
+      const finalGameData = {
+        ...gameData,
+        starting_piece_count: pieceCount
+      };
+
       if (isEditMode) {
         // Update existing game
-        await dispatch(updateGame(editGameId, gameData));
+        await dispatch(updateGame(editGameId, finalGameData));
       } else {
         // Create new game
-        const finalGameData = {
-          ...gameData,
+        const newGameData = {
+          ...finalGameData,
           creator_id: currentUser.id,
         };
-        await dispatch(createGame(finalGameData));
+        await dispatch(createGame(newGameData));
       }
       
       // Navigate to success page or game list
@@ -171,11 +191,9 @@ const GameWizard = ({ editGameId }) => {
       case 2:
         return <Step2WinConditions gameData={gameData} updateGameData={updateGameData} />;
       case 3:
-        return <Step3BoardPlayers gameData={gameData} updateGameData={updateGameData} />;
+        return <Step3BoardSpecialSquares gameData={gameData} updateGameData={updateGameData} />;
       case 4:
-        return <Step4Advanced gameData={gameData} updateGameData={updateGameData} />;
-      case 5:
-        return <Step5PiecePlacement gameData={gameData} updateGameData={updateGameData} />;
+        return <Step4PiecePlacement gameData={gameData} updateGameData={updateGameData} />;
       default:
         return null;
     }
@@ -261,6 +279,14 @@ const GameWizard = ({ editGameId }) => {
           {currentStep === totalSteps && (
             <StandardButton 
               buttonText={isSubmitting ? "Saving..." : (isEditMode ? "Update Game" : "Create Game")} 
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+            />
+          )}
+
+          {isEditMode && currentStep < totalSteps && (
+            <StandardButton 
+              buttonText={isSubmitting ? "Saving..." : "Save and Exit"} 
               onClick={handleSubmit}
               disabled={isSubmitting}
             />

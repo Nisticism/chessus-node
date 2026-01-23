@@ -77,58 +77,6 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             </label>
           </div>
         </div>
-
-        <div className={styles["sub-field"]}>
-          <label>Causes Check</label>
-          <div className={styles["radio-group"]}>
-            <label className={styles["radio-label"]}>
-              <input
-                type="radio"
-                name="causes_check"
-                value="true"
-                checked={pieceData.causes_check === true}
-                onChange={(e) => handleBooleanChange("causes_check", e.target.value)}
-              />
-              <span>This piece can cause check</span>
-            </label>
-            <label className={styles["radio-label"]}>
-              <input
-                type="radio"
-                name="causes_check"
-                value="false"
-                checked={pieceData.causes_check === false}
-                onChange={(e) => handleBooleanChange("causes_check", e.target.value)}
-              />
-              <span>Cannot cause check</span>
-            </label>
-          </div>
-        </div>
-
-        <div className={styles["sub-field"]}>
-          <label>Causes Checkmate</label>
-          <div className={styles["radio-group"]}>
-            <label className={styles["radio-label"]}>
-              <input
-                type="radio"
-                name="causes_checkmate"
-                value="true"
-                checked={pieceData.causes_checkmate === true}
-                onChange={(e) => handleBooleanChange("causes_checkmate", e.target.value)}
-              />
-              <span>This piece can cause checkmate</span>
-            </label>
-            <label className={styles["radio-label"]}>
-              <input
-                type="radio"
-                name="causes_checkmate"
-                value="false"
-                checked={pieceData.causes_checkmate === false}
-                onChange={(e) => handleBooleanChange("causes_checkmate", e.target.value)}
-              />
-              <span>Cannot cause checkmate</span>
-            </label>
-          </div>
-        </div>
       </div>
 
       {/* Loss Conditions */}

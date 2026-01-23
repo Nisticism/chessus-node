@@ -20,6 +20,11 @@ const PieceWizard = ({ editPieceId = null }) => {
   const [isLoading, setIsLoading] = useState(!!editPieceId);
   const [isEditMode, setIsEditMode] = useState(!!editPieceId);
   const [existingImages, setExistingImages] = useState([]);
+
+  // Scroll to top when step changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentStep]);
   
   // Piece data state - all fields from pieces table
   const [pieceData, setPieceData] = useState({
@@ -62,7 +67,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     // Step 3: Attack/Capture Configuration
     can_capture_enemy_via_range: false,
     can_capture_ally_via_range: false,
-    can_capture_enemy_on_move: true,
+    can_capture_enemy_on_move: true, // Default to true - most pieces attack how they move
     can_capture_ally_on_range: false,
     can_attack_on_iteration: false,
     
@@ -92,12 +97,12 @@ const PieceWizard = ({ editPieceId = null }) => {
     max_piece_captures_per_ranged_attack: 1,
     
     // Step 4: Special Rules
-    special_scenario_moves: "",
-    special_scenario_captures: "",
-    has_checkmate_rule: false,
-    has_check_rule: false,
-    has_lose_on_capture_rule: false,
-    min_turns_per_move: null,
+    special_scenario_movement: "",
+    special_scenario_capture: "",
+    checkmate_on_attack: false,
+    check_on_attack: false,
+    lose_game_on_capture: false,
+    min_turns_until_movement: 0,
   });
 
   // Load existing piece data when in edit mode
@@ -165,10 +170,25 @@ const PieceWizard = ({ editPieceId = null }) => {
             // Attack/Capture fields
             can_capture_enemy_via_range: !!piece.can_capture_enemy_via_range,
             can_capture_ally_via_range: !!piece.can_capture_ally_via_range,
-            can_capture_enemy_on_move: piece.can_capture_enemy_on_move !== false,
+            can_capture_enemy_on_move: !!piece.can_capture_enemy_on_move,
             can_capture_ally_on_range: !!piece.can_capture_ally_on_range,
             can_attack_on_iteration: !!piece.can_attack_on_iteration,
             
+            // Capture on move directions
+            up_left_capture: piece.up_left_capture || 0,
+            up_capture: piece.up_capture || 0,
+            up_right_capture: piece.up_right_capture || 0,
+            right_capture: piece.right_capture || 0,
+            down_right_capture: piece.down_right_capture || 0,
+            down_capture: piece.down_capture || 0,
+            down_left_capture: piece.down_left_capture || 0,
+            left_capture: piece.left_capture || 0,
+            
+            ratio_one_capture: piece.ratio_one_capture,
+            ratio_two_capture: piece.ratio_two_capture,
+            step_by_step_capture: piece.step_by_step_capture,
+            
+            // Ranged attack ranges
             up_left_attack_range: piece.up_left_attack_range || 0,
             up_attack_range: piece.up_attack_range || 0,
             up_right_attack_range: piece.up_right_attack_range || 0,
@@ -194,13 +214,27 @@ const PieceWizard = ({ editPieceId = null }) => {
             max_piece_captures_per_move: piece.max_piece_captures_per_move || 1,
             max_piece_captures_per_ranged_attack: piece.max_piece_captures_per_ranged_attack || 1,
             
-            // Special rules
-            special_scenario_moves: piece.special_scenario_moves || "",
-            special_scenario_captures: piece.special_scenario_captures || "",
-            has_checkmate_rule: !!piece.has_checkmate_rule,
-            has_check_rule: !!piece.has_check_rule,
-            has_lose_on_capture_rule: !!piece.has_lose_on_capture_rule,
-            min_turns_per_move: piece.min_turns_per_move,
+            // Detect if attacks like movement (compare capture pattern to movement pattern)
+            attacks_like_movement: piece.can_capture_enemy_on_move && (
+              (piece.up_left_capture === piece.up_left_movement &&
+               piece.up_capture === piece.up_movement &&
+               piece.up_right_capture === piece.up_right_movement &&
+               piece.left_capture === piece.left_movement &&
+               piece.right_capture === piece.right_movement &&
+               piece.down_left_capture === piece.down_left_movement &&
+               piece.down_capture === piece.down_movement &&
+               piece.down_right_capture === piece.down_right_movement) ||
+              (piece.ratio_one_attack === piece.ratio_one_movement &&
+               piece.ratio_two_attack === piece.ratio_two_movement)
+            ),
+            
+            // Special rules - map database fields to form fields
+            special_scenario_movement: piece.special_scenario_moves || "",
+            special_scenario_capture: piece.special_scenario_captures || "",
+            checkmate_on_attack: !!piece.has_checkmate_rule,
+            check_on_attack: !!piece.has_check_rule,
+            lose_game_on_capture: !!piece.has_lose_on_capture_rule,
+            min_turns_until_movement: piece.min_turns_per_move || 0,
           });
           
           setIsEditMode(true);
@@ -247,10 +281,34 @@ const PieceWizard = ({ editPieceId = null }) => {
         formData.append('piece_images', image);
       });
       
+      // If editing, preserve existing images
+      if (isEditMode && existingImages.length > 0) {
+        formData.append('existing_images', JSON.stringify(existingImages));
+      }
+      
       // Add all other piece data (excluding image-related fields)
+      // Convert booleans to strings explicitly
+      // Map form fields to database fields
+      const fieldMapping = {
+        'special_scenario_movement': 'special_scenario_moves',
+        'special_scenario_capture': 'special_scenario_captures',
+        'checkmate_on_attack': 'has_checkmate_rule',
+        'check_on_attack': 'has_check_rule',
+        'lose_game_on_capture': 'has_lose_on_capture_rule',
+        'min_turns_until_movement': 'min_turns_per_move'
+      };
+      
       Object.keys(pieceData).forEach(key => {
         if (key !== 'piece_images' && key !== 'piece_image_previews') {
-          formData.append(key, pieceData[key]);
+          const value = pieceData[key];
+          const dbFieldName = fieldMapping[key] || key;
+          
+          // Handle booleans explicitly
+          if (typeof value === 'boolean') {
+            formData.append(dbFieldName, value ? 'true' : 'false');
+          } else if (value !== null && value !== undefined) {
+            formData.append(dbFieldName, value);
+          }
         }
       });
       

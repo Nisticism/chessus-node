@@ -34,29 +34,24 @@ const Step1BasicInfo = ({ gameData, updateGameData }) => {
 
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
-          Description <span className={styles["required"]}>*</span>
+          Description
         </label>
         <textarea
           className={styles["form-textarea"]}
           value={gameData.descript}
           onChange={(e) => handleChange("descript", e.target.value)}
-          placeholder="Describe your game (50-8000 characters)"
+          placeholder="Describe your game (optional)"
           rows={6}
           maxLength={8000}
         />
         <div className={styles["char-count"]}>
           {gameData.descript.length} / 8000 characters
         </div>
-        {gameData.descript && gameData.descript.length < 50 && (
-          <p className={styles["validation-error"]}>
-            Description must be at least 50 characters
-          </p>
-        )}
       </div>
 
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
-          Rules <span className={styles["required"]}>*</span>
+          Rules
         </label>
         <textarea
           className={styles["form-textarea"]}

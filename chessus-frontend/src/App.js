@@ -13,6 +13,8 @@ import CreateHub from "./containers/createhub/CreateHub";
 import PlayerList from "./components/playerlist/PlayerList";
 import PieceList from "./components/piecelist/PieceList";
 import GameList from "./components/gamelist/GameList";
+import GameTypeView from "./components/gametypeview/GameTypeView";
+import PieceView from "./components/pieceview/PieceView";
 import Forums from "./containers/forums/Forums";
 import GameForums from "./containers/gameforums/GameForums";
 import ChessBoard from "./components/chess/ChessBoard";
@@ -84,6 +86,8 @@ function App() {
             <Route exact path="/create" element={<CreateHub />} />
             <Route exact path="/create/pieces" element={<PieceList />} />
             <Route exact path="/create/games" element={<GameList />} />
+            <Route exact path="/games/:gameId" element={<GameTypeView />} />
+            <Route exact path="/pieces/:pieceId" element={<PieceView />} />
             <Route exact path="/community" element={<CommunityHub />} />
             <Route exact path="/community/players" element={<PlayerList />} />
             <Route exact path="/community/leaderboard" element={<Leaderboard />} />

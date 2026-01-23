@@ -57,9 +57,6 @@ const GameBoard = (props) => {
           { board }
         </div>
       </div>
-      <div>
-        Left click the board to add pieces or range squares.  Right click to cancel.
-      </div>
     </div>
   );
 };

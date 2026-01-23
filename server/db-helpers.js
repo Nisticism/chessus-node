@@ -107,7 +107,7 @@ const getAllPieces = async () => {
       p.piece_description,
       p.piece_width,
       p.piece_height,
-      p.image_location as piece_images,
+      p.image_location,
       p.creator_id,
       u.username as creator_username,
       gt.game_name as game_type_name
@@ -126,7 +126,6 @@ const getAllPieces = async () => {
 const getPieceById = async (pieceId) => {
   const result = await query(`
     SELECT p.*, pm.*, pc.*, 
-           p.image_location as piece_images,
            u.username as creator_username, 
            u.id as creator_user_id, 
            gt.game_name as game_type_name

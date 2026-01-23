@@ -77,7 +77,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
               type="radio"
               name="can_capture_enemy_on_move"
               value="true"
-              checked={pieceData.can_capture_enemy_on_move === true}
+              checked={pieceData.can_capture_enemy_on_move === true || pieceData.can_capture_enemy_on_move === 1}
               onChange={(e) => handleBooleanChange("can_capture_enemy_on_move", e.target.value)}
             />
             <span>Can capture by moving to enemy square</span>
@@ -87,7 +87,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
               type="radio"
               name="can_capture_enemy_on_move"
               value="false"
-              checked={pieceData.can_capture_enemy_on_move === false}
+              checked={pieceData.can_capture_enemy_on_move === false || pieceData.can_capture_enemy_on_move === 0}
               onChange={(e) => handleBooleanChange("can_capture_enemy_on_move", e.target.value)}
             />
             <span>Cannot capture on move</span>

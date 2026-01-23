@@ -254,6 +254,98 @@ const runMigrations = async () => {
     }
   }
   
+  // One-time migrations (modify columns to be nullable)
+  try {
+    // Check if descript is still NOT NULL
+    const sql = `
+      SELECT IS_NULLABLE 
+      FROM information_schema.COLUMNS 
+      WHERE TABLE_SCHEMA = ? 
+      AND TABLE_NAME = 'game_types' 
+      AND COLUMN_NAME = 'descript'
+    `;
+    const [results] = await db_pool.query(sql, [process.env.DB_NAME || 'chessusnode']);
+    
+    if (results[0] && results[0].IS_NULLABLE === 'NO') {
+      await runMigration(
+        "ALTER TABLE game_types MODIFY COLUMN descript TEXT NULL, MODIFY COLUMN rules TEXT NULL, MODIFY COLUMN pieces_string TEXT NOT NULL",
+        "Make description and rules optional, and convert large VARCHAR columns to TEXT"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error checking/modifying nullable columns:', err.message);
+  }
+
+  // Ensure pieces.image_location is TEXT type
+  try {
+    const sql = `
+      SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+      FROM information_schema.COLUMNS 
+      WHERE TABLE_SCHEMA = ? 
+      AND TABLE_NAME = 'pieces' 
+      AND COLUMN_NAME = 'image_location'
+    `;
+    const [results] = await db_pool.query(sql, [process.env.DB_NAME || 'chessusnode']);
+    
+    // If column exists and is VARCHAR (not TEXT), convert it
+    if (results[0] && results[0].DATA_TYPE === 'varchar') {
+      await runMigration(
+        "ALTER TABLE pieces MODIFY COLUMN image_location TEXT NULL",
+        "Convert pieces.image_location from VARCHAR to TEXT for multiple images"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error checking/modifying pieces.image_location:', err.message);
+  }
+
+  // Ensure piece_movement.piece_id has UNIQUE constraint for upserts
+  try {
+    const sql = `
+      SELECT COUNT(*) as count
+      FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = ?
+      AND TABLE_NAME = 'piece_movement'
+      AND INDEX_NAME = 'piece_id'
+      AND NON_UNIQUE = 0
+    `;
+    const [results] = await db_pool.query(sql, [process.env.DB_NAME || 'chessusnode']);
+    
+    if (results[0].count === 0) {
+      await runMigration(
+        "ALTER TABLE piece_movement ADD UNIQUE KEY piece_id (piece_id)",
+        "Add UNIQUE constraint to piece_movement.piece_id for upserts"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding UNIQUE constraint to piece_movement.piece_id:', err.message);
+  }
+
+  // Ensure piece_capture.piece_id has UNIQUE constraint for upserts
+  try {
+    const sql = `
+      SELECT COUNT(*) as count
+      FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = ?
+      AND TABLE_NAME = 'piece_capture'
+      AND INDEX_NAME = 'piece_id'
+      AND NON_UNIQUE = 0
+    `;
+    const [results] = await db_pool.query(sql, [process.env.DB_NAME || 'chessusnode']);
+    
+    if (results[0].count === 0) {
+      await runMigration(
+        "ALTER TABLE piece_capture ADD UNIQUE KEY piece_id (piece_id)",
+        "Add UNIQUE constraint to piece_capture.piece_id for upserts"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding UNIQUE constraint to piece_capture.piece_id:', err.message);
+  }
+  
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

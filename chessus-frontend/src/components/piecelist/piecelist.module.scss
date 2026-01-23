@@ -71,6 +71,13 @@
   gap: 25px;
 }
 
+.piece-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  cursor: pointer;
+}
+
 .piece-card {
   background: linear-gradient(135deg, #0d2847 0%, #1a3d5c 100%);
   border: 2px solid #2a4d6c;

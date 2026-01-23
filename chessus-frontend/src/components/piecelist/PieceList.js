@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { getPieces, deletePiece } from "../../actions/pieces";
 import styles from "./piecelist.module.scss";
 
-const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
+const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
 const PieceList = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -117,64 +117,79 @@ const PieceList = () => {
     const firstImage = getFirstImage(piece.image_location);
     return (
       <div className={styles["piece-card"]}>
-        <div className={styles["piece-image-container"]}>
-          {firstImage ? (
-            <img 
-              src={firstImage} 
-              alt={piece.piece_name} 
-              className={styles["piece-image"]}
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-          ) : (
-            <div className={styles["piece-placeholder"]}>
-              <span>🎭</span>
-            </div>
-          )}
-        </div>
-        
-        <div className={styles["piece-content"]}>
-          <h3 className={styles["piece-name"]}>{piece.piece_name || 'Unnamed Piece'}</h3>
+        <Link to={`/pieces/${piece.id}`} className={styles["piece-link"]}>
+          <div className={styles["piece-image-container"]}>
+            {firstImage ? (
+              <img 
+                src={firstImage} 
+                alt={piece.piece_name} 
+                className={styles["piece-image"]}
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className={styles["piece-placeholder"]}>
+                <span>🎭</span>
+              </div>
+            )}
+          </div>
           
-          <p className={styles["piece-description"]}>
-            {piece.piece_description || 'No description available'}
-          </p>
+          <div className={styles["piece-content"]}>
+            <h3 className={styles["piece-name"]}>{piece.piece_name || 'Unnamed Piece'}</h3>
+            
+            <p className={styles["piece-description"]}>
+              {piece.piece_description || 'No description available'}
+            </p>
 
-          <div className={styles["piece-meta"]}>
-            {piece.creator_username && (
+            <div className={styles["piece-meta"]}>
               <div className={styles["meta-item"]}>
-                <span className={styles["meta-label"]}>Creator:</span>
-                <Link to={`/profile/${piece.creator_username}`} className={styles["creator-link"]}>
-                  {piece.creator_username}
-                </Link>
+                <span className={styles["meta-label"]}>Size:</span>
+                <span>{piece.piece_width || 1}x{piece.piece_height || 1}</span>
               </div>
-            )}
-
-            {piece.game_type_name && (
-              <div className={styles["meta-item"]}>
-                <span className={styles["meta-label"]}>Game:</span>
-                <span>{piece.game_type_name}</span>
-              </div>
-            )}
-
-            <div className={styles["meta-item"]}>
-              <span className={styles["meta-label"]}>Size:</span>
-              <span>{piece.piece_width || 1}x{piece.piece_height || 1}</span>
+              {piece.game_type_name && (
+                <div className={styles["meta-item"]}>
+                  <span className={styles["meta-label"]}>Game:</span>
+                  <span>{piece.game_type_name}</span>
+                </div>
+              )}
             </div>
           </div>
+        </Link>
+        
+        <div className={styles["piece-footer"]}>
+          {piece.creator_username && (
+            <div className={styles["meta-item"]}>
+              <span className={styles["meta-label"]}>Creator:</span>
+              <Link 
+                to={`/profile/${piece.creator_username}`} 
+                className={styles["creator-link"]}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {piece.creator_username}
+              </Link>
+            </div>
+          )}
 
           {showEditButton && canEditPiece(piece) && (
             <div className={styles["piece-actions"]}>
               <button 
                 className={styles["edit-button"]}
-                onClick={() => handleEditPiece(piece.id)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleEditPiece(piece.id);
+                }}
               >
                 ✏️ Edit
               </button>
               <button 
                 className={styles["delete-button"]}
-                onClick={() => handleDeleteClick(piece)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDeleteClick(piece);
+                }}
               >
                 🗑️ Delete
               </button>
@@ -182,15 +197,7 @@ const PieceList = () => {
           )}
         </div>
       </div>
-    );{showAlert && (
-        <div id="alert-container" className={styles["alert-container"]}>
-          <div className={`${styles["alert-style"]} ${styles[`alert-${alertType}`]}`}>
-            {alertMessage}
-          </div>
-        </div>
-      )}
-      
-      
+    );
   };
 
   return (

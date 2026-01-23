@@ -1009,14 +1009,6 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       return res.status(400).send({ message: "Game name must be at least 3 characters" });
     }
 
-    if (!gameData.descript || gameData.descript.length < 50) {
-      return res.status(400).send({ message: "Description must be at least 50 characters" });
-    }
-
-    if (!gameData.rules || gameData.rules.length === 0) {
-      return res.status(400).send({ message: "Rules are required" });
-    }
-
     // Build the SQL query
     const sql = `
       INSERT INTO game_types (
@@ -1071,7 +1063,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     // Automatically create a forum for this game
     const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const forumTitle = `${gameData.game_name} - Discussion`;
-    const forumContent = `Welcome to the ${gameData.game_name} discussion forum! Share strategies, ask questions, and connect with other players of this game.\n\n${gameData.descript}`;
+    const forumContent = `Welcome to the ${gameData.game_name} discussion forum! Share strategies, ask questions, and connect with other players of this game.${gameData.descript ? '\n\n' + gameData.descript : ''}`;
     
     const forumSql = `
       INSERT INTO articles (author_id, game_type_id, title, content, created_at, public)
@@ -1209,9 +1201,11 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
+    const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
+    
     const captureValues = [
       pieceId,
-      pieceData.can_capture_enemy_via_range === 'true',
+      hasRangedAttack,
       pieceData.can_capture_ally_via_range === 'true',
       pieceData.can_capture_enemy_on_move === 'true',
       pieceData.can_capture_ally_on_range === 'true',
@@ -1246,7 +1240,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
       parseInt(pieceData.max_captures_per_move) || null,
-      parseInt(pieceData.max_captures_via_ranged_attack) || null,
+      hasRangedAttack ? (parseInt(pieceData.max_captures_via_ranged_attack) || null) : null,
       pieceData.special_scenario_capture || null
     ];
 
@@ -1289,39 +1283,36 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
     // Handle images
     let imagesJSON = existingPiece.image_location; // Keep existing if no new images
     if (imageFiles && imageFiles.length > 0) {
-      // Delete old images before saving new ones
-      if (existingPiece.image_location) {
+      // Parse existing images
+      let existingImagePaths = [];
+      if (pieceData.existing_images) {
         try {
-          const oldImages = JSON.parse(existingPiece.image_location);
-          if (Array.isArray(oldImages)) {
-            oldImages.forEach(imagePath => {
-              const oldFilePath = path.join(__dirname, '..', imagePath);
-              fs.unlink(oldFilePath, (err) => {
-                if (err) {
-                  console.error("Error deleting old piece image:", err);
-                } else {
-                  console.log("Deleted old piece image:", oldFilePath);
-                }
-              });
-            });
-          }
+          existingImagePaths = JSON.parse(pieceData.existing_images);
         } catch (err) {
-          console.error("Error parsing old image paths:", err);
+          console.error("Error parsing existing_images:", err);
         }
       }
       
-      const imagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
-      imagesJSON = JSON.stringify(imagePaths);
+      // Add new image paths
+      const newImagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
+      
+      // Combine existing and new images (max 8 total)
+      const allImagePaths = [...existingImagePaths, ...newImagePaths].slice(0, 8);
+      imagesJSON = JSON.stringify(allImagePaths);
     }
 
-    // Update pieces table
+    // Update pieces table (basic info only)
     const pieceSql = `
       UPDATE pieces SET
         piece_name = ?,
         image_location = ?,
         piece_width = ?,
         piece_height = ?,
-        piece_description = ?
+        piece_description = ?,
+        piece_category = ?,
+        has_checkmate_rule = ?,
+        has_check_rule = ?,
+        has_lose_on_capture_rule = ?
       WHERE id = ?
     `;
 
@@ -1331,33 +1322,65 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.piece_width) || 1,
       parseInt(pieceData.piece_height) || 1,
       pieceData.piece_description || null,
+      pieceData.piece_category || null,
+      pieceData.has_checkmate_rule === 'true',
+      pieceData.has_check_rule === 'true',
+      pieceData.has_lose_on_capture_rule === 'true',
       pieceId
     ];
 
     await db_pool.query(pieceSql, pieceValues);
 
-    // Update piece_movement table
+    // Update or insert into piece_movement table
     const movementSql = `
-      UPDATE piece_movement SET
-        directional_movement_style = ?,
-        repeating_movement = ?,
-        max_directional_movement_iterations = ?,
-        min_directional_movement_iterations = ?,
-        up_left_movement = ?, up_movement = ?, up_right_movement = ?,
-        right_movement = ?, down_right_movement = ?, down_movement = ?, down_left_movement = ?, left_movement = ?,
-        ratio_movement_style = ?, ratio_one_movement = ?, ratio_two_movement = ?,
-        repeating_ratio = ?,
-        max_ratio_iterations = ?,
-        min_ratio_iterations = ?,
-        step_by_step_movement_style = ?, step_by_step_movement_value = ?,
-        can_hop_over_allies = ?, can_hop_over_enemies = ?,
-        min_turns_per_move = ?,
-        max_turns_per_move = ?,
-        special_scenario_moves = ?
-      WHERE piece_id = ?
+      INSERT INTO piece_movement (
+        piece_id,
+        directional_movement_style,
+        repeating_movement,
+        max_directional_movement_iterations,
+        min_directional_movement_iterations,
+        up_left_movement, up_movement, up_right_movement,
+        right_movement, down_right_movement, down_movement, down_left_movement, left_movement,
+        ratio_movement_style, ratio_one_movement, ratio_two_movement,
+        repeating_ratio,
+        max_ratio_iterations,
+        min_ratio_iterations,
+        step_by_step_movement_style, step_by_step_movement_value,
+        can_hop_over_allies, can_hop_over_enemies,
+        min_turns_per_move,
+        max_turns_per_move,
+        special_scenario_moves
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        directional_movement_style = VALUES(directional_movement_style),
+        repeating_movement = VALUES(repeating_movement),
+        max_directional_movement_iterations = VALUES(max_directional_movement_iterations),
+        min_directional_movement_iterations = VALUES(min_directional_movement_iterations),
+        up_left_movement = VALUES(up_left_movement),
+        up_movement = VALUES(up_movement),
+        up_right_movement = VALUES(up_right_movement),
+        right_movement = VALUES(right_movement),
+        down_right_movement = VALUES(down_right_movement),
+        down_movement = VALUES(down_movement),
+        down_left_movement = VALUES(down_left_movement),
+        left_movement = VALUES(left_movement),
+        ratio_movement_style = VALUES(ratio_movement_style),
+        ratio_one_movement = VALUES(ratio_one_movement),
+        ratio_two_movement = VALUES(ratio_two_movement),
+        repeating_ratio = VALUES(repeating_ratio),
+        max_ratio_iterations = VALUES(max_ratio_iterations),
+        min_ratio_iterations = VALUES(min_ratio_iterations),
+        step_by_step_movement_style = VALUES(step_by_step_movement_style),
+        step_by_step_movement_value = VALUES(step_by_step_movement_value),
+        can_hop_over_allies = VALUES(can_hop_over_allies),
+        can_hop_over_enemies = VALUES(can_hop_over_enemies),
+        min_turns_per_move = VALUES(min_turns_per_move),
+        max_turns_per_move = VALUES(max_turns_per_move),
+        special_scenario_moves = VALUES(special_scenario_moves)
     `;
 
     const movementValues = [
+      pieceId,
       pieceData.directional_movement_style === 'true',
       pieceData.repeating_movement === 'true',
       parseInt(pieceData.max_directional_movement_iterations) || null,
@@ -1382,42 +1405,83 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       pieceData.can_hop_over_enemies === 'true',
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
-      pieceData.special_scenario_movement || null,
-      pieceId
+      pieceData.special_scenario_moves || null
     ];
 
     await db_pool.query(movementSql, movementValues);
 
-    // Update piece_capture table
+    // Update or insert into piece_capture table
     const captureSql = `
-      UPDATE piece_capture SET
-        can_capture_enemy_via_range = ?,
-        can_capture_ally_via_range = ?,
-        can_capture_enemy_on_move = ?,
-        can_capture_ally_on_range = ?,
-        can_attack_on_iteration = ?,
-        up_left_capture = ?, up_capture = ?, up_right_capture = ?,
-        right_capture = ?, down_right_capture = ?, down_capture = ?, down_left_capture = ?, left_capture = ?,
-        ratio_one_capture = ?, ratio_two_capture = ?, step_by_step_capture = ?,
-        up_left_attack_range = ?, up_attack_range = ?, up_right_attack_range = ?,
-        right_attack_range = ?, down_right_attack_range = ?, down_attack_range = ?, down_left_attack_range = ?, left_attack_range = ?,
-        repeating_directional_ranged_attack = ?,
-        max_directional_ranged_attack_iterations = ?,
-        min_directional_ranged_attack_iterations = ?,
-        ratio_one_attack_range = ?, ratio_two_attack_range = ?,
-        repeating_ratio_ranged_attack = ?,
-        max_ratio_ranged_attack_iterations = ?,
-        min_ratio_ranged_attack_iterations = ?,
-        step_by_step_attack_style = ?,
-        step_by_step_attack_value = ?,
-        max_piece_captures_per_move = ?,
-        max_piece_captures_per_ranged_attack = ?,
-        special_scenario_captures = ?
-      WHERE piece_id = ?
+      INSERT INTO piece_capture (
+        piece_id,
+        can_capture_enemy_via_range,
+        can_capture_ally_via_range,
+        can_capture_enemy_on_move,
+        can_capture_ally_on_range,
+        can_attack_on_iteration,
+        up_left_capture, up_capture, up_right_capture,
+        right_capture, down_right_capture, down_capture, down_left_capture, left_capture,
+        ratio_one_capture, ratio_two_capture, step_by_step_capture,
+        up_left_attack_range, up_attack_range, up_right_attack_range,
+        right_attack_range, down_right_attack_range, down_attack_range, down_left_attack_range, left_attack_range,
+        repeating_directional_ranged_attack,
+        max_directional_ranged_attack_iterations,
+        min_directional_ranged_attack_iterations,
+        ratio_one_attack_range, ratio_two_attack_range,
+        repeating_ratio_ranged_attack,
+        max_ratio_ranged_attack_iterations,
+        min_ratio_ranged_attack_iterations,
+        step_by_step_attack_style,
+        step_by_step_attack_value,
+        max_piece_captures_per_move,
+        max_piece_captures_per_ranged_attack,
+        special_scenario_captures
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        can_capture_enemy_via_range = VALUES(can_capture_enemy_via_range),
+        can_capture_ally_via_range = VALUES(can_capture_ally_via_range),
+        can_capture_enemy_on_move = VALUES(can_capture_enemy_on_move),
+        can_capture_ally_on_range = VALUES(can_capture_ally_on_range),
+        can_attack_on_iteration = VALUES(can_attack_on_iteration),
+        up_left_capture = VALUES(up_left_capture),
+        up_capture = VALUES(up_capture),
+        up_right_capture = VALUES(up_right_capture),
+        right_capture = VALUES(right_capture),
+        down_right_capture = VALUES(down_right_capture),
+        down_capture = VALUES(down_capture),
+        down_left_capture = VALUES(down_left_capture),
+        left_capture = VALUES(left_capture),
+        ratio_one_capture = VALUES(ratio_one_capture),
+        ratio_two_capture = VALUES(ratio_two_capture),
+        step_by_step_capture = VALUES(step_by_step_capture),
+        up_left_attack_range = VALUES(up_left_attack_range),
+        up_attack_range = VALUES(up_attack_range),
+        up_right_attack_range = VALUES(up_right_attack_range),
+        right_attack_range = VALUES(right_attack_range),
+        down_right_attack_range = VALUES(down_right_attack_range),
+        down_attack_range = VALUES(down_attack_range),
+        down_left_attack_range = VALUES(down_left_attack_range),
+        left_attack_range = VALUES(left_attack_range),
+        repeating_directional_ranged_attack = VALUES(repeating_directional_ranged_attack),
+        max_directional_ranged_attack_iterations = VALUES(max_directional_ranged_attack_iterations),
+        min_directional_ranged_attack_iterations = VALUES(min_directional_ranged_attack_iterations),
+        ratio_one_attack_range = VALUES(ratio_one_attack_range),
+        ratio_two_attack_range = VALUES(ratio_two_attack_range),
+        repeating_ratio_ranged_attack = VALUES(repeating_ratio_ranged_attack),
+        max_ratio_ranged_attack_iterations = VALUES(max_ratio_ranged_attack_iterations),
+        min_ratio_ranged_attack_iterations = VALUES(min_ratio_ranged_attack_iterations),
+        step_by_step_attack_style = VALUES(step_by_step_attack_style),
+        step_by_step_attack_value = VALUES(step_by_step_attack_value),
+        max_piece_captures_per_move = VALUES(max_piece_captures_per_move),
+        max_piece_captures_per_ranged_attack = VALUES(max_piece_captures_per_ranged_attack),
+        special_scenario_captures = VALUES(special_scenario_captures)
     `;
 
+    const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
+    
     const captureValues = [
-      pieceData.can_capture_enemy_via_range === 'true',
+      pieceId,
+      hasRangedAttack,
       pieceData.can_capture_ally_via_range === 'true',
       pieceData.can_capture_enemy_on_move === 'true',
       pieceData.can_capture_ally_on_range === 'true',
@@ -1451,10 +1515,9 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.min_ratio_ranged_attack_iterations) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
-      parseInt(pieceData.max_captures_per_move) || null,
-      parseInt(pieceData.max_captures_via_ranged_attack) || null,
-      pieceData.special_scenario_capture || null,
-      pieceId
+      parseInt(pieceData.max_piece_captures_per_move) || 1,
+      hasRangedAttack ? (parseInt(pieceData.max_piece_captures_per_ranged_attack) || 1) : null,
+      pieceData.special_scenario_captures || null
     ];
 
     await db_pool.query(captureSql, captureValues);
@@ -1518,7 +1581,10 @@ function authenticateToken(req, res, next) {
     return res.status(401).send({ message: "No token provided" });
   }
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403)
+    if (err) {
+      console.log('JWT verification failed:', err.message);
+      return res.status(403).send({ message: "Invalid or expired token" });
+    }
     req.user = user
     next()
   })

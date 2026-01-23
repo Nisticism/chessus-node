@@ -53,19 +53,23 @@ const PieceSelector = ({
     // When a piece is selected, load its available images
     if (selectedPieceId) {
       const piece = pieces.find(p => p.id === selectedPieceId);
-      if (piece && piece.piece_images) {
+      console.log("Selected piece:", piece);
+      if (piece && piece.image_location) {
         try {
-          const images = JSON.parse(piece.piece_images);
+          const images = JSON.parse(piece.image_location);
           const imageUrls = Array.isArray(images) ? images.map(img => getImageUrl(img)) : [];
+          console.log("Parsed images for piece", piece.id, ":", imageUrls);
           setAvailableImages(imageUrls);
           // If no image selected yet, use first available
           if (!selectedImageUrl && imageUrls.length > 0) {
             setSelectedImageUrl(imageUrls[0]);
           }
         } catch (e) {
+          console.error("Error parsing image_location:", e);
           setAvailableImages([]);
         }
       } else {
+        console.log("No image_location for piece:", piece);
         setAvailableImages([]);
       }
     }
@@ -76,6 +80,10 @@ const PieceSelector = ({
     try {
       setLoading(true);
       const piecesData = await getAllPieces();
+      console.log("Loaded pieces:", piecesData.length, "pieces");
+      if (piecesData.length > 0) {
+        console.log("Sample piece data:", piecesData[0]);
+      }
       setPieces(piecesData);
       setFilteredPieces(piecesData);
       setError(null);
@@ -163,7 +171,7 @@ const PieceSelector = ({
                 {filteredPieces.map(piece => {
                   let thumbnail = null;
                   try {
-                    const images = JSON.parse(piece.piece_images || "[]");
+                    const images = JSON.parse(piece.image_location || "[]");
                     thumbnail = Array.isArray(images) && images.length > 0 ? getImageUrl(images[0]) : null;
                   } catch (e) {
                     thumbnail = null;

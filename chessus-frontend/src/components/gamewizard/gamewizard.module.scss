@@ -216,7 +216,8 @@
 
 // Slider
 .slider-container {
-  margin: 15px 0;
+  margin: 15px auto;
+  max-width: 400px;
 }
 
 .slider {
@@ -270,7 +271,9 @@
   justify-content: space-between;
   font-size: 14px;
   color: var(--medium-gray, #a0a0a0);
-  padding: 0 5px;
+  margin: 5px auto 0 auto;
+  width: 100%;
+  max-width: 400px;
 }
 
 // Board Preview
@@ -650,5 +653,147 @@
   color: #ff6b6b;
   text-align: center;
   padding: 20px;
+}
+
+// Square Type Selector Styles
+.square-type-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.square-type-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: rgba(255, 255, 255, 0.02);
+
+  &:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  &.selected {
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  }
+}
+
+.square-type-indicator {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: bold;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.square-type-info {
+  flex: 1;
+}
+
+.square-type-name {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.square-type-description {
+  font-size: 14px;
+  color: var(--text-light-gray);
+}
+
+.special-square-stats {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.section-divider {
+  margin: 30px 0 20px 0;
+  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(74, 144, 226, 0.3);
+  
+  h3 {
+    margin: 0;
+    color: #4a90e2;
+    font-size: 20px;
+    font-weight: 600;
+  }
+}
+
+// Radio button styles
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 10px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: rgba(74, 144, 226, 0.5);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  input[type="radio"] {
+    margin-top: 3px;
+    cursor: pointer;
+  }
+
+  span {
+    font-weight: 500;
+    color: var(--light-gray);
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  input[type="radio"]:checked + span {
+    color: #4a90e2;
+  }
+}
+
+.radio-hint {
+  font-size: 13px;
+  color: var(--text-light-gray);
+  margin: 0;
+  margin-left: 24px;
+}
+
+// Textarea code style
+.form-textarea-code {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--light-gray);
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  resize: vertical;
+
+  &:focus {
+    outline: none;
+    border-color: #4a90e2;
+  }
 }
 

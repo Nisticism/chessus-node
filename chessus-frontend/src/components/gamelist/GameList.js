@@ -101,60 +101,72 @@ const GameList = () => {
   const renderGameCard = (game, showEditButton = false) => {
     return (
       <div key={game.id} className={styles["game-card"]}>
-        <div className={styles["game-header"]}>
-          <div className={styles["game-icon"]}>♟️</div>
-          <div className={styles["game-title-area"]}>
-            <h3 className={styles["game-name"]}>{game.game_name || 'Unnamed Game'}</h3>
-            <span className={styles["game-board-info"]}>
-              {formatBoardSize(game.board_width, game.board_height)} board
-            </span>
+        <Link to={`/games/${game.id}`} className={styles["game-link"]}>
+          <div className={styles["game-header"]}>
+            <div className={styles["game-icon"]}>♟️</div>
+            <div className={styles["game-title-area"]}>
+              <h3 className={styles["game-name"]}>{game.game_name || 'Unnamed Game'}</h3>
+              <span className={styles["game-board-info"]}>
+                {formatBoardSize(game.board_width, game.board_height)} board
+              </span>
+            </div>
           </div>
-        </div>
-        
-        <div className={styles["game-content"]}>
-          <p className={styles["game-description"]}>
-            {game.descript || 'No description available'}
-          </p>
+          
+          <div className={styles["game-content"]}>
+            <p className={styles["game-description"]}>
+              {game.descript || 'No description available'}
+            </p>
 
-          <div className={styles["game-meta"]}>
-            {game.creator_username && (
-              <div className={styles["meta-item"]}>
-                <span className={styles["meta-label"]}>Creator:</span>
-                <Link to={`/profile/${game.creator_username}`} className={styles["creator-link"]}>
-                  {game.creator_username}
-                </Link>
+            <div className={styles["game-meta"]}>
+              {game.creator_username && (
+                <div className={styles["meta-item"]}>
+                  <span className={styles["meta-label"]}>Creator:</span>
+                  <Link 
+                    to={`/profile/${game.creator_username}`} 
+                    className={styles["creator-link"]}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {game.creator_username}
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            <div className={styles["game-stats"]}>
+              <div className={styles["stat-item"]}>
+                <span className={styles["stat-icon"]}>👥</span>
+                <span>{formatPlayerCount(game.player_count)}</span>
               </div>
-            )}
-          </div>
-
-          <div className={styles["game-stats"]}>
-            <div className={styles["stat-item"]}>
-              <span className={styles["stat-icon"]}>👥</span>
-              <span>{formatPlayerCount(game.player_count)}</span>
-            </div>
-            <div className={styles["stat-item"]}>
-              <span className={styles["stat-icon"]}>⚡</span>
-              <span>{game.actions_per_turn || 1} action{(game.actions_per_turn || 1) !== 1 ? 's' : ''}/turn</span>
+              <div className={styles["stat-item"]}>
+                <span className={styles["stat-icon"]}>⚡</span>
+                <span>{game.actions_per_turn || 1} action{(game.actions_per_turn || 1) !== 1 ? 's' : ''}/turn</span>
+              </div>
             </div>
           </div>
+        </Link>
 
-          {showEditButton && canEditGame(game) && (
-            <div className={styles["game-actions"]}>
-              <button 
-                className={styles["edit-button"]}
-                onClick={() => handleEditGame(game.id)}
-              >
-                ✏️ Edit
-              </button>
-              <button 
-                className={styles["delete-button"]}
-                onClick={() => handleDeleteClick(game)}
-              >
-                🗑️ Delete
-              </button>
-            </div>
-          )}
-        </div>
+        {showEditButton && canEditGame(game) && (
+          <div className={styles["game-actions"]}>
+            <button 
+              className={styles["edit-button"]}
+              onClick={(e) => {
+                e.preventDefault();
+                handleEditGame(game.id);
+              }}
+            >
+              ✏️ Edit
+            </button>
+            <button 
+              className={styles["delete-button"]}
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteClick(game);
+              }}
+            >
+              🗑️ Delete
+            </button>
+          </div>
+        )}
       </div>
     );
   };
