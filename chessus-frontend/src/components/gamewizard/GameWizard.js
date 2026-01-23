@@ -9,6 +9,7 @@ import Step1BasicInfo from "./Step1BasicInfo";
 import Step2WinConditions from "./Step2WinConditions";
 import Step3BoardPlayers from "./Step3BoardPlayers";
 import Step4Advanced from "./Step4Advanced";
+import Step5PiecePlacement from "./Step5PiecePlacement";
 
 const GameWizard = ({ editGameId }) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -61,7 +62,7 @@ const GameWizard = ({ editGameId }) => {
     other_game_data: "",
   });
 
-  const totalSteps = 4;
+  const totalSteps = 5;
 
   // Load existing game data when in edit mode
   useEffect(() => {
@@ -173,6 +174,8 @@ const GameWizard = ({ editGameId }) => {
         return <Step3BoardPlayers gameData={gameData} updateGameData={updateGameData} />;
       case 4:
         return <Step4Advanced gameData={gameData} updateGameData={updateGameData} />;
+      case 5:
+        return <Step5PiecePlacement gameData={gameData} updateGameData={updateGameData} />;
       default:
         return null;
     }
