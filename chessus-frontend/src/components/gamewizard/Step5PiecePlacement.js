@@ -2,6 +2,14 @@ import React, { useState, useEffect } from "react";
 import styles from "./gamewizard.module.scss";
 import PieceSelector from "./PieceSelector";
 
+const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
+
+const getImageUrl = (imagePath) => {
+  if (!imagePath) return null;
+  if (imagePath.startsWith('http')) return imagePath;
+  return `${ASSET_URL}${imagePath}`;
+};
+
 const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [piecePlacements, setPiecePlacements] = useState({});
   const [selectedSquare, setSelectedSquare] = useState(null);
@@ -23,7 +31,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     } catch (error) {
       console.error("Error parsing pieces_string:", error);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameData.pieces_string]);
 
   // Update gameData whenever piecePlacements changes
   useEffect(() => {
@@ -98,7 +107,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               <div className={styles["piece-on-square"]}>
                 {placement.image_url ? (
                   <img 
-                    src={placement.image_url} 
+                    src={getImageUrl(placement.image_url)} 
                     alt={placement.piece_name}
                     style={{
                       width: '100%',

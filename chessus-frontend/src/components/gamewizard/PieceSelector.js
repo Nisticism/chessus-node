@@ -3,6 +3,14 @@ import styles from "./gamewizard.module.scss";
 import StandardButton from "../standardbutton/StardardButton";
 import { getAllPieces } from "../../actions/pieces";
 
+const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
+
+const getImageUrl = (imagePath) => {
+  if (!imagePath) return null;
+  if (imagePath.startsWith('http')) return imagePath;
+  return `${ASSET_URL}${imagePath}`;
+};
+
 const PieceSelector = ({ 
   onSelect, 
   onRemove, 
@@ -48,10 +56,11 @@ const PieceSelector = ({
       if (piece && piece.piece_images) {
         try {
           const images = JSON.parse(piece.piece_images);
-          setAvailableImages(Array.isArray(images) ? images : []);
+          const imageUrls = Array.isArray(images) ? images.map(img => getImageUrl(img)) : [];
+          setAvailableImages(imageUrls);
           // If no image selected yet, use first available
-          if (!selectedImageUrl && images.length > 0) {
-            setSelectedImageUrl(images[0]);
+          if (!selectedImageUrl && imageUrls.length > 0) {
+            setSelectedImageUrl(imageUrls[0]);
           }
         } catch (e) {
           setAvailableImages([]);
@@ -155,7 +164,7 @@ const PieceSelector = ({
                   let thumbnail = null;
                   try {
                     const images = JSON.parse(piece.piece_images || "[]");
-                    thumbnail = Array.isArray(images) && images.length > 0 ? images[0] : null;
+                    thumbnail = Array.isArray(images) && images.length > 0 ? getImageUrl(images[0]) : null;
                   } catch (e) {
                     thumbnail = null;
                   }
