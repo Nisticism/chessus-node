@@ -28,7 +28,32 @@ const app = express();
 //app.use("/api", "*");
 
 const corsOptions = {
-  origin: ['http://squarestrat.com', 'https://squarestrat.com', 'http://localhost:3000', 'http://localhost:3001'], // Specify allowed origins
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    
+    // Define allowed origins patterns
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      /^https?:\/\/(www\.)?squarestrat\.com$/,
+    ];
+    
+    // Check if origin matches any allowed pattern
+    const isAllowed = allowedOrigins.some(pattern => {
+      if (typeof pattern === 'string') {
+        return origin === pattern;
+      }
+      return pattern.test(origin);
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   credentials: true, // Allow sending cookies/authorization headers
   optionsSuccessStatus: 204, // Some legacy browsers require 204 for preflight success
