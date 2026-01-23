@@ -915,23 +915,33 @@ app.post("/api/likes/delete", async (req, res) => {
 //  ---------------------- News ------------------------------
 
 app.post("/api/news/new", async (req, res) => {
-  const author = req.body.author;
-  const article_id = req.body.article_id;
-  const liked = true;
-  db_pool.query("INSERT INTO chessusnode.news (user_id, article_id, liked) VALUES (?,?,?)",
-    [user_id, article_id, liked],
-    (err, result) => {
-      if (err) {
-        res.send({ err: err});
-      }
-      let news;
-      news = { id: result.insertId, user_id: user_id, article_id: article_id, liked: liked}
-      console.log(result);
-      res.json({result: news });
+  try {
+    const { author_id, title, content, created_at } = req.body;
+    
+    if (!author_id || !title || !content) {
+      return res.status(400).send({ message: "Missing required fields" });
     }
-  );
-});
 
+    const [result] = await db_pool.query(
+      `INSERT INTO articles (author_id, title, content, created_at, game_type_id) 
+       VALUES (?, ?, ?, ?, NULL)`,
+      [author_id, title, content, created_at || new Date()]
+    );
+
+    const newsArticle = {
+      id: result.insertId,
+      author_id,
+      title,
+      content,
+      created_at: created_at || new Date()
+    };
+
+    res.json({ result: newsArticle, message: "News article created successfully" });
+  } catch (err) {
+    console.error("Error creating news article:", err);
+    res.status(500).send({ message: "Failed to create news article", err: err.message });
+  }
+});
 
 app.get("/api/news", async (req, res) => {
   try {
@@ -1687,15 +1697,18 @@ app.get("/api/admin/news", authenticateAdmin, async (req, res) => {
     const offset = (page - 1) * limit;
 
     const [news] = await db_pool.query(
-      `SELECT n.*, u.username as author_name
-       FROM news n
-       LEFT JOIN users u ON n.author_id = u.id
-       ORDER BY n.created_at DESC
+      `SELECT a.*, u.username as author_name
+       FROM articles a
+       LEFT JOIN users u ON a.author_id = u.id
+       WHERE a.game_type_id IS NULL
+       ORDER BY a.created_at DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
 
-    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM news");
+    const [[{ total }]] = await db_pool.query(
+      "SELECT COUNT(*) as total FROM articles WHERE game_type_id IS NULL"
+    );
 
     res.json({
       data: news,
@@ -1709,6 +1722,30 @@ app.get("/api/admin/news", authenticateAdmin, async (req, res) => {
   } catch (err) {
     console.error("Error in /api/admin/news:", err);
     res.status(500).send({ message: "Failed to fetch news", err: err.message });
+  }
+});
+
+// Get single news article (admin only)
+app.get("/api/admin/news/:newsId", authenticateAdmin, async (req, res) => {
+  try {
+    const { newsId } = req.params;
+    
+    const [[news]] = await db_pool.query(
+      `SELECT a.*, u.username as author_name
+       FROM articles a
+       LEFT JOIN users u ON a.author_id = u.id
+       WHERE a.id = ? AND a.game_type_id IS NULL`,
+      [newsId]
+    );
+
+    if (!news) {
+      return res.status(404).send({ message: "News article not found" });
+    }
+
+    res.json({ data: news });
+  } catch (err) {
+    console.error("Error in /api/admin/news/:newsId:", err);
+    res.status(500).send({ message: "Failed to fetch news article", err: err.message });
   }
 });
 
@@ -1852,9 +1889,12 @@ app.put("/api/admin/news/:newsId", authenticateAdmin, async (req, res) => {
     const values = fields.map(field => updates[field]);
     values.push(newsId);
 
-    await db_pool.query(`UPDATE news SET ${setClause} WHERE id = ?`, values);
+    await db_pool.query(`UPDATE articles SET ${setClause} WHERE id = ? AND game_type_id IS NULL`, values);
 
-    const [[updatedNews]] = await db_pool.query("SELECT * FROM news WHERE id = ?", [newsId]);
+    const [[updatedNews]] = await db_pool.query(
+      "SELECT * FROM articles WHERE id = ? AND game_type_id IS NULL", 
+      [newsId]
+    );
 
     res.json({ success: true, news: updatedNews, message: "News updated successfully" });
   } catch (err) {

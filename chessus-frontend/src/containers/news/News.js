@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import styles from "./news.module.scss";
 import StandardButton from "../../components/standardbutton/StardardButton";
 import { news } from "../../actions/news";
+import { formatDateLegacy } from "../../helpers/date-formatter";
 const News = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allNews = useSelector((state) => state.news);
@@ -28,19 +29,7 @@ const News = () => {
     navigate("/news/new");
   }
 
-  function formatDateFromString(date) {
-    let year = date.substring(0,4);
-    let day = date.substring(8,10);
-    let month = date.substring(5,7);
-    let hoursTime = date.substring(11, 13);
-    let minutesTime = date.substring(14, 16);
-    let dayHalf = "am"
-    if (hoursTime > 12) {
-      dayHalf = "pm"
-      hoursTime = (parseInt(hoursTime) - 12).toString();
-    }
-    return month + "/" + day + "/" + year + " " + hoursTime + ":" + minutesTime + dayHalf;
-  }
+
 
   function handleImageClick(e, url) {
     e.preventDefault();
@@ -53,6 +42,14 @@ const News = () => {
         <h3 className={styles["news-page-title"]}>
           News
         </h3>
+        {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+          <div style={{ marginTop: '10px' }}>
+            <StandardButton 
+              onClick={createNewPost} 
+              text="Create News Article"
+            />
+          </div>
+        )}
       </header>
     <div className={styles["news"]}>
       { allNews.all_news ? 
@@ -77,6 +74,11 @@ const News = () => {
           <th>
             Content
           </th>
+          {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+            <th>
+              Actions
+            </th>
+          )}
         </tr>
           {
             allNews.all_news.map(function(news) {
@@ -84,13 +86,17 @@ const News = () => {
                 <tr key={news.id} className={styles["news-row"]}>
                     <td className={styles["date-td"]}>
                       {
-                      formatDateFromString(news.date_published.toString())
+                      formatDateLegacy(news.date_published)
                       // forum.created_at
                       }
                     </td>
                     <td>
                       <div>
-                        <img src={news.image_url} className={styles["image-button"]} alt="news image" width="200px" onClick={(event) => {handleImageClick(event, news.url)}}/>
+                        {news.image_url ? (
+                          <img src={news.image_url} className={styles["image-button"]} alt="news" width="200px" onClick={(event) => {handleImageClick(event, news.url)}}/>
+                        ) : (
+                          <span>No image</span>
+                        )}
                       </div>
                     </td>
                     <td>
@@ -100,15 +106,19 @@ const News = () => {
                     </td>
                     <td>
                       <div className={styles["news-link"]}>
-                        <div className={styles["news-username"]}>{ news.source_name}</div>
+                        <div className={styles["news-username"]}>{ news.source_name || 'Internal'}</div>
                       </div>
                     </td>
                     <td>
                       <div className={styles["news-link"]}>
                         <br/>
-                        <a href={news.url} target="_blank">
+                        {news.url ? (
+                          <a href={news.url} target="_blank" rel="noreferrer">
+                            <strong><div className={styles["news-title"]}>{ news.title }</div></strong>
+                          </a>
+                        ) : (
                           <strong><div className={styles["news-title"]}>{ news.title }</div></strong>
-                        </a>
+                        )}
                       </div>
                     </td>
                     <td className={styles["content-td"]}>
@@ -116,6 +126,14 @@ const News = () => {
                         {news.content}
                       </div>
                     </td>
+                    {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                      <td>
+                        <StandardButton 
+                          onClick={() => navigate(`/news/edit/${news.id}`)} 
+                          text="Edit"
+                        />
+                      </td>
+                    )}
                 </tr>
               )
             })

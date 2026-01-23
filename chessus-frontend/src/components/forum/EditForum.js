@@ -6,6 +6,7 @@ import { deleteUser } from "../../actions/auth";
 import StandardButton from "../standardbutton/StardardButton";
 import { getForum, editForum } from "../../actions/forums";
 import axios from "axios";
+import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
 const EditForum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -48,7 +49,7 @@ const EditForum = () => {
   const handleEditPost = (e) => {
     e.preventDefault();
     console.log("in handle edit post");
-    const todaysDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const todaysDate = getCurrentMySQLDateTime();
     setDate(todaysDate);
     let inputTitle = title;
     let inputContent = content;
@@ -76,22 +77,7 @@ const EditForum = () => {
   }
 
   
-  function formatDateFromString(date) {
-    let year = date.substring(0,4);
-    let day = date.substring(8,10);
-    let month = date.substring(5,7);
-    let hoursTime = date.substring(11, 13);
-    let minutesTime = date.substring(14, 16);
-    let dayHalf = "am"
-    if (hoursTime > 12) {
-      dayHalf = "pm"
-      hoursTime = (parseInt(hoursTime) - 12).toString();
-    }
-    if (hoursTime[0] === "0") {
-      hoursTime = hoursTime.substring(1);
-    }
-    return month + "/" + day + "/" + year + " " + hoursTime + ":" + minutesTime + dayHalf;
-  }
+
 
   return (
     <div className={styles["container"]}>
@@ -154,7 +140,7 @@ const EditForum = () => {
                   <div className={styles["comment"]}>
                     <div className={styles["comment-data"]}>
                       <div className={styles["comment-date"]}>
-                        {comment.last_updated_at === comment.created_at ? "" : "Last updated "}{ comment.last_updated_at ? formatDateFromString(comment.last_updated_at.toString()) : "" }
+                        {comment.last_updated_at === comment.created_at ? "" : "Last updated "}{ comment.last_updated_at ? formatDateLegacy(comment.last_updated_at) : "" }
                       </div>
                       <div className={styles["comment-author"]}>
                         <div className={styles["comment-link"]}>

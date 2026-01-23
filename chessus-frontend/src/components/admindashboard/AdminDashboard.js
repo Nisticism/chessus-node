@@ -6,6 +6,7 @@ import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import styles from "./admin-dashboard.module.scss";
 import StandardButton from "../standardbutton/StardardButton";
+import { formatDateOnly, formatDateTime } from "../../helpers/date-formatter";
 
 const AdminDashboard = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -94,6 +95,10 @@ const AdminDashboard = () => {
       setAlertType('error');
       setShowAlert(true);
     }
+  };
+
+  const handleCreateNews = () => {
+    navigate('/news/new');
   };
 
   const renderPagination = () => {
@@ -250,7 +255,7 @@ const AdminDashboard = () => {
               <td>{game.creator_name || 'N/A'}</td>
               <td>{game.board_width}x{game.board_height}</td>
               <td>{game.player_count || 2}</td>
-              <td>{game.last_played_at ? new Date(game.last_played_at).toLocaleDateString() : 'Never'}</td>
+              <td>{game.last_played_at ? formatDateTime(game.last_played_at) : 'Never'}</td>
               <td>
                 <button className={styles["edit-btn"]} onClick={() => handleEdit(game)}>Edit</button>
               </td>
@@ -293,7 +298,7 @@ const AdminDashboard = () => {
               <td>{forum.game_name || 'N/A'}</td>
               <td>{forum.genre}</td>
               <td>{forum.public ? 'Yes' : 'No'}</td>
-              <td>{new Date(forum.created_at).toLocaleDateString()}</td>
+              <td>{formatDateTime(forum.created_at)}</td>
               <td>
                 <button className={styles["edit-btn"]} onClick={() => handleEdit(forum)}>Edit</button>
               </td>
@@ -307,6 +312,9 @@ const AdminDashboard = () => {
 
   const renderNewsTable = () => (
     <div className={styles["table-container"]}>
+      <div className={styles["table-header"]} style={{ marginBottom: '15px' }}>
+        <StandardButton onClick={handleCreateNews} buttonText="Create News Article" />
+      </div>
       <table className={styles["data-table"]}>
         <thead>
           <tr>
@@ -330,7 +338,7 @@ const AdminDashboard = () => {
               <td>{news.id}</td>
               <td>{news.title}</td>
               <td>{news.author_name}</td>
-              <td>{new Date(news.created_at).toLocaleDateString()}</td>
+              <td>{formatDateTime(news.created_at)}</td>
               <td>
                 <button className={styles["edit-btn"]} onClick={() => handleEdit(news)}>Edit</button>
               </td>

@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import styles from "./forums.module.scss";
 import StandardButton from "../../components/standardbutton/StardardButton";
 import { forums, deleteForum, firstForumsRender } from "../../actions/forums";
+import { formatDateLegacy } from "../../helpers/date-formatter";
 const Forums = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allForums = useSelector((state) => state.forums);
@@ -36,19 +37,7 @@ const Forums = () => {
     navigate(`/forums/${forumId}`);
   }
 
-  function formatDateFromString(date) {
-    let year = date.substring(0,4);
-    let day = date.substring(8,10);
-    let month = date.substring(5,7);
-    let hoursTime = date.substring(11, 13);
-    let minutesTime = date.substring(14, 16);
-    let dayHalf = "am"
-    if (hoursTime > 12) {
-      dayHalf = "pm"
-      hoursTime = (parseInt(hoursTime) - 12).toString();
-    }
-    return month + "/" + day + "/" + year + " " + hoursTime + ":" + minutesTime + dayHalf;
-  }
+
 
   // Filter forums to only show general forums (those without game_type_id)
   const generalForums = allForums.forums ? 
@@ -150,7 +139,7 @@ const Forums = () => {
                     <td className={styles["date-td"]}>
                       <div className={styles["forums-date"]}>
                         {
-                        formatDateFromString(forum.created_at.toString())
+                        formatDateLegacy(forum.created_at)
                         }
                       </div>
                     </td>

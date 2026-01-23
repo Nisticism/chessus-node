@@ -12,8 +12,28 @@ const getNews = async () => {
   return response;
 };
 
+const newNews = async (author_id, title, content, created_at) => {
+  const response = await axios.post(
+    API_URL + "news/new",
+    { author_id, title, content, created_at },
+    { headers: authHeader() }
+  );
+  return response;
+};
+
+const editNews = async (title, content, last_updated_at, id) => {
+  const response = await axios.put(
+    API_URL + `admin/news/${id}`,
+    { title, content, last_updated_at },
+    { headers: authHeader() }
+  );
+  return response;
+};
+
 const NewsService = {
   getNews,
+  newNews,
+  editNews,
 }
 
 export default NewsService;

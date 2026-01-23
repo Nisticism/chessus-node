@@ -8,6 +8,7 @@ import { isEmail } from "validator";
 import { newForum } from "../../actions/forums";
 import styles from "./create-forum.module.scss";
 import StandardButton from "../standardbutton/StardardButton";
+import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
 import { forums } from "../../actions/forums";
 
@@ -66,7 +67,7 @@ const CreateForum = () => {
 
   function handleCreatePost(e) {
     e.preventDefault();
-    const todaysDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const todaysDate = getCurrentMySQLDateTime();
     setDate(todaysDate);
     dispatch(newForum(currentUser.id, title, content, todaysDate))
       //  Must run dispatch(forums()) to load the newly created forum into state, which is how /forums displays everything

@@ -5,6 +5,7 @@ import styles from "./forum.module.scss";
 import { deleteComment, getForum, newComment, editComment, deleteForum } from "../../actions/forums";
 import StandardButton from "../standardbutton/StardardButton";
 import axios from "axios";
+import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
 import { FaEdit } from "react-icons/fa";
 import { FaTrash } from "react-icons/fa";
@@ -62,7 +63,7 @@ const Forum = () => {
   const handleNewComment = (e) => {
     e.preventDefault();
     let commentContent = document.getElementById("comment-field").value;
-    const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const currentTime = getCurrentMySQLDateTime();
     console.log(commentContent);
     dispatch(newComment(currentUser.id, currentForum.id, commentContent, currentTime, currentUser.username));
   }
@@ -79,7 +80,7 @@ const Forum = () => {
       commentContentSubmit = commentEditBox.value;
     }
   
-    const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const currentTime = getCurrentMySQLDateTime();
     console.log("comment content: " + commentContentSubmit, "element id: " + elementId, "id: " + id);
     dispatch(editComment(id, commentContentSubmit, currentTime));
   }
@@ -113,22 +114,7 @@ const Forum = () => {
     }
   }
 
-  function formatDateFromString(date) {
-    let year = date.substring(0,4);
-    let day = date.substring(8,10);
-    let month = date.substring(5,7);
-    let hoursTime = date.substring(11, 13);
-    let minutesTime = date.substring(14, 16);
-    let dayHalf = "am"
-    if (hoursTime > 12) {
-      dayHalf = "pm"
-      hoursTime = (parseInt(hoursTime) - 12).toString();
-    }
-    if (hoursTime[0] === "0") {
-      hoursTime = hoursTime.substring(1);
-    }
-    return month + "/" + day + "/" + year + " " + hoursTime + ":" + minutesTime + dayHalf;
-  }
+
 
   const onChangeCommentContent = (e) => {
     const newCommentContent = e.target.value;
@@ -159,7 +145,7 @@ const Forum = () => {
             <Link to={`/profile/${currentForum.author_name}`}>
               <div className={styles["forum-username"]}>{ currentForum.author_name }</div>
             </Link>
-            <br/> {formatDateFromString(currentForum.created_at)}</div>
+            <br/> {formatDateLegacy(currentForum.created_at)}</div>
             <div className={styles["forum-content"]}>{currentForum.content}</div>
             <div className={styles["likes-container"]}>
               <LikesModule isLiked={false} likeCount={currentForum.likes ? currentForum.likes.length : 0} userId={currentUser.id} forumId={currentForum.id}/>
@@ -172,7 +158,7 @@ const Forum = () => {
                   <div className={styles["comment"]}>
                     <div className={styles["comment-data"]}>
                       <div className={styles["comment-date"]}>
-                        { comment.last_updated_at ? formatDateFromString(comment.last_updated_at.toString()) : "" }{comment.last_updated_at === comment.created_at ? "" : <span className={styles["edited-text"]}>&nbsp;Edited</span>}
+                        { comment.last_updated_at ? formatDateLegacy(comment.last_updated_at) : "" }{comment.last_updated_at === comment.created_at ? "" : <span className={styles["edited-text"]}>&nbsp;Edited</span>}
                       </div>
                       <div className={styles["comment-author"]}>
                         <div className={styles["comment-link"]}>

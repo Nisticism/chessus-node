@@ -27,6 +27,8 @@ import Forum from "./components/forum/Forum";
 import EditForum from "./components/forum/EditForum";
 
 import News from "./containers/news/News";
+import CreateNews from "./containers/news/CreateNews";
+import EditNews from "./containers/news/EditNews";
 import MediaHub from "./containers/mediahub/MediaHub";
 import SocialMedia from "./containers/socialmedia/SocialMedia";
 import Streams from "./containers/streams/Streams";
@@ -103,6 +105,8 @@ function App() {
             <Route exact path="/forums/:forumId" element={<Forum />} />
             <Route exact path="/forums/:forumId/edit" element={<EditForum />} />
             <Route exact path="/news" element={<News />} />
+            <Route exact path="/news/new" element={<CreateNews />} />
+            <Route exact path="/news/edit/:newsId" element={<EditNews />} />
             <Route exact path="/preferences" element={<Preferences />} />
             <Route exact path="/donate" element={<Donate />} />
             <Route exact path="/admin/dashboard" element={<AdminDashboard />} />

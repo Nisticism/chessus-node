@@ -311,7 +311,19 @@ const deleteLike = async (id) => {
  * @returns {Promise<Array>} Array of news items
  */
 const getAllNews = async () => {
-  return await query("SELECT * FROM chessusnode.news");
+  return await query(`
+    SELECT a.*, 
+           u.username as author, 
+           u.id as author_id,
+           a.created_at as date_published,
+           NULL as image_url,
+           NULL as url,
+           NULL as source_name
+    FROM chessusnode.articles a
+    LEFT JOIN chessusnode.users u ON a.author_id = u.id
+    WHERE a.game_type_id IS NULL
+    ORDER BY a.created_at DESC
+  `);
 };
 
 module.exports = {
