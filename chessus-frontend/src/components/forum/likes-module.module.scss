@@ -2,24 +2,13 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  background: linear-gradient(135deg, #0a1e3a 0%, #0d2847 100%);
-  padding: 12px 20px;
-  border-radius: 25px;
-  border: 2px solid #2a4d6c;
-  transition: all 0.3s ease;
-  cursor: pointer;
-  
-  &:hover {
-    border-color: #4a90e2;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
-  }
 }
 
 .likes {
   font-size: 24px;
   color: #5cb3e8;
   transition: all 0.2s ease;
+  cursor: pointer;
   
   &:hover {
     color: #4a90e2;

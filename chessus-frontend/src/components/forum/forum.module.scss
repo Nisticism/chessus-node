@@ -212,6 +212,7 @@
 
 .new-comment {
   margin-top: 30px;
+  box-sizing: border-box;
   
   textarea {
     width: 100%;
@@ -225,6 +226,7 @@
     font-family: inherit;
     resize: vertical;
     transition: border-color 0.2s ease;
+    box-sizing: border-box;
     
     &:focus {
       outline: none;

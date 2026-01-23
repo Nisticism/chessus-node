@@ -37,15 +37,13 @@ const LikesModule = (props) => {
   }
 
   return (
-    <div className="container">
-      <div className={styles["likes-module"]}>
-        <div className={styles["likes-count"]}>{ currentForum.likes ? currentForum.likes.length : 0 }</div>
-          { 
-            currentForum.likes && currentForum.likes.filter((like) => like.user_id === props.userId).length === 0 ? 
-            <AiOutlineLike className={styles["likes"]} onClick={(event) => handleLike(event)}/>
-            : <AiFillLike className={styles["likes"]} onClick={(event) => handleDeleteLike(event)}/>
-          }
-      </div>
+    <div className={styles["likes-module"]}>
+      <div className={styles["likes-count"]}>{ currentForum.likes ? currentForum.likes.length : 0 }</div>
+        { 
+          currentForum.likes && currentForum.likes.filter((like) => like.user_id === props.userId).length === 0 ? 
+          <AiOutlineLike className={styles["likes"]} onClick={(event) => handleLike(event)}/>
+          : <AiFillLike className={styles["likes"]} onClick={(event) => handleDeleteLike(event)}/>
+        }
     </div>
   );
 };
