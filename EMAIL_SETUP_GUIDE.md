@@ -1,228 +1,163 @@
-# Email Setup Guide - SendGrid
+# Email Setup Guide - AWS SES
 
-This guide will help you set up SendGrid for sending transactional emails (welcome emails and donation receipts).
+This guide will help you set up AWS Simple Email Service (SES) for sending transactional emails from your application.
 
-## 🚀 Quick Start
+## Why AWS SES?
 
-### 1. Create SendGrid Account
+- **Cost-effective**: 62,000 free emails per month when hosted on EC2
+- **Reliable**: High deliverability rates
+- **Scalable**: Handles from testing to production volumes
+- **Integrated**: Works seamlessly with other AWS services
 
-1. Go to [SendGrid.com](https://sendgrid.com/)
-2. Click **"Start for Free"**
-3. Complete the registration process
-4. Verify your email address
+## Quick Setup
 
-### 2. Get Your API Key
+### 1. Verify Your Email Address
 
-1. Log into your SendGrid dashboard
-2. Go to **Settings** → **API Keys**
-3. Click **"Create API Key"**
-4. Name it (e.g., "Squarestrat Production")
-5. Choose **"Full Access"** or at minimum **"Mail Send"** permissions
-6. Click **"Create & View"**
-7. **IMPORTANT**: Copy the API key immediately (you can only see it once!)
+1. Go to [AWS SES Console](https://console.aws.amazon.com/ses/)
+2. Navigate to **Configuration** → **Verified identities**
+3. Click **Create identity**
+4. Select **Email address**
+5. Enter: `noreply@squarestrat.com`
+6. Click **Create identity**
+7. Check your email and click the verification link
 
-### 3. Verify Sender Email
+### 2. Request Production Access (Optional but Recommended)
 
-Before you can send emails, you need to verify your sender email address:
+By default, SES is in sandbox mode (can only send to verified emails).
 
-#### Option A: Single Sender Verification (Quick - Recommended for Testing)
-1. Go to **Settings** → **Sender Authentication**
-2. Click **"Verify a Single Sender"**
-3. Fill in your information:
-   - **From Name**: Squarestrat
-   - **From Email**: noreply@yourdomain.com (or any email you control)
-   - **Reply To**: Same as above or support email
-   - **Company Address**: Your address
-4. Click **"Create"**
-5. Check your email and click the verification link
-6. Once verified, you can send up to 100 emails/day
+1. In SES Console, go to **Account dashboard**
+2. Click **Request production access**
+3. Fill out the form:
+   - **Mail Type**: Transactional
+   - **Website URL**: https://squarestrat.com
+   - **Use case**: User registration, donation confirmations, contact form
+   - **Compliance**: Explain you only send to users who register/donate
+4. Submit and wait for approval (usually 24 hours)
 
-#### Option B: Domain Authentication (Better for Production)
-1. Go to **Settings** → **Sender Authentication**
-2. Click **"Authenticate Your Domain"**
-3. Select your DNS host
-4. Follow the instructions to add DNS records
-5. Wait for DNS propagation (can take up to 48 hours)
-6. Once verified, you can send with any email address from your domain
+### 3. Create IAM User for SES
 
-### 4. Configure Environment Variables
+1. Go to [IAM Console](https://console.aws.amazon.com/iam/)
+2. Click **Users** → **Create user**
+3. User name: `squarestrat-ses-user`
+4. Click **Next**
+5. Select **Attach policies directly**
+6. Search and select: `AmazonSESFullAccess`
+7. Click **Next** → **Create user**
+8. Click on the created user
+9. Go to **Security credentials** tab
+10. Click **Create access key**
+11. Select **Application running outside AWS**
+12. Click **Next** → **Create access key**
+13. **Copy the Access Key ID and Secret Access Key** (you won't see the secret again!)
+
+### 4. Add to Environment Variables
 
 Add these to your backend `.env` file:
 
-```env
-# SendGrid Email Configuration
-SENDGRID_API_KEY=SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-SENDGRID_FROM_EMAIL=noreply@yourdomain.com
+```bash
+# AWS SES Email Configuration
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=AKIAXXXXXXXXXXXXXXXX
+AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+AWS_SES_FROM_EMAIL=noreply@squarestrat.com
 ```
 
-**Important**: 
-- Replace `SG.xxx...` with your actual API key from step 2
-- Replace `noreply@yourdomain.com` with the email you verified in step 3
-- **Never commit your `.env` file to git!**
-
-### 5. Test Email Sending
-
-Restart your backend server to load the new environment variables:
+### 5. Install Dependencies
 
 ```bash
-# Stop the server (Ctrl+C)
-# Start it again
-npm start
+npm install @aws-sdk/client-ses
 ```
 
-Now test by:
-1. **Registration**: Create a new test account - you should receive a welcome email
-2. **Donation**: Make a test donation (use Stripe test cards) - you should receive a thank you email
+### 6. Restart Your Server
 
-## 📧 Email Templates Included
+```bash
+# Development
+npm run dev
 
-### Welcome Email
-- Sent automatically when a user registers
-- Modern design with blue gradient theme matching your site
-- Includes quick links to play, create games, and join forums
-- Responsive design for mobile devices
-
-### Donation Thank You Email
-- Sent automatically after successful donation
-- Shows donation amount
-- Explains how the donation helps the platform
-- Includes receipt information
-
-## 🎨 Email Design Features
-
-Both email templates include:
-- ♔ Squarestrat branding with logo
-- 🎨 Blue gradient header matching site theme (#08234d, #1565c0)
-- 📱 Fully responsive (mobile-friendly)
-- 🔗 Quick action buttons
-- 📊 Professional layout with proper spacing
-- 🌐 Footer with links to website sections
-
-## 🆓 Free Tier Limits
-
-SendGrid's free tier includes:
-- ✅ **100 emails per day** (forever free)
-- ✅ All core features
-- ✅ Email analytics
-- ✅ 2,000 contacts
-
-This is perfect for getting started! If you need more:
-- **Essentials Plan**: $19.95/mo - 50,000 emails/month
-- **Pro Plan**: $89.95/mo - 100,000 emails/month
-
-## 🔧 Customization
-
-### Changing Email Content
-
-Edit `server/email-service.js` to customize:
-- Email templates (HTML/CSS)
-- Email subject lines
-- Button text and links
-- Footer content
-
-### Adding New Email Types
-
-Add new functions to `server/email-service.js`:
-
-```javascript
-const sendCustomEmail = async (email, username, data) => {
-  const content = `
-    <h2 class="title">Your Custom Title</h2>
-    <p class="message">Your custom content...</p>
-  `;
-  
-  const msg = {
-    to: email,
-    from: process.env.SENDGRID_FROM_EMAIL,
-    subject: 'Your Subject',
-    html: getEmailTemplate(content),
-  };
-  
-  await sgMail.send(msg);
-};
-
-module.exports = {
-  sendWelcomeEmail,
-  sendDonationEmail,
-  sendCustomEmail, // Export new function
-};
+# Production (if using PM2)
+pm2 restart all
 ```
 
-## 🐛 Troubleshooting
+## Email Types Sent
 
-### "SendGrid not configured" message
-- Check that `SENDGRID_API_KEY` is in your `.env` file
-- Restart your backend server after adding environment variables
+Your application sends three types of emails:
 
-### Emails not being received
-1. Check spam/junk folder
-2. Verify sender email in SendGrid dashboard
-3. Check SendGrid activity feed for delivery status:
-   - Go to **Activity** in SendGrid dashboard
-   - Look for your email and check status
-4. Ensure email address is valid
+1. **Welcome Email**: Sent when a user registers
+2. **Donation Thank You**: Sent after successful donation
+3. **Contact Form**: Forwards contact form submissions to fosterhans@gmail.com
 
-### "Forbidden" or 403 errors
-- Your API key might not have correct permissions
-- Create a new API key with "Mail Send" permission
+## Testing
 
-### Domain authentication failing
-- DNS records can take 24-48 hours to propagate
-- Use Single Sender Verification while waiting
+### In Sandbox Mode
 
-## 📊 Monitoring
+You can only send emails to verified addresses:
 
-Monitor email delivery in SendGrid:
-1. Go to **Activity** in your dashboard
-2. View delivery status, opens, and clicks
-3. Check for bounces or spam reports
+1. Verify your personal email in SES (same process as step 1)
+2. Register with that email
+3. Check if you receive the welcome email
 
-## 🔒 Security Best Practices
+### In Production Mode
 
-1. **Never expose your API key**:
-   - Keep it in `.env` file only
-   - Add `.env` to `.gitignore`
-   - Never commit to version control
+After approval, you can send to any email address.
 
-2. **Use environment-specific keys**:
-   - Development: One API key
-   - Production: Different API key
+## Troubleshooting
 
-3. **Rotate keys periodically**:
-   - Create new key
-   - Update `.env`
-   - Delete old key from SendGrid
+### "Email address is not verified"
 
-4. **Monitor for abuse**:
-   - Check SendGrid activity regularly
-   - Set up alerts for unusual activity
+- Make sure you verified `noreply@squarestrat.com` in SES
+- Check the verification email (might be in spam)
+- Wait a few minutes after verification
 
-## 📈 Going to Production
+### "User not authorized to perform: ses:SendEmail"
 
-When you're ready to go live:
+- Check that IAM user has `AmazonSESFullAccess` policy
+- Verify AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are correct
+- Ensure keys are for the correct AWS account/region
 
-1. **Domain Authentication**: Complete domain authentication (not just single sender)
-2. **Warm up your domain**: Gradually increase email volume
-3. **Monitor reputation**: Check SendGrid reputation score
-4. **Update email content**: Ensure footer links point to production URLs
-5. **Test thoroughly**: Send test emails to multiple providers (Gmail, Outlook, Yahoo)
-6. **Set up alerts**: Configure SendGrid alerts for bounces/spam
+### "Daily sending quota exceeded"
 
-## 💡 Tips
+- In sandbox mode: 200 emails/day limit
+- Request production access to increase limits
+- Check [SES sending limits](https://docs.aws.amazon.com/ses/latest/dg/manage-sending-quotas.html)
 
-- Start with Single Sender Verification for quick testing
-- The free tier (100 emails/day) is great for small sites
-- Use the Activity feed to debug delivery issues
-- Keep email templates simple and focused
-- Test emails on multiple devices and email clients
-- Monitor your sender reputation in SendGrid dashboard
+### Emails going to spam
 
-## 🆘 Need Help?
+- Verify your domain (not just email) for better deliverability
+- Set up SPF, DKIM, and DMARC records
+- See [AWS SES Best Practices](https://docs.aws.amazon.com/ses/latest/dg/best-practices.html)
 
-- [SendGrid Documentation](https://docs.sendgrid.com/)
-- [SendGrid Support](https://support.sendgrid.com/)
-- [Email Templates Guide](https://docs.sendgrid.com/ui/sending-email/how-to-send-email-with-dynamic-transactional-templates)
+## Security Best Practices
 
----
+1. **Never commit AWS credentials** to git (already in .gitignore)
+2. **Use IAM user with minimal permissions** (only SES, not full AWS access)
+3. **Rotate access keys** every 90 days
+4. **Enable MFA** on your AWS account
+5. **Monitor usage** in SES console
 
-**Ready to send emails!** 🎉 Follow the quick start steps above and you'll be sending beautiful, branded emails in minutes.
+## Cost Estimates
+
+- **EC2 hosted**: First 62,000 emails/month FREE
+- **After free tier**: $0.10 per 1,000 emails
+- **Example**: 100,000 emails/month = ~$3.80/month
+
+## Graceful Degradation
+
+The email system is designed to never break your application:
+
+- If AWS credentials are missing, emails are skipped with console logs
+- Registration and donations still work without emails
+- Errors are logged but don't crash the server
+
+## Production Deployment
+
+1. Copy your local `.env` values to production server
+2. Make sure `AWS_REGION` matches where you set up SES (usually `us-east-1`)
+3. Ensure `AWS_SES_FROM_EMAIL` is verified in SES
+4. Restart your application
+
+## Links
+
+- [AWS SES Console](https://console.aws.amazon.com/ses/)
+- [IAM Console](https://console.aws.amazon.com/iam/)
+- [SES Documentation](https://docs.aws.amazon.com/ses/)
+- [Pricing](https://aws.amazon.com/ses/pricing/)

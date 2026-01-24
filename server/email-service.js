@@ -1,9 +1,13 @@
-const sgMail = require('@sendgrid/mail');
+const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 
-// Initialize SendGrid with API key from environment
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-}
+// Initialize AWS SES client
+const sesClient = new SESClient({
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY ? {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  } : undefined
+});
 
 // Modern email template base (matches site's blue theme)
 const getEmailTemplate = (content) => `
@@ -237,117 +241,144 @@ const getDonationEmailContent = (username, amount) => `
 
 // Send welcome email on registration
 const sendWelcomeEmail = async (email, username) => {
-  if (!process.env.SENDGRID_API_KEY) {
-    console.log('ℹ️ SendGrid not configured. Skipping welcome email to:', email);
-    console.log('   To enable emails, add SENDGRID_API_KEY to your .env file');
-    return { success: false, message: 'SendGrid not configured' };
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.log('ℹ️ AWS SES not configured. Skipping welcome email to:', email);
+    console.log('   To enable emails, add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to your .env file');
+    return { success: false, message: 'AWS SES not configured' };
   }
 
-  if (!process.env.SENDGRID_FROM_EMAIL) {
-    console.warn('⚠️ SENDGRID_FROM_EMAIL not set, using default: noreply@squarestrat.com');
+  if (!process.env.AWS_SES_FROM_EMAIL) {
+    console.warn('⚠️ AWS_SES_FROM_EMAIL not set, using default: noreply@squarestrat.com');
   }
 
   try {
-    const msg = {
-      to: email,
-      from: process.env.SENDGRID_FROM_EMAIL || 'noreply@squarestrat.com',
-      subject: 'Welcome to Squarestrat! 🎉',
-      html: getEmailTemplate(getWelcomeEmailContent(username)),
+    const params = {
+      Source: process.env.AWS_SES_FROM_EMAIL || 'noreply@squarestrat.com',
+      Destination: {
+        ToAddresses: [email],
+      },
+      Message: {
+        Subject: {
+          Data: 'Welcome to Squarestrat! 🎉',
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Html: {
+            Data: getEmailTemplate(getWelcomeEmailContent(username)),
+            Charset: 'UTF-8',
+          },
+        },
+      },
     };
 
-    await sgMail.send(msg);
+    const command = new SendEmailCommand(params);
+    await sesClient.send(command);
     console.log(`✅ Welcome email sent to ${email}`);
     return { success: true };
   } catch (error) {
     console.error('❌ Error sending welcome email:', error.message);
-    if (error.response) {
-      console.error('SendGrid error details:', error.response.body);
-    }
     return { success: false, error };
   }
 };
 
 // Send donation thank you email
 const sendDonationEmail = async (email, username, amount) => {
-  if (!process.env.SENDGRID_API_KEY) {
-    console.log('ℹ️ SendGrid not configured. Skipping donation email to:', email);
-    console.log('   To enable emails, add SENDGRID_API_KEY to your .env file');
-    return { success: false, message: 'SendGrid not configured' };
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.log('ℹ️ AWS SES not configured. Skipping donation email to:', email);
+    console.log('   To enable emails, add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to your .env file');
+    return { success: false, message: 'AWS SES not configured' };
   }
 
-  if (!process.env.SENDGRID_FROM_EMAIL) {
-    console.warn('⚠️ SENDGRID_FROM_EMAIL not set, using default: noreply@squarestrat.com');
+  if (!process.env.AWS_SES_FROM_EMAIL) {
+    console.warn('⚠️ AWS_SES_FROM_EMAIL not set, using default: noreply@squarestrat.com');
   }
 
   try {
-    const msg = {
-      to: email,
-      from: process.env.SENDGRID_FROM_EMAIL || 'noreply@squarestrat.com',
-      subject: 'Thank You for Your Donation! 💙',
-      html: getEmailTemplate(getDonationEmailContent(username, amount)),
+    const params = {
+      Source: process.env.AWS_SES_FROM_EMAIL || 'noreply@squarestrat.com',
+      Destination: {
+        ToAddresses: [email],
+      },
+      Message: {
+        Subject: {
+          Data: 'Thank You for Your Donation! 💙',
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Html: {
+            Data: getEmailTemplate(getDonationEmailContent(username, amount)),
+            Charset: 'UTF-8',
+          },
+        },
+      },
     };
 
-    await sgMail.send(msg);
+    const command = new SendEmailCommand(params);
+    await sesClient.send(command);
     console.log(`✅ Donation email sent to ${email} for $${amount}`);
     return { success: true };
   } catch (error) {
     console.error('❌ Error sending donation email:', error.message);
-    if (error.response) {
-      console.error('SendGrid error details:', error.response.body);
-    }
     return { success: false, error };
   }
 };
 
 // Send contact form message
 const sendContactEmail = async (name, email, subject, message) => {
-  if (!process.env.SENDGRID_API_KEY) {
-    console.log('ℹ️ SendGrid not configured. Would send contact email from:', email);
-    return { success: false, message: 'SendGrid not configured' };
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.log('ℹ️ AWS SES not configured. Would send contact email from:', email);
+    return { success: false, message: 'AWS SES not configured' };
   }
 
   try {
-    // Email to the site owner
-    const msg = {
-      to: 'fosterhans@gmail.com',
-      from: process.env.SENDGRID_FROM_EMAIL || 'noreply@squarestrat.com',
-      replyTo: email,
-      subject: `[Squarestrat Contact] ${subject}`,
-      text: `
-Name: ${name}
-Email: ${email}
-Subject: ${subject}
-
-Message:
-${message}
-      `,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #1565c0;">New Contact Form Submission</h2>
-          <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <p><strong>Name:</strong> ${name}</p>
-            <p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
-            <p><strong>Subject:</strong> ${subject}</p>
-          </div>
-          <div style="background: #fff; padding: 20px; border-left: 4px solid #1565c0; margin: 20px 0;">
-            <h3 style="margin-top: 0;">Message:</h3>
-            <p style="white-space: pre-wrap;">${message}</p>
-          </div>
-          <p style="color: #666; font-size: 12px;">
-            This email was sent from the Squarestrat contact form. Reply directly to respond to ${name}.
-          </p>
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1565c0;">New Contact Form Submission</h2>
+        <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <p><strong>Name:</strong> ${name}</p>
+          <p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
+          <p><strong>Subject:</strong> ${subject}</p>
         </div>
-      `,
+        <div style="background: #fff; padding: 20px; border-left: 4px solid #1565c0; margin: 20px 0;">
+          <h3 style="margin-top: 0;">Message:</h3>
+          <p style="white-space: pre-wrap;">${message}</p>
+        </div>
+        <p style="color: #666; font-size: 12px;">
+          This email was sent from the Squarestrat contact form. Reply directly to respond to ${name}.
+        </p>
+      </div>
+    `;
+
+    const params = {
+      Source: process.env.AWS_SES_FROM_EMAIL || 'noreply@squarestrat.com',
+      Destination: {
+        ToAddresses: ['fosterhans@gmail.com'],
+      },
+      Message: {
+        Subject: {
+          Data: `[Squarestrat Contact] ${subject}`,
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Text: {
+            Data: `Name: ${name}\nEmail: ${email}\nSubject: ${subject}\n\nMessage:\n${message}`,
+            Charset: 'UTF-8',
+          },
+          Html: {
+            Data: htmlBody,
+            Charset: 'UTF-8',
+          },
+        },
+      },
+      ReplyToAddresses: [email],
     };
 
-    await sgMail.send(msg);
+    const command = new SendEmailCommand(params);
+    await sesClient.send(command);
     console.log(`✅ Contact email sent from ${email} to fosterhans@gmail.com`);
     return { success: true };
   } catch (error) {
     console.error('❌ Error sending contact email:', error.message);
-    if (error.response) {
-      console.error('SendGrid error details:', error.response.body);
-    }
     return { success: false, error };
   }
 };
