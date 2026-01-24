@@ -3,3 +3,4 @@ node_modules
 authServer-old.js
 seed-old.js
 profile-pictures
+uploads/
