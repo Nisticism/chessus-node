@@ -329,6 +329,20 @@ const getAllNews = async () => {
   `);
 };
 
+/**
+ * Update user's total donations
+ * @param {string} email - User email
+ * @param {number} amount - Donation amount to add
+ * @returns {Promise<Object>} Update result
+ */
+const updateUserDonations = async (email, amount) => {
+  const result = await query(
+    "UPDATE chessusnode.users SET total_donations = COALESCE(total_donations, 0) + ? WHERE email = ?",
+    [amount, email]
+  );
+  return result;
+};
+
 module.exports = {
   query,
   findUserByUsername,
@@ -355,4 +369,5 @@ module.exports = {
   createLike,
   deleteLike,
   getAllNews,
+  updateUserDonations,
 };

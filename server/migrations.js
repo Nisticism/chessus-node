@@ -214,6 +214,12 @@ const migrations = [
     column: 'refresh_token',
     sql: "ALTER TABLE users ADD COLUMN refresh_token TEXT AFTER profile_picture",
     description: "Add refresh_token column to users table"
+  },
+  {
+    table: 'users',
+    column: 'total_donations',
+    sql: "ALTER TABLE users ADD COLUMN total_donations DECIMAL(10, 2) DEFAULT 0.00 AFTER refresh_token",
+    description: "Add total_donations column to users table for donor badge system"
   }
 ];
 

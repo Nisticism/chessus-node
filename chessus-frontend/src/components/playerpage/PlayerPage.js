@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./player-page.module.scss";
 import { deleteUser, getUser } from "../../actions/auth";
@@ -11,6 +11,7 @@ import API_URL from "../../global/global";
 import StandardTextBlock from "../StandardTextBlock/StandardTextBlock";
 import BioSection from "../biosection/BioSection";
 import Divider from "../Divider/Divider";
+import DonorBadge from "../DonorBadge/DonorBadge";
 // import NotFound from "../notfound/NotFound";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
@@ -33,10 +34,14 @@ const PlayerPage = (props) => {
   const [profilePicturePreview, setProfilePicturePreview] = useState(null);
   const [uploadingPicture, setUploadingPicture] = useState(false);
   const [displayPictureUrl, setDisplayPictureUrl] = useState(null); // Force re-render on upload
+  const [showBanner, setShowBanner] = useState(false);
+  const [bannerMessage, setBannerMessage] = useState("");
+  const [bannerType, setBannerType] = useState("success");
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
   const playerPageUser = useSelector((state) => state.authReducer.playerPage);
   
   const navigate = useNavigate();
+  const location = useLocation();
 
   const { username: routeUsername } = useParams();
   const username = routeUsername || (currentUser ? currentUser.username : "");
@@ -56,6 +61,29 @@ const PlayerPage = (props) => {
       getPlayerPage();
     }
   }, [firstRender, username]);
+
+  // Handle banner message from navigation state (e.g., after profile update)
+  useEffect(() => {
+    if (location.state?.showBanner) {
+      setBannerMessage(location.state.bannerMessage || "Action completed successfully");
+      setBannerType(location.state.bannerType || "success");
+      setShowBanner(true);
+      
+      // Clear the navigation state immediately to prevent re-triggering
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state]);
+
+  // Auto-dismiss banner after 5 seconds
+  useEffect(() => {
+    if (showBanner) {
+      const timer = setTimeout(() => {
+        setShowBanner(false);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showBanner]);
 
 
 
@@ -212,6 +240,20 @@ const PlayerPage = (props) => {
 
   return (
     <div className="container">
+      {/* Banner for profile updates */}
+      {showBanner && (
+        <div className={styles[bannerType === "success" ? "banner-success" : "banner-error"]}>
+          <span>{bannerMessage}</span>
+          <button 
+            onClick={() => setShowBanner(false)} 
+            className={styles["banner-close"]}
+            aria-label="Close banner"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {/* Alert for delete/picture actions */}
       {showAlert  &&
       (<div id="alert-container">
         <div className={styles["alert-style"]}>
@@ -256,9 +298,18 @@ const PlayerPage = (props) => {
               </div>
               <div className={styles["profile-header-info"]}>
                 <h1 className={styles["username"]}>{username}</h1>
-                <div className={styles["role-badge"]}>
-                  {currentUser && username === currentUser.username ? (currentUser.role || "Player")
-                  : playerPageUser && playerPageUser.role ? playerPageUser.role : "Player"}
+                <div className={styles["badges-row"]}>
+                  <div className={styles["role-badge"]}>
+                    {currentUser && username === currentUser.username ? (currentUser.role || "Player")
+                    : playerPageUser && playerPageUser.role ? playerPageUser.role : "Player"}
+                  </div>
+                  <DonorBadge 
+                    totalDonations={
+                      currentUser && username === currentUser.username 
+                        ? currentUser.total_donations 
+                        : playerPageUser?.total_donations
+                    } 
+                  />
                 </div>
               </div>
               <div className={styles["elo-display"]}>
