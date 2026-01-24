@@ -94,6 +94,11 @@ const Menu = () => (
       </div>
     </div>
 
+    <div className="nav-item">
+      <Link as="div" className="nav-item-inner" to="/contact">Contact
+      </Link>
+    </div>
+
     {/* <div className="nav-item">
       <Link as="div" className="nav-item-inner" to="/chess">Plain Old Chess
       </Link>

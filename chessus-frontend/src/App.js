@@ -38,10 +38,12 @@ import Streams from "./containers/streams/Streams";
 import DeletedAccount from "./components/deletedaccount/DeletedAccount";
 import Preferences from "./components/preferences/Preferences";
 import Donate from "./components/donate/Donate";
+import Contact from "./components/contact/Contact";
 import AdminDashboard from "./components/admindashboard/AdminDashboard";
 import NotFound from './components/notfound/NotFound';
 
 import { clearMessage, resetEdit } from "./actions/general";
+import { initGA, trackPageView } from "./analytics/GoogleAnalytics";
 import "./App.css";
 import Media from "./containers/media/Media";
 
@@ -49,6 +51,11 @@ function App() {
 
   const dispatch = useDispatch();
   const location = useLocation();
+
+  // Initialize Google Analytics once on mount
+  useEffect(() => {
+    initGA();
+  }, []);
 
   // Clean up localhost URLs in user data on app load (one-time migration)
   useEffect(() => {
@@ -64,6 +71,9 @@ function App() {
 
     dispatch(clearMessage()); // clear message when changing location
     dispatch(resetEdit());    // set editSuccess = to false when changing locations (so that we can base things off of the edit Success state)
+
+    // Track page view for analytics
+    trackPageView(location.pathname + location.search, document.title);
 
   }, [location, dispatch]);
 
@@ -113,6 +123,7 @@ function App() {
             <Route exact path="/news/edit/:newsId" element={<EditNews />} />
             <Route exact path="/preferences" element={<Preferences />} />
             <Route exact path="/donate" element={<Donate />} />
+            <Route exact path="/contact" element={<Contact />} />
             <Route exact path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/*" element={<NotFound />} />
           </Routes>
