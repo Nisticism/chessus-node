@@ -15,6 +15,9 @@ const jwt = require("jsonwebtoken");
 
 const bcrypt = require("bcrypt");
 
+// Email service
+const { sendWelcomeEmail, sendDonationEmail, sendContactEmail } = require("./email-service");
+
 //  Express
 
 const PORT = process.env.PORT || 3001;
@@ -263,6 +266,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     const { gameId } = req.params;
     const gameData = req.body;
     const userId = req.user.id;
+    const userRole = req.user.role;
     
     // Check if game exists
     const existingGame = await dbHelpers.getGameById(gameId);
@@ -270,8 +274,19 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(404).send({ message: "Game not found" });
     }
     
-    // Verify ownership
-    if (existingGame.creator_id !== userId) {
+    // Debug logging
+    console.log('Game Update Authorization:', {
+      gameId,
+      creator_id: existingGame.creator_id,
+      creator_id_type: typeof existingGame.creator_id,
+      userId,
+      userId_type: typeof userId,
+      userRole,
+      match: existingGame.creator_id === userId
+    });
+    
+    // Verify ownership (creator or Admin)
+    if (existingGame.creator_id !== userId && userRole !== "Admin") {
       return res.status(403).send({ message: "You can only edit your own games" });
     }
     
@@ -392,6 +407,19 @@ app.post("/api/register", async (req, res) => {
     const salt = bcrypt.genSaltSync();
     const hashedPassword = bcrypt.hashSync(password, salt);
     const user = await dbHelpers.createUser(username, hashedPassword, email);
+    
+    // Send welcome email (non-blocking, won't fail registration if SendGrid not configured)
+    sendWelcomeEmail(email, username)
+      .then(result => {
+        if (result.success) {
+          console.log(`✅ Welcome email sent to ${email}`);
+        } else {
+          console.log(`⚠️ Welcome email not sent: ${result.message}`);
+        }
+      })
+      .catch(err => {
+        console.error('⚠️ Email sending failed:', err.message);
+      });
     
     res.status(201).send(user);
   } catch (err) {
@@ -1970,6 +1998,114 @@ app.put("/api/admin/news/:newsId", authenticateAdmin, async (req, res) => {
 });
 
 //  -----------------------  Other/Port -------------------------
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PAYMENT ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Create Stripe checkout session
+app.post("/api/create-stripe-checkout", async (req, res) => {
+  const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  
+  try {
+    const { amount } = req.body;
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Squarestrat Donation',
+              description: 'Support the development of Squarestrat',
+            },
+            unit_amount: Math.round(amount * 100), // Convert dollars to cents
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: `${process.env.CLIENT_URL || 'http://localhost:3000'}/donate?success=true&amount=${amount}&method=stripe`,
+      cancel_url: `${process.env.CLIENT_URL || 'http://localhost:3000'}/donate`,
+    });
+
+    // Return the checkout URL for direct redirect
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Stripe error:', error);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// Confirm donation and send email (called from frontend after successful payment)
+app.post("/api/confirm-donation", async (req, res) => {
+  try {
+    const { email, username, amount } = req.body;
+    
+    if (!email || !amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Update user's total donations in database
+    try {
+      await dbHelpers.updateUserDonations(email, parseFloat(amount));
+      console.log(`✅ Updated total donations for ${email}: +$${amount}`);
+    } catch (dbError) {
+      console.error('⚠️ Failed to update donation total:', dbError.message);
+      // Continue anyway - email is more important than tracking
+    }
+
+    // Send donation thank you email (non-blocking, won't fail if SendGrid not configured)
+    sendDonationEmail(email, username, amount)
+      .then(result => {
+        if (result.success) {
+          console.log(`✅ Donation email sent to ${email}`);
+        } else {
+          console.log(`⚠️ Donation email not sent: ${result.message}`);
+        }
+      })
+      .catch(err => {
+        console.error('⚠️ Email sending failed:', err.message);
+      });
+    
+    // Always return success - the donation was successful regardless of email
+    res.json({ message: 'Donation confirmed', emailStatus: 'pending' });
+  } catch (error) {
+    console.error('Donation confirmation error:', error);
+    res.status(500).json({ error: 'Failed to confirm donation' });
+  }
+});
+
+// Contact form endpoint
+app.post("/api/contact", async (req, res) => {
+  try {
+    const { name, email, subject, message } = req.body;
+    
+    if (!name || !email || !subject || !message) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // Send contact email (non-blocking)
+    const result = await sendContactEmail(name, email, subject, message);
+    
+    if (result.success) {
+      res.json({ message: 'Message sent successfully' });
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to send message', 
+        details: result.message 
+      });
+    }
+  } catch (error) {
+    console.error('Contact form error:', error);
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+});
 
 // All other GET requests not handled before will return our React app
 app.get('/api/*', (req, res) => {
