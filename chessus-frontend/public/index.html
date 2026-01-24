@@ -1,17 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-N7K0X3Z0VN"></script>
-    <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-
-    gtag('config', 'G-N7K0X3Z0VN');
-    </script>
-    
+    <!-- Google Analytics now handled by react-ga4 in App.js -->
+    <!-- PayPal SDK for donations - loads with client ID from env -->
+    <script src="https://www.paypal.com/sdk/js?client-id=%REACT_APP_PAYPAL_CLIENT_ID%&currency=USD"></script>
     <meta charset="utf-8" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/logo.svg" />
