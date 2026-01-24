@@ -188,8 +188,8 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               </div>
               <div className={styles["direction-center"]}>
                 <div className={styles["center-piece"]}>
-                  {pieceData.piece_image_preview ? (
-                    <img src={pieceData.piece_image_preview} alt="Piece" />
+                  {pieceData.piece_image_previews?.[0] ? (
+                    <img src={pieceData.piece_image_previews[0]} alt="Piece" />
                   ) : (
                     "?"
                   )}
@@ -541,7 +541,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       {/* Live Preview */}
       <div className={styles["board-preview-section"]}>
         <h3>Movement Preview</h3>
-        <PieceBoardPreview pieceData={pieceData} />
+        <PieceBoardPreview pieceData={pieceData} showAttack={false} />
       </div>
     </div>
   );

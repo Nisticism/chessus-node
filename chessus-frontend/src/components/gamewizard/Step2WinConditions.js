@@ -44,14 +44,9 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
         {gameData.mate_condition && (
           <div className={styles["sub-field"]}>
-            <label className={styles["form-label"]}>Specific Piece ID to Checkmate (optional)</label>
-            <input
-              type="number"
-              className={styles["form-input-small"]}
-              value={gameData.mate_piece || ""}
-              onChange={(e) => handleChange("mate_piece", e.target.value ? parseInt(e.target.value) : null)}
-              placeholder="Leave empty for any piece"
-            />
+            <p className={styles["field-hint"]} style={{ marginTop: '10px' }}>
+              ℹ️ Specific pieces that end the game when checkmated will be configured in Step 4 (Piece Placement).
+            </p>
           </div>
         )}
       </div>
@@ -83,14 +78,9 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
         {gameData.capture_condition && (
           <div className={styles["sub-field"]}>
-            <label className={styles["form-label"]}>Specific Piece ID to Capture (optional)</label>
-            <input
-              type="number"
-              className={styles["form-input-small"]}
-              value={gameData.capture_piece || ""}
-              onChange={(e) => handleChange("capture_piece", e.target.value ? parseInt(e.target.value) : null)}
-              placeholder="Leave empty for any piece"
-            />
+            <p className={styles["field-hint"]} style={{ marginTop: '10px' }}>
+              ℹ️ Specific pieces that end the game when captured will be configured in Step 4 (Piece Placement).
+            </p>
           </div>
         )}
       </div>
@@ -184,79 +174,9 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
         {gameData.squares_condition && (
           <div className={styles["sub-field"]}>
-            <label className={styles["form-label"]}>Number of Squares to Control</label>
-            <input
-              type="number"
-              className={styles["form-input-small"]}
-              value={gameData.squares_count || ""}
-              onChange={(e) => handleChange("squares_count", e.target.value ? parseInt(e.target.value) : null)}
-              placeholder="e.g., 5"
-              min="1"
-            />
-          </div>
-        )}
-      </div>
-
-      {/* King of the Hill Condition */}
-      <div className={styles["condition-section"]}>
-        <h3>King of the Hill Condition</h3>
-        <div className={styles["radio-group"]}>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="hill_condition"
-              value="true"
-              checked={gameData.hill_condition === true}
-              onChange={(e) => handleBooleanChange("hill_condition", e.target.value)}
-            />
-            <span>Win by holding a specific square</span>
-          </label>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="hill_condition"
-              value="false"
-              checked={gameData.hill_condition === false}
-              onChange={(e) => handleBooleanChange("hill_condition", e.target.value)}
-            />
-            <span>Disable</span>
-          </label>
-        </div>
-        {gameData.hill_condition && (
-          <div className={styles["sub-fields"]}>
-            <div className={styles["sub-field"]}>
-              <label className={styles["form-label"]}>Hill X Coordinate</label>
-              <input
-                type="number"
-                className={styles["form-input-small"]}
-                value={gameData.hill_x || ""}
-                onChange={(e) => handleChange("hill_x", e.target.value ? parseInt(e.target.value) : null)}
-                placeholder="X position"
-                min="0"
-              />
-            </div>
-            <div className={styles["sub-field"]}>
-              <label className={styles["form-label"]}>Hill Y Coordinate</label>
-              <input
-                type="number"
-                className={styles["form-input-small"]}
-                value={gameData.hill_y || ""}
-                onChange={(e) => handleChange("hill_y", e.target.value ? parseInt(e.target.value) : null)}
-                placeholder="Y position"
-                min="0"
-              />
-            </div>
-            <div className={styles["sub-field"]}>
-              <label className={styles["form-label"]}>Turns to Hold Hill</label>
-              <input
-                type="number"
-                className={styles["form-input-small"]}
-                value={gameData.hill_turns || ""}
-                onChange={(e) => handleChange("hill_turns", e.target.value ? parseInt(e.target.value) : null)}
-                placeholder="e.g., 3"
-                min="1"
-              />
-            </div>
+            <p className={styles["field-hint"]} style={{ marginTop: '10px' }}>
+              ℹ️ Specific control squares will be configured in Step 3 (Board & Players).
+            </p>
           </div>
         )}
       </div>

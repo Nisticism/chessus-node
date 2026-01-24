@@ -19,92 +19,8 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
     <div className={styles["step-container"]}>
       <h2>Special Rules & Review</h2>
       <p className={styles["step-description"]}>
-        Configure special rules, checkmate behavior, and review all settings.
+        Configure special movement restrictions and review all settings.
       </p>
-
-      {/* Checkmate Rules */}
-      <div className={styles["condition-section"]}>
-        <h3>Checkmate & Check Rules</h3>
-        
-        <div className={styles["sub-field"]}>
-          <label>Checkmate on Attack Rules</label>
-          <div className={styles["radio-group"]}>
-            <label className={styles["radio-label"]}>
-              <input
-                type="radio"
-                name="checkmate_on_attack"
-                value="true"
-                checked={pieceData.checkmate_on_attack === true}
-                onChange={(e) => handleBooleanChange("checkmate_on_attack", e.target.value)}
-              />
-              <span>Attacking this piece causes checkmate</span>
-            </label>
-            <label className={styles["radio-label"]}>
-              <input
-                type="radio"
-                name="checkmate_on_attack"
-                value="false"
-                checked={pieceData.checkmate_on_attack === false}
-                onChange={(e) => handleBooleanChange("checkmate_on_attack", e.target.value)}
-              />
-              <span>Normal piece</span>
-            </label>
-          </div>
-        </div>
-
-        <div className={styles["sub-field"]}>
-          <label>Check on Attack Rules</label>
-          <div className={styles["radio-group"]}>
-            <label className={styles["radio-label"]}>
-              <input
-                type="radio"
-                name="check_on_attack"
-                value="true"
-                checked={pieceData.check_on_attack === true}
-                onChange={(e) => handleBooleanChange("check_on_attack", e.target.value)}
-              />
-              <span>Attacking this piece puts player in check</span>
-            </label>
-            <label className={styles["radio-label"]}>
-              <input
-                type="radio"
-                name="check_on_attack"
-                value="false"
-                checked={pieceData.check_on_attack === false}
-                onChange={(e) => handleBooleanChange("check_on_attack", e.target.value)}
-              />
-              <span>Normal piece</span>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      {/* Loss Conditions */}
-      <div className={styles["condition-section"]}>
-        <h3>Loss Conditions</h3>
-        <div className={styles["radio-group"]}>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="lose_game_on_capture"
-              value="true"
-              checked={pieceData.lose_game_on_capture === true}
-              onChange={(e) => handleBooleanChange("lose_game_on_capture", e.target.value)}
-            />
-            <span>Player loses game if this piece is captured</span>
-          </label>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="lose_game_on_capture"
-              value="false"
-              checked={pieceData.lose_game_on_capture === false}
-              onChange={(e) => handleBooleanChange("lose_game_on_capture", e.target.value)}
-            />
-            <span>Normal piece (game continues if captured)</span>
-          </label>
-        </div>
-      </div>
 
       {/* Movement Restrictions */}
       <div className={styles["condition-section"]}>
@@ -193,14 +109,6 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
           <div className={styles["summary-item"]}>
             <strong>Ranged Attack:</strong>{" "}
             {pieceData.can_capture_enemy_via_range ? "Enabled" : "Disabled"}
-          </div>
-          <div className={styles["summary-item"]}>
-            <strong>Checkmate Piece:</strong>{" "}
-            {pieceData.checkmate_on_attack ? "Yes" : "No"}
-          </div>
-          <div className={styles["summary-item"]}>
-            <strong>Lose on Capture:</strong>{" "}
-            {pieceData.lose_game_on_capture ? "Yes" : "No"}
           </div>
           <div className={styles["summary-item"]}>
             <strong>Can Hop Allies:</strong>{" "}

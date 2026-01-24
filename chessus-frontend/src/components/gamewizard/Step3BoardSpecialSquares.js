@@ -5,7 +5,8 @@ import SpecialSquareSelector from "./SpecialSquareSelector";
 const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [rangeSquares, setRangeSquares] = useState({});
   const [promotionSquares, setPromotionSquares] = useState({});
-  const [specialSquares, setSpecialSquares] = useState({});
+  const [controlSquares, setControlSquares] = useState({});
+  const [customSquares, setCustomSquares] = useState({});
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showSquareSelector, setShowSquareSelector] = useState(false);
   const [draggedSquare, setDraggedSquare] = useState(null);
@@ -54,11 +55,22 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       if (gameData.special_squares_string) {
         const parsed = JSON.parse(gameData.special_squares_string);
         if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          setSpecialSquares(parsed);
+          setCustomSquares(parsed);
         }
       }
     } catch (error) {
       console.error("Error parsing special_squares_string:", error);
+    }
+
+    try {
+      if (gameData.control_squares_string) {
+        const parsed = JSON.parse(gameData.control_squares_string);
+        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+          setControlSquares(parsed);
+        }
+      }
+    } catch (error) {
+      console.error("Error parsing control_squares_string:", error);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -81,26 +93,36 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   }, [promotionSquares]);
 
   useEffect(() => {
-    const newValue = JSON.stringify(specialSquares);
+    const newValue = JSON.stringify(customSquares);
     if (newValue !== gameData.special_squares_string) {
       updateGameData({ special_squares_string: newValue });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [specialSquares]);
+  }, [customSquares]);
+
+  useEffect(() => {
+    const newValue = JSON.stringify(controlSquares);
+    if (newValue !== gameData.control_squares_string) {
+      updateGameData({ control_squares_string: newValue });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlSquares]);
 
   // Helper functions for square types and colors
   const getSquareType = useCallback((key) => {
     if (rangeSquares[key]) return 'range';
     if (promotionSquares[key]) return 'promotion';
-    if (specialSquares[key]) return 'special';
+    if (controlSquares[key]) return 'control';
+    if (customSquares[key]) return 'custom';
     return null;
-  }, [rangeSquares, promotionSquares, specialSquares]);
+  }, [rangeSquares, promotionSquares, controlSquares, customSquares]);
 
   const getSquareColor = useCallback((type) => {
     switch (type) {
       case 'range': return '#ff8c00'; // Orange
       case 'promotion': return '#4b0082'; // Purple
-      case 'special': return '#ffd700'; // Gold
+      case 'control': return '#32CD32'; // Green
+      case 'custom': return '#ffd700'; // Gold
       default: return null;
     }
   }, []);
@@ -127,12 +149,13 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     const squareData = 
       squareType === 'range' ? rangeSquares[key] :
       squareType === 'promotion' ? promotionSquares[key] :
-      specialSquares[key];
+      squareType === 'control' ? controlSquares[key] :
+      customSquares[key];
     
     setDraggedSquare({ key, type: squareType, data: squareData });
     e.dataTransfer.effectAllowed = 'move';
     e.currentTarget.style.opacity = '0.5';
-  }, [rangeSquares, promotionSquares, specialSquares]);
+  }, [rangeSquares, promotionSquares, controlSquares, customSquares]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -167,7 +190,12 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       delete newSquares[sourceKey];
       return newSquares;
     });
-    setSpecialSquares(prev => {
+    setCustomSquares(prev => {
+      const newSquares = { ...prev };
+      delete newSquares[sourceKey];
+      return newSquares;
+    });
+    setControlSquares(prev => {
       const newSquares = { ...prev };
       delete newSquares[sourceKey];
       return newSquares;
@@ -184,7 +212,12 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       delete newSquares[targetKey];
       return newSquares;
     });
-    setSpecialSquares(prev => {
+    setCustomSquares(prev => {
+      const newSquares = { ...prev };
+      delete newSquares[targetKey];
+      return newSquares;
+    });
+    setControlSquares(prev => {
       const newSquares = { ...prev };
       delete newSquares[targetKey];
       return newSquares;
@@ -201,8 +234,13 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         ...prev,
         [targetKey]: draggedSquare.data
       }));
-    } else if (squareType === 'special') {
-      setSpecialSquares(prev => ({
+    } else if (squareType === 'control') {
+      setControlSquares(prev => ({
+        ...prev,
+        [targetKey]: draggedSquare.data
+      }));
+    } else if (squareType === 'custom') {
+      setCustomSquares(prev => ({
         ...prev,
         [targetKey]: draggedSquare.data
       }));
@@ -232,7 +270,12 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       delete newSquares[key];
       return newSquares;
     });
-    setSpecialSquares(prev => {
+    setCustomSquares(prev => {
+      const newSquares = { ...prev };
+      delete newSquares[key];
+      return newSquares;
+    });
+    setControlSquares(prev => {
       const newSquares = { ...prev };
       delete newSquares[key];
       return newSquares;
@@ -249,10 +292,20 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         ...prev,
         [key]: { type: 'promotion' }
       }));
-    } else if (squareType === 'special') {
-      setSpecialSquares(prev => ({
+    } else if (squareType === 'control') {
+      setControlSquares(prev => ({
         ...prev,
-        [key]: { type: 'special', effect: 'custom' }
+        [key]: { type: 'control' }
+      }));
+    } else if (squareType === 'custom') {
+      setCustomSquares(prev => ({
+        ...prev,
+        [key]: { type: 'custom', effect: 'custom' }
+      }));
+    } else if (squareType === 'custom') {
+      setCustomSquares(prev => ({
+        ...prev,
+        [key]: { type: 'custom', effect: 'custom' }
       }));
     }
 
@@ -275,7 +328,12 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       delete newSquares[key];
       return newSquares;
     });
-    setSpecialSquares(prev => {
+    setCustomSquares(prev => {
+      const newSquares = { ...prev };
+      delete newSquares[key];
+      return newSquares;
+    });
+    setControlSquares(prev => {
       const newSquares = { ...prev };
       delete newSquares[key];
       return newSquares;
@@ -292,7 +350,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
 
   const renderBoard = React.useMemo(() => {
     const board = [];
-    const squareSize = Math.min(60, 480 / Math.max(gameData.board_width, gameData.board_height));
+    const squareSize = Math.min(80, 600 / Math.max(gameData.board_width, gameData.board_height));
 
     for (let row = 0; row < gameData.board_height; row++) {
       for (let col = 0; col < gameData.board_width; col++) {
@@ -352,13 +410,14 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     }
 
     return board;
-  }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, rangeSquares, promotionSquares, specialSquares, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd]);
+  }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, rangeSquares, promotionSquares, controlSquares, customSquares, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd]);
 
   const getCounts = () => {
     return {
       range: Object.keys(rangeSquares).length,
       promotion: Object.keys(promotionSquares).length,
-      special: Object.keys(specialSquares).length
+      control: Object.keys(controlSquares).length,
+      custom: Object.keys(customSquares).length
     };
   };
 
@@ -414,49 +473,6 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         </div>
       </div>
 
-      {/* Player Count Slider */}
-      <div className={styles["form-group"]}>
-        <label className={styles["form-label"]}>
-          Number of Players <span className={styles["required"]}>*</span>
-        </label>
-        <div className={styles["slider-container"]}>
-          <input
-            type="range"
-            className={styles["slider"]}
-            min="2"
-            max="8"
-            value={gameData.player_count}
-            onChange={(e) => handleSliderChange("player_count", e.target.value)}
-          />
-          <div className={styles["slider-value"]}>{gameData.player_count} Players</div>
-        </div>
-        <div className={styles["slider-labels"]}>
-          <span>2</span>
-          <span>8</span>
-        </div>
-      </div>
-
-      {/* Actions Per Turn */}
-      <div className={styles["form-group"]}>
-        <label className={styles["form-label"]}>
-          Actions Per Turn <span className={styles["required"]}>*</span>
-        </label>
-        <input
-          type="number"
-          className={styles["form-input-small"]}
-          value={gameData.actions_per_turn}
-          onChange={(e) => {
-            const value = parseInt(e.target.value) || 1;
-            handleChange("actions_per_turn", Math.max(1, value));
-          }}
-          min="1"
-          placeholder="1"
-        />
-        <p className={styles["field-hint"]}>
-          How many moves/actions each player can make per turn (typically 1)
-        </p>
-      </div>
-
       {/* Special Squares Section */}
       <div className={styles["section-divider"]}>
         <h3>Special Squares (Optional)</h3>
@@ -466,15 +482,33 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         Right-click on any square to designate it as a special square. Different types of squares provide unique gameplay effects.
       </p>
 
-      <div className={styles["special-square-stats"]}>
-        <div className={styles["stat-item"]} style={{ background: 'rgba(255, 140, 0, 0.2)' }}>
-          <strong>Range Squares:</strong> {counts.range}
-        </div>
-        <div className={styles["stat-item"]} style={{ background: 'rgba(75, 0, 130, 0.2)' }}>
-          <strong>Promotion Squares:</strong> {counts.promotion}
-        </div>
-        <div className={styles["stat-item"]} style={{ background: 'rgba(255, 215, 0, 0.2)' }}>
-          <strong>Special Squares:</strong> {counts.special}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+        <button 
+          className={styles["clear-all-button"]}
+          onClick={() => {
+            if (window.confirm('Are you sure you want to remove all special squares from the board?')) {
+              setRangeSquares({});
+              setPromotionSquares({});
+              setControlSquares({});
+              setCustomSquares({});
+            }
+          }}
+        >
+          Clear All Special Squares
+        </button>
+        <div className={styles["special-square-stats"]}>
+          <div className={styles["stat-item"]} style={{ background: 'rgba(255, 140, 0, 0.2)' }}>
+            <strong>Range:</strong> {counts.range}
+          </div>
+          <div className={styles["stat-item"]} style={{ background: 'rgba(75, 0, 130, 0.2)' }}>
+            <strong>Promotion:</strong> {counts.promotion}
+          </div>
+          <div className={styles["stat-item"]} style={{ background: 'rgba(50, 205, 50, 0.2)' }}>
+            <strong>Control:</strong> {counts.control}
+          </div>
+          <div className={styles["stat-item"]} style={{ background: 'rgba(255, 215, 0, 0.2)' }}>
+            <strong>Custom:</strong> {counts.custom}
+          </div>
         </div>
       </div>
 
@@ -499,7 +533,8 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         <ul>
           <li><strong style={{ color: '#ff8c00' }}>Range Squares (R):</strong> Increase the attack/movement range of pieces on this square</li>
           <li><strong style={{ color: '#4b0082' }}>Promotion Squares (P):</strong> Pieces can be promoted to different types on this square</li>
-          <li><strong style={{ color: '#ffd700' }}>Special Squares (S):</strong> Custom effects to be defined later</li>
+          <li><strong style={{ color: '#32CD32' }}>Control Squares (C):</strong> Players must control these squares to win (if control squares win condition is enabled)</li>
+          <li><strong style={{ color: '#ffd700' }}>Custom Squares (X):</strong> Custom effects to be defined later</li>
         </ul>
         <p style={{ marginTop: '10px', fontStyle: 'italic' }}>
           Right-click any square to add a special square type. Click a special square to edit or remove it. 

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./piecewizard.module.scss";
 import StandardButton from "../standardbutton/StardardButton";
 import Divider from "../Divider/Divider";
 import { createPiece, updatePiece, getPieceById } from "../../actions/pieces";
+import { trackPieceCreation, trackEvent } from "../../analytics/GoogleAnalytics";
 import PieceStep1BasicInfo from "./PieceStep1BasicInfo";
 import PieceStep2Movement from "./PieceStep2Movement";
 import PieceStep3Attack from "./PieceStep3Attack";
@@ -20,6 +21,9 @@ const PieceWizard = ({ editPieceId = null }) => {
   const [isLoading, setIsLoading] = useState(!!editPieceId);
   const [isEditMode, setIsEditMode] = useState(!!editPieceId);
   const [existingImages, setExistingImages] = useState([]);
+  
+  // Track if user has manually interacted with attacks_like_movement checkbox
+  const hasManuallySetAttackStyle = useRef(false);
 
   // Scroll to top when step changes
   useEffect(() => {
@@ -250,6 +254,69 @@ const PieceWizard = ({ editPieceId = null }) => {
     loadPieceData();
   }, [editPieceId, currentUser, navigate]);
 
+  // Auto-check "attacks_like_movement" when any movement is configured
+  useEffect(() => {
+    // Only auto-set if user hasn't manually changed it
+    if (hasManuallySetAttackStyle.current) {
+      return;
+    }
+    
+    // Check if any movement has been set
+    const hasDirectionalMovement = 
+      pieceData.up_left_movement !== 0 ||
+      pieceData.up_movement !== 0 ||
+      pieceData.up_right_movement !== 0 ||
+      pieceData.right_movement !== 0 ||
+      pieceData.down_right_movement !== 0 ||
+      pieceData.down_movement !== 0 ||
+      pieceData.down_left_movement !== 0 ||
+      pieceData.left_movement !== 0;
+    
+    const hasRatioMovement = 
+      pieceData.ratio_one_movement != null ||
+      pieceData.ratio_two_movement != null;
+    
+    const hasStepByStepMovement = pieceData.step_by_step_movement_value != null;
+    
+    const hasAnyMovement = hasDirectionalMovement || hasRatioMovement || hasStepByStepMovement;
+    
+    // Auto-check if movement exists and it's not already set
+    if (hasAnyMovement && !pieceData.attacks_like_movement) {
+      setPieceData(prev => ({ 
+        ...prev, 
+        attacks_like_movement: true,
+        can_capture_enemy_on_move: true,
+        // Copy directional movement to capture
+        up_left_capture: prev.up_left_movement,
+        up_capture: prev.up_movement,
+        up_right_capture: prev.up_right_movement,
+        left_capture: prev.left_movement,
+        right_capture: prev.right_movement,
+        down_left_capture: prev.down_left_movement,
+        down_capture: prev.down_movement,
+        down_right_capture: prev.down_right_movement,
+        // Copy ratio movement
+        ratio_one_capture: prev.ratio_one_movement,
+        ratio_two_capture: prev.ratio_two_movement,
+        // Copy step-by-step
+        step_by_step_capture: prev.step_by_step_movement_value
+      }));
+    }
+  }, [
+    pieceData.up_left_movement,
+    pieceData.up_movement,
+    pieceData.up_right_movement,
+    pieceData.right_movement,
+    pieceData.down_right_movement,
+    pieceData.down_movement,
+    pieceData.down_left_movement,
+    pieceData.left_movement,
+    pieceData.ratio_one_movement,
+    pieceData.ratio_two_movement,
+    pieceData.step_by_step_movement_value,
+    pieceData.attacks_like_movement
+  ]);
+
   const totalSteps = 4;
 
   const updatePieceData = (updates) => {
@@ -257,6 +324,14 @@ const PieceWizard = ({ editPieceId = null }) => {
   };
 
   const nextStep = () => {
+    // Validate Step 1: piece_name is required
+    if (currentStep === 1) {
+      if (!pieceData.piece_name || pieceData.piece_name.trim().length < 2) {
+        alert('Please enter a piece name (at least 2 characters) before continuing.');
+        return;
+      }
+    }
+    
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     }
@@ -318,10 +393,12 @@ const PieceWizard = ({ editPieceId = null }) => {
       if (isEditMode && editPieceId) {
         // Update existing piece
         await updatePiece(editPieceId, formData);
+        trackEvent('Piece', 'Update', pieceData.piece_name);
         navigate("/create/pieces");
       } else {
         // Create new piece
         await createPiece(formData);
+        trackPieceCreation(pieceData.piece_name);
         navigate("/create/pieces");
       }
     } catch (error) {
@@ -334,11 +411,11 @@ const PieceWizard = ({ editPieceId = null }) => {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <PieceStep1BasicInfo pieceData={pieceData} updatePieceData={updatePieceData} />;
+        return <PieceStep1BasicInfo pieceData={pieceData} updatePieceData={updatePieceData} isEditMode={isEditMode} />;
       case 2:
         return <PieceStep2Movement pieceData={pieceData} updatePieceData={updatePieceData} />;
       case 3:
-        return <PieceStep3Attack pieceData={pieceData} updatePieceData={updatePieceData} />;
+        return <PieceStep3Attack pieceData={pieceData} updatePieceData={updatePieceData} hasManuallySetAttackStyle={hasManuallySetAttackStyle} />;
       case 4:
         return <PieceStep4Special pieceData={pieceData} updatePieceData={updatePieceData} />;
       default:

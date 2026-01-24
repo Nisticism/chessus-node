@@ -17,7 +17,9 @@ const PieceSelector = ({
   onCancel, 
   playerCount, 
   currentPlacement,
-  squarePosition 
+  squarePosition,
+  mateCondition,
+  captureCondition
 }) => {
   const [pieces, setPieces] = useState([]);
   const [filteredPieces, setFilteredPieces] = useState([]);
@@ -29,6 +31,8 @@ const PieceSelector = ({
   const [selectedPlayerId, setSelectedPlayerId] = useState(currentPlacement?.player_id || 1);
   const [selectedImageUrl, setSelectedImageUrl] = useState(currentPlacement?.image_url || "");
   const [availableImages, setAvailableImages] = useState([]);
+  const [endsGameOnCheckmate, setEndsGameOnCheckmate] = useState(currentPlacement?.ends_game_on_checkmate || false);
+  const [endsGameOnCapture, setEndsGameOnCapture] = useState(currentPlacement?.ends_game_on_capture || false);
 
   useEffect(() => {
     loadPieces();
@@ -37,7 +41,8 @@ const PieceSelector = ({
   useEffect(() => {
     // Filter pieces based on search term
     if (searchTerm.trim() === "") {
-      setFilteredPieces(pieces);
+      // When no search term, limit to first 10 pieces
+      setFilteredPieces(pieces.slice(0, 10));
     } else {
       const term = searchTerm.toLowerCase();
       const filtered = pieces.filter(piece => 
@@ -45,6 +50,7 @@ const PieceSelector = ({
         piece.id.toString().includes(term) ||
         (piece.piece_description && piece.piece_description.toLowerCase().includes(term))
       );
+      // When searching, show all matching results
       setFilteredPieces(filtered);
     }
   }, [searchTerm, pieces]);
@@ -75,6 +81,17 @@ const PieceSelector = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPieceId, pieces]);
+
+  // Auto-select image based on player number
+  useEffect(() => {
+    if (availableImages.length > 0 && selectedPlayerId) {
+      // Player IDs are 1-indexed, array is 0-indexed
+      const imageIndex = selectedPlayerId - 1;
+      // Use the player's image if available, otherwise fall back to first image
+      const targetImageIndex = imageIndex < availableImages.length ? imageIndex : 0;
+      setSelectedImageUrl(availableImages[targetImageIndex]);
+    }
+  }, [selectedPlayerId, availableImages]);
 
   const loadPieces = async () => {
     try {
@@ -115,16 +132,11 @@ const PieceSelector = ({
       piece_id: selectedPieceId,
       piece_name: selectedPiece.piece_name,
       player_id: selectedPlayerId,
-      image_url: selectedImageUrl
+      image_url: selectedImageUrl,
+      ends_game_on_checkmate: endsGameOnCheckmate,
+      ends_game_on_capture: endsGameOnCapture
     });
   };
-
-  const playerOptions = [];
-  for (let i = 1; i <= playerCount; i++) {
-    playerOptions.push(
-      <option key={i} value={i}>Player {i}</option>
-    );
-  }
 
   return (
     <div className={styles["modal-overlay"]} onClick={onCancel}>
@@ -150,19 +162,29 @@ const PieceSelector = ({
           {/* Player Selection */}
           <div className={styles["player-selection"]}>
             <label>Assign to Player:</label>
-            <select 
-              value={selectedPlayerId} 
-              onChange={(e) => setSelectedPlayerId(parseInt(e.target.value))}
-              className={styles["player-select"]}
-            >
-              {playerOptions}
-            </select>
+            <div className={styles["player-radio-group"]}>
+              {Array.from({ length: playerCount }, (_, i) => i + 1).map(playerId => (
+                <label key={playerId} className={styles["player-radio-label"]}>
+                  <input
+                    type="radio"
+                    name="player"
+                    value={playerId}
+                    checked={selectedPlayerId === playerId}
+                    onChange={(e) => setSelectedPlayerId(parseInt(e.target.value))}
+                  />
+                  <span>Player {playerId}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           {/* Piece List */}
           <div className={styles["piece-list-section"]}>
             {loading && <p>Loading pieces...</p>}
             {error && <p className={styles["error-text"]}>{error}</p>}
+            {!loading && !error && pieces.length > 10 && searchTerm.trim() === "" && (
+              <p className={styles["piece-count-hint"]}>Showing 10 of {pieces.length} pieces. Use search to find more.</p>
+            )}
             {!loading && !error && filteredPieces.length === 0 && (
               <p>No pieces found. Try a different search term.</p>
             )}
@@ -202,6 +224,38 @@ const PieceSelector = ({
               </div>
             )}
           </div>
+
+          {/* Win Condition Checkboxes */}
+          {selectedPieceId && (mateCondition || captureCondition) && (
+            <div className={styles["win-condition-section"]}>
+              <h3>End Game Conditions:</h3>
+              <p className={styles["win-condition-note"]}>
+                Check the boxes below to make this piece critical. The game will end if this piece meets the checked condition(s).
+              </p>
+              <div className={styles["checkbox-group"]}>
+                {mateCondition && (
+                  <label className={styles["checkbox-label"]}>
+                    <input
+                      type="checkbox"
+                      checked={endsGameOnCheckmate}
+                      onChange={(e) => setEndsGameOnCheckmate(e.target.checked)}
+                    />
+                    <span>End game if this piece is checkmated</span>
+                  </label>
+                )}
+                {captureCondition && (
+                  <label className={styles["checkbox-label"]}>
+                    <input
+                      type="checkbox"
+                      checked={endsGameOnCapture}
+                      onChange={(e) => setEndsGameOnCapture(e.target.checked)}
+                    />
+                    <span>End game if this piece is captured</span>
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Image Selection (shown when piece is selected) */}
           {selectedPieceId && availableImages.length > 0 && (

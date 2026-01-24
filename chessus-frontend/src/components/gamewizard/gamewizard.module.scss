@@ -374,6 +374,7 @@
   gap: 20px;
   margin-bottom: 20px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .stat-item {
@@ -383,25 +384,108 @@
   color: var(--light-gray);
 }
 
+.clear-all-button {
+  padding: 10px 20px;
+  background: rgba(255, 69, 58, 0.2);
+  border: 1px solid rgba(255, 69, 58, 0.5);
+  border-radius: 5px;
+  color: #ff453a;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  margin-left: auto;
+
+  &:hover {
+    background: rgba(255, 69, 58, 0.3);
+    border-color: #ff453a;
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
 .placement-instructions {
-  margin-top: 20px;
-  padding: 15px;
+  margin: 20px auto 0 auto;
+  padding: 15px 20px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 5px;
+  width: fit-content;
+  max-width: 600px;
   
   h3 {
     color: var(--light-gray);
     margin-bottom: 10px;
+    text-align: left;
   }
 
   ul {
     list-style-position: inside;
     color: var(--text-light-gray);
+    text-align: left;
+    margin: 0;
+    padding: 0;
     
     li {
       margin-bottom: 5px;
     }
   }
+}
+
+.preview-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  margin: 0 auto 1rem;
+  max-width: 800px;
+}
+
+.legend-row {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--light-gray);
+  font-size: 1em;
+}
+
+.legend-square {
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
+}
+
+.legend-player-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.ranged-icon {
+  font-size: 1.2em;
+}
+
+.condition-icon {
+  font-size: 1.2em;
+}
+
+.checkmate-indicator,
+.capture-indicator {
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.8), 0 0 5px rgba(255, 255, 255, 0.5);
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8));
 }
 
 // Modal Styles
@@ -465,6 +549,7 @@
 .modal-body {
   padding: 20px;
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
 }
 
@@ -501,13 +586,45 @@
 
 .player-selection {
   margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
 
-  label {
+  > label {
+    display: block;
     color: var(--light-gray);
     font-weight: 500;
+    margin-bottom: 10px;
+  }
+}
+
+.player-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.player-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--light-gray);
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  input[type="radio"] {
+    cursor: pointer;
+  }
+
+  input[type="radio"]:checked + span {
+    color: var(--primary-color);
+    font-weight: 600;
   }
 }
 
@@ -530,12 +647,19 @@
   min-height: 200px;
 }
 
+.piece-count-hint {
+  color: var(--text-light-gray);
+  font-size: 13px;
+  margin-bottom: 10px;
+  font-style: italic;
+}
+
 .piece-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 15px;
   max-height: 400px;
-  overflow-y: auto;
+  overflow-y: hidden;
   padding: 10px;
 }
 
@@ -602,6 +726,58 @@
 .piece-id {
   font-size: 12px;
   color: var(--text-light-gray);
+}
+
+.win-condition-section {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+
+  h3 {
+    margin: 0 0 10px 0;
+    color: var(--light-gray);
+    font-size: 16px;
+  }
+}
+
+.win-condition-note {
+  color: var(--text-light-gray);
+  font-size: 14px;
+  margin-bottom: 15px;
+  font-style: italic;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--light-gray);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 5px;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+  }
+
+  span {
+    font-size: 14px;
+  }
 }
 
 .image-selection-section {
@@ -715,8 +891,8 @@
 .special-square-stats {
   display: flex;
   gap: 20px;
-  margin-bottom: 20px;
   flex-wrap: wrap;
+  width: fit-content;
 }
 
 .section-divider {

@@ -5,6 +5,7 @@ import styles from "./gamewizard.module.scss";
 import StandardButton from "../standardbutton/StardardButton";
 import Divider from "../Divider/Divider";
 import { createGame, getGameById, updateGame } from "../../actions/games";
+import { trackGameCreation, trackEvent } from "../../analytics/GoogleAnalytics";
 import Step1BasicInfo from "./Step1BasicInfo";
 import Step2WinConditions from "./Step2WinConditions";
 import Step3BoardSpecialSquares from "./Step3BoardSpecialSquares";
@@ -82,17 +83,17 @@ const GameWizard = ({ editGameId }) => {
             game_name: existingGame.game_name || "",
             descript: existingGame.descript || "",
             rules: existingGame.rules || "",
-            mate_condition: existingGame.mate_condition || false,
+            mate_condition: Boolean(existingGame.mate_condition),
             mate_piece: existingGame.mate_piece || null,
-            capture_condition: existingGame.capture_condition || false,
+            capture_condition: Boolean(existingGame.capture_condition),
             capture_piece: existingGame.capture_piece || null,
-            value_condition: existingGame.value_condition || false,
+            value_condition: Boolean(existingGame.value_condition),
             value_piece: existingGame.value_piece || null,
             value_max: existingGame.value_max || null,
             value_title: existingGame.value_title || "",
-            squares_condition: existingGame.squares_condition || false,
+            squares_condition: Boolean(existingGame.squares_condition),
             squares_count: existingGame.squares_count || null,
-            hill_condition: existingGame.hill_condition || false,
+            hill_condition: Boolean(existingGame.hill_condition),
             hill_x: existingGame.hill_x || null,
             hill_y: existingGame.hill_y || null,
             hill_turns: existingGame.hill_turns || null,
@@ -166,6 +167,7 @@ const GameWizard = ({ editGameId }) => {
       if (isEditMode) {
         // Update existing game
         await dispatch(updateGame(editGameId, finalGameData));
+        trackEvent('Game', 'Update', gameData.game_name);
       } else {
         // Create new game
         const newGameData = {
@@ -173,6 +175,7 @@ const GameWizard = ({ editGameId }) => {
           creator_id: currentUser.id,
         };
         await dispatch(createGame(newGameData));
+        trackGameCreation(gameData.game_name);
       }
       
       // Navigate to success page or game list

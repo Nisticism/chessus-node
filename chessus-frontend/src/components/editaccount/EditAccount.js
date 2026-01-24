@@ -93,6 +93,9 @@ const EditAccount = (props) => {
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
+  const [bannerMessage, setBannerMessage] = useState("");
+  const [bannerType, setBannerType] = useState("success"); // "success" or "error"
   const { message: message } = useSelector((state) => state.message);
   const { editSuccess: editSuccess } = useSelector((state) => state.authReducer);
   const { username: usernameNav } = useSelector((state) => state.authReducer.user);
@@ -102,15 +105,22 @@ const EditAccount = (props) => {
   const navigate = useNavigate();
 
   const [firstRender, setFirstRender] = useState(false);
-  const [editAuth, setEditAuth] = useState(false);
-
   const { profileUsername } = useParams();
+  
+  // Initialize editAuth based on initial permissions to prevent NotFound flash
+  const [editAuth, setEditAuth] = useState(
+    currentUser.role === "Admin" || 
+    (profileUsername && profileUsername === username) || 
+    !profileUsername
+  );
 
-    useEffect(() => {
+  useEffect(() => {
     if (!firstRender) {
       if (currentUser.role === "Admin" || (profileUsername && profileUsername === username)
       || !profileUsername) {
         setEditAuth(true);
+      } else {
+        setEditAuth(false);
       }
     if (profileUsername) {
       console.log(profileUsername);
@@ -256,10 +266,20 @@ const EditAccount = (props) => {
     dispatch(edit(userInfo, username, password, email, firstName, lastName, bio, userInfo.id, currentUser.id))
       .then(() => {
         console.log("user updated by adimn from the editaccount.js page")
-        // navigate("/profile/" + username);
-      })
+        // Navigate to the edited user's profile with success state
+        navigate(`/profile/${username}`, { 
+          state: { 
+            showBanner: true, 
+            bannerMessage: "Profile updated successfully", 
+            bannerType: "success" 
+          } 
+        });      })
       .catch((error) => {
         console.log(error);
+        // Show error banner
+        setBannerMessage(message || "Failed to update profile. Please try again.");
+        setBannerType("error");
+        setShowBanner(true);
       });
     }
     else {
@@ -271,10 +291,21 @@ const EditAccount = (props) => {
           setPassword("");
           setOldPassword("");
           setShowPasswordSection(false);
-          //navigate("/profile/" + username);
+          // Navigate to profile with success state
+          navigate(`/profile/${username}`, { 
+            state: { 
+              showBanner: true, 
+              bannerMessage: "Profile updated successfully", 
+              bannerType: "success" 
+            } 
+          });
         })
       .catch((error) => {
         console.log(error);
+        // Show error banner
+        setBannerMessage(message || "Failed to update profile. Please try again.");
+        setBannerType("error");
+        setShowBanner(true);
       });
     }
     // }
@@ -284,6 +315,19 @@ const EditAccount = (props) => {
     <>
       { editAuth ? 
       <div className={styles["edit-account-container"]}>
+        {/* Banner Message */}
+        {showBanner && (
+          <div className={styles[bannerType === "success" ? "banner-success" : "banner-error"]}>
+            <span>{bannerMessage}</span>
+            <button 
+              onClick={() => setShowBanner(false)} 
+              className={styles["banner-close"]}
+              aria-label="Close banner"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <div className={styles["edit-account-header"]}>
           {currentUser.role === "Admin" ?
             <h1>Edit Account: {userInfo && userInfo.username ? userInfo.username : ""}</h1>

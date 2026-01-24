@@ -432,6 +432,7 @@
   img {
     max-width: 50px;
     max-height: 50px;
+    object-fit: contain;
   }
 }
 
@@ -623,6 +624,7 @@
     img {
       max-width: 80%;
       max-height: 80%;
+      object-fit: contain;
     }
   }
 }

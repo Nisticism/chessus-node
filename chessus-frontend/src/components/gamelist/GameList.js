@@ -121,13 +121,17 @@ const GameList = () => {
               {game.creator_username && (
                 <div className={styles["meta-item"]}>
                   <span className={styles["meta-label"]}>Creator:</span>
-                  <Link 
-                    to={`/profile/${game.creator_username}`} 
+                  <span 
                     className={styles["creator-link"]}
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      navigate(`/profile/${game.creator_username}`);
+                    }}
+                    style={{ cursor: 'pointer' }}
                   >
                     {game.creator_username}
-                  </Link>
+                  </span>
                 </div>
               )}
             </div>

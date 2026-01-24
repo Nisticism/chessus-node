@@ -68,6 +68,50 @@ const Step1BasicInfo = ({ gameData, updateGameData }) => {
           You can provide basic rules now or let the system auto-generate them based on your pieces and win conditions.
         </p>
       </div>
+
+      <div className={styles["form-group"]}>
+        <label className={styles["form-label"]}>
+          Number of Players <span className={styles["required"]}>*</span>
+        </label>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', width: '100%', maxWidth: '400px' }}>
+            <span style={{ minWidth: '15px', color: 'var(--text-light-gray)' }}>2</span>
+            <input
+              type="range"
+              min="2"
+              max="8"
+              value={gameData.player_count || 2}
+              onChange={(e) => handleChange("player_count", parseInt(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={{ minWidth: '15px', color: 'var(--text-light-gray)' }}>8</span>
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--primary-color)' }}>
+            {gameData.player_count || 2}
+          </div>
+        </div>
+        <p className={styles["field-hint"]}>
+          Set the number of players who can participate in this game (2-8).
+        </p>
+      </div>
+
+      <div className={styles["form-group"]}>
+        <label className={styles["form-label"]}>
+          Actions Per Turn
+        </label>
+        <input
+          type="number"
+          className={styles["form-input"]}
+          value={gameData.actions_per_turn || 1}
+          onChange={(e) => handleChange("actions_per_turn", Math.max(1, parseInt(e.target.value) || 1))}
+          placeholder="1"
+          min="1"
+          style={{ maxWidth: '120px' }}
+        />
+        <p className={styles["field-hint"]}>
+          Number of piece moves/actions each player can make per turn (default: 1).
+        </p>
+      </div>
     </div>
   );
 };

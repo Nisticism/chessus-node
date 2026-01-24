@@ -5,6 +5,7 @@ import Form from "react-validation/build/form";
 import Input from "react-validation/build/input";
 import CheckButton from "react-validation/build/button";
 import { login } from "../../actions/auth";
+import { trackLogin } from "../../analytics/GoogleAnalytics";
 import styles from "./login.module.scss";
 
 const required = (value) => {
@@ -47,6 +48,7 @@ const Login = (props) => {
     // form.current.validateAll();
     dispatch(login(username, password))
       .then(() => {
+        trackLogin('email');
         navigate(`/profile/${username}`);
       })
       .catch(() => {

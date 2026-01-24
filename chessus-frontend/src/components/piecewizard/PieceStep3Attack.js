@@ -1,8 +1,32 @@
-import React from "react";
+import React, { useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
 
-const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
+const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyle }) => {
+  
+  // When component mounts, if attacks_like_movement is checked, import current movement values
+  useEffect(() => {
+    if (pieceData.attacks_like_movement) {
+      updatePieceData({
+        can_capture_enemy_on_move: true,
+        // Copy directional movement to capture
+        up_left_capture: pieceData.up_left_movement,
+        up_capture: pieceData.up_movement,
+        up_right_capture: pieceData.up_right_movement,
+        left_capture: pieceData.left_movement,
+        right_capture: pieceData.right_movement,
+        down_left_capture: pieceData.down_left_movement,
+        down_capture: pieceData.down_movement,
+        down_right_capture: pieceData.down_right_movement,
+        // Copy ratio movement
+        ratio_one_capture: pieceData.ratio_one_movement,
+        ratio_two_capture: pieceData.ratio_two_movement,
+        // Copy step-by-step
+        step_by_step_capture: pieceData.step_by_step_movement_value
+      });
+    }
+  }, []); // Run only once on mount
+  
   const handleChange = (field, value) => {
     updatePieceData({ [field]: value });
   };
@@ -17,6 +41,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
   };
 
   const handleAttackLikeMovement = (checked) => {
+    // Mark that user has manually set this
+    if (hasManuallySetAttackStyle) {
+      hasManuallySetAttackStyle.current = true;
+    }
+    
     if (checked) {
       // Import all movement settings to capture settings
       updatePieceData({
@@ -32,10 +61,10 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
         down_capture: pieceData.down_movement,
         down_right_capture: pieceData.down_right_movement,
         // Copy ratio movement
-        ratio_one_capture: pieceData.ratio_one,
-        ratio_two_capture: pieceData.ratio_two,
+        ratio_one_capture: pieceData.ratio_one_movement,
+        ratio_two_capture: pieceData.ratio_two_movement,
         // Copy step-by-step
-        step_by_step_capture: pieceData.step_by_step_movement,
+        step_by_step_capture: pieceData.step_by_step_movement_value,
         // Disable ranged by default when capturing on move
         can_capture_enemy_via_range: false
       });

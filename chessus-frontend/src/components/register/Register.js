@@ -6,6 +6,7 @@ import CheckButton from "react-validation/build/button";
 import { useNavigate } from "react-router-dom";
 import { isEmail } from "validator";
 import { register, login } from "../../actions/auth";
+import { trackRegistration } from "../../analytics/GoogleAnalytics";
 import styles from "./register.module.scss";
 
 const required = (value) => {
@@ -83,6 +84,7 @@ const Register = () => {
     dispatch(register(username, password, email))
       .then(() => {
         setSuccessful(true);
+        trackRegistration('email');
         dispatch(login(username, password))
         .then(() => {
           navigate("/profile/" + username);

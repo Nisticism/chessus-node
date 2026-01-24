@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import styles from "./piecewizard.module.scss";
 
-const PieceBoardPreview = ({ pieceData }) => {
+const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
   const [isHovering, setIsHovering] = useState(false);
   
   // Get user's preferred board colors from localStorage
@@ -347,8 +347,8 @@ const PieceBoardPreview = ({ pieceData }) => {
         const isCenter = row === centerPos && col === centerPos;
         const isLight = (row + col) % 2 === 0;
         const canMove = isHovering && canMoveTo(row, col);
-        const canCaptureOnMove = isHovering && canCaptureOnMoveTo(row, col);
-        const canRangedAttack = isHovering && canRangedAttackTo(row, col);
+        const canCaptureOnMove = showAttack && isHovering && canCaptureOnMoveTo(row, col);
+        const canRangedAttack = showAttack && isHovering && canRangedAttackTo(row, col);
         
         let squareClass = `${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}`;
         
@@ -385,7 +385,11 @@ const PieceBoardPreview = ({ pieceData }) => {
         // Add icon for ranged attack
         let icon = null;
         if (!isCenter && isHovering && canRangedAttack) {
-          icon = <span className={styles["ranged-icon"]}>💥</span>;
+          icon = <span className={styles["ranged-icon"]} style={{ 
+            backgroundColor: isLight ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.6)',
+            borderRadius: '4px',
+            padding: '2px 4px'
+          }}>💥</span>;
         }
         
         squares.push(

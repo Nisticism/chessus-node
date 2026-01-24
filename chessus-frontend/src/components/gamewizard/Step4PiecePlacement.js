@@ -109,7 +109,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           piece_id: pieceData.piece_id,
           player_id: pieceData.player_id,
           image_url: pieceData.image_url,
-          piece_name: pieceData.piece_name
+          piece_name: pieceData.piece_name,
+          ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
+          ends_game_on_capture: pieceData.ends_game_on_capture || false
         }
       }));
     }
@@ -344,7 +346,12 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
 
   // Helper function to get placement image URL with fallback
   const getPlacementImageUrl = useCallback((placement) => {
-    // First try the database for current images
+    // Use the selected image_url from placement (set by PieceSelector)
+    if (placement.image_url) {
+      return placement.image_url; // Already includes full URL from PieceSelector
+    }
+    
+    // Fallback: try to get first image from piece data if no image_url is set
     if (placement.piece_id && pieceDataMap[placement.piece_id]) {
       const piece = pieceDataMap[placement.piece_id];
       if (piece.image_location) {
@@ -359,23 +366,25 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       }
     }
     
-    // Fallback to saved image_url (might be broken)
-    if (placement.image_url) {
-      return getImageUrl(placement.image_url);
-    }
-    
     return null;
   }, [pieceDataMap]);
 
   // Helper function to get player color (must be defined before renderBoard)
   const getPlayerColor = useCallback((playerId) => {
-    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f7dc6f', '#bb8fce', '#52be80', '#ec7063', '#5dade2'];
+    const colors = ['#FFFFFF', '#000000', '#FF6B6B', '#4ECDC4', '#F7DC6F', '#BB8FCE', '#52BE80', '#5DADE2'];
     return colors[(playerId - 1) % colors.length] || '#999';
   }, []);
 
+  // Calculate board dimensions for legend width
+  const boardDimensions = useMemo(() => {
+    const squareSize = Math.min(80, 600 / Math.max(gameData.board_width, gameData.board_height));
+    const boardWidth = squareSize * gameData.board_width;
+    return { squareSize, boardWidth };
+  }, [gameData.board_width, gameData.board_height]);
+
   const renderBoard = useMemo(() => {
     const board = [];
-    const squareSize = Math.min(60, 480 / Math.max(gameData.board_width, gameData.board_height));
+    const squareSize = boardDimensions.squareSize;
     
     for (let row = 0; row < gameData.board_height; row++) {
       for (let col = 0; col < gameData.board_width; col++) {
@@ -492,9 +501,31 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                   width: `${squareSize * 0.2}px`,
                   height: `${squareSize * 0.2}px`,
                   borderRadius: '50%',
-                  border: '1px solid #fff',
+                  border: placement.player_id === 1 ? '1px solid #666' : '1px solid #fff',
                   pointerEvents: 'none'
                 }} />
+                {placement.ends_game_on_checkmate && (
+                  <div className={styles["checkmate-indicator"]} style={{
+                    position: 'absolute',
+                    top: '2px',
+                    left: '2px',
+                    fontSize: `${squareSize * 0.25}px`,
+                    pointerEvents: 'none'
+                  }} title="Game ends if checkmated">
+                    ♔
+                  </div>
+                )}
+                {placement.ends_game_on_capture && (
+                  <div className={styles["capture-indicator"]} style={{
+                    position: 'absolute',
+                    top: '2px',
+                    right: '2px',
+                    fontSize: `${squareSize * 0.25}px`,
+                    pointerEvents: 'none'
+                  }} title="Game ends if captured">
+                    ⚔️
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -503,7 +534,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     }
     
     return board;
-  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, canPieceMoveTo, canCaptureOnMoveTo]);
+  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, canPieceMoveTo, canCaptureOnMoveTo, boardDimensions]);
 
   const getPieceCounts = () => {
     const counts = {};
@@ -530,18 +561,80 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         </div>
         {Object.entries(pieceCounts).map(([player, count]) => (
           <div key={player} className={styles["stat-item"]}>
-            <strong>{player}:</strong> {count} pieces
+            <strong>{player}:</strong> {count}
           </div>
         ))}
+        <button 
+          className={styles["clear-all-button"]}
+          onClick={() => {
+            if (window.confirm('Are you sure you want to remove all pieces from the board?')) {
+              setPiecePlacements({});
+            }
+          }}
+        >
+          Clear All Pieces
+        </button>
       </div>
 
       <div className={styles["board-placement-preview"]}>
         <div className={styles["preview-legend"]} style={{
-          fontSize: `${Math.max(0.7, Math.min(1, gameData.board_width / 12))}rem`,
-          marginBottom: '1rem'
+          width: `${boardDimensions.boardWidth}px`,
+          fontSize: '1.15rem',
+          marginBottom: '1rem',
+          margin: '0 auto 1rem'
         }}>
-          <span className={styles["legend-movement"]}>Blue = Movement</span>
-          <span className={styles["legend-capture"]}>Orange = Capture on Move</span>
+          <div className={styles["legend-row"]}>
+            <div className={styles["legend-item"]}>
+              <div className={styles["legend-square"]} style={{ border: '3px solid #2196F3' }}></div>
+              <span>Movement</span>
+            </div>
+            <div className={styles["legend-item"]}>
+              <div className={styles["legend-square"]} style={{ border: '3px solid #FF9800' }}></div>
+              <span>Attack</span>
+            </div>
+            <div className={styles["legend-item"]} style={{ gap: '4px' }}>
+              <span className={styles["ranged-icon"]}>💥</span>
+              <span>Ranged</span>
+            </div>
+            <div className={styles["legend-item"]} style={{ gap: '4px' }}>
+              <span className={styles["condition-icon"]}>♔</span>
+              <span>Checkmate</span>
+            </div>
+            <div className={styles["legend-item"]} style={{ gap: '4px' }}>
+              <span className={styles["condition-icon"]}>⚔️</span>
+              <span>Capture</span>
+            </div>
+          </div>
+          <div className={styles["legend-row"]} style={{ justifyContent: 'space-around' }}>
+            {Array.from({ length: Math.min(4, gameData.player_count || 2) }, (_, i) => i + 1).map(playerId => (
+              <div key={playerId} className={styles["legend-item"]}>
+                <div 
+                  className={styles["legend-player-dot"]} 
+                  style={{ 
+                    background: getPlayerColor(playerId),
+                    border: playerId === 1 ? '1px solid #666' : '1px solid #fff'
+                  }}
+                ></div>
+                <span>Player {playerId}</span>
+              </div>
+            ))}
+          </div>
+          {(gameData.player_count || 2) > 4 && (
+            <div className={styles["legend-row"]} style={{ justifyContent: 'space-around' }}>
+              {Array.from({ length: (gameData.player_count || 2) - 4 }, (_, i) => i + 5).map(playerId => (
+                <div key={playerId} className={styles["legend-item"]}>
+                  <div 
+                    className={styles["legend-player-dot"]} 
+                    style={{ 
+                      background: getPlayerColor(playerId),
+                      border: '1px solid #fff'
+                    }}
+                  ></div>
+                  <span>Player {playerId}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div 
           className={styles["placement-board"]}
@@ -627,6 +720,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           playerCount={gameData.player_count}
           currentPlacement={piecePlacements[selectedSquare?.key]}
           squarePosition={selectedSquare}
+          mateCondition={gameData.mate_condition}
+          captureCondition={gameData.capture_condition}
         />
       )}
     </div>

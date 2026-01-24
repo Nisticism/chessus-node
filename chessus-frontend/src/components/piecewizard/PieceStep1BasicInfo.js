@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
 
-const PieceStep1BasicInfo = ({ pieceData, updatePieceData }) => {
+const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false }) => {
   const [visibleImageCount, setVisibleImageCount] = useState(2);
   const fileInputRefs = useRef([]);
 
@@ -247,14 +247,16 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData }) => {
         </div>
       </div>
 
-      {/* Board Preview */}
-      <div className={styles["board-preview-section"]}>
-        <h3>Movement & Attack Preview</h3>
-        <p className={styles["field-hint"]}>
-          Hover over the piece to see movement (blue) and attack (red) patterns based on your settings.
-        </p>
-        <PieceBoardPreview pieceData={pieceData} />
-      </div>
+      {/* Board Preview - Only show in edit mode */}
+      {isEditMode && (
+        <div className={styles["board-preview-section"]}>
+          <h3>Movement & Attack Preview</h3>
+          <p className={styles["field-hint"]}>
+            Hover over the piece to see movement (blue) and attack (red) patterns based on your settings.
+          </p>
+          <PieceBoardPreview pieceData={pieceData} />
+        </div>
+      )}
     </div>
   );
 };
