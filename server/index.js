@@ -2030,8 +2030,8 @@ app.post("/api/create-stripe-checkout", async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: `${process.env.CLIENT_URL || 'http://localhost:3000'}/donate?success=true&amount=${amount}&method=stripe`,
-      cancel_url: `${process.env.CLIENT_URL || 'http://localhost:3000'}/donate`,
+      success_url: `${process.env.CLIENT_URL}/donate?success=true&amount=${amount}&method=stripe`,
+      cancel_url: `${process.env.CLIENT_URL}/donate`,
     });
 
     // Return the checkout URL for direct redirect

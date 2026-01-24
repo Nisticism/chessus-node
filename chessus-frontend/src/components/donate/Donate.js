@@ -39,7 +39,7 @@ const Donate = () => {
       const confirmDonation = async () => {
         if (currentUser && currentUser.email) {
           try {
-            const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+            const API_URL = process.env.REACT_APP_API_URL;
             await fetch(`${API_URL}/api/confirm-donation`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -101,7 +101,7 @@ const Donate = () => {
     
     try {
       // Call backend to create Stripe checkout session
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+      const API_URL = process.env.REACT_APP_API_URL;
       const response = await fetch(`${API_URL}/api/create-stripe-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
