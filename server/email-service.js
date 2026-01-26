@@ -82,7 +82,7 @@ const getEmailTemplate = (content) => `
       border-radius: 6px;
       font-weight: 600;
       font-size: 16px;
-      margin: 20px 0;
+      margin: 20px 8px;
       box-shadow: 0 4px 12px rgba(21, 101, 192, 0.4);
       transition: all 0.3s ease;
     }
@@ -181,6 +181,7 @@ const getWelcomeEmailContent = (username) => `
   </p>
 
   <div class="button-center">
+    <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/profile/${username}" class="button">View Your Profile</a>
     <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/play" class="button">Start Playing Now</a>
   </div>
 
