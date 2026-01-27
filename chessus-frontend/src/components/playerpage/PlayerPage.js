@@ -117,19 +117,52 @@ const PlayerPage = (props) => {
   const handleDelete = async(e) => {
     e.preventDefault();
     if (!currentUser) return;
+    
+    // Show confirmation dialog
+    const confirmDelete = window.confirm(
+      currentUser.role === "Admin" && currentUser.username !== username
+        ? `Are you sure you want to delete the account for ${username}? This action cannot be undone.`
+        : "Are you sure you want to delete your account? This action cannot be undone."
+    );
+    
+    if (!confirmDelete) {
+      return; // User cancelled
+    }
+
     if (currentUser.role !== "Admin") {
-      dispatch(deleteUser(currentUser.username))
+      // Regular user deleting their own account
+      try {
+        await dispatch(deleteUser(currentUser.username));
+        setAlertMessage("Your account has been successfully deleted");
+        setAlertType("success");
+        setShowAlert(true);
+        
+        // Wait 2 seconds to show message, then redirect to signup
+        setTimeout(() => {
+          navigate('/register');
+        }, 2000);
+      } catch (error) {
+        setAlertMessage("Failed to delete account");
+        setAlertType("error");
+        setShowAlert(true);
+      }
     } else {
-      // setPostDeleteUsername(username);
-      await new Promise(resolve => dispatch(deleteUser(username, currentUser.id)));
-      setAlertMessage("User Deleted");
-      setAlertType("delete");
-      setShowAlert(true);
-      setRealUser(false);
-      // navigate(`/`);
-      // checkIfRealUser(username);
-      // console.log(realUser);
-      // console.log("what is this")
+      // Admin deleting another user's account
+      try {
+        await dispatch(deleteUser(username, currentUser.id));
+        setAlertMessage(`Account for ${username} has been successfully deleted`);
+        setAlertType("success");
+        setShowAlert(true);
+        
+        // Wait 2 seconds to show message, then redirect to signup
+        setTimeout(() => {
+          navigate('/register');
+        }, 2000);
+      } catch (error) {
+        setAlertMessage("Failed to delete account");
+        setAlertType("error");
+        setShowAlert(true);
+      }
     }
   };
 
