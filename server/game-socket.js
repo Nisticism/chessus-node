@@ -113,26 +113,50 @@ function initializeSocket(server) {
         if (isAllowed) {
           callback(null, true);
         } else {
+          console.warn(`Socket.io CORS rejected origin: ${origin}`);
           callback(new Error('Not allowed by CORS'));
         }
       },
       methods: ["GET", "POST"],
       credentials: true
-    }
+    },
+    transports: ['websocket', 'polling'],
+    allowEIO3: true, // Allow Engine.IO v3 clients
+    pingTimeout: 60000,
+    pingInterval: 25000
+  });
+
+  // Global error handler for socket.io engine
+  io.engine.on("connection_error", (err) => {
+    console.error("Socket.io engine connection error:", {
+      code: err.code,
+      message: err.message,
+      context: err.context
+    });
   });
 
   io.on("connection", (socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
+    // Handle socket errors
+    socket.on("error", (error) => {
+      console.error(`Socket error for ${socket.id}:`, error);
+    });
+
     // Authenticate user
     socket.on("authenticate", async (data) => {
-      const { userId, username } = data;
-      if (userId) {
-        playerSockets.set(socket.id, { id: userId, username });
-        userSockets.set(userId.toString(), socket.id);
-        socket.userId = userId;
-        socket.username = username;
-        console.log(`User ${username} (ID: ${userId}) authenticated on socket ${socket.id}`);
+      try {
+        const { userId, username } = data;
+        if (userId) {
+          playerSockets.set(socket.id, { id: userId, username });
+          userSockets.set(userId.toString(), socket.id);
+          socket.userId = userId;
+          socket.username = username;
+          console.log(`User ${username} (ID: ${userId}) authenticated on socket ${socket.id}`);
+        }
+      } catch (error) {
+        console.error("Error in authenticate handler:", error);
+        socket.emit("error", { message: "Authentication failed" });
       }
     });
 

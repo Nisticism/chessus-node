@@ -32,6 +32,8 @@ export const SocketProvider = ({ children }) => {
       reconnectionAttempts: maxReconnectAttempts,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
+      transports: ['websocket', 'polling'], // Prefer websocket, fall back to polling
+      withCredentials: true,
     });
 
     newSocket.on('connect', () => {
