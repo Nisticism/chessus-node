@@ -37,10 +37,17 @@ const LiveGame = () => {
   const [gameState, setGameState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [moveError, setMoveError] = useState(null);
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [validMoves, setValidMoves] = useState([]);
   const [showGameOver, setShowGameOver] = useState(false);
   const [gameOverData, setGameOverData] = useState(null);
+  const [hoveredPiece, setHoveredPiece] = useState(null);
+  const [hoveredMoves, setHoveredMoves] = useState([]);
+  const [draggedPiece, setDraggedPiece] = useState(null);
+  const [dragValidMoves, setDragValidMoves] = useState([]);
+  const [inCheck, setInCheck] = useState(false);
+  const [checkedPieces, setCheckedPieces] = useState([]);
 
   // Load game state on mount
   useEffect(() => {
@@ -74,6 +81,16 @@ const LiveGame = () => {
         }));
         setSelectedPiece(null);
         setValidMoves([]);
+        // Update check status from move response
+        setInCheck(newState.inCheck || false);
+        setCheckedPieces(newState.checkedPieces || []);
+      }
+    });
+
+    const unsubscribeCheck = onGameEvent("check", ({ gameId: checkGameId, playerId, playerPosition, checkedPieces: pieces }) => {
+      if (parseInt(checkGameId) === parseInt(gameId)) {
+        setInCheck(true);
+        setCheckedPieces(pieces || []);
       }
     });
 
@@ -82,6 +99,18 @@ const LiveGame = () => {
         setGameOverData({ winner, winnerUsername, reason });
         setShowGameOver(true);
         setGameState(prev => ({ ...prev, status: 'completed', winner }));
+        setInCheck(false);
+        setCheckedPieces([]);
+      }
+    });
+
+    const unsubscribeTimeUpdate = onGameEvent("timeUpdate", ({ gameId: timerGameId, playerTimes, currentTurn }) => {
+      if (parseInt(timerGameId) === parseInt(gameId)) {
+        setGameState(prev => ({
+          ...prev,
+          playerTimes,
+          currentTurn
+        }));
       }
     });
 
@@ -98,11 +127,21 @@ const LiveGame = () => {
       }
     });
 
+    // Listen for move errors (e.g., "You must get out of check")
+    const unsubscribeError = onGameEvent("error", ({ message }) => {
+      setMoveError(message);
+      // Clear error after 3 seconds
+      setTimeout(() => setMoveError(null), 3000);
+    });
+
     return () => {
       unsubscribeMove();
+      unsubscribeCheck();
       unsubscribeGameOver();
+      unsubscribeTimeUpdate();
       unsubscribePlayerJoined();
       unsubscribeGameState();
+      unsubscribeError();
     };
   }, [gameId, onGameEvent]);
 
@@ -126,64 +165,285 @@ const LiveGame = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Calculate valid moves for a piece
-  const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight) => {
-    const moves = [];
+  // Helper function to check if a value allows movement at a distance
+  const checkMovement = (value, distance) => {
+    if (value === 99) return true; // Infinite movement
+    if (value === 0 || value === null || value === undefined) return false;
+    if (value > 0) return distance <= value; // Up to X squares
+    if (value < 0) return distance === Math.abs(value); // Exact X squares
+    return false;
+  };
+
+  // Check if piece can move to a square (not capturing)
+  const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition) => {
+    if (!pieceData) return false;
+    if (fromX === toX && fromY === toY) return false;
+
+    // For player 2, flip the perspective (so "up" is towards player 1)
+    const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
+    const colDiff = toX - fromX;
+
+    // Check directional movement - accept if style is set OR if any directional movement values are present
+    const directionalStyle = pieceData.directional_movement_style;
+    const hasDirectionalValues = pieceData.up_movement || pieceData.down_movement || 
+                                  pieceData.left_movement || pieceData.right_movement ||
+                                  pieceData.up_left_movement || pieceData.up_right_movement ||
+                                  pieceData.down_left_movement || pieceData.down_right_movement;
     
-    // Simple movement calculation - this would need to be expanded based on piece type
-    // For now, we'll do basic movement in all directions based on piece properties
-    
-    const directions = [
-      { dx: -1, dy: -1 }, // up-left
-      { dx: 0, dy: -1 },  // up
-      { dx: 1, dy: -1 },  // up-right
-      { dx: 1, dy: 0 },   // right
-      { dx: 1, dy: 1 },   // down-right
-      { dx: 0, dy: 1 },   // down
-      { dx: -1, dy: 1 },  // down-left
-      { dx: -1, dy: 0 },  // left
-    ];
+    if (directionalStyle || hasDirectionalValues) {
+      let directionalAllowed = false;
 
-    // Default: allow one square in any direction (like a King)
-    for (const dir of directions) {
-      const newX = piece.x + dir.dx;
-      const newY = piece.y + dir.dy;
+      // Check 8 directions
+      if (rowDiff < 0 && colDiff === 0) {
+        directionalAllowed = checkMovement(pieceData.up_movement, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff === 0) {
+        directionalAllowed = checkMovement(pieceData.down_movement, Math.abs(rowDiff));
+      } else if (rowDiff === 0 && colDiff < 0) {
+        directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff));
+      } else if (rowDiff === 0 && colDiff > 0) {
+        directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff));
+      } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff));
+      } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff));
+      }
 
-      // Check bounds
-      if (newX < 0 || newX >= boardWidth || newY < 0 || newY >= boardHeight) continue;
-
-      // Check for friendly piece
-      const occupyingPiece = pieces.find(p => p.x === newX && p.y === newY);
-      const pieceTeam = piece.player_id || piece.team;
-      const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
-      
-      if (occupyingPiece && occupyingTeam === pieceTeam) continue;
-
-      moves.push({
-        x: newX,
-        y: newY,
-        isCapture: !!occupyingPiece
-      });
+      if (directionalAllowed) return true;
     }
 
-    return moves;
+    // Check ratio movement (L-shape like knight)
+    const ratioStyle = pieceData.ratio_movement_style;
+    const ratio1 = pieceData.ratio_movement_1 || 0;
+    const ratio2 = pieceData.ratio_movement_2 || 0;
+    
+    if ((ratioStyle || (ratio1 > 0 && ratio2 > 0)) && ratio1 > 0 && ratio2 > 0) {
+      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
+          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
+        return true;
+      }
+    }
+
+    // Check step-by-step movement
+    const stepStyle = pieceData.step_movement_style;
+    const stepValue = pieceData.step_movement_value;
+    if (stepStyle || stepValue) {
+      const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
+      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+      
+      if (stepStyle === 'manhattan' || stepStyle === 1) {
+        return checkMovement(stepValue, manhattanDistance);
+      } else if (stepStyle === 'chebyshev' || stepStyle === 2) {
+        return checkMovement(stepValue, chebyshevDistance);
+      } else {
+        // Default to chebyshev if value exists but style not specified
+        return checkMovement(stepValue, chebyshevDistance);
+      }
+    }
+
+    return false;
   }, []);
+
+  // Check if piece can capture on a square
+  const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition) => {
+    if (!pieceData) return false;
+    if (fromX === toX && fromY === toY) return false;
+
+    // For player 2, flip the perspective
+    const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
+    const colDiff = toX - fromX;
+
+    // Check if separate capture fields are defined
+    const hasSeparateCaptureFields = pieceData.up_capture || pieceData.down_capture || 
+                                     pieceData.left_capture || pieceData.right_capture || 
+                                     pieceData.up_left_capture || pieceData.up_right_capture ||
+                                     pieceData.down_left_capture || pieceData.down_right_capture ||
+                                     pieceData.ratio_capture_1 || pieceData.ratio_capture_2 ||
+                                     pieceData.step_capture_value;
+
+    // If piece can capture on move AND no separate capture fields, use movement logic
+    if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
+      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition);
+    }
+
+    // Check directional capture - check if any capture fields have values
+    const hasDirectionalCapture = pieceData.up_capture || pieceData.down_capture || pieceData.left_capture || 
+                                   pieceData.right_capture || pieceData.up_left_capture || pieceData.up_right_capture ||
+                                   pieceData.down_left_capture || pieceData.down_right_capture;
+    
+    if (hasDirectionalCapture) {
+      let directionalAllowed = false;
+
+      if (rowDiff < 0 && colDiff === 0) {
+        directionalAllowed = checkMovement(pieceData.up_capture, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff === 0) {
+        directionalAllowed = checkMovement(pieceData.down_capture, Math.abs(rowDiff));
+      } else if (rowDiff === 0 && colDiff < 0) {
+        directionalAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff));
+      } else if (rowDiff === 0 && colDiff > 0) {
+        directionalAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff));
+      } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff));
+      } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff));
+      }
+
+      if (directionalAllowed) return true;
+    }
+
+    // Check ratio capture (L-shape)
+    const ratio1 = pieceData.ratio_capture_1 || 0;
+    const ratio2 = pieceData.ratio_capture_2 || 0;
+    if (ratio1 > 0 && ratio2 > 0) {
+      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
+          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
+        return true;
+      }
+    }
+
+    // Check step-by-step capture
+    if (pieceData.step_capture_value) {
+      const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
+      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+      // Default to chebyshev if no style specified
+      return checkMovement(pieceData.step_capture_value, chebyshevDistance) || 
+             checkMovement(pieceData.step_capture_value, manhattanDistance);
+    }
+
+    return false;
+  }, [canPieceMoveTo]);
+
+  // Check if path is clear for sliding pieces (no pieces in between)
+  const isPathClear = useCallback((fromX, fromY, toX, toY, pieces) => {
+    const dx = Math.sign(toX - fromX);
+    const dy = Math.sign(toY - fromY);
+    
+    // Check if it's a knight-like move (no path to check)
+    const xDiff = Math.abs(toX - fromX);
+    const yDiff = Math.abs(toY - fromY);
+    if (xDiff !== yDiff && xDiff !== 0 && yDiff !== 0) {
+      // L-shape or other knight-like move - no path checking needed
+      return true;
+    }
+
+    let x = fromX + dx;
+    let y = fromY + dy;
+
+    while (x !== toX || y !== toY) {
+      if (pieces.some(p => p.x === x && p.y === y)) {
+        return false;
+      }
+      x += dx;
+      y += dy;
+    }
+
+    return true;
+  }, []);
+
+  // Calculate valid moves for a piece using actual piece movement data
+  const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight) => {
+    const moves = [];
+    const pieceTeam = piece.player_id || piece.team;
+
+    // Debug: Log piece movement data
+    console.log('Calculating moves for piece:', {
+      id: piece.id,
+      piece_id: piece.piece_id,
+      name: piece.piece_name || piece.name,
+      x: piece.x,
+      y: piece.y,
+      team: pieceTeam,
+      directional_movement_style: piece.directional_movement_style,
+      up_movement: piece.up_movement,
+      down_movement: piece.down_movement,
+      left_movement: piece.left_movement,
+      right_movement: piece.right_movement,
+      ratio_movement_style: piece.ratio_movement_style,
+      ratio_movement_1: piece.ratio_movement_1,
+      ratio_movement_2: piece.ratio_movement_2,
+      can_capture_enemy_on_move: piece.can_capture_enemy_on_move
+    });
+
+    // Iterate through all squares on the board
+    for (let toY = 0; toY < boardHeight; toY++) {
+      for (let toX = 0; toX < boardWidth; toX++) {
+        // Skip current position
+        if (toX === piece.x && toY === piece.y) continue;
+
+        const occupyingPiece = pieces.find(p => p.x === toX && p.y === toY);
+        const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
+
+        // Skip squares with friendly pieces
+        if (occupyingPiece && occupyingTeam === pieceTeam) continue;
+
+        const isCapture = !!occupyingPiece;
+
+        // Check if move is valid based on piece movement rules
+        let isValidMove = false;
+        
+        if (isCapture) {
+          // Check capture rules
+          isValidMove = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+        } else {
+          // Check movement rules
+          isValidMove = canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+        }
+
+        // If move is valid, check if path is clear
+        if (isValidMove && isPathClear(piece.x, piece.y, toX, toY, pieces)) {
+          moves.push({
+            x: toX,
+            y: toY,
+            isCapture
+          });
+        }
+      }
+    }
+
+    console.log('Valid moves found:', moves.length, moves);
+    return moves;
+  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear]);
 
   // Handle square click
   const handleSquareClick = useCallback((x, y) => {
-    if (!isMyTurn || !gameState || gameState.status === 'completed') return;
+    console.log('Square clicked:', { x, y, isMyTurn, status: gameState?.status, selectedPiece: selectedPiece?.piece_name });
+    
+    // Allow selecting pieces to preview moves when waiting or during gameplay
+    const canInteract = gameState && gameState.status !== 'completed';
+    if (!canInteract) {
+      console.log('Cannot interact: game completed or no game state');
+      return;
+    }
 
     const pieces = parsePieces(gameState.pieces);
     const clickedPiece = pieces.find(p => p.x === x && p.y === y);
 
-    // Check if clicking on own piece (using position or player_id)
+    // Check if clicking on own piece (or any piece when waiting/previewing)
+    const isPreviewMode = gameState.status === 'waiting' || gameState.status === 'ready';
     const isOwnPiece = clickedPiece && (
       clickedPiece.player_id === currentPlayer?.position ||
       clickedPiece.team === currentPlayer?.position
     );
+    
+    console.log('Click context:', { 
+      clickedPiece: clickedPiece?.piece_name, 
+      isPreviewMode, 
+      isOwnPiece,
+      piecePlayerId: clickedPiece?.player_id,
+      pieceTeam: clickedPiece?.team,
+      currentPlayerPosition: currentPlayer?.position
+    });
 
-    // If clicking on own piece, select it
-    if (isOwnPiece) {
+    // In preview mode, allow selecting any piece to see its moves
+    // In game mode, only allow selecting own pieces when it's your turn
+    if (clickedPiece && (isPreviewMode || (isOwnPiece && isMyTurn))) {
       setSelectedPiece(clickedPiece);
       const moves = calculateValidMoves(
         clickedPiece, 
@@ -195,10 +455,13 @@ const LiveGame = () => {
       return;
     }
 
-    // If piece is selected and clicking on valid move, make the move
-    if (selectedPiece) {
+    // If piece is selected and clicking on valid move, make the move (during ready or active game)
+    const canMakeMove = selectedPiece && isMyTurn && (gameState.status === 'active' || gameState.status === 'ready');
+    if (canMakeMove) {
       const move = validMoves.find(m => m.x === x && m.y === y);
+      console.log('Attempting move:', { move, validMovesCount: validMoves.length });
       if (move) {
+        console.log('Making move!', { from: { x: selectedPiece.x, y: selectedPiece.y }, to: { x, y } });
         makeMove(parseInt(gameId), {
           from: { x: selectedPiece.x, y: selectedPiece.y },
           to: { x, y },
@@ -207,12 +470,152 @@ const LiveGame = () => {
         setSelectedPiece(null);
         setValidMoves([]);
       } else {
+        console.log('Not a valid move, deselecting');
         // Clicking elsewhere, deselect
         setSelectedPiece(null);
         setValidMoves([]);
       }
+    } else {
+      console.log('Cannot make move:', { hasSelectedPiece: !!selectedPiece, isMyTurn, status: gameState?.status });
+      // Clicking elsewhere, deselect
+      setSelectedPiece(null);
+      setValidMoves([]);
     }
   }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, makeMove, gameId]);
+
+  // Handle piece hover for movement helpers
+  const handlePieceHover = useCallback((piece) => {
+    if (!gameState?.showPieceHelpers) return;
+    if (!piece) {
+      setHoveredPiece(null);
+      setHoveredMoves([]);
+      return;
+    }
+
+    const pieces = parsePieces(gameState.pieces);
+    const moves = calculateValidMoves(
+      piece, 
+      pieces, 
+      gameState.gameType?.board_width || 8, 
+      gameState.gameType?.board_height || 8
+    );
+    setHoveredPiece(piece);
+    setHoveredMoves(moves);
+  }, [gameState, calculateValidMoves]);
+
+  // Drag and drop handlers
+  const handleDragStart = useCallback((e, piece) => {
+    console.log('Drag start:', { piece: piece?.piece_name, isMyTurn, status: gameState?.status });
+    
+    // Only allow dragging own pieces during your turn (ready or active status)
+    const canDrag = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
+    if (!canDrag) {
+      console.log('Drag prevented: not your turn or game not ready/active');
+      e.preventDefault();
+      return;
+    }
+    
+    const pieceTeam = piece.player_id || piece.team;
+    console.log('Piece team:', pieceTeam, 'Current player position:', currentPlayer?.position);
+    
+    if (currentPlayer && pieceTeam !== currentPlayer.position) {
+      console.log('Drag prevented: not your piece');
+      e.preventDefault();
+      return;
+    }
+
+    setDraggedPiece(piece);
+    setSelectedPiece(piece);
+    
+    // Calculate valid moves for the dragged piece
+    const pieces = parsePieces(gameState.pieces);
+    const moves = calculateValidMoves(
+      piece,
+      pieces,
+      gameState.gameType?.board_width || 8,
+      gameState.gameType?.board_height || 8
+    );
+    console.log('Drag valid moves:', moves.length);
+    setDragValidMoves(moves);
+    setValidMoves(moves);
+    
+    e.dataTransfer.effectAllowed = 'move';
+    // Set drag data to make it work properly
+    e.dataTransfer.setData('text/plain', piece.id);
+    e.currentTarget.style.opacity = '0.5';
+  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves]);
+
+  const handleDragEnd = useCallback((e) => {
+    console.log('Drag end');
+    e.currentTarget.style.opacity = '1';
+    setDraggedPiece(null);
+    setDragValidMoves([]);
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback((e, targetX, targetY) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log('Drop:', { targetX, targetY, draggedPiece: draggedPiece?.piece_name, isMyTurn, status: gameState?.status });
+    
+    const canDrop = draggedPiece && isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
+    if (!canDrop) {
+      console.log('Drop prevented: conditions not met');
+      setDraggedPiece(null);
+      setDragValidMoves([]);
+      return;
+    }
+
+    // Check if target is a valid move
+    const validMove = dragValidMoves.find(m => m.x === targetX && m.y === targetY);
+    console.log('Valid move found:', validMove);
+    
+    if (validMove) {
+      console.log('Making move:', { from: { x: draggedPiece.x, y: draggedPiece.y }, to: { x: targetX, y: targetY } });
+      makeMove(parseInt(gameId), {
+        from: { x: draggedPiece.x, y: draggedPiece.y },
+        to: { x: targetX, y: targetY },
+        pieceId: draggedPiece.id
+      });
+    }
+
+    setSelectedPiece(null);
+    setValidMoves([]);
+    setDraggedPiece(null);
+    setDragValidMoves([]);
+  }, [draggedPiece, dragValidMoves, isMyTurn, gameState, makeMove, gameId]);
+
+  // Handle right-click to move selected piece
+  const handleSquareRightClick = useCallback((e, x, y) => {
+    e.preventDefault();
+    
+    console.log('Right-click:', { x, y, selectedPiece: selectedPiece?.piece_name, isMyTurn, status: gameState?.status });
+    
+    // If a piece is selected and it's our turn, try to move to the right-clicked square
+    const canMove = selectedPiece && isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
+    if (canMove) {
+      const move = validMoves.find(m => m.x === x && m.y === y);
+      console.log('Right-click move check:', { move, validMovesCount: validMoves.length });
+      if (move) {
+        console.log('Right-click move executing:', { from: { x: selectedPiece.x, y: selectedPiece.y }, to: { x, y } });
+        makeMove(parseInt(gameId), {
+          from: { x: selectedPiece.x, y: selectedPiece.y },
+          to: { x, y },
+          pieceId: selectedPiece.id
+        });
+        setSelectedPiece(null);
+        setValidMoves([]);
+      }
+    } else {
+      console.log('Right-click move not allowed:', { hasSelectedPiece: !!selectedPiece, isMyTurn, status: gameState?.status });
+    }
+  }, [selectedPiece, validMoves, isMyTurn, gameState, makeMove, gameId]);
 
   // Handle resign
   const handleResign = () => {
@@ -268,6 +671,7 @@ const LiveGame = () => {
     const boardHeight = gameState.gameType?.board_height || 8;
     const pieces = parsePieces(gameState.pieces);
     const lastMove = gameState.moveHistory?.slice(-1)[0];
+    const showHelpers = gameState.showPieceHelpers;
 
     const squares = [];
 
@@ -284,6 +688,20 @@ const LiveGame = () => {
           (lastMove.from?.x === gameX && lastMove.from?.y === gameY) ||
           (lastMove.to?.x === gameX && lastMove.to?.y === gameY)
         );
+        
+        // Check if this square has one of your own pieces
+        const isOwnPiece = piece && currentPlayer && (
+          piece.player_id === currentPlayer.position || 
+          piece.team === currentPlayer.position
+        );
+        
+        // Check if this square shows a hovered piece's possible move
+        const hoveredMove = showHelpers && hoveredPiece && !selectedPiece 
+          ? hoveredMoves.find(m => m.x === gameX && m.y === gameY) 
+          : null;
+
+        // Check if this piece is in check
+        const isInCheck = piece && inCheck && checkedPieces.some(cp => cp.id === piece.id);
 
         squares.push(
           <div
@@ -294,9 +712,16 @@ const LiveGame = () => {
               ${isSelected ? styles.selected : ''}
               ${validMove && !validMove.isCapture ? styles["valid-move"] : ''}
               ${validMove && validMove.isCapture ? styles["valid-capture"] : ''}
+              ${hoveredMove && !hoveredMove.isCapture ? styles["hover-move"] : ''}
+              ${hoveredMove && hoveredMove.isCapture ? styles["hover-capture"] : ''}
               ${isLastMove ? styles["last-move"] : ''}
+              ${isOwnPiece ? styles["own-piece"] : ''}
+              ${isInCheck ? styles["in-check"] : ''}
             `}
             onClick={() => handleSquareClick(gameX, gameY)}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, gameX, gameY)}
+            onContextMenu={(e) => handleSquareRightClick(e, gameX, gameY)}
             style={{
               backgroundColor: isLight 
                 ? (currentUser?.light_square_color || '#cad5e8')
@@ -304,9 +729,20 @@ const LiveGame = () => {
             }}
           >
             {piece && (
-              <div className={styles.piece}>
+              <div 
+                className={styles.piece}
+                draggable={isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && (piece.player_id || piece.team) === currentPlayer?.position}
+                onDragStart={(e) => handleDragStart(e, piece)}
+                onDragEnd={handleDragEnd}
+                onMouseEnter={() => showHelpers && handlePieceHover(piece)}
+                onMouseLeave={() => showHelpers && handlePieceHover(null)}
+              >
                 {(piece.image || piece.image_url) ? (
-                  <img src={piece.image || piece.image_url} alt={piece.piece_name || piece.name || 'piece'} />
+                  <img 
+                    src={piece.image || piece.image_url} 
+                    alt={piece.piece_name || piece.name || 'piece'} 
+                    draggable={false}
+                  />
                 ) : (
                   // Fallback to unicode chess pieces
                   <span>{getPieceSymbol(piece)}</span>
@@ -380,72 +816,11 @@ const LiveGame = () => {
     );
   }
 
-  // Waiting for opponent
-  if (gameState.status === 'waiting') {
-    const isHost = gameState.hostId === currentUser?.id;
-    const gameUrl = `${window.location.origin}/play/${gameId}`;
+  // Check if user can join this game (for join button in waiting banner)
+  const isHost = gameState.hostId === currentUser?.id;
+  const gameUrl = `${window.location.origin}/play/${gameId}`;
 
-    return (
-      <div className={styles["live-game-container"]}>
-        <div className={styles["game-header"]}>
-          <div className={styles["game-title"]}>
-            <h1>{gameState.gameType?.game_name || 'Game'}</h1>
-            <div className={`${styles["game-status"]} ${styles.waiting}`}>
-              Waiting for opponent...
-            </div>
-          </div>
-        </div>
-
-        <div className={styles["waiting-overlay"]}>
-          <div className={styles["waiting-modal"]}>
-            <h2>{isHost ? 'Waiting for Opponent' : 'Join Game?'}</h2>
-            
-            {isHost ? (
-              <>
-                <div className={styles["waiting-spinner"]}></div>
-                <p>Share this link with a friend:</p>
-                <div className={styles["share-link"]}>{gameUrl}</div>
-                <button 
-                  className={`${styles.btn} ${styles["btn-secondary"]}`}
-                  onClick={() => {
-                    cancelGame(parseInt(gameId));
-                    navigate('/play');
-                  }}
-                >
-                  Cancel Game
-                </button>
-              </>
-            ) : canJoin ? (
-              <>
-                <p>
-                  <strong>{gameState.hostUsername || 'A player'}</strong> is waiting for an opponent.
-                </p>
-                <p>
-                  Time Control: {gameState.timeControl ? `${gameState.timeControl} min` : 'No limit'}
-                  {gameState.increment > 0 && ` + ${gameState.increment}s`}
-                </p>
-                <button 
-                  className={`${styles.btn} ${styles["btn-primary"]}`}
-                  onClick={handleJoinGame}
-                >
-                  Join Game
-                </button>
-              </>
-            ) : (
-              <>
-                <p>You are already in this game or cannot join.</p>
-                <Link to="/play" className={`${styles.btn} ${styles["btn-secondary"]}`}>
-                  Back to Lobby
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Active or completed game
+  // Active, ready, waiting, or completed game - show the board
   const player1 = gameState.players?.find(p => p.position === 1);
   const player2 = gameState.players?.find(p => p.position === 2);
 
@@ -457,7 +832,8 @@ const LiveGame = () => {
           <div className={`${styles["game-status"]} ${styles[gameState.status]}`}>
             {gameState.status === 'active' ? 'In Progress' : 
              gameState.status === 'completed' ? 'Game Over' : 
-             gameState.status === 'ready' ? 'Starting...' : gameState.status}
+             gameState.status === 'ready' ? 'Starting...' : 
+             gameState.status === 'waiting' ? 'Waiting for Opponent' : gameState.status}
           </div>
         </div>
         <div className={styles["header-actions"]}>
@@ -521,16 +897,79 @@ const LiveGame = () => {
 
         {/* Board Panel */}
         <div className={styles["board-panel"]}>
+          {/* Waiting Banner */}
+          {gameState.status === 'waiting' && (
+            <div className={styles["waiting-banner"]}>
+              <div className={styles["waiting-content"]}>
+                {isHost ? (
+                  <>
+                    <div className={styles["waiting-spinner-small"]}></div>
+                    <span>Waiting for opponent to join...</span>
+                    <div className={styles["share-link-inline"]}>
+                      <input 
+                        type="text" 
+                        value={gameUrl} 
+                        readOnly 
+                        onClick={(e) => e.target.select()}
+                      />
+                      <button 
+                        className={`${styles.btn} ${styles["btn-small"]}`}
+                        onClick={() => navigator.clipboard.writeText(gameUrl)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <button 
+                      className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
+                      onClick={() => {
+                        cancelGame(parseInt(gameId));
+                        navigate('/play');
+                      }}
+                    >
+                      Cancel Game
+                    </button>
+                  </>
+                ) : canJoin ? (
+                  <>
+                    <span><strong>{gameState.hostUsername || 'A player'}</strong> is hosting this game</span>
+                    <button 
+                      className={`${styles.btn} ${styles["btn-primary"]}`}
+                      onClick={handleJoinGame}
+                    >
+                      Join Game
+                    </button>
+                  </>
+                ) : (
+                  <span>Waiting for another player to join...</span>
+                )}
+              </div>
+              <p className={styles["preview-hint"]}>Click on pieces to preview their moves</p>
+            </div>
+          )}
+          
           <div className={styles["game-board-wrapper"]}>
             {renderBoard()}
           </div>
           
-          {currentPlayer && gameState.status === 'active' && (
+          {currentPlayer && (gameState.status === 'active' || gameState.status === 'ready') && (
             <div className={styles["turn-indicator"]}>
               {isMyTurn ? (
-                <span className={styles["your-turn"]}>Your turn!</span>
+                <>
+                  <span className={styles["your-turn"]}>Your turn!</span>
+                  {inCheck && currentPlayer.position === gameState.currentTurn && (
+                    <span className={styles["check-warning"]}>⚠️ You are in CHECK!</span>
+                  )}
+                  {moveError && (
+                    <span className={styles["move-error"]}>❌ {moveError}</span>
+                  )}
+                </>
               ) : (
-                <span className={styles["waiting-turn"]}>Waiting for opponent...</span>
+                <>
+                  <span className={styles["waiting-turn"]}>Waiting for opponent...</span>
+                  {inCheck && currentPlayer.position !== gameState.currentTurn && (
+                    <span className={styles["check-info"]}>Opponent is in check</span>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -560,7 +999,7 @@ const LiveGame = () => {
           </div>
 
           {/* Game Controls */}
-          {currentPlayer && gameState.status === 'active' && (
+          {currentPlayer && (gameState.status === 'active' || gameState.status === 'ready') && (
             <div className={styles["game-controls"]}>
               <h3>Actions</h3>
               <div className={styles["control-buttons"]}>

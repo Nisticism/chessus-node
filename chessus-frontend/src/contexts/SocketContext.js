@@ -18,6 +18,7 @@ export const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
   const [openGames, setOpenGames] = useState([]);
+  const [ongoingGames, setOngoingGames] = useState([]);
   const [currentGame, setCurrentGame] = useState(null);
   const { user } = useSelector((state) => state.authReducer);
   const reconnectAttempts = useRef(0);
@@ -62,12 +63,23 @@ export const SocketProvider = ({ children }) => {
       setOpenGames(games);
     });
 
+    newSocket.on('ongoingGamesList', (games) => {
+      setOngoingGames(games);
+    });
+
     newSocket.on('newOpenGame', (game) => {
       setOpenGames(prev => [game, ...prev]);
     });
 
     newSocket.on('gameRemoved', ({ gameId }) => {
       setOpenGames(prev => prev.filter(g => g.id !== gameId && g.gameId !== gameId));
+    });
+
+    newSocket.on('gameStarted', ({ gameId }) => {
+      // Move from open to ongoing
+      setOpenGames(prev => prev.filter(g => g.id !== gameId && g.gameId !== gameId));
+      // Refresh ongoing games list when a game starts
+      newSocket.emit('getOngoingGames');
     });
 
     newSocket.on('error', ({ message }) => {
@@ -95,6 +107,13 @@ export const SocketProvider = ({ children }) => {
   const fetchOpenGames = useCallback(() => {
     if (socket && connected) {
       socket.emit('getOpenGames');
+    }
+  }, [socket, connected]);
+
+  // Fetch ongoing games (for spectating)
+  const fetchOngoingGames = useCallback(() => {
+    if (socket && connected) {
+      socket.emit('getOngoingGames');
     }
   }, [socket, connected]);
 
@@ -275,9 +294,11 @@ export const SocketProvider = ({ children }) => {
     socket,
     connected,
     openGames,
+    ongoingGames,
     currentGame,
     setCurrentGame,
     fetchOpenGames,
+    fetchOngoingGames,
     createGame,
     joinGame,
     getGameState,

@@ -13,8 +13,10 @@ const Play = () => {
   
   const { 
     connected, 
-    openGames, 
-    fetchOpenGames, 
+    openGames,
+    ongoingGames,
+    fetchOpenGames,
+    fetchOngoingGames,
     createGame, 
     joinGame,
     onGameEvent 
@@ -25,6 +27,8 @@ const Play = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [timeControl, setTimeControl] = useState("10"); // minutes
   const [increment, setIncrement] = useState("0"); // seconds
+  const [allowSpectators, setAllowSpectators] = useState(true);
+  const [showPieceHelpers, setShowPieceHelpers] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState(null);
@@ -38,14 +42,16 @@ const Play = () => {
   useEffect(() => {
     if (connected) {
       fetchOpenGames();
+      fetchOngoingGames();
     }
-  }, [connected, fetchOpenGames]);
+  }, [connected, fetchOpenGames, fetchOngoingGames]);
 
   // Listen for game events
   useEffect(() => {
     const unsubscribePlayerJoined = onGameEvent("playerJoined", ({ gameId, gameState }) => {
-      // Refresh open games list when someone joins a game
+      // Refresh both lists when someone joins a game
       fetchOpenGames();
+      fetchOngoingGames();
     });
 
     const unsubscribeGameCancelled = onGameEvent("gameCancelled", ({ gameId }) => {
@@ -53,11 +59,17 @@ const Play = () => {
       fetchOpenGames();
     });
 
+    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId }) => {
+      // Refresh ongoing games when a game ends
+      fetchOngoingGames();
+    });
+
     return () => {
       unsubscribePlayerJoined();
       unsubscribeGameCancelled();
+      unsubscribeGameOver();
     };
-  }, [onGameEvent, fetchOpenGames]);
+  }, [onGameEvent, fetchOpenGames, fetchOngoingGames]);
 
   // Filter game types by search
   const filteredGameTypes = gamesList.filter(game => 
@@ -87,7 +99,9 @@ const Play = () => {
       const result = await createGame({
         gameTypeId: selectedGameType.id,
         timeControl: timeControlMinutes,
-        increment: incrementSeconds
+        increment: incrementSeconds,
+        allowSpectators,
+        showPieceHelpers
       });
 
       setShowCreateModal(false);
@@ -250,6 +264,51 @@ const Play = () => {
             )}
           </div>
 
+          {/* Ongoing Games Section */}
+          <div className={styles["ongoing-games-section"]}>
+            <h2>
+              Ongoing Games
+              {ongoingGames.length > 0 && (
+                <span className={styles["match-count"]}>{ongoingGames.length}</span>
+              )}
+            </h2>
+            
+            {ongoingGames.length === 0 ? (
+              <div className={styles["no-matches"]}>
+                No ongoing games to watch right now.
+              </div>
+            ) : (
+              <div className={styles["ongoing-games-list"]}>
+                {ongoingGames.map((game) => (
+                  <div 
+                    key={game.id} 
+                    className={styles["ongoing-game-card"]}
+                  >
+                    <div className={styles["match-header"]}>
+                      <span className={styles["match-game-name"]}>
+                        {game.game_name}
+                      </span>
+                      <span className={styles["match-time-control"]}>
+                        {formatTimeControl(game.turn_length, game.increment)}
+                      </span>
+                    </div>
+                    <div className={styles["match-players"]}>
+                      {game.player_names}
+                    </div>
+                    <div className={styles["match-actions"]}>
+                      <button
+                        className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
+                        onClick={() => navigate(`/play/${game.id}`)}
+                      >
+                        {game.player_ids?.includes(currentUser?.id) ? 'Re-join' : 'Watch'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Selected Game Type Section */}
           <div className={styles["selected-game-section"]}>
             {!selectedGameType ? (
@@ -364,6 +423,34 @@ const Play = () => {
                 </div>
               </div>
             )}
+
+            <div className={styles["form-group"]}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={showPieceHelpers}
+                  onChange={(e) => setShowPieceHelpers(e.target.checked)}
+                />
+                <span>Show Movement Helpers</span>
+              </label>
+              <div className={styles["input-hint"]}>
+                Display movement and attack highlighting when selecting pieces
+              </div>
+            </div>
+
+            <div className={styles["form-group"]}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={allowSpectators}
+                  onChange={(e) => setAllowSpectators(e.target.checked)}
+                />
+                <span>Allow Spectators</span>
+              </label>
+              <div className={styles["input-hint"]}>
+                Let other players watch this game
+              </div>
+            </div>
 
             <div className={styles["modal-actions"]}>
               <button

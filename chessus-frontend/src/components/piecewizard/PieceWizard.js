@@ -219,18 +219,19 @@ const PieceWizard = ({ editPieceId = null }) => {
             max_piece_captures_per_ranged_attack: piece.max_piece_captures_per_ranged_attack || 1,
             
             // Detect if attacks like movement (compare capture pattern to movement pattern)
-            attacks_like_movement: piece.can_capture_enemy_on_move && (
-              (piece.up_left_capture === piece.up_left_movement &&
-               piece.up_capture === piece.up_movement &&
-               piece.up_right_capture === piece.up_right_movement &&
-               piece.left_capture === piece.left_movement &&
-               piece.right_capture === piece.right_movement &&
-               piece.down_left_capture === piece.down_left_movement &&
-               piece.down_capture === piece.down_movement &&
-               piece.down_right_capture === piece.down_right_movement) ||
-              (piece.ratio_one_attack === piece.ratio_one_movement &&
-               piece.ratio_two_attack === piece.ratio_two_movement)
-            ),
+            // Check directional patterns match
+            attacks_like_movement: piece.can_capture_enemy_on_move && 
+              piece.up_left_capture === piece.up_left_movement &&
+              piece.up_capture === piece.up_movement &&
+              piece.up_right_capture === piece.up_right_movement &&
+              piece.left_capture === piece.left_movement &&
+              piece.right_capture === piece.right_movement &&
+              piece.down_left_capture === piece.down_left_movement &&
+              piece.down_capture === piece.down_movement &&
+              piece.down_right_capture === piece.down_right_movement &&
+              // Also check ratio patterns if they exist
+              (piece.ratio_one_movement == null || piece.ratio_one_capture === piece.ratio_one_movement) &&
+              (piece.ratio_two_movement == null || piece.ratio_two_capture === piece.ratio_two_movement),
             
             // Special rules - map database fields to form fields
             special_scenario_movement: piece.special_scenario_moves || "",
@@ -255,9 +256,10 @@ const PieceWizard = ({ editPieceId = null }) => {
   }, [editPieceId, currentUser, navigate]);
 
   // Auto-check "attacks_like_movement" when any movement is configured
+  // Skip this logic when in edit mode - the attacks_like_movement state is already set from loaded data
   useEffect(() => {
-    // Only auto-set if user hasn't manually changed it
-    if (hasManuallySetAttackStyle.current) {
+    // Only auto-set if user hasn't manually changed it and we're not in edit mode
+    if (hasManuallySetAttackStyle.current || isEditMode) {
       return;
     }
     
@@ -314,7 +316,8 @@ const PieceWizard = ({ editPieceId = null }) => {
     pieceData.ratio_one_movement,
     pieceData.ratio_two_movement,
     pieceData.step_by_step_movement_value,
-    pieceData.attacks_like_movement
+    pieceData.attacks_like_movement,
+    isEditMode
   ]);
 
   const totalSteps = 4;
@@ -411,7 +414,7 @@ const PieceWizard = ({ editPieceId = null }) => {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <PieceStep1BasicInfo pieceData={pieceData} updatePieceData={updatePieceData} isEditMode={isEditMode} />;
+        return <PieceStep1BasicInfo pieceData={pieceData} updatePieceData={updatePieceData} isEditMode={isEditMode} existingImages={existingImages} setExistingImages={setExistingImages} />;
       case 2:
         return <PieceStep2Movement pieceData={pieceData} updatePieceData={updatePieceData} />;
       case 3:
@@ -477,6 +480,14 @@ const PieceWizard = ({ editPieceId = null }) => {
           {currentStep === totalSteps && (
             <StandardButton 
               buttonText={isSubmitting ? (isEditMode ? "Saving..." : "Creating...") : (isEditMode ? "Save Changes" : "Create Piece")} 
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+            />
+          )}
+
+          {isEditMode && currentStep < totalSteps && (
+            <StandardButton 
+              buttonText={isSubmitting ? "Saving..." : "Save and Exit"} 
               onClick={handleSubmit}
               disabled={isSubmitting}
             />

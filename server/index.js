@@ -212,6 +212,199 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
+// Get match history for a user
+app.get("/api/users/:userId/match-history", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    // Get completed games where the user was a player
+    const [games] = await db_pool.query(`
+      SELECT 
+        g.id,
+        g.created_at,
+        g.start_time,
+        g.end_time,
+        g.status,
+        g.winner_id,
+        g.pieces,
+        g.other_data,
+        g.turn_length,
+        g.increment,
+        gt.game_name as game_type_name,
+        gt.board_width,
+        gt.board_height,
+        p1.user_id as player1_id,
+        p1.player_position as player1_position,
+        u1.username as player1_username,
+        u1.elo as player1_elo,
+        p2.user_id as player2_id,
+        p2.player_position as player2_position,
+        u2.username as player2_username,
+        u2.elo as player2_elo
+      FROM games g
+      LEFT JOIN game_types gt ON g.game_type_id = gt.id
+      LEFT JOIN players p1 ON g.id = p1.game_id AND p1.player_position = 1
+      LEFT JOIN users u1 ON p1.user_id = u1.id
+      LEFT JOIN players p2 ON g.id = p2.game_id AND p2.player_position = 2
+      LEFT JOIN users u2 ON p2.user_id = u2.id
+      WHERE g.status = 'completed'
+        AND (p1.user_id = ? OR p2.user_id = ?)
+      ORDER BY g.end_time DESC
+      LIMIT ? OFFSET ?
+    `, [userId, userId, limit, offset]);
+
+    // Get total count for pagination
+    const [countResult] = await db_pool.query(`
+      SELECT COUNT(DISTINCT g.id) as total
+      FROM games g
+      LEFT JOIN players p ON g.id = p.game_id
+      WHERE g.status = 'completed' AND p.user_id = ?
+    `, [userId]);
+
+    const total = countResult[0].total;
+
+    // Format the response
+    const formattedGames = games.map(game => {
+      let otherData = {};
+      try {
+        otherData = JSON.parse(game.other_data || '{}');
+      } catch (e) {}
+
+      // Use winner_id column, fall back to other_data.winner for older games
+      const winnerId = game.winner_id || otherData.winner || null;
+      const isWinner = winnerId && winnerId === parseInt(userId);
+      const isDraw = !winnerId;
+
+      return {
+        id: game.id,
+        createdAt: game.created_at,
+        startTime: game.start_time,
+        endTime: game.end_time,
+        status: game.status,
+        winnerId: winnerId,
+        result: isDraw ? 'draw' : (isWinner ? 'win' : 'loss'),
+        reason: otherData.reason || 'unknown',
+        eloChanges: otherData.eloChanges || null,
+        gameTypeName: game.game_type_name,
+        boardWidth: game.board_width,
+        boardHeight: game.board_height,
+        timeControl: game.turn_length,
+        increment: game.increment,
+        players: [
+          {
+            id: game.player1_id,
+            username: game.player1_username,
+            elo: game.player1_elo,
+            position: game.player1_position
+          },
+          {
+            id: game.player2_id,
+            username: game.player2_username,
+            elo: game.player2_elo,
+            position: game.player2_position
+          }
+        ].filter(p => p.id)
+      };
+    });
+
+    res.json({
+      games: formattedGames,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error("Error in /api/users/:userId/match-history:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Get a specific completed game with full details (for viewing past games)
+app.get("/api/match/:gameId", async (req, res) => {
+  try {
+    const { gameId } = req.params;
+
+    const [games] = await db_pool.query(`
+      SELECT 
+        g.*,
+        gt.game_name as game_type_name,
+        gt.board_width,
+        gt.board_height,
+        gt.descript as game_description
+      FROM games g
+      LEFT JOIN game_types gt ON g.game_type_id = gt.id
+      WHERE g.id = ?
+    `, [gameId]);
+
+    if (games.length === 0) {
+      return res.status(404).send({ message: "Game not found" });
+    }
+
+    const game = games[0];
+
+    // Get players for this game
+    const [players] = await db_pool.query(`
+      SELECT 
+        p.*,
+        u.username,
+        u.elo,
+        u.profile_picture
+      FROM players p
+      LEFT JOIN users u ON p.user_id = u.id
+      WHERE p.game_id = ?
+      ORDER BY p.player_position
+    `, [gameId]);
+
+    // Parse JSON fields
+    let pieces = [];
+    let otherData = {};
+    try {
+      pieces = JSON.parse(game.pieces || '[]');
+    } catch (e) {}
+    try {
+      otherData = JSON.parse(game.other_data || '{}');
+    } catch (e) {}
+
+    // Use winner_id column, fall back to other_data.winner for older games
+    const winnerId = game.winner_id || otherData.winner || null;
+
+    res.json({
+      id: game.id,
+      createdAt: game.created_at,
+      startTime: game.start_time,
+      endTime: game.end_time,
+      status: game.status,
+      winnerId: winnerId,
+      pieces,
+      moveHistory: otherData.moves || [],
+      reason: otherData.reason || 'unknown',
+      eloChanges: otherData.eloChanges || null,
+      gameTypeName: game.game_type_name,
+      gameDescription: game.game_description,
+      boardWidth: game.board_width || 8,
+      boardHeight: game.board_height || 8,
+      timeControl: game.turn_length,
+      increment: game.increment,
+      players: players.map(p => ({
+        id: p.user_id,
+        username: p.username,
+        elo: p.elo,
+        position: p.player_position,
+        profilePicture: p.profile_picture
+      }))
+    });
+  } catch (err) {
+    console.error("Error in /api/match/:gameId:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
 app.get("/api/pieces", async (req, res) => {
   try {
     const pieces = await dbHelpers.getAllPieces();
@@ -1314,24 +1507,47 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
 
     // Handle images
     let imagesJSON = existingPiece.image_location; // Keep existing if no new images
-    if (imageFiles && imageFiles.length > 0) {
-      // Parse existing images
-      let existingImagePaths = [];
-      if (pieceData.existing_images) {
-        try {
-          existingImagePaths = JSON.parse(pieceData.existing_images);
-        } catch (err) {
-          console.error("Error parsing existing_images:", err);
-        }
-      }
-      
-      // Add new image paths
-      const newImagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
-      
-      // Combine existing and new images (max 8 total)
-      const allImagePaths = [...existingImagePaths, ...newImagePaths].slice(0, 8);
-      imagesJSON = JSON.stringify(allImagePaths);
+    
+    // Parse the original images from the database
+    let originalImagePaths = [];
+    try {
+      originalImagePaths = JSON.parse(existingPiece.image_location || '[]');
+    } catch (err) {
+      console.error("Error parsing original image_location:", err);
     }
+    
+    // Parse the images the user wants to keep
+    let keptImagePaths = [];
+    if (pieceData.existing_images) {
+      try {
+        keptImagePaths = JSON.parse(pieceData.existing_images);
+      } catch (err) {
+        console.error("Error parsing existing_images:", err);
+      }
+    }
+    
+    // Find images that were removed (in original but not in kept)
+    const removedImages = originalImagePaths.filter(img => !keptImagePaths.includes(img));
+    
+    // Delete removed images from filesystem
+    for (const imagePath of removedImages) {
+      try {
+        const fullPath = path.join(__dirname, '..', imagePath);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+          console.log(`Deleted removed piece image: ${fullPath}`);
+        }
+      } catch (err) {
+        console.error(`Error deleting image ${imagePath}:`, err.message);
+      }
+    }
+    
+    // Add new image paths if any
+    const newImagePaths = imageFiles ? imageFiles.map(file => `/uploads/pieces/${file.filename}`) : [];
+    
+    // Combine kept and new images (max 8 total)
+    const allImagePaths = [...keptImagePaths, ...newImagePaths].slice(0, 8);
+    imagesJSON = JSON.stringify(allImagePaths);
 
     // Update pieces table (basic info only)
     const pieceSql = `

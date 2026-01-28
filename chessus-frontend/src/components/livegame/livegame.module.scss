@@ -146,6 +146,63 @@
   align-items: center;
 }
 
+// Waiting banner (shows above board when waiting for opponent)
+.waiting-banner {
+  background: linear-gradient(135deg, #1a1a2e, #252542);
+  border: 1px solid #4ecdc4;
+  border-radius: 12px;
+  padding: 16px 24px;
+  margin-bottom: 16px;
+  width: fit-content;
+  max-width: 100%;
+
+  .waiting-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: #fff;
+    font-size: 0.95rem;
+  }
+
+  .share-link-inline {
+    display: flex;
+    gap: 8px;
+
+    input {
+      background: #0d0d1a;
+      border: 1px solid #3a3a5c;
+      border-radius: 6px;
+      padding: 6px 12px;
+      color: #4ecdc4;
+      font-size: 0.85rem;
+      width: 250px;
+
+      &:focus {
+        outline: none;
+        border-color: #4ecdc4;
+      }
+    }
+  }
+
+  .preview-hint {
+    margin: 12px 0 0;
+    color: #888;
+    font-size: 0.85rem;
+    text-align: center;
+  }
+}
+
+.waiting-spinner-small {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #3a3a5c;
+  border-top-color: #4ecdc4;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
 .game-board-wrapper {
   background: #1a1a2e;
   border-radius: 12px;
@@ -191,6 +248,8 @@
       height: 16px;
       background: rgba(108, 99, 255, 0.4);
       border-radius: 50%;
+      z-index: 2;
+      pointer-events: none;
     }
   }
 
@@ -198,12 +257,50 @@
     box-shadow: inset 0 0 0 3px rgba(255, 68, 68, 0.6);
   }
 
+  &.hover-move {
+    &::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: rgba(78, 205, 196, 0.5);
+      border-radius: 50%;
+      z-index: 2;
+      pointer-events: none;
+    }
+  }
+
+  &.hover-capture {
+    box-shadow: inset 0 0 0 3px rgba(255, 107, 107, 0.5);
+  }
+
   &.last-move {
     background: rgba(255, 255, 0, 0.3);
   }
 
+  // Debug: highlight squares with your own pieces
+  &.own-piece {
+    box-shadow: inset 0 0 0 3px rgba(0, 255, 0, 0.6);
+  }
+
+  // Highlight pieces that are in check
+  &.in-check {
+    background: rgba(255, 0, 0, 0.5) !important;
+    box-shadow: inset 0 0 0 4px #ff0000, 0 0 15px rgba(255, 0, 0, 0.8);
+    animation: check-pulse 0.8s ease-in-out infinite;
+  }
+
   &:hover:not(.selected) {
     filter: brightness(1.1);
+  }
+}
+
+@keyframes check-pulse {
+  0%, 100% {
+    box-shadow: inset 0 0 0 4px #ff0000, 0 0 15px rgba(255, 0, 0, 0.8);
+  }
+  50% {
+    box-shadow: inset 0 0 0 4px #ff4444, 0 0 25px rgba(255, 0, 0, 1);
   }
 }
 
@@ -216,11 +313,21 @@
   font-size: 2rem;
   user-select: none;
   z-index: 1;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &[draggable="false"] {
+    cursor: default;
+  }
 
   img {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+    pointer-events: none;
   }
 }
 
@@ -501,6 +608,9 @@
   border-radius: 8px;
   margin-top: 16px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 
   .your-turn {
     color: #44ff44;
@@ -509,5 +619,49 @@
 
   .waiting-turn {
     color: #888;
+  }
+
+  .check-warning {
+    color: #ff4444;
+    font-weight: 700;
+    font-size: 1.1em;
+    animation: pulse-check 1s ease-in-out infinite;
+    display: block;
+  }
+
+  .check-info {
+    color: #ffaa44;
+    font-size: 0.9em;
+    display: block;
+  }
+
+  .move-error {
+    color: #ff6666;
+    font-weight: 600;
+    font-size: 1em;
+    display: block;
+    margin-top: 4px;
+    animation: shake 0.4s ease-in-out;
+  }
+}
+
+@keyframes pulse-check {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
   }
 }

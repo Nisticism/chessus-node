@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
 
-const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false }) => {
+const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, existingImages = [], setExistingImages }) => {
   const [visibleImageCount, setVisibleImageCount] = useState(2);
   const fileInputRefs = useRef([]);
 
@@ -23,6 +23,13 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false })
       if (file.size > 5 * 1024 * 1024) {
         alert('Image size must be less than 5MB');
         return;
+      }
+      
+      // If in edit mode and replacing an existing image, remove it from existingImages
+      if (isEditMode && setExistingImages && existingImages.length > 0 && index < existingImages.length) {
+        const newExistingImages = [...existingImages];
+        newExistingImages.splice(index, 1);
+        setExistingImages(newExistingImages);
       }
       
       // Create preview URL
@@ -49,6 +56,32 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false })
   const handleRemoveImage = (index) => {
     const newImages = [...(pieceData.piece_images || [])];
     const newPreviews = [...(pieceData.piece_image_previews || [])];
+    
+    // If in edit mode and removing an existing image (not a new upload)
+    // We need to also update existingImages so it's not sent to the server
+    if (isEditMode && setExistingImages && existingImages.length > 0) {
+      // Check if this index corresponds to an existing image
+      // Existing images are at the beginning, new uploads come after
+      if (index < existingImages.length && !newImages[index]) {
+        // This is an existing image being removed
+        const newExistingImages = [...existingImages];
+        newExistingImages.splice(index, 1);
+        setExistingImages(newExistingImages);
+        
+        // Also need to remove from previews
+        newPreviews.splice(index, 1);
+        updatePieceData({
+          piece_images: newImages.filter((_, i) => i !== index),
+          piece_image_previews: newPreviews
+        });
+        
+        if (fileInputRefs.current[index]) {
+          fileInputRefs.current[index].value = '';
+        }
+        return;
+      }
+    }
+    
     newImages[index] = null;
     newPreviews[index] = null;
     

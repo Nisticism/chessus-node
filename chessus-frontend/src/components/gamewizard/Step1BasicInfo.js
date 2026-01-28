@@ -51,26 +51,6 @@ const Step1BasicInfo = ({ gameData, updateGameData }) => {
 
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
-          Rules
-        </label>
-        <textarea
-          className={styles["form-textarea"]}
-          value={gameData.rules}
-          onChange={(e) => handleChange("rules", e.target.value)}
-          placeholder="Enter the game rules (can be auto-generated later based on pieces and objectives)"
-          rows={8}
-          maxLength={8000}
-        />
-        <div className={styles["char-count"]}>
-          {gameData.rules.length} / 8000 characters
-        </div>
-        <p className={styles["field-hint"]}>
-          You can provide basic rules now or let the system auto-generate them based on your pieces and win conditions.
-        </p>
-      </div>
-
-      <div className={styles["form-group"]}>
-        <label className={styles["form-label"]}>
           Number of Players <span className={styles["required"]}>*</span>
         </label>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>

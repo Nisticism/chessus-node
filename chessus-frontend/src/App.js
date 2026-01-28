@@ -24,6 +24,7 @@ import CommunityHub from "./containers/communityhub/CommunityHub";
 import Leaderboard from "./components/leaderboard/Leaderboard";
 import Play from "./containers/play/Play";
 import LiveGame from "./components/livegame/LiveGame";
+import MatchView from "./components/matchview/MatchView";
 
 import CreateForum from "./components/forum/CreateForum";
 import Forum from "./components/forum/Forum";
@@ -111,6 +112,7 @@ function App() {
             <Route exact path="/create" element={<CreateHub />} />
             <Route exact path="/play" element={<Play />} />
             <Route exact path="/play/:gameId" element={<LiveGame />} />
+            <Route exact path="/match/:gameId" element={<MatchView />} />
             <Route exact path="/chess" element={<ChessBoard />} />
             <Route exact path="/account-deleted" element={<DeletedAccount />} />
             <Route exact path="profile/edit" element={<EditAccount />}  />

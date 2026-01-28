@@ -193,6 +193,54 @@
   line-height: 1.8;
 }
 
+// Auto-generated rules styles
+.rules-container {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.rule-section {
+  background: rgba(74, 144, 226, 0.05);
+  border-radius: 8px;
+  padding: 20px;
+  border-left: 4px solid #4a90e2;
+}
+
+.rule-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #4a90e2;
+  margin-bottom: 15px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(74, 144, 226, 0.2);
+}
+
+.rule-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rule-line {
+  color: var(--light-gray);
+  line-height: 1.7;
+  font-size: 15px;
+  margin: 0;
+  
+  strong {
+    color: #4ecdc4;
+    font-weight: 600;
+  }
+}
+
+.loading-rules {
+  color: var(--text-light-gray);
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
 .loading,
 .error {
   text-align: center;

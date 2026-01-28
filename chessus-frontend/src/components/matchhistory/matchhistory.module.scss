@@ -1,0 +1,232 @@
+.match-history {
+  margin-top: 24px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section-title {
+  font-size: 1.5rem;
+  margin-bottom: 20px;
+  color: #fff;
+  font-weight: 600;
+}
+
+.loading,
+.error,
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.error {
+  color: #ff6b6b;
+}
+
+.empty-hint {
+  font-size: 0.9rem;
+  margin-top: 8px;
+  opacity: 0.6;
+}
+
+.games-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.game-card {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border-left: 4px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  gap: 20px;
+}
+
+.game-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(4px);
+}
+
+.game-card.win {
+  border-left-color: #4ade80;
+}
+
+.game-card.loss {
+  border-left-color: #f87171;
+}
+
+.game-card.draw {
+  border-left-color: #fbbf24;
+}
+
+.game-result {
+  min-width: 100px;
+  display: flex;
+  flex-direction: column;
+}
+
+.result-text {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.win .result-text {
+  color: #4ade80;
+}
+
+.loss .result-text {
+  color: #f87171;
+}
+
+.draw .result-text {
+  color: #fbbf24;
+}
+
+.result-reason {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 2px;
+}
+
+.game-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.opponent-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vs-text {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.85rem;
+}
+
+.opponent-name {
+  font-weight: 600;
+  color: #fff;
+}
+
+.opponent-elo {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.85rem;
+}
+
+.game-details {
+  display: flex;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.time-control {
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.game-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 120px;
+}
+
+.game-date {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.elo-change {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.elo-change.positive {
+  color: #4ade80;
+}
+
+.elo-change.negative {
+  color: #f87171;
+}
+
+.view-arrow {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 1.2rem;
+  transition: color 0.2s ease;
+}
+
+.game-card:hover .view-arrow {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.page-btn {
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .game-card {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .game-result {
+    min-width: 80px;
+  }
+
+  .game-meta {
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    min-width: unset;
+  }
+
+  .view-arrow {
+    display: none;
+  }
+}

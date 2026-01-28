@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { getGameById } from "../../actions/games";
@@ -11,6 +11,201 @@ const getImageUrl = (imagePath) => {
   if (!imagePath) return null;
   if (imagePath.startsWith('http')) return imagePath;
   return `${ASSET_URL}${imagePath}`;
+};
+
+// Helper function to describe movement range
+const describeMovementRange = (value) => {
+  if (value === 99) return "any number of squares";
+  if (value === 0 || value === null || value === undefined) return null;
+  if (value > 0) return `up to ${value} square${value > 1 ? 's' : ''}`;
+  if (value < 0) return `exactly ${Math.abs(value)} square${Math.abs(value) > 1 ? 's' : ''}`;
+  return null;
+};
+
+// Helper to generate piece movement description
+const describePieceMovement = (pieceData) => {
+  const movements = [];
+  
+  const directionalStyle = pieceData.directional_movement_style;
+  const hasDirectional = directionalStyle === 'directional' || directionalStyle === 'both' || 
+                         directionalStyle === 1 || directionalStyle === 3;
+  const hasRatio = directionalStyle === 'ratio' || directionalStyle === 'both' || 
+                   directionalStyle === 2 || directionalStyle === 3;
+  
+  if (hasDirectional) {
+    // Collect directional movements
+    const directions = [];
+    
+    // Check vertical
+    const up = describeMovementRange(pieceData.up_movement);
+    const down = describeMovementRange(pieceData.down_movement);
+    if (up && down && up === down) {
+      directions.push(`vertically ${up}`);
+    } else {
+      if (up) directions.push(`upward ${up}`);
+      if (down) directions.push(`downward ${down}`);
+    }
+    
+    // Check horizontal
+    const left = describeMovementRange(pieceData.left_movement);
+    const right = describeMovementRange(pieceData.right_movement);
+    if (left && right && left === right) {
+      directions.push(`horizontally ${left}`);
+    } else {
+      if (left) directions.push(`leftward ${left}`);
+      if (right) directions.push(`rightward ${right}`);
+    }
+    
+    // Check diagonals
+    const upLeft = describeMovementRange(pieceData.up_left_movement);
+    const upRight = describeMovementRange(pieceData.up_right_movement);
+    const downLeft = describeMovementRange(pieceData.down_left_movement);
+    const downRight = describeMovementRange(pieceData.down_right_movement);
+    
+    const allDiagonals = [upLeft, upRight, downLeft, downRight].filter(Boolean);
+    const allSameDiagonal = allDiagonals.length === 4 && allDiagonals.every(d => d === allDiagonals[0]);
+    
+    if (allSameDiagonal) {
+      directions.push(`diagonally ${allDiagonals[0]}`);
+    } else {
+      if (upLeft) directions.push(`diagonally up-left ${upLeft}`);
+      if (upRight) directions.push(`diagonally up-right ${upRight}`);
+      if (downLeft) directions.push(`diagonally down-left ${downLeft}`);
+      if (downRight) directions.push(`diagonally down-right ${downRight}`);
+    }
+    
+    if (directions.length > 0) {
+      movements.push(directions.join(', '));
+    }
+  }
+  
+  if (hasRatio) {
+    const ratio1 = pieceData.ratio_movement_1 || 0;
+    const ratio2 = pieceData.ratio_movement_2 || 0;
+    if (ratio1 > 0 && ratio2 > 0) {
+      movements.push(`in an L-shape (${ratio1} squares in one direction and ${ratio2} squares perpendicular)`);
+    }
+  }
+  
+  // Check step movement
+  if (pieceData.step_movement_style === 'manhattan' || pieceData.step_movement_style === 1) {
+    const range = describeMovementRange(pieceData.step_movement_value);
+    if (range) {
+      movements.push(`${range} counting horizontal and vertical steps`);
+    }
+  } else if (pieceData.step_movement_style === 'chebyshev' || pieceData.step_movement_style === 2) {
+    const range = describeMovementRange(pieceData.step_movement_value);
+    if (range) {
+      movements.push(`${range} in any direction (including diagonals)`);
+    }
+  }
+  
+  return movements.join('; ');
+};
+
+// Helper to generate piece capture description
+const describePieceCapture = (pieceData) => {
+  const captures = [];
+  
+  // Check for any separate capture data defined
+  const hasSeparateCapture = pieceData.up_capture || pieceData.down_capture || 
+                              pieceData.left_capture || pieceData.right_capture ||
+                              pieceData.up_left_capture || pieceData.up_right_capture ||
+                              pieceData.down_left_capture || pieceData.down_right_capture ||
+                              pieceData.ratio_capture_1 || pieceData.ratio_capture_2 ||
+                              pieceData.step_capture_style || pieceData.step_capture_value ||
+                              pieceData.directional_capture_style;
+  
+  // If attacks like movement and no separate capture data, return early
+  if ((pieceData.attacks_like_movement || pieceData.can_capture_enemy_on_move) && !hasSeparateCapture) {
+    return "captures the same way it moves";
+  }
+  
+  // Check directional captures
+  const directionalStyle = pieceData.directional_capture_style;
+  const hasDirectionalCapture = directionalStyle === 'directional' || directionalStyle === 'both' || 
+                         directionalStyle === 1 || directionalStyle === 3 ||
+                         pieceData.up_capture || pieceData.down_capture ||
+                         pieceData.left_capture || pieceData.right_capture ||
+                         pieceData.up_left_capture || pieceData.up_right_capture ||
+                         pieceData.down_left_capture || pieceData.down_right_capture;
+  
+  if (hasDirectionalCapture) {
+    const directions = [];
+    
+    // Check vertical captures
+    const up = describeMovementRange(pieceData.up_capture);
+    const down = describeMovementRange(pieceData.down_capture);
+    if (up && down && up === down) {
+      directions.push(`vertically ${up}`);
+    } else {
+      if (up) directions.push(`upward ${up}`);
+      if (down) directions.push(`downward ${down}`);
+    }
+    
+    // Check horizontal captures
+    const left = describeMovementRange(pieceData.left_capture);
+    const right = describeMovementRange(pieceData.right_capture);
+    if (left && right && left === right) {
+      directions.push(`horizontally ${left}`);
+    } else {
+      if (left) directions.push(`leftward ${left}`);
+      if (right) directions.push(`rightward ${right}`);
+    }
+    
+    // Check diagonal captures
+    const upLeft = describeMovementRange(pieceData.up_left_capture);
+    const upRight = describeMovementRange(pieceData.up_right_capture);
+    const downLeft = describeMovementRange(pieceData.down_left_capture);
+    const downRight = describeMovementRange(pieceData.down_right_capture);
+    
+    const allDiagonals = [upLeft, upRight, downLeft, downRight].filter(Boolean);
+    const allSameDiagonal = allDiagonals.length === 4 && allDiagonals.every(d => d === allDiagonals[0]);
+    
+    if (allSameDiagonal) {
+      directions.push(`diagonally ${allDiagonals[0]}`);
+    } else {
+      if (upLeft) directions.push(`diagonally up-left ${upLeft}`);
+      if (upRight) directions.push(`diagonally up-right ${upRight}`);
+      if (downLeft) directions.push(`diagonally down-left ${downLeft}`);
+      if (downRight) directions.push(`diagonally down-right ${downRight}`);
+    }
+    
+    if (directions.length > 0) {
+      captures.push(`attacks ${directions.join(', ')}`);
+    }
+  }
+  
+  // Ratio capture (L-shape like knight)
+  const hasRatioCapture = directionalStyle === 'ratio' || directionalStyle === 'both' || 
+                          directionalStyle === 2 || directionalStyle === 3;
+  const ratio1 = pieceData.ratio_capture_1 || 0;
+  const ratio2 = pieceData.ratio_capture_2 || 0;
+  if (hasRatioCapture || (ratio1 > 0 && ratio2 > 0)) {
+    if (ratio1 > 0 && ratio2 > 0) {
+      captures.push(`attacks in an L-shape (${ratio1} squares by ${ratio2} squares)`);
+    }
+  }
+  
+  // Step-based capture
+  if (pieceData.step_capture_style === 'manhattan' || pieceData.step_capture_style === 1) {
+    const range = describeMovementRange(pieceData.step_capture_value);
+    if (range) {
+      captures.push(`attacks within ${range} (counting horizontal and vertical steps)`);
+    }
+  } else if (pieceData.step_capture_style === 'chebyshev' || pieceData.step_capture_style === 2) {
+    const range = describeMovementRange(pieceData.step_capture_value);
+    if (range) {
+      captures.push(`attacks within ${range} in any direction`);
+    }
+  }
+  
+  // If no specific capture patterns found but attacks_like_movement is set
+  if (captures.length === 0 && (pieceData.attacks_like_movement || pieceData.can_capture_enemy_on_move)) {
+    return "captures the same way it moves";
+  }
+  
+  return captures.join('; ');
 };
 
 const GameTypeView = () => {
@@ -122,7 +317,9 @@ const GameTypeView = () => {
   }, [gameId, dispatch]);
 
   const getPlayerColor = (playerId) => {
-    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f7dc6f', '#bb8fce', '#52be80', '#ec7063', '#5dade2'];
+    // Use chess-standard colors: Player 1 = White, Player 2 = Black
+    // Additional players get distinct colors
+    const colors = ['#ffffff', '#222222', '#ff6b6b', '#4ecdc4', '#f7dc6f', '#bb8fce', '#52be80', '#5dade2'];
     return colors[(playerId - 1) % colors.length] || '#999';
   };
 
@@ -143,14 +340,22 @@ const GameTypeView = () => {
   };
 
   const getPlacementImageUrl = (placement) => {
-    // First try to get current image from piece data
+    // First try to use the saved image_url from placement (player-specific)
+    if (placement.image_url) {
+      return getImageUrl(placement.image_url);
+    }
+    
+    // Fall back to fetching from piece data using player_id to select correct image
     if (placement.piece_id && pieceDataMap[placement.piece_id]) {
       const piece = pieceDataMap[placement.piece_id];
       if (piece.image_location) {
         try {
           const images = JSON.parse(piece.image_location);
           if (Array.isArray(images) && images.length > 0) {
-            const imagePath = images[0];
+            // Use player_id to select the correct image (1-indexed to 0-indexed)
+            const imageIndex = (placement.player_id || 1) - 1;
+            const targetIndex = imageIndex < images.length ? imageIndex : 0;
+            const imagePath = images[targetIndex];
             return imagePath.startsWith('http') ? imagePath : `${ASSET_URL}${imagePath}`;
           }
         } catch (e) {
@@ -158,8 +363,7 @@ const GameTypeView = () => {
         }
       }
     }
-    // Fall back to saved image_url
-    return placement.image_url ? getImageUrl(placement.image_url) : null;
+    return null;
   };
 
   // Helper function to check if a value allows movement at a distance
@@ -305,6 +509,215 @@ const GameTypeView = () => {
 
     return false;
   };
+
+  // Generate auto-generated rules based on game configuration
+  const generateRules = useMemo(() => {
+    if (!game || Object.keys(pieceDataMap).length === 0) return null;
+
+    const rules = [];
+    
+    // Basic game info
+    rules.push({
+      title: "Overview",
+      content: `This is a ${game.player_count}-player strategy game played on a ${game.board_width}×${game.board_height} board. Players take turns moving their pieces, with each player able to make ${game.actions_per_turn || 1} action${(game.actions_per_turn || 1) > 1 ? 's' : ''} per turn.`
+    });
+
+    // Analyze pieces by player
+    const piecesByPlayer = {};
+    const uniquePieces = {};
+    const checkmatePieces = [];
+    const capturePieces = [];
+
+    Object.values(piecePlacements).forEach(placement => {
+      const playerId = placement.player_id;
+      if (!piecesByPlayer[playerId]) {
+        piecesByPlayer[playerId] = [];
+      }
+      piecesByPlayer[playerId].push(placement);
+
+      // Track unique pieces
+      const pieceId = placement.piece_id;
+      if (pieceId && !uniquePieces[pieceId]) {
+        uniquePieces[pieceId] = pieceDataMap[pieceId] || { piece_name: placement.piece_name };
+      }
+
+      // Track pieces that end game
+      if (placement.ends_game_on_checkmate) {
+        checkmatePieces.push({
+          ...placement,
+          pieceData: pieceDataMap[pieceId]
+        });
+      }
+      if (placement.ends_game_on_capture) {
+        capturePieces.push({
+          ...placement,
+          pieceData: pieceDataMap[pieceId]
+        });
+      }
+    });
+
+    // Starting pieces
+    const startingPiecesContent = [];
+    Object.entries(piecesByPlayer).forEach(([playerId, placements]) => {
+      const pieceCounts = {};
+      placements.forEach(p => {
+        const name = p.piece_name || 'Unknown';
+        pieceCounts[name] = (pieceCounts[name] || 0) + 1;
+      });
+      
+      const pieceList = Object.entries(pieceCounts)
+        .map(([name, count]) => count > 1 ? `${count} ${name}s` : `1 ${name}`)
+        .join(', ');
+      
+      startingPiecesContent.push(`Player ${playerId}: ${pieceList} (${placements.length} pieces total)`);
+    });
+
+    if (startingPiecesContent.length > 0) {
+      rules.push({
+        title: "Starting Pieces",
+        content: startingPiecesContent.join('\n')
+      });
+    }
+
+    // Piece movements
+    const pieceDescriptions = [];
+    Object.values(uniquePieces).forEach(piece => {
+      const pieceData = pieceDataMap[piece.id] || piece;
+      const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+      
+      const movementDesc = describePieceMovement(pieceData);
+      const captureDesc = describePieceCapture(pieceData);
+      
+      let description = `**${pieceName}**:\n`;
+      
+      // Movement description
+      if (movementDesc) {
+        description += `• **Movement**: ${movementDesc}.\n`;
+      } else {
+        description += `• **Movement**: Not defined.\n`;
+      }
+      
+      // Attack/Capture description
+      if (captureDesc === "captures the same way it moves") {
+        description += `• **Attack**: Attacks the same way it moves.`;
+      } else if (captureDesc) {
+        description += `• **Attack**: ${captureDesc.charAt(0).toUpperCase() + captureDesc.slice(1)}.`;
+      } else {
+        description += `• **Attack**: Not defined.`;
+      }
+      
+      pieceDescriptions.push(description);
+    });
+
+    if (pieceDescriptions.length > 0) {
+      rules.push({
+        title: "How Pieces Move and Attack",
+        content: pieceDescriptions.join('\n\n')
+      });
+    }
+
+    // Win conditions
+    const winConditions = [];
+
+    // Checkmate condition
+    if (game.mate_condition) {
+      const checkmatePieceNames = [...new Set(checkmatePieces.map(p => p.piece_name || 'designated piece'))];
+      
+      let checkmateDesc = "**Checkmate**: A player wins by checkmating their opponent's ";
+      if (checkmatePieceNames.length > 0) {
+        checkmateDesc += checkmatePieceNames.join(' or ') + '.';
+      } else {
+        checkmateDesc += "key piece.";
+      }
+      
+      checkmateDesc += "\n\n";
+      checkmateDesc += "• **Check**: When a piece can capture your " + (checkmatePieceNames[0] || "key piece") + " on the next move, you are \"in check.\"\n";
+      checkmateDesc += "• **Getting out of check**: You must immediately do one of the following: move your " + (checkmatePieceNames[0] || "key piece") + " to a safe square, block the attacking piece with another piece, or capture the attacking piece.\n";
+      checkmateDesc += "• **Checkmate**: If you cannot escape check by any legal move, you are checkmated and lose the game.\n";
+      checkmateDesc += "\n⚠️ **Important**: Protect your " + (checkmatePieceNames[0] || "key piece") + " from checkmate at all costs!";
+      
+      winConditions.push(checkmateDesc);
+    }
+
+    // Capture condition
+    if (game.capture_condition) {
+      const capturePieceNames = [...new Set(capturePieces.map(p => p.piece_name || 'designated piece'))];
+      
+      let captureDesc = "**Capture to Win**: A player wins by capturing their opponent's ";
+      if (capturePieceNames.length > 0) {
+        captureDesc += capturePieceNames.join(' or ') + '.';
+      } else {
+        captureDesc += "key piece.";
+      }
+      captureDesc += "\n\n⚠️ **Important**: Protect your " + (capturePieceNames[0] || "key piece") + " from being captured!";
+      
+      winConditions.push(captureDesc);
+    }
+
+    // Value/points condition
+    if (game.value_condition) {
+      const valueTitle = game.value_title || 'points';
+      const valueMax = game.value_max || 'the target amount';
+      winConditions.push(`**${valueTitle} Victory**: First player to accumulate ${valueMax} ${valueTitle.toLowerCase()} wins the game.`);
+    }
+
+    // Squares condition
+    if (game.squares_condition) {
+      winConditions.push(`**Territory Control**: Control ${game.squares_count || 'the required number of'} designated squares to win.`);
+    }
+
+    // Hill condition
+    if (game.hill_condition) {
+      winConditions.push(`**King of the Hill**: Occupy the center hill square at (${game.hill_x || 'center'}, ${game.hill_y || 'center'}) for ${game.hill_turns || 3} consecutive turns to win.`);
+    }
+
+    if (winConditions.length > 0) {
+      rules.push({
+        title: "How to Win",
+        content: winConditions.join('\n\n')
+      });
+    } else {
+      rules.push({
+        title: "How to Win",
+        content: "No specific win conditions have been configured for this game type."
+      });
+    }
+
+    // Special squares
+    const specialSquaresDesc = [];
+    
+    if (Object.keys(specialSquares.range).length > 0) {
+      specialSquaresDesc.push(`**Range Squares** (marked with R): ${Object.keys(specialSquares.range).length} squares that can modify piece attack or movement range when occupied.`);
+    }
+    
+    if (Object.keys(specialSquares.promotion).length > 0) {
+      specialSquaresDesc.push(`**Promotion Squares** (marked with P): ${Object.keys(specialSquares.promotion).length} squares where pieces can be promoted to more powerful pieces.`);
+    }
+    
+    if (Object.keys(specialSquares.special).length > 0) {
+      specialSquaresDesc.push(`**Special Squares** (marked with S): ${Object.keys(specialSquares.special).length} squares with custom effects.`);
+    }
+
+    if (specialSquaresDesc.length > 0) {
+      rules.push({
+        title: "Special Squares",
+        content: specialSquaresDesc.join('\n\n')
+      });
+    }
+
+    // General gameplay rules
+    rules.push({
+      title: "General Rules",
+      content: `• Players take turns in order, starting with Player 1.
+• On your turn, you must make ${game.actions_per_turn || 1} move${(game.actions_per_turn || 1) > 1 ? 's' : ''}.
+• You can only move your own pieces.
+• Pieces capture enemy pieces by moving to their square (unless the piece has different capture rules).
+• A piece cannot move through other pieces unless it has jumping ability.
+• The game continues until a win condition is met or players agree to a draw.`
+    });
+
+    return rules;
+  }, [game, piecePlacements, pieceDataMap, specialSquares]);
 
   const renderBoard = () => {
     if (!game) return null;
@@ -569,77 +982,37 @@ const GameTypeView = () => {
           </div>
         </div>
 
-        {game.rules && (
-          <div className={styles["section"]}>
-            <h2>Rules</h2>
-            <p className={styles["rules"]}>{game.rules}</p>
-          </div>
-        )}
-
+        {/* Auto-generated Rules Section */}
         <div className={styles["section"]}>
-          <h2>Win Conditions</h2>
-          <div className={styles["win-conditions"]}>
-            {Boolean(game.mate_condition) && (
-              <div className={styles["condition"]}>
-                <span className={styles["condition-icon"]}>👑</span>
-                <span>Checkmate condition enabled</span>
-              </div>
-            )}
-            {Boolean(game.capture_condition) && (
-              <div className={styles["condition"]}>
-                <span className={styles["condition-icon"]}>⚔️</span>
-                <span>Capture condition enabled</span>
-              </div>
-            )}
-            {Boolean(game.value_condition) && (
-              <div className={styles["condition"]}>
-                <span className={styles["condition-icon"]}>💎</span>
-                <span>Value condition: {game.value_title || 'Reach target value'}</span>
-              </div>
-            )}
-            {Boolean(game.squares_condition) && (
-              <div className={styles["condition"]}>
-                <span className={styles["condition-icon"]}>📍</span>
-                <span>Control {game.squares_count} squares</span>
-              </div>
-            )}
-            {Boolean(game.hill_condition) && (
-              <div className={styles["condition"]}>
-                <span className={styles["condition-icon"]}>⛰️</span>
-                <span>King of the Hill at ({game.hill_x}, {game.hill_y}) for {game.hill_turns} turns</span>
-              </div>
-            )}
-            {!Boolean(game.mate_condition) && !Boolean(game.capture_condition) && !Boolean(game.value_condition) && 
-             !Boolean(game.squares_condition) && !Boolean(game.hill_condition) && (
-              <p className={styles["no-conditions"]}>No win conditions configured</p>
-            )}
-          </div>
-        </div>
-
-        {(Object.keys(specialSquares.range).length > 0 || 
-          Object.keys(specialSquares.promotion).length > 0 || 
-          Object.keys(specialSquares.special).length > 0) && (
-          <div className={styles["section"]}>
-            <h2>Special Squares</h2>
-            <div className={styles["special-squares-info"]}>
-              {Object.keys(specialSquares.range).length > 0 && (
-                <div className={styles["special-type"]}>
-                  <span style={{ color: '#ff8c00', fontWeight: 'bold' }}>Range Squares:</span> {Object.keys(specialSquares.range).length}
+          <h2>📜 Game Rules</h2>
+          {generateRules ? (
+            <div className={styles["rules-container"]}>
+              {generateRules.map((section, index) => (
+                <div key={index} className={styles["rule-section"]}>
+                  <h3 className={styles["rule-title"]}>{section.title}</h3>
+                  <div className={styles["rule-content"]}>
+                    {section.content.split('\n').map((line, lineIndex) => {
+                      // Handle bold text markers
+                      const parts = line.split(/(\*\*[^*]+\*\*)/);
+                      return (
+                        <p key={lineIndex} className={styles["rule-line"]}>
+                          {parts.map((part, partIndex) => {
+                            if (part.startsWith('**') && part.endsWith('**')) {
+                              return <strong key={partIndex}>{part.slice(2, -2)}</strong>;
+                            }
+                            return part;
+                          })}
+                        </p>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
-              {Object.keys(specialSquares.promotion).length > 0 && (
-                <div className={styles["special-type"]}>
-                  <span style={{ color: '#4b0082', fontWeight: 'bold' }}>Promotion Squares:</span> {Object.keys(specialSquares.promotion).length}
-                </div>
-              )}
-              {Object.keys(specialSquares.special).length > 0 && (
-                <div className={styles["special-type"]}>
-                  <span style={{ color: '#ffd700', fontWeight: 'bold' }}>Special Squares:</span> {Object.keys(specialSquares.special).length}
-                </div>
-              )}
+              ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className={styles["loading-rules"]}>Loading rules...</p>
+          )}
+        </div>
       </div>
     </div>
   );

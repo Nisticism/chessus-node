@@ -430,6 +430,32 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error modifying games.pieces:', err.message);
   }
+
+  // Add allow_spectators column to games table
+  try {
+    if (!(await columnExists('games', 'allow_spectators'))) {
+      await runMigration(
+        "ALTER TABLE games ADD COLUMN allow_spectators TINYINT(1) DEFAULT 1",
+        "Add allow_spectators column to games table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding allow_spectators column to games:', err.message);
+  }
+
+  // Add show_piece_helpers column to games table
+  try {
+    if (!(await columnExists('games', 'show_piece_helpers'))) {
+      await runMigration(
+        "ALTER TABLE games ADD COLUMN show_piece_helpers TINYINT(1) DEFAULT 0",
+        "Add show_piece_helpers column to games table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding show_piece_helpers column to games:', err.message);
+  }
   
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');

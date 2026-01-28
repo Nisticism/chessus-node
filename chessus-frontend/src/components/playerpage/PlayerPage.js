@@ -12,6 +12,7 @@ import StandardTextBlock from "../StandardTextBlock/StandardTextBlock";
 import BioSection from "../biosection/BioSection";
 import Divider from "../Divider/Divider";
 import DonorBadge from "../DonorBadge/DonorBadge";
+import MatchHistory from "../matchhistory/MatchHistory";
 // import NotFound from "../notfound/NotFound";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
@@ -348,8 +349,7 @@ const PlayerPage = (props) => {
               <div className={styles["elo-display"]}>
                 <div className={styles["elo-label"]}>ELO Rating</div>
                 <div className={styles["elo-value"]}>
-                  {currentUser && username === currentUser.username ? (currentUser.elo || 1000)
-                  : playerPageUser && playerPageUser.elo ? playerPageUser.elo : 1000}
+                  {playerPageUser?.elo ?? currentUser?.elo ?? 1000}
                 </div>
               </div>
             </div>
@@ -393,6 +393,11 @@ const PlayerPage = (props) => {
                 bio={playerPageUser?.bio}
                 isEditable={false}
                 emptyMessage={currentUser && username === currentUser.username ? "No bio yet. Tell the community about yourself!" : "This user hasn't written a bio yet."}
+              />
+
+              <MatchHistory 
+                userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
+                username={username}
               />
             </div>
           </div>
