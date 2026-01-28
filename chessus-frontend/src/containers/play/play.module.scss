@@ -206,6 +206,11 @@
     transform: translateY(-2px);
   }
 
+  &.own-game {
+    background: #1a3a1a;
+    border: 1px solid #44aa44;
+  }
+
   .match-header {
     display: flex;
     justify-content: space-between;
@@ -234,6 +239,11 @@
     span {
       color: #6c63ff;
       font-weight: 500;
+    }
+
+    .your-game {
+      color: #44ff44;
+      font-weight: 600;
     }
   }
 

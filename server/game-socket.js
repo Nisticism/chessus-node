@@ -85,7 +85,32 @@ function initializeSocket(server) {
 
         // Create the live game in database
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
-        const piecesData = gameType.pieces_string || "[]";
+        
+        // Convert pieces_string from object format {"row,col": {...}} to array format [{x, y, ...}]
+        let piecesArray = [];
+        try {
+          const piecesObj = JSON.parse(gameType.pieces_string || "{}");
+          // If it's already an array, use it directly
+          if (Array.isArray(piecesObj)) {
+            piecesArray = piecesObj;
+          } else {
+            // Convert from object format to array format
+            Object.entries(piecesObj).forEach(([key, pieceData]) => {
+              const [row, col] = key.split(',').map(Number);
+              piecesArray.push({
+                ...pieceData,
+                x: col,  // col is x coordinate
+                y: row,  // row is y coordinate
+                id: `${pieceData.piece_id}_${row}_${col}` // Unique ID for this piece instance
+              });
+            });
+          }
+        } catch (e) {
+          console.error("Error parsing pieces_string:", e);
+          piecesArray = [];
+        }
+        
+        const piecesData = JSON.stringify(piecesArray);
         
         const [result] = await db_pool.query(
           `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id)
@@ -113,7 +138,7 @@ function initializeSocket(server) {
           hostId,
           hostUsername,
           players: [{ id: hostId, username: hostUsername, position: null }],
-          pieces: JSON.parse(piecesData),
+          pieces: piecesArray,
           currentTurn: 1,
           moveHistory: [],
           startTime: null,
@@ -465,8 +490,8 @@ function initializeSocket(server) {
 
     // Get current game state (for reconnection)
     socket.on("getGameState", async (data) => {
-      const { gameId } = data;
-      const gameState = activeGames.get(gameId.toString());
+      const { gameId, userId } = data;
+      let gameState = activeGames.get(gameId.toString());
       
       if (gameState) {
         socket.join(`game-${gameId}`);
@@ -479,16 +504,113 @@ function initializeSocket(server) {
             [gameId]
           );
           
-          if (game) {
-            socket.emit("gameState", {
-              ...game,
-              pieces: JSON.parse(game.pieces || "[]"),
-              moveHistory: JSON.parse(game.other_data || '{"moves":[]}').moves || []
-            });
-          } else {
-            socket.emit("error", { message: "Game not found" });
+          if (!game) {
+            return socket.emit("error", { message: "Game not found" });
           }
+
+          // Get game type
+          const [[gameType]] = await db_pool.query(
+            "SELECT * FROM game_types WHERE id = ?",
+            [game.game_type_id]
+          );
+
+          // Get players with their usernames
+          const [playerRows] = await db_pool.query(
+            `SELECT p.*, u.username FROM players p
+             JOIN users u ON p.user_id = u.id
+             WHERE p.game_id = ?`,
+            [gameId]
+          );
+
+          const players = playerRows.map(p => ({
+            id: p.user_id,
+            username: p.username,
+            position: p.player_position,
+            timeRemaining: p.time_remaining
+          }));
+
+          // Parse pieces from game first, then fall back to game type
+          let pieces = [];
+          try {
+            let rawPieces = JSON.parse(game.pieces || "[]");
+            
+            // If pieces is already an array with x,y properties, use it
+            if (Array.isArray(rawPieces) && rawPieces.length > 0) {
+              pieces = rawPieces;
+            } else if (!Array.isArray(rawPieces) && typeof rawPieces === 'object') {
+              // Convert from object format {"row,col": {...}} to array format
+              Object.entries(rawPieces).forEach(([key, pieceData]) => {
+                const [row, col] = key.split(',').map(Number);
+                pieces.push({
+                  ...pieceData,
+                  x: col,
+                  y: row,
+                  id: `${pieceData.piece_id}_${row}_${col}`
+                });
+              });
+            }
+            
+            // Fall back to game type pieces if still empty
+            if (pieces.length === 0 && gameType?.pieces_string) {
+              const piecesObj = JSON.parse(gameType.pieces_string);
+              if (Array.isArray(piecesObj)) {
+                pieces = piecesObj;
+              } else {
+                Object.entries(piecesObj).forEach(([key, pieceData]) => {
+                  const [row, col] = key.split(',').map(Number);
+                  pieces.push({
+                    ...pieceData,
+                    x: col,
+                    y: row,
+                    id: `${pieceData.piece_id}_${row}_${col}`
+                  });
+                });
+              }
+            }
+          } catch (e) {
+            console.error("Error parsing pieces:", e);
+            pieces = [];
+          }
+
+          // Parse move history
+          let moveHistory = [];
+          try {
+            const otherData = JSON.parse(game.other_data || '{}');
+            moveHistory = otherData.moves || [];
+          } catch {
+            moveHistory = [];
+          }
+
+          // Build player times
+          const playerTimes = {};
+          players.forEach(p => {
+            playerTimes[p.id] = p.timeRemaining ? p.timeRemaining * 60 : (game.turn_length ? game.turn_length * 60 : null);
+          });
+
+          gameState = {
+            id: game.id,
+            gameTypeId: game.game_type_id,
+            gameType: gameType,
+            timeControl: game.turn_length,
+            increment: game.increment || 0,
+            status: game.status,
+            hostId: game.host_id,
+            hostUsername: players.find(p => p.id === game.host_id)?.username || 'Unknown',
+            players: players,
+            pieces: pieces,
+            currentTurn: game.player_turn || 1,
+            moveHistory: moveHistory,
+            startTime: game.start_time,
+            playerTimes: playerTimes
+          };
+
+          // Store in memory for future use
+          activeGames.set(gameId.toString(), gameState);
+          
+          socket.join(`game-${gameId}`);
+          socket.emit("gameState", gameState);
         } catch (error) {
+          console.error("Error loading game state:", error);
           socket.emit("error", { message: "Failed to load game" });
         }
       }

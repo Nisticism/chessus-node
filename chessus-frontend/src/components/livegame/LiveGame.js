@@ -4,6 +4,21 @@ import { useSelector } from "react-redux";
 import { useSocket } from "../../contexts/SocketContext";
 import styles from "./livegame.module.scss";
 
+// Helper to ensure pieces is always an array
+const parsePieces = (pieces) => {
+  if (!pieces) return [];
+  if (Array.isArray(pieces)) return pieces;
+  if (typeof pieces === 'string') {
+    try {
+      const parsed = JSON.parse(pieces);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
 const LiveGame = () => {
   const { gameId } = useParams();
   const navigate = useNavigate();
@@ -11,8 +26,6 @@ const LiveGame = () => {
   
   const { 
     connected, 
-    currentGame,
-    setCurrentGame,
     getGameState,
     joinGame,
     makeMove,
@@ -141,7 +154,10 @@ const LiveGame = () => {
 
       // Check for friendly piece
       const occupyingPiece = pieces.find(p => p.x === newX && p.y === newY);
-      if (occupyingPiece && (occupyingPiece.team === piece.team || occupyingPiece.player === piece.player)) continue;
+      const pieceTeam = piece.player_id || piece.team;
+      const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
+      
+      if (occupyingPiece && occupyingTeam === pieceTeam) continue;
 
       moves.push({
         x: newX,
@@ -157,11 +173,17 @@ const LiveGame = () => {
   const handleSquareClick = useCallback((x, y) => {
     if (!isMyTurn || !gameState || gameState.status === 'completed') return;
 
-    const pieces = gameState.pieces || [];
+    const pieces = parsePieces(gameState.pieces);
     const clickedPiece = pieces.find(p => p.x === x && p.y === y);
 
+    // Check if clicking on own piece (using position or player_id)
+    const isOwnPiece = clickedPiece && (
+      clickedPiece.player_id === currentPlayer?.position ||
+      clickedPiece.team === currentPlayer?.position
+    );
+
     // If clicking on own piece, select it
-    if (clickedPiece && (clickedPiece.team === currentPlayer?.position || clickedPiece.player === currentUser?.id)) {
+    if (isOwnPiece) {
       setSelectedPiece(clickedPiece);
       const moves = calculateValidMoves(
         clickedPiece, 
@@ -190,7 +212,7 @@ const LiveGame = () => {
         setValidMoves([]);
       }
     }
-  }, [isMyTurn, gameState, currentPlayer, currentUser, selectedPiece, validMoves, calculateValidMoves, makeMove, gameId]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, makeMove, gameId]);
 
   // Handle resign
   const handleResign = () => {
@@ -221,31 +243,51 @@ const LiveGame = () => {
     }
   };
 
+  // Check if board should be flipped (player 2 sees board from their perspective)
+  const shouldFlipBoard = useMemo(() => {
+    if (!currentPlayer) return false;
+    return currentPlayer.position === 2;
+  }, [currentPlayer]);
+
+  // Convert display coordinates to game coordinates
+  const toGameCoords = useCallback((displayX, displayY, boardWidth, boardHeight) => {
+    if (shouldFlipBoard) {
+      return {
+        x: boardWidth - 1 - displayX,
+        y: boardHeight - 1 - displayY
+      };
+    }
+    return { x: displayX, y: displayY };
+  }, [shouldFlipBoard]);
+
   // Render board
   const renderBoard = () => {
     if (!gameState) return null;
 
     const boardWidth = gameState.gameType?.board_width || 8;
     const boardHeight = gameState.gameType?.board_height || 8;
-    const pieces = gameState.pieces || [];
+    const pieces = parsePieces(gameState.pieces);
     const lastMove = gameState.moveHistory?.slice(-1)[0];
 
     const squares = [];
 
-    for (let y = 0; y < boardHeight; y++) {
-      for (let x = 0; x < boardWidth; x++) {
-        const isLight = (x + y) % 2 === 0;
-        const piece = pieces.find(p => p.x === x && p.y === y);
-        const isSelected = selectedPiece && selectedPiece.x === x && selectedPiece.y === y;
-        const validMove = validMoves.find(m => m.x === x && m.y === y);
+    for (let displayY = 0; displayY < boardHeight; displayY++) {
+      for (let displayX = 0; displayX < boardWidth; displayX++) {
+        // Convert display position to actual game coordinates
+        const { x: gameX, y: gameY } = toGameCoords(displayX, displayY, boardWidth, boardHeight);
+        
+        const isLight = (gameX + gameY) % 2 === 0;
+        const piece = pieces.find(p => p.x === gameX && p.y === gameY);
+        const isSelected = selectedPiece && selectedPiece.x === gameX && selectedPiece.y === gameY;
+        const validMove = validMoves.find(m => m.x === gameX && m.y === gameY);
         const isLastMove = lastMove && (
-          (lastMove.from?.x === x && lastMove.from?.y === y) ||
-          (lastMove.to?.x === x && lastMove.to?.y === y)
+          (lastMove.from?.x === gameX && lastMove.from?.y === gameY) ||
+          (lastMove.to?.x === gameX && lastMove.to?.y === gameY)
         );
 
         squares.push(
           <div
-            key={`${x}-${y}`}
+            key={`${displayX}-${displayY}`}
             className={`
               ${styles["board-square"]}
               ${isLight ? styles.light : styles.dark}
@@ -254,7 +296,7 @@ const LiveGame = () => {
               ${validMove && validMove.isCapture ? styles["valid-capture"] : ''}
               ${isLastMove ? styles["last-move"] : ''}
             `}
-            onClick={() => handleSquareClick(x, y)}
+            onClick={() => handleSquareClick(gameX, gameY)}
             style={{
               backgroundColor: isLight 
                 ? (currentUser?.light_square_color || '#cad5e8')
@@ -263,8 +305,8 @@ const LiveGame = () => {
           >
             {piece && (
               <div className={styles.piece}>
-                {piece.image ? (
-                  <img src={piece.image} alt={piece.name || 'piece'} />
+                {(piece.image || piece.image_url) ? (
+                  <img src={piece.image || piece.image_url} alt={piece.piece_name || piece.name || 'piece'} />
                 ) : (
                   // Fallback to unicode chess pieces
                   <span>{getPieceSymbol(piece)}</span>
@@ -291,9 +333,8 @@ const LiveGame = () => {
 
   // Get piece symbol (fallback for pieces without images)
   const getPieceSymbol = (piece) => {
-    // This would map piece types to symbols
-    // For now, return a generic piece symbol
-    const team = piece.team || 1;
+    // Use player_id or team to determine piece color
+    const team = piece.player_id || piece.team || 1;
     return team === 1 ? '♙' : '♟';
   };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
@@ -14,12 +14,9 @@ const Play = () => {
   const { 
     connected, 
     openGames, 
-    currentGame,
-    setCurrentGame,
     fetchOpenGames, 
     createGame, 
     joinGame,
-    cancelGame,
     onGameEvent 
   } = useSocket();
 
@@ -31,7 +28,6 @@ const Play = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState(null);
-  const [waitingGame, setWaitingGame] = useState(null);
 
   // Fetch game types on mount
   useEffect(() => {
@@ -48,24 +44,20 @@ const Play = () => {
   // Listen for game events
   useEffect(() => {
     const unsubscribePlayerJoined = onGameEvent("playerJoined", ({ gameId, gameState }) => {
-      if (waitingGame && waitingGame.id === gameId) {
-        // Navigate to the game
-        navigate(`/play/${gameId}`);
-      }
+      // Refresh open games list when someone joins a game
+      fetchOpenGames();
     });
 
     const unsubscribeGameCancelled = onGameEvent("gameCancelled", ({ gameId }) => {
-      if (waitingGame && waitingGame.id === gameId) {
-        setWaitingGame(null);
-        setCurrentGame(null);
-      }
+      // Refresh open games list when a game is cancelled
+      fetchOpenGames();
     });
 
     return () => {
       unsubscribePlayerJoined();
       unsubscribeGameCancelled();
     };
-  }, [onGameEvent, waitingGame, navigate, setCurrentGame]);
+  }, [onGameEvent, fetchOpenGames]);
 
   // Filter game types by search
   const filteredGameTypes = gamesList.filter(game => 
@@ -99,12 +91,8 @@ const Play = () => {
       });
 
       setShowCreateModal(false);
-      setWaitingGame({
-        id: result.gameId,
-        gameTypeName: selectedGameType.game_name,
-        timeControl: timeControlMinutes,
-        increment: incrementSeconds
-      });
+      // Navigate to the game page where host can wait and still browse
+      navigate(`/play/${result.gameId}`);
     } catch (err) {
       setError(err.message || "Failed to create game");
     } finally {
@@ -127,14 +115,6 @@ const Play = () => {
     }
   };
 
-  // Handle canceling a waiting game
-  const handleCancelWaiting = () => {
-    if (waitingGame) {
-      cancelGame(waitingGame.id);
-      setWaitingGame(null);
-    }
-  };
-
   // If not logged in, show login prompt
   if (!currentUser) {
     return (
@@ -153,41 +133,6 @@ const Play = () => {
               Register
             </Link>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  // If waiting for opponent
-  if (waitingGame) {
-    const gameUrl = `${window.location.origin}/play/${waitingGame.id}`;
-    
-    return (
-      <div className={styles["play-container"]}>
-        <div className={styles["play-header"]}>
-          <h1>Play</h1>
-          <div className={styles["connection-status"]}>
-            <span className={`${styles["status-dot"]} ${connected ? styles.connected : ''}`}></span>
-            {connected ? "Connected" : "Connecting..."}
-          </div>
-        </div>
-        
-        <div className={styles["waiting-room"]}>
-          <h2>Waiting for Opponent</h2>
-          <div className={styles["waiting-game-name"]}>{waitingGame.gameTypeName}</div>
-          <div className={styles["waiting-spinner"]}></div>
-          <p className={styles["waiting-message"]}>
-            Share this link with a friend to play:
-          </p>
-          <div className={styles["game-link"]}>
-            <code>{gameUrl}</code>
-          </div>
-          <button 
-            className={`${styles.btn} ${styles["btn-secondary"]}`}
-            onClick={handleCancelWaiting}
-          >
-            Cancel Game
-          </button>
         </div>
       </div>
     );
@@ -258,30 +203,49 @@ const Play = () => {
               </div>
             ) : (
               <div className={styles["open-matches-list"]}>
-                {openGames.map((game) => (
-                  <div key={game.id || game.gameId} className={styles["open-match-card"]}>
-                    <div className={styles["match-header"]}>
-                      <span className={styles["match-game-name"]}>
-                        {game.game_name || game.gameTypeName}
-                      </span>
-                      <span className={styles["match-time-control"]}>
-                        {formatTimeControl(game.turn_length || game.timeControl, game.increment)}
-                      </span>
+                {openGames.map((game) => {
+                  const isOwnGame = game.host_id === currentUser.id;
+                  return (
+                    <div 
+                      key={game.id || game.gameId} 
+                      className={`${styles["open-match-card"]} ${isOwnGame ? styles["own-game"] : ''}`}
+                    >
+                      <div className={styles["match-header"]}>
+                        <span className={styles["match-game-name"]}>
+                          {game.game_name || game.gameTypeName}
+                        </span>
+                        <span className={styles["match-time-control"]}>
+                          {formatTimeControl(game.turn_length || game.timeControl, game.increment)}
+                        </span>
+                      </div>
+                      <div className={styles["match-host"]}>
+                        {isOwnGame ? (
+                          <span className={styles["your-game"]}>Your Game</span>
+                        ) : (
+                          <>Hosted by <span>{game.host_username || game.hostUsername}</span></>
+                        )}
+                      </div>
+                      <div className={styles["match-actions"]}>
+                        {isOwnGame ? (
+                          <button
+                            className={`${styles.btn} ${styles["btn-primary"]} ${styles["btn-small"]}`}
+                            onClick={() => navigate(`/play/${game.id || game.gameId}`)}
+                          >
+                            Return to Game
+                          </button>
+                        ) : (
+                          <button
+                            className={`${styles.btn} ${styles["btn-success"]} ${styles["btn-small"]}`}
+                            onClick={() => handleJoinGame(game.id || game.gameId)}
+                            disabled={isJoining}
+                          >
+                            {isJoining ? "Joining..." : "Join Game"}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className={styles["match-host"]}>
-                      Hosted by <span>{game.host_username || game.hostUsername}</span>
-                    </div>
-                    <div className={styles["match-actions"]}>
-                      <button
-                        className={`${styles.btn} ${styles["btn-success"]} ${styles["btn-small"]}`}
-                        onClick={() => handleJoinGame(game.id || game.gameId)}
-                        disabled={isJoining || (game.host_id === currentUser.id)}
-                      >
-                        {isJoining ? "Joining..." : "Join Game"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
