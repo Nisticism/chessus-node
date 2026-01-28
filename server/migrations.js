@@ -351,6 +351,85 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error adding UNIQUE constraint to piece_capture.piece_id:', err.message);
   }
+
+  // Add status column to games table for live multiplayer
+  try {
+    if (!(await columnExists('games', 'status'))) {
+      await runMigration(
+        "ALTER TABLE games ADD COLUMN status ENUM('waiting', 'ready', 'active', 'completed', 'cancelled') DEFAULT 'waiting'",
+        "Add status column to games table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding status column to games:', err.message);
+  }
+
+  // Add host_id column to games table
+  try {
+    if (!(await columnExists('games', 'host_id'))) {
+      await runMigration(
+        "ALTER TABLE games ADD COLUMN host_id INT UNSIGNED, ADD FOREIGN KEY (host_id) REFERENCES users(id)",
+        "Add host_id column to games table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding host_id column to games:', err.message);
+  }
+
+  // Add winner_id column to games table
+  try {
+    if (!(await columnExists('games', 'winner_id'))) {
+      await runMigration(
+        "ALTER TABLE games ADD COLUMN winner_id INT UNSIGNED, ADD FOREIGN KEY (winner_id) REFERENCES users(id)",
+        "Add winner_id column to games table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding winner_id column to games:', err.message);
+  }
+
+  // Increase size of other_data column in games table for move history
+  try {
+    const [columns] = await db_pool.query(
+      `SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH 
+       FROM information_schema.COLUMNS 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'games' AND COLUMN_NAME = 'other_data'`,
+      [process.env.DB_NAME || 'chessusnode']
+    );
+    
+    if (columns.length > 0 && columns[0].DATA_TYPE !== 'mediumtext') {
+      await runMigration(
+        "ALTER TABLE games MODIFY COLUMN other_data MEDIUMTEXT",
+        "Increase games.other_data to MEDIUMTEXT for move history"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error modifying games.other_data:', err.message);
+  }
+
+  // Increase size of pieces column in games table
+  try {
+    const [columns] = await db_pool.query(
+      `SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH 
+       FROM information_schema.COLUMNS 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'games' AND COLUMN_NAME = 'pieces'`,
+      [process.env.DB_NAME || 'chessusnode']
+    );
+    
+    if (columns.length > 0 && columns[0].DATA_TYPE !== 'mediumtext') {
+      await runMigration(
+        "ALTER TABLE games MODIFY COLUMN pieces MEDIUMTEXT",
+        "Increase games.pieces to MEDIUMTEXT"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error modifying games.pieces:', err.message);
+  }
   
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');

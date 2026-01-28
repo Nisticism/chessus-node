@@ -181,8 +181,8 @@ const getWelcomeEmailContent = (username) => `
   </p>
 
   <div class="button-center">
-    <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/profile/${username}" class="button">View Your Profile</a>
-    <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/play" class="button">Start Playing Now</a>
+    <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/profile/${username}" class="button" style="color: #ffffff; text-decoration: none;">View Your Profile</a>
+    <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/play" class="button" style="color: #ffffff; text-decoration: none;">Start Playing Now</a>
   </div>
 
   <div class="divider"></div>
@@ -225,7 +225,7 @@ const getDonationEmailContent = (username, amount) => `
   </p>
 
   <div class="button-center">
-    <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}" class="button">Visit Squarestrat</a>
+    <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}" class="button" style="color: #ffffff; text-decoration: none;">Visit Squarestrat</a>
   </div>
 
   <div class="divider"></div>

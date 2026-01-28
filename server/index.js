@@ -4,6 +4,7 @@ require("dotenv").config();
 
 const express = require("express");
 const path = require("path");
+const http = require("http");
 
 // const mysql = require("mysql");
 
@@ -17,6 +18,9 @@ const bcrypt = require("bcrypt");
 
 // Email service
 const { sendWelcomeEmail, sendDonationEmail, sendContactEmail } = require("./email-service");
+
+// Socket.io game handler
+const { initializeSocket } = require("./game-socket");
 
 //  Express
 
@@ -2112,6 +2116,14 @@ app.get('/api/*', (req, res) => {
   res.json({ message: "No data to return from this endpoint!" });
 });
 
-app.listen(PORT, () => {
+// Create HTTP server and initialize Socket.io
+const server = http.createServer(app);
+const io = initializeSocket(server);
+
+// Store io instance for use in routes if needed
+app.set('io', io);
+
+server.listen(PORT, () => {
   console.log(`Server listening on ${PORT}`);
+  console.log(`Socket.io ready for connections`);
 });

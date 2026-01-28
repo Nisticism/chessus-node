@@ -23,6 +23,7 @@ import Community from "./containers/community/Community";
 import CommunityHub from "./containers/communityhub/CommunityHub";
 import Leaderboard from "./components/leaderboard/Leaderboard";
 import Play from "./containers/play/Play";
+import LiveGame from "./components/livegame/LiveGame";
 
 import CreateForum from "./components/forum/CreateForum";
 import Forum from "./components/forum/Forum";
@@ -42,6 +43,7 @@ import Contact from "./components/contact/Contact";
 import AdminDashboard from "./components/admindashboard/AdminDashboard";
 import NotFound from './components/notfound/NotFound';
 
+import { SocketProvider } from "./contexts/SocketContext";
 import { clearMessage, resetEdit } from "./actions/general";
 import { initGA, trackPageView } from "./analytics/GoogleAnalytics";
 import "./App.css";
@@ -78,6 +80,7 @@ function App() {
   }, [location, dispatch]);
 
   return (
+    <SocketProvider>
       <div className="app">
         <div className="app-header">
           <Navbar />
@@ -107,6 +110,7 @@ function App() {
             <Route exact path="/media/streams" element={<Streams />} />
             <Route exact path="/create" element={<CreateHub />} />
             <Route exact path="/play" element={<Play />} />
+            <Route exact path="/play/:gameId" element={<LiveGame />} />
             <Route exact path="/chess" element={<ChessBoard />} />
             <Route exact path="/account-deleted" element={<DeletedAccount />} />
             <Route exact path="profile/edit" element={<EditAccount />}  />
@@ -129,6 +133,7 @@ function App() {
           </Routes>
         </div>
       </div>
+    </SocketProvider>
   );
 }
 
