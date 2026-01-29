@@ -179,9 +179,9 @@ const LiveGame = () => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
-    // For player 2, flip the perspective (so "up" is towards player 1)
+    // For player 2, flip the perspective (so "up" is towards player 1 and "left" is towards player 1's left)
     const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
-    const colDiff = toX - fromX;
+    const colDiff = playerPosition === 2 ? (fromX - toX) : (toX - fromX);
 
     // Check directional movement - accept if style is set OR if any directional movement values are present
     const directionalStyle = pieceData.directional_movement_style;
@@ -252,9 +252,9 @@ const LiveGame = () => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
-    // For player 2, flip the perspective
+    // For player 2, flip the perspective (mirror both row and column)
     const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
-    const colDiff = toX - fromX;
+    const colDiff = playerPosition === 2 ? (fromX - toX) : (toX - fromX);
 
     // Check if separate capture fields are defined
     const hasSeparateCaptureFields = pieceData.up_capture || pieceData.down_capture || 
