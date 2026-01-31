@@ -93,7 +93,7 @@ async function updateEloRatings(winnerId, loserId, isDraw = false) {
  * Randomize piece positions based on mode
  * @param {Array} pieces - Array of piece objects with x, y, player_id
  * @param {Array} players - Array of player objects with position assignments
- * @param {string} mode - 'mirrored', 'independent', or 'full'
+ * @param {string} mode - 'mirrored', 'independent', 'shared', or 'full'
  * @param {Object} gameType - Game type object with board dimensions
  * @returns {Array} - Array of pieces with randomized positions
  */
@@ -110,6 +110,9 @@ function randomizePiecePositions(pieces, players, mode, gameType) {
   } else if (mode === 'independent') {
     // Independent randomization - each player randomized separately
     return randomizeIndependent(pieces);
+  } else if (mode === 'shared') {
+    // Shared randomization - all pieces redistributed among all starting squares
+    return randomizeShared(pieces);
   }
   
   return pieces; // No randomization
@@ -247,6 +250,30 @@ function randomizeIndependent(pieces) {
     });
   });
 
+  return pieces;
+}
+
+/**
+ * Shared randomization - all pieces redistributed among all starting squares
+ */
+function randomizeShared(pieces) {
+  // Collect all starting square coordinates from all pieces
+  const allStartingSquares = pieces.map(p => ({ x: p.x, y: p.y }));
+  
+  // Shuffle all the coordinates using Fisher-Yates algorithm
+  for (let i = allStartingSquares.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allStartingSquares[i], allStartingSquares[j]] = [allStartingSquares[j], allStartingSquares[i]];
+  }
+  
+  // Assign shuffled positions to all pieces (regardless of player)
+  pieces.forEach((piece, index) => {
+    const oldPos = { x: piece.x, y: piece.y };
+    piece.x = allStartingSquares[index].x;
+    piece.y = allStartingSquares[index].y;
+    console.log(`Shared - ${piece.piece_name} (player ${piece.player_id}): (${oldPos.x},${oldPos.y}) -> (${piece.x},${piece.y})`);
+  });
+  
   return pieces;
 }
 

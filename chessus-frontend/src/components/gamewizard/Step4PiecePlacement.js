@@ -17,7 +17,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
   const [draggedPiece, setDraggedPiece] = useState(null);
-  const [randomizationMode, setRandomizationMode] = useState('none'); // 'none', 'mirrored', 'independent', 'full'
+  const [randomizationMode, setRandomizationMode] = useState('none'); // 'none', 'mirrored', 'independent', 'shared', 'full'
   const [pieceDataMap, setPieceDataMap] = useState({});
   const [hoveredSquare, setHoveredSquare] = useState(null);
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
@@ -781,6 +781,16 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             />
             <span>Independent Randomization</span>
             <p className={styles["radio-hint"]}>Each player's pieces randomized independently within their starting squares</p>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="randomized"
+              checked={randomizationMode === 'shared'}
+              onChange={() => handleRandomizedChange('shared')}
+            />
+            <span>Shared Starting Squares</span>
+            <p className={styles["radio-hint"]}>All pieces from both players redistributed randomly across all starting squares</p>
           </label>
           <label className={styles["radio-label"]}>
             <input
