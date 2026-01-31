@@ -693,6 +693,10 @@ const LiveGame = () => {
 
   // Handle rematch / new game
   const handlePlayAgain = () => {
+    // Save the last played game type to localStorage
+    if (gameState?.gameTypeId) {
+      localStorage.setItem('lastPlayedGameType', gameState.gameTypeId.toString());
+    }
     navigate("/play");
   };
 
@@ -1123,8 +1127,8 @@ const LiveGame = () => {
 
       {/* Game Over Modal */}
       {showGameOver && gameOverData && (
-        <div className={styles["game-over-overlay"]}>
-          <div className={styles["game-over-modal"]}>
+        <div className={styles["game-over-overlay"]} onClick={() => setShowGameOver(false)}>
+          <div className={styles["game-over-modal"]} onClick={(e) => e.stopPropagation()}>
             <h2>Game Over</h2>
             <div className={`
               ${styles.result}
@@ -1143,9 +1147,9 @@ const LiveGame = () => {
             <div className={styles["game-over-actions"]}>
               <button 
                 className={`${styles.btn} ${styles["btn-secondary"]}`}
-                onClick={() => setShowGameOver(false)}
+                onClick={() => navigate('/')}
               >
-                View Board
+                View Home
               </button>
               <button 
                 className={`${styles.btn} ${styles["btn-primary"]}`}

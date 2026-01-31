@@ -90,6 +90,167 @@ async function updateEloRatings(winnerId, loserId, isDraw = false) {
 }
 
 /**
+ * Randomize piece positions based on mode
+ * @param {Array} pieces - Array of piece objects with x, y, player_id
+ * @param {Array} players - Array of player objects with position assignments
+ * @param {string} mode - 'mirrored', 'independent', or 'full'
+ * @param {Object} gameType - Game type object with board dimensions
+ * @returns {Array} - Array of pieces with randomized positions
+ */
+function randomizePiecePositions(pieces, players, mode, gameType) {
+  console.log(`Randomizing pieces with mode: ${mode}`);
+  console.log('Original pieces before randomization:', pieces.map(p => ({ piece_name: p.piece_name, player_id: p.player_id, x: p.x, y: p.y })));
+  
+  if (mode === 'full') {
+    // Full board randomization - place all pieces randomly on the board
+    return randomizeFullBoard(pieces, gameType);
+  } else if (mode === 'mirrored') {
+    // Mirrored randomization - both players get same pattern (Chess960-style)
+    return randomizeMirrored(pieces, players, gameType);
+  } else if (mode === 'independent') {
+    // Independent randomization - each player randomized separately
+    return randomizeIndependent(pieces);
+  }
+  
+  return pieces; // No randomization
+}
+
+/**
+ * Full board randomization - pieces placed anywhere
+ */
+function randomizeFullBoard(pieces, gameType) {
+  const boardWidth = gameType.board_width || 8;
+  const boardHeight = gameType.board_height || 8;
+  const occupiedSquares = new Set();
+  
+  return pieces.map(piece => {
+    let x, y;
+    let attempts = 0;
+    const maxAttempts = boardWidth * boardHeight * 2;
+    
+    // Find an unoccupied square
+    do {
+      x = Math.floor(Math.random() * boardWidth);
+      y = Math.floor(Math.random() * boardHeight);
+      attempts++;
+    } while (occupiedSquares.has(`${x},${y}`) && attempts < maxAttempts);
+    
+    occupiedSquares.add(`${x},${y}`);
+    console.log(`Full randomization: ${piece.piece_name} (player ${piece.player_id}) -> (${x},${y})`);
+    
+    return { ...piece, x, y };
+  });
+}
+
+/**
+ * Mirrored randomization - maintain symmetry between players
+ */
+function randomizeMirrored(pieces, players, gameType) {
+  const boardHeight = gameType.board_height || 8;
+  
+  // Group pieces by player
+  const piecesByPlayer = {};
+  pieces.forEach(piece => {
+    if (!piecesByPlayer[piece.player_id]) {
+      piecesByPlayer[piece.player_id] = [];
+    }
+    piecesByPlayer[piece.player_id].push(piece);
+  });
+  
+  const playerIds = Object.keys(piecesByPlayer);
+  if (playerIds.length !== 2) {
+    console.warn('Mirrored randomization requires exactly 2 players, falling back to independent');
+    return randomizeIndependent(pieces);
+  }
+  
+  const player1Pieces = piecesByPlayer[playerIds[0]];
+  const player2Pieces = piecesByPlayer[playerIds[1]];
+  
+  // Validate that boards are symmetric
+  if (player1Pieces.length !== player2Pieces.length) {
+    console.warn('Players have different number of pieces, falling back to independent');
+    return randomizeIndependent(pieces);
+  }
+  
+  // Check if pieces are at mirrored positions (basic validation)
+  const p1Positions = player1Pieces.map(p => `${p.x},${boardHeight - 1 - p.y}`).sort();
+  const p2Positions = player2Pieces.map(p => `${p.x},${p.y}`).sort();
+  const isSymmetric = p1Positions.every((pos, idx) => pos === p2Positions[idx]);
+  
+  if (!isSymmetric) {
+    console.warn('Board is not symmetric, falling back to independent');
+    return randomizeIndependent(pieces);
+  }
+  
+  // Get starting squares for player 1
+  const player1Squares = player1Pieces.map(p => ({ x: p.x, y: p.y }));
+  
+  // Shuffle player 1's squares
+  for (let i = player1Squares.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [player1Squares[i], player1Squares[j]] = [player1Squares[j], player1Squares[i]];
+  }
+  
+  // Apply to player 1 and mirror to player 2
+  const newPieces = [];
+  
+  player1Pieces.forEach((piece, index) => {
+    const newSquare = player1Squares[index];
+    newPieces.push({ ...piece, x: newSquare.x, y: newSquare.y });
+    console.log(`Player 1 - ${piece.piece_name}: (${piece.x},${piece.y}) -> (${newSquare.x},${newSquare.y})`);
+  });
+  
+  player2Pieces.forEach((piece, index) => {
+    // Mirror the position: if player 1 is at row 0, player 2 mirrors at row (boardHeight - 1)
+    const player1Square = player1Squares[index];
+    const mirroredY = boardHeight - 1 - player1Square.y;
+    const mirroredX = player1Square.x;
+    newPieces.push({ ...piece, x: mirroredX, y: mirroredY });
+    console.log(`Player 2 - ${piece.piece_name}: (${piece.x},${piece.y}) -> (${mirroredX},${mirroredY}) [mirrored from (${player1Square.x},${player1Square.y})]`);
+  });
+  
+  return newPieces;
+}
+
+/**
+ * Independent randomization - each player's pieces shuffled within their squares
+ */
+function randomizeIndependent(pieces) {
+  // Group pieces by player_id
+  const piecesByPlayer = {};
+  pieces.forEach(piece => {
+    if (!piecesByPlayer[piece.player_id]) {
+      piecesByPlayer[piece.player_id] = [];
+    }
+    piecesByPlayer[piece.player_id].push(piece);
+  });
+
+  // For each player, get their starting squares and randomize pieces within them
+  Object.keys(piecesByPlayer).forEach(playerId => {
+    const playerPieces = piecesByPlayer[playerId];
+    
+    // Get all starting square coordinates for this player
+    const startingSquares = playerPieces.map(p => ({ x: p.x, y: p.y }));
+    
+    // Shuffle the coordinates using Fisher-Yates algorithm
+    for (let i = startingSquares.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [startingSquares[i], startingSquares[j]] = [startingSquares[j], startingSquares[i]];
+    }
+    
+    // Assign shuffled positions back to pieces
+    playerPieces.forEach((piece, index) => {
+      const oldPos = { x: piece.x, y: piece.y };
+      piece.x = startingSquares[index].x;
+      piece.y = startingSquares[index].y;
+      console.log(`Player ${playerId} - ${piece.piece_name}: (${oldPos.x},${oldPos.y}) -> (${piece.x},${piece.y})`);
+    });
+  });
+
+  return pieces;
+}
+
+/**
  * Initialize Socket.io with the HTTP server
  */
 function initializeSocket(server) {
@@ -551,6 +712,27 @@ function initializeSocket(server) {
         gameState.players.forEach(player => {
           gameState.playerTimes[player.id] = timeInSeconds;
         });
+
+        // Check if randomized starting positions is enabled
+        if (gameState.gameType.randomized_starting_positions) {
+          try {
+            const randomConfig = JSON.parse(gameState.gameType.randomized_starting_positions);
+            const mode = randomConfig.mode || (randomConfig.enabled === true ? 'independent' : 'none');
+            
+            if (mode && mode !== 'none') {
+              console.log(`Randomizing starting positions for game ${gameId} with mode: ${mode}`);
+              gameState.pieces = randomizePiecePositions(gameState.pieces, gameState.players, mode, gameState.gameType);
+              
+              // Update the database with randomized pieces
+              await db_pool.query(
+                "UPDATE games SET pieces = ? WHERE id = ?",
+                [JSON.stringify(gameState.pieces), gameId]
+              );
+            }
+          } catch (err) {
+            console.error("Error parsing randomized_starting_positions:", err);
+          }
+        }
 
         // Update game status to ready
         gameState.status = 'ready';

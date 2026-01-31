@@ -1246,6 +1246,18 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       return res.status(400).send({ message: "Game name must be at least 3 characters" });
     }
 
+    // Log the randomized_starting_positions length if present
+    if (gameData.randomized_starting_positions) {
+      console.log('randomized_starting_positions length:', gameData.randomized_starting_positions.length);
+      if (gameData.randomized_starting_positions.length > 1000) {
+        console.warn('WARNING: randomized_starting_positions exceeds 1000 characters!');
+        return res.status(400).send({ 
+          message: "Randomized starting positions data is too large. Please simplify your game configuration.",
+          length: gameData.randomized_starting_positions.length 
+        });
+      }
+    }
+
     // Build the SQL query
     const sql = `
       INSERT INTO game_types (
@@ -1319,7 +1331,17 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 
   } catch (err) {
     console.error("Error in /api/games/create:", err);
-    res.status(500).send({ message: "Failed to create game", err: err.message });
+    console.error("Error details:", {
+      message: err.message,
+      code: err.code,
+      sqlMessage: err.sqlMessage,
+      sql: err.sql
+    });
+    res.status(500).send({ 
+      message: "Failed to create game", 
+      error: err.message,
+      details: err.sqlMessage || err.message 
+    });
   }
 });
 

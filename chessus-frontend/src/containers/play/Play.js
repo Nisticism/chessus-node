@@ -38,6 +38,17 @@ const Play = () => {
     dispatch(getGames());
   }, [dispatch]);
 
+  // Select last played game type if available
+  useEffect(() => {
+    const lastPlayedGameTypeId = localStorage.getItem('lastPlayedGameType');
+    if (lastPlayedGameTypeId && gamesList?.length > 0) {
+      const lastGame = gamesList.find(g => g.id === parseInt(lastPlayedGameTypeId));
+      if (lastGame) {
+        setSelectedGameType(lastGame);
+      }
+    }
+  }, [gamesList]);
+
   // Fetch open games when connected
   useEffect(() => {
     if (connected) {
@@ -361,20 +372,6 @@ const Play = () => {
                     {selectedGameType.descript}
                   </div>
                 )}
-
-                <div className={styles["host-game-section"]}>
-                  <h3>Host a Match</h3>
-                  <p style={{ color: '#888', marginBottom: '16px' }}>
-                    Create a match and wait for an opponent to join. You can customize the time controls.
-                  </p>
-                  <button
-                    className={`${styles.btn} ${styles["btn-primary"]}`}
-                    onClick={() => setShowCreateModal(true)}
-                    disabled={!connected}
-                  >
-                    Create Match
-                  </button>
-                </div>
               </>
             )}
           </div>

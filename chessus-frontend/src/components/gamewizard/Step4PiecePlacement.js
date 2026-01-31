@@ -17,7 +17,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
   const [draggedPiece, setDraggedPiece] = useState(null);
-  const [useRandomizedPositions, setUseRandomizedPositions] = useState(false);
+  const [randomizationMode, setRandomizationMode] = useState('none'); // 'none', 'mirrored', 'independent', 'full'
   const [pieceDataMap, setPieceDataMap] = useState({});
   const [hoveredSquare, setHoveredSquare] = useState(null);
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
@@ -25,6 +25,53 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const initializedRef = useRef(false);
   const [isMobile, setIsMobile] = useState(false);
   const longPressTimeoutRef = useRef(null);
+  
+  // Check if the board setup is symmetric (for mirrored randomization)
+  const isBoardSymmetric = useMemo(() => {
+    const boardHeight = gameData.board_height || 8;
+    const playerCount = gameData.player_count || 2;
+    
+    if (playerCount !== 2) {
+      return false; // Mirrored only works for 2 players
+    }
+    
+    // Group pieces by player
+    const piecesByPlayer = {};
+    Object.values(piecePlacements).forEach(piece => {
+      if (!piecesByPlayer[piece.player_id]) {
+        piecesByPlayer[piece.player_id] = [];
+      }
+      piecesByPlayer[piece.player_id].push(piece);
+    });
+    
+    const playerIds = Object.keys(piecesByPlayer);
+    if (playerIds.length !== 2) {
+      return false; // Need exactly 2 players with pieces
+    }
+    
+    const player1Pieces = piecesByPlayer[playerIds[0]];
+    const player2Pieces = piecesByPlayer[playerIds[1]];
+    
+    // Must have same number of pieces
+    if (player1Pieces.length !== player2Pieces.length) {
+      return false;
+    }
+    
+    // Check if pieces are at mirrored positions with same piece types
+    for (let i = 0; i < player1Pieces.length; i++) {
+      const p1 = player1Pieces[i];
+      const mirroredY = boardHeight - 1 - p1.y;
+      
+      // Find if there's a player 2 piece at the mirrored position
+      const p2 = player2Pieces.find(p => p.x === p1.x && p.y === mirroredY);
+      
+      if (!p2 || p2.piece_id !== p1.piece_id) {
+        return false; // No matching piece at mirrored position
+      }
+    }
+    
+    return true;
+  }, [piecePlacements, gameData.board_height, gameData.player_count]);
   
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -78,17 +125,20 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       console.error("Error parsing pieces_string:", error);
     }
 
-    // Parse randomized_starting_positions to check if it's enabled
+    // Parse randomized_starting_positions to get mode
     try {
       if (gameData.randomized_starting_positions) {
         const parsed = JSON.parse(gameData.randomized_starting_positions);
-        if (parsed && parsed.enabled === true) {
-          setUseRandomizedPositions(true);
+        if (parsed && parsed.mode) {
+          setRandomizationMode(parsed.mode);
+        } else if (parsed && parsed.enabled === true) {
+          // Legacy support: enabled: true means 'independent'
+          setRandomizationMode('independent');
         }
       }
     } catch (error) {
-      // If it's not JSON, treat it as legacy string data
-      setUseRandomizedPositions(false);
+      // If it's not JSON, treat it as legacy
+      setRandomizationMode('none');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -354,24 +404,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     setHoveredPiecePosition(null);
   }, []);
 
-  const handleRandomizedChange = (useRandomized) => {
-    setUseRandomizedPositions(useRandomized);
+  const handleRandomizedChange = (mode) => {
+    setRandomizationMode(mode);
     
-    if (useRandomized) {
-      // Save current board state with randomization enabled
-      const randomizedData = {
-        enabled: true,
-        startingPositions: piecePlacements
-      };
-      updateGameData({ randomized_starting_positions: JSON.stringify(randomizedData) });
-    } else {
-      // Disable randomization
-      const randomizedData = {
-        enabled: false,
-        startingPositions: {}
-      };
-      updateGameData({ randomized_starting_positions: JSON.stringify(randomizedData) });
-    }
+    // Store the randomization mode
+    const randomizedData = {
+      mode: mode  // 'none', 'mirrored', 'independent', 'full'
+    };
+    updateGameData({ randomized_starting_positions: JSON.stringify(randomizedData) });
   };
 
   // Helper function to get placement image URL with fallback
@@ -711,21 +751,46 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             <input
               type="radio"
               name="randomized"
-              checked={!useRandomizedPositions}
-              onChange={() => handleRandomizedChange(false)}
+              checked={randomizationMode === 'none'}
+              onChange={() => handleRandomizedChange('none')}
             />
             <span>Fixed Starting Positions</span>
             <p className={styles["radio-hint"]}>Pieces always start in the positions configured above</p>
+          </label>
+          <label className={styles["radio-label"]} style={{ opacity: isBoardSymmetric ? 1 : 0.5 }}>
+            <input
+              type="radio"
+              name="randomized"
+              checked={randomizationMode === 'mirrored'}
+              onChange={() => handleRandomizedChange('mirrored')}
+              disabled={!isBoardSymmetric}
+            />
+            <span>Mirrored Randomization (Chess960-style)</span>
+            <p className={styles["radio-hint"]}>
+              {isBoardSymmetric 
+                ? "Both players get the same random configuration, maintaining mirror symmetry. Fair and balanced."
+                : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups"}
+            </p>
           </label>
           <label className={styles["radio-label"]}>
             <input
               type="radio"
               name="randomized"
-              checked={useRandomizedPositions}
-              onChange={() => handleRandomizedChange(true)}
+              checked={randomizationMode === 'independent'}
+              onChange={() => handleRandomizedChange('independent')}
             />
-            <span>Randomized Starting Positions</span>
-            <p className={styles["radio-hint"]}>Pieces will be randomly placed each game (like Chess960)</p>
+            <span>Independent Randomization</span>
+            <p className={styles["radio-hint"]}>Each player's pieces randomized independently within their starting squares</p>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="randomized"
+              checked={randomizationMode === 'full'}
+              onChange={() => handleRandomizedChange('full')}
+            />
+            <span>Full Board Randomization</span>
+            <p className={styles["radio-hint"]}>Pieces placed randomly anywhere on the board. Maximum chaos!</p>
           </label>
         </div>
       </div>
