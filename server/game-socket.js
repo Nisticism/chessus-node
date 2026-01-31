@@ -93,7 +93,7 @@ async function updateEloRatings(winnerId, loserId, isDraw = false) {
  * Randomize piece positions based on mode
  * @param {Array} pieces - Array of piece objects with x, y, player_id
  * @param {Array} players - Array of player objects with position assignments
- * @param {string} mode - 'mirrored', 'independent', 'shared', or 'full'
+ * @param {string} mode - 'mirrored', 'backrow', 'independent', 'shared', or 'full'
  * @param {Object} gameType - Game type object with board dimensions
  * @returns {Array} - Array of pieces with randomized positions
  */
@@ -105,8 +105,11 @@ function randomizePiecePositions(pieces, players, mode, gameType) {
     // Full board randomization - place all pieces randomly on the board
     return randomizeFullBoard(pieces, gameType);
   } else if (mode === 'mirrored') {
-    // Mirrored randomization - both players get same pattern (Chess960-style)
+    // Mirrored randomization - both players get same pattern (all pieces)
     return randomizeMirrored(pieces, players, gameType);
+  } else if (mode === 'backrow') {
+    // Chess960-style - only back row randomized in mirrored fashion
+    return randomizeBackRow(pieces, players, gameType);
   } else if (mode === 'independent') {
     // Independent randomization - each player randomized separately
     return randomizeIndependent(pieces);
@@ -213,6 +216,79 @@ function randomizeMirrored(pieces, players, gameType) {
   });
   
   return newPieces;
+}
+
+/**
+ * Chess960-style back row randomization - only the back row is randomized in mirrored fashion
+ */
+function randomizeBackRow(pieces, players, gameType) {
+  const boardHeight = gameType.board_height || 8;
+  
+  // Group pieces by player
+  const piecesByPlayer = {};
+  pieces.forEach(piece => {
+    if (!piecesByPlayer[piece.player_id]) {
+      piecesByPlayer[piece.player_id] = [];
+    }
+    piecesByPlayer[piece.player_id].push(piece);
+  });
+  
+  const playerIds = Object.keys(piecesByPlayer);
+  if (playerIds.length !== 2) {
+    console.warn('Back row randomization requires exactly 2 players, falling back to independent');
+    return randomizeIndependent(pieces);
+  }
+  
+  const player1Pieces = piecesByPlayer[playerIds[0]];
+  const player2Pieces = piecesByPlayer[playerIds[1]];
+  
+  // Find the back row for each player (row with most pieces or furthest from center)
+  const player1Rows = {};
+  player1Pieces.forEach(p => {
+    player1Rows[p.y] = (player1Rows[p.y] || 0) + 1;
+  });
+  const player1BackRow = Object.keys(player1Rows).reduce((a, b) => 
+    player1Rows[a] > player1Rows[b] ? a : b
+  );
+  
+  const player2Rows = {};
+  player2Pieces.forEach(p => {
+    player2Rows[p.y] = (player2Rows[p.y] || 0) + 1;
+  });
+  const player2BackRow = Object.keys(player2Rows).reduce((a, b) => 
+    player2Rows[a] > player2Rows[b] ? a : b
+  );
+  
+  console.log(`Player 1 back row: ${player1BackRow}, Player 2 back row: ${player2BackRow}`);
+  
+  // Get back row pieces for player 1
+  const player1BackRowPieces = player1Pieces.filter(p => p.y === parseInt(player1BackRow));
+  const player2BackRowPieces = player2Pieces.filter(p => p.y === parseInt(player2BackRow));
+  
+  // Get their x coordinates (column positions)
+  const backRowXPositions = player1BackRowPieces.map(p => p.x);
+  
+  // Shuffle the x positions using Fisher-Yates
+  for (let i = backRowXPositions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [backRowXPositions[i], backRowXPositions[j]] = [backRowXPositions[j], backRowXPositions[i]];
+  }
+  
+  // Apply shuffled positions to player 1 back row
+  player1BackRowPieces.forEach((piece, index) => {
+    const oldX = piece.x;
+    piece.x = backRowXPositions[index];
+    console.log(`Player 1 back row - ${piece.piece_name}: (${oldX},${piece.y}) -> (${piece.x},${piece.y})`);
+  });
+  
+  // Apply same shuffle pattern to player 2 (mirrored)
+  player2BackRowPieces.forEach((piece, index) => {
+    const oldX = piece.x;
+    piece.x = backRowXPositions[index];
+    console.log(`Player 2 back row - ${piece.piece_name}: (${oldX},${piece.y}) -> (${piece.x},${piece.y})`);
+  });
+  
+  return pieces;
 }
 
 /**

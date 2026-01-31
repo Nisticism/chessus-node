@@ -17,7 +17,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
   const [draggedPiece, setDraggedPiece] = useState(null);
-  const [randomizationMode, setRandomizationMode] = useState('none'); // 'none', 'mirrored', 'independent', 'shared', 'full'
+  const [randomizationMode, setRandomizationMode] = useState('none'); // 'none', 'mirrored', 'backrow', 'independent', 'shared', 'full'
   const [pieceDataMap, setPieceDataMap] = useState({});
   const [hoveredSquare, setHoveredSquare] = useState(null);
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
@@ -797,10 +797,25 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               onChange={() => handleRandomizedChange('mirrored')}
               disabled={!isBoardSymmetric}
             />
-            <span>Mirrored Randomization (Chess960-style)</span>
+            <span>Mirrored Randomization</span>
             <p className={styles["radio-hint"]}>
               {isBoardSymmetric 
-                ? "Both players get the same random configuration, maintaining mirror symmetry. Fair and balanced."
+                ? "Both players get the same random configuration for all pieces, maintaining mirror symmetry."
+                : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups"}
+            </p>
+          </label>
+          <label className={styles["radio-label"]} style={{ opacity: isBoardSymmetric ? 1 : 0.5 }}>
+            <input
+              type="radio"
+              name="randomized"
+              checked={randomizationMode === 'backrow'}
+              onChange={() => handleRandomizedChange('backrow')}
+              disabled={!isBoardSymmetric}
+            />
+            <span>Chess960-style (Back Row Only)</span>
+            <p className={styles["radio-hint"]}>
+              {isBoardSymmetric 
+                ? "Only the back row is randomized in a mirrored fashion. Other pieces (like pawns) stay in place. True Chess960!"
                 : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups"}
             </p>
           </label>
