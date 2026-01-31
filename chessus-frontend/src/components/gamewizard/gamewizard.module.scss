@@ -367,6 +367,29 @@
     max-width: 90%;
     max-height: 90%;
   }
+
+  // Mobile modal adjustments
+  .modal-content {
+    width: 95%;
+    max-height: 85vh;
+    margin: 10px;
+  }
+
+  .modal-header {
+    padding: 15px;
+    
+    h2 {
+      font-size: 20px;
+    }
+  }
+
+  .modal-body {
+    padding: 15px;
+  }
+
+  .modal-footer {
+    padding: 15px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -387,6 +410,30 @@
   .placement-board {
     max-width: calc(100vw - 30px) !important;
     padding: 5px !important;
+  }
+
+  // Small mobile modal adjustments
+  .modal-content {
+    width: 98%;
+    max-height: 90vh;
+    margin: 5px;
+  }
+
+  .modal-header {
+    padding: 12px;
+    
+    h2 {
+      font-size: 18px;
+    }
+  }
+
+  .modal-body {
+    padding: 12px;
+  }
+
+  .modal-footer {
+    padding: 12px;
+    flex-wrap: wrap;
   }
 }
 
@@ -706,8 +753,24 @@
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 15px;
   max-height: 400px;
-  overflow-y: hidden;
+  overflow-y: auto;
   padding: 10px;
+  
+  // Smooth scrolling on mobile
+  -webkit-overflow-scrolling: touch;
+  
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+  }
 }
 
 .piece-item {

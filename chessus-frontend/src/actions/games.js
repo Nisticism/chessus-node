@@ -10,7 +10,7 @@ import {
   SET_MESSAGE,
 } from "./types";
 import { getErrorMessage } from "../helpers/error-handler";
-import axios from "axios";
+import axios from "../services/axios-interceptor";
 import API_URL from "../global/global";
 import authHeader from "../services/auth-header";
 

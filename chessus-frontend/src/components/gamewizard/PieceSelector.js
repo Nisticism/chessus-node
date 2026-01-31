@@ -47,8 +47,9 @@ const PieceSelector = ({
     } else {
       const term = searchTerm.toLowerCase();
       const filtered = pieces.filter(piece => 
-        piece.piece_name.toLowerCase().includes(term) ||
-        piece.id.toString().includes(term) ||
+        (piece.piece_name && piece.piece_name.toLowerCase().includes(term)) ||
+        (piece.id && piece.id.toString().includes(term)) ||
+        (piece.piece_id && piece.piece_id.toString().includes(term)) ||
         (piece.piece_description && piece.piece_description.toLowerCase().includes(term))
       );
       // When searching, show all matching results
