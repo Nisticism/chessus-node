@@ -152,88 +152,110 @@
 
 
 
-// @media screen and (max-width: 912px) {
+// Mobile responsive styles
+@media screen and (max-width: 912px) {
+  .container {
+    display: block;
+    padding: 15px;
+  }
+  
+  .game-form {
+    width: 100%;
+    margin: 20px 0px;
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+  }
 
-//   .game-board {
-//     height: max(90vw, 300px);
-//     width: max(90vw, 300px);
-//     margin-left: auto;
-//     margin-right: auto;
-//     margin-top: 20px;
-//     margin-bottom: 20px;
-//     padding: 15px;
-//     border: 2px solid rgb(202, 213, 232);
-//   }
-  
-//   .wrapper {
-//     width: 100%;
-//     display: flex;
-//     justify-content: center;
-//   }
-  
-//   .container {
-//     display: block;
-//   }
-  
-//   .game-form {
-//     width: 100%;
-//     margin: 20px 0px;
-//     align-items: center;
-//     display: flex;
-//     flex-direction: column;
-//   }
-  
-//   .game-description {
-//     min-height: 200px;
-//     max-width: 400px;
-//   }
-  
-//   .game-validation {
-//     color: rgb(237, 93, 45);
-//     font-size: 14px;
-//     padding: 5px;
-//     max-width: 400px;
-//   }
-  
-//   input {
-//     width: 90%;
-//     margin: 5px 5px;
-//     padding: 5px 5px;
-//     max-width: 400px;
-//   }
-  
-//   textarea {
-//     width: 90%;
-//     margin: 5px 5px;
-//     padding: 5px 5px;
-//     max-width: 300px;
-//   }
-  
-//   label {
-//     padding: 5px 5px;
-//     max-width: 400px;
-//   }
+  .game-create-input,
+  .game-create-textarea,
+  .game-validation,
+  .conditions-container {
+    min-width: auto;
+    max-width: 100%;
+    width: 100%;
+  }
 
-//   .game-create-tips {
-//     margin-left: auto;
-//     margin-right: auto;
-//   }
+  .game-create-input {
+    padding: 10px;
+    font-size: 16px;
+  }
 
-//   .checkbox-label {
-//     max-width: 350px;
-//     padding: 5px 5px;
-//   }
-// }
+  .game-create-textarea {
+    min-height: 150px;
+    padding: 10px;
+  }
+  
+  .game-board {
+    height: max(90vw, 300px);
+    width: max(90vw, 300px);
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 2px solid rgb(202, 213, 232);
+  }
 
-// @media screen and (max-width: 600px) {
-//   .game-board {
-//     height: max(85vw, 300px);
-//     width: max(85vw, 300px);
-//     margin-left: auto;
-//     margin-right: auto;
-//     margin-top: 20px;
-//     margin-bottom: 20px;
-//     padding: 15px;
-//     border: 2px solid rgb(202, 213, 232);
-//   }
-// }
+  .game-create-tips {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 100%;
+    padding: 15px;
+  }
+
+  .checkbox-container {
+    padding-right: 20px;
+    padding-left: 20px;
+    max-width: 100%;
+  }
+
+  .checkbox-label {
+    max-width: 100%;
+    padding: 8px;
+  }
+
+  .submit-button {
+    width: 100%;
+    max-width: 300px;
+    padding: 12px;
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .container {
+    padding: 10px;
+  }
+
+  .game-form {
+    margin: 15px 0;
+  }
+
+  .game-create-input {
+    padding: 8px;
+    font-size: 14px;
+  }
+
+  .game-board {
+    height: max(85vw, 280px);
+    width: max(85vw, 280px);
+    padding: 10px;
+  }
+
+  .conditions-label {
+    font-size: 20px;
+    padding: 5px;
+  }
+
+  .checkbox-container {
+    padding-right: 10px;
+    padding-left: 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .checkbox-label {
+    font-size: 14px;
+  }
+}

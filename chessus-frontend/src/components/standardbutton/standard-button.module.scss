@@ -36,3 +36,21 @@
     transform: none;
   }
 }
+
+// Mobile responsive
+@media (max-width: 768px) {
+  .standard-button {
+    min-width: auto;
+    width: 100%;
+    max-width: 300px;
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .standard-button {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+}

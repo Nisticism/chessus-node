@@ -18,6 +18,13 @@ const getPieceById = async (pieceId) => {
   return response;
 };
 
+const getPiecesWithMovement = async () => {
+  const response = await axios.get(API_URL + "pieces/full", { 
+    headers: authHeader() 
+  });
+  return response;
+};
+
 const createPiece = async (formData) => {
   const response = await axios.post(API_URL + "pieces/create", formData, {
     headers: {
@@ -48,6 +55,7 @@ const deletePiece = async (pieceId) => {
 const PiecesService = {
   getPieces,
   getPieceById,
+  getPiecesWithMovement,
   createPiece,
   updatePiece,
   deletePiece,

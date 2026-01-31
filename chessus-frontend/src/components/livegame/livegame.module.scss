@@ -275,11 +275,18 @@
   }
 
   &.last-move {
-    background: rgba(255, 255, 0, 0.3);
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 255, 0, 0.4);
+      pointer-events: none;
+      z-index: 0;
+    }
   }
 
-  // Debug: highlight squares with your own pieces
-  &.own-piece {
+  // Highlight pieces that can move (only shown when it's your turn and piece has valid moves)
+  &.can-move {
     box-shadow: inset 0 0 0 3px rgba(0, 255, 0, 0.6);
   }
 
@@ -387,6 +394,43 @@
     .move-white, .move-black {
       flex: 1;
       color: #ccc;
+    }
+  }
+}
+
+.game-options {
+  background: #1a1a2e;
+  border-radius: 12px;
+  padding: 16px;
+
+  h3 {
+    color: #fff;
+    font-size: 1rem;
+    margin: 0 0 12px 0;
+  }
+
+  .option-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    color: #ccc;
+    font-size: 0.9rem;
+    padding: 8px 0;
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #6c63ff;
+      cursor: pointer;
+    }
+
+    span {
+      user-select: none;
+    }
+
+    &:hover {
+      color: #fff;
     }
   }
 }
@@ -663,5 +707,171 @@
   }
   75% {
     transform: translateX(5px);
+  }
+}
+
+// Comprehensive mobile responsive styles
+@media (max-width: 768px) {
+  .live-game-container {
+    padding: 12px;
+  }
+
+  .game-header {
+    .game-title h1 {
+      font-size: 1.3rem;
+    }
+
+    .header-actions {
+      width: 100%;
+
+      .btn {
+        flex: 1;
+      }
+    }
+  }
+
+  .players-panel {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .player-card {
+    padding: 12px;
+  }
+
+  .board-panel {
+    padding: 0;
+  }
+
+  .board-grid {
+    max-width: 100%;
+  }
+
+  .board-square {
+    width: 40px;
+    height: 40px;
+  }
+
+  .piece {
+    width: 32px;
+    height: 32px;
+    font-size: 1.5rem;
+  }
+
+  .info-panel {
+    gap: 12px;
+  }
+
+  .move-history {
+    max-height: 250px;
+    padding: 12px;
+  }
+
+  .game-controls,
+  .game-options {
+    padding: 12px;
+  }
+
+  .control-buttons,
+  .btn {
+    width: 100%;
+  }
+
+  .waiting-banner {
+    padding: 15px;
+
+    .share-link-inline {
+      flex-direction: column;
+      gap: 8px;
+
+      input {
+        width: 100%;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  }
+
+  .game-over-modal {
+    width: 90%;
+    max-width: 90%;
+    padding: 20px;
+
+    .game-over-actions {
+      flex-direction: column;
+
+      .btn {
+        width: 100%;
+      }
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .live-game-container {
+    padding: 8px;
+  }
+
+  .game-header {
+    .game-title h1 {
+      font-size: 1.1rem;
+    }
+  }
+
+  .player-card {
+    padding: 10px;
+
+    .player-name {
+      font-size: 0.9rem;
+    }
+
+    .player-time .time-value {
+      font-size: 1rem;
+    }
+  }
+
+  .board-square {
+    width: 35px;
+    height: 35px;
+  }
+
+  .piece {
+    width: 28px;
+    height: 28px;
+    font-size: 1.3rem;
+  }
+
+  .move-history {
+    padding: 10px;
+    font-size: 0.85rem;
+  }
+
+  .game-controls h3,
+  .game-options h3 {
+    font-size: 0.95rem;
+  }
+
+  .btn {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+
+  .turn-indicator {
+    padding: 10px 15px;
+    font-size: 0.9rem;
+  }
+
+  .game-over-modal {
+    padding: 15px;
+
+    h2 {
+      font-size: 1.3rem;
+    }
+
+    .result {
+      font-size: 1.1rem;
+    }
   }
 }

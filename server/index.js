@@ -416,6 +416,17 @@ app.get("/api/pieces", async (req, res) => {
   }
 });
 
+// Get all pieces with full movement/capture data (for sandbox mode)
+app.get("/api/pieces/full", async (req, res) => {
+  try {
+    const pieces = await dbHelpers.getAllPiecesWithMovement();
+    res.json(pieces);
+  } catch (err) {
+    console.error("Error in /api/pieces/full:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
 // Get single piece by ID
 app.get("/api/pieces/:pieceId", async (req, res) => {
   try {

@@ -48,6 +48,7 @@ const LiveGame = () => {
   const [dragValidMoves, setDragValidMoves] = useState([]);
   const [inCheck, setInCheck] = useState(false);
   const [checkedPieces, setCheckedPieces] = useState([]);
+  const [showMovableIndicators, setShowMovableIndicators] = useState(false);
 
   // Load game state on mount
   useEffect(() => {
@@ -411,6 +412,72 @@ const LiveGame = () => {
     return moves;
   }, [canPieceMoveTo, canPieceCaptureTo, isPathClear]);
 
+  // Check if a specific piece is under attack by any enemy piece
+  const isPieceUnderAttack = useCallback((targetPiece, pieces, boardWidth, boardHeight) => {
+    const targetTeam = targetPiece.player_id || targetPiece.team;
+    
+    // Check all enemy pieces
+    for (const enemyPiece of pieces) {
+      const enemyTeam = enemyPiece.player_id || enemyPiece.team;
+      if (enemyTeam === targetTeam) continue; // Skip friendly pieces
+      
+      // Check if enemy can capture the target piece
+      if (canPieceCaptureTo(enemyPiece.x, enemyPiece.y, targetPiece.x, targetPiece.y, enemyPiece, enemyTeam)) {
+        if (isPathClear(enemyPiece.x, enemyPiece.y, targetPiece.x, targetPiece.y, pieces)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [canPieceCaptureTo, isPathClear]);
+
+  // Check if a player is in check (any piece with ends_game_on_checkmate is under attack)
+  const checkForCheck = useCallback((pieces, playerPosition, boardWidth, boardHeight) => {
+    // Find all pieces belonging to this player that have ends_game_on_checkmate
+    const checkmatePieces = pieces.filter(p => {
+      const pieceOwnerPosition = p.team || p.player_id;
+      return pieceOwnerPosition === playerPosition && p.ends_game_on_checkmate;
+    });
+    
+    if (checkmatePieces.length === 0) {
+      return { inCheck: false, checkedPieces: [] };
+    }
+    
+    const checkedPieces = [];
+    for (const piece of checkmatePieces) {
+      if (isPieceUnderAttack(piece, pieces, boardWidth, boardHeight)) {
+        checkedPieces.push(piece);
+      }
+    }
+    
+    return {
+      inCheck: checkedPieces.length > 0,
+      checkedPieces
+    };
+  }, [isPieceUnderAttack]);
+
+  // Check if a move would resolve check (or not leave the player in check)
+  const wouldMoveResolveCheck = useCallback((piece, toX, toY, pieces, playerPosition, boardWidth, boardHeight) => {
+    // Create a simulated pieces array
+    const simulatedPieces = pieces.map(p => ({ ...p }));
+    
+    // Find and remove any captured piece at the destination
+    const capturedIndex = simulatedPieces.findIndex(p => p.x === toX && p.y === toY && p.id !== piece.id);
+    if (capturedIndex !== -1) {
+      simulatedPieces.splice(capturedIndex, 1);
+    }
+    
+    // Update the moving piece's position
+    const movingPieceIndex = simulatedPieces.findIndex(p => p.id === piece.id);
+    if (movingPieceIndex !== -1) {
+      simulatedPieces[movingPieceIndex] = { ...simulatedPieces[movingPieceIndex], x: toX, y: toY };
+    }
+    
+    // Check if player would still be in check after this move
+    const checkResult = checkForCheck(simulatedPieces, playerPosition, boardWidth, boardHeight);
+    return !checkResult.inCheck;
+  }, [checkForCheck]);
+
   // Handle square click
   const handleSquareClick = useCallback((x, y) => {
     console.log('Square clicked:', { x, y, isMyTurn, status: gameState?.status, selectedPiece: selectedPiece?.piece_name });
@@ -672,6 +739,35 @@ const LiveGame = () => {
     const pieces = parsePieces(gameState.pieces);
     const lastMove = gameState.moveHistory?.slice(-1)[0];
     const showHelpers = gameState.showPieceHelpers;
+    
+    // Calculate which of the current player's pieces can move (only if feature is enabled and it's their turn)
+    const movablePieceIds = new Set();
+    if (showMovableIndicators && isMyTurn && currentPlayer && (gameState.status === 'active' || gameState.status === 'ready')) {
+      // Check if the current player is in check
+      const playerInCheck = inCheck && currentPlayer.position === gameState.currentTurn;
+      
+      pieces.forEach(piece => {
+        const pieceTeam = piece.player_id || piece.team;
+        if (pieceTeam === currentPlayer.position) {
+          const moves = calculateValidMoves(piece, pieces, boardWidth, boardHeight);
+          
+          if (playerInCheck) {
+            // When in check, only count moves that resolve the check
+            const hasCheckResolvingMove = moves.some(move => 
+              wouldMoveResolveCheck(piece, move.x, move.y, pieces, currentPlayer.position, boardWidth, boardHeight)
+            );
+            if (hasCheckResolvingMove) {
+              movablePieceIds.add(piece.id);
+            }
+          } else {
+            // Not in check - show all pieces with valid moves
+            if (moves.length > 0) {
+              movablePieceIds.add(piece.id);
+            }
+          }
+        }
+      });
+    }
 
     const squares = [];
 
@@ -689,11 +785,8 @@ const LiveGame = () => {
           (lastMove.to?.x === gameX && lastMove.to?.y === gameY)
         );
         
-        // Check if this square has one of your own pieces
-        const isOwnPiece = piece && currentPlayer && (
-          piece.player_id === currentPlayer.position || 
-          piece.team === currentPlayer.position
-        );
+        // Check if this piece can move (only shown when it's your turn)
+        const canMove = piece && movablePieceIds.has(piece.id);
         
         // Check if this square shows a hovered piece's possible move
         const hoveredMove = showHelpers && hoveredPiece && !selectedPiece 
@@ -715,7 +808,7 @@ const LiveGame = () => {
               ${hoveredMove && !hoveredMove.isCapture ? styles["hover-move"] : ''}
               ${hoveredMove && hoveredMove.isCapture ? styles["hover-capture"] : ''}
               ${isLastMove ? styles["last-move"] : ''}
-              ${isOwnPiece ? styles["own-piece"] : ''}
+              ${canMove ? styles["can-move"] : ''}
               ${isInCheck ? styles["in-check"] : ''}
             `}
             onClick={() => handleSquareClick(gameX, gameY)}
@@ -996,6 +1089,19 @@ const LiveGame = () => {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Game Options */}
+          <div className={styles["game-options"]}>
+            <h3>Options</h3>
+            <label className={styles["option-checkbox"]}>
+              <input
+                type="checkbox"
+                checked={showMovableIndicators}
+                onChange={(e) => setShowMovableIndicators(e.target.checked)}
+              />
+              <span>Show movable pieces</span>
+            </label>
           </div>
 
           {/* Game Controls */}

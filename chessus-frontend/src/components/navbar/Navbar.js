@@ -1,14 +1,37 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { RiMenu3Line, RiCloseLine } from 'react-icons/ri';
 import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
-import { clearMessage } from "../../actions/general";
-import { history } from "../../helpers/history";
 import logo from '../../assets/logo.svg';
 import './navbar.scss';
 
-const Menu = () => (
+// Simplified user menu for tablet range (751-1000px)
+const UserMenu = ({ currentUser, logOut }) => (
+  <div className="user-menu-simple">
+    {currentUser ? (
+      <>
+        <Link className="user-menu-item" to={"/profile/" + currentUser.username}>
+          👤 {currentUser.username}
+        </Link>
+        {currentUser.role === 'Admin' && (
+          <Link className="user-menu-item admin-link" to="/admin/dashboard">
+            ⚡ Admin
+          </Link>
+        )}
+        <Link className="user-menu-item" to="/login" onClick={logOut}>
+          🚪 Log Out
+        </Link>
+      </>
+    ) : (
+      <Link className="user-menu-item" to="/login">
+        🔑 Sign In
+      </Link>
+    )}
+  </div>
+);
+
+const Menu = ({ currentUser, logOut }) => (
   <div className="navbar-inner navbar">
     <div className="nav-item">
       <Link as="div" className="nav-item-inner" to="/play">Play
@@ -20,7 +43,7 @@ const Menu = () => (
         <Link as="div" className="inner-menu-item" to="/home">
           Browse open games
         </Link>
-        <Link as="div" className="inner-menu-item" to="/home">
+        <Link as="div" className="inner-menu-item" to="/sandbox">
           Sandbox
         </Link>
         <Link as="div" className="inner-menu-item lower-corner" to="/home">
@@ -104,12 +127,41 @@ const Menu = () => (
       </Link>
     </div> */}
     
-    {/* players, donate, leaderboard */}
+    {/* Mobile-only user menu items */}
+    {currentUser && (
+      <>
+        <div className="nav-item mobile-only">
+          <Link as="div" className="nav-item-inner" to={"/profile/" + currentUser.username}>
+            👤 {currentUser.username}
+          </Link>
+        </div>
+        {currentUser.role === 'Admin' && (
+          <div className="nav-item mobile-only">
+            <Link as="div" className="nav-item-inner admin-link" to="/admin/dashboard">
+              ⚡ Admin
+            </Link>
+          </div>
+        )}
+        <div className="nav-item mobile-only">
+          <Link as="div" className="nav-item-inner" to="/login" onClick={logOut}>
+            🚪 Log Out
+          </Link>
+        </div>
+      </>
+    )}
+    {!currentUser && (
+      <div className="nav-item mobile-only">
+        <Link as="div" className="nav-item-inner" to="/login">
+          🔑 Sign In
+        </Link>
+      </div>
+    )}
   </div>
 )
 
 const Navbar = () => {
   const [toggleMenu, setToggleMenu] = useState(false);
+  const menuRef = useRef(null);
   const navigate = useNavigate();
 
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -119,7 +171,27 @@ const Navbar = () => {
     dispatch(removeUsers());
     dispatch(logout());
     navigate('/');
+    setToggleMenu(false);
   };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setToggleMenu(false);
+      }
+    };
+
+    if (toggleMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [toggleMenu]);
 
   return (
     <div>
@@ -131,11 +203,11 @@ const Navbar = () => {
               <span>SQUARESTRAT</span>
             </Link>
             <div className="navbar-links-container">
-              <Menu />
+              <Menu currentUser={currentUser} logOut={logOut} />
             </div>
           </div>
           {currentUser ? (
-            <div className="user-info">
+            <div className="user-info desktop-only">
               <div className="nav-item">
                 <Link to={"/profile/" + currentUser.username} className="nav-item-inner">
                   {currentUser.username}
@@ -155,7 +227,7 @@ const Navbar = () => {
               </div>
             </div>
           ) : (
-            <div className="navbar-nav ml-auto">
+            <div className="navbar-nav ml-auto desktop-only">
               <div className="nav-item">
                 <Link to={"/login"} className="nav-item-inner">
                   Sign In
@@ -169,7 +241,7 @@ const Navbar = () => {
             </div>
           )}
         </div>
-        <div className="navbar-menu">
+        <div className="navbar-menu" ref={menuRef}>
           { toggleMenu 
             ? <RiCloseLine color="fff" size={27} onClick={() => setToggleMenu(false)} />
             : <RiMenu3Line color="fff" size={27} onClick={() => setToggleMenu(true)} />
@@ -177,7 +249,14 @@ const Navbar = () => {
           { toggleMenu && (
             <div className="navbar-menu-container scale-up-center">
               <div className="navbar-menu-container-links">
-                <Menu />
+                {/* UserMenu for tablet (751-1000px) - only user controls */}
+                <div className="tablet-menu-only">
+                  <UserMenu currentUser={currentUser} logOut={logOut} />
+                </div>
+                {/* Full Menu for mobile (≤750px) - all nav + user controls */}
+                <div className="mobile-menu-only">
+                  <Menu currentUser={currentUser} logOut={logOut} />
+                </div>
               </div>
             </div>
           )}

@@ -627,5 +627,143 @@
     display: flex;
     justify-content: center;
     gap: 16px;
+    flex-wrap: wrap;
+  }
+}
+
+// Comprehensive mobile styles
+@media (max-width: 768px) {
+  .play-container {
+    padding: 15px;
+  }
+
+  .play-header {
+    h1 {
+      font-size: 1.6rem;
+    }
+  }
+
+  .game-types-sidebar {
+    max-height: 300px;
+    padding: 12px;
+  }
+
+  .open-matches-section,
+  .ongoing-games-section {
+    padding: 15px;
+  }
+
+  .open-matches-list,
+  .ongoing-games-list {
+    grid-template-columns: 1fr;
+  }
+
+  .open-match-card,
+  .ongoing-game-card {
+    padding: 14px;
+  }
+
+  .match-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .match-time-control {
+    align-self: flex-start;
+  }
+
+  .btn {
+    padding: 8px 14px;
+    font-size: 0.9rem;
+  }
+
+  .create-game-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .modal {
+    padding: 15px;
+  }
+
+  .modal-content {
+    padding: 20px;
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+
+    .btn {
+      width: 100%;
+    }
+  }
+
+  .must-login {
+    padding: 30px 20px;
+
+    .login-buttons {
+      flex-direction: column;
+      width: 100%;
+
+      .btn {
+        width: 100%;
+      }
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .play-container {
+    padding: 10px;
+  }
+
+  .play-header {
+    h1 {
+      font-size: 1.4rem;
+    }
+
+    .connection-status {
+      font-size: 0.8rem;
+    }
+  }
+
+  .game-types-sidebar {
+    padding: 10px;
+
+    h2 {
+      font-size: 1.1rem;
+    }
+  }
+
+  .open-matches-section h2,
+  .ongoing-games-section h2 {
+    font-size: 1.1rem;
+  }
+
+  .open-match-card,
+  .ongoing-game-card {
+    padding: 12px;
+  }
+
+  .match-game-name {
+    font-size: 1rem !important;
+  }
+
+  .match-actions {
+    flex-direction: column;
+
+    .btn {
+      width: 100%;
+    }
+  }
+
+  .modal-content {
+    padding: 15px;
+
+    h2 {
+      font-size: 1.3rem;
+    }
   }
 }

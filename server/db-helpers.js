@@ -119,16 +119,113 @@ const getAllPieces = async () => {
 };
 
 /**
+ * Get all pieces with full movement and capture data (for sandbox mode)
+ * @returns {Promise<Array>} Array of pieces with movement/capture data
+ */
+const getAllPiecesWithMovement = async () => {
+  return await query(`
+    SELECT 
+      p.id as piece_id,
+      p.piece_name,
+      p.piece_description,
+      p.piece_category,
+      p.piece_width,
+      p.piece_height,
+      p.image_location,
+      p.creator_id,
+      p.game_type_id,
+      u.username as creator_username,
+      u.id as creator_user_id,
+      gt.game_name as game_type_name,
+      -- Movement data from piece_movement table
+      pm.directional_movement_style,
+      pm.up_movement,
+      pm.down_movement,
+      pm.left_movement,
+      pm.right_movement,
+      pm.up_left_movement,
+      pm.up_right_movement,
+      pm.down_left_movement,
+      pm.down_right_movement,
+      pm.ratio_movement_style,
+      pm.ratio_one_movement,
+      pm.ratio_two_movement,
+      pm.step_by_step_movement_style,
+      pm.step_by_step_movement_value,
+      pm.can_hop_over_allies,
+      pm.can_hop_over_enemies,
+      -- Capture data from piece_capture table
+      pc.can_capture_enemy_on_move,
+      pc.up_capture,
+      pc.down_capture,
+      pc.left_capture,
+      pc.right_capture,
+      pc.up_left_capture,
+      pc.up_right_capture,
+      pc.down_left_capture,
+      pc.down_right_capture,
+      pc.ratio_one_capture,
+      pc.ratio_two_capture,
+      pc.step_by_step_capture
+    FROM chessusnode.pieces p
+    LEFT JOIN chessusnode.piece_movement pm ON p.id = pm.piece_id
+    LEFT JOIN chessusnode.piece_capture pc ON p.id = pc.piece_id
+    LEFT JOIN chessusnode.users u ON p.creator_id = u.id
+    LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id
+    ORDER BY p.id DESC
+  `);
+};
+
+/**
  * Get piece by ID with all related data
  * @param {number} pieceId - Piece ID
  * @returns {Promise<Object|null>} Piece object or null
  */
 const getPieceById = async (pieceId) => {
   const result = await query(`
-    SELECT p.*, pm.*, pc.*, 
-           u.username as creator_username, 
-           u.id as creator_user_id, 
-           gt.game_name as game_type_name
+    SELECT 
+      p.id as piece_id,
+      p.piece_name,
+      p.piece_description,
+      p.piece_category,
+      p.piece_width,
+      p.piece_height,
+      p.image_location,
+      p.creator_id,
+      p.game_type_id,
+      u.username as creator_username, 
+      u.id as creator_user_id, 
+      gt.game_name as game_type_name,
+      -- Movement data from piece_movement table
+      pm.directional_movement_style,
+      pm.up_movement,
+      pm.down_movement,
+      pm.left_movement,
+      pm.right_movement,
+      pm.up_left_movement,
+      pm.up_right_movement,
+      pm.down_left_movement,
+      pm.down_right_movement,
+      pm.ratio_movement_style,
+      pm.ratio_one_movement,
+      pm.ratio_two_movement,
+      pm.step_by_step_movement_style,
+      pm.step_by_step_movement_value,
+      pm.can_hop_over_allies,
+      pm.can_hop_over_enemies,
+      -- Capture data from piece_capture table
+      pc.can_capture_enemy_on_move,
+      pc.up_capture,
+      pc.down_capture,
+      pc.left_capture,
+      pc.right_capture,
+      pc.up_left_capture,
+      pc.up_right_capture,
+      pc.down_left_capture,
+      pc.down_right_capture,
+      pc.ratio_one_capture,
+      pc.ratio_two_capture,
+      pc.step_by_step_capture
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.piece_movement pm ON p.id = pm.piece_id
     LEFT JOIN chessusnode.piece_capture pc ON p.id = pc.piece_id
@@ -353,6 +450,7 @@ module.exports = {
   deleteUser,
   getAllUsers,
   getAllPieces,
+  getAllPiecesWithMovement,
   getPieceById,
   getAllGames,
   getGameById,

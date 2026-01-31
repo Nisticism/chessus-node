@@ -149,3 +149,56 @@
     }
   }
 }
+
+@media (max-width: 480px) {
+  .community-hub-container {
+    padding: 15px 8px;
+  }
+
+  .community-hub-header {
+    padding: 30px 15px;
+
+    h1 {
+      font-size: 2rem;
+    }
+
+    p {
+      font-size: 0.95rem;
+    }
+  }
+
+  .community-option-card {
+    min-height: 240px;
+    padding: 25px;
+
+    .icon {
+      font-size: 3rem;
+    }
+
+    .option-title {
+      font-size: 1.4rem;
+    }
+
+    .option-description {
+      font-size: 0.9rem;
+    }
+
+    .btn {
+      font-size: 0.85rem;
+      padding: 10px 18px;
+    }
+  }
+
+  .community-welcome {
+    padding: 25px 15px;
+
+    h2 {
+      font-size: 1.5rem;
+    }
+
+    p {
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+  }
+}

@@ -6,6 +6,7 @@
   padding: 10px;
   margin: 20px 10px 15px 10px;
   width: 320px;
+  max-width: 100%;
   border-radius: 4px;
   border: 2px solid var(--button-border);
 }
@@ -13,4 +14,23 @@
 .profile-button:hover {
   background-color: var(--button-primary-hover);
   cursor: pointer;
+}
+
+// Mobile responsive
+@media (max-width: 768px) {
+  .profile-button {
+    width: 100%;
+    max-width: 320px;
+    font-size: 16px;
+    padding: 12px;
+    margin: 15px auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-button {
+    font-size: 14px;
+    padding: 10px;
+    margin: 10px auto;
+  }
 }

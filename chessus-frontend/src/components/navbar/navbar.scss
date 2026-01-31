@@ -71,10 +71,12 @@ p {
 .navbar-links-container {
   display: flex;
   flex-direction: row;
-  width: -webkit-fill-available;
+  flex: 1;
   margin-left: 20px;
   margin-right: 20px;
   max-width: 750px;
+  min-width: 0; // Allow shrinking
+  overflow: visible;
 }
 
 .navbar-links-container p, 
@@ -198,7 +200,132 @@ p {
   }
 }
 
+// Utility classes for responsive display
+.mobile-only {
+  display: none !important;
+}
+
+.desktop-only {
+  display: flex !important;
+}
+
+// Intermediate breakpoint for tablets and small desktops
+@media screen and (max-width: 1000px) and (min-width: 751px) {
+  .navbar-links-container {
+    margin-left: 5px;
+    margin-right: 5px;
+    max-width: none;
+    flex: 1;
+  }
+
+  .nav-item-inner {
+    padding: 0px 8px;
+    font-size: 15px;
+  }
+
+  .main-logo {
+    font-size: 22px;
+    margin-right: 8px;
+    margin-left: 15px;
+    flex-shrink: 0; // Prevent logo from shrinking
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+    }
+  }
+
+  // Show hamburger menu for user controls
+  .navbar-menu {
+    display: flex;
+    margin-right: 10px;
+  }
+
+  // Hide user info from header (will be in menu)
+  .user-info.desktop-only {
+    display: none !important;
+  }
+
+  // Show only UserMenu (simple user controls) for tablet range
+  .tablet-menu-only {
+    display: block !important;
+  }
+
+  .mobile-menu-only {
+    display: none !important;
+  }
+
+  // Style the simple user menu
+  .user-menu-simple {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .user-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background: $nav-background;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 14px;
+    min-height: 45px;
+    transition: background 0.2s;
+
+    &:hover {
+      background: $nav-hover-color;
+    }
+
+    &.admin-link {
+      color: #ffc107;
+    }
+  }
+
+  .navbar-menu-container {
+    min-width: 180px;
+    width: auto;
+    max-width: 250px;
+    max-height: 70vh;
+    padding: 0.75rem;
+    overflow-y: auto;
+  }
+}
+
 @media screen and (max-width: 750px) {
+  .mobile-only {
+    display: flex !important;
+  }
+
+  .desktop-only {
+    display: none !important;
+  }
+
+  // Show full Menu for mobile, hide UserMenu
+  .tablet-menu-only {
+    display: none !important;
+  }
+
+  .mobile-menu-only {
+    display: block !important;
+  }
+
+  .main-logo {
+    margin-left: 15px;
+    margin-right: 10px;
+    font-size: 20px;
+    
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+    }
+    
+    span {
+      font-size: 18px;
+    }
+  }
+
   .navbar-links-container {
     display: none;
   }
@@ -209,12 +336,17 @@ p {
   }
 
   .navbar-inner {
-    display: block;
-    background:black;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .nav-item {
+    width: 100%;
   }
 
   .nav-item-inner {
     background: $nav-background;
+    width: 100%;
   }
 
   .navbar-menu-container p {
@@ -222,55 +354,90 @@ p {
   }
 
   .navbar-menu-container {
-    height: 5vh;
-    margin-top: 3px;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    max-height: 70vh;
+    min-width: 280px;
+    width: 85vw;
+    max-width: 400px;
+    padding: 1rem;
+    margin-top: 0;
+    overflow-y: auto;
+    
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background: #4a5568;
+      border-radius: 3px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: #2d3748;
+    }
   }
 
   .navbar-menu-container .navbar-inner {
-    height: 5vh;
+    min-height: auto;
+    height: auto;
+    width: 100%;
   }
 
   .navbar-menu-container .navbar-inner .nav-item {
-    height: 5vh;
+    min-height: 50px;
+    width: 100%;
   }
 
   .navbar-menu-container .navbar-inner .nav-item a {
-    height: 5vh;
+    min-height: 50px;
+    height: auto;
+    padding: 12px 15px;
+    white-space: normal;
+    word-wrap: break-word;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
   }
 
-  .nav-item:hover {
-    background: $nav-hover-color;
-    box-shadow:inset 2px 0px $lighter-hover;
-    .nav-item-inner {
-      width: -webkit-fill-available;
-    }
-    .inner-menu {
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
-      width: fit-content;
-      min-width: 175px;
-      min-height: 20vh;
-      position: absolute;
+  // Make submenus work better on mobile - keep them as overlays
+  .navbar-menu-container .nav-item {
+    position: relative;
+  }
+
+  .navbar-menu-container .nav-item .inner-menu {
+    display: none;
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 280px;
+    max-width: 85vw;
+    background: $nav-background;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 8px;
+    z-index: 1002;
+  }
+
+  .navbar-menu-container .nav-item:hover .inner-menu {
+    display: block;
+  }
+
+  .navbar-menu-container .inner-menu-item {
+    display: block;
+    padding: 12px 15px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    margin-bottom: 4px;
+    text-decoration: none;
+    
+    &:hover {
       background: $nav-hover-color;
-      box-shadow:inset 2px 0px $lighter-hover;
-      top: 0px;
-      right: calc(210px + 1rem);
-      border-radius: 4px 4px 4px 4px;
     }
-    .inner-menu-item {
-      display:flex;
-      align-items: center;
-      justify-content: flex-start;
-      padding: 0px 15px 0px;
-      background: $nav-hover-color;
-      height: 40px !important;
-      text-decoration: none;
-      font-size: 14px;
-      border-radius: 0px;
-    }
-    .inner-menu-item:hover {
-      background:$lighter-hover;
-    }
+  }
+
+  .admin-link {
+    color: #ffc107 !important;
   }
 }

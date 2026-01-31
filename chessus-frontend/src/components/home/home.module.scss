@@ -389,6 +389,14 @@
 
 // Responsive
 @media (max-width: 768px) {
+  .home-container {
+    padding: 15px;
+  }
+
+  .hero-section {
+    padding: 40px 20px;
+  }
+
   .hero-title {
     font-size: 2.5rem;
   }
@@ -401,6 +409,19 @@
     font-size: 1rem;
   }
 
+  .hero-buttons {
+    width: 100%;
+  }
+
+  .primary-button,
+  .secondary-button {
+    width: 100%;
+    max-width: 100%;
+    padding: 14px 24px;
+    font-size: 1rem;
+    justify-content: center;
+  }
+
   .board-showcase {
     flex-direction: column;
   }
@@ -409,36 +430,168 @@
     max-width: 100%;
   }
 
+  .board-wrapper {
+    padding: 15px;
+  }
+
+  .board-controls {
+    flex-wrap: wrap;
+  }
+
+  .control-button {
+    flex: 1;
+    min-width: 100px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+
   .board-info {
     max-width: 100%;
+  }
+
+  .info-card {
+    padding: 20px;
   }
 
   .section-header h2 {
     font-size: 1.8rem;
   }
 
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-card {
+    padding: 25px;
+  }
+
+  .stats-section {
+    padding: 30px 20px;
+  }
+
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+
+  .stat-item .stat-value {
+    font-size: 2rem;
+  }
+
+  .cta-section {
+    padding: 40px 20px;
+  }
+
+  .cta-section h2 {
+    font-size: 1.6rem;
+  }
+
+  .cta-section p {
+    font-size: 1rem;
   }
 }
 
 @media (max-width: 480px) {
+  .home-container {
+    padding: 10px;
+  }
+
   .hero-section {
-    padding: 40px 15px;
+    padding: 30px 15px;
+    margin-bottom: 30px;
   }
 
   .hero-title {
-    font-size: 2rem;
+    font-size: 1.8rem;
+  }
+
+  .hero-tagline {
+    font-size: 1rem;
+  }
+
+  .hero-description {
+    font-size: 0.9rem;
+    line-height: 1.6;
   }
 
   .hero-buttons {
-    flex-direction: column;
-    align-items: center;
+    gap: 12px;
   }
 
   .primary-button,
   .secondary-button {
     width: 100%;
-    justify-content: center;
+    padding: 12px 20px;
+    font-size: 0.95rem;
+  }
+
+  .board-wrapper {
+    padding: 12px;
+  }
+
+  .control-button {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+
+  .info-card {
+    padding: 15px;
+  }
+
+  .info-list li {
+    font-size: 0.9rem;
+    padding: 10px 0;
+  }
+
+  .section-header h2 {
+    font-size: 1.5rem;
+  }
+
+  .section-header p {
+    font-size: 0.95rem;
+  }
+
+  .feature-card {
+    padding: 20px;
+  }
+
+  .feature-icon {
+    font-size: 2.5rem;
+  }
+
+  .feature-card h3 {
+    font-size: 1.2rem;
+  }
+
+  .feature-card p {
+    font-size: 0.9rem;
+  }
+
+  .stats-section {
+    padding: 25px 15px;
+  }
+
+  .stats-grid {
+    gap: 15px;
+  }
+
+  .stat-item .stat-value {
+    font-size: 1.8rem;
+  }
+
+  .stat-item .stat-label {
+    font-size: 0.9rem;
+  }
+
+  .cta-section {
+    padding: 30px 15px;
+  }
+
+  .cta-section h2 {
+    font-size: 1.4rem;
+  }
+
+  .cta-section p {
+    font-size: 0.9rem;
   }
 }
