@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import styles from "./gamewizard.module.scss";
 import SpecialSquareSelector from "./SpecialSquareSelector";
+import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 
 const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [rangeSquares, setRangeSquares] = useState({});
@@ -11,6 +12,13 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [showSquareSelector, setShowSquareSelector] = useState(false);
   const [draggedSquare, setDraggedSquare] = useState(null);
   const initializedRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const longPressTimeoutRef = useRef(null);
+
+  // Detect mobile
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -365,8 +373,6 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
             className={styles["board-square"]}
             style={{
               background: isLight ? lightSquareColor : darkSquareColor,
-              width: `${squareSize}px`,
-              height: `${squareSize}px`,
               position: 'relative',
               cursor: squareType ? 'grab' : 'context-menu',
               border: squareType ? `4px solid ${borderColor}` : 'none',
@@ -519,9 +525,11 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
             display: 'grid',
             gridTemplateRows: `repeat(${gameData.board_height}, 1fr)`,
             gridTemplateColumns: `repeat(${gameData.board_width}, 1fr)`,
-            border: '2px solid #ccc',
-            width: 'fit-content',
-            margin: '20px auto'
+            border: '1px solid var(--board-border, #333)',
+            borderRadius: '5px',
+            padding: '15px',
+            gap: 0,
+            overflow: 'hidden'
           }}
         >
           {renderBoard}

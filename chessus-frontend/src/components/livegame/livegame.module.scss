@@ -845,14 +845,29 @@
     }
   }
 
+  .game-board-wrapper {
+    max-width: 100%;
+    padding: 8px;
+  }
+
+  .game-board {
+    width: 100%;
+    max-width: 100%;
+    gap: 0;
+  }
+
   .board-square {
-    width: 35px;
-    height: 35px;
+    // Use aspect-ratio instead of fixed sizes to prevent gaps
+    aspect-ratio: 1;
+    min-width: 0;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
   }
 
   .piece {
-    width: 28px;
-    height: 28px;
+    width: 90%;
+    height: 90%;
     font-size: 1.3rem;
   }
 

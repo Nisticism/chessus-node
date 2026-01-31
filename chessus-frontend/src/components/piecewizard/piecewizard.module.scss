@@ -779,23 +779,47 @@
   }
 
   .board-preview {
-    width: 95%;
+    width: 100%;
+    max-width: min(100vw - 40px, 600px);
+    margin: 20px auto;
   }
 
   .board-grid {
-    width: 95%;
+    width: 100%;
     max-width: 100%;
-    min-width: 250px;
+    min-width: unset;
     padding: 10px;
+    display: grid;
+    gap: 0;
+    
+    // Ensure squares maintain aspect ratio
+    > div {
+      aspect-ratio: 1;
+      min-width: 0;
+      min-height: 0;
+    }
   }
 
   .board-square {
-    min-width: 25px;
-    min-height: 25px;
+    aspect-ratio: 1;
+    min-width: 0;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
   }
 
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .board-preview {
+    max-width: calc(100vw - 30px);
+  }
+
+  .board-grid {
+    padding: 5px;
   }
 }
 

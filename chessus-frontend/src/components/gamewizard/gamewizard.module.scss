@@ -330,30 +330,77 @@
 // Responsive Design
 @media (max-width: 768px) {
   .wizard-container {
-    padding: 20px;
-    margin: 20px;
+    padding: 15px;
+    margin: 20px 10px;
   }
 
   .form-row {
     grid-template-columns: 1fr;
+    gap: 15px;
   }
 
   .wizard-header h1 {
-    font-size: 24px;
+    font-size: 22px;
   }
 
   .step-container h2 {
-    font-size: 22px;
+    font-size: 20px;
+  }
+
+  .placement-board {
+    width: 100%;
+    max-width: min(100vw - 40px, 600px);
+    margin: 15px auto !important;
+    padding: 10px !important;
+    min-width: unset;
+  }
+
+  .board-square {
+    aspect-ratio: 1 !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+  }
+
+  .piece-on-square img {
+    max-width: 90%;
+    max-height: 90%;
+  }
+}
+
+@media (max-width: 480px) {
+  .wizard-container {
+    padding: 15px;
+    margin: 10px;
+  }
+
+  .wizard-header h1 {
+    font-size: 20px;
+  }
+
+  .step-container h2 {
+    font-size: 18px;
+  }
+
+  // Additional mobile adjustments for boards
+  .placement-board {
+    max-width: calc(100vw - 30px) !important;
+    padding: 5px !important;
   }
 }
 
 // Piece Placement Styles
 .board-square {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1;
   border: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: opacity 0.2s;
+  box-sizing: border-box;
 
   &:hover {
     opacity: 0.8;
@@ -973,3 +1020,19 @@
   }
 }
 
+// Board styling for piece placement and special squares
+.placement-board {
+  width: 90%;
+  max-width: 800px;
+  margin: 20px auto;
+  aspect-ratio: 1;
+  background: var(--board-bg, transparent);
+  box-sizing: border-box;
+  min-width: 280px;
+  
+  .board-square {
+    aspect-ratio: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+}

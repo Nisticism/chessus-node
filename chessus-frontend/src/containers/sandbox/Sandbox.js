@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { getGames } from "../../actions/games";
 import PiecesService from "../../services/pieces.service";
 import PieceSelector from "../../components/gamewizard/PieceSelector";
 import styles from "./sandbox.module.scss";
+import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 const MAX_SANDBOXES = 4;
@@ -79,6 +80,13 @@ const Sandbox = () => {
   const [showRightClickModal, setShowRightClickModal] = useState(false);
   const [rightClickPosition, setRightClickPosition] = useState(null);
   const [rightClickMode, setRightClickMode] = useState('piece'); // 'piece' or 'special'
+  const [isMobile, setIsMobile] = useState(false);
+  const longPressTimeoutRef = useRef(null);
+
+  // Detect if on mobile device
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -687,6 +695,37 @@ const Sandbox = () => {
     }
   }, [activeSandbox, activeSandboxId, selectedPiece, validMoves, calculateValidMoves]);
 
+  // Handle long press for mobile
+  const handleLongPress = useCallback((x, y) => {
+    if (!activeSandbox) return;
+
+    const piece = activeSandbox.pieces.find(p => p.x === x && p.y === y);
+    if (piece) {
+      removePieceFromBoard(piece.id);
+    } else {
+      setRightClickPosition({ row: y, col: x });
+      setRightClickMode('piece');
+      setShowRightClickModal(true);
+    }
+  }, [activeSandbox, removePieceFromBoard]);
+
+  // Handle touch start for long press detection
+  const handleTouchStart = useCallback((e, x, y) => {
+    if (!isTouchDevice()) return;
+    
+    longPressTimeoutRef.current = setTimeout(() => {
+      handleLongPress(x, y);
+    }, 500);
+  }, [handleLongPress]);
+
+  // Handle touch end/move to cancel long press
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  }, []);
+
   // Handle right-click on square
   const handleSquareRightClick = useCallback((e, x, y) => {
     e.preventDefault();
@@ -929,6 +968,9 @@ const Sandbox = () => {
             onDragOver={handleDragOver}
             onDrop={(e) => handleBoardDrop(e, x, y)}
             onContextMenu={(e) => handleSquareRightClick(e, x, y)}
+            onTouchStart={(e) => handleTouchStart(e, x, y)}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchEnd}
             style={{
               backgroundColor: specialSquareType 
                 ? SPECIAL_SQUARE_TYPES[specialSquareType]?.color
@@ -1049,11 +1091,11 @@ const Sandbox = () => {
           <div className={styles["instructions-row"]}>
             <span className={styles["instruction-item"]}>
               <span className={styles["instruction-icon"]}>➕</span>
-              <strong>Add:</strong> Right-click empty square
+              <strong>Add:</strong> {isMobile ? 'Long press empty square' : 'Right-click empty square'}
             </span>
             <span className={styles["instruction-item"]}>
               <span className={styles["instruction-icon"]}>❌</span>
-              <strong>Remove:</strong> Right-click on piece
+              <strong>Remove:</strong> {isMobile ? 'Long press on piece' : 'Right-click on piece'}
             </span>
           </div>
         </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import styles from "./gamewizard.module.scss";
 import PieceSelector from "./PieceSelector";
 import { getAllPieces, getPieceById } from "../../actions/pieces";
+import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -22,10 +23,17 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
   const [draggedPiecePosition, setDraggedPiecePosition] = useState(null);
   const initializedRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const longPressTimeoutRef = useRef(null);
   
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
   const darkSquareColor = localStorage.getItem('boardDarkColor') || '#08234d';
+
+  // Detect mobile
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
 
   // Load all pieces for image fallback and movement data
   useEffect(() => {
@@ -99,6 +107,28 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     const key = `${row},${col}`;
     setSelectedSquare({ row, col, key });
     setShowPieceSelector(true);
+  }, []);
+
+  // Long press handlers for mobile
+  const handleLongPress = useCallback((row, col) => {
+    const key = `${row},${col}`;
+    setSelectedSquare({ row, col, key });
+    setShowPieceSelector(true);
+  }, []);
+
+  const handleTouchStart = useCallback((e, row, col) => {
+    if (!isTouchDevice()) return;
+    
+    longPressTimeoutRef.current = setTimeout(() => {
+      handleLongPress(row, col);
+    }, 500);
+  }, [handleLongPress]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
   }, []);
 
   const handlePieceSelected = useCallback((pieceData) => {
@@ -415,8 +445,6 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         
         let squareStyle = {
           background: isLight ? lightSquareColor : darkSquareColor,
-          width: `${squareSize}px`,
-          height: `${squareSize}px`,
           position: 'relative',
           cursor: placement ? 'grab' : 'context-menu',
           boxSizing: 'border-box'
@@ -444,6 +472,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             className={styles["board-square"]}
             style={squareStyle}
             onContextMenu={(e) => handleSquareRightClick(e, row, col)}
+            onTouchStart={(e) => handleTouchStart(e, row, col)}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchEnd}
             onDragOver={(e) => handleDragOver(e, row, col)}
             onDrop={(e) => handleDrop(e, row, col)}
             onMouseEnter={() => {
@@ -554,6 +585,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       <p className={styles["step-description"]}>
         Right-click on any square to add or remove pieces. Drag pieces to move them. Assign pieces to players and choose their images.
       </p>
+      <p className={styles["step-description"]} style={{ marginTop: '10px', fontSize: '14px', fontStyle: 'italic', color: '#aaa' }}>
+        {isMobile ? '💡 Long press on any square to add/remove pieces on mobile' : '💡 Right-click or drag and drop to manage pieces'}
+      </p>
 
       <div className={styles["piece-stats"]}>
         <div className={styles["stat-item"]}>
@@ -642,9 +676,11 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             display: 'grid',
             gridTemplateRows: `repeat(${gameData.board_height}, 1fr)`,
             gridTemplateColumns: `repeat(${gameData.board_width}, 1fr)`,
-            border: '2px solid #ccc',
-            width: 'fit-content',
-            margin: '20px auto'
+            border: '1px solid var(--board-border, #333)',
+            borderRadius: '5px',
+            padding: '15px',
+            gap: 0,
+            overflow: 'hidden'
           }}
         >
           {renderBoard}
@@ -654,14 +690,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       <div className={styles["placement-instructions"]}>
         <h3>Instructions:</h3>
         <ul>
-          <li>Right-click any square to add a piece</li>
+          <li>{isMobile ? 'Long press' : 'Right-click'} any square to add a piece</li>
           <li>Hover over a piece to see where it can move and attack</li>
           <li>Click and drag pieces to move them anywhere on the board</li>
           <li>Blue highlights show valid movement squares, orange shows capture squares</li>
           <li>Search for pieces by name or ID</li>
           <li>Assign each piece to a player (1-{gameData.player_count})</li>
           <li>Choose an image for the piece from available uploads</li>
-          <li>Right-click an occupied square to remove or change the piece</li>
+          <li>{isMobile ? 'Long press' : 'Right-click'} an occupied square to remove or change the piece</li>
         </ul>
       </div>
 
