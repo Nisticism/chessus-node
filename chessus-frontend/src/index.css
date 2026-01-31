@@ -13,6 +13,10 @@ code {
 }
 
 :root {
+  /* Base colors */
+  color: white;
+  background-color: #2a2e38;
+  
   --font-family: 'Manrope', sans-serif;
   --background-color: #e2ffda;
   --nav-background: #082c51;

@@ -851,8 +851,8 @@ const LiveGame = () => {
       <div 
         className={styles["game-board"]}
         style={{
-          gridTemplateColumns: `repeat(${boardWidth}, 50px)`,
-          gridTemplateRows: `repeat(${boardHeight}, 50px)`
+          gridTemplateColumns: `repeat(${boardWidth}, 1fr)`,
+          gridTemplateRows: `repeat(${boardHeight}, 1fr)`
         }}
       >
         {squares}

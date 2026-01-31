@@ -311,6 +311,48 @@ p {
     display: block !important;
   }
 
+  // Wrapper for nav item text and chevron button
+  .nav-item-wrapper {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    position: relative;
+  }
+
+  // Chevron toggle button
+  .submenu-toggle {
+    background: transparent;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    color: inherit;
+    font-size: 12px;
+    transition: transform 0.2s;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+
+    .chevron {
+      display: inline-block;
+      transition: transform 0.2s;
+      
+      &.open {
+        transform: rotate(180deg);
+      }
+    }
+  }
+
+  // Hide chevron on desktop (only show on mobile)
+  .navbar-links-container .submenu-toggle {
+    display: none;
+  }
+
   .main-logo {
     margin-left: 15px;
     margin-right: 10px;
@@ -347,6 +389,23 @@ p {
   .nav-item-inner {
     background: $nav-background;
     width: 100%;
+    flex: 1;
+  }
+
+  // Wrapper should have the full background
+  .nav-item-wrapper {
+    background: $nav-background;
+    width: 100%;
+  }
+
+  // Remove hover effect from submenu container itself
+  .navbar-menu-container .nav-item:hover {
+    background: transparent;
+  }
+
+  // Only apply hover to the nav-item-inner and submenu toggle button
+  .navbar-menu-container .nav-item-inner:hover {
+    background: $nav-hover-color;
   }
 
   .navbar-menu-container p {
@@ -401,36 +460,53 @@ p {
     text-decoration: none;
   }
 
-  // Make submenus work better on mobile - keep them as overlays
+  // Make submenus display inline below parent items on mobile
   .navbar-menu-container .nav-item {
     position: relative;
   }
 
   .navbar-menu-container .nav-item .inner-menu {
     display: none;
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 280px;
-    max-width: 85vw;
-    background: $nav-background;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
-    padding: 8px;
-    z-index: 1002;
+    position: static;
+    width: 100%;
+    background: transparent;
+    box-shadow: none !important;
+    border: none !important;
+    outline: none !important;
+    border-radius: 0;
+    padding: 0 0 0 20px;
+    margin-top: 4px;
+    
+    &.mobile-open {
+      display: block;
+    }
+    
+    &:hover {
+      box-shadow: none !important;
+      border: none !important;
+      outline: none !important;
+    }
   }
 
+  // Override hover behavior for mobile - only show via toggle
   .navbar-menu-container .nav-item:hover .inner-menu {
-    display: block;
+    display: none;
+    box-shadow: none !important;
+    border: none !important;
+    
+    &.mobile-open {
+      display: block;
+    }
   }
 
   .navbar-menu-container .inner-menu-item {
     display: block;
-    padding: 12px 15px;
+    padding: 10px 15px;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 4px;
     margin-bottom: 4px;
     text-decoration: none;
+    font-size: 14px;
     
     &:hover {
       background: $nav-hover-color;

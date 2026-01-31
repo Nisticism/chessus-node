@@ -799,15 +799,27 @@
   .sandbox-container {
     flex-direction: column;
     height: auto;
+    min-height: 100vh;
     padding: 10px;
   }
 
   .sidebar {
     width: 100% !important;
-    max-height: 300px;
+    max-height: 400px;
+    min-height: 200px;
     border: none !important;
     border-bottom: 2px solid #1a2b3d !important;
     padding: 12px;
+    overflow-y: auto;
+  }
+
+  .instructions {
+    padding: 12px;
+    
+    p {
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
   }
 
   .board {
@@ -847,10 +859,20 @@
 
   .sidebar {
     padding: 10px;
-    max-height: 250px;
+    max-height: 350px;
+    min-height: 250px;
 
     h2 {
       font-size: 1.1rem;
+    }
+  }
+
+  .instructions {
+    padding: 10px;
+    
+    p {
+      font-size: 0.8rem;
+      line-height: 1.3;
     }
   }
 

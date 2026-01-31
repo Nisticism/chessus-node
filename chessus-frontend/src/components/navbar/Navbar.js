@@ -31,12 +31,25 @@ const UserMenu = ({ currentUser, logOut }) => (
   </div>
 );
 
-const Menu = ({ currentUser, logOut }) => (
+const Menu = ({ currentUser, logOut }) => {
+  const [openSubmenu, setOpenSubmenu] = useState(null);
+
+  const toggleSubmenu = (e, menuName) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpenSubmenu(openSubmenu === menuName ? null : menuName);
+  };
+
+  return (
   <div className="navbar-inner navbar">
     <div className="nav-item">
-      <Link as="div" className="nav-item-inner" to="/play">Play
-      </Link>
-      <div className="inner-menu">
+      <div className="nav-item-wrapper">
+        <Link as="div" className="nav-item-inner" to="/play">Play</Link>
+        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'play')} aria-label="Toggle Play submenu">
+          <span className={`chevron ${openSubmenu === 'play' ? 'open' : ''}`}>▼</span>
+        </button>
+      </div>
+      <div className={`inner-menu ${openSubmenu === 'play' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item upper-right-corner" to="/home">
           New game
         </Link>
@@ -58,9 +71,13 @@ const Menu = ({ currentUser, logOut }) => (
     Browse open games
     Play with friends */}
     <div className="nav-item">
-      <Link as="div" className="nav-item-inner" to="/create">Create
-      </Link>
-      <div className="inner-menu">
+      <div className="nav-item-wrapper">
+        <Link as="div" className="nav-item-inner" to="/create">Create</Link>
+        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'create')} aria-label="Toggle Create submenu">
+          <span className={`chevron ${openSubmenu === 'create' ? 'open' : ''}`}>▼</span>
+        </button>
+      </div>
+      <div className={`inner-menu ${openSubmenu === 'create' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item upper-right-corner" to="/create/game">
           Design a game
         </Link>
@@ -80,9 +97,13 @@ const Menu = ({ currentUser, logOut }) => (
     {/* design a game, design a piece, browse games */}
 
     <div className="nav-item">
-      <Link as="div" className="nav-item-inner" to="/media">Media
-      </Link>
-      <div className="inner-menu">
+      <div className="nav-item-wrapper">
+        <Link as="div" className="nav-item-inner" to="/media">Media</Link>
+        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'media')} aria-label="Toggle Media submenu">
+          <span className={`chevron ${openSubmenu === 'media' ? 'open' : ''}`}>▼</span>
+        </button>
+      </div>
+      <div className={`inner-menu ${openSubmenu === 'media' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item upper-right-corner" to="/forums">
           General forums
         </Link>
@@ -102,9 +123,13 @@ const Menu = ({ currentUser, logOut }) => (
     </div>
     {/* general forums, new game forums, social media, contact, news */}
     <div className="nav-item">
-      <Link as="div" className="nav-item-inner" to="/community">Community
-      </Link>
-      <div className="inner-menu">
+      <div className="nav-item-wrapper">
+        <Link as="div" className="nav-item-inner" to="/community">Community</Link>
+        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'community')} aria-label="Toggle Community submenu">
+          <span className={`chevron ${openSubmenu === 'community' ? 'open' : ''}`}>▼</span>
+        </button>
+      </div>
+      <div className={`inner-menu ${openSubmenu === 'community' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item upper-right-corner" to="/community/players">
           Players
         </Link>
@@ -157,7 +182,8 @@ const Menu = ({ currentUser, logOut }) => (
       </div>
     )}
   </div>
-)
+  );
+};
 
 const Navbar = () => {
   const [toggleMenu, setToggleMenu] = useState(false);

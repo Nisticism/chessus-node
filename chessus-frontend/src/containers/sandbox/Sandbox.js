@@ -1273,20 +1273,36 @@ const Sandbox = () => {
               <div className={styles["loading"]}>Loading pieces...</div>
             ) : (
               <div className={styles["piece-grid"]}>
-                {filteredPieces.map((piece) => (
+                {filteredPieces.map((piece) => {
+                  const imageUrl = getPieceImage(piece.image_location, sidebarPlayerView - 1);
+                  if (!imageUrl) {
+                    console.warn('Missing image for piece:', piece.piece_name, piece);
+                  }
+                  return (
                   <div
                     key={piece.id || piece.piece_id}
                     className={styles["piece-item"]}
                     draggable
                     onDragStart={(e) => handleLibraryDragStart(e, piece)}
                   >
-                    <img
-                      src={getPieceImage(piece.image_location, sidebarPlayerView - 1)}
-                      alt={piece.piece_name}
-                    />
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={piece.piece_name}
+                        onError={(e) => {
+                          console.error('Failed to load image:', imageUrl, 'for piece:', piece.piece_name);
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div style={{ width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1a2b3d', borderRadius: '4px', color: '#666', fontSize: '0.7rem' }}>
+                        No Image
+                      </div>
+                    )}
                     <span>{piece.piece_name}</span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>
