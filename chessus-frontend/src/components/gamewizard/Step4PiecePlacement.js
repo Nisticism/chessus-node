@@ -36,13 +36,16 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       return false; // Mirrored only works for 2 players
     }
     
-    // Group pieces by player
+    // Group pieces by player, including their positions from the key
     const piecesByPlayer = {};
-    Object.values(piecePlacements).forEach(piece => {
+    Object.entries(piecePlacements).forEach(([key, piece]) => {
+      const [row, col] = key.split(',').map(Number);
+      const pieceWithPos = { ...piece, y: row, x: col };
+      
       if (!piecesByPlayer[piece.player_id]) {
         piecesByPlayer[piece.player_id] = [];
       }
-      piecesByPlayer[piece.player_id].push(piece);
+      piecesByPlayer[piece.player_id].push(pieceWithPos);
     });
     
     const playerIds = Object.keys(piecesByPlayer).sort();
