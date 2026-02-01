@@ -384,9 +384,14 @@ const GameTypeView = () => {
     const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
     const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
 
-    // Check directional movement (handle both string and numeric values)
+    // Check directional movement - accept if style is set OR if any directional movement values are present
     const directionalStyle = pieceData.directional_movement_style;
-    if (directionalStyle === 'directional' || directionalStyle === 'both' || directionalStyle === 1 || directionalStyle === 3) {
+    const hasDirectionalValues = pieceData.up_movement || pieceData.down_movement || 
+                                  pieceData.left_movement || pieceData.right_movement ||
+                                  pieceData.up_left_movement || pieceData.up_right_movement ||
+                                  pieceData.down_left_movement || pieceData.down_right_movement;
+    
+    if (directionalStyle || hasDirectionalValues) {
       let directionalAllowed = false;
 
       // Check 8 directions
@@ -398,24 +403,25 @@ const GameTypeView = () => {
         directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff));
       } else if (rowDiff === 0 && colDiff > 0) {
         directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff));
-      } else if (rowDiff < 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.max(Math.abs(rowDiff), Math.abs(colDiff)));
-      } else if (rowDiff < 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.max(Math.abs(rowDiff), Math.abs(colDiff)));
-      } else if (rowDiff > 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.max(Math.abs(rowDiff), Math.abs(colDiff)));
-      } else if (rowDiff > 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.max(Math.abs(rowDiff), Math.abs(colDiff)));
+      } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff));
+      } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff));
       }
 
       if (directionalAllowed) return true;
     }
 
-    // Check ratio movement (L-shape like knight) - handle both string and numeric
-    if (directionalStyle === 'ratio' || directionalStyle === 'both' || directionalStyle === 2 || directionalStyle === 3) {
-      const ratio1 = pieceData.ratio_movement_1 || 0;
-      const ratio2 = pieceData.ratio_movement_2 || 0;
-      
+    // Check ratio movement (L-shape like knight)
+    const ratioStyle = pieceData.ratio_movement_style;
+    const ratio1 = pieceData.ratio_movement_1 || pieceData.ratio_one_movement || 0;
+    const ratio2 = pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0;
+    
+    if ((ratioStyle || (ratio1 > 0 && ratio2 > 0)) && ratio1 > 0 && ratio2 > 0) {
       if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
           (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
         return true;
@@ -423,12 +429,20 @@ const GameTypeView = () => {
     }
 
     // Check step-by-step movement
-    if (pieceData.step_movement_style === 'manhattan' || pieceData.step_movement_style === 1) {
+    const stepStyle = pieceData.step_movement_style;
+    const stepValue = pieceData.step_movement_value;
+    if (stepStyle || stepValue) {
       const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-      return checkMovement(pieceData.step_movement_value, manhattanDistance);
-    } else if (pieceData.step_movement_style === 'chebyshev' || pieceData.step_movement_style === 2) {
       const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      return checkMovement(pieceData.step_movement_value, chebyshevDistance);
+      
+      if (stepStyle === 'manhattan' || stepStyle === 1) {
+        return checkMovement(stepValue, manhattanDistance);
+      } else if (stepStyle === 'chebyshev' || stepStyle === 2) {
+        return checkMovement(stepValue, chebyshevDistance);
+      } else {
+        // Default to chebyshev if value exists but style not specified
+        return checkMovement(stepValue, chebyshevDistance);
+      }
     }
 
     return false;
@@ -476,24 +490,23 @@ const GameTypeView = () => {
         directionalAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff));
       } else if (rowDiff === 0 && colDiff > 0) {
         directionalAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff));
-      } else if (rowDiff < 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.up_left_capture, Math.max(Math.abs(rowDiff), Math.abs(colDiff)));
-      } else if (rowDiff < 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.up_right_capture, Math.max(Math.abs(rowDiff), Math.abs(colDiff)));
-      } else if (rowDiff > 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.down_left_capture, Math.max(Math.abs(rowDiff), Math.abs(colDiff)));
-      } else if (rowDiff > 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.down_right_capture, Math.max(Math.abs(rowDiff), Math.abs(colDiff)));
+      } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff));
+      } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff));
+      } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionalAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff));
       }
 
       if (directionalAllowed) return true;
     }
 
-    // Check ratio capture (L-shape) - handle both string and numeric
-    if (directionalCaptureStyle === 'ratio' || directionalCaptureStyle === 'both' || directionalCaptureStyle === 2 || directionalCaptureStyle === 3) {
-      const ratio1 = pieceData.ratio_capture_1 || 0;
-      const ratio2 = pieceData.ratio_capture_2 || 0;
-      
+    // Check ratio capture (L-shape)
+    const ratio1 = pieceData.ratio_capture_1 || pieceData.ratio_one_capture || 0;
+    const ratio2 = pieceData.ratio_capture_2 || pieceData.ratio_two_capture || 0;
+    if (ratio1 > 0 && ratio2 > 0) {
       if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
           (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
         return true;
@@ -501,12 +514,19 @@ const GameTypeView = () => {
     }
 
     // Check step-by-step capture
-    if (pieceData.step_capture_style === 'manhattan' || pieceData.step_capture_style === 1) {
+    const stepCaptureStyle = pieceData.step_capture_style;
+    const stepCaptureValue = pieceData.step_capture_value;
+    if (stepCaptureStyle || stepCaptureValue) {
       const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-      return checkMovement(pieceData.step_capture_value, manhattanDistance);
-    } else if (pieceData.step_capture_style === 'chebyshev' || pieceData.step_capture_style === 2) {
       const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      return checkMovement(pieceData.step_capture_value, chebyshevDistance);
+      
+      if (stepCaptureStyle === 'manhattan' || stepCaptureStyle === 1) {
+        return checkMovement(stepCaptureValue, manhattanDistance);
+      } else if (stepCaptureStyle === 'chebyshev' || stepCaptureStyle === 2) {
+        return checkMovement(stepCaptureValue, chebyshevDistance);
+      } else {
+        return checkMovement(stepCaptureValue, chebyshevDistance);
+      }
     }
 
     return false;
