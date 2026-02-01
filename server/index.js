@@ -965,7 +965,7 @@ app.get("/api/forums", async (req, res) => {
   try {
     const articles = await dbHelpers.getAllArticles();
     
-    // Enrich each forum with author name, comment count, and likes
+    // Enrich each forum with author name, comment count, likes, and game name
     const forums = await Promise.all(articles.map(async (forum) => {
       // Get comment count
       const comments = await dbHelpers.getCommentsByArticleId(forum.id);
@@ -978,6 +978,17 @@ app.get("/api/forums", async (req, res) => {
       // Get author name
       const author = await dbHelpers.findUserById(forum.author_id);
       forum.author_name = author ? author.username : "User Deleted";
+      
+      // Get game name if this is a game forum
+      if (forum.game_type_id) {
+        try {
+          const [gameRows] = await db_pool.query('SELECT game_name FROM game_types WHERE id = ?', [forum.game_type_id]);
+          forum.game_name = gameRows.length > 0 ? gameRows[0].game_name : null;
+        } catch (err) {
+          console.error(`Error fetching game name for game_type_id ${forum.game_type_id}:`, err);
+          forum.game_name = null;
+        }
+      }
       
       return forum;
     }));
@@ -1012,6 +1023,17 @@ app.get("/api/forum", async (params, res) => {
     // Get likes
     const likes = await dbHelpers.getLikesByArticleId(forum_id);
     forum.likes = likes;
+    
+    // Get game name if this is a game forum
+    if (forum.game_type_id) {
+      try {
+        const [gameRows] = await db_pool.query('SELECT game_name FROM game_types WHERE id = ?', [forum.game_type_id]);
+        forum.game_name = gameRows.length > 0 ? gameRows[0].game_name : null;
+      } catch (err) {
+        console.error(`Error fetching game name for game_type_id ${forum.game_type_id}:`, err);
+        forum.game_name = null;
+      }
+    }
 
     // Get all comments
     const comments = await dbHelpers.getCommentsByArticleId(forum.id);

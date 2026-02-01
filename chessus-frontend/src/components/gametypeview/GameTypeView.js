@@ -958,6 +958,14 @@ const GameTypeView = () => {
             Created by <Link to={`/profile/${game.creator_username}`}>{game.creator_username}</Link>
           </p>
         )}
+        
+        {game.article_id && (
+          <div className={styles["forum-link"]}>
+            <Link to={`/forums/${game.article_id}`}>
+              💬 Discuss in Game Forum
+            </Link>
+          </div>
+        )}
 
         {game.descript && (
           <div className={styles["section"]}>

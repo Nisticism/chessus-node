@@ -69,6 +69,7 @@ const GameForums = () => {
             <tbody>
               <tr>
                 <th>Subject</th>
+                <th>Game</th>
                 <th>Written By</th>
                 <th>Replies</th>
                 <th>Likes</th>
@@ -86,6 +87,15 @@ const GameForums = () => {
                       <div className={styles["forums-link"]}>
                         <strong><div className={styles["forum-title"]}>{ forum.title }</div></strong>
                       </div>
+                    </td>
+                    <td>
+                      {forum.game_type_id && forum.game_name ? (
+                        <Link to={`/create/games/${forum.game_type_id}`} onClick={(e) => e.stopPropagation()}>
+                          <div className={styles["game-name"]}>{ forum.game_name }</div>
+                        </Link>
+                      ) : (
+                        <div className={styles["no-game"]}>General</div>
+                      )}
                     </td>
                     <td>
                       <div className={styles["forums-link"]}>

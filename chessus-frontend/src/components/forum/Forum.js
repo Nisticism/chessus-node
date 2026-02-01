@@ -146,6 +146,13 @@ const Forum = () => {
               <div className={styles["forum-username"]}>{ currentForum.author_name }</div>
             </Link>
             <br/> {formatDateLegacy(currentForum.created_at)}</div>
+            {currentForum.game_type_id && (
+              <div className={styles["forum-game-link"]}>
+                <Link to={`/create/games/${currentForum.game_type_id}`}>
+                  🎮 {currentForum.game_name || 'View Game'}
+                </Link>
+              </div>
+            )}
             <div className={styles["forum-content"]}>{currentForum.content}</div>
             <div className={styles["likes-container"]}>
               <LikesModule isLiked={false} likeCount={currentForum.likes ? currentForum.likes.length : 0} userId={currentUser.id} forumId={currentForum.id}/>

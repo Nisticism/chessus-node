@@ -261,16 +261,12 @@ const Sandbox = () => {
           // Normalize piece data to ensure movement/capture properties are accessible
           const normalizedPiece = normalizePieceData(fullPiece);
           
-          // Get raw Y position
-          const rawY = p.y ?? p.row ?? p.yLocation ?? 0;
+          // Get position and player ID
+          const posY = p.y ?? p.row ?? p.yLocation ?? 0;
           const playerId = p.player_id || p.team || 1;
           
-          // Flip Y so player 1 pieces are at bottom of board
-          // Original layout: player 1 at top (low Y), player 2 at bottom (high Y)
-          // We want: player 1 at bottom (high Y), player 2 at top (low Y)
-          const flippedY = (boardHeight - 1) - rawY;
-          // Also flip the player IDs so player 1 is still controlling their pieces
-          const flippedPlayerId = playerId === 1 ? 2 : (playerId === 2 ? 1 : playerId);
+          // Don't flip Y - render pieces in same orientation as GameTypeView
+          // pieces_string stores positions exactly as placed in game wizard
           
           const resultPiece = {
             ...normalizedPiece,
@@ -286,9 +282,9 @@ const Sandbox = () => {
             id: `piece-${Date.now()}-${index}`,
             piece_id: pieceId,
             x: p.x ?? p.col ?? p.xLocation ?? 0,
-            y: flippedY,
-            team: flippedPlayerId,
-            player_id: flippedPlayerId
+            y: posY,
+            team: playerId,
+            player_id: playerId
           };
           
           console.log(`Result piece ${index}:`, resultPiece);
@@ -871,7 +867,8 @@ const Sandbox = () => {
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    // Allow both copy and move - browser will use what's allowed
+    e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed === 'move' ? 'move' : 'copy';
   }, []);
 
   // Get piece image with player index support
