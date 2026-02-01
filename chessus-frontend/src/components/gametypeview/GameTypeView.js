@@ -376,12 +376,13 @@ const GameTypeView = () => {
   };
 
   // Check if piece can move to a square
-  const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData) => {
+  const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
     if (!pieceData) return false;
     if (fromRow === toRow && fromCol === toCol) return false;
 
-    const rowDiff = toRow - fromRow;
-    const colDiff = toCol - fromCol;
+    // For player 2, flip the perspective (so "up" is towards player 1)
+    const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
+    const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
 
     // Check directional movement (handle both string and numeric values)
     const directionalStyle = pieceData.directional_movement_style;
@@ -434,12 +435,13 @@ const GameTypeView = () => {
   };
 
   // Check if piece can capture on a square
-  const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData) => {
+  const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
     if (!pieceData) return false;
     if (fromRow === toRow && fromCol === toCol) return false;
 
-    const rowDiff = toRow - fromRow;
-    const colDiff = toCol - fromCol;
+    // For player 2, flip the perspective (so "up" is towards player 1)
+    const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
+    const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
 
     // Check if separate capture fields are defined
     const hasSeparateCaptureFields = pieceData.up_capture || pieceData.down_capture || 
@@ -451,7 +453,7 @@ const GameTypeView = () => {
 
     // If piece can capture on move AND no separate capture fields, use movement logic
     if (pieceData.can_capture_enemy_on_move && !hasSeparateCaptureFields) {
-      return canPieceMoveTo(fromRow, fromCol, toRow, toCol, pieceData);
+      return canPieceMoveTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosition);
     }
 
     // Check directional capture (handle both string and numeric values, or if individual capture fields are set)
@@ -762,8 +764,8 @@ const GameTypeView = () => {
             });
           }
           if (pieceData) {
-            canMove = canPieceMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData);
-            canCapture = canCaptureOnMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData);
+            canMove = canPieceMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
+            canCapture = canCaptureOnMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
             if ((canMove || canCapture) && row === 0 && col === 0) {
               console.log('Square 0,0: canMove=', canMove, 'canCapture=', canCapture);
             }
@@ -827,8 +829,8 @@ const GameTypeView = () => {
             {placement && (
               <div
                 onMouseEnter={() => {
-                  console.log('Hovering over piece at', row, col, 'pieceId:', placement.piece_id);
-                  setHoveredPiecePosition({ row, col, pieceId: placement.piece_id });
+                  console.log('Hovering over piece at', row, col, 'pieceId:', placement.piece_id, 'playerId:', placement.player_id);
+                  setHoveredPiecePosition({ row, col, pieceId: placement.piece_id, playerId: placement.player_id });
                 }}
                 onMouseLeave={() => {
                   console.log('Left piece');

@@ -255,12 +255,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   }, []);
 
   // Check if piece can move to target square
-  const canPieceMoveTo = useCallback((fromRow, fromCol, toRow, toCol, pieceData) => {
+  const canPieceMoveTo = useCallback((fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
     if (!pieceData) return true; // If no piece data, allow free movement (fallback)
     if (fromRow === toRow && fromCol === toCol) return false;
     
-    const rowDiff = toRow - fromRow;
-    const colDiff = toCol - fromCol;
+    // For player 2, flip the perspective (so "up" is towards player 1)
+    const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
+    const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
     
     let directionalAllowed = false;
     
@@ -316,13 +317,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   }, [checkMovement]);
 
   // Check if piece can capture on move to target square
-  const canCaptureOnMoveTo = useCallback((fromRow, fromCol, toRow, toCol, pieceData) => {
+  const canCaptureOnMoveTo = useCallback((fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
     if (!pieceData) return false;
     if (fromRow === toRow && fromCol === toCol) return false;
     if (!pieceData.can_capture_enemy_on_move) return false;
     
-    const rowDiff = toRow - fromRow;
-    const colDiff = toCol - fromCol;
+    // For player 2, flip the perspective (so "up" is towards player 1)
+    const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
+    const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
     
     let directionalCaptureAllowed = false;
     
@@ -499,16 +501,16 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         if (draggedPiece && draggedPiecePosition) {
           const pieceData = pieceDataMap[draggedPiece.data.piece_id];
           if (pieceData) {
-            canMove = canPieceMoveTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData);
-            canCapture = canCaptureOnMoveTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData);
+            canMove = canPieceMoveTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
+            canCapture = canCaptureOnMoveTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
           }
         }
         // Check for hovered piece (not dragging)
         else if (hoveredPiecePosition && !draggedPiece) {
           const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
           if (pieceData) {
-            canMove = canPieceMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData);
-            canCapture = canCaptureOnMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData);
+            canMove = canPieceMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
+            canCapture = canCaptureOnMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
           }
         }
         
@@ -559,7 +561,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                 onDragStart={(e) => handleDragStart(e, key)}
                 onDragEnd={handleDragEnd}
                 onMouseEnter={() => {
-                  setHoveredPiecePosition({ row, col, pieceId: placement.piece_id });
+                  setHoveredPiecePosition({ row, col, pieceId: placement.piece_id, playerId: placement.player_id });
                 }}
                 onMouseLeave={() => {
                   if (!draggedPiece) setHoveredPiecePosition(null);
@@ -793,14 +795,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             <input
               type="radio"
               name="randomized"
-              checked={randomizationMode === 'mirrored'}
-              onChange={() => handleRandomizedChange('mirrored')}
+              checked={randomizationMode === 'backrow'}
+              onChange={() => handleRandomizedChange('backrow')}
               disabled={!isBoardSymmetric}
             />
-            <span>Mirrored Randomization</span>
+            <span>Back Row Only Mirrored Randomization</span>
             <p className={styles["radio-hint"]}>
               {isBoardSymmetric 
-                ? "Both players get the same random configuration for all pieces, maintaining mirror symmetry."
+                ? "Only the back row is randomized in a mirrored fashion. Other pieces (like pawns) stay in place. Like Chess960!"
                 : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups"}
             </p>
           </label>
@@ -808,14 +810,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             <input
               type="radio"
               name="randomized"
-              checked={randomizationMode === 'backrow'}
-              onChange={() => handleRandomizedChange('backrow')}
+              checked={randomizationMode === 'mirrored'}
+              onChange={() => handleRandomizedChange('mirrored')}
               disabled={!isBoardSymmetric}
             />
-            <span>Chess960-style (Back Row Only)</span>
+            <span>Full Mirrored Randomization</span>
             <p className={styles["radio-hint"]}>
               {isBoardSymmetric 
-                ? "Only the back row is randomized in a mirrored fashion. Other pieces (like pawns) stay in place. True Chess960!"
+                ? "Both players get the same random configuration for all pieces, maintaining mirror symmetry."
                 : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups"}
             </p>
           </label>
