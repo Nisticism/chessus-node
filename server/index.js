@@ -462,6 +462,15 @@ app.get("/api/games/:gameId", async (req, res) => {
       return res.status(404).send({ message: "Game not found" });
     }
     
+    // Find forum by querying articles table with game_type_id
+    const [forumRows] = await db_pool.query(
+      'SELECT id FROM articles WHERE game_type_id = ? LIMIT 1',
+      [gameId]
+    );
+    if (forumRows.length > 0) {
+      game.article_id = forumRows[0].id;
+    }
+    
     res.json(game);
   } catch (err) {
     console.error("Error in GET /api/games/:gameId:", err);
@@ -950,10 +959,24 @@ app.get("/api/article", async (params, res) => {
 
 app.post("/api/forums/new", async (req, res) => {
   try {
-    const { title, content, created_at, author_id } = req.body;
+    const { title, content, created_at, author_id, game_type_id } = req.body;
     console.log(content);
     
-    const forum = await dbHelpers.createForum({ author_id, title, content, created_at });
+    // If this is a game forum, check if one already exists
+    if (game_type_id) {
+      const [existingForums] = await db_pool.query(
+        'SELECT id FROM articles WHERE game_type_id = ? LIMIT 1',
+        [game_type_id]
+      );
+      if (existingForums.length > 0) {
+        return res.status(400).send({ 
+          message: "A forum already exists for this game type",
+          existing_forum_id: existingForums[0].id
+        });
+      }
+    }
+    
+    const forum = await dbHelpers.createForum({ author_id, title, content, created_at, game_type_id });
     res.json({ result: forum });
   } catch (err) {
     console.error("Error in /api/forums/new:", err);

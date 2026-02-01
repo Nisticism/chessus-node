@@ -148,7 +148,7 @@ const Forum = () => {
             <br/> {formatDateLegacy(currentForum.created_at)}</div>
             {currentForum.game_type_id && (
               <div className={styles["forum-game-link"]}>
-                <Link to={`/create/games/${currentForum.game_type_id}`}>
+                <Link to={`/games/${currentForum.game_type_id}`}>
                   🎮 {currentForum.game_name || 'View Game'}
                 </Link>
               </div>

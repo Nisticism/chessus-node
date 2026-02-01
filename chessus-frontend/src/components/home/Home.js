@@ -247,7 +247,11 @@ const Home = () => {
           Squarestrat is a community-driven platform for creating, sharing, and playing 
           custom strategy board games. Design your own pieces with unique movement patterns, 
           craft game rules with custom win conditions, and challenge players worldwide. 
-          Chess was just the beginning — discover what comes next.
+          Build variations on classic games or invent something entirely new. Test your 
+          creations in sandbox mode, refine the rules, and share them with the community. 
+          Whether you're experimenting with different board sizes, asymmetric starting 
+          positions, or novel piece abilities, Squarestrat gives you the tools to bring 
+          your ideas to life.
         </p>
         <div className={styles["hero-buttons"]}>
           {currentUser ? (

@@ -28,12 +28,26 @@ const PieceSelector = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
+  // Initialize selectedPlayerId with last used value from localStorage, or currentPlacement, or default to 1
+  const getInitialPlayerId = () => {
+    if (currentPlacement?.player_id) {
+      return currentPlacement.player_id;
+    }
+    const lastUsedPlayer = localStorage.getItem('lastSelectedPlayerId');
+    return lastUsedPlayer ? parseInt(lastUsedPlayer) : 1;
+  };
+  
   const [selectedPieceId, setSelectedPieceId] = useState(currentPlacement?.piece_id || null);
-  const [selectedPlayerId, setSelectedPlayerId] = useState(currentPlacement?.player_id || 1);
+  const [selectedPlayerId, setSelectedPlayerId] = useState(getInitialPlayerId());
   const [selectedImageUrl, setSelectedImageUrl] = useState(currentPlacement?.image_url || "");
   const [availableImages, setAvailableImages] = useState([]);
   const [endsGameOnCheckmate, setEndsGameOnCheckmate] = useState(currentPlacement?.ends_game_on_checkmate || false);
   const [endsGameOnCapture, setEndsGameOnCapture] = useState(currentPlacement?.ends_game_on_capture || false);
+  
+  // Save selected player ID to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('lastSelectedPlayerId', selectedPlayerId.toString());
+  }, [selectedPlayerId]);
 
   useEffect(() => {
     loadPieces();
@@ -205,7 +219,11 @@ const PieceSelector = ({
                 let thumbnail = null;
                 try {
                   const images = JSON.parse(piece.image_location || "[]");
-                  thumbnail = Array.isArray(images) && images.length > 0 ? getImageUrl(images[0]) : null;
+                  // Use the image for the selected player, default to first if not available
+                  const playerImageIndex = selectedPlayerId - 1;
+                  thumbnail = Array.isArray(images) && images.length > 0 
+                    ? getImageUrl(images[playerImageIndex] || images[0]) 
+                    : null;
                 } catch (e) {
                   thumbnail = null;
                 }

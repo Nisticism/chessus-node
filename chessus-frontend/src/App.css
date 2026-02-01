@@ -1,5 +1,8 @@
 .app {
   text-align: center;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-header {
@@ -7,6 +10,10 @@
   min-height: 3vh;
   max-height: 10vh;
   color: white;
+}
+
+.content {
+  flex: 1;
 }
 
 hr {

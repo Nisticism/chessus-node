@@ -19,7 +19,7 @@ const getForum = async (id) => {
   return response.data;
 };
 
-const newForum = async (author_id, title, content, created_at) => {
+const newForum = async (author_id, title, content, created_at, game_type_id = null) => {
   if (content === "") {
     content = null;
   }
@@ -29,6 +29,7 @@ const newForum = async (author_id, title, content, created_at) => {
     title,
     content,
     created_at,
+    game_type_id,
     headers: authHeader(),
   });
   return response.data;

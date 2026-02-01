@@ -287,12 +287,14 @@ const getAllArticles = async () => {
  * @param {Object} forumData - Forum post data
  * @returns {Promise<Object>} Created forum object
  */
-const createForum = async ({ author_id, title, content, created_at }) => {
-  await query(
-    "INSERT INTO chessusnode.articles (author_id, title, content, created_at) VALUES (?,?,?,?)",
-    [author_id, title, content, created_at]
+const createForum = async ({ author_id, title, content, created_at, game_type_id }) => {
+  const result = await query(
+    "INSERT INTO chessusnode.articles (author_id, title, content, created_at, game_type_id) VALUES (?,?,?,?,?)",
+    [author_id, title, content, created_at, game_type_id || null]
   );
-  return { author_id, title, content, created_at };
+  const newArticleId = result.insertId;
+  
+  return { id: newArticleId, author_id, title, content, created_at, game_type_id };
 };
 
 /**

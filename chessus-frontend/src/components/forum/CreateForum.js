@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import Form from "react-validation/build/form";
 import Input from "react-validation/build/input";
 import CheckButton from "react-validation/build/button";
-import { useNavigate, Navigate } from "react-router-dom";
+import { useNavigate, Navigate, useSearchParams } from "react-router-dom";
 import { isEmail } from "validator";
 import { newForum } from "../../actions/forums";
 import styles from "./create-forum.module.scss";
@@ -44,6 +44,9 @@ const validContent = (value) => {
 
 const CreateForum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
+  const [searchParams] = useSearchParams();
+  const gameTypeId = searchParams.get('game_type_id');
+  
   const form = useRef();
   const checkBtn = useRef();
   const [title, setTitle] = useState("");
@@ -69,7 +72,7 @@ const CreateForum = () => {
     e.preventDefault();
     const todaysDate = getCurrentMySQLDateTime();
     setDate(todaysDate);
-    dispatch(newForum(currentUser.id, title, content, todaysDate))
+    dispatch(newForum(currentUser.id, title, content, todaysDate, gameTypeId))
       //  Must run dispatch(forums()) to load the newly created forum into state, which is how /forums displays everything
       .then(() => {
         dispatch(forums());
@@ -77,6 +80,12 @@ const CreateForum = () => {
       .then(() => {
         navigate("/forums/");
       })
+      .catch((error) => {
+        // If forum already exists for this game, redirect to it
+        if (error.response?.data?.existing_forum_id) {
+          navigate(`/forums/${error.response.data.existing_forum_id}`);
+        }
+      });
   }
 
 

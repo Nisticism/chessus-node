@@ -32,6 +32,12 @@ const describePieceMovement = (pieceData) => {
   const hasRatio = directionalStyle === 'ratio' || directionalStyle === 'both' || 
                    directionalStyle === 2 || directionalStyle === 3;
   
+  // Check for ratio movement values even if directional_movement_style isn't set
+  // Handle both naming conventions: ratio_movement_1/2 and ratio_one_movement/ratio_two_movement
+  const ratio1 = pieceData.ratio_movement_1 || pieceData.ratio_one_movement || 0;
+  const ratio2 = pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0;
+  const hasRatioValues = ratio1 > 0 && ratio2 > 0;
+  
   if (hasDirectional) {
     // Collect directional movements
     const directions = [];
@@ -79,25 +85,39 @@ const describePieceMovement = (pieceData) => {
     }
   }
   
-  if (hasRatio) {
-    const ratio1 = pieceData.ratio_movement_1 || 0;
-    const ratio2 = pieceData.ratio_movement_2 || 0;
-    if (ratio1 > 0 && ratio2 > 0) {
+  // Check ratio movement (L-shape like knight) - check both flag and values
+  if (hasRatio || hasRatioValues) {
+    if (hasRatioValues) {
       movements.push(`in an L-shape (${ratio1} squares in one direction and ${ratio2} squares perpendicular)`);
     }
   }
   
-  // Check step movement
-  if (pieceData.step_movement_style === 'manhattan' || pieceData.step_movement_style === 1) {
-    const range = describeMovementRange(pieceData.step_movement_value);
+  // Check step movement - handle both naming conventions
+  const stepStyle = pieceData.step_movement_style || pieceData.step_by_step_movement_style;
+  const stepValue = pieceData.step_movement_value || pieceData.step_by_step_movement_value;
+  
+  if (stepStyle === 'manhattan' || stepStyle === 1) {
+    const range = describeMovementRange(stepValue);
     if (range) {
       movements.push(`${range} counting horizontal and vertical steps`);
     }
-  } else if (pieceData.step_movement_style === 'chebyshev' || pieceData.step_movement_style === 2) {
-    const range = describeMovementRange(pieceData.step_movement_value);
+  } else if (stepStyle === 'chebyshev' || stepStyle === 2) {
+    const range = describeMovementRange(stepValue);
     if (range) {
       movements.push(`${range} in any direction (including diagonals)`);
     }
+  }
+  
+  // Check hopping ability
+  const hoppingDetails = [];
+  if (pieceData.can_hop_over_allies) {
+    hoppingDetails.push('allies');
+  }
+  if (pieceData.can_hop_over_enemies) {
+    hoppingDetails.push('enemies');
+  }
+  if (hoppingDetails.length > 0) {
+    movements.push(`can hop over ${hoppingDetails.join(' and ')}`);
   }
   
   return movements.join('; ');
@@ -107,13 +127,15 @@ const describePieceMovement = (pieceData) => {
 const describePieceCapture = (pieceData) => {
   const captures = [];
   
-  // Check for any separate capture data defined
+  // Check for any separate capture data defined - handle both naming conventions
   const hasSeparateCapture = pieceData.up_capture || pieceData.down_capture || 
                               pieceData.left_capture || pieceData.right_capture ||
                               pieceData.up_left_capture || pieceData.up_right_capture ||
                               pieceData.down_left_capture || pieceData.down_right_capture ||
                               pieceData.ratio_capture_1 || pieceData.ratio_capture_2 ||
+                              pieceData.ratio_one_capture || pieceData.ratio_two_capture ||
                               pieceData.step_capture_style || pieceData.step_capture_value ||
+                              pieceData.step_by_step_capture ||
                               pieceData.directional_capture_style;
   
   // If attacks like movement and no separate capture data, return early
@@ -172,31 +194,34 @@ const describePieceCapture = (pieceData) => {
     }
     
     if (directions.length > 0) {
-      captures.push(`attacks ${directions.join(', ')}`);
+      captures.push(directions.join(', '));
     }
   }
   
-  // Ratio capture (L-shape like knight)
+  // Ratio capture (L-shape like knight) - handle both naming conventions
   const hasRatioCapture = directionalStyle === 'ratio' || directionalStyle === 'both' || 
                           directionalStyle === 2 || directionalStyle === 3;
-  const ratio1 = pieceData.ratio_capture_1 || 0;
-  const ratio2 = pieceData.ratio_capture_2 || 0;
+  const ratio1 = pieceData.ratio_capture_1 || pieceData.ratio_one_capture || 0;
+  const ratio2 = pieceData.ratio_capture_2 || pieceData.ratio_two_capture || 0;
   if (hasRatioCapture || (ratio1 > 0 && ratio2 > 0)) {
     if (ratio1 > 0 && ratio2 > 0) {
-      captures.push(`attacks in an L-shape (${ratio1} squares by ${ratio2} squares)`);
+      captures.push(`in an L-shape (${ratio1} squares by ${ratio2} squares)`);
     }
   }
   
-  // Step-based capture
-  if (pieceData.step_capture_style === 'manhattan' || pieceData.step_capture_style === 1) {
-    const range = describeMovementRange(pieceData.step_capture_value);
+  // Step-based capture - handle both naming conventions
+  const stepStyle = pieceData.step_capture_style || pieceData.step_by_step_capture;
+  const stepValue = pieceData.step_capture_value || pieceData.step_by_step_capture;
+  
+  if (stepStyle === 'manhattan' || stepStyle === 1) {
+    const range = describeMovementRange(stepValue);
     if (range) {
-      captures.push(`attacks within ${range} (counting horizontal and vertical steps)`);
+      captures.push(`within ${range} (counting horizontal and vertical steps)`);
     }
-  } else if (pieceData.step_capture_style === 'chebyshev' || pieceData.step_capture_style === 2) {
-    const range = describeMovementRange(pieceData.step_capture_value);
+  } else if (stepStyle === 'chebyshev' || stepStyle === 2) {
+    const range = describeMovementRange(stepValue);
     if (range) {
-      captures.push(`attacks within ${range} in any direction`);
+      captures.push(`within ${range} in any direction`);
     }
   }
   
@@ -959,20 +984,24 @@ const GameTypeView = () => {
           </p>
         )}
         
-        {game.article_id && (
+        {game.article_id ? (
           <div className={styles["forum-link"]}>
             <Link to={`/forums/${game.article_id}`}>
               💬 Discuss in Game Forum
             </Link>
           </div>
-        )}
-
-        {game.descript && (
-          <div className={styles["section"]}>
-            <h2>Description</h2>
-            <p>{game.descript}</p>
+        ) : (
+          <div className={styles["forum-link"]}>
+            <Link to={`/forums/new?game_type_id=${gameId}`}>
+              ➕ Create Forum for this Game
+            </Link>
           </div>
         )}
+
+        <div className={styles["section"]}>
+          <h2>Description</h2>
+          <p>{game.descript || "No description provided."}</p>
+        </div>
 
         <div className={styles["stats-grid"]}>
           <div className={styles["stat-card"]}>

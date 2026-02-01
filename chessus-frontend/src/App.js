@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { Route, Routes, useLocation } from 'react-router-dom';
 import Navbar from './components/navbar/Navbar';
+import Footer from './components/footer/Footer';
 import Home from './components/home/Home';
 import Login from "./components/signin/Login";
 import Register from "./components/register/Register";
@@ -42,6 +43,7 @@ import DeletedAccount from "./components/deletedaccount/DeletedAccount";
 import Preferences from "./components/preferences/Preferences";
 import Donate from "./components/donate/Donate";
 import Contact from "./components/contact/Contact";
+import PrivacyPolicy from "./components/privacypolicy/PrivacyPolicy";
 import AdminDashboard from "./components/admindashboard/AdminDashboard";
 import NotFound from './components/notfound/NotFound';
 
@@ -132,10 +134,12 @@ function App() {
             <Route exact path="/preferences" element={<Preferences />} />
             <Route exact path="/donate" element={<Donate />} />
             <Route exact path="/contact" element={<Contact />} />
+            <Route exact path="/privacy" element={<PrivacyPolicy />} />
             <Route exact path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/*" element={<NotFound />} />
           </Routes>
         </div>
+        <Footer />
       </div>
     </SocketProvider>
   );

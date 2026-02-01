@@ -32,16 +32,16 @@ export const firstForumsRender = (first_render) => (dispatch) => {
 }
 
 // update arguments
-export const newForum = (author_id, title, content, created_at) => async (dispatch) => {
+export const newForum = (author_id, title, content, created_at, game_type_id = null) => async (dispatch) => {
   try {
-    const response = await ForumsService.newForum(author_id, title, content, created_at);
+    const response = await ForumsService.newForum(author_id, title, content, created_at, game_type_id);
     console.log("dispatching post success");
     console.log(response.result);
     dispatch({
       type: POST_SUCCESS,
       payload: response.result,
     });
-    return Promise.resolve();
+    return Promise.resolve(response);
   } catch (error) {
     const message = getErrorMessage(error);
     dispatch({
@@ -51,7 +51,7 @@ export const newForum = (author_id, title, content, created_at) => async (dispat
       type: SET_MESSAGE,
       payload: message,
     });
-    return Promise.reject();
+    return Promise.reject(error);
   }
 };
 

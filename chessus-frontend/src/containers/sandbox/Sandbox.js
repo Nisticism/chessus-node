@@ -74,7 +74,18 @@ const Sandbox = () => {
   const [searchGameTerm, setSearchGameTerm] = useState("");
   const [searchPieceTerm, setSearchPieceTerm] = useState("");
   const [showHighlights, setShowHighlights] = useState(true);
-  const [sidebarPlayerView, setSidebarPlayerView] = useState(1);
+  
+  // Initialize sidebarPlayerView from localStorage
+  const getInitialSidebarPlayerView = () => {
+    const saved = localStorage.getItem('sandboxSidebarPlayerView');
+    return saved ? parseInt(saved) : 1;
+  };
+  const [sidebarPlayerView, setSidebarPlayerView] = useState(getInitialSidebarPlayerView());
+  
+  // Save sidebarPlayerView to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('sandboxSidebarPlayerView', sidebarPlayerView.toString());
+  }, [sidebarPlayerView]);
   
   // Right-click modal state
   const [showRightClickModal, setShowRightClickModal] = useState(false);
