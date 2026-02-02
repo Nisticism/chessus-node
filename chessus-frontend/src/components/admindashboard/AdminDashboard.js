@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
@@ -6,7 +6,7 @@ import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import styles from "./admin-dashboard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
-import { formatDateOnly, formatDateTime } from "../../helpers/date-formatter";
+import { formatDateTime } from "../../helpers/date-formatter";
 
 const AdminDashboard = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -43,11 +43,7 @@ const AdminDashboard = () => {
     return () => clearTimeout(timer);
   }, [showAlert]);
 
-  useEffect(() => {
-    fetchData(activeTab, 1);
-  }, [activeTab]);
-
-  const fetchData = async (tab, page = 1) => {
+  const fetchData = useCallback(async (tab, page = 1) => {
     setLoading(true);
     try {
       const response = await axios.get(
@@ -64,7 +60,11 @@ const AdminDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.limit]);
+
+  useEffect(() => {
+    fetchData(activeTab, 1);
+  }, [activeTab, fetchData]);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
