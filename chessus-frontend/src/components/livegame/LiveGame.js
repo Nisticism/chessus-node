@@ -168,9 +168,14 @@ const LiveGame = () => {
         }));
         setInCheck(false);
         setCheckedPieces([]);
-        // Play checkmate sound if game ended by checkmate
-        if (soundEnabledRef.current && reason === 'checkmate') {
-          soundManager.playCheckmate();
+        // Play appropriate sound based on game end reason
+        if (soundEnabledRef.current) {
+          if (reason === 'checkmate') {
+            soundManager.playCheckmate();
+          } else if (reason === 'stalemate') {
+            // For stalemate, play a neutral sound (move sound)
+            soundManager.playMove();
+          }
         }
       }
     });
@@ -1746,6 +1751,7 @@ const LiveGame = () => {
             </div>
             <div className={styles.reason}>
               {gameOverData.reason === 'checkmate' ? 'By Checkmate' :
+               gameOverData.reason === 'stalemate' ? 'By Stalemate' :
                gameOverData.reason === 'resignation' ? 'By Resignation' :
                gameOverData.reason === 'timeout' ? 'By Timeout' :
                gameOverData.reason}

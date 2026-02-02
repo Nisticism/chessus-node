@@ -1124,6 +1124,47 @@ function initializeSocket(server) {
                 return; // Exit early since game is over
               }
             }
+
+            // Check for stalemate after premove (only if mate_condition is enabled)
+            if (!premoveCheckResult.inCheck && gameState.gameType?.mate_condition) {
+              const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
+              
+              if (legalMoves.length === 0) {
+                // Stalemate detected after premove
+                console.log('STALEMATE DETECTED after premove! Ending game in a draw...');
+                stopGameTimer(gameId);
+                
+                gameState.status = 'completed';
+                gameState.winner = null;
+                gameState.winReason = 'stalemate';
+
+                const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, JSON.stringify(gameState.pieces), 
+                   JSON.stringify({ 
+                     moves: gameState.moveHistory, 
+                     reason: 'stalemate',
+                     rated: gameState.rated,
+                     allowPremoves: gameState.allowPremoves
+                   }),
+                   gameId]
+                );
+
+                io.to(`game-${gameId}`).emit("gameOver", {
+                  gameId,
+                  winner: null,
+                  reason: 'stalemate',
+                  finalState: gameState,
+                  eloChanges: null
+                });
+                
+                const stalematedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+                console.log(`STALEMATE! Player ${stalematedPlayer?.username} has no legal moves in game ${gameId} after premove`);
+                return; // Exit early since game is over
+              }
+            }
             
             // Broadcast check status after premove
             if (premoveCheckResult.inCheck) {
@@ -1264,6 +1305,53 @@ function initializeSocket(server) {
               console.log('gameOver event emitted to room game-' + gameId);
               
               console.log(`CHECKMATE! Player ${checkmatedPlayer?.username} is checkmated in game ${gameId}`);
+              return; // Exit early since game is over
+            }
+          }
+
+          // Check for stalemate (only if mate_condition is enabled)
+          if (!checkResult.inCheck && gameState.gameType?.mate_condition) {
+            const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
+            
+            if (legalMoves.length === 0) {
+              // Stalemate detected - no legal moves but not in check
+              console.log('STALEMATE DETECTED! Ending game in a draw...');
+              stopGameTimer(gameId);
+              
+              gameState.status = 'completed';
+              gameState.winner = null; // Draw, no winner
+              gameState.winReason = 'stalemate';
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              try {
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, JSON.stringify(gameState.pieces), 
+                   JSON.stringify({ 
+                     moves: gameState.moveHistory, 
+                     reason: 'stalemate',
+                     rated: gameState.rated,
+                     allowPremoves: gameState.allowPremoves
+                   }),
+                   gameId]
+                );
+                console.log('Database updated for stalemate');
+              } catch (dbError) {
+                console.error('Failed to update database:', dbError);
+              }
+
+              io.to(`game-${gameId}`).emit("gameOver", {
+                gameId,
+                winner: null,
+                reason: 'stalemate',
+                finalState: gameState,
+                eloChanges: null
+              });
+              console.log('gameOver event emitted for stalemate in game-' + gameId);
+              
+              const stalematedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+              console.log(`STALEMATE! Player ${stalematedPlayer?.username} has no legal moves in game ${gameId}`);
               return; // Exit early since game is over
             }
           }
