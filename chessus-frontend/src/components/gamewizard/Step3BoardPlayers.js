@@ -62,8 +62,8 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
         </div>
       </div>
 
-      {/* Player Count Slider */}
-      <div className={styles["form-group"]}>
+      {/* Player Count hidden - currently only 2-player games supported */}
+      {/* <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
           Number of Players <span className={styles["required"]}>*</span>
         </label>
@@ -82,7 +82,7 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
           <span>2</span>
           <span>8</span>
         </div>
-      </div>
+      </div> */}
 
       {/* Actions Per Turn */}
       <div className={styles["form-group"]}>

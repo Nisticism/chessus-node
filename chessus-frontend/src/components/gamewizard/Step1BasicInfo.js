@@ -49,7 +49,8 @@ const Step1BasicInfo = ({ gameData, updateGameData }) => {
         </div>
       </div>
 
-      <div className={styles["form-group"]}>
+      {/* Player count hidden - currently only 2-player games supported */}
+      {/* <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
           Number of Players <span className={styles["required"]}>*</span>
         </label>
@@ -73,7 +74,7 @@ const Step1BasicInfo = ({ gameData, updateGameData }) => {
         <p className={styles["field-hint"]}>
           Set the number of players who can participate in this game (2-8).
         </p>
-      </div>
+      </div> */}
 
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>

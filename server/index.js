@@ -507,6 +507,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     if (existingGame.creator_id !== userId && userRole !== "Admin") {
       return res.status(403).send({ message: "You can only edit your own games" });
     }
+
+    // Force player_count to 2 (only 2-player games currently supported)
+    gameData.player_count = 2;
     
     // Build the SQL query for updating
     const sql = `
@@ -1419,6 +1422,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     if (!gameData.game_name || gameData.game_name.length < 3) {
       return res.status(400).send({ message: "Game name must be at least 3 characters" });
     }
+
+    // Force player_count to 2 (only 2-player games currently supported)
+    gameData.player_count = 2;
 
     // Log the randomized_starting_positions length if present
     if (gameData.randomized_starting_positions) {

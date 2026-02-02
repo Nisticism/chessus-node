@@ -129,7 +129,7 @@ const Step4Advanced = ({ gameData, updateGameData }) => {
           <strong>Board Size:</strong> {gameData.board_width} × {gameData.board_height}
         </div>
         <div className={styles["summary-item"]}>
-          <strong>Players:</strong> {gameData.player_count}
+          <strong>Players:</strong> 2
         </div>
         <div className={styles["summary-item"]}>
           <strong>Win Conditions:</strong>{" "}
