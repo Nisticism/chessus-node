@@ -8,10 +8,10 @@ const Careers = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const user = useSelector(state => state.auth.user);
+  const { user: currentUser } = useSelector(state => state.authReducer);
   const navigate = useNavigate();
 
-  const isAdmin = user && user.role === 'admin';
+  const isAdmin = currentUser && currentUser.role === 'admin';
 
   useEffect(() => {
     fetchJobs();
@@ -44,7 +44,11 @@ const Careers = () => {
     try {
       const response = await fetch(`/api/careers/${jobId}`, {
         method: 'DELETE',
-        credentials: 'include'
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ author_id: currentUser?.id })
       });
 
       if (!response.ok) {
