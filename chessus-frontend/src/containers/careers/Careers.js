@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import styles from './careers.module.scss';
 import StandardButton from '../../components/standardbutton/StandardButton';
+import API_URL from '../../global/global';
 
 const Careers = () => {
   const [jobs, setJobs] = useState([]);
@@ -20,7 +21,7 @@ const Careers = () => {
   const fetchJobs = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/careers');
+      const response = await fetch(API_URL + 'careers');
       
       if (!response.ok) {
         throw new Error('Failed to fetch job postings');
@@ -42,7 +43,7 @@ const Careers = () => {
     }
 
     try {
-      const response = await fetch(`/api/careers/${jobId}`, {
+      const response = await fetch(API_URL + `careers/${jobId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
