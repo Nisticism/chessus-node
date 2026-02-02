@@ -1,5 +1,10 @@
 node_modules
 .env
+.env.production
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 authServer-old.js
 seed-old.js
 profile-pictures
