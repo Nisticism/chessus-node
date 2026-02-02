@@ -449,7 +449,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -578,12 +578,27 @@ function initializeSocket(server) {
           return piece;
         });
         
+        // Fix player_id assignment based on Y position (for standard chess setup)
+        // This ensures pieces have the correct ownership regardless of what's in the database
+        const boardHeight = gameType.board_height || 8;
+        piecesArray = piecesArray.map(piece => {
+          // Determine player based on Y position
+          // Bottom half of board (lower Y values) = Player 2
+          // Top half of board (higher Y values) = Player 1
+          const inferredPlayerId = piece.y < (boardHeight / 2) ? 2 : 1;
+          
+          return {
+            ...piece,
+            player_id: inferredPlayerId
+          };
+        });
+        
         const piecesData = JSON.stringify(piecesArray);
         
         const [result] = await db_pool.query(
           `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers)
            VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?)`,
-          [currentTime, timeControl, increment || 0, piecesData, JSON.stringify({ moves: [] }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0]
+          [currentTime, timeControl, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0]
         );
 
         const gameId = result.insertId;
@@ -612,7 +627,10 @@ function initializeSocket(server) {
           startTime: null,
           playerTimes: {},
           allowSpectators,
-          showPieceHelpers
+          showPieceHelpers,
+          rated,
+          allowPremoves,
+          premove: null
         };
 
         activeGames.set(gameId.toString(), gameState);
@@ -632,7 +650,14 @@ function initializeSocket(server) {
           increment: increment || 0
         });
 
-        console.log(`Game ${gameId} created by ${hostUsername}`);
+        console.log(`Game ${gameId} created by ${hostUsername}`, {
+          rated,
+          allowPremoves,
+          gameState: {
+            rated: gameState.rated,
+            allowPremoves: gameState.allowPremoves
+          }
+        });
       } catch (error) {
         console.error("Error creating game:", error);
         socket.emit("error", { message: "Failed to create game" });
@@ -767,7 +792,10 @@ function initializeSocket(server) {
             startTime: null,
             playerTimes: {},
             allowSpectators: game.allow_spectators !== 0,
-            showPieceHelpers: game.show_piece_helpers === 1
+            showPieceHelpers: game.show_piece_helpers === 1,
+            allowPremoves: game.allow_premoves !== 0,
+            rated: game.is_rated !== 0,
+            premove: null
           };
 
           activeGames.set(gameIdStr, gameState);
@@ -901,6 +929,9 @@ function initializeSocket(server) {
             [new Date().toISOString().slice(0, 19).replace('T', ' '), gameId]
           );
           
+          // Initialize castling partners for all pieces that can castle
+          initializeCastlingPartners(gameState);
+          
           // Notify everyone that a new game has started (for ongoing games list)
           io.emit("gameStarted", { gameId });
           
@@ -912,6 +943,12 @@ function initializeSocket(server) {
         const moveResult = validateAndApplyMove(gameState, move);
         
         if (!moveResult.valid) {
+          console.log(`Move validation failed in game ${gameId}:`, {
+            reason: moveResult.reason,
+            move: move,
+            currentTurn: gameState.currentTurn,
+            userId: userId
+          });
           return socket.emit("error", { message: moveResult.reason || "Invalid move" });
         }
 
@@ -935,6 +972,186 @@ function initializeSocket(server) {
         // Switch turns
         gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
 
+        // Initialize premove property if it doesn't exist (for backwards compatibility)
+        if (gameState.premove === undefined) {
+          gameState.premove = null;
+        }
+
+        // Check if opponent has a premove queued
+        const nextPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+        let premoveExecuted = false;
+        if (gameState.allowPremoves && gameState.premove && gameState.premove.playerId === nextPlayer?.id) {
+          // Try to execute the premove
+          const premove = gameState.premove;
+          gameState.premove = null; // Clear premove
+          
+          // Validate that the premove is still valid after opponent's move
+          const premoveResult = validateAndApplyMove(gameState, premove.move);
+          
+          if (premoveResult.valid) {
+            // Premove is valid, execute it
+            const premoveRecord = {
+              from: premove.move.from,
+              to: premove.move.to,
+              pieceId: premove.move.pieceId,
+              captured: premoveResult.captured,
+              player: nextPlayer.id,
+              position: gameState.currentTurn,
+              timestamp: Date.now(),
+              isPremove: true
+            };
+            gameState.moveHistory.push(premoveRecord);
+            
+            // Apply increment to player's time
+            if (gameState.increment && gameState.playerTimes[nextPlayer.id]) {
+              gameState.playerTimes[nextPlayer.id] += gameState.increment;
+            }
+            
+            // Switch turns back
+            gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+            premoveExecuted = true;
+            
+            // Broadcast the premove execution
+            io.to(`game-${gameId}`).emit("premoveExecuted", {
+              gameId,
+              move: premoveRecord,
+              gameState: {
+                pieces: gameState.pieces,
+                currentTurn: gameState.currentTurn,
+                playerTimes: gameState.playerTimes,
+                moveHistory: gameState.moveHistory
+              }
+            });
+            
+            // Check for win conditions after premove (use premove's captured piece)
+            const premoveWinResult = checkWinCondition(gameState, premoveResult.captured);
+            if (premoveWinResult.gameOver) {
+              // Stop the timer
+              stopGameTimer(gameId);
+              
+              gameState.status = 'completed';
+              gameState.winner = premoveWinResult.winner;
+              gameState.winReason = premoveWinResult.reason;
+
+              // Find loser
+              const loser = gameState.players.find(p => p.id !== premoveWinResult.winner);
+
+              // Update ELO ratings only if game is rated
+              let eloChanges = null;
+              if (gameState.rated !== false && premoveWinResult.winner && loser) {
+                eloChanges = await updateEloRatings(premoveWinResult.winner, loser.id);
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              await db_pool.query(
+                `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                 pieces = ?, other_data = ? WHERE id = ?`,
+                [endTime, premoveWinResult.winner, JSON.stringify(gameState.pieces), 
+                 JSON.stringify({ 
+                   moves: gameState.moveHistory, 
+                   winner: premoveWinResult.winner, 
+                   reason: premoveWinResult.reason, 
+                   eloChanges,
+                   rated: gameState.rated,
+                   allowPremoves: gameState.allowPremoves
+                 }),
+                 gameId]
+              );
+
+              io.to(`game-${gameId}`).emit("gameOver", {
+                gameId,
+                winner: premoveWinResult.winner,
+                reason: premoveWinResult.reason,
+                finalState: gameState,
+                eloChanges
+              });
+              
+              return; // Exit early since game is over
+            }
+            
+            // Check if the current player (after premove) is in check
+            const premoveCheckResult = checkForCheck(gameState, gameState.currentTurn);
+            
+            // Store check status in game state
+            gameState.inCheck = premoveCheckResult.inCheck;
+            gameState.checkedPieces = premoveCheckResult.checkedPieces;
+
+            // If in check, also check for checkmate (only if mate_condition is enabled)
+            if (premoveCheckResult.inCheck && gameState.gameType?.mate_condition) {
+              const isPremoveCheckmate = isCheckmate(gameState, gameState.currentTurn);
+              
+              if (isPremoveCheckmate) {
+                // Checkmate detected - end the game
+                stopGameTimer(gameId);
+                
+                gameState.status = 'completed';
+                const checkmatedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+                const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+                gameState.winner = winner?.id;
+                gameState.winReason = 'checkmate';
+
+                // Update ELO ratings only if game is rated
+                let eloChanges = null;
+                if (gameState.rated !== false && winner?.id && checkmatedPlayer?.id) {
+                  eloChanges = await updateEloRatings(winner.id, checkmatedPlayer.id);
+                }
+
+                const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, winner?.id, JSON.stringify(gameState.pieces), 
+                   JSON.stringify({ 
+                     moves: gameState.moveHistory, 
+                     winner: winner?.id, 
+                     reason: 'checkmate', 
+                     eloChanges,
+                     rated: gameState.rated,
+                     allowPremoves: gameState.allowPremoves
+                   }),
+                   gameId]
+                );
+
+                io.to(`game-${gameId}`).emit("gameOver", {
+                  gameId,
+                  winner: winner?.id,
+                  reason: 'checkmate',
+                  finalState: gameState,
+                  eloChanges
+                });
+                
+                console.log(`CHECKMATE! Player ${checkmatedPlayer?.username} is checkmated in game ${gameId} after premove`);
+                return; // Exit early since game is over
+              }
+            }
+            
+            // Broadcast check status after premove
+            if (premoveCheckResult.inCheck) {
+              io.to(`game-${gameId}`).emit("check", {
+                gameId,
+                playerInCheck: gameState.currentTurn,
+                checkedPieces: premoveCheckResult.checkedPieces,
+                gameState: {
+                  inCheck: true,
+                  checkedPieces: premoveCheckResult.checkedPieces
+                }
+              });
+            }
+            
+            // After successful premove execution and checks, return to skip the regular flow
+            return;
+          } else {
+            // Premove is no longer valid, notify player
+            const nextPlayerSocketId = userSockets.get(nextPlayer.id.toString());
+            if (nextPlayerSocketId) {
+              io.to(nextPlayerSocketId).emit("premoveCancelled", {
+                gameId,
+                reason: premoveResult.reason || "Premove is no longer valid"
+              });
+            }
+          }
+        }
+
         // Check for win conditions (pass captured piece for ends_game_on_capture check)
         const winResult = checkWinCondition(gameState, moveResult.captured);
         if (winResult.gameOver) {
@@ -948,9 +1165,9 @@ function initializeSocket(server) {
           // Find loser
           const loser = gameState.players.find(p => p.id !== winResult.winner);
 
-          // Update ELO ratings
+          // Update ELO ratings only if game is rated
           let eloChanges = null;
-          if (winResult.winner && loser) {
+          if (gameState.rated !== false && winResult.winner && loser) {
             eloChanges = await updateEloRatings(winResult.winner, loser.id);
           }
 
@@ -959,7 +1176,14 @@ function initializeSocket(server) {
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
              pieces = ?, other_data = ? WHERE id = ?`,
             [endTime, winResult.winner, JSON.stringify(gameState.pieces), 
-             JSON.stringify({ moves: gameState.moveHistory, winner: winResult.winner, reason: winResult.reason, eloChanges }),
+             JSON.stringify({ 
+               moves: gameState.moveHistory, 
+               winner: winResult.winner, 
+               reason: winResult.reason, 
+               eloChanges,
+               rated: gameState.rated,
+               allowPremoves: gameState.allowPremoves
+             }),
              gameId]
           );
 
@@ -974,15 +1198,86 @@ function initializeSocket(server) {
           // Check if the current player (whose turn it now is) is in check
           const checkResult = checkForCheck(gameState, gameState.currentTurn);
           
+          console.log('After move - checking for check:', {
+            currentTurn: gameState.currentTurn,
+            inCheck: checkResult.inCheck,
+            mateConditionEnabled: gameState.gameType?.mate_condition
+          });
+          
           // Store check status in game state
           gameState.inCheck = checkResult.inCheck;
           gameState.checkedPieces = checkResult.checkedPieces;
+
+          // If in check, also check for checkmate (only if mate_condition is enabled)
+          let isInCheckmate = false;
+          if (checkResult.inCheck && gameState.gameType?.mate_condition) {
+            console.log('Player is in check, checking for checkmate...');
+            isInCheckmate = isCheckmate(gameState, gameState.currentTurn);
+            console.log('Checkmate result:', isInCheckmate);
+            
+            if (isInCheckmate) {
+              // Checkmate detected - end the game
+              console.log('CHECKMATE DETECTED! Ending game...');
+              stopGameTimer(gameId);
+              
+              gameState.status = 'completed';
+              const checkmatedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+              const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+              gameState.winner = winner?.id;
+              gameState.winReason = 'checkmate';
+
+              // Update ELO ratings only if game is rated
+              let eloChanges = null;
+              if (gameState.rated !== false && winner?.id && checkmatedPlayer?.id) {
+                eloChanges = await updateEloRatings(winner.id, checkmatedPlayer.id);
+                console.log('ELO updated:', eloChanges);
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              try {
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, winner?.id, JSON.stringify(gameState.pieces), 
+                   JSON.stringify({ 
+                     moves: gameState.moveHistory, 
+                     winner: winner?.id, 
+                     reason: 'checkmate', 
+                     eloChanges,
+                     rated: gameState.rated,
+                     allowPremoves: gameState.allowPremoves
+                   }),
+                   gameId]
+                );
+                console.log('Database updated successfully');
+              } catch (dbError) {
+                console.error('Failed to update database:', dbError);
+              }
+
+              io.to(`game-${gameId}`).emit("gameOver", {
+                gameId,
+                winner: winner?.id,
+                reason: 'checkmate',
+                finalState: gameState,
+                eloChanges
+              });
+              console.log('gameOver event emitted to room game-' + gameId);
+              
+              console.log(`CHECKMATE! Player ${checkmatedPlayer?.username} is checkmated in game ${gameId}`);
+              return; // Exit early since game is over
+            }
+          }
 
           // Update game state in database
           await db_pool.query(
             "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
             [gameState.currentTurn, JSON.stringify(gameState.pieces), 
-             JSON.stringify({ moves: gameState.moveHistory, inCheck: checkResult.inCheck }), gameId]
+             JSON.stringify({ 
+               moves: gameState.moveHistory, 
+               inCheck: checkResult.inCheck,
+               rated: gameState.rated,
+               allowPremoves: gameState.allowPremoves
+             }), gameId]
           );
 
           // Broadcast move to all players in game
@@ -995,7 +1290,9 @@ function initializeSocket(server) {
               playerTimes: gameState.playerTimes,
               moveHistory: gameState.moveHistory,
               inCheck: checkResult.inCheck,
-              checkedPieces: checkResult.checkedPieces
+              checkedPieces: checkResult.checkedPieces,
+              allowPremoves: gameState.allowPremoves,
+              rated: gameState.rated
             }
           });
 
@@ -1049,16 +1346,23 @@ function initializeSocket(server) {
         gameState.winner = winner?.id;
         gameState.winReason = 'resignation';
 
-        // Update ELO ratings
+        // Update ELO ratings only if game is rated
         let eloChanges = null;
-        if (winner?.id && userId) {
+        if (gameState.rated !== false && winner?.id && userId) {
           eloChanges = await updateEloRatings(winner.id, userId);
         }
 
         const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
         await db_pool.query(
           `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, other_data = ?, pieces = ? WHERE id = ?`,
-          [endTime, winner?.id, JSON.stringify({ moves: gameState.moveHistory, winner: winner?.id, reason: 'resignation', eloChanges }), JSON.stringify(gameState.pieces), gameId]
+          [endTime, winner?.id, JSON.stringify({ 
+            moves: gameState.moveHistory, 
+            winner: winner?.id, 
+            reason: 'resignation', 
+            eloChanges,
+            rated: gameState.rated,
+            allowPremoves: gameState.allowPremoves
+          }), JSON.stringify(gameState.pieces), gameId]
         );
 
         io.to(`game-${gameId}`).emit("gameOver", {
@@ -1074,6 +1378,75 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error processing resignation:", error);
         socket.emit("error", { message: "Failed to resign" });
+      }
+    });
+
+    // Set a premove
+    socket.on("setPremove", async (data) => {
+      try {
+        const { gameId, userId, move } = data;
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+
+        if (!gameState) {
+          return socket.emit("error", { message: "Game not found" });
+        }
+
+        // Initialize premove property if it doesn't exist (for backwards compatibility)
+        if (gameState.premove === undefined) {
+          gameState.premove = null;
+        }
+
+        // Check if premoves are allowed
+        console.log('setPremove called:', { gameId, userId, allowPremoves: gameState.allowPremoves });
+        if (gameState.allowPremoves === false) {
+          return socket.emit("error", { message: "Premoves are not allowed in this game" });
+        }
+
+        // Verify it's NOT this player's turn (can only premove on opponent's turn)
+        const currentPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+        if (currentPlayer && currentPlayer.id === userId) {
+          return socket.emit("error", { message: "Cannot premove on your own turn" });
+        }
+
+        // Store the premove
+        gameState.premove = {
+          playerId: userId,
+          move: move
+        };
+
+        // Confirm premove to player
+        socket.emit("premoveSet", {
+          gameId,
+          move
+        });
+
+        console.log(`Premove set by player ${userId} in game ${gameId}`);
+      } catch (error) {
+        console.error("Error setting premove:", error);
+        socket.emit("error", { message: "Failed to set premove" });
+      }
+    });
+
+    // Clear a premove
+    socket.on("clearPremove", async (data) => {
+      try {
+        const { gameId, userId } = data;
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+
+        if (!gameState) {
+          return socket.emit("error", { message: "Game not found" });
+        }
+
+        // Clear the premove if it belongs to this player
+        if (gameState.premove && gameState.premove.playerId === userId) {
+          gameState.premove = null;
+          socket.emit("premoveCleared", { gameId });
+        }
+      } catch (error) {
+        console.error("Error clearing premove:", error);
+        socket.emit("error", { message: "Failed to clear premove" });
       }
     });
 
@@ -1277,11 +1650,36 @@ function initializeSocket(server) {
             pieces = [];
           }
 
-          // Parse move history
+          // Fix player_id assignment based on Y position (for standard chess setup)
+          // This ensures pieces have the correct ownership regardless of database state
+          const boardHeight = gameType?.board_height || 8;
+          pieces = pieces.map(piece => {
+            // Determine player based on ORIGINAL Y position from piece ID
+            // Piece IDs are formatted as: pieceId_originalRow_originalCol
+            const idParts = piece.id?.split('_');
+            if (idParts && idParts.length >= 2) {
+              const originalRow = parseInt(idParts[1]);
+              // Bottom half of board (lower Y values) = Player 2
+              // Top half of board (higher Y values) = Player 1  
+              const inferredPlayerId = originalRow < (boardHeight / 2) ? 2 : 1;
+              return {
+                ...piece,
+                player_id: inferredPlayerId
+              };
+            }
+            return piece;
+          });
+
+          // Parse move history and settings
           let moveHistory = [];
+          let rated = true;
+          let allowPremoves = true;
           try {
             const otherData = JSON.parse(game.other_data || '{}');
             moveHistory = otherData.moves || [];
+            rated = otherData.rated !== false; // Default to true
+            allowPremoves = otherData.allowPremoves !== false; // Default to true
+            console.log('Loaded game settings from DB:', { rated, allowPremoves, otherData });
           } catch {
             moveHistory = [];
           }
@@ -1308,11 +1706,30 @@ function initializeSocket(server) {
             startTime: game.start_time,
             playerTimes: playerTimes,
             allowSpectators: game.allow_spectators !== 0,
-            showPieceHelpers: game.show_piece_helpers === 1
+            showPieceHelpers: game.show_piece_helpers === 1,
+            rated: rated,
+            allowPremoves: allowPremoves,
+            premove: null
           };
+
+          // Check if current player is in check (if game is active)
+          if (gameState.status === 'active' && gameState.gameType?.mate_condition) {
+            const checkResult = checkForCheck(gameState, gameState.currentTurn);
+            gameState.inCheck = checkResult.inCheck;
+            gameState.checkedPieces = checkResult.checkedPieces;
+          } else {
+            gameState.inCheck = false;
+            gameState.checkedPieces = [];
+          }
 
           // Store in memory for future use
           activeGames.set(gameId.toString(), gameState);
+          
+          // If game is active and has time control, restart the timer
+          if (gameState.status === 'active' && gameState.timeControl) {
+            console.log(`Restarting timer for active game ${gameId} after server restart`);
+            startGameTimer(io, gameId);
+          }
           
           socket.join(`game-${gameId}`);
           socket.emit("gameState", gameState);
@@ -1433,9 +1850,9 @@ function startGameTimer(io, gameId) {
         currentGameState.winner = winner?.id;
         currentGameState.winReason = 'timeout';
 
-        // Update ELO ratings
+        // Update ELO ratings only if game is rated
         let eloChanges = null;
-        if (winner?.id && currentPlayer.id) {
+        if (currentGameState.rated !== false && winner?.id && currentPlayer.id) {
           eloChanges = await updateEloRatings(winner.id, currentPlayer.id);
         }
         
@@ -1444,7 +1861,14 @@ function startGameTimer(io, gameId) {
           `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
            pieces = ?, other_data = ? WHERE id = ?`,
           [endTime, winner?.id, JSON.stringify(currentGameState.pieces), 
-           JSON.stringify({ moves: currentGameState.moveHistory, winner: winner?.id, reason: 'timeout', eloChanges }),
+           JSON.stringify({ 
+             moves: currentGameState.moveHistory, 
+             winner: winner?.id, 
+             reason: 'timeout', 
+             eloChanges,
+             rated: currentGameState.rated,
+             allowPremoves: currentGameState.allowPremoves
+           }),
            gameId]
         );
         
@@ -1502,6 +1926,8 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
     return true; // Invalid move, treat as leaving in check
   }
   
+  const originalPos = { x: simulatedPieces[pieceIndex].x, y: simulatedPieces[pieceIndex].y };
+  
   // Check if destination has an enemy piece (would be captured)
   const capturedPieceIndex = simulatedPieces.findIndex(p => 
     p.x === to.x && p.y === to.y && p.id !== pieceId
@@ -1527,7 +1953,67 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
   
   // Check if player would still be in check after this move
   const checkResult = checkForCheck(simulatedGameState, playerPosition);
+  
+  if (checkResult.inCheck) {
+    console.log('Move would leave player in check:', {
+      pieceId,
+      from: originalPos,
+      to: to,
+      playerPosition,
+      stillInCheck: true
+    });
+  }
+  
   return checkResult.inCheck;
+}
+
+/**
+ * Initialize castling partners for all pieces at the start of the game
+ * @param {Object} gameState - The current game state
+ */
+function initializeCastlingPartners(gameState) {
+  const { pieces, gameType } = gameState;
+  const boardWidth = gameType?.board_width || 8;
+  
+  pieces.forEach(piece => {
+    if (piece.can_castle && !piece.castling_partner_id) {
+      const pieceOwner = piece.team || piece.player_id;
+      
+      // Find furthest allied piece to the left
+      let leftPartner = null;
+      for (let x = piece.x - 1; x >= 0; x--) {
+        const foundPiece = pieces.find(p => p.x === x && p.y === piece.y);
+        if (foundPiece) {
+          const foundOwner = foundPiece.team || foundPiece.player_id;
+          if (foundOwner === pieceOwner) {
+            leftPartner = foundPiece;
+          }
+          break; // Stop at first piece found
+        }
+      }
+      
+      // Find furthest allied piece to the right
+      let rightPartner = null;
+      for (let x = piece.x + 1; x < boardWidth; x++) {
+        const foundPiece = pieces.find(p => p.x === x && p.y === piece.y);
+        if (foundPiece) {
+          const foundOwner = foundPiece.team || foundPiece.player_id;
+          if (foundOwner === pieceOwner) {
+            rightPartner = foundPiece;
+          }
+          break; // Stop at first piece found
+        }
+      }
+      
+      // Store the castling partners
+      if (leftPartner) {
+        piece.castling_partner_left_id = leftPartner.id;
+      }
+      if (rightPartner) {
+        piece.castling_partner_right_id = rightPartner.id;
+      }
+    }
+  });
 }
 
 /**
@@ -1544,6 +2030,15 @@ function validateAndApplyMove(gameState, move) {
   }
 
   const piece = pieces[pieceIndex];
+
+  // Verify the piece is at the 'from' position
+  if (piece.x !== from.x || piece.y !== from.y) {
+    console.log('Piece position mismatch:', {
+      piecePosition: { x: piece.x, y: piece.y },
+      fromPosition: from
+    });
+    return { valid: false, reason: "Piece is not at the specified position" };
+  }
 
   // Verify piece belongs to current player
   // Pieces can have team, player, or player_id to indicate ownership
@@ -1580,6 +2075,20 @@ function validateAndApplyMove(gameState, move) {
       return { valid: false, reason: "Cannot capture your own piece" };
     }
     capturedPiece = destPiece;
+    
+    // Important: Validate that the piece can actually capture to this square
+    // This is critical for premoves that become captures
+    const canCapture = canPieceAttackSquare(piece, to.x, to.y, pieces);
+    if (!canCapture) {
+      return { valid: false, reason: "Piece cannot capture to that square" };
+    }
+  } else {
+    // No piece at destination - validate this is a legal non-capture move
+    // Use canPieceMoveToSquare which checks movement rules only (not capture rules)
+    const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces);
+    if (!canMove) {
+      return { valid: false, reason: "Piece cannot move to that square" };
+    }
   }
 
   // Check if mate_condition is enabled - if so, validate move doesn't leave player in check
@@ -1608,6 +2117,37 @@ function validateAndApplyMove(gameState, move) {
     movingPiece.x = to.x;
     movingPiece.y = to.y;
     movingPiece.hasMoved = true;
+    // Increment moveCount for availableForMoves tracking
+    if (movingPiece.moveCount === undefined) {
+      movingPiece.moveCount = 1;
+    } else {
+      movingPiece.moveCount++;
+    }
+
+    // Handle castling - move the target piece to opposite side
+    if (move.isCastling && move.castlingWith && move.castlingDirection) {
+      const castlingTargetPiece = pieces.find(p => p.id === move.castlingWith);
+      if (castlingTargetPiece) {
+        // Calculate the destination for the castling target piece
+        // It should be placed on the opposite side of the castling piece
+        if (move.castlingDirection === 'left') {
+          // Castling piece moved 2 squares left, target goes to right of it
+          castlingTargetPiece.x = to.x + 1;
+          castlingTargetPiece.y = to.y;
+        } else {
+          // Castling piece moved 2 squares right, target goes to left of it
+          castlingTargetPiece.x = to.x - 1;
+          castlingTargetPiece.y = to.y;
+        }
+        castlingTargetPiece.hasMoved = true;
+        // Increment moveCount for the castling target as well
+        if (castlingTargetPiece.moveCount === undefined) {
+          castlingTargetPiece.moveCount = 1;
+        } else {
+          castlingTargetPiece.moveCount++;
+        }
+      }
+    }
   }
 
   return { valid: true, captured: capturedPiece };
@@ -1651,6 +2191,92 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   
   if (dx === 0 && dy === 0) return false;
   
+  // Check if piece needs direction flipping
+  const pieceOwner = piece.team || piece.player_id;
+  const isPlayer2 = pieceOwner === 2;
+  
+  // For ALL player 2 pieces, flip perspective to match client-side
+  // Client uses: rowDiff = player2 ? (fromY - toY) : (toY - fromY)
+  // So we flip: dy becomes -dy, dx becomes -dx
+  const effectiveDx = isPlayer2 ? -dx : dx;
+  const effectiveDy = isPlayer2 ? -dy : dy;
+  
+  // Parse additional captures from special_scenario_captures
+  let additionalCaptures = {};
+  if (piece.special_scenario_captures) {
+    try {
+      const parsed = typeof piece.special_scenario_captures === 'string' 
+        ? JSON.parse(piece.special_scenario_captures)
+        : piece.special_scenario_captures;
+      additionalCaptures = parsed.additionalCaptures || {};
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
+  
+  // Check additional captures first
+  const directionMap = {
+    up: [0, -1],
+    down: [0, 1],
+    left: [-1, 0],
+    right: [1, 0],
+    up_left: [-1, -1],
+    up_right: [1, -1],
+    down_left: [-1, 1],
+    down_right: [1, 1]
+  };
+  
+  for (const [direction, captureOptions] of Object.entries(additionalCaptures)) {
+    const [dirDx, dirDy] = directionMap[direction] || [0, 0];
+    if (dirDx === 0 && dirDy === 0) continue;
+    
+    // Check if this direction matches the target
+    const expectedDx = dirDx * absDx;
+    const expectedDy = dirDy * absDy;
+    
+    for (const captureOption of captureOptions) {
+      // Check if this capture has availableForMoves restriction
+      if (captureOption.availableForMoves && piece.moveCount >= captureOption.availableForMoves) continue;
+      // Legacy support for firstMoveOnly
+      if (captureOption.firstMoveOnly && piece.moveCount > 0) continue;
+      
+      // Calculate the capture value
+      let maxDist = captureOption.value || 0;
+      if (captureOption.infinite) maxDist = 99;
+      
+      // Check if direction and distance match
+      if (dirDx !== 0 && dirDy !== 0) {
+        // Diagonal
+        if (absDx === absDy) {
+          const dist = absDx;
+          if (captureOption.exact) {
+            if (dist === maxDist) return true;
+          } else {
+            if (maxDist === 99 || dist <= maxDist) return true;
+          }
+        }
+      } else if (dirDx !== 0) {
+        // Horizontal
+        if (dy === 0) {
+          if (captureOption.exact) {
+            if (absDx === maxDist) return true;
+          } else {
+            if (maxDist === 99 || absDx <= maxDist) return true;
+          }
+        }
+      } else if (dirDy !== 0) {
+        // Vertical
+        if (dx === 0) {
+          if (captureOption.exact) {
+            if (absDy === maxDist) return true;
+          } else {
+            if (maxDist === 99 || absDy <= maxDist) return true;
+          }
+        }
+      }
+    }
+  }
+  
   // Get piece movement/capture data
   // First check capture-specific fields, then fall back to movement
   const useMovementForCapture = piece.attacks_like_movement || piece.can_capture_enemy_on_move;
@@ -1685,9 +2311,9 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
 
   // Straight line movements (rook-like)
   if (dx === 0 && dy !== 0) {
-    // Vertical movement
-    const captureVal = dy < 0 ? piece.up_capture : piece.down_capture;
-    const moveVal = dy < 0 ? piece.up_movement : piece.down_movement;
+    // Vertical movement - use effectiveDy for direction checking
+    const captureVal = effectiveDy < 0 ? piece.up_capture : piece.down_capture;
+    const moveVal = effectiveDy < 0 ? piece.up_movement : piece.down_movement;
     if (checkDirectional(captureVal, moveVal)) {
       const maxDist = captureVal || (useMovementForCapture ? moveVal : 0);
       if (maxDist === 99 || absDy <= Math.abs(maxDist)) {
@@ -1715,13 +2341,14 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   // Diagonal movements (bishop-like)
   if (absDx === absDy && absDx > 0) {
     let captureVal, moveVal;
-    if (dx < 0 && dy < 0) {
+    // Use effectiveDx and effectiveDy for direction checking
+    if (effectiveDx < 0 && effectiveDy < 0) {
       captureVal = piece.up_left_capture;
       moveVal = piece.up_left_movement;
-    } else if (dx > 0 && dy < 0) {
+    } else if (effectiveDx > 0 && effectiveDy < 0) {
       captureVal = piece.up_right_capture;
       moveVal = piece.up_right_movement;
-    } else if (dx < 0 && dy > 0) {
+    } else if (effectiveDx < 0 && effectiveDy > 0) {
       captureVal = piece.down_left_capture;
       moveVal = piece.down_left_movement;
     } else {
@@ -1739,17 +2366,346 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
     }
   }
   
-  // L-shape movement (knight-like) - doesn't need path checking
+  // L-shape movement (knight-like) - check path unless hopping enabled
   const ratio1 = piece.ratio_capture_1 || (useMovementForCapture ? piece.ratio_movement_1 : 0) || 0;
   const ratio2 = piece.ratio_capture_2 || (useMovementForCapture ? piece.ratio_movement_2 : 0) || 0;
   if (ratio1 > 0 && ratio2 > 0) {
     if ((absDx === ratio1 && absDy === ratio2) || (absDx === ratio2 && absDy === ratio1)) {
-      return true;
+      const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
+      const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+      const pieceOwner = piece.team || piece.player_id;
+      
+      // Debug hopping values
+      console.log('Ratio movement capture check:', {
+        pieceName: piece.name,
+        can_hop_over_allies_raw: piece.can_hop_over_allies,
+        can_hop_over_enemies_raw: piece.can_hop_over_enemies,
+        canHopAllies,
+        canHopEnemies
+      });
+      
+      // If can hop over everything, attack is valid
+      if (canHopAllies && canHopEnemies) {
+        console.log('Allowing hop - can hop over both');
+        return true;
+      }
+      
+      // If no hopping ability at all, path must be completely clear
+      if (!canHopAllies && !canHopEnemies) {
+        console.log('No hopping ability - checking if path is clear');
+        // Check all squares in both possible L-shape paths
+        const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+        const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+        
+        // Path 1: Move along X axis first, then Y axis
+        let path1Clear = true;
+        // Move along X
+        for (let i = 1; i <= absDx; i++) {
+          const checkX = piece.x + (stepX * i);
+          const checkY = piece.y;
+          if (checkX !== targetX || checkY !== targetY) {
+            if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+              path1Clear = false;
+              break;
+            }
+          }
+        }
+        // Then move along Y from the end of X movement
+        if (path1Clear) {
+          for (let i = 1; i <= absDy; i++) {
+            const checkX = piece.x + (stepX * absDx);
+            const checkY = piece.y + (stepY * i);
+            if (checkX !== targetX || checkY !== targetY) {
+              if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+                path1Clear = false;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Path 2: Move along Y axis first, then X axis
+        let path2Clear = true;
+        // Move along Y
+        for (let i = 1; i <= absDy; i++) {
+          const checkX = piece.x;
+          const checkY = piece.y + (stepY * i);
+          if (checkX !== targetX || checkY !== targetY) {
+            if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+              path2Clear = false;
+              break;
+            }
+          }
+        }
+        // Then move along X from the end of Y movement
+        if (path2Clear) {
+          for (let i = 1; i <= absDx; i++) {
+            const checkX = piece.x + (stepX * i);
+            const checkY = piece.y + (stepY * absDy);
+            if (checkX !== targetX || checkY !== targetY) {
+              if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+                path2Clear = false;
+                break;
+              }
+            }
+          }
+        }
+        
+        return path1Clear || path2Clear;
+      }
+      
+      // Helper to check if piece can hop over an obstruction
+      const canHopOver = (obstruction) => {
+        const obstructionOwner = obstruction.team || obstruction.player_id;
+        const isAlly = obstructionOwner === pieceOwner;
+        return (isAlly && canHopAllies) || (!isAlly && canHopEnemies);
+      };
+      
+      // Check if either path is clear (with selective hopping)
+      const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+      const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+      
+      // Path 1: Move along X axis first, then Y axis
+      let path1Clear = true;
+      // Move along X
+      for (let i = 1; i <= absDx; i++) {
+        const checkX = piece.x + (stepX * i);
+        const checkY = piece.y;
+        if (checkX !== targetX || checkY !== targetY) {
+          const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+          if (obstruction && !canHopOver(obstruction)) {
+            path1Clear = false;
+            break;
+          }
+        }
+      }
+      // Then move along Y from the end of X movement
+      if (path1Clear) {
+        for (let i = 1; i <= absDy; i++) {
+          const checkX = piece.x + (stepX * absDx);
+          const checkY = piece.y + (stepY * i);
+          if (checkX !== targetX || checkY !== targetY) {
+            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            if (obstruction && !canHopOver(obstruction)) {
+              path1Clear = false;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Path 2: Move along Y axis first, then X axis
+      let path2Clear = true;
+      // Move along Y
+      for (let i = 1; i <= absDy; i++) {
+        const checkX = piece.x;
+        const checkY = piece.y + (stepY * i);
+        if (checkX !== targetX || checkY !== targetY) {
+          const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+          if (obstruction && !canHopOver(obstruction)) {
+            path2Clear = false;
+            break;
+          }
+        }
+      }
+      // Then move along X from the end of Y movement
+      if (path2Clear) {
+        for (let i = 1; i <= absDx; i++) {
+          const checkX = piece.x + (stepX * i);
+          const checkY = piece.y + (stepY * absDy);
+          if (checkX !== targetX || checkY !== targetY) {
+            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            if (obstruction && !canHopOver(obstruction)) {
+              path2Clear = false;
+              break;
+            }
+          }
+        }
+      }
+      
+      return path1Clear || path2Clear;
     }
   }
   
   return false;
 }
+
+/**
+ * Check if a piece can move to a specific square (non-capture)
+ * This validates ONLY the movement rules, not capture rules
+ */
+function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
+  const dx = targetX - piece.x;
+  const dy = targetY - piece.y;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  
+  if (dx === 0 && dy === 0) return false;
+  
+  // Check if piece needs direction flipping
+  const pieceOwner = piece.team || piece.player_id;
+  const isPlayer2 = pieceOwner === 2;
+  
+  // For ALL player 2 pieces, flip perspective
+  const effectiveDx = isPlayer2 ? -dx : dx;
+  const effectiveDy = isPlayer2 ? -dy : dy;
+  
+  // Helper function to check if path is clear
+  const isPathClear = (fromX, fromY, toX, toY) => {
+    const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
+    const stepY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
+    let x = fromX + stepX;
+    let y = fromY + stepY;
+    
+    while (x !== toX || y !== toY) {
+      if (allPieces.some(p => p.x === x && p.y === y)) {
+        return false; // Path blocked
+      }
+      x += stepX;
+      y += stepY;
+    }
+    return true;
+  };
+
+  // Check directional movement (straight lines)
+  if (dx === 0 && dy !== 0) {
+    // Vertical movement
+    const moveVal = effectiveDy < 0 ? piece.up_movement : piece.down_movement;
+    if (moveVal) {
+      const maxDist = Math.abs(moveVal);
+      if (moveVal === 99 || absDy <= maxDist) {
+        if (isPathClear(piece.x, piece.y, targetX, targetY)) {
+          return true;
+        }
+      }
+    }
+  }
+  
+  if (dy === 0 && dx !== 0) {
+    // Horizontal movement
+    const moveVal = dx < 0 ? piece.left_movement : piece.right_movement;
+    if (moveVal) {
+      const maxDist = Math.abs(moveVal);
+      if (moveVal === 99 || absDx <= maxDist) {
+        if (isPathClear(piece.x, piece.y, targetX, targetY)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // Diagonal movement
+  if (absDx === absDy && absDx > 0) {
+    let moveVal;
+    if (effectiveDy < 0 && effectiveDx < 0) {
+      moveVal = piece.up_left_movement;
+    } else if (effectiveDy < 0 && effectiveDx > 0) {
+      moveVal = piece.up_right_movement;
+    } else if (effectiveDy > 0 && effectiveDx < 0) {
+      moveVal = piece.down_left_movement;
+    } else {
+      moveVal = piece.down_right_movement;
+    }
+    
+    if (moveVal) {
+      const maxDist = Math.abs(moveVal);
+      if (moveVal === 99 || absDx <= maxDist) {
+        if (isPathClear(piece.x, piece.y, targetX, targetY)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // L-shape movement (knight-like)
+  const ratio1 = piece.ratio_movement_1 || 0;
+  const ratio2 = piece.ratio_movement_2 || 0;
+  if (ratio1 > 0 && ratio2 > 0) {
+    if ((absDx === ratio1 && absDy === ratio2) || (absDx === ratio2 && absDy === ratio1)) {
+      const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
+      const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+      const pieceOwner = piece.team || piece.player_id;
+      
+      // If can hop over everything, no need to check path
+      if (canHopAllies && canHopEnemies) {
+        return true;
+      }
+      
+      // Helper to determine if can hop over a piece
+      const canHopOver = (obstructionPiece) => {
+        const obstructionOwner = obstructionPiece.team || obstructionPiece.player_id;
+        if (obstructionOwner === pieceOwner) {
+          return canHopAllies;
+        } else {
+          return canHopEnemies;
+        }
+      };
+      
+      // Check both L-paths
+      const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+      const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+      
+      // Path 1: Move X first, then Y
+      let path1Clear = true;
+      for (let i = 1; i <= absDx; i++) {
+        const checkX = piece.x + (stepX * i);
+        const checkY = piece.y;
+        if (checkX !== targetX || checkY !== targetY) {
+          const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+          if (obstruction && !canHopOver(obstruction)) {
+            path1Clear = false;
+            break;
+          }
+        }
+      }
+      if (path1Clear) {
+        for (let i = 1; i <= absDy; i++) {
+          const checkX = piece.x + (stepX * absDx);
+          const checkY = piece.y + (stepY * i);
+          if (checkX !== targetX || checkY !== targetY) {
+            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            if (obstruction && !canHopOver(obstruction)) {
+              path1Clear = false;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Path 2: Move Y first, then X
+      let path2Clear = true;
+      for (let i = 1; i <= absDy; i++) {
+        const checkX = piece.x;
+        const checkY = piece.y + (stepY * i);
+        if (checkX !== targetX || checkY !== targetY) {
+          const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+          if (obstruction && !canHopOver(obstruction)) {
+            path2Clear = false;
+            break;
+          }
+        }
+      }
+      if (path2Clear) {
+        for (let i = 1; i <= absDx; i++) {
+          const checkX = piece.x + (stepX * i);
+          const checkY = piece.y + (stepY * absDy);
+          if (checkX !== targetX || checkY !== targetY) {
+            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            if (obstruction && !canHopOver(obstruction)) {
+              path2Clear = false;
+              break;
+            }
+          }
+        }
+      }
+      
+      return path1Clear || path2Clear;
+    }
+  }
+
+  return false;
+}
+
 
 /**
  * Check if a player is in check (any piece with ends_game_on_checkmate is under attack)
@@ -1784,6 +2740,503 @@ function checkForCheck(gameState, playerPosition) {
 }
 
 /**
+ * Get all possible moves for a piece
+ * @param {Object} piece - The piece to get moves for
+ * @param {Array} allPieces - All pieces on the board
+ * @param {Object} gameType - The game type with board dimensions
+ * @returns {Array} - Array of {x, y} positions the piece can move to
+ */
+function getPossibleMovesForPiece(piece, allPieces, gameType) {
+  const moves = [];
+  const boardWidth = gameType.board_width || 8;
+  const boardHeight = gameType.board_height || 8;
+  
+  // Initialize moveCount if not present
+  if (piece.moveCount === undefined) {
+    piece.moveCount = piece.hasMoved ? 1 : 0;
+  }
+  
+  // Check if piece has global first_move_only restriction and has already moved
+  const hasGlobalFirstMoveOnlyRestriction = piece.first_move_only && piece.moveCount > 0;
+  const hasGlobalFirstMoveOnlyCaptureRestriction = piece.first_move_only_capture && piece.moveCount > 0;
+  
+  // Parse additional movements from special_scenario_moves
+  let additionalMovements = {};
+  if (piece.special_scenario_moves) {
+    try {
+      const parsed = typeof piece.special_scenario_moves === 'string' 
+        ? JSON.parse(piece.special_scenario_moves)
+        : piece.special_scenario_moves;
+      additionalMovements = parsed.additionalMovements || {};
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
+  
+  // Helper to check if a square is valid on the board
+  const isValidSquare = (x, y) => x >= 0 && x < boardWidth && y >= 0 && y < boardHeight;
+  
+  // Determine if piece belongs to Player 2 (pieces that start at bottom need flipped directions)
+  const pieceOwner = piece.team || piece.player_id;
+  const isPlayer2 = pieceOwner === 2;
+  
+  // Helper to check if path is clear
+  const isPathClear = (fromX, fromY, toX, toY) => {
+    const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
+    const stepY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
+    let x = fromX + stepX;
+    let y = fromY + stepY;
+    
+    while (x !== toX || y !== toY) {
+      if (allPieces.some(p => p.x === x && p.y === y)) {
+        return false;
+      }
+      x += stepX;
+      y += stepY;
+    }
+    return true;
+  };
+  
+  // Helper to check directional moves
+  const checkDirectionalMoves = (dx, dy, maxDist, directionName = null, isFirstMoveOnly = false) => {
+    if (!maxDist || maxDist === 0) return;
+    
+    // Check global first_move_only restriction
+    if (hasGlobalFirstMoveOnlyRestriction) return;
+    
+    // Check direction-specific availableForMoves
+    if (directionName && piece[`${directionName}_available_for`]) {
+      const availableForMoves = piece[`${directionName}_available_for`];
+      if (piece.moveCount >= availableForMoves) return;
+    }
+    
+    const limit = maxDist === 99 ? Math.max(boardWidth, boardHeight) : Math.abs(maxDist);
+    for (let dist = 1; dist <= limit; dist++) {
+      const targetX = piece.x + (dx * dist);
+      const targetY = piece.y + (dy * dist);
+      
+      if (!isValidSquare(targetX, targetY)) break;
+      
+      // Check if path is clear up to this point
+      if (!isPathClear(piece.x, piece.y, targetX, targetY)) break;
+      
+      const targetPiece = allPieces.find(p => p.x === targetX && p.y === targetY);
+      if (targetPiece) {
+        const pieceOwner = piece.team || piece.player_id;
+        const targetOwner = targetPiece.team || targetPiece.player_id;
+        
+        // Can capture enemy pieces if can_capture_enemy_on_move is true and not restricted by first_move_only_capture
+        if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && !hasGlobalFirstMoveOnlyCaptureRestriction) {
+          moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+        }
+        break; // Can't move past a piece
+      } else {
+        moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+      }
+    }
+  };
+  
+  // Directional movements - flip up/down for Player 2
+  if (isPlayer2) {
+    // For Player 2 (bottom of board), flip up/down directions
+    if (piece.up_movement) checkDirectionalMoves(0, 1, piece.up_movement, 'up_movement'); // up becomes increasing Y
+    if (piece.down_movement) checkDirectionalMoves(0, -1, piece.down_movement, 'down_movement'); // down becomes decreasing Y
+  } else {
+    // For Player 1 (top of board), use normal directions
+    if (piece.up_movement) checkDirectionalMoves(0, -1, piece.up_movement, 'up_movement'); // up is decreasing Y
+    if (piece.down_movement) checkDirectionalMoves(0, 1, piece.down_movement, 'down_movement'); // down is increasing Y
+  }
+  if (piece.left_movement) checkDirectionalMoves(-1, 0, piece.left_movement, 'left_movement');
+  if (piece.right_movement) checkDirectionalMoves(1, 0, piece.right_movement, 'right_movement');
+  
+  // Diagonal movements - flip vertical component for Player 2
+  if (isPlayer2) {
+    if (piece.up_left_movement) checkDirectionalMoves(-1, 1, piece.up_left_movement, 'up_left_movement');
+    if (piece.up_right_movement) checkDirectionalMoves(1, 1, piece.up_right_movement, 'up_right_movement');
+    if (piece.down_left_movement) checkDirectionalMoves(-1, -1, piece.down_left_movement, 'down_left_movement');
+    if (piece.down_right_movement) checkDirectionalMoves(1, -1, piece.down_right_movement, 'down_right_movement');
+  } else {
+    if (piece.up_left_movement) checkDirectionalMoves(-1, -1, piece.up_left_movement, 'up_left_movement');
+    if (piece.up_right_movement) checkDirectionalMoves(1, -1, piece.up_right_movement, 'up_right_movement');
+    if (piece.down_left_movement) checkDirectionalMoves(-1, 1, piece.down_left_movement, 'down_left_movement');
+    if (piece.down_right_movement) checkDirectionalMoves(1, 1, piece.down_right_movement, 'down_right_movement');
+  }
+  
+  // Process additional movements from special_scenario_moves
+  const directionMap = {
+    up: [0, -1],
+    down: [0, 1],
+    left: [-1, 0],
+    right: [1, 0],
+    up_left: [-1, -1],
+    up_right: [1, -1],
+    down_left: [-1, 1],
+    down_right: [1, 1]
+  };
+  
+  for (const [direction, movementOptions] of Object.entries(additionalMovements)) {
+    const [dx, dy] = directionMap[direction] || [0, 0];
+    if (dx === 0 && dy === 0) continue;
+    
+    for (const movementOption of movementOptions) {
+      // Check if this movement has availableForMoves restriction
+      if (movementOption.availableForMoves && piece.moveCount >= movementOption.availableForMoves) continue;
+      // Legacy support for firstMoveOnly
+      if (movementOption.firstMoveOnly && piece.moveCount > 0) continue;
+      
+      // Calculate the movement value
+      let maxDist = movementOption.value || 0;
+      if (movementOption.infinite) maxDist = 99;
+      if (movementOption.exact) maxDist = -Math.abs(maxDist);
+      
+      // Use checkDirectionalMoves to process this additional movement
+      if (maxDist !== 0) {
+        checkDirectionalMoves(dx, dy, maxDist, null, movementOption.availableForMoves || movementOption.firstMoveOnly || false);
+      }
+    }
+  }
+  
+  // Ratio movements (knight-like)
+  const ratio1 = piece.ratio_movement_1 || 0;
+  const ratio2 = piece.ratio_movement_2 || 0;
+  if (ratio1 > 0 && ratio2 > 0) {
+    const ratioMoves = [
+      [ratio1, ratio2], [ratio1, -ratio2], [-ratio1, ratio2], [-ratio1, -ratio2],
+      [ratio2, ratio1], [ratio2, -ratio1], [-ratio2, ratio1], [-ratio2, -ratio1]
+    ];
+    
+    const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
+    const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+    const pieceOwner = piece.team || piece.player_id;
+    
+    console.log('Ratio movement check:', {
+      pieceName: piece.name,
+      can_hop_over_allies_raw: piece.can_hop_over_allies,
+      can_hop_over_enemies_raw: piece.can_hop_over_enemies,
+      canHopAllies,
+      canHopEnemies
+    });
+    
+    for (const [dx, dy] of ratioMoves) {
+      const targetX = piece.x + dx;
+      const targetY = piece.y + dy;
+      
+      if (!isValidSquare(targetX, targetY)) continue;
+      
+      // Check if piece has NO hopping ability at all
+      const noHoppingAbility = !canHopAllies && !canHopEnemies;
+      
+      if (noHoppingAbility) {
+        // If no hopping ability, path must be completely clear
+        const absRatio1 = Math.abs(dx) > Math.abs(dy) ? Math.abs(dx) : Math.abs(dy);
+        const absRatio2 = Math.abs(dx) < Math.abs(dy) ? Math.abs(dx) : Math.abs(dy);
+        const primaryIsX = Math.abs(dx) > Math.abs(dy);
+        const primaryDir = primaryIsX ? (dx > 0 ? 1 : -1) : 0;
+        const secondaryDir = primaryIsX ? 0 : (dy > 0 ? 1 : -1);
+        const tertiaryDir = primaryIsX ? (dy > 0 ? 1 : -1) : (dx > 0 ? 1 : -1);
+        
+        // Check path 1: move in primary direction first
+        let path1Clear = true;
+        for (let i = 1; i <= absRatio1; i++) {
+          const checkX = piece.x + (primaryIsX ? primaryDir * i : 0);
+          const checkY = piece.y + (primaryIsX ? 0 : secondaryDir * i);
+          if (checkX !== targetX || checkY !== targetY) {
+            if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+              path1Clear = false;
+              break;
+            }
+          }
+        }
+        if (path1Clear) {
+          for (let i = 1; i <= absRatio2; i++) {
+            const checkX = piece.x + (primaryIsX ? primaryDir * absRatio1 : tertiaryDir * i);
+            const checkY = piece.y + (primaryIsX ? tertiaryDir * i : secondaryDir * absRatio1);
+            if (checkX !== targetX || checkY !== targetY) {
+              if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+                path1Clear = false;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Check path 2: move in secondary direction first
+        let path2Clear = true;
+        for (let i = 1; i <= absRatio2; i++) {
+          const checkX = piece.x + (primaryIsX ? 0 : tertiaryDir * i);
+          const checkY = piece.y + (primaryIsX ? tertiaryDir * i : 0);
+          if (checkX !== targetX || checkY !== targetY) {
+            if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+              path2Clear = false;
+              break;
+            }
+          }
+        }
+        if (path2Clear) {
+          for (let i = 1; i <= absRatio1; i++) {
+            const checkX = piece.x + (primaryIsX ? primaryDir * i : tertiaryDir * absRatio2);
+            const checkY = piece.y + (primaryIsX ? tertiaryDir * absRatio2 : secondaryDir * i);
+            if (checkX !== targetX || checkY !== targetY) {
+              if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+                path2Clear = false;
+                break;
+              }
+            }
+          }
+        }
+        
+        // If neither path is clear, skip this move
+        if (!path1Clear && !path2Clear) {
+          continue;
+        }
+      } else {
+        // Check path with selective hopping (original logic)
+        // For L-shaped moves, check both possible paths
+        // Check path with selective hopping (original logic)
+        // For L-shaped moves, check both possible paths
+        const absRatio1 = Math.abs(dx) > Math.abs(dy) ? Math.abs(dx) : Math.abs(dy);
+        const absRatio2 = Math.abs(dx) < Math.abs(dy) ? Math.abs(dx) : Math.abs(dy);
+        
+        // Determine primary and secondary directions
+        const primaryIsX = Math.abs(dx) > Math.abs(dy);
+        const primaryDir = primaryIsX ? (dx > 0 ? 1 : -1) : 0;
+        const secondaryDir = primaryIsX ? 0 : (dy > 0 ? 1 : -1);
+        const tertiaryDir = primaryIsX ? (dy > 0 ? 1 : -1) : (dx > 0 ? 1 : -1);
+        
+        // Helper to check if piece can hop over an obstruction
+        const canHopOver = (obstruction) => {
+          const obstructionOwner = obstruction.team || obstruction.player_id;
+          const isAlly = obstructionOwner === pieceOwner;
+          return (isAlly && canHopAllies) || (!isAlly && canHopEnemies);
+        };
+        
+        // Check path 1: move in primary direction first
+        let path1Clear = true;
+        for (let i = 1; i <= absRatio1; i++) {
+          const checkX = piece.x + (primaryIsX ? primaryDir * i : 0);
+          const checkY = piece.y + (primaryIsX ? 0 : secondaryDir * i);
+          if (checkX !== targetX || checkY !== targetY) {
+            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            if (obstruction && !canHopOver(obstruction)) {
+              path1Clear = false;
+              break;
+            }
+          }
+        }
+        if (path1Clear) {
+          for (let i = 1; i <= absRatio2; i++) {
+            const checkX = piece.x + (primaryIsX ? primaryDir * absRatio1 : tertiaryDir * i);
+            const checkY = piece.y + (primaryIsX ? tertiaryDir * i : secondaryDir * absRatio1);
+            if (checkX !== targetX || checkY !== targetY) {
+              const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+              if (obstruction && !canHopOver(obstruction)) {
+                path1Clear = false;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Check path 2: move in secondary direction first
+        let path2Clear = true;
+        for (let i = 1; i <= absRatio2; i++) {
+          const checkX = piece.x + (primaryIsX ? 0 : tertiaryDir * i);
+          const checkY = piece.y + (primaryIsX ? tertiaryDir * i : 0);
+          if (checkX !== targetX || checkY !== targetY) {
+            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            if (obstruction && !canHopOver(obstruction)) {
+              path2Clear = false;
+              break;
+            }
+          }
+        }
+        if (path2Clear) {
+          for (let i = 1; i <= absRatio1; i++) {
+            const checkX = piece.x + (primaryIsX ? primaryDir * i : tertiaryDir * absRatio2);
+            const checkY = piece.y + (primaryIsX ? tertiaryDir * absRatio2 : secondaryDir * i);
+            if (checkX !== targetX || checkY !== targetY) {
+              const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+              if (obstruction && !canHopOver(obstruction)) {
+                path2Clear = false;
+                break;
+              }
+            }
+          }
+        }
+        
+        // If neither path is clear, skip this move
+        if (!path1Clear && !path2Clear) {
+          continue;
+        }
+      }
+      
+      const targetPiece = allPieces.find(p => p.x === targetX && p.y === targetY);
+      if (targetPiece) {
+        const pieceOwner = piece.team || piece.player_id;
+        const targetOwner = targetPiece.team || targetPiece.player_id;
+        
+        if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
+          moves.push({ x: targetX, y: targetY });
+        }
+      } else {
+        moves.push({ x: targetX, y: targetY });
+      }
+    }
+  }
+  
+  // Castling
+  if (piece.can_castle && !piece.hasMoved) {
+    const pieceOwner = piece.team || piece.player_id;
+    const hasCheckRule = piece.has_checkmate_rule || piece.has_check_rule;
+    
+    // Try castling to the left (2 squares left)
+    const leftTarget = { x: piece.x - 2, y: piece.y };
+    if (isValidSquare(leftTarget.x, leftTarget.y) && piece.castling_partner_left_id) {
+      // Find the castling partner
+      const rookPiece = allPieces.find(p => p.id === piece.castling_partner_left_id);
+      
+      if (rookPiece && !rookPiece.hasMoved) {
+        // Check if all squares between are unoccupied
+        let pathClear = true;
+        for (let x = piece.x - 1; x >= rookPiece.x + 1; x--) {
+          if (allPieces.some(p => p.x === x && p.y === piece.y)) {
+            pathClear = false;
+            break;
+          }
+        }
+        
+        // If piece has check rule, also check if any square in between is controlled by enemy
+        if (pathClear && hasCheckRule) {
+          for (let x = piece.x; x >= piece.x - 2; x--) {
+            // Check if this square is under attack
+            const underAttack = allPieces.some(enemyPiece => {
+              const enemyOwner = enemyPiece.team || enemyPiece.player_id;
+              if (enemyOwner !== pieceOwner) {
+                const enemyMoves = getPossibleMovesForPiece(enemyPiece, allPieces, gameType);
+                return enemyMoves.some(move => move.x === x && move.y === piece.y);
+              }
+              return false;
+            });
+            
+            if (underAttack) {
+              pathClear = false;
+              break;
+            }
+          }
+        }
+        
+        if (pathClear) {
+          moves.push({ x: leftTarget.x, y: leftTarget.y, isCastling: true, castlingWith: rookPiece.id, castlingDirection: 'left' });
+        }
+      }
+    }
+    
+    // Try castling to the right (2 squares right)
+    const rightTarget = { x: piece.x + 2, y: piece.y };
+    if (isValidSquare(rightTarget.x, rightTarget.y) && piece.castling_partner_right_id) {
+      // Find the castling partner
+      const rookPiece = allPieces.find(p => p.id === piece.castling_partner_right_id);
+      
+      if (rookPiece && !rookPiece.hasMoved) {
+        // Check if all squares between are unoccupied
+        let pathClear = true;
+        for (let x = piece.x + 1; x <= rookPiece.x - 1; x++) {
+          if (allPieces.some(p => p.x === x && p.y === piece.y)) {
+            pathClear = false;
+            break;
+          }
+        }
+        
+        // If piece has check rule, also check if any square in between is controlled by enemy
+        if (pathClear && hasCheckRule) {
+          for (let x = piece.x; x <= piece.x + 2; x++) {
+            // Check if this square is under attack
+            const underAttack = allPieces.some(enemyPiece => {
+              const enemyOwner = enemyPiece.team || enemyPiece.player_id;
+              if (enemyOwner !== pieceOwner) {
+                const enemyMoves = getPossibleMovesForPiece(enemyPiece, allPieces, gameType);
+                return enemyMoves.some(move => move.x === x && move.y === piece.y);
+              }
+              return false;
+            });
+            
+            if (underAttack) {
+              pathClear = false;
+              break;
+            }
+          }
+        }
+        
+        if (pathClear) {
+          moves.push({ x: rightTarget.x, y: rightTarget.y, isCastling: true, castlingWith: rookPiece.id, castlingDirection: 'right' });
+        }
+      }
+    }
+  }
+  
+  return moves;
+}
+
+/**
+ * Get all legal moves for a player (moves that don't leave them in check)
+ * @param {Object} gameState - The current game state
+ * @param {number} playerPosition - The player position (1 or 2)
+ * @returns {Array} - Array of legal moves { pieceId, from: {x, y}, to: {x, y} }
+ */
+function getAllLegalMovesForPlayer(gameState, playerPosition) {
+  const { pieces, gameType } = gameState;
+  const legalMoves = [];
+  
+  // Get all pieces belonging to this player
+  const playerPieces = pieces.filter(p => {
+    const pieceOwner = p.team || p.player_id;
+    return pieceOwner === playerPosition;
+  });
+  
+  console.log('Getting legal moves for player', playerPosition, '- found', playerPieces.length, 'pieces');
+  console.log('Sample pieces:', playerPieces.slice(0, 3).map(p => ({ 
+    id: p.id, 
+    team: p.team, 
+    player_id: p.player_id,
+    x: p.x,
+    y: p.y
+  })));
+  
+  // For each piece, get all possible moves
+  for (const piece of playerPieces) {
+    const possibleMoves = getPossibleMovesForPiece(piece, pieces, gameType);
+    
+    // Check if each move is legal (doesn't leave player in check)
+    for (const toSquare of possibleMoves) {
+      const move = {
+        pieceId: piece.id,
+        from: { x: piece.x, y: piece.y },
+        to: toSquare
+      };
+      
+      // If mate_condition is enabled, verify this move doesn't leave player in check
+      if (gameType && gameType.mate_condition) {
+        if (!wouldMoveLeaveInCheck(gameState, move, playerPosition)) {
+          legalMoves.push(move);
+          console.log('Legal move found:', {
+            pieceId: piece.id,
+            pieceTeam: piece.team,
+            piecePlayerId: piece.player_id,
+            from: move.from,
+            to: move.to
+          });
+        }
+      } else {
+        // If no mate condition, all possible moves are legal
+        legalMoves.push(move);
+      }
+    }
+  }
+  
+  return legalMoves;
+}
+
+/**
  * Check if a player is in checkmate (in check and has no legal moves to escape)
  * @param {Object} gameState - The current game state
  * @param {number} playerPosition - The player position to check (1 or 2)
@@ -1796,15 +3249,23 @@ function isCheckmate(gameState, playerPosition) {
     return false;
   }
   
-  // For now, just return that they're in check
-  // Full checkmate detection requires checking all possible moves
-  // which is complex - we'll flag it as check and let players resign
-  // A more complete implementation would simulate all possible moves
+  // Player is in check - now verify they have no legal moves to escape
+  const legalMoves = getAllLegalMovesForPlayer(gameState, playerPosition);
   
-  // TODO: Implement full checkmate detection by trying all legal moves
-  // and seeing if any of them result in not being in check
+  console.log('Checkmate check:', {
+    playerPosition,
+    inCheck: checkResult.inCheck,
+    checkedPieces: checkResult.checkedPieces.map(p => ({ id: p.id, name: p.name, x: p.x, y: p.y })),
+    legalMovesCount: legalMoves.length,
+    legalMoves: legalMoves.slice(0, 5).map(m => ({ 
+      pieceId: m.pieceId, 
+      from: m.from, 
+      to: m.to 
+    }))
+  });
   
-  return false; // For now, don't auto-declare checkmate, just check
+  // If no legal moves exist, it's checkmate
+  return legalMoves.length === 0;
 }
 
 /**
