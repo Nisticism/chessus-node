@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
 import { getGames } from "../../actions/games";
 import styles from "./play.module.scss";
@@ -8,6 +8,7 @@ import styles from "./play.module.scss";
 const Play = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const [searchParams] = useSearchParams();
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const { gamesList } = useSelector((state) => state.games);
   
@@ -40,16 +41,29 @@ const Play = () => {
     dispatch(getGames());
   }, [dispatch]);
 
-  // Select last played game type if available
+  // Select game type from URL parameter or last played game
   useEffect(() => {
-    const lastPlayedGameTypeId = localStorage.getItem('lastPlayedGameType');
-    if (lastPlayedGameTypeId && gamesList?.length > 0) {
-      const lastGame = gamesList.find(g => g.id === parseInt(lastPlayedGameTypeId));
-      if (lastGame) {
-        setSelectedGameType(lastGame);
+    if (gamesList?.length > 0) {
+      // Check for URL parameter first
+      const gameTypeIdParam = searchParams.get('gameTypeId');
+      if (gameTypeIdParam) {
+        const gameFromParam = gamesList.find(g => g.id === parseInt(gameTypeIdParam));
+        if (gameFromParam) {
+          setSelectedGameType(gameFromParam);
+          return;
+        }
+      }
+      
+      // Fall back to last played game
+      const lastPlayedGameTypeId = localStorage.getItem('lastPlayedGameType');
+      if (lastPlayedGameTypeId) {
+        const lastGame = gamesList.find(g => g.id === parseInt(lastPlayedGameTypeId));
+        if (lastGame) {
+          setSelectedGameType(lastGame);
+        }
       }
     }
-  }, [gamesList]);
+  }, [gamesList, searchParams]);
 
   // Fetch open games when connected
   useEffect(() => {

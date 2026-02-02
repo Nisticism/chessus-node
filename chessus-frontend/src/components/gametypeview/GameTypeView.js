@@ -966,14 +966,22 @@ const GameTypeView = () => {
         <button onClick={() => navigate('/create/games')} className={styles["back-button"]}>
           ← Back to Games
         </button>
-        {canEdit() && (
+        <div className={styles["header-actions"]}>
           <button 
-            onClick={() => navigate(`/create/game/edit/${gameId}`)} 
-            className={styles["edit-button"]}
+            onClick={() => navigate(`/play?gameTypeId=${gameId}`)} 
+            className={styles["play-button"]}
           >
-            ✏️ Edit Game
+            🎮 Play this Game
           </button>
-        )}
+          {canEdit() && (
+            <button 
+              onClick={() => navigate(`/create/game/edit/${gameId}`)} 
+              className={styles["edit-button"]}
+            >
+              ✏️ Edit Game
+            </button>
+          )}
+        </div>
       </div>
 
       <div className={styles["game-info"]}>

@@ -16,6 +16,12 @@
   margin-bottom: 30px;
 }
 
+.header-actions {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+
 .back-button {
   padding: 10px 20px;
   background: rgba(74, 144, 226, 0.2);
@@ -29,6 +35,23 @@
 
   &:hover {
     background: rgba(74, 144, 226, 0.3);
+    transform: translateY(-2px);
+  }
+}
+
+.play-button {
+  padding: 10px 20px;
+  background: #2ecc71;
+  border: none;
+  border-radius: 5px;
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #27ae60;
     transform: translateY(-2px);
   }
 }
