@@ -188,7 +188,8 @@ const PlayerPage = (props) => {
   }
 
   const handleProfilePictureClick = () => {
-    if (currentUser && (currentUser.username === username || currentUser.role === "Admin")) {
+    const userRole = currentUser?.role?.toLowerCase();
+    if (currentUser && (currentUser.username === username || userRole === "admin" || userRole === "owner")) {
       setShowPictureModal(true);
     }
   }
@@ -307,7 +308,7 @@ const PlayerPage = (props) => {
               <div 
                 className={styles["profile-avatar"]}
                 onClick={handleProfilePictureClick}
-                style={{ cursor: (currentUser && (currentUser.username === username || currentUser.role === "Admin")) ? 'pointer' : 'default' }}
+                style={{ cursor: (currentUser && (currentUser.username === username || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner")) ? 'pointer' : 'default' }}
               >
                 {displayPictureUrl || 
                  (currentUser && username === currentUser.username && currentUser.profile_picture) || 
@@ -324,7 +325,7 @@ const PlayerPage = (props) => {
                 ) : (
                   username.charAt(0).toUpperCase()
                 )}
-                {currentUser && (currentUser.username === username || currentUser.role === "Admin") && (
+                {currentUser && (currentUser.username === username || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner") && (
                   <div className={styles["edit-icon"]}>
                     <span>📷</span>
                   </div>
@@ -333,10 +334,20 @@ const PlayerPage = (props) => {
               <div className={styles["profile-header-info"]}>
                 <h1 className={styles["username"]}>{username}</h1>
                 <div className={styles["badges-row"]}>
-                  <div className={styles["role-badge"]}>
-                    {currentUser && username === currentUser.username ? (currentUser.role || "Player")
-                    : playerPageUser && playerPageUser.role ? playerPageUser.role : "Player"}
-                  </div>
+                  {(() => {
+                    const role = (currentUser && username === currentUser.username 
+                      ? currentUser.role 
+                      : playerPageUser?.role)?.toLowerCase();
+                    
+                    // Only show the highest role
+                    if (role === 'owner') {
+                      return <div className={styles["role-badge-owner"]}>OWNER</div>;
+                    } else if (role === 'admin') {
+                      return <div className={styles["role-badge-admin"]}>ADMIN</div>;
+                    }
+                    // Don't show badge for regular users
+                    return null;
+                  })()}
                   <DonorBadge 
                     totalDonations={
                       currentUser && username === currentUser.username 
@@ -411,7 +422,7 @@ const PlayerPage = (props) => {
               </strong>
            </div>}
            <Divider />
-      {(currentUser && (currentUser.username === username || currentUser.role === "Admin") && realUser) ?
+      {(currentUser && (currentUser.username === username || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner") && realUser) ?
             <div className={styles["profile-buttons"]}>
               <div className={styles["profile-button"]}>
                 <StandardButton buttonText={"Delete Account"} onClick={handleDelete} />

@@ -689,7 +689,8 @@ const AdminDashboard = () => {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
   }
 
-  if (currentUser.role !== 'admin' && currentUser.role !== 'owner') {
+  const userRole = currentUser.role?.toLowerCase();
+  if (userRole !== 'admin' && userRole !== 'owner') {
     return <Navigate to="/" state={{ message: "Admin access required" }} />;
   }
 
