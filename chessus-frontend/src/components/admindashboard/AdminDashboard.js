@@ -46,21 +46,33 @@ const AdminDashboard = () => {
   const fetchData = useCallback(async (tab, page = 1) => {
     setLoading(true);
     try {
+      const limit = pagination?.limit || 10;
       const response = await axios.get(
-        `${API_URL}admin/${tab}?page=${page}&limit=${pagination.limit}`,
+        `${API_URL}admin/${tab}?page=${page}&limit=${limit}`,
         { headers: authHeader() }
       );
       setData(response.data.data);
       setPagination(response.data.pagination);
     } catch (error) {
       console.error(`Error fetching ${tab}:`, error);
-      setAlertMessage(`Failed to load ${tab}`);
-      setAlertType('error');
-      setShowAlert(true);
+      
+      // Handle expired token
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        setAlertMessage('Session expired. Please log in again.');
+        setAlertType('error');
+        setShowAlert(true);
+        setTimeout(() => {
+          navigate('/login');
+        }, 2000);
+      } else {
+        setAlertMessage(`Failed to load ${tab}`);
+        setAlertType('error');
+        setShowAlert(true);
+      }
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit]);
+  }, [pagination?.limit, navigate]);
 
   useEffect(() => {
     fetchData(activeTab, 1);
