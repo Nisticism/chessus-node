@@ -14,7 +14,7 @@ const UserMenu = ({ currentUser, logOut }) => (
         <Link className="user-menu-item" to={"/profile/" + currentUser.username}>
           👤 {currentUser.username}
         </Link>
-        {currentUser.role === 'Admin' && (
+        {(currentUser.role?.toLowerCase() === 'admin' || currentUser.role?.toLowerCase() === 'owner') && (
           <Link className="user-menu-item admin-link" to="/admin/dashboard">
             ⚡ Admin
           </Link>
@@ -157,7 +157,7 @@ const Menu = ({ currentUser, logOut }) => {
             👤 {currentUser.username}
           </Link>
         </div>
-        {currentUser.role === 'Admin' && (
+        {(currentUser.role?.toLowerCase() === 'admin' || currentUser.role?.toLowerCase() === 'owner') && (
           <div className="nav-item mobile-only">
             <Link as="div" className="nav-item-inner admin-link" to="/admin/dashboard">
               ⚡ Admin
@@ -236,7 +236,7 @@ const Navbar = () => {
                   {currentUser.username}
                 </Link>
               </div>
-              {currentUser.role === 'Admin' && (
+              {(currentUser.role?.toLowerCase() === 'admin' || currentUser.role?.toLowerCase() === 'owner') && (
                 <div className="nav-item">
                   <Link to="/admin/dashboard" className="nav-item-inner admin-link">
                     Admin
