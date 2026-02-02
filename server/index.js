@@ -909,10 +909,10 @@ app.get("/api/admin/users", authenticateToken, async (req, res) => {
     }
 
     const [users] = await db_pool.query(
-      `SELECT id, username, email, role, created_at, elo, profile_picture, bio,
+      `SELECT id, username, email, first_name, last_name, role, elo, profile_picture, bio,
               banned, ban_reason, banned_at, banned_by, ban_expires_at
        FROM users
-       ORDER BY created_at DESC`
+       ORDER BY id DESC`
     );
 
     // Don't send passwords or refresh tokens
