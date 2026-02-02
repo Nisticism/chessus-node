@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import styles from "./gamewizard.module.scss";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import PiecesService from "../../services/pieces.service";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";

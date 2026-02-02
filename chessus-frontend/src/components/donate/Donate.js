@@ -3,7 +3,7 @@ import { useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import styles from "./donate.module.scss";
 import Divider from "../Divider/Divider";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import { trackDonation } from "../../analytics/GoogleAnalytics";
 
 const Donate = () => {

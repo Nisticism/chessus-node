@@ -7,7 +7,7 @@ import { useNavigate, Navigate, useSearchParams } from "react-router-dom";
 import { isEmail } from "validator";
 import { newForum } from "../../actions/forums";
 import styles from "./create-forum.module.scss";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
 import { forums } from "../../actions/forums";

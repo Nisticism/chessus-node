@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Navigate, Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import styles from "../forums/forums.module.scss";
-import StandardButton from "../../components/standardbutton/StardardButton";
+import StandardButton from "../../components/standardbutton/StandardButton";
 import { forums } from "../../actions/forums";
 import { formatDateLegacy } from "../../helpers/date-formatter";
 

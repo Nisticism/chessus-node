@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./gamewizard.module.scss";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import Divider from "../Divider/Divider";
 import { createGame, getGameById, updateGame } from "../../actions/games";
 import { trackGameCreation, trackEvent } from "../../analytics/GoogleAnalytics";

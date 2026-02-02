@@ -1,9 +1,7 @@
-@import '../../styles/variables.scss';
-
 .careersPage {
   min-height: calc(100vh - 200px);
   padding: 40px 20px;
-  background: $background-color;
+  background: rgba(8, 35, 77, 0.05);
 
   .container {
     max-width: 900px;
@@ -16,13 +14,13 @@
 
     h1 {
       font-size: 2.5rem;
-      color: $primary-text-color;
+      color: #fff;
       margin-bottom: 10px;
     }
 
     .subtitle {
       font-size: 1.2rem;
-      color: $secondary-text-color;
+      color: rgba(255, 255, 255, 0.8);
     }
   }
 
@@ -36,28 +34,28 @@
     text-align: center;
     padding: 40px;
     font-size: 1.2rem;
-    color: $secondary-text-color;
+    color: rgba(255, 255, 255, 0.8);
   }
 
   .error {
-    color: $error-color;
+    color: #ff4444;
   }
 
   .noJobs {
     text-align: center;
     padding: 60px 20px;
-    background: $card-background;
+    background: rgba(8, 35, 77, 0.8);
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 
     p {
       font-size: 1.1rem;
-      color: $secondary-text-color;
+      color: rgba(255, 255, 255, 0.8);
       margin: 10px 0;
 
       &:first-child {
         font-size: 1.3rem;
-        color: $primary-text-color;
+        color: #fff;
         font-weight: 500;
       }
     }
@@ -70,7 +68,7 @@
   }
 
   .jobCard {
-    background: $card-background;
+    background: rgba(8, 35, 77, 0.8);
     border-radius: 8px;
     padding: 30px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -85,7 +83,7 @@
 
       h2 {
         font-size: 1.8rem;
-        color: $primary-text-color;
+        color: #fff;
         margin-bottom: 10px;
       }
 
@@ -95,7 +93,7 @@
         align-items: center;
 
         .date {
-          color: $secondary-text-color;
+          color: rgba(255, 255, 255, 0.8);
           font-size: 0.9rem;
         }
       }
@@ -103,13 +101,13 @@
 
     .description {
       font-size: 1.1rem;
-      color: $secondary-text-color;
+      color: rgba(255, 255, 255, 0.8);
       margin-bottom: 20px;
       font-style: italic;
     }
 
     .content {
-      color: $primary-text-color;
+      color: #fff;
       line-height: 1.6;
       margin-bottom: 20px;
 
@@ -118,7 +116,7 @@
       }
 
       strong {
-        color: $primary-text-color;
+        color: #fff;
         font-weight: 600;
       }
 
@@ -132,21 +130,21 @@
       gap: 15px;
       margin-top: 25px;
       padding-top: 25px;
-      border-top: 1px solid $border-color;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
 
       .editButton {
-        background-color: $primary-color;
+        background-color: #4a90e2;
 
         &:hover {
-          background-color: darken($primary-color, 10%);
+          background-color: #3a7bc8;
         }
       }
 
       .deleteButton {
-        background-color: $error-color;
+        background-color: #ff4444;
 
         &:hover {
-          background-color: darken($error-color, 10%);
+          background-color: #cc0000;
         }
       }
     }

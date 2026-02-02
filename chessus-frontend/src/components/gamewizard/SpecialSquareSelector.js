@@ -1,6 +1,6 @@
 import React from "react";
 import styles from "./gamewizard.module.scss";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 
 const SpecialSquareSelector = ({ 
   onSelect, 

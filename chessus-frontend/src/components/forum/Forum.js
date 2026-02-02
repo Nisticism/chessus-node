@@ -3,7 +3,7 @@ import { Navigate, Link, useNavigate, useParams } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./forum.module.scss";
 import { deleteComment, getForum, newComment, editComment, deleteForum } from "../../actions/forums";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import axios from "axios";
 import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 

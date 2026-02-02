@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./piecewizard.module.scss";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import Divider from "../Divider/Divider";
 import { createPiece, updatePiece, getPieceById } from "../../actions/pieces";
 import { trackPieceCreation, trackEvent } from "../../analytics/GoogleAnalytics";

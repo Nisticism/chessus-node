@@ -5,7 +5,7 @@ import styles from "./player-page.module.scss";
 import { deleteUser, getUser } from "../../actions/auth";
 import { clearPlayerPage } from "../../actions/users";
 import { EDIT_SUCCESS } from "../../actions/types";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import axios from "axios";
 import API_URL from "../../global/global";
 import StandardTextBlock from "../StandardTextBlock/StandardTextBlock";

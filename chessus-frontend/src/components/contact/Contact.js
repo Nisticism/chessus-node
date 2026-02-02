@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import styles from './Contact.module.scss';
 import Divider from '../Divider/Divider';
-import StandardButton from '../standardbutton/StardardButton';
+import StandardButton from '../standardbutton/StandardButton';
 
 const Contact = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);

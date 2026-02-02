@@ -4,7 +4,7 @@ import { useSelector, useDispatch } from "react-redux";
 import styles from "./preferences.module.scss";
 import ColorBlock from "../colorblock/ColorBlock";
 import Divider from "../Divider/Divider";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import axios from "axios";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";

@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import StandardButton from '../standardbutton/StardardButton'
+import StandardButton from '../standardbutton/StandardButton'
 
 const NotFound = () => {
 

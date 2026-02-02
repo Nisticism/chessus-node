@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./profile.module.scss";
 import { deleteUser } from "../../actions/auth";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 
 const Profile = (props) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);

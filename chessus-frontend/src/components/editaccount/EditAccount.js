@@ -7,7 +7,7 @@ import styles from "./edit-account.module.scss";
 import NotFound from "../notfound/NotFound";
 import axios from "axios";
 import API_URL from "../../global/global";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import BioSection from "../biosection/BioSection";
 // import { response } from "express";
 

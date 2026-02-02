@@ -1,6 +1,6 @@
 import React from "react";
 import styles from "./media.module.scss";
-import StandardButton from "../../components/standardbutton/StardardButton";
+import StandardButton from "../../components/standardbutton/StandardButton";
 import { useNavigate } from "react-router-dom";
 const Media = () => {
 

@@ -5,7 +5,7 @@ import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import styles from "./admin-dashboard.module.scss";
-import StandardButton from "../standardbutton/StardardButton";
+import StandardButton from "../standardbutton/StandardButton";
 import { formatDateOnly, formatDateTime } from "../../helpers/date-formatter";
 
 const AdminDashboard = () => {
