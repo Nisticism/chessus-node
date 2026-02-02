@@ -283,10 +283,10 @@ const AdminDashboard = () => {
           </tr>
         </thead>
         <tbody>
-          {data.length === 0 ? (
+          {!data || data.length === 0 ? (
             <tr>
               <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
-                No users found
+                {!data ? 'Loading...' : 'No users found'}
               </td>
             </tr>
           ) : (
@@ -384,10 +384,10 @@ const AdminDashboard = () => {
           </tr>
         </thead>
         <tbody>
-          {data.length === 0 ? (
+          {!data || data.length === 0 ? (
             <tr>
               <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
-                No pieces found
+                {!data ? 'Loading...' : 'No pieces found'}
               </td>
             </tr>
           ) : (
@@ -429,10 +429,10 @@ const AdminDashboard = () => {
           </tr>
         </thead>
         <tbody>
-          {data.length === 0 ? (
+          {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
-                No games found
+              <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+                {!data ? 'Loading...' : 'No games found'}
               </td>
             </tr>
           ) : (
@@ -471,10 +471,10 @@ const AdminDashboard = () => {
           </tr>
         </thead>
         <tbody>
-          {data.length === 0 ? (
+          {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
-                No forum posts found
+              <td colSpan="4" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+                {!data ? 'Loading...' : 'No forum posts found'}
               </td>
             </tr>
           ) : (
@@ -514,10 +514,10 @@ const AdminDashboard = () => {
           </tr>
         </thead>
         <tbody>
-          {data.length === 0 ? (
+          {!data || data.length === 0 ? (
             <tr>
               <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
-                No news articles found
+                {!data ? 'Loading...' : 'No news articles found'}
               </td>
             </tr>
           ) : (
