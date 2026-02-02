@@ -769,6 +769,47 @@ Join us in revolutionizing chess, one variant at a time.
   } catch (err) {
     console.error('Error adding draw_move_limit column to game_types:', err.message);
   }
+
+  // Add is_career column to articles table
+  try {
+    if (!(await columnExists('articles', 'is_career'))) {
+      await runMigration(
+        "ALTER TABLE articles ADD COLUMN is_career TINYINT(1) DEFAULT 0 COMMENT 'Flag to indicate if article is a job posting' AFTER is_news",
+        "Add is_career column to articles table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_career column to articles:', err.message);
+  }
+
+  // Create initial Software Developer job posting if no career posts exist
+  try {
+    const [careerCount] = await db_pool.query(
+      "SELECT COUNT(*) as count FROM articles WHERE is_career = 1"
+    );
+
+    if (careerCount[0].count === 0) {
+      await runMigration(
+        `INSERT INTO articles (
+          author_id, title, descript, content, created_at, public, is_career, genre
+        ) VALUES (
+          1,
+          'Software Developer - Full Stack',
+          'Join our team building the future of strategic board games. Work with React, Node.js, and SQL to create an innovative chess variant platform.',
+          '**Position: Software Developer - Full Stack**\\n\\n**Location:** Remote\\n\\n**About SquareStrat**\\n\\nSquareStrat is revolutionizing the world of strategic board games by creating a platform where players can design, share, and play custom chess variants with unlimited possibilities. We\\'re building more than just a chess platform—we\\'re creating a complete game design ecosystem.\\n\\n**The Role**\\n\\nWe\\'re looking for a passionate full-stack developer to join our team and help shape the future of SquareStrat. You\\'ll work on both frontend and backend features, implement complex game logic, and help build tools that empower game designers and players worldwide.\\n\\n**Required Skills & Technologies**\\n\\n- **Frontend:** React 18+, Redux, HTML5, CSS3/SCSS\\n- **Backend:** Node.js, Express\\n- **Database:** MySQL, SQL query optimization\\n- **Real-time:** Socket.io for live multiplayer functionality\\n- **Version Control:** Git\\n\\n**Nice to Have**\\n\\n- Experience with AI-assisted coding tools (GitHub Copilot, ChatGPT, Claude, etc.)\\n- Passion for chess, board games, or strategic games\\n- Experience with game development or complex state management\\n- Understanding of ELO rating systems\\n- Payment integration experience (Stripe, PayPal)\\n- Analytics implementation (Google Analytics)\\n\\n**What You\\'ll Work On**\\n\\n- Implementing new game mechanics and piece abilities\\n- Building intuitive game creation and editing tools\\n- Developing real-time multiplayer features\\n- Optimizing game state management and performance\\n- Creating responsive, accessible UI components\\n- Writing clean, maintainable, well-documented code\\n\\n**What We Offer**\\n\\n- Fully remote work\\n- Flexible hours\\n- Work on innovative, challenging problems\\n- Opportunity to shape the product direction\\n- Collaborative, learning-focused environment\\n- Competitive compensation\\n\\n**About You**\\n\\nYou\\'re a developer who loves solving complex problems and building elegant solutions. You enjoy working with modern web technologies and aren\\'t afraid to dive into challenging codebases. You appreciate clean code, good architecture, and understand the balance between perfection and shipping features.\\n\\nMost importantly, you\\'re excited about creating tools that empower creativity and bring people together through strategic games.\\n\\n**How to Apply**\\n\\nSend your resume, portfolio, and a brief note about why you\\'re interested in SquareStrat to **fosterhans@gmail.com**\\n\\nPlease include:\\n- Your GitHub profile or code samples\\n- Any relevant projects you\\'ve built\\n- What excites you most about this role\\n\\nWe look forward to hearing from you!',
+          NOW(),
+          1,
+          1,
+          'Careers'
+        )`,
+        "Create initial Software Developer job posting"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating initial job posting:', err.message);
+  }
   
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');

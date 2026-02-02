@@ -1242,6 +1242,134 @@ app.get("/api/news", async (req, res) => {
   }
 });
 
+//  ---------------------- Careers ------------------------------
+
+app.get("/api/careers", async (req, res) => {
+  try {
+    const [careers] = await db_pool.query(
+      `SELECT 
+        a.id as article_id,
+        a.author_id,
+        a.title,
+        a.descript,
+        a.content,
+        a.created_at,
+        a.genre,
+        u.username as author_name
+      FROM articles a
+      LEFT JOIN users u ON a.author_id = u.id
+      WHERE a.is_career = 1 AND a.public = 1
+      ORDER BY a.created_at DESC`
+    );
+
+    res.json(careers);
+  } catch (err) {
+    console.error("Error fetching careers:", err);
+    res.status(500).send({ message: "Failed to fetch job postings", err: err.message });
+  }
+});
+
+app.post("/api/careers", async (req, res) => {
+  try {
+    const { author_id, title, descript, content, genre } = req.body;
+    
+    // Check if user is admin
+    const [users] = await db_pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [author_id]
+    );
+
+    if (users.length === 0 || users[0].role !== 'admin') {
+      return res.status(403).send({ message: "Only admins can create job postings" });
+    }
+
+    if (!title || !content) {
+      return res.status(400).send({ message: "Title and content are required" });
+    }
+
+    const [result] = await db_pool.query(
+      `INSERT INTO articles (author_id, title, descript, content, created_at, game_type_id, is_career, public, genre) 
+       VALUES (?, ?, ?, ?, NOW(), NULL, 1, 1, ?)`,
+      [author_id, title, descript || null, content, genre || 'Careers']
+    );
+
+    const career = {
+      article_id: result.insertId,
+      author_id,
+      title,
+      descript,
+      content,
+      genre: genre || 'Careers',
+      created_at: new Date()
+    };
+
+    res.json({ result: career, message: "Job posting created successfully" });
+  } catch (err) {
+    console.error("Error creating job posting:", err);
+    res.status(500).send({ message: "Failed to create job posting", err: err.message });
+  }
+});
+
+app.put("/api/careers/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { author_id, title, descript, content, genre } = req.body;
+    
+    // Check if user is admin
+    const [users] = await db_pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [author_id]
+    );
+
+    if (users.length === 0 || users[0].role !== 'admin') {
+      return res.status(403).send({ message: "Only admins can edit job postings" });
+    }
+
+    if (!title || !content) {
+      return res.status(400).send({ message: "Title and content are required" });
+    }
+
+    await db_pool.query(
+      `UPDATE articles 
+       SET title = ?, descript = ?, content = ?, genre = ?, last_updated_at = NOW()
+       WHERE id = ? AND is_career = 1`,
+      [title, descript || null, content, genre || 'Careers', id]
+    );
+
+    res.json({ message: "Job posting updated successfully" });
+  } catch (err) {
+    console.error("Error updating job posting:", err);
+    res.status(500).send({ message: "Failed to update job posting", err: err.message });
+  }
+});
+
+app.delete("/api/careers/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { author_id } = req.body;
+    
+    // Check if user is admin
+    const [users] = await db_pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [author_id]
+    );
+
+    if (users.length === 0 || users[0].role !== 'admin') {
+      return res.status(403).send({ message: "Only admins can delete job postings" });
+    }
+
+    await db_pool.query(
+      "DELETE FROM articles WHERE id = ? AND is_career = 1",
+      [id]
+    );
+
+    res.json({ message: "Job posting deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting job posting:", err);
+    res.status(500).send({ message: "Failed to delete job posting", err: err.message });
+  }
+});
+
 //  ---------------------- Token -----------------------------
 
 app.post('/api/token', async (req, res) => {

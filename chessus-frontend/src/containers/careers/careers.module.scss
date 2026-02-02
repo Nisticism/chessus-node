@@ -1,0 +1,172 @@
+@import '../../styles/variables.scss';
+
+.careersPage {
+  min-height: calc(100vh - 200px);
+  padding: 40px 20px;
+  background: $background-color;
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 40px;
+
+    h1 {
+      font-size: 2.5rem;
+      color: $primary-text-color;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      font-size: 1.2rem;
+      color: $secondary-text-color;
+    }
+  }
+
+  .adminControls {
+    margin-bottom: 30px;
+    text-align: center;
+  }
+
+  .loading,
+  .error {
+    text-align: center;
+    padding: 40px;
+    font-size: 1.2rem;
+    color: $secondary-text-color;
+  }
+
+  .error {
+    color: $error-color;
+  }
+
+  .noJobs {
+    text-align: center;
+    padding: 60px 20px;
+    background: $card-background;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+    p {
+      font-size: 1.1rem;
+      color: $secondary-text-color;
+      margin: 10px 0;
+
+      &:first-child {
+        font-size: 1.3rem;
+        color: $primary-text-color;
+        font-weight: 500;
+      }
+    }
+  }
+
+  .jobsList {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+  }
+
+  .jobCard {
+    background: $card-background;
+    border-radius: 8px;
+    padding: 30px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: box-shadow 0.3s ease;
+
+    &:hover {
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    }
+
+    .jobHeader {
+      margin-bottom: 20px;
+
+      h2 {
+        font-size: 1.8rem;
+        color: $primary-text-color;
+        margin-bottom: 10px;
+      }
+
+      .jobMeta {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+
+        .date {
+          color: $secondary-text-color;
+          font-size: 0.9rem;
+        }
+      }
+    }
+
+    .description {
+      font-size: 1.1rem;
+      color: $secondary-text-color;
+      margin-bottom: 20px;
+      font-style: italic;
+    }
+
+    .content {
+      color: $primary-text-color;
+      line-height: 1.6;
+      margin-bottom: 20px;
+
+      p {
+        margin-bottom: 15px;
+      }
+
+      strong {
+        color: $primary-text-color;
+        font-weight: 600;
+      }
+
+      em {
+        font-style: italic;
+      }
+    }
+
+    .adminActions {
+      display: flex;
+      gap: 15px;
+      margin-top: 25px;
+      padding-top: 25px;
+      border-top: 1px solid $border-color;
+
+      .editButton {
+        background-color: $primary-color;
+
+        &:hover {
+          background-color: darken($primary-color, 10%);
+        }
+      }
+
+      .deleteButton {
+        background-color: $error-color;
+
+        &:hover {
+          background-color: darken($error-color, 10%);
+        }
+      }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .careersPage {
+    padding: 20px 10px;
+
+    .header h1 {
+      font-size: 2rem;
+    }
+
+    .jobCard {
+      padding: 20px;
+
+      .jobHeader h2 {
+        font-size: 1.5rem;
+      }
+    }
+  }
+}
