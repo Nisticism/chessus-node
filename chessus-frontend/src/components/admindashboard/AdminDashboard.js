@@ -22,6 +22,13 @@ const AdminDashboard = () => {
   const [alertMessage, setAlertMessage] = useState("");
   const [alertType, setAlertType] = useState(""); // "success" or "error"
   const [showAlert, setShowAlert] = useState(false);
+  
+  // Ban system states
+  const [showBanModal, setShowBanModal] = useState(false);
+  const [banningUser, setBanningUser] = useState(null);
+  const [banReason, setBanReason] = useState("");
+  const [banExpiration, setBanExpiration] = useState("");
+  const [isPermanentBan, setIsPermanentBan] = useState(true);
 
   // Auto-hide alert after 2 seconds
   useEffect(() => {
@@ -140,6 +147,114 @@ const AdminDashboard = () => {
     );
   };
 
+  // User management functions
+  const handleBanClick = (user) => {
+    setBanningUser(user);
+    setBanReason("");
+    setBanExpiration("");
+    setIsPermanentBan(true);
+    setShowBanModal(true);
+  };
+
+  const handleBanSubmit = async () => {
+    if (!banReason.trim()) {
+      setAlertType("error");
+      setAlertMessage("Ban reason is required");
+      setShowAlert(true);
+      return;
+    }
+
+    try {
+      await axios.post(
+        `${API_URL}admin/users/${banningUser.id}/ban`,
+        {
+          reason: banReason,
+          expiresAt: isPermanentBan ? null : banExpiration
+        },
+        { headers: authHeader() }
+      );
+
+      setAlertType("success");
+      setAlertMessage(`User ${banningUser.username} has been banned`);
+      setShowAlert(true);
+      setShowBanModal(false);
+      fetchData(activeTab, pagination.page);
+    } catch (err) {
+      setAlertType("error");
+      setAlertMessage(err.response?.data?.message || "Failed to ban user");
+      setShowAlert(true);
+    }
+  };
+
+  const handleUnban = async (user) => {
+    if (!window.confirm(`Are you sure you want to unban ${user.username}?`)) {
+      return;
+    }
+
+    try {
+      await axios.post(
+        `${API_URL}admin/users/${user.id}/unban`,
+        {},
+        { headers: authHeader() }
+      );
+
+      setAlertType("success");
+      setAlertMessage(`User ${user.username} has been unbanned`);
+      setShowAlert(true);
+      fetchData(activeTab, pagination.page);
+    } catch (err) {
+      setAlertType("error");
+      setAlertMessage(err.response?.data?.message || "Failed to unban user");
+      setShowAlert(true);
+    }
+  };
+
+  const handlePromote = async (user) => {
+    if (!window.confirm(`Are you sure you want to promote ${user.username} to admin?`)) {
+      return;
+    }
+
+    try {
+      await axios.post(
+        `${API_URL}admin/users/${user.id}/promote`,
+        {},
+        { headers: authHeader() }
+      );
+
+      setAlertType("success");
+      setAlertMessage(`User ${user.username} has been promoted to admin`);
+      setShowAlert(true);
+      fetchData(activeTab, pagination.page);
+    } catch (err) {
+      setAlertType("error");
+      setAlertMessage(err.response?.data?.message || "Failed to promote user");
+      setShowAlert(true);
+    }
+  };
+
+  const handleDemote = async (user) => {
+    if (!window.confirm(`Are you sure you want to demote ${user.username} to regular user?`)) {
+      return;
+    }
+
+    try {
+      await axios.post(
+        `${API_URL}admin/users/${user.id}/demote`,
+        {},
+        { headers: authHeader() }
+      );
+
+      setAlertType("success");
+      setAlertMessage(`Admin ${user.username} has been demoted to user`);
+      setShowAlert(true);
+      fetchData(activeTab, pagination.page);
+    } catch (err) {
+      setAlertType("error");
+      setAlertMessage(err.response?.data?.message || "Failed to demote admin");
+      setShowAlert(true);
+    }
+  };
+
   const renderUsersTable = () => (
     <div className={styles["table-container"]}>
       <table className={styles["data-table"]}>
@@ -150,6 +265,7 @@ const AdminDashboard = () => {
             <th>Email</th>
             <th>Name</th>
             <th>Role</th>
+            <th>Status</th>
             <th>ELO</th>
             <th>Actions</th>
           </tr>
@@ -157,7 +273,7 @@ const AdminDashboard = () => {
         <tbody>
           {data.length === 0 ? (
             <tr>
-              <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
                 No users found
               </td>
             </tr>
@@ -168,10 +284,70 @@ const AdminDashboard = () => {
               <td>{user.username}</td>
               <td>{user.email || 'N/A'}</td>
               <td>{`${user.first_name || ''} ${user.last_name || ''}`.trim() || 'N/A'}</td>
-              <td><span className={styles[`role-${user.role?.toLowerCase() || 'user'}`]}>{user.role || 'User'}</span></td>
+              <td>
+                <span className={styles[`role-${user.role?.toLowerCase() || 'user'}`]}>
+                  {user.role?.toUpperCase() || 'USER'}
+                </span>
+              </td>
+              <td>
+                {user.banned ? (
+                  <span className={styles["status-banned"]}>
+                    BANNED
+                    {user.ban_expires_at && (
+                      <span style={{ fontSize: '0.8em', display: 'block' }}>
+                        Until {new Date(user.ban_expires_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span className={styles["status-active"]}>ACTIVE</span>
+                )}
+              </td>
               <td>{user.elo || 1000}</td>
               <td>
-                <button className={styles["edit-btn"]} onClick={() => handleEdit(user)}>Edit</button>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  <button className={styles["edit-btn"]} onClick={() => handleEdit(user)}>
+                    Edit
+                  </button>
+                  
+                  {user.banned ? (
+                    <button 
+                      className={styles["unban-btn"]} 
+                      onClick={() => handleUnban(user)}
+                      title={`Banned: ${user.ban_reason}`}
+                    >
+                      Unban
+                    </button>
+                  ) : (
+                    <button 
+                      className={styles["ban-btn"]} 
+                      onClick={() => handleBanClick(user)}
+                      disabled={user.role === 'owner'}
+                    >
+                      Ban
+                    </button>
+                  )}
+                  
+                  {currentUser?.role === 'owner' && user.role !== 'owner' && (
+                    <>
+                      {user.role === 'admin' ? (
+                        <button 
+                          className={styles["demote-btn"]} 
+                          onClick={() => handleDemote(user)}
+                        >
+                          Demote
+                        </button>
+                      ) : (
+                        <button 
+                          className={styles["promote-btn"]} 
+                          onClick={() => handlePromote(user)}
+                        >
+                          Promote
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </td>
             </tr>
           ))
@@ -450,11 +626,70 @@ const AdminDashboard = () => {
     );
   };
 
+  const renderBanModal = () => {
+    if (!showBanModal || !banningUser) return null;
+
+    return (
+      <div className={styles["modal-overlay"]} onClick={() => setShowBanModal(false)}>
+        <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
+          <h2>Ban User: {banningUser.username}</h2>
+          
+          <div className={styles["form-group"]}>
+            <label>Ban Reason <span style={{ color: 'red' }}>*</span></label>
+            <textarea
+              value={banReason}
+              onChange={(e) => setBanReason(e.target.value)}
+              placeholder="Enter reason for ban..."
+              rows="4"
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+            />
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input
+                type="checkbox"
+                checked={isPermanentBan}
+                onChange={(e) => setIsPermanentBan(e.target.checked)}
+              />
+              Permanent Ban
+            </label>
+          </div>
+
+          {!isPermanentBan && (
+            <div className={styles["form-group"]}>
+              <label>Ban Expiration Date</label>
+              <input
+                type="datetime-local"
+                value={banExpiration}
+                onChange={(e) => setBanExpiration(e.target.value)}
+                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+              />
+            </div>
+          )}
+
+          <div className={styles["modal-footer"]}>
+            <button className={styles["cancel-btn"]} onClick={() => setShowBanModal(false)}>
+              Cancel
+            </button>
+            <button 
+              className={styles["ban-btn"]} 
+              onClick={handleBanSubmit}
+              disabled={!banReason.trim()}
+            >
+              Ban User
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
   }
 
-  if (currentUser.role !== 'Admin') {
+  if (currentUser.role !== 'admin' && currentUser.role !== 'owner') {
     return <Navigate to="/" state={{ message: "Admin access required" }} />;
   }
 
@@ -522,6 +757,7 @@ const AdminDashboard = () => {
       </div>
 
       {renderEditModal()}
+      {renderBanModal()}
     </div>
   );
 };

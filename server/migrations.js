@@ -810,6 +810,47 @@ Join us in revolutionizing chess, one variant at a time.
   } catch (err) {
     console.error('Error creating initial job posting:', err.message);
   }
+
+  // Add ban system columns to users table
+  try {
+    if (!(await columnExists('users', 'banned'))) {
+      await runMigration(
+        `ALTER TABLE users
+         ADD COLUMN banned TINYINT(1) DEFAULT 0 COMMENT 'Whether user is banned',
+         ADD COLUMN ban_reason TEXT DEFAULT NULL COMMENT 'Reason for ban',
+         ADD COLUMN banned_at DATETIME DEFAULT NULL COMMENT 'When user was banned',
+         ADD COLUMN banned_by INT DEFAULT NULL COMMENT 'User ID of admin/owner who banned',
+         ADD COLUMN ban_expires_at DATETIME DEFAULT NULL COMMENT 'When ban expires (NULL for permanent)',
+         ADD INDEX idx_banned (banned),
+         ADD INDEX idx_ban_expires (ban_expires_at)`,
+        "Add ban system columns to users table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding ban system columns:', err.message);
+  }
+
+  // Add owner role and set Nisticism as owner
+  try {
+    const [roleCheck] = await db_pool.query(
+      "SHOW COLUMNS FROM users WHERE Field = 'role'"
+    );
+    
+    if (roleCheck.length > 0 && !roleCheck[0].Type.includes('owner')) {
+      await runMigration(
+        `ALTER TABLE users MODIFY COLUMN role ENUM('user', 'admin', 'owner') DEFAULT 'user'`,
+        "Add owner role to users table"
+      );
+      migrationsRun++;
+      
+      // Set Nisticism as owner
+      await db_pool.query("UPDATE users SET role = 'owner' WHERE username = 'Nisticism'");
+      console.log('✓ Set Nisticism as owner');
+    }
+  } catch (err) {
+    console.error('Error adding owner role:', err.message);
+  }
   
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');

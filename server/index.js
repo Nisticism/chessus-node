@@ -503,8 +503,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       match: existingGame.creator_id === userId
     });
     
-    // Verify ownership (creator or Admin)
-    if (existingGame.creator_id !== userId && userRole !== "Admin") {
+    // Verify ownership (creator or Admin/Owner)
+    if (existingGame.creator_id !== userId && userRole !== "admin" && userRole !== "owner") {
       return res.status(403).send({ message: "You can only edit your own games" });
     }
 
@@ -697,7 +697,7 @@ app.post("/api/profile/edit", async (req, res) => {
     // Hash password if provided
     if (password && password.length > 0) {
       // Require old password verification for non-admin users
-      if (current_user.role !== "Admin") {
+      if (current_user.role !== "admin" && current_user.role !== "owner") {
         if (!oldPassword) {
           return res.status(400).send({ message: "Current password is required to change password" });
         }
@@ -799,6 +799,29 @@ app.post("/api/login", async (req, res) => {
       return res.status(400).send({ auth: false, message: "Username does not exist" });
     }
 
+    // Check if user is banned
+    if (user.banned) {
+      // Check if ban has expired
+      if (user.ban_expires_at && new Date(user.ban_expires_at) < new Date()) {
+        // Ban expired, unban the user
+        await db_pool.query(
+          "UPDATE users SET banned = 0, ban_reason = NULL, banned_at = NULL, banned_by = NULL, ban_expires_at = NULL WHERE id = ?",
+          [user.id]
+        );
+      } else {
+        // User is still banned
+        const banMessage = user.ban_expires_at 
+          ? `Your account is temporarily banned until ${new Date(user.ban_expires_at).toLocaleString()}.`
+          : 'Your account has been permanently banned.';
+        const reason = user.ban_reason ? ` Reason: ${user.ban_reason}` : '';
+        return res.status(403).send({ 
+          auth: false, 
+          message: `${banMessage}${reason}`,
+          banned: true 
+        });
+      }
+    }
+
     // Compare passwords
     const passwordMatch = bcrypt.compareSync(password, user.password);
     if (!passwordMatch) {
@@ -824,6 +847,11 @@ app.post("/api/login", async (req, res) => {
     user.refreshToken = refreshToken;
     delete user.password; // Don't send password to client
     delete user.refresh_token; // Don't expose the stored token
+    delete user.banned; // Don't expose ban status
+    delete user.ban_reason;
+    delete user.banned_at;
+    delete user.banned_by;
+    delete user.ban_expires_at;
     
     res.json({ auth: true, result: user });
   } catch (err) {
@@ -867,6 +895,200 @@ app.post("/api/delete", async (req, res) => {
 
 app.post('/api/logout', (req, res) => {
   res.status(200).json({ message: "Logged out successfully" });
+});
+
+// ----------------------- User Management (Admin/Owner) ------------------------------
+
+// Get all users (admin/owner only)
+app.get("/api/admin/users", authenticateToken, async (req, res) => {
+  try {
+    const requesterRole = req.user.role;
+
+    if (requesterRole !== 'admin' && requesterRole !== 'owner') {
+      return res.status(403).send({ message: "Access denied. Admin or owner role required." });
+    }
+
+    const [users] = await db_pool.query(
+      `SELECT id, username, email, role, created_at, elo, profile_picture, bio,
+              banned, ban_reason, banned_at, banned_by, ban_expires_at
+       FROM users
+       ORDER BY created_at DESC`
+    );
+
+    // Don't send passwords or refresh tokens
+    const sanitizedUsers = users.map(user => {
+      const sanitized = { ...user };
+      delete sanitized.password;
+      delete sanitized.refresh_token;
+      return sanitized;
+    });
+
+    res.json(sanitizedUsers);
+  } catch (err) {
+    console.error("Error fetching users:", err);
+    res.status(500).send({ message: "Failed to fetch users", err: err.message });
+  }
+});
+
+// Ban user (admin/owner only)
+app.post("/api/admin/users/:userId/ban", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { reason, expiresAt } = req.body;
+    const bannerId = req.user.id;
+    const bannerRole = req.user.role;
+
+    if (bannerRole !== 'admin' && bannerRole !== 'owner') {
+      return res.status(403).send({ message: "Access denied. Admin or owner role required." });
+    }
+
+    // Check target user
+    const [targetUsers] = await db_pool.query(
+      "SELECT id, username, role FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (targetUsers.length === 0) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+    const targetUser = targetUsers[0];
+
+    // Cannot ban owner
+    if (targetUser.role === 'owner') {
+      return res.status(403).send({ message: "Cannot ban the owner" });
+    }
+
+    // Admin cannot ban another admin
+    if (bannerRole === 'admin' && targetUser.role === 'admin') {
+      return res.status(403).send({ message: "Admins cannot ban other admins" });
+    }
+
+    // Ban the user
+    await db_pool.query(
+      `UPDATE users 
+       SET banned = 1, ban_reason = ?, banned_at = NOW(), banned_by = ?, ban_expires_at = ?
+       WHERE id = ?`,
+      [reason || 'No reason provided', bannerId, expiresAt || null, userId]
+    );
+
+    // Clear their refresh token to force logout
+    await db_pool.query(
+      "UPDATE users SET refresh_token = NULL WHERE id = ?",
+      [userId]
+    );
+
+    res.json({ message: "User banned successfully" });
+  } catch (err) {
+    console.error("Error banning user:", err);
+    res.status(500).send({ message: "Failed to ban user", err: err.message });
+  }
+});
+
+// Unban user (admin/owner only)
+app.post("/api/admin/users/:userId/unban", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requesterRole = req.user.role;
+
+    if (requesterRole !== 'admin' && requesterRole !== 'owner') {
+      return res.status(403).send({ message: "Access denied. Admin or owner role required." });
+    }
+
+    await db_pool.query(
+      `UPDATE users 
+       SET banned = 0, ban_reason = NULL, banned_at = NULL, banned_by = NULL, ban_expires_at = NULL
+       WHERE id = ?`,
+      [userId]
+    );
+
+    res.json({ message: "User unbanned successfully" });
+  } catch (err) {
+    console.error("Error unbanning user:", err);
+    res.status(500).send({ message: "Failed to unban user", err: err.message });
+  }
+});
+
+// Promote user to admin (owner only)
+app.post("/api/admin/users/:userId/promote", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requesterRole = req.user.role;
+
+    if (requesterRole !== 'owner') {
+      return res.status(403).send({ message: "Access denied. Only the owner can promote users to admin." });
+    }
+
+    const [targetUsers] = await db_pool.query(
+      "SELECT id, username, role FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (targetUsers.length === 0) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+    const targetUser = targetUsers[0];
+
+    if (targetUser.role === 'owner') {
+      return res.status(400).send({ message: "User is already the owner" });
+    }
+
+    if (targetUser.role === 'admin') {
+      return res.status(400).send({ message: "User is already an admin" });
+    }
+
+    await db_pool.query(
+      "UPDATE users SET role = 'admin' WHERE id = ?",
+      [userId]
+    );
+
+    res.json({ message: "User promoted to admin successfully" });
+  } catch (err) {
+    console.error("Error promoting user:", err);
+    res.status(500).send({ message: "Failed to promote user", err: err.message });
+  }
+});
+
+// Demote admin to user (owner only)
+app.post("/api/admin/users/:userId/demote", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requesterRole = req.user.role;
+
+    if (requesterRole !== 'owner') {
+      return res.status(403).send({ message: "Access denied. Only the owner can demote admins." });
+    }
+
+    const [targetUsers] = await db_pool.query(
+      "SELECT id, username, role FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (targetUsers.length === 0) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+    const targetUser = targetUsers[0];
+
+    if (targetUser.role === 'owner') {
+      return res.status(400).send({ message: "Cannot demote the owner" });
+    }
+
+    if (targetUser.role === 'user') {
+      return res.status(400).send({ message: "User is already a regular user" });
+    }
+
+    await db_pool.query(
+      "UPDATE users SET role = 'user' WHERE id = ?",
+      [userId]
+    );
+
+    res.json({ message: "Admin demoted to user successfully" });
+  } catch (err) {
+    console.error("Error demoting admin:", err);
+    res.status(500).send({ message: "Failed to demote admin", err: err.message });
+  }
 });
 
 app.post("/api/preferences/colors", async (req, res) => {
@@ -1282,7 +1504,7 @@ app.post("/api/careers", async (req, res) => {
       [author_id]
     );
 
-    if (users.length === 0 || users[0].role !== 'admin') {
+    if (users.length === 0 || (users[0].role !== 'admin' && users[0].role !== 'owner')) {
       return res.status(403).send({ message: "Only admins can create job postings" });
     }
 
@@ -1324,7 +1546,7 @@ app.put("/api/careers/:id", async (req, res) => {
       [author_id]
     );
 
-    if (users.length === 0 || users[0].role !== 'admin') {
+    if (users.length === 0 || (users[0].role !== 'admin' && users[0].role !== 'owner')) {
       return res.status(403).send({ message: "Only admins can edit job postings" });
     }
 
@@ -1357,7 +1579,7 @@ app.delete("/api/careers/:id", async (req, res) => {
       [author_id]
     );
 
-    if (users.length === 0 || users[0].role !== 'admin') {
+    if (users.length === 0 || (users[0].role !== 'admin' && users[0].role !== 'owner')) {
       return res.status(403).send({ message: "Only admins can delete job postings" });
     }
 
@@ -1389,9 +1611,9 @@ app.post('/api/token', async (req, res) => {
         return res.status(403).send({ message: "Invalid refresh token" });
       }
 
-      // Check if refresh token exists in database
+      // Check if refresh token exists in database and user is not banned
       const [users] = await db_pool.query(
-        "SELECT id, username, role, refresh_token FROM users WHERE id = ?",
+        "SELECT id, username, role, refresh_token, banned, ban_expires_at FROM users WHERE id = ?",
         [user.id]
       );
 
@@ -1399,8 +1621,24 @@ app.post('/api/token', async (req, res) => {
         return res.status(403).send({ message: "Refresh token not found or revoked" });
       }
 
+      const dbUser = users[0];
+
+      // Check if user is banned
+      if (dbUser.banned) {
+        // Check if ban has expired
+        if (dbUser.ban_expires_at && new Date(dbUser.ban_expires_at) < new Date()) {
+          // Ban expired, unban the user
+          await db_pool.query(
+            "UPDATE users SET banned = 0, ban_reason = NULL, banned_at = NULL, banned_by = NULL, ban_expires_at = NULL WHERE id = ?",
+            [dbUser.id]
+          );
+        } else {
+          return res.status(403).send({ message: "Your account is banned", banned: true });
+        }
+      }
+
       // Generate new access token
-      const userPayload = { id: user.id, username: user.username, role: user.role };
+      const userPayload = { id: dbUser.id, username: dbUser.username, role: dbUser.role };
       const accessToken = generateAccessToken(userPayload);
 
       res.json({ accessToken });
@@ -1720,7 +1958,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
     }
 
     // Verify ownership (creator_id check)
-    if (existingPiece.creator_id !== parseInt(pieceData.creator_id) && pieceData.user_role !== 'Admin') {
+    if (existingPiece.creator_id !== parseInt(pieceData.creator_id) && pieceData.user_role !== 'admin' && pieceData.user_role !== 'owner') {
       return res.status(403).send({ message: "You don't have permission to edit this piece" });
     }
 
@@ -2032,7 +2270,7 @@ app.delete("/api/pieces/:pieceId", authenticateToken, async (req, res) => {
     const existingPiece = existingPieceRows[0];
 
     // Verify ownership
-    if (existingPiece.creator_id !== parseInt(userId) && userRole !== 'Admin') {
+    if (existingPiece.creator_id !== parseInt(userId) && userRole !== 'admin' && userRole !== 'owner') {
       return res.status(403).send({ message: "You don't have permission to delete this piece" });
     }
 
@@ -2067,7 +2305,7 @@ function authenticateToken(req, res, next) {
 
 function authenticateAdmin(req, res, next) {
   authenticateToken(req, res, () => {
-    if (req.user.role !== 'Admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'owner') {
       return res.status(403).send({ message: "Admin access required" });
     }
     next();
