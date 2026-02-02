@@ -1,5 +1,6 @@
 import React from "react";
 import styles from "./gamewizard.module.scss";
+import NumberInput from "../common/NumberInput";
 
 const Step1BasicInfo = ({ gameData, updateGameData }) => {
   const handleChange = (field, value) => {
@@ -80,14 +81,10 @@ const Step1BasicInfo = ({ gameData, updateGameData }) => {
         <label className={styles["form-label"]}>
           Actions Per Turn
         </label>
-        <input
-          type="number"
-          className={styles["form-input"]}
+        <NumberInput
           value={gameData.actions_per_turn || 1}
-          onChange={(e) => handleChange("actions_per_turn", Math.max(1, parseInt(e.target.value) || 1))}
-          placeholder="1"
-          min="1"
-          style={{ maxWidth: '120px' }}
+          onChange={(val) => handleChange("actions_per_turn", Math.max(1, val))}
+          options={{ min: 1, placeholder: "1", className: styles["form-input-small"] }}
         />
         <p className={styles["field-hint"]}>
           Number of piece moves/actions each player can make per turn (default: 1).

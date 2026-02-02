@@ -1,5 +1,6 @@
 import React from "react";
 import styles from "./gamewizard.module.scss";
+import NumberInput from "../common/NumberInput";
 
 const Step2WinConditions = ({ gameData, updateGameData }) => {
   const handleChange = (field, value) => {
@@ -114,12 +115,10 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           <div className={styles["sub-fields"]}>
             <div className={styles["sub-field"]}>
               <label className={styles["form-label"]}>Maximum Value/Points to Win</label>
-              <input
-                type="number"
-                className={styles["form-input-small"]}
-                value={gameData.value_max || ""}
-                onChange={(e) => handleChange("value_max", e.target.value ? parseInt(e.target.value) : null)}
-                placeholder="e.g., 100"
+              <NumberInput
+                value={gameData.value_max || 0}
+                onChange={(val) => handleChange("value_max", val || null)}
+                options={{ min: 1, placeholder: "e.g., 100", className: styles["form-input-small"] }}
               />
             </div>
             <div className={styles["sub-field"]}>
@@ -135,12 +134,10 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
             </div>
             <div className={styles["sub-field"]}>
               <label className={styles["form-label"]}>Piece ID that Generates Value (optional)</label>
-              <input
-                type="number"
-                className={styles["form-input-small"]}
-                value={gameData.value_piece || ""}
-                onChange={(e) => handleChange("value_piece", e.target.value ? parseInt(e.target.value) : null)}
-                placeholder="Leave empty if not applicable"
+              <NumberInput
+                value={gameData.value_piece || 0}
+                onChange={(val) => handleChange("value_piece", val || null)}
+                options={{ min: 0, placeholder: "Leave empty if not applicable", className: styles["form-input-small"] }}
               />
             </div>
           </div>
@@ -183,12 +180,10 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
 
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>Optional Condition ID (Advanced)</label>
-        <input
-          type="number"
-          className={styles["form-input-small"]}
-          value={gameData.optional_condition || ""}
-          onChange={(e) => handleChange("optional_condition", e.target.value ? parseInt(e.target.value) : null)}
-          placeholder="Leave empty if not applicable"
+        <NumberInput
+          value={gameData.optional_condition || 0}
+          onChange={(val) => handleChange("optional_condition", val || null)}
+          options={{ min: 0, placeholder: "Leave empty if not applicable", className: styles["form-input-small"] }}
         />
         <p className={styles["field-hint"]}>
           Reference to a custom condition defined elsewhere (optional).
@@ -234,14 +229,10 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         {(gameData.draw_move_limit !== null && gameData.draw_move_limit !== undefined) && (
           <div className={styles["sub-field"]}>
             <label className={styles["form-label"]}>Moves without capture before draw</label>
-            <input
-              type="number"
-              className={styles["form-input-small"]}
+            <NumberInput
               value={gameData.draw_move_limit || 50}
-              onChange={(e) => handleChange("draw_move_limit", e.target.value ? parseInt(e.target.value) : 50)}
-              placeholder="50"
-              min="1"
-              max="500"
+              onChange={(val) => handleChange("draw_move_limit", Math.max(1, Math.min(500, val)))}
+              options={{ min: 1, max: 500, placeholder: "50", className: styles["form-input-small"] }}
             />
             <p className={styles["field-hint"]}>
               Standard chess uses 50 moves. Adjust based on your game's pace.
