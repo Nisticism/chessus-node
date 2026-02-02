@@ -14,6 +14,7 @@ const Donate = () => {
   const [donationAmount, setDonationAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPayPalLoaded, setIsPayPalLoaded] = useState(false);
   
   const location = useLocation();
   const navigate = useNavigate();
@@ -67,6 +68,40 @@ const Donate = () => {
       }, 10000);
     }
   }, [location, navigate, currentUser]);
+
+  // Load PayPal SDK dynamically when component mounts
+  useEffect(() => {
+    const loadPayPalScript = () => {
+      // Check if already loaded
+      if (window.paypal) {
+        setIsPayPalLoaded(true);
+        return;
+      }
+
+      const clientId = process.env.REACT_APP_PAYPAL_CLIENT_ID;
+      if (!clientId || clientId === 'YOUR_PAYPAL_CLIENT_ID') {
+        console.log('PayPal client ID not configured');
+        return;
+      }
+
+      // Check if script already exists
+      const existingScript = document.querySelector('script[src*="paypal.com/sdk"]');
+      if (existingScript) {
+        setIsPayPalLoaded(true);
+        return;
+      }
+
+      // Create and load PayPal script
+      const script = document.createElement('script');
+      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD`;
+      script.async = true;
+      script.onload = () => setIsPayPalLoaded(true);
+      script.onerror = () => console.error('Failed to load PayPal SDK');
+      document.head.appendChild(script);
+    };
+
+    loadPayPalScript();
+  }, []);
 
   const handleAmountSelect = (amount) => {
     setSelectedAmount(amount);
@@ -138,8 +173,8 @@ const Donate = () => {
     setIsProcessing(true);
     
     // Check if PayPal SDK is loaded
-    if (!window.paypal) {
-      alert("PayPal SDK not loaded. Please refresh the page and try again.");
+    if (!window.paypal || !isPayPalLoaded) {
+      alert("PayPal is still loading. Please wait a moment and try again.");
       setIsProcessing(false);
       return;
     }

@@ -2,8 +2,7 @@
 <html lang="en">
   <head>
     <!-- Google Analytics now handled by react-ga4 in App.js -->
-    <!-- PayPal SDK for donations - loads with client ID from env -->
-    <script src="https://www.paypal.com/sdk/js?client-id=%REACT_APP_PAYPAL_CLIENT_ID%&currency=USD"></script>
+    <!-- PayPal SDK dynamically loaded in Donate component when needed -->
     <meta charset="utf-8" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/logo.svg" />
@@ -21,7 +20,6 @@
       manifest.json provides metadata used when your web app is installed on a
       user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
     -->
-    <link rel="manifest" href="./manifest.json" />
     <!--
       Notice the use of %PUBLIC_URL% in the tags above.
       It will be replaced with the URL of the `public` folder during the build.
