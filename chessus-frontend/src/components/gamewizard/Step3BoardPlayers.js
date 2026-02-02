@@ -1,6 +1,7 @@
 import React from "react";
 import styles from "./gamewizard.module.scss";
 import GameBoard from "../gameboard/GameBoard";
+import NumberInput from "../common/NumberInput";
 
 const Step3BoardPlayers = ({ gameData, updateGameData }) => {
   const handleChange = (field, value) => {
@@ -40,16 +41,10 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
           <label className={styles["form-label"]}>
             Board Width <span className={styles["required"]}>*</span>
           </label>
-          <input
-            type="number"
-            className={styles["form-input-small"]}
+          <NumberInput
             value={gameData.board_width}
-            onChange={(e) => {
-              const value = parseInt(e.target.value) || 1;
-              handleChange("board_width", Math.max(1, Math.min(96, value)));
-            }}
-            min="1"
-            max="96"
+            onChange={(val) => handleChange("board_width", Math.max(1, Math.min(96, val)))}
+            options={{ min: 1, max: 96, className: styles["form-input-small"] }}
           />
           <p className={styles["field-hint"]}>1-96 squares</p>
         </div>
@@ -58,16 +53,10 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
           <label className={styles["form-label"]}>
             Board Height <span className={styles["required"]}>*</span>
           </label>
-          <input
-            type="number"
-            className={styles["form-input-small"]}
+          <NumberInput
             value={gameData.board_height}
-            onChange={(e) => {
-              const value = parseInt(e.target.value) || 1;
-              handleChange("board_height", Math.max(1, Math.min(96, value)));
-            }}
-            min="1"
-            max="96"
+            onChange={(val) => handleChange("board_height", Math.max(1, Math.min(96, val)))}
+            options={{ min: 1, max: 96, className: styles["form-input-small"] }}
           />
           <p className={styles["field-hint"]}>1-96 squares</p>
         </div>
@@ -100,16 +89,10 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
         <label className={styles["form-label"]}>
           Actions Per Turn <span className={styles["required"]}>*</span>
         </label>
-        <input
-          type="number"
-          className={styles["form-input-small"]}
+        <NumberInput
           value={gameData.actions_per_turn}
-          onChange={(e) => {
-            const value = parseInt(e.target.value) || 1;
-            handleChange("actions_per_turn", Math.max(1, value));
-          }}
-          min="1"
-          placeholder="1"
+          onChange={(val) => handleChange("actions_per_turn", Math.max(1, val))}
+          options={{ min: 1, placeholder: "1", className: styles["form-input-small"] }}
         />
         <p className={styles["field-hint"]}>
           How many moves/actions each player can make per turn (typically 1)

@@ -7,6 +7,104 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
   const darkSquareColor = localStorage.getItem('boardDarkColor') || '#08234d';
+
+  // Parse special_scenario_moves JSON to get additional movements
+  const parseSpecialScenarioMoves = useMemo(() => {
+    if (!pieceData.special_scenario_moves) return {};
+    try {
+      const parsed = typeof pieceData.special_scenario_moves === 'string'
+        ? JSON.parse(pieceData.special_scenario_moves)
+        : pieceData.special_scenario_moves;
+      return parsed || {};
+    } catch (e) {
+      console.error('Error parsing special_scenario_moves:', e);
+      return {};
+    }
+  }, [pieceData.special_scenario_moves]);
+
+  // Parse special_scenario_captures JSON to get additional captures
+  const parseSpecialScenarioCaptures = useMemo(() => {
+    if (!pieceData.special_scenario_captures) return {};
+    try {
+      const parsed = typeof pieceData.special_scenario_captures === 'string'
+        ? JSON.parse(pieceData.special_scenario_captures)
+        : pieceData.special_scenario_captures;
+      return parsed || {};
+    } catch (e) {
+      console.error('Error parsing special_scenario_captures:', e);
+      return {};
+    }
+  }, [pieceData.special_scenario_captures]);
+
+  // Helper function to check if a directional movement is first-move-only
+  const isDirectionalMovementFirstMoveOnly = (direction) => {
+    // Check global first_move_only flag
+    if (pieceData.first_move_only) return true;
+    
+    // Check specific direction's availableForMoves field
+    const availableForKey = `${direction}_movement_available_for`;
+    if (pieceData[availableForKey]) return true;
+    
+    return false;
+  };
+
+  // Helper function to check if a directional capture is first-move-only
+  const isDirectionalCaptureFirstMoveOnly = (direction) => {
+    // Check global first_move_only_capture flag
+    if (pieceData.first_move_only_capture) return true;
+    
+    // Check specific direction's availableForMoves field
+    const availableForKey = `${direction}_capture_available_for`;
+    if (pieceData[availableForKey]) return true;
+    
+    return false;
+  };
+
+  // Helper function to check if ratio movement is first-move-only
+  const isRatioMovementFirstMoveOnly = () => {
+    // Check global first_move_only flag
+    if (pieceData.first_move_only) return true;
+    
+    // Check if ratio movement has availableForMoves in special_scenario_moves
+    const specialMoves = parseSpecialScenarioMoves;
+    if (specialMoves.ratio && Array.isArray(specialMoves.ratio)) {
+      // Check if any ratio movement has availableForMoves property
+      return specialMoves.ratio.some(move => move.availableForMoves);
+    }
+    
+    return false;
+  };
+
+  // Helper function to check if ratio capture is first-move-only
+  const isRatioCaptureFirstMoveOnly = () => {
+    // Check global first_move_only_capture flag
+    if (pieceData.first_move_only_capture) return true;
+    
+    // Check special scenario captures (not implemented yet, but keeping consistent)
+    return false;
+  };
+
+  // Helper function to check if step-by-step movement is first-move-only
+  const isStepMovementFirstMoveOnly = () => {
+    // Check global first_move_only flag
+    if (pieceData.first_move_only) return true;
+    
+    // Check if step movement has availableForMoves in special_scenario_moves
+    const specialMoves = parseSpecialScenarioMoves;
+    if (specialMoves.step && Array.isArray(specialMoves.step)) {
+      return specialMoves.step.some(move => move.availableForMoves);
+    }
+    
+    return false;
+  };
+
+  // Helper function to check if step-by-step capture is first-move-only
+  const isStepCaptureFirstMoveOnly = () => {
+    // Check global first_move_only_capture flag
+    if (pieceData.first_move_only_capture) return true;
+    
+    return false;
+  };
   
   // Calculate required board size based on movement/attack ranges
   const calculateBoardSize = () => {
@@ -82,61 +180,144 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
   }, [pieceData]);
 
   // Helper to check if a value allows movement at distance
-  const checkMovement = (value, distance) => {
+  const checkMovement = (value, distance, isExact = false) => {
     if (value === 99) return true; // Infinite movement
     if (value === 0 || value === null) return false;
-    if (value > 0) return distance <= value; // Up to that distance
-    if (value < 0) return distance === Math.abs(value); // Exact distance
-    return false;
+    if (isExact) return distance === value; // Exact distance
+    return distance <= value; // Up to that distance
   };
 
   // Calculate which squares the piece can move to
+  // Returns { allowed: boolean, isFirstMoveOnly: boolean }
   const canMoveTo = (row, col) => {
-    if (row === centerPos && col === centerPos) return false;
+    if (row === centerPos && col === centerPos) return { allowed: false, isFirstMoveOnly: false };
     
     const rowDiff = row - centerPos;
     const colDiff = col - centerPos;
     
     let directionalAllowed = false;
+    let directionalDirection = null;
     
     // Directional movement
     if (pieceData.directional_movement_style) {
       // Up-left diagonal
       if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff));
+        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff), pieceData.up_left_movement_exact);
+        directionalDirection = 'up_left';
       }
       // Up
       else if (rowDiff < 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.up_movement, Math.abs(rowDiff));
+        directionalAllowed = checkMovement(pieceData.up_movement, Math.abs(rowDiff), pieceData.up_movement_exact);
+        directionalDirection = 'up';
       }
       // Up-right diagonal
       else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff));
+        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff), pieceData.up_right_movement_exact);
+        directionalDirection = 'up_right';
       }
       // Right
       else if (rowDiff === 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff));
+        directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff), pieceData.right_movement_exact);
+        directionalDirection = 'right';
       }
       // Down-right diagonal
       else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff));
+        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff), pieceData.down_right_movement_exact);
+        directionalDirection = 'down_right';
       }
       // Down
       else if (rowDiff > 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.down_movement, Math.abs(rowDiff));
+        directionalAllowed = checkMovement(pieceData.down_movement, Math.abs(rowDiff), pieceData.down_movement_exact);
+        directionalDirection = 'down';
       }
       // Down-left diagonal
       else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff));
+        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff), pieceData.down_left_movement_exact);
+        directionalDirection = 'down_left';
       }
       // Left
       else if (rowDiff === 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff));
+        directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff), pieceData.left_movement_exact);
+        directionalDirection = 'left';
       }
       
-      // If directional movement allows it, return true
-      if (directionalAllowed) {
-        return true;
+      // If directional movement allows it, check if it's first-move-only
+      if (directionalAllowed && directionalDirection) {
+        const isFirstMoveOnly = isDirectionalMovementFirstMoveOnly(directionalDirection);
+        return { allowed: true, isFirstMoveOnly };
+      }
+    }
+
+    // Check additional movements from special_scenario_moves
+    const specialMoves = parseSpecialScenarioMoves;
+    if (specialMoves.additionalMovements) {
+      let directionToCheck = null;
+      let distance = 0;
+      
+      // Determine direction and distance based on rowDiff/colDiff
+      // Up-left diagonal
+      if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionToCheck = 'up_left';
+        distance = Math.abs(rowDiff);
+      }
+      // Up
+      else if (rowDiff < 0 && colDiff === 0) {
+        directionToCheck = 'up';
+        distance = Math.abs(rowDiff);
+      }
+      // Up-right diagonal
+      else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionToCheck = 'up_right';
+        distance = Math.abs(rowDiff);
+      }
+      // Right
+      else if (rowDiff === 0 && colDiff > 0) {
+        directionToCheck = 'right';
+        distance = Math.abs(colDiff);
+      }
+      // Down-right diagonal
+      else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionToCheck = 'down_right';
+        distance = Math.abs(rowDiff);
+      }
+      // Down
+      else if (rowDiff > 0 && colDiff === 0) {
+        directionToCheck = 'down';
+        distance = Math.abs(rowDiff);
+      }
+      // Down-left diagonal
+      else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionToCheck = 'down_left';
+        distance = Math.abs(rowDiff);
+      }
+      // Left
+      else if (rowDiff === 0 && colDiff < 0) {
+        directionToCheck = 'left';
+        distance = Math.abs(colDiff);
+      }
+      
+      // Check if there are additional movements in this direction
+      if (directionToCheck && specialMoves.additionalMovements[directionToCheck]) {
+        const additionalMoves = specialMoves.additionalMovements[directionToCheck];
+        
+        if (Array.isArray(additionalMoves)) {
+          for (const move of additionalMoves) {
+            // Get the value and exact flag
+            let moveValue = move.value;
+            const isExact = move.exact;
+            
+            if (move.infinite) {
+              moveValue = 99;
+            }
+            
+            // Check if this additional movement allows reaching the target square
+            if (checkMovement(moveValue, distance, isExact)) {
+              // Check if it's first-move-only
+              const isFirstMoveOnly = move.availableForMoves ? true : false;
+              return { allowed: true, isFirstMoveOnly };
+            }
+          }
+        }
       }
     }
 
@@ -147,7 +328,8 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
       
       if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
           (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
+        const isFirstMoveOnly = isRatioMovementFirstMoveOnly();
+        return { allowed: true, isFirstMoveOnly };
       }
     }
 
@@ -161,66 +343,152 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
         // Manhattan distance: can move N steps in cardinal directions
         const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
         if (manhattanDistance <= maxSteps) {
-          return true;
+          const isFirstMoveOnly = isStepMovementFirstMoveOnly();
+          return { allowed: true, isFirstMoveOnly };
         }
       } else {
         // Includes diagonal movement - can move like a king for N steps
         // Chebyshev distance: max of row/col differences
         const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
         if (chebyshevDistance <= maxSteps) {
-          return true;
+          const isFirstMoveOnly = isStepMovementFirstMoveOnly();
+          return { allowed: true, isFirstMoveOnly };
         }
       }
     }
 
-    return false;
+    return { allowed: false, isFirstMoveOnly: false };
   };
 
   // Calculate which squares the piece can capture on move (by moving to them)
+  // Returns { allowed: boolean, isFirstMoveOnly: boolean }
   const canCaptureOnMoveTo = (row, col) => {
-    if (row === centerPos && col === centerPos) return false;
-    if (!pieceData.can_capture_enemy_on_move) return false;
+    if (row === centerPos && col === centerPos) return { allowed: false, isFirstMoveOnly: false };
+    if (!pieceData.can_capture_enemy_on_move) return { allowed: false, isFirstMoveOnly: false };
     
     const rowDiff = row - centerPos;
     const colDiff = col - centerPos;
     
     let directionalCaptureAllowed = false;
+    let directionalDirection = null;
     
     // Up-left diagonal
     if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff));
+      directionalCaptureAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff), pieceData.up_left_capture_exact);
+      directionalDirection = 'up_left';
     }
     // Up
     else if (rowDiff < 0 && colDiff === 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.up_capture, Math.abs(rowDiff));
+      directionalCaptureAllowed = checkMovement(pieceData.up_capture, Math.abs(rowDiff), pieceData.up_capture_exact);
+      directionalDirection = 'up';
     }
     // Up-right diagonal
     else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff));
+      directionalCaptureAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff), pieceData.up_right_capture_exact);
+      directionalDirection = 'up_right';
     }
     // Right
     else if (rowDiff === 0 && colDiff > 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff));
+      directionalCaptureAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff), pieceData.right_capture_exact);
+      directionalDirection = 'right';
     }
     // Down-right diagonal
     else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff));
+      directionalCaptureAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff), pieceData.down_right_capture_exact);
+      directionalDirection = 'down_right';
     }
     // Down
     else if (rowDiff > 0 && colDiff === 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.down_capture, Math.abs(rowDiff));
+      directionalCaptureAllowed = checkMovement(pieceData.down_capture, Math.abs(rowDiff), pieceData.down_capture_exact);
+      directionalDirection = 'down';
     }
     // Down-left diagonal
     else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff));
+      directionalCaptureAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff), pieceData.down_left_capture_exact);
+      directionalDirection = 'down_left';
     }
     // Left
     else if (rowDiff === 0 && colDiff < 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff));
+      directionalCaptureAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff), pieceData.left_capture_exact);
+      directionalDirection = 'left';
     }
     
-    if (directionalCaptureAllowed) {
-      return true;
+    if (directionalCaptureAllowed && directionalDirection) {
+      const isFirstMoveOnly = isDirectionalCaptureFirstMoveOnly(directionalDirection);
+      return { allowed: true, isFirstMoveOnly };
+    }
+    
+    // Check additional captures from special_scenario_captures
+    const specialCaptures = parseSpecialScenarioCaptures;
+    if (specialCaptures.additionalCaptures) {
+      let directionToCheck = null;
+      let distance = 0;
+      
+      // Determine direction and distance based on rowDiff/colDiff
+      // Up-left diagonal
+      if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionToCheck = 'up_left';
+        distance = Math.abs(rowDiff);
+      }
+      // Up
+      else if (rowDiff < 0 && colDiff === 0) {
+        directionToCheck = 'up';
+        distance = Math.abs(rowDiff);
+      }
+      // Up-right diagonal
+      else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionToCheck = 'up_right';
+        distance = Math.abs(rowDiff);
+      }
+      // Right
+      else if (rowDiff === 0 && colDiff > 0) {
+        directionToCheck = 'right';
+        distance = Math.abs(colDiff);
+      }
+      // Down-right diagonal
+      else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionToCheck = 'down_right';
+        distance = Math.abs(rowDiff);
+      }
+      // Down
+      else if (rowDiff > 0 && colDiff === 0) {
+        directionToCheck = 'down';
+        distance = Math.abs(rowDiff);
+      }
+      // Down-left diagonal
+      else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
+        directionToCheck = 'down_left';
+        distance = Math.abs(rowDiff);
+      }
+      // Left
+      else if (rowDiff === 0 && colDiff < 0) {
+        directionToCheck = 'left';
+        distance = Math.abs(colDiff);
+      }
+      
+      // Check if there are additional captures in this direction
+      if (directionToCheck && specialCaptures.additionalCaptures[directionToCheck]) {
+        const additionalCaptures = specialCaptures.additionalCaptures[directionToCheck];
+        
+        if (Array.isArray(additionalCaptures)) {
+          for (const capture of additionalCaptures) {
+            // Get the value and exact flag
+            let captureValue = capture.value;
+            const isExact = capture.exact;
+            
+            if (capture.infinite) {
+              captureValue = 99;
+            }
+            
+            // Check if this additional capture allows reaching the target square
+            if (checkMovement(captureValue, distance, isExact)) {
+              // Check if it's first-move-only
+              const isFirstMoveOnly = capture.availableForMoves ? true : false;
+              return { allowed: true, isFirstMoveOnly };
+            }
+          }
+        }
+      }
     }
     
     // Ratio capture (L-shape)
@@ -230,7 +498,8 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
       
       if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
           (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
+        const isFirstMoveOnly = isRatioCaptureFirstMoveOnly();
+        return { allowed: true, isFirstMoveOnly };
       }
     }
     
@@ -243,18 +512,20 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
         // Manhattan distance: orthogonal only
         const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
         if (manhattanDistance <= maxSteps) {
-          return true;
+          const isFirstMoveOnly = isStepCaptureFirstMoveOnly();
+          return { allowed: true, isFirstMoveOnly };
         }
       } else {
         // Chebyshev distance: includes diagonal
         const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
         if (chebyshevDistance <= maxSteps) {
-          return true;
+          const isFirstMoveOnly = isStepCaptureFirstMoveOnly();
+          return { allowed: true, isFirstMoveOnly };
         }
       }
     }
     
-    return false;
+    return { allowed: false, isFirstMoveOnly: false };
   };
 
   // Calculate which squares the piece can attack via range (without moving)
@@ -269,35 +540,35 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
     
     // Up-left diagonal
     if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalRangedAllowed = checkMovement(pieceData.up_left_attack_range, Math.abs(rowDiff));
+      directionalRangedAllowed = checkMovement(pieceData.up_left_attack_range, Math.abs(rowDiff), pieceData.up_left_attack_range_exact);
     }
     // Up
     else if (rowDiff < 0 && colDiff === 0) {
-      directionalRangedAllowed = checkMovement(pieceData.up_attack_range, Math.abs(rowDiff));
+      directionalRangedAllowed = checkMovement(pieceData.up_attack_range, Math.abs(rowDiff), pieceData.up_attack_range_exact);
     }
     // Up-right diagonal
     else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalRangedAllowed = checkMovement(pieceData.up_right_attack_range, Math.abs(rowDiff));
+      directionalRangedAllowed = checkMovement(pieceData.up_right_attack_range, Math.abs(rowDiff), pieceData.up_right_attack_range_exact);
     }
     // Right
     else if (rowDiff === 0 && colDiff > 0) {
-      directionalRangedAllowed = checkMovement(pieceData.right_attack_range, Math.abs(colDiff));
+      directionalRangedAllowed = checkMovement(pieceData.right_attack_range, Math.abs(colDiff), pieceData.right_attack_range_exact);
     }
     // Down-right diagonal
     else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalRangedAllowed = checkMovement(pieceData.down_right_attack_range, Math.abs(rowDiff));
+      directionalRangedAllowed = checkMovement(pieceData.down_right_attack_range, Math.abs(rowDiff), pieceData.down_right_attack_range_exact);
     }
     // Down
     else if (rowDiff > 0 && colDiff === 0) {
-      directionalRangedAllowed = checkMovement(pieceData.down_attack_range, Math.abs(rowDiff));
+      directionalRangedAllowed = checkMovement(pieceData.down_attack_range, Math.abs(rowDiff), pieceData.down_attack_range_exact);
     }
     // Down-left diagonal
     else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalRangedAllowed = checkMovement(pieceData.down_left_attack_range, Math.abs(rowDiff));
+      directionalRangedAllowed = checkMovement(pieceData.down_left_attack_range, Math.abs(rowDiff), pieceData.down_left_attack_range_exact);
     }
     // Left
     else if (rowDiff === 0 && colDiff < 0) {
-      directionalRangedAllowed = checkMovement(pieceData.left_attack_range, Math.abs(colDiff));
+      directionalRangedAllowed = checkMovement(pieceData.left_attack_range, Math.abs(colDiff), pieceData.left_attack_range_exact);
     }
     
     if (directionalRangedAllowed) {
@@ -346,9 +617,17 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
       for (let col = 0; col < boardSize; col++) {
         const isCenter = row === centerPos && col === centerPos;
         const isLight = (row + col) % 2 === 0;
-        const canMove = isHovering && canMoveTo(row, col);
-        const canCaptureOnMove = showAttack && isHovering && canCaptureOnMoveTo(row, col);
+        
+        // Get movement and capture info with first-move-only status
+        const moveInfo = isHovering ? canMoveTo(row, col) : { allowed: false, isFirstMoveOnly: false };
+        const captureInfo = showAttack && isHovering ? canCaptureOnMoveTo(row, col) : { allowed: false, isFirstMoveOnly: false };
         const canRangedAttack = showAttack && isHovering && canRangedAttackTo(row, col);
+        
+        // Destructure for clearer code
+        const canMove = moveInfo.allowed;
+        const isMoveFirstOnly = moveInfo.isFirstMoveOnly;
+        const canCaptureOnMove = captureInfo.allowed;
+        const isCaptureFirstOnly = captureInfo.isFirstMoveOnly;
         
         let squareClass = `${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}`;
         
@@ -356,22 +635,51 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
           squareClass += ` ${styles["center-piece"]}`;
         } else if (canMove && canCaptureOnMove && canRangedAttack) {
           // Can move, capture on move, AND ranged attack
-          squareClass += ` ${styles["can-all-three"]}`;
+          // Use first-move-only styling if either move or capture is first-move-only
+          if (isMoveFirstOnly || isCaptureFirstOnly) {
+            squareClass += ` ${styles["can-all-three-first-only"]}`;
+          } else {
+            squareClass += ` ${styles["can-all-three"]}`;
+          }
         } else if (canMove && canCaptureOnMove) {
           // Can move and capture on move
-          squareClass += ` ${styles["can-move-and-capture"]}`;
+          if (isMoveFirstOnly && isCaptureFirstOnly) {
+            squareClass += ` ${styles["can-move-and-capture-first-only"]}`;
+          } else if (isMoveFirstOnly) {
+            squareClass += ` ${styles["can-move-first-capture-normal"]}`;
+          } else if (isCaptureFirstOnly) {
+            squareClass += ` ${styles["can-move-normal-capture-first"]}`;
+          } else {
+            squareClass += ` ${styles["can-move-and-capture"]}`;
+          }
         } else if (canMove && canRangedAttack) {
           // Can move and ranged attack
-          squareClass += ` ${styles["can-move-and-ranged"]}`;
+          if (isMoveFirstOnly) {
+            squareClass += ` ${styles["can-move-and-ranged-first-only"]}`;
+          } else {
+            squareClass += ` ${styles["can-move-and-ranged"]}`;
+          }
         } else if (canCaptureOnMove && canRangedAttack) {
           // Can capture on move and ranged attack
-          squareClass += ` ${styles["can-capture-and-ranged"]}`;
+          if (isCaptureFirstOnly) {
+            squareClass += ` ${styles["can-capture-and-ranged-first-only"]}`;
+          } else {
+            squareClass += ` ${styles["can-capture-and-ranged"]}`;
+          }
         } else if (canMove) {
           // Movement only
-          squareClass += ` ${styles["can-move"]}`;
+          if (isMoveFirstOnly) {
+            squareClass += ` ${styles["can-move-first-only"]}`;
+          } else {
+            squareClass += ` ${styles["can-move"]}`;
+          }
         } else if (canCaptureOnMove) {
           // Capture on move only
-          squareClass += ` ${styles["can-capture-move"]}`;
+          if (isCaptureFirstOnly) {
+            squareClass += ` ${styles["can-capture-first-only"]}`;
+          } else {
+            squareClass += ` ${styles["can-capture-move"]}`;
+          }
         } else if (canRangedAttack) {
           // Ranged attack only
           squareClass += ` ${styles["can-ranged-attack"]}`;
@@ -424,6 +732,37 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
         onMouseLeave={() => setIsHovering(false)}
       >
         {renderBoard()}
+      </div>
+      <div className={styles["board-legend"]}>
+        <div className={styles["legend-title"]}>Legend (hover over piece to see):</div>
+        <div className={styles["legend-items"]}>
+          <div className={styles["legend-item"]}>
+            <div className={`${styles["legend-square"]} ${styles["legend-move"]}`}></div>
+            <span>Regular Movement</span>
+          </div>
+          <div className={styles["legend-item"]}>
+            <div className={`${styles["legend-square"]} ${styles["legend-move-first"]}`}></div>
+            <span>First Moves Movement</span>
+          </div>
+          {showAttack && (
+            <>
+              <div className={styles["legend-item"]}>
+                <div className={`${styles["legend-square"]} ${styles["legend-capture"]}`}></div>
+                <span>Capture on Move</span>
+              </div>
+              <div className={styles["legend-item"]}>
+                <div className={`${styles["legend-square"]} ${styles["legend-capture-first"]}`}></div>
+                <span>First Moves Capture</span>
+              </div>
+            </>
+          )}
+          {showAttack && (
+            <div className={styles["legend-item"]}>
+              <div className={`${styles["legend-square"]} ${styles["legend-ranged"]}`}></div>
+              <span>Ranged Attack 💥</span>
+            </div>
+          )}
+        </div>
       </div>
       <div className={styles["board-info"]}>
         Board size: {boardSize}x{boardSize} | Piece position: ({centerPos}, {centerPos})

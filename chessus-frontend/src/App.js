@@ -81,6 +81,9 @@ function App() {
     // Track page view for analytics
     trackPageView(location.pathname + location.search, document.title);
 
+    // Scroll to top on route change
+    window.scrollTo(0, 0);
+
   }, [location, dispatch]);
 
   return (

@@ -21,3 +21,6 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Large sound library - only track the files we use in /game/
+/src/assets/sounds/Chess Pieces/

@@ -1,6 +1,8 @@
 import React, { useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
+import NumberInput from "../common/NumberInput";
+import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyle }) => {
   
@@ -28,7 +30,22 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
   }, []); // Run only once on mount
   
   const handleChange = (field, value) => {
-    updatePieceData({ [field]: value });
+    const updates = { [field]: value };
+    
+    // Handle mutual exclusivity between exact and infinite for directional captures and attacks
+    if ((field.endsWith('_capture') || field.endsWith('_attack')) && value === 99) {
+      // Setting infinite, so uncheck exact
+      const exactField = field + '_exact';
+      updates[exactField] = false;
+    } else if ((field.endsWith('_capture_exact') || field.endsWith('_attack_exact')) && value === true) {
+      // Setting exact, so uncheck infinite
+      const captureOrAttackField = field.replace('_exact', '');
+      if (pieceData[captureOrAttackField] === 99) {
+        updates[captureOrAttackField] = 0;
+      }
+    }
+    
+    updatePieceData(updates);
   };
 
   const handleBooleanChange = (field, value) => {
@@ -38,6 +55,177 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
   const handleNumberChange = (field, value) => {
     const numValue = value === "" ? null : parseInt(value);
     updatePieceData({ [field]: numValue });
+  };
+
+  // Parse additional captures from special_scenario_captures JSON
+  const getAdditionalCaptures = () => {
+    if (!pieceData.special_scenario_captures) return {};
+    try {
+      const parsed = typeof pieceData.special_scenario_captures === 'string' 
+        ? JSON.parse(pieceData.special_scenario_captures)
+        : pieceData.special_scenario_captures;
+      return parsed.additionalCaptures || {};
+    } catch {
+      return {};
+    }
+  };
+
+  // Add an additional capture for a direction
+  const addAdditionalCapture = (direction) => {
+    const additionalCaptures = getAdditionalCaptures();
+    if (!additionalCaptures[direction]) {
+      additionalCaptures[direction] = [];
+    }
+    additionalCaptures[direction].push({
+      value: 1,
+      exact: false,
+      infinite: false,
+      firstMoveOnly: false
+    });
+    
+    const scenarioData = pieceData.special_scenario_captures 
+      ? (typeof pieceData.special_scenario_captures === 'string' 
+          ? JSON.parse(pieceData.special_scenario_captures)
+          : pieceData.special_scenario_captures)
+      : {};
+    
+    scenarioData.additionalCaptures = additionalCaptures;
+    updatePieceData({ special_scenario_captures: JSON.stringify(scenarioData) });
+  };
+
+  // Update an additional capture
+  const updateAdditionalCapture = (direction, index, field, value) => {
+    const additionalCaptures = getAdditionalCaptures();
+    if (additionalCaptures[direction] && additionalCaptures[direction][index]) {
+      // If setting infinite to true, uncheck exact
+      if (field === 'infinite' && value === true) {
+        additionalCaptures[direction][index]['exact'] = false;
+      }
+      // If setting exact to true, uncheck infinite
+      if (field === 'exact' && value === true) {
+        additionalCaptures[direction][index]['infinite'] = false;
+      }
+      
+      additionalCaptures[direction][index][field] = value;
+      
+      const scenarioData = pieceData.special_scenario_captures 
+        ? (typeof pieceData.special_scenario_captures === 'string' 
+            ? JSON.parse(pieceData.special_scenario_captures)
+            : pieceData.special_scenario_captures)
+        : {};
+      
+      scenarioData.additionalCaptures = additionalCaptures;
+      updatePieceData({ special_scenario_captures: JSON.stringify(scenarioData) });
+    }
+  };
+
+  // Remove an additional capture
+  const removeAdditionalCapture = (direction, index) => {
+    const additionalCaptures = getAdditionalCaptures();
+    if (additionalCaptures[direction]) {
+      additionalCaptures[direction].splice(index, 1);
+      if (additionalCaptures[direction].length === 0) {
+        delete additionalCaptures[direction];
+      }
+      
+      const scenarioData = pieceData.special_scenario_captures 
+        ? (typeof pieceData.special_scenario_captures === 'string' 
+            ? JSON.parse(pieceData.special_scenario_captures)
+            : pieceData.special_scenario_captures)
+        : {};
+      
+      scenarioData.additionalCaptures = additionalCaptures;
+      updatePieceData({ special_scenario_captures: JSON.stringify(scenarioData) });
+    }
+  };
+
+  // Render additional capture options for a direction
+  const renderAdditionalCaptures = (direction, directionName, arrow) => {
+    const additionalCaptures = getAdditionalCaptures();
+    const captures = additionalCaptures[direction] || [];
+    
+    return (
+      <div className={styles["additional-movements"]}>
+        {captures.map((capture, index) => (
+          <div key={index} className={styles["additional-movement-item"]}>
+            <button 
+              type="button"
+              className={styles["remove-btn"]}
+              onClick={() => removeAdditionalCapture(direction, index)}
+            >
+              ×
+            </button>
+            <div className={styles["additional-movement-content"]}>
+              <div className={styles["additional-movement-header"]}>
+                <span className={styles["additional-label"]}>Alt {directionName} {arrow}</span>
+              </div>
+              <div className={styles["additional-movement-line"]}>
+                <label>Value:</label>
+                <NumberInput
+                  value={capture.infinite ? "∞" : capture.value}
+                  onChange={(val) => updateAdditionalCapture(direction, index, 'value', val)}
+                  options={{ disabled: capture.infinite, min: 0, max: 99 }}
+                />
+              </div>
+              <div className={styles["additional-movement-line"]}>
+                <label className={styles["checkbox-label-inline"]}>
+                  <input
+                    type="checkbox"
+                    checked={capture.exact}
+                    onChange={(e) => updateAdditionalCapture(direction, index, 'exact', e.target.checked)}
+                    disabled={capture.infinite}
+                  />
+                  <span>Exact</span>
+                </label>
+              </div>
+              <div className={styles["additional-movement-line"]}>
+                <label className={styles["checkbox-label-inline"]}>
+                  <input
+                    type="checkbox"
+                    checked={capture.infinite}
+                    onChange={(e) => updateAdditionalCapture(direction, index, 'infinite', e.target.checked)}
+                  />
+                  <span>Infinite</span>
+                </label>
+              </div>
+              <div className={styles["additional-movement-line"]}>
+                <label className={styles["checkbox-label-inline"]}>
+                  <input
+                    type="checkbox"
+                    checked={!!capture.availableForMoves}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        updateAdditionalCapture(direction, index, 'availableForMoves', 1);
+                      } else {
+                        updateAdditionalCapture(direction, index, 'availableForMoves', null);
+                      }
+                    }}
+                  />
+                  <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                </label>
+                {capture.availableForMoves && (
+                  <>
+                    <NumberInput
+                      value={capture.availableForMoves || 1}
+                      onChange={(val) => updateAdditionalCapture(direction, index, 'availableForMoves', val)}
+                      options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        <button 
+          type="button"
+          className={styles["add-movement-btn"]}
+          onClick={() => addAdditionalCapture(direction)}
+        >
+          + Add Alternative Capture
+        </button>
+      </div>
+    );
   };
 
   const handleAttackLikeMovement = (checked) => {
@@ -79,7 +267,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
     <div className={styles["step-container"]}>
       <h2>Attack & Capture Configuration</h2>
       <p className={styles["step-description"]}>
-        Define how your piece captures and attacks. Pieces can capture by moving (like most chess pieces) or attack from range without moving (like a cannon). Values: 0 = cannot, positive = up to that many squares, negative = exactly that many squares, 99 = infinite.
+        Define how your piece captures and attacks. Pieces can capture by moving (like most chess pieces) or attack from range without moving (like a cannon). Values: 0 = cannot, positive = up to that many squares. Check "Exact" to require exactly that distance, or "Infinite" for unlimited range.
       </p>
 
       {/* Attack Like Movement Checkbox */}
@@ -127,14 +315,10 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
           <>
             <div className={styles["sub-field"]}>
               <label>Max Captures Per Move</label>
-              <input
-                type="number"
-                className={styles["form-input-small"]}
+              <NumberInput
                 value={pieceData.max_captures_per_move === -1 ? "" : (pieceData.max_captures_per_move || 1)}
-                onChange={(e) => handleNumberChange("max_captures_per_move", e.target.value)}
-                placeholder="1"
-                min="1"
-                disabled={pieceData.max_captures_per_move === -1}
+                onChange={(val) => handleChange("max_captures_per_move", val)}
+                options={{ min: 1, disabled: pieceData.max_captures_per_move === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
               <label className={styles["checkbox-label-inline"]}>
                 <input
@@ -151,7 +335,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
               <div className={styles["sub-field"]}>
                 <h4>Directional Capture Movement</h4>
                 <p className={styles["field-hint"]}>
-                  Define capture range in each direction. 0 = no capture, positive = up to, negative = exactly, 99 = infinite
+                  Define capture range in each direction. 0 = no capture, positive = up to. Check "Exact" to require exactly that distance, or "Infinite" for unlimited range.
                 </p>
                 
                 <div className={styles["directional-grid"]}>
@@ -159,109 +343,166 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Up-Left */}
                     <div className={styles["direction-input"]}>
                       <label>↖ Up-Left</label>
-                      <input
-                        type="number"
-                        value={pieceData.up_left_capture === 99 ? "" : Math.abs(pieceData.up_left_capture || 0)}
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                          const isExact = pieceData.up_left_capture < 0 && pieceData.up_left_capture !== 99;
-                          handleChange("up_left_capture", isExact ? -val : val);
-                        }}
-                        disabled={pieceData.up_left_capture === 99}
-                        placeholder="0"
-                      />
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.up_left_capture < 0 && pieceData.up_left_capture !== 99}
-                          onChange={(e) => {
-                            const val = Math.abs(pieceData.up_left_capture || 0);
-                            handleChange("up_left_capture", e.target.checked ? -val : val);
-                          }}
-                          disabled={pieceData.up_left_capture === 99}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <NumberInput
+                          value={pieceData.up_left_capture === 99 ? "∞" : (pieceData.up_left_capture || 0)}
+                          onChange={(val) => handleChange("up_left_capture", val)}
+                          options={{ disabled: pieceData.up_left_capture === 99 }}
                         />
-                        <span>Exact</span>
-                      </label>
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.up_left_capture === 99}
-                          onChange={(e) => handleChange("up_left_capture", e.target.checked ? 99 : 0)}
-                        />
-                        <span>Infinite</span>
-                      </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.up_left_capture_exact}
+                            onChange={(e) => handleChange("up_left_capture_exact", e.target.checked)}
+                            disabled={pieceData.up_left_capture === 99}
+                          />
+                          <span>Exact</span>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={pieceData.up_left_capture === 99}
+                            onChange={(e) => handleChange("up_left_capture", e.target.checked ? 99 : 0)}
+                          />
+                          <span>Infinite</span>
+                        </label>
+                      </div>
+                      <div className={styles["available-for-moves-group"]}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.up_left_capture_available_for}
+                            onChange={(e) => handleChange("up_left_capture_available_for", e.target.checked ? 1 : null)}
+                            disabled={pieceData.up_left_capture === 99}
+                          />
+                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                        </label>
+                        {pieceData.up_left_capture_available_for && (
+                          <>
+                            <NumberInput
+                              value={pieceData.up_left_capture_available_for || 1}
+                              onChange={(val) => handleChange("up_left_capture_available_for", val)}
+                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                            />
+                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                          </>
+                        )}
+                      </div>
+                      {renderAdditionalCaptures("up_left", "Up-Left", "↖")}
                     </div>
                     
                     {/* Up */}
                     <div className={styles["direction-input"]}>
                       <label>↑ Up</label>
-                      <input
-                        type="number"
-                        value={pieceData.up_capture === 99 ? "" : Math.abs(pieceData.up_capture || 0)}
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                          const isExact = pieceData.up_capture < 0 && pieceData.up_capture !== 99;
-                          handleChange("up_capture", isExact ? -val : val);
-                        }}
-                        disabled={pieceData.up_capture === 99}
-                        placeholder="0"
-                      />
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.up_capture < 0 && pieceData.up_capture !== 99}
-                          onChange={(e) => {
-                            const val = Math.abs(pieceData.up_capture || 0);
-                            handleChange("up_capture", e.target.checked ? -val : val);
-                          }}
-                          disabled={pieceData.up_capture === 99}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <NumberInput
+                          value={pieceData.up_capture === 99 ? "∞" : (pieceData.up_capture || 0)}
+                          onChange={(val) => handleChange("up_capture", val)}
+                          options={{ disabled: pieceData.up_capture === 99 }}
                         />
-                        <span>Exact</span>
-                      </label>
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.up_capture === 99}
-                          onChange={(e) => handleChange("up_capture", e.target.checked ? 99 : 0)}
-                        />
-                        <span>Infinite</span>
-                      </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.up_capture_exact}
+                            onChange={(e) => handleChange("up_capture_exact", e.target.checked)}
+                            disabled={pieceData.up_capture === 99}
+                          />
+                          <span>Exact</span>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={pieceData.up_capture === 99}
+                            onChange={(e) => handleChange("up_capture", e.target.checked ? 99 : 0)}
+                          />
+                          <span>Infinite</span>
+                        </label>
+                      </div>
+                      <div className={styles["available-for-moves-group"]}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.up_capture_available_for}
+                            onChange={(e) => handleChange("up_capture_available_for", e.target.checked ? 1 : null)}
+                            disabled={pieceData.up_capture === 99}
+                          />
+                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                        </label>
+                        {pieceData.up_capture_available_for && (
+                          <>
+                            <NumberInput
+                              value={pieceData.up_capture_available_for || 1}
+                              onChange={(val) => handleChange("up_capture_available_for", val)}
+                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                            />
+                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                          </>
+                        )}
+                      </div>
+                      {renderAdditionalCaptures("up", "Up", "↑")}
                     </div>
                     
                     {/* Up-Right */}
                     <div className={styles["direction-input"]}>
                       <label>↗ Up-Right</label>
-                      <input
-                        type="number"
-                        value={pieceData.up_right_capture === 99 ? "" : Math.abs(pieceData.up_right_capture || 0)}
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                          const isExact = pieceData.up_right_capture < 0 && pieceData.up_right_capture !== 99;
-                          handleChange("up_right_capture", isExact ? -val : val);
-                        }}
-                        disabled={pieceData.up_right_capture === 99}
-                        placeholder="0"
-                      />
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.up_right_capture < 0 && pieceData.up_right_capture !== 99}
-                          onChange={(e) => {
-                            const val = Math.abs(pieceData.up_right_capture || 0);
-                            handleChange("up_right_capture", e.target.checked ? -val : val);
-                          }}
-                          disabled={pieceData.up_right_capture === 99}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <NumberInput
+                          value={pieceData.up_right_capture === 99 ? "∞" : (pieceData.up_right_capture || 0)}
+                          onChange={(val) => handleChange("up_right_capture", val)}
+                          options={{ disabled: pieceData.up_right_capture === 99 }}
                         />
-                        <span>Exact</span>
-                      </label>
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.up_right_capture === 99}
-                          onChange={(e) => handleChange("up_right_capture", e.target.checked ? 99 : 0)}
-                        />
-                        <span>Infinite</span>
-                      </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.up_right_capture_exact}
+                            onChange={(e) => handleChange("up_right_capture_exact", e.target.checked)}
+                            disabled={pieceData.up_right_capture === 99}
+                          />
+                          <span>Exact</span>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={pieceData.up_right_capture === 99}
+                            onChange={(e) => handleChange("up_right_capture", e.target.checked ? 99 : 0)}
+                          />
+                          <span>Infinite</span>
+                        </label>
+                      </div>
+                      <div className={styles["available-for-moves-group"]}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.up_right_capture_available_for}
+                            onChange={(e) => handleChange("up_right_capture_available_for", e.target.checked ? 1 : null)}
+                            disabled={pieceData.up_right_capture === 99}
+                          />
+                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                        </label>
+                        {pieceData.up_right_capture_available_for && (
+                          <>
+                            <NumberInput
+                              value={pieceData.up_right_capture_available_for || 1}
+                              onChange={(val) => handleChange("up_right_capture_available_for", val)}
+                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                            />
+                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                          </>
+                        )}
+                      </div>
+                      {renderAdditionalCaptures("up_right", "Up-Right", "↗")}
                     </div>
                   </div>
                   
@@ -269,37 +510,56 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Left */}
                     <div className={styles["direction-input"]}>
                       <label>← Left</label>
-                      <input
-                        type="number"
-                        value={pieceData.left_capture === 99 ? "" : Math.abs(pieceData.left_capture || 0)}
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                          const isExact = pieceData.left_capture < 0 && pieceData.left_capture !== 99;
-                          handleChange("left_capture", isExact ? -val : val);
-                        }}
-                        disabled={pieceData.left_capture === 99}
-                        placeholder="0"
-                      />
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.left_capture < 0 && pieceData.left_capture !== 99}
-                          onChange={(e) => {
-                            const val = Math.abs(pieceData.left_capture || 0);
-                            handleChange("left_capture", e.target.checked ? -val : val);
-                          }}
-                          disabled={pieceData.left_capture === 99}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <NumberInput
+                          value={pieceData.left_capture === 99 ? "∞" : (pieceData.left_capture || 0)}
+                          onChange={(val) => handleChange("left_capture", val)}
+                          options={{ disabled: pieceData.left_capture === 99 }}
                         />
-                        <span>Exact</span>
-                      </label>
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.left_capture === 99}
-                          onChange={(e) => handleChange("left_capture", e.target.checked ? 99 : 0)}
-                        />
-                        <span>Infinite</span>
-                      </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.left_capture_exact}
+                            onChange={(e) => handleChange("left_capture_exact", e.target.checked)}
+                            disabled={pieceData.left_capture === 99}
+                          />
+                          <span>Exact</span>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={pieceData.left_capture === 99}
+                            onChange={(e) => handleChange("left_capture", e.target.checked ? 99 : 0)}
+                          />
+                          <span>Infinite</span>
+                        </label>
+                      </div>
+                      <div className={styles["available-for-moves-group"]}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.left_capture_available_for}
+                            onChange={(e) => handleChange("left_capture_available_for", e.target.checked ? 1 : null)}
+                            disabled={pieceData.left_capture === 99}
+                          />
+                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                        </label>
+                        {pieceData.left_capture_available_for && (
+                          <>
+                            <NumberInput
+                              value={pieceData.left_capture_available_for || 1}
+                              onChange={(val) => handleChange("left_capture_available_for", val)}
+                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                            />
+                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                          </>
+                        )}
+                      </div>
+                      {renderAdditionalCaptures("left", "Left", "←")}
                     </div>
                     
                     {/* Center piece */}
@@ -316,37 +576,56 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Right */}
                     <div className={styles["direction-input"]}>
                       <label>→ Right</label>
-                      <input
-                        type="number"
-                        value={pieceData.right_capture === 99 ? "" : Math.abs(pieceData.right_capture || 0)}
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                          const isExact = pieceData.right_capture < 0 && pieceData.right_capture !== 99;
-                          handleChange("right_capture", isExact ? -val : val);
-                        }}
-                        disabled={pieceData.right_capture === 99}
-                        placeholder="0"
-                      />
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.right_capture < 0 && pieceData.right_capture !== 99}
-                          onChange={(e) => {
-                            const val = Math.abs(pieceData.right_capture || 0);
-                            handleChange("right_capture", e.target.checked ? -val : val);
-                          }}
-                          disabled={pieceData.right_capture === 99}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <NumberInput
+                          value={pieceData.right_capture === 99 ? "∞" : (pieceData.right_capture || 0)}
+                          onChange={(val) => handleChange("right_capture", val)}
+                          options={{ disabled: pieceData.right_capture === 99 }}
                         />
-                        <span>Exact</span>
-                      </label>
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.right_capture === 99}
-                          onChange={(e) => handleChange("right_capture", e.target.checked ? 99 : 0)}
-                        />
-                        <span>Infinite</span>
-                      </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.right_capture_exact}
+                            onChange={(e) => handleChange("right_capture_exact", e.target.checked)}
+                            disabled={pieceData.right_capture === 99}
+                          />
+                          <span>Exact</span>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={pieceData.right_capture === 99}
+                            onChange={(e) => handleChange("right_capture", e.target.checked ? 99 : 0)}
+                          />
+                          <span>Infinite</span>
+                        </label>
+                      </div>
+                      <div className={styles["available-for-moves-group"]}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.right_capture_available_for}
+                            onChange={(e) => handleChange("right_capture_available_for", e.target.checked ? 1 : null)}
+                            disabled={pieceData.right_capture === 99}
+                          />
+                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                        </label>
+                        {pieceData.right_capture_available_for && (
+                          <>
+                            <NumberInput
+                              value={pieceData.right_capture_available_for || 1}
+                              onChange={(val) => handleChange("right_capture_available_for", val)}
+                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                            />
+                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                          </>
+                        )}
+                      </div>
+                      {renderAdditionalCaptures("right", "Right", "→")}
                     </div>
                   </div>
                   
@@ -354,114 +633,183 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Down-Left */}
                     <div className={styles["direction-input"]}>
                       <label>↙ Down-Left</label>
-                      <input
-                        type="number"
-                        value={pieceData.down_left_capture === 99 ? "" : Math.abs(pieceData.down_left_capture || 0)}
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                          const isExact = pieceData.down_left_capture < 0 && pieceData.down_left_capture !== 99;
-                          handleChange("down_left_capture", isExact ? -val : val);
-                        }}
-                        disabled={pieceData.down_left_capture === 99}
-                        placeholder="0"
-                      />
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.down_left_capture < 0 && pieceData.down_left_capture !== 99}
-                          onChange={(e) => {
-                            const val = Math.abs(pieceData.down_left_capture || 0);
-                            handleChange("down_left_capture", e.target.checked ? -val : val);
-                          }}
-                          disabled={pieceData.down_left_capture === 99}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <NumberInput
+                          value={pieceData.down_left_capture === 99 ? "∞" : (pieceData.down_left_capture || 0)}
+                          onChange={(val) => handleChange("down_left_capture", val)}
+                          options={{ disabled: pieceData.down_left_capture === 99 }}
                         />
-                        <span>Exact</span>
-                      </label>
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.down_left_capture === 99}
-                          onChange={(e) => handleChange("down_left_capture", e.target.checked ? 99 : 0)}
-                        />
-                        <span>Infinite</span>
-                      </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.down_left_capture_exact}
+                            onChange={(e) => handleChange("down_left_capture_exact", e.target.checked)}
+                            disabled={pieceData.down_left_capture === 99}
+                          />
+                          <span>Exact</span>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={pieceData.down_left_capture === 99}
+                            onChange={(e) => handleChange("down_left_capture", e.target.checked ? 99 : 0)}
+                          />
+                          <span>Infinite</span>
+                        </label>
+                      </div>
+                      <div className={styles["available-for-moves-group"]}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.down_left_capture_available_for}
+                            onChange={(e) => handleChange("down_left_capture_available_for", e.target.checked ? 1 : null)}
+                            disabled={pieceData.down_left_capture === 99}
+                          />
+                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                        </label>
+                        {pieceData.down_left_capture_available_for && (
+                          <>
+                            <NumberInput
+                              value={pieceData.down_left_capture_available_for || 1}
+                              onChange={(val) => handleChange("down_left_capture_available_for", val)}
+                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                            />
+                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                          </>
+                        )}
+                      </div>
+                      {renderAdditionalCaptures("down_left", "Down-Left", "↙")}
                     </div>
                     
                     {/* Down */}
                     <div className={styles["direction-input"]}>
                       <label>↓ Down</label>
-                      <input
-                        type="number"
-                        value={pieceData.down_capture === 99 ? "" : Math.abs(pieceData.down_capture || 0)}
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                          const isExact = pieceData.down_capture < 0 && pieceData.down_capture !== 99;
-                          handleChange("down_capture", isExact ? -val : val);
-                        }}
-                        disabled={pieceData.down_capture === 99}
-                        placeholder="0"
-                      />
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.down_capture < 0 && pieceData.down_capture !== 99}
-                          onChange={(e) => {
-                            const val = Math.abs(pieceData.down_capture || 0);
-                            handleChange("down_capture", e.target.checked ? -val : val);
-                          }}
-                          disabled={pieceData.down_capture === 99}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <NumberInput
+                          value={pieceData.down_capture === 99 ? "∞" : (pieceData.down_capture || 0)}
+                          onChange={(val) => handleChange("down_capture", val)}
+                          options={{ disabled: pieceData.down_capture === 99 }}
                         />
-                        <span>Exact</span>
-                      </label>
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.down_capture === 99}
-                          onChange={(e) => handleChange("down_capture", e.target.checked ? 99 : 0)}
-                        />
-                        <span>Infinite</span>
-                      </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.down_capture_exact}
+                            onChange={(e) => handleChange("down_capture_exact", e.target.checked)}
+                            disabled={pieceData.down_capture === 99}
+                          />
+                          <span>Exact</span>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={pieceData.down_capture === 99}
+                            onChange={(e) => handleChange("down_capture", e.target.checked ? 99 : 0)}
+                          />
+                          <span>Infinite</span>
+                        </label>
+                      </div>
+                      <div className={styles["available-for-moves-group"]}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.down_capture_available_for}
+                            onChange={(e) => handleChange("down_capture_available_for", e.target.checked ? 1 : null)}
+                            disabled={pieceData.down_capture === 99}
+                          />
+                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                        </label>
+                        {pieceData.down_capture_available_for && (
+                          <>
+                            <NumberInput
+                              value={pieceData.down_capture_available_for || 1}
+                              onChange={(val) => handleChange("down_capture_available_for", val)}
+                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                            />
+                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                          </>
+                        )}
+                      </div>
+                      {renderAdditionalCaptures("down", "Down", "↓")}
                     </div>
                     
                     {/* Down-Right */}
                     <div className={styles["direction-input"]}>
                       <label>↘ Down-Right</label>
-                      <input
-                        type="number"
-                        value={pieceData.down_right_capture === 99 ? "" : Math.abs(pieceData.down_right_capture || 0)}
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                          const isExact = pieceData.down_right_capture < 0 && pieceData.down_right_capture !== 99;
-                          handleChange("down_right_capture", isExact ? -val : val);
-                        }}
-                        disabled={pieceData.down_right_capture === 99}
-                        placeholder="0"
-                      />
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.down_right_capture < 0 && pieceData.down_right_capture !== 99}
-                          onChange={(e) => {
-                            const val = Math.abs(pieceData.down_right_capture || 0);
-                            handleChange("down_right_capture", e.target.checked ? -val : val);
-                          }}
-                          disabled={pieceData.down_right_capture === 99}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <NumberInput
+                          value={pieceData.down_right_capture === 99 ? "∞" : (pieceData.down_right_capture || 0)}
+                          onChange={(val) => handleChange("down_right_capture", val)}
+                          options={{ disabled: pieceData.down_right_capture === 99 }}
                         />
-                        <span>Exact</span>
-                      </label>
-                      <label className={styles["checkbox-label-inline"]}>
-                        <input
-                          type="checkbox"
-                          checked={pieceData.down_right_capture === 99}
-                          onChange={(e) => handleChange("down_right_capture", e.target.checked ? 99 : 0)}
-                        />
-                        <span>Infinite</span>
-                      </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.down_right_capture_exact}
+                            onChange={(e) => handleChange("down_right_capture_exact", e.target.checked)}
+                            disabled={pieceData.down_right_capture === 99}
+                          />
+                          <span>Exact</span>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={pieceData.down_right_capture === 99}
+                            onChange={(e) => handleChange("down_right_capture", e.target.checked ? 99 : 0)}
+                          />
+                          <span>Infinite</span>
+                        </label>
+                      </div>
+                      <div className={styles["available-for-moves-group"]}>
+                        <label className={styles["checkbox-label-inline"]}>
+                          <input
+                            type="checkbox"
+                            checked={!!pieceData.down_right_capture_available_for}
+                            onChange={(e) => handleChange("down_right_capture_available_for", e.target.checked ? 1 : null)}
+                            disabled={pieceData.down_right_capture === 99}
+                          />
+                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                        </label>
+                        {pieceData.down_right_capture_available_for && (
+                          <>
+                            <NumberInput
+                              value={pieceData.down_right_capture_available_for || 1}
+                              onChange={(val) => handleChange("down_right_capture_available_for", val)}
+                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                            />
+                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                          </>
+                        )}
+                      </div>
+                      {renderAdditionalCaptures("down_right", "Down-Right", "↘")}
                     </div>
                   </div>
                 </div>
               </div>
             )}
+
+            {/* First Move Only Option for Captures */}
+            <div className={styles["sub-field"]}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={pieceData.first_move_only_capture}
+                  onChange={(e) => handleChange("first_move_only_capture", e.target.checked)}
+                />
+                <span>First move only (piece loses capture ability after moving once)</span>
+              </label>
+            </div>
 
             {/* Ratio Capture (Knight-like) */}
             {!pieceData.attacks_like_movement && (
@@ -470,22 +818,18 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                 <div className={styles["form-row"]}>
                   <div className={styles["form-group"]}>
                     <label>Ratio One</label>
-                    <input
-                      type="number"
-                      className={styles["form-input-small"]}
+                    <NumberInput
                       value={pieceData.ratio_one_capture || ""}
-                      onChange={(e) => handleNumberChange("ratio_one_capture", e.target.value)}
-                      placeholder="e.g., 2"
+                      onChange={(val) => handleNumberChange("ratio_one_capture", val || "")}
+                      options={{ placeholder: "e.g., 2", className: styles["form-input-small"] }}
                     />
                   </div>
                   <div className={styles["form-group"]}>
                     <label>Ratio Two</label>
-                    <input
-                      type="number"
-                      className={styles["form-input-small"]}
+                    <NumberInput
                       value={pieceData.ratio_two_capture || ""}
-                      onChange={(e) => handleNumberChange("ratio_two_capture", e.target.value)}
-                      placeholder="e.g., 1"
+                      onChange={(val) => handleNumberChange("ratio_two_capture", val || "")}
+                      options={{ placeholder: "e.g., 1", className: styles["form-input-small"] }}
                     />
                   </div>
                 </div>
@@ -500,18 +844,13 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
               <div className={styles["sub-field"]}>
                 <h4>Step-by-Step Capture</h4>
                 <label>Total Capture Steps</label>
-                <input
-                  type="number"
-                  className={styles["form-input-small"]}
-                  value={pieceData.step_by_step_capture || ""}
-                  onChange={(e) => {
-                    const val = e.target.value === "" ? null : parseInt(e.target.value);
-                    // Positive values include diagonal, negative exclude diagonal
+                <NumberInput
+                  value={pieceData.step_by_step_capture ? Math.abs(pieceData.step_by_step_capture) : ""}
+                  onChange={(val) => {
                     const currentIsNoDiagonal = pieceData.step_by_step_capture < 0;
-                    handleChange("step_by_step_capture", currentIsNoDiagonal && val ? -val : val);
+                    handleChange("step_by_step_capture", currentIsNoDiagonal && val ? -val : val || null);
                   }}
-                  placeholder="Leave empty to disable"
-                  min="0"
+                  options={{ placeholder: "Leave empty to disable", className: styles["form-input-small"] }}
                 />
                 <label className={styles["checkbox-label-inline"]}>
                   <input
@@ -567,14 +906,10 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
           <>
             <div className={styles["sub-field"]}>
               <label>Max Ranged Captures Per Turn</label>
-              <input
-                type="number"
-                className={styles["form-input-small"]}
+              <NumberInput
                 value={pieceData.max_captures_via_ranged_attack === -1 ? "" : (pieceData.max_captures_via_ranged_attack || 1)}
-                onChange={(e) => handleNumberChange("max_captures_via_ranged_attack", e.target.value)}
-                placeholder="1"
-                min="1"
-                disabled={pieceData.max_captures_via_ranged_attack === -1}
+                onChange={(val) => handleChange("max_captures_via_ranged_attack", val)}
+                options={{ min: 1, disabled: pieceData.max_captures_via_ranged_attack === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
               <label className={styles["checkbox-label-inline"]}>
                 <input
@@ -590,7 +925,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
             <div className={styles["sub-field"]}>
               <h4>Directional Ranged Attack</h4>
               <p className={styles["field-hint"]}>
-                Set ranged attack range in each direction. 0 = no attack, positive = up to, negative = exactly, 99 = infinite
+                Set ranged attack range in each direction. 0 = no attack, positive = up to. Check "Exact" to require exactly that distance, or "Infinite" for unlimited range.
               </p>
               
               <div className={styles["directional-grid"]}>
@@ -598,25 +933,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   {/* Up-Left */}
                   <div className={styles["direction-input"]}>
                     <label>↖ Up-Left</label>
-                    <input
-                      type="number"
-                      value={pieceData.up_left_attack_range === 99 ? "" : Math.abs(pieceData.up_left_attack_range || 0)}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                        const isExact = pieceData.up_left_attack_range < 0 && pieceData.up_left_attack_range !== 99;
-                        handleChange("up_left_attack_range", isExact ? -val : val);
-                      }}
-                      disabled={pieceData.up_left_attack_range === 99}
-                      placeholder="0"
+                    <NumberInput
+                      value={pieceData.up_left_attack_range === 99 ? "∞" : (pieceData.up_left_attack_range || 0)}
+                      onChange={(val) => handleChange("up_left_attack_range", val)}
+                      options={{ disabled: pieceData.up_left_attack_range === 99 }}
                     />
                     <label className={styles["checkbox-label-inline"]}>
                       <input
                         type="checkbox"
-                        checked={pieceData.up_left_attack_range < 0 && pieceData.up_left_attack_range !== 99}
-                        onChange={(e) => {
-                          const val = Math.abs(pieceData.up_left_attack_range || 0);
-                          handleChange("up_left_attack_range", e.target.checked ? -val : val);
-                        }}
+                        checked={!!pieceData.up_left_attack_range_exact}
+                        onChange={(e) => handleChange("up_left_attack_range_exact", e.target.checked)}
                         disabled={pieceData.up_left_attack_range === 99}
                       />
                       <span>Exact</span>
@@ -634,25 +960,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   {/* Up */}
                   <div className={styles["direction-input"]}>
                     <label>↑ Up</label>
-                    <input
-                      type="number"
-                      value={pieceData.up_attack_range === 99 ? "" : Math.abs(pieceData.up_attack_range || 0)}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                        const isExact = pieceData.up_attack_range < 0 && pieceData.up_attack_range !== 99;
-                        handleChange("up_attack_range", isExact ? -val : val);
-                      }}
-                      disabled={pieceData.up_attack_range === 99}
-                      placeholder="0"
+                    <NumberInput
+                      value={pieceData.up_attack_range === 99 ? "∞" : (pieceData.up_attack_range || 0)}
+                      onChange={(val) => handleChange("up_attack_range", val)}
+                      options={{ disabled: pieceData.up_attack_range === 99 }}
                     />
                     <label className={styles["checkbox-label-inline"]}>
                       <input
                         type="checkbox"
-                        checked={pieceData.up_attack_range < 0 && pieceData.up_attack_range !== 99}
-                        onChange={(e) => {
-                          const val = Math.abs(pieceData.up_attack_range || 0);
-                          handleChange("up_attack_range", e.target.checked ? -val : val);
-                        }}
+                        checked={!!pieceData.up_attack_range_exact}
+                        onChange={(e) => handleChange("up_attack_range_exact", e.target.checked)}
                         disabled={pieceData.up_attack_range === 99}
                       />
                       <span>Exact</span>
@@ -670,25 +987,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   {/* Up-Right */}
                   <div className={styles["direction-input"]}>
                     <label>↗ Up-Right</label>
-                    <input
-                      type="number"
-                      value={pieceData.up_right_attack_range === 99 ? "" : Math.abs(pieceData.up_right_attack_range || 0)}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                        const isExact = pieceData.up_right_attack_range < 0 && pieceData.up_right_attack_range !== 99;
-                        handleChange("up_right_attack_range", isExact ? -val : val);
-                      }}
-                      disabled={pieceData.up_right_attack_range === 99}
-                      placeholder="0"
+                    <NumberInput
+                      value={pieceData.up_right_attack_range === 99 ? "∞" : (pieceData.up_right_attack_range || 0)}
+                      onChange={(val) => handleChange("up_right_attack_range", val)}
+                      options={{ disabled: pieceData.up_right_attack_range === 99 }}
                     />
                     <label className={styles["checkbox-label-inline"]}>
                       <input
                         type="checkbox"
-                        checked={pieceData.up_right_attack_range < 0 && pieceData.up_right_attack_range !== 99}
-                        onChange={(e) => {
-                          const val = Math.abs(pieceData.up_right_attack_range || 0);
-                          handleChange("up_right_attack_range", e.target.checked ? -val : val);
-                        }}
+                        checked={!!pieceData.up_right_attack_range_exact}
+                        onChange={(e) => handleChange("up_right_attack_range_exact", e.target.checked)}
                         disabled={pieceData.up_right_attack_range === 99}
                       />
                       <span>Exact</span>
@@ -708,25 +1016,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   {/* Left */}
                   <div className={styles["direction-input"]}>
                     <label>← Left</label>
-                    <input
-                      type="number"
-                      value={pieceData.left_attack_range === 99 ? "" : Math.abs(pieceData.left_attack_range || 0)}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                        const isExact = pieceData.left_attack_range < 0 && pieceData.left_attack_range !== 99;
-                        handleChange("left_attack_range", isExact ? -val : val);
-                      }}
-                      disabled={pieceData.left_attack_range === 99}
-                      placeholder="0"
+                    <NumberInput
+                      value={pieceData.left_attack_range === 99 ? "∞" : (pieceData.left_attack_range || 0)}
+                      onChange={(val) => handleChange("left_attack_range", val)}
+                      options={{ disabled: pieceData.left_attack_range === 99 }}
                     />
                     <label className={styles["checkbox-label-inline"]}>
                       <input
                         type="checkbox"
-                        checked={pieceData.left_attack_range < 0 && pieceData.left_attack_range !== 99}
-                        onChange={(e) => {
-                          const val = Math.abs(pieceData.left_attack_range || 0);
-                          handleChange("left_attack_range", e.target.checked ? -val : val);
-                        }}
+                        checked={!!pieceData.left_attack_range_exact}
+                        onChange={(e) => handleChange("left_attack_range_exact", e.target.checked)}
                         disabled={pieceData.left_attack_range === 99}
                       />
                       <span>Exact</span>
@@ -755,25 +1054,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   {/* Right */}
                   <div className={styles["direction-input"]}>
                     <label>→ Right</label>
-                    <input
-                      type="number"
-                      value={pieceData.right_attack_range === 99 ? "" : Math.abs(pieceData.right_attack_range || 0)}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                        const isExact = pieceData.right_attack_range < 0 && pieceData.right_attack_range !== 99;
-                        handleChange("right_attack_range", isExact ? -val : val);
-                      }}
-                      disabled={pieceData.right_attack_range === 99}
-                      placeholder="0"
+                    <NumberInput
+                      value={pieceData.right_attack_range === 99 ? "∞" : (pieceData.right_attack_range || 0)}
+                      onChange={(val) => handleChange("right_attack_range", val)}
+                      options={{ disabled: pieceData.right_attack_range === 99 }}
                     />
                     <label className={styles["checkbox-label-inline"]}>
                       <input
                         type="checkbox"
-                        checked={pieceData.right_attack_range < 0 && pieceData.right_attack_range !== 99}
-                        onChange={(e) => {
-                          const val = Math.abs(pieceData.right_attack_range || 0);
-                          handleChange("right_attack_range", e.target.checked ? -val : val);
-                        }}
+                        checked={!!pieceData.right_attack_range_exact}
+                        onChange={(e) => handleChange("right_attack_range_exact", e.target.checked)}
                         disabled={pieceData.right_attack_range === 99}
                       />
                       <span>Exact</span>
@@ -793,25 +1083,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   {/* Down-Left */}
                   <div className={styles["direction-input"]}>
                     <label>↙ Down-Left</label>
-                    <input
-                      type="number"
-                      value={pieceData.down_left_attack_range === 99 ? "" : Math.abs(pieceData.down_left_attack_range || 0)}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                        const isExact = pieceData.down_left_attack_range < 0 && pieceData.down_left_attack_range !== 99;
-                        handleChange("down_left_attack_range", isExact ? -val : val);
-                      }}
-                      disabled={pieceData.down_left_attack_range === 99}
-                      placeholder="0"
+                    <NumberInput
+                      value={pieceData.down_left_attack_range === 99 ? "∞" : (pieceData.down_left_attack_range || 0)}
+                      onChange={(val) => handleChange("down_left_attack_range", val)}
+                      options={{ disabled: pieceData.down_left_attack_range === 99 }}
                     />
                     <label className={styles["checkbox-label-inline"]}>
                       <input
                         type="checkbox"
-                        checked={pieceData.down_left_attack_range < 0 && pieceData.down_left_attack_range !== 99}
-                        onChange={(e) => {
-                          const val = Math.abs(pieceData.down_left_attack_range || 0);
-                          handleChange("down_left_attack_range", e.target.checked ? -val : val);
-                        }}
+                        checked={!!pieceData.down_left_attack_range_exact}
+                        onChange={(e) => handleChange("down_left_attack_range_exact", e.target.checked)}
                         disabled={pieceData.down_left_attack_range === 99}
                       />
                       <span>Exact</span>
@@ -829,25 +1110,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   {/* Down */}
                   <div className={styles["direction-input"]}>
                     <label>↓ Down</label>
-                    <input
-                      type="number"
-                      value={pieceData.down_attack_range === 99 ? "" : Math.abs(pieceData.down_attack_range || 0)}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                        const isExact = pieceData.down_attack_range < 0 && pieceData.down_attack_range !== 99;
-                        handleChange("down_attack_range", isExact ? -val : val);
-                      }}
-                      disabled={pieceData.down_attack_range === 99}
-                      placeholder="0"
+                    <NumberInput
+                      value={pieceData.down_attack_range === 99 ? "∞" : (pieceData.down_attack_range || 0)}
+                      onChange={(val) => handleChange("down_attack_range", val)}
+                      options={{ disabled: pieceData.down_attack_range === 99 }}
                     />
                     <label className={styles["checkbox-label-inline"]}>
                       <input
                         type="checkbox"
-                        checked={pieceData.down_attack_range < 0 && pieceData.down_attack_range !== 99}
-                        onChange={(e) => {
-                          const val = Math.abs(pieceData.down_attack_range || 0);
-                          handleChange("down_attack_range", e.target.checked ? -val : val);
-                        }}
+                        checked={!!pieceData.down_attack_range_exact}
+                        onChange={(e) => handleChange("down_attack_range_exact", e.target.checked)}
                         disabled={pieceData.down_attack_range === 99}
                       />
                       <span>Exact</span>
@@ -865,25 +1137,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   {/* Down-Right */}
                   <div className={styles["direction-input"]}>
                     <label>↘ Down-Right</label>
-                    <input
-                      type="number"
-                      value={pieceData.down_right_attack_range === 99 ? "" : Math.abs(pieceData.down_right_attack_range || 0)}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? 0 : parseInt(e.target.value);
-                        const isExact = pieceData.down_right_attack_range < 0 && pieceData.down_right_attack_range !== 99;
-                        handleChange("down_right_attack_range", isExact ? -val : val);
-                      }}
-                      disabled={pieceData.down_right_attack_range === 99}
-                      placeholder="0"
+                    <NumberInput
+                      value={pieceData.down_right_attack_range === 99 ? "∞" : (pieceData.down_right_attack_range || 0)}
+                      onChange={(val) => handleChange("down_right_attack_range", val)}
+                      options={{ disabled: pieceData.down_right_attack_range === 99 }}
                     />
                     <label className={styles["checkbox-label-inline"]}>
                       <input
                         type="checkbox"
-                        checked={pieceData.down_right_attack_range < 0 && pieceData.down_right_attack_range !== 99}
-                        onChange={(e) => {
-                          const val = Math.abs(pieceData.down_right_attack_range || 0);
-                          handleChange("down_right_attack_range", e.target.checked ? -val : val);
-                        }}
+                        checked={!!pieceData.down_right_attack_range_exact}
+                        onChange={(e) => handleChange("down_right_attack_range_exact", e.target.checked)}
                         disabled={pieceData.down_right_attack_range === 99}
                       />
                       <span>Exact</span>
@@ -907,22 +1170,18 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
               <div className={styles["form-row"]}>
                 <div className={styles["form-group"]}>
                   <label>Ratio One Attack Range</label>
-                  <input
-                    type="number"
-                    className={styles["form-input-small"]}
+                  <NumberInput
                     value={pieceData.ratio_one_attack_range || ""}
-                    onChange={(e) => handleNumberChange("ratio_one_attack_range", e.target.value)}
-                    placeholder="e.g., 2"
+                    onChange={(val) => handleNumberChange("ratio_one_attack_range", val || "")}
+                    options={{ placeholder: "e.g., 2", className: styles["form-input-small"] }}
                   />
                 </div>
                 <div className={styles["form-group"]}>
                   <label>Ratio Two Attack Range</label>
-                  <input
-                    type="number"
-                    className={styles["form-input-small"]}
+                  <NumberInput
                     value={pieceData.ratio_two_attack_range || ""}
-                    onChange={(e) => handleNumberChange("ratio_two_attack_range", e.target.value)}
-                    placeholder="e.g., 1"
+                    onChange={(val) => handleNumberChange("ratio_two_attack_range", val || "")}
+                    options={{ placeholder: "e.g., 1", className: styles["form-input-small"] }}
                   />
                 </div>
               </div>
@@ -935,18 +1194,13 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
             <div className={styles["sub-field"]}>
               <h4>Step-by-Step Ranged Attack</h4>
               <label>Total Attack Steps</label>
-              <input
-                type="number"
-                className={styles["form-input-small"]}
-                value={pieceData.step_by_step_attack_range === 0 ? "" : Math.abs(pieceData.step_by_step_attack_range || "")}
-                onChange={(e) => {
-                  const val = e.target.value === "" ? null : parseInt(e.target.value);
-                  // Positive values include diagonal, negative exclude diagonal
+              <NumberInput
+                value={pieceData.step_by_step_attack_range ? Math.abs(pieceData.step_by_step_attack_range) : ""}
+                onChange={(val) => {
                   const currentIsNoDiagonal = pieceData.step_by_step_attack_range < 0;
-                  handleChange("step_by_step_attack_range", currentIsNoDiagonal && val ? -val : val);
+                  handleChange("step_by_step_attack_range", currentIsNoDiagonal && val ? -val : val || null);
                 }}
-                placeholder="Leave empty to disable"
-                min="0"
+                options={{ placeholder: "Leave empty to disable", className: styles["form-input-small"] }}
               />
               <label className={styles["checkbox-label-inline"]}>
                 <input

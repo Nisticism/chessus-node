@@ -321,6 +321,42 @@
   }
 }
 
+// Available for first X moves group
+.available-for-moves-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0;
+  font-size: 0.9rem;
+  flex-wrap: wrap;
+
+  span {
+    color: var(--text-light-gray);
+  }
+
+  label {
+    white-space: nowrap;
+  }
+
+  .tiny-input {
+    width: 60px;
+    min-width: 60px;
+  }
+}
+
+// Additional movement rows (for Alt movements/captures)
+.additional-movement-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+
+  &:last-of-type {
+    margin-bottom: 0;
+  }
+}
+
 // Condition Sections
 .condition-section {
   background-color: rgba(255, 255, 255, 0.05);
@@ -365,7 +401,80 @@
   input[type="number"] {
     width: 100%;
     max-width: 200px;
-    margin-bottom: 1rem;
+  }
+}
+
+// Number input with increment/decrement buttons
+.number-input-group {
+  display: inline-flex;
+  align-items: stretch;
+  width: fit-content;
+  height: fit-content;
+  
+  input[type="number"] {
+    margin: 0;
+    padding: 8px 12px;
+    text-align: center;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    min-width: 60px;
+    height: auto;
+    flex: 1;
+    
+    // Hide default number spinners
+    -moz-appearance: textfield;
+    appearance: textfield;
+    &::-webkit-outer-spin-button,
+    &::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      appearance: none;
+      margin: 0;
+    }
+  }
+  
+  // More specific selector to override any button margin
+  > .number-btn {
+    margin: 0;
+    background: rgba(42, 91, 141, 0.3);
+    border: 1px solid rgba(138, 180, 232, 0.4);
+    color: #8ab4e8;
+    cursor: pointer;
+    font-size: 1.2rem;
+    font-weight: bold;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    transition: all 0.2s;
+    user-select: none;
+    flex-shrink: 0;
+    
+    &:hover:not(:disabled) {
+      background: rgba(42, 91, 141, 0.5);
+      color: #fff;
+      border-color: rgba(138, 180, 232, 0.6);
+    }
+    
+    &:active:not(:disabled) {
+      background: rgba(42, 91, 141, 0.7);
+    }
+    
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    &.minus {
+      border-radius: 4px 0 0 4px;
+      border-right: none;
+    }
+    
+    &.plus {
+      border-radius: 0 4px 4px 0;
+      border-left: none;
+    }
   }
 }
 
@@ -436,6 +545,103 @@
   }
 }
 
+// Additional Movements
+.additional-movements {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.additional-movement-item {
+  position: relative;
+  margin-bottom: 0.75rem;
+  padding: 1rem;
+  padding-top: 0.75rem;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+
+  .remove-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background-color: rgba(211, 47, 47, 0.8);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+    z-index: 1;
+
+    &:hover {
+      background-color: #d32f2f;
+    }
+  }
+}
+
+.additional-movement-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.additional-movement-header {
+  margin-bottom: 0.25rem;
+
+  .additional-label {
+    font-size: 0.9rem;
+    color: var(--light-gray);
+    font-weight: 500;
+  }
+}
+
+.additional-movement-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 28px;
+
+  > label:not(.checkbox-label-inline) {
+    color: var(--text-light-gray);
+    font-size: 0.9rem;
+    min-width: 50px;
+  }
+
+  > span {
+    color: var(--text-light-gray);
+    font-size: 0.9rem;
+  }
+
+  .checkbox-label-inline {
+    justify-content: flex-start;
+  }
+}
+
+.add-movement-btn {
+  width: 100%;
+  padding: 0.5rem;
+  background-color: rgba(42, 91, 141, 0.2);
+  color: #8ab4e8;
+  border: 1px solid rgba(138, 180, 232, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s;
+
+  &:hover {
+    background-color: rgba(42, 91, 141, 0.4);
+    border-color: rgba(138, 180, 232, 0.6);
+    color: #fff;
+  }
+}
+
 // Board Preview
 .board-preview-section {
   margin-top: 1rem;
@@ -483,6 +689,70 @@
   color: var(--text-gray);
   text-align: center;
   margin-top: 0.25rem;
+}
+
+.board-legend {
+  margin: 1rem auto;
+  max-width: 800px;
+  padding: 1rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+
+  .legend-title {
+    color: var(--light-gray);
+    font-weight: 500;
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .legend-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-light-gray);
+
+    span {
+      white-space: nowrap;
+    }
+  }
+
+  .legend-square {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .legend-move {
+    background-color: rgba(33, 150, 243, 0.5);
+  }
+
+  .legend-move-first {
+    background-color: rgba(33, 150, 243, 0.25);
+    border: 3px dashed rgba(33, 150, 243, 0.9);
+  }
+
+  .legend-capture {
+    background-color: rgba(255, 152, 0, 0.5);
+  }
+
+  .legend-capture-first {
+    background-color: rgba(255, 152, 0, 0.25);
+    border: 3px dashed rgba(255, 152, 0, 0.9);
+  }
+
+  .legend-ranged {
+    background-color: rgba(244, 67, 54, 0.5);
+  }
 }
 
 .preview-legend {
@@ -615,6 +885,85 @@
       rgba(244, 67, 54, 0.6) 66%,
       rgba(244, 67, 54, 0.6) 100%
     ) !important; // Blue + Orange + Red
+  }
+
+  // First-move-only styles (lighter colors with dotted borders)
+  &.can-move-first-only {
+    background-color: rgba(33, 150, 243, 0.25) !important;
+    border: 3px dashed rgba(33, 150, 243, 0.9) !important;
+  }
+
+  &.can-capture-first-only {
+    background-color: rgba(255, 152, 0, 0.25) !important;
+    border: 3px dashed rgba(255, 152, 0, 0.9) !important;
+  }
+
+  &.can-move-and-capture-first-only {
+    background: linear-gradient(
+      135deg,
+      rgba(33, 150, 243, 0.3) 0%,
+      rgba(33, 150, 243, 0.3) 50%,
+      rgba(255, 152, 0, 0.3) 50%,
+      rgba(255, 152, 0, 0.3) 100%
+    ) !important;
+    border: 2px dotted rgba(33, 150, 243, 0.8) !important;
+  }
+
+  &.can-move-first-capture-normal {
+    background: linear-gradient(
+      135deg,
+      rgba(33, 150, 243, 0.3) 0%,
+      rgba(33, 150, 243, 0.3) 50%,
+      rgba(255, 152, 0, 0.6) 50%,
+      rgba(255, 152, 0, 0.6) 100%
+    ) !important;
+    border: 2px dotted rgba(33, 150, 243, 0.8) !important;
+  }
+
+  &.can-move-normal-capture-first {
+    background: linear-gradient(
+      135deg,
+      rgba(33, 150, 243, 0.6) 0%,
+      rgba(33, 150, 243, 0.6) 50%,
+      rgba(255, 152, 0, 0.3) 50%,
+      rgba(255, 152, 0, 0.3) 100%
+    ) !important;
+    border: 2px dotted rgba(255, 152, 0, 0.8) !important;
+  }
+
+  &.can-move-and-ranged-first-only {
+    background: linear-gradient(
+      135deg,
+      rgba(33, 150, 243, 0.3) 0%,
+      rgba(33, 150, 243, 0.3) 50%,
+      rgba(244, 67, 54, 0.6) 50%,
+      rgba(244, 67, 54, 0.6) 100%
+    ) !important;
+    border: 2px dotted rgba(33, 150, 243, 0.8) !important;
+  }
+
+  &.can-capture-and-ranged-first-only {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 152, 0, 0.3) 0%,
+      rgba(255, 152, 0, 0.3) 50%,
+      rgba(244, 67, 54, 0.6) 50%,
+      rgba(244, 67, 54, 0.6) 100%
+    ) !important;
+    border: 2px dotted rgba(255, 152, 0, 0.8) !important;
+  }
+
+  &.can-all-three-first-only {
+    background: linear-gradient(
+      120deg,
+      rgba(33, 150, 243, 0.3) 0%,
+      rgba(33, 150, 243, 0.3) 33%,
+      rgba(255, 152, 0, 0.3) 33%,
+      rgba(255, 152, 0, 0.3) 66%,
+      rgba(244, 67, 54, 0.6) 66%,
+      rgba(244, 67, 54, 0.6) 100%
+    ) !important;
+    border: 2px dotted rgba(33, 150, 243, 0.8) !important;
   }
 
   &.center-piece {

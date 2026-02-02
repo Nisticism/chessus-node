@@ -462,6 +462,20 @@
       box-shadow: 0 0 8px rgba(0, 200, 0, 0.4);
     }
   }
+  
+  // First-move-only moves have a different color (gold)
+  &.valid-move-first-only {
+    &::after {
+      content: '';
+      position: absolute;
+      width: 30%;
+      height: 30%;
+      background: rgba(255, 215, 0, 0.7);
+      border-radius: 50%;
+      z-index: 2;
+      box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+    }
+  }
 
   &.valid-capture {
     &::after {
@@ -473,6 +487,20 @@
       border-radius: 50%;
       z-index: 2;
       box-shadow: inset 0 0 12px rgba(255, 50, 50, 0.3);
+    }
+  }
+  
+  // First-move-only captures have a different color (orange)
+  &.valid-capture-first-only {
+    &::after {
+      content: '';
+      position: absolute;
+      width: 85%;
+      height: 85%;
+      border: 4px solid rgba(255, 140, 0, 0.8);
+      border-radius: 50%;
+      z-index: 2;
+      box-shadow: inset 0 0 12px rgba(255, 140, 0, 0.4);
     }
   }
 
@@ -487,9 +515,27 @@
       z-index: 2;
     }
   }
+  
+  // First-move-only hover moves
+  &.hover-move-first-only {
+    &::after {
+      content: '';
+      position: absolute;
+      width: 25%;
+      height: 25%;
+      background: rgba(255, 215, 0, 0.6);
+      border-radius: 50%;
+      z-index: 2;
+    }
+  }
 
   &.hover-capture {
     box-shadow: inset 0 0 0 3px rgba(255, 150, 150, 0.6);
+  }
+  
+  // First-move-only hover captures
+  &.hover-capture-first-only {
+    box-shadow: inset 0 0 0 3px rgba(255, 140, 0, 0.7);
   }
 
   &.last-move {

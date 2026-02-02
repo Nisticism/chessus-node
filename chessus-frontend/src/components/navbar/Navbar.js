@@ -50,10 +50,7 @@ const Menu = ({ currentUser, logOut }) => {
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'play' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item upper-right-corner" to="/home">
-          New game
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/home">
+        <Link as="div" className="inner-menu-item upper-right-corner" to="/play">
           Browse open games
         </Link>
         <Link as="div" className="inner-menu-item" to="/sandbox">

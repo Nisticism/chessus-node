@@ -43,6 +43,25 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
 
       {/* Special Scenarios */}
       <div className={styles["condition-section"]}>
+        <h3>Special Abilities</h3>
+        
+        <div className={styles["sub-field"]}>
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.can_castle || false}
+              onChange={(e) => handleChange("can_castle", e.target.checked)}
+            />
+            <span>Can Castle</span>
+          </label>
+          <p className={styles["field-hint"]}>
+            Allows this piece to castle with its partner piece. At the start of the game, the furthest allied piece to the left and right on the same row become this piece's castling partners. To castle, move 2 squares left or right, and the corresponding partner will move to the opposite side. Both pieces must not have moved since the game started, and all squares between must be unoccupied. If this piece has check or checkmate rules, it cannot castle through enemy-controlled squares.
+          </p>
+        </div>
+      </div>
+
+      {/* Advanced Special Scenarios */}
+      <div className={styles["condition-section"]}>
         <h3>Advanced: Special Scenarios (JSON)</h3>
         <p className={styles["field-hint"]}>
           These fields accept JSON strings for complex, scenario-based rules. Leave empty if not needed.

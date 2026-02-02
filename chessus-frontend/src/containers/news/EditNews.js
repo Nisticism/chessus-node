@@ -4,8 +4,7 @@ import { useSelector, useDispatch } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
-import styles from "../forums/forums.module.scss";
-import StandardButton from "../../components/standardbutton/StardardButton";
+import styles from "./createnews.module.scss";
 import { editNews, news as fetchNews } from "../../actions/news";
 import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
@@ -94,10 +93,11 @@ const EditNews = () => {
 
   if (loading) {
     return (
-      <div className="container">
-        <div className="col-md-12">
-          <div className={styles["card-container"]}>
-            <h2>Loading...</h2>
+      <div className={styles["create-news-container"]}>
+        <div className={styles["create-news-card"]}>
+          <div className={styles["card-header"]}>
+            <h1 className={styles["page-title"]}>Loading...</h1>
+            <p className={styles["page-subtitle"]}>Fetching article details</p>
           </div>
         </div>
       </div>
@@ -106,11 +106,19 @@ const EditNews = () => {
 
   if (!newsArticle) {
     return (
-      <div className="container">
-        <div className="col-md-12">
-          <div className={styles["card-container"]}>
-            <h2>News article not found</h2>
-            <StandardButton onClick={() => navigate("/news")} text="Back to News" />
+      <div className={styles["create-news-container"]}>
+        <div className={styles["create-news-card"]}>
+          <div className={styles["card-header"]}>
+            <h1 className={styles["page-title"]}>Article Not Found</h1>
+            <p className={styles["page-subtitle"]}>The news article you're looking for doesn't exist</p>
+          </div>
+          <div className={styles["form-actions"]}>
+            <button 
+              className={styles["submit-button"]} 
+              onClick={() => navigate("/news")}
+            >
+              Back to News
+            </button>
           </div>
         </div>
       </div>
@@ -118,58 +126,64 @@ const EditNews = () => {
   }
 
   return (
-    <div className="container">
-      <div className="col-md-12">
-        <div className={styles["card-container"]}>
-          <h2 className={styles["forum-title"]}>Edit News Article</h2>
-          <form ref={form}>
-            <div className={styles["form-group"]}>
-              <label htmlFor="title" className={styles["form-label"]}>Title</label>
-              <input
-                type="text"
-                className={styles["form-control"]}
-                name="title"
-                value={title}
-                onChange={onChangeTitle}
-                placeholder="Enter news title"
-              />
-            </div>
-
-            <div className={styles["form-group"]}>
-              <label htmlFor="content" className={styles["form-label"]}>Content</label>
-              <textarea
-                className={styles["form-control"]}
-                name="content"
-                value={content}
-                onChange={onChangeContent}
-                rows="10"
-                placeholder="Enter news content"
-              />
-            </div>
-
-            {message && (
-              <div className={styles["alert"]} style={{
-                color: message.includes('success') ? 'green' : 'red',
-                marginBottom: '15px'
-              }}>
-                {message}
-              </div>
-            )}
-
-            <div className={styles["form-group"]}>
-              <StandardButton
-                onClick={handleSaveEdit}
-                text={saving ? "Saving..." : "Save Changes"}
-                disabled={saving}
-              />
-              <StandardButton
-                onClick={() => navigate("/news")}
-                text="Cancel"
-                style={{ marginLeft: '10px' }}
-              />
-            </div>
-          </form>
+    <div className={styles["create-news-container"]}>
+      <div className={styles["create-news-card"]}>
+        <div className={styles["card-header"]}>
+          <h1 className={styles["page-title"]}>Edit News Article</h1>
+          <p className={styles["page-subtitle"]}>Update your news article content and publish changes</p>
         </div>
+
+        <form ref={form} className={styles["news-form"]}>
+          <div className={styles["form-group"]}>
+            <label htmlFor="title" className={styles["form-label"]}>Article Title</label>
+            <input
+              type="text"
+              className={styles["form-input"]}
+              name="title"
+              value={title}
+              onChange={onChangeTitle}
+              placeholder="Enter a compelling title (max 50 characters)"
+              maxLength="50"
+            />
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label htmlFor="content" className={styles["form-label"]}>Article Content</label>
+            <textarea
+              className={styles["form-textarea"]}
+              name="content"
+              value={content}
+              onChange={onChangeContent}
+              rows="15"
+              placeholder="Write your news article content here. Use clear paragraphs and formatting for better readability."
+            />
+            <div className={styles["textarea-hint"]}>Use double line breaks to separate paragraphs</div>
+          </div>
+
+          {message && (
+            <div className={message.includes('success') ? styles["alert-success"] : styles["alert-error"]}>
+              {message}
+            </div>
+          )}
+
+          <div className={styles["form-actions"]}>
+            <button
+              type="button"
+              className={styles["cancel-button"]}
+              onClick={() => navigate("/news")}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={styles["submit-button"]}
+              onClick={handleSaveEdit}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Update Article"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

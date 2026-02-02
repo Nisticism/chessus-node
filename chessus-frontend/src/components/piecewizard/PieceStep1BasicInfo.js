@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
+import NumberInput from "../common/NumberInput";
 
 const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, existingImages = [], setExistingImages }) => {
   const [visibleImageCount, setVisibleImageCount] = useState(2);
@@ -253,13 +254,10 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
           <label className={styles["form-label"]}>
             Piece Width (squares)
           </label>
-          <input
-            type="number"
-            className={styles["form-input-small"]}
+          <NumberInput
             value={pieceData.piece_width}
-            onChange={(e) => handleChange("piece_width", parseInt(e.target.value) || 1)}
-            min="1"
-            max="9"
+            onChange={(val) => handleChange("piece_width", val || 1)}
+            options={{ min: 1, max: 9, className: styles["form-input-small"] }}
           />
           <p className={styles["field-hint"]}>Usually 1</p>
         </div>
@@ -268,13 +266,10 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
           <label className={styles["form-label"]}>
             Piece Height (squares)
           </label>
-          <input
-            type="number"
-            className={styles["form-input-small"]}
+          <NumberInput
             value={pieceData.piece_height}
-            onChange={(e) => handleChange("piece_height", parseInt(e.target.value) || 1)}
-            min="1"
-            max="9"
+            onChange={(val) => handleChange("piece_height", val || 1)}
+            options={{ min: 1, max: 9, className: styles["form-input-small"] }}
           />
           <p className={styles["field-hint"]}>Usually 1</p>
         </div>

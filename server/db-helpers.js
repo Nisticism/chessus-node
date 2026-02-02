@@ -423,7 +423,7 @@ const getAllNews = async () => {
            NULL as source_name
     FROM chessusnode.articles a
     LEFT JOIN chessusnode.users u ON a.author_id = u.id
-    WHERE a.game_type_id IS NULL
+    WHERE a.is_news = 1
     ORDER BY a.created_at DESC
   `);
 };

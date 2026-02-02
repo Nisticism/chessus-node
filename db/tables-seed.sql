@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS pieces (
     has_checkmate_rule BOOLEAN,
     has_check_rule BOOLEAN,
     has_lose_on_capture_rule BOOLEAN,
+    can_castle BOOLEAN DEFAULT FALSE,
     min_turns_per_move BOOLEAN,
     piece_width INT,
     piece_height INT,

@@ -29,6 +29,8 @@ const Play = () => {
   const [increment, setIncrement] = useState("0"); // seconds
   const [allowSpectators, setAllowSpectators] = useState(true);
   const [showPieceHelpers, setShowPieceHelpers] = useState(false);
+  const [rated, setRated] = useState(true);
+  const [allowPremoves, setAllowPremoves] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState(null);
@@ -112,7 +114,9 @@ const Play = () => {
         timeControl: timeControlMinutes,
         increment: incrementSeconds,
         allowSpectators,
-        showPieceHelpers
+        showPieceHelpers,
+        rated,
+        allowPremoves
       });
 
       setShowCreateModal(false);
@@ -420,6 +424,34 @@ const Play = () => {
                 </div>
               </div>
             )}
+
+            <div className={styles["form-group"]}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={rated}
+                  onChange={(e) => setRated(e.target.checked)}
+                />
+                <span>Rated Game</span>
+              </label>
+              <div className={styles["input-hint"]}>
+                Game results will affect player ELO ratings
+              </div>
+            </div>
+
+            <div className={styles["form-group"]}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={allowPremoves}
+                  onChange={(e) => setAllowPremoves(e.target.checked)}
+                />
+                <span>Allow Premoves</span>
+              </label>
+              <div className={styles["input-hint"]}>
+                Players can queue moves during opponent's turn
+              </div>
+            </div>
 
             <div className={styles["form-group"]}>
               <label className={styles["checkbox-label"]}>

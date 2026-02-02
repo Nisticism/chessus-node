@@ -1205,8 +1205,8 @@ app.post("/api/news/new", async (req, res) => {
     }
 
     const [result] = await db_pool.query(
-      `INSERT INTO articles (author_id, title, content, created_at, game_type_id) 
-       VALUES (?, ?, ?, ?, NULL)`,
+      `INSERT INTO articles (author_id, title, content, created_at, game_type_id, is_news, public) 
+       VALUES (?, ?, ?, ?, NULL, 1, 1)`,
       [author_id, title, content, created_at || new Date()]
     );
 
@@ -1429,6 +1429,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         piece_id,
         directional_movement_style,
         repeating_movement,
+        first_move_only,
         max_directional_movement_iterations,
         min_directional_movement_iterations,
         up_left_movement, up_movement, up_right_movement,
@@ -1442,13 +1443,14 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         min_turns_per_move,
         max_turns_per_move,
         special_scenario_moves
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const movementValues = [
       pieceId,
       pieceData.directional_movement_style === 'true',
       pieceData.repeating_movement === 'true',
+      pieceData.first_move_only === 'true' || pieceData.first_move_only === true,
       parseInt(pieceData.max_directional_movement_iterations) || null,
       parseInt(pieceData.min_directional_movement_iterations) || null,
       parseInt(pieceData.up_left_movement) || 0,
@@ -1485,6 +1487,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         can_capture_enemy_on_move,
         can_capture_ally_on_range,
         can_attack_on_iteration,
+        first_move_only_capture,
         up_left_capture, up_capture, up_right_capture,
         right_capture, down_right_capture, down_capture, down_left_capture, left_capture,
         ratio_one_capture, ratio_two_capture, step_by_step_capture,
@@ -1502,7 +1505,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         max_piece_captures_per_move,
         max_piece_captures_per_ranged_attack,
         special_scenario_captures
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
@@ -1514,6 +1517,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       pieceData.can_capture_enemy_on_move === 'true',
       pieceData.can_capture_ally_on_range === 'true',
       pieceData.can_attack_on_iteration === 'true',
+      pieceData.first_move_only_capture === 'true' || pieceData.first_move_only_capture === true,
       parseInt(pieceData.up_left_capture) || 0,
       parseInt(pieceData.up_capture) || 0,
       parseInt(pieceData.up_right_capture) || 0,
@@ -1639,7 +1643,8 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         piece_category = ?,
         has_checkmate_rule = ?,
         has_check_rule = ?,
-        has_lose_on_capture_rule = ?
+        has_lose_on_capture_rule = ?,
+        can_castle = ?
       WHERE id = ?
     `;
 
@@ -1653,6 +1658,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       pieceData.has_checkmate_rule === 'true',
       pieceData.has_check_rule === 'true',
       pieceData.has_lose_on_capture_rule === 'true',
+      pieceData.can_castle === 'true',
       pieceId
     ];
 
@@ -1664,6 +1670,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         piece_id,
         directional_movement_style,
         repeating_movement,
+        first_move_only,
         max_directional_movement_iterations,
         min_directional_movement_iterations,
         up_left_movement, up_movement, up_right_movement,
@@ -1677,10 +1684,11 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         min_turns_per_move,
         max_turns_per_move,
         special_scenario_moves
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         directional_movement_style = VALUES(directional_movement_style),
         repeating_movement = VALUES(repeating_movement),
+        first_move_only = VALUES(first_move_only),
         max_directional_movement_iterations = VALUES(max_directional_movement_iterations),
         min_directional_movement_iterations = VALUES(min_directional_movement_iterations),
         up_left_movement = VALUES(up_left_movement),
@@ -1710,6 +1718,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       pieceId,
       pieceData.directional_movement_style === 'true',
       pieceData.repeating_movement === 'true',
+      pieceData.first_move_only === 'true' || pieceData.first_move_only === true,
       parseInt(pieceData.max_directional_movement_iterations) || null,
       parseInt(pieceData.min_directional_movement_iterations) || null,
       parseInt(pieceData.up_left_movement) || 0,
@@ -1746,6 +1755,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         can_capture_enemy_on_move,
         can_capture_ally_on_range,
         can_attack_on_iteration,
+        first_move_only_capture,
         up_left_capture, up_capture, up_right_capture,
         right_capture, down_right_capture, down_capture, down_left_capture, left_capture,
         ratio_one_capture, ratio_two_capture, step_by_step_capture,
@@ -1763,13 +1773,14 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         max_piece_captures_per_move,
         max_piece_captures_per_ranged_attack,
         special_scenario_captures
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         can_capture_enemy_via_range = VALUES(can_capture_enemy_via_range),
         can_capture_ally_via_range = VALUES(can_capture_ally_via_range),
         can_capture_enemy_on_move = VALUES(can_capture_enemy_on_move),
         can_capture_ally_on_range = VALUES(can_capture_ally_on_range),
         can_attack_on_iteration = VALUES(can_attack_on_iteration),
+        first_move_only_capture = VALUES(first_move_only_capture),
         up_left_capture = VALUES(up_left_capture),
         up_capture = VALUES(up_capture),
         up_right_capture = VALUES(up_right_capture),
@@ -1813,6 +1824,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       pieceData.can_capture_enemy_on_move === 'true',
       pieceData.can_capture_ally_on_range === 'true',
       pieceData.can_attack_on_iteration === 'true',
+      pieceData.first_move_only_capture === 'true' || pieceData.first_move_only_capture === true,
       parseInt(pieceData.up_left_capture) || 0,
       parseInt(pieceData.up_capture) || 0,
       parseInt(pieceData.up_right_capture) || 0,

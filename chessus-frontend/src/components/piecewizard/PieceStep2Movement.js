@@ -1,10 +1,27 @@
 import React from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
+import NumberInput from "../common/NumberInput";
+import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
   const handleChange = (field, value) => {
-    updatePieceData({ [field]: value });
+    const updates = { [field]: value };
+    
+    // Handle mutual exclusivity between exact and infinite for directional movements
+    if (field.endsWith('_movement') && value === 99) {
+      // Setting infinite, so uncheck exact
+      const exactField = field + '_exact';
+      updates[exactField] = false;
+    } else if (field.endsWith('_movement_exact') && value === true) {
+      // Setting exact, so uncheck infinite
+      const movementField = field.replace('_exact', '');
+      if (pieceData[movementField] === 99) {
+        updates[movementField] = 0;
+      }
+    }
+    
+    updatePieceData(updates);
   };
 
   const handleBooleanChange = (field, value) => {
@@ -16,11 +33,182 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
     updatePieceData({ [field]: numValue });
   };
 
+  // Parse additional movements from special_scenario_moves JSON
+  const getAdditionalMovements = () => {
+    if (!pieceData.special_scenario_moves) return {};
+    try {
+      const parsed = typeof pieceData.special_scenario_moves === 'string' 
+        ? JSON.parse(pieceData.special_scenario_moves)
+        : pieceData.special_scenario_moves;
+      return parsed.additionalMovements || {};
+    } catch {
+      return {};
+    }
+  };
+
+  // Add an additional movement for a direction
+  const addAdditionalMovement = (direction) => {
+    const additionalMovements = getAdditionalMovements();
+    if (!additionalMovements[direction]) {
+      additionalMovements[direction] = [];
+    }
+    additionalMovements[direction].push({
+      value: 1,
+      exact: false,
+      infinite: false,
+      firstMoveOnly: false
+    });
+    
+    const scenarioData = pieceData.special_scenario_moves 
+      ? (typeof pieceData.special_scenario_moves === 'string' 
+          ? JSON.parse(pieceData.special_scenario_moves)
+          : pieceData.special_scenario_moves)
+      : {};
+    
+    scenarioData.additionalMovements = additionalMovements;
+    updatePieceData({ special_scenario_moves: JSON.stringify(scenarioData) });
+  };
+
+  // Update an additional movement
+  const updateAdditionalMovement = (direction, index, field, value) => {
+    const additionalMovements = getAdditionalMovements();
+    if (additionalMovements[direction] && additionalMovements[direction][index]) {
+      // If setting infinite to true, uncheck exact
+      if (field === 'infinite' && value === true) {
+        additionalMovements[direction][index]['exact'] = false;
+      }
+      // If setting exact to true, uncheck infinite
+      if (field === 'exact' && value === true) {
+        additionalMovements[direction][index]['infinite'] = false;
+      }
+      
+      additionalMovements[direction][index][field] = value;
+      
+      const scenarioData = pieceData.special_scenario_moves 
+        ? (typeof pieceData.special_scenario_moves === 'string' 
+            ? JSON.parse(pieceData.special_scenario_moves)
+            : pieceData.special_scenario_moves)
+        : {};
+      
+      scenarioData.additionalMovements = additionalMovements;
+      updatePieceData({ special_scenario_moves: JSON.stringify(scenarioData) });
+    }
+  };
+
+  // Remove an additional movement
+  const removeAdditionalMovement = (direction, index) => {
+    const additionalMovements = getAdditionalMovements();
+    if (additionalMovements[direction]) {
+      additionalMovements[direction].splice(index, 1);
+      if (additionalMovements[direction].length === 0) {
+        delete additionalMovements[direction];
+      }
+      
+      const scenarioData = pieceData.special_scenario_moves 
+        ? (typeof pieceData.special_scenario_moves === 'string' 
+            ? JSON.parse(pieceData.special_scenario_moves)
+            : pieceData.special_scenario_moves)
+        : {};
+      
+      scenarioData.additionalMovements = additionalMovements;
+      updatePieceData({ special_scenario_moves: JSON.stringify(scenarioData) });
+    }
+  };
+
+  // Render additional movement options for a direction
+  const renderAdditionalMovements = (direction, directionName, arrow) => {
+    const additionalMovements = getAdditionalMovements();
+    const movements = additionalMovements[direction] || [];
+    
+    return (
+      <div className={styles["additional-movements"]}>
+        {movements.map((movement, index) => (
+          <div key={index} className={styles["additional-movement-item"]}>
+            <button 
+              type="button"
+              className={styles["remove-btn"]}
+              onClick={() => removeAdditionalMovement(direction, index)}
+            >
+              ×
+            </button>
+            <div className={styles["additional-movement-content"]}>
+              <div className={styles["additional-movement-header"]}>
+                <span className={styles["additional-label"]}>Alt {directionName} {arrow}</span>
+              </div>
+              <div className={styles["additional-movement-line"]}>
+                <label>Value:</label>
+                <NumberInput
+                  value={movement.infinite ? "∞" : movement.value}
+                  onChange={(val) => updateAdditionalMovement(direction, index, 'value', val)}
+                  options={{ disabled: movement.infinite, min: 0, max: 99 }}
+                />
+              </div>
+              <div className={styles["additional-movement-line"]}>
+                <label className={styles["checkbox-label-inline"]}>
+                  <input
+                    type="checkbox"
+                    checked={movement.exact}
+                    onChange={(e) => updateAdditionalMovement(direction, index, 'exact', e.target.checked)}
+                    disabled={movement.infinite}
+                  />
+                  <span>Exact</span>
+                </label>
+              </div>
+              <div className={styles["additional-movement-line"]}>
+                <label className={styles["checkbox-label-inline"]}>
+                  <input
+                    type="checkbox"
+                    checked={movement.infinite}
+                    onChange={(e) => updateAdditionalMovement(direction, index, 'infinite', e.target.checked)}
+                  />
+                  <span>Infinite</span>
+                </label>
+              </div>
+              <div className={styles["additional-movement-line"]}>
+                <label className={styles["checkbox-label-inline"]}>
+                  <input
+                    type="checkbox"
+                    checked={!!movement.availableForMoves}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        updateAdditionalMovement(direction, index, 'availableForMoves', 1);
+                      } else {
+                        updateAdditionalMovement(direction, index, 'availableForMoves', null);
+                      }
+                    }}
+                  />
+                  <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                </label>
+                {movement.availableForMoves && (
+                  <>
+                    <NumberInput
+                      value={movement.availableForMoves || 1}
+                      onChange={(val) => updateAdditionalMovement(direction, index, 'availableForMoves', val)}
+                      options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        <button 
+          type="button"
+          className={styles["add-movement-btn"]}
+          onClick={() => addAdditionalMovement(direction)}
+        >
+          + Add Alternative Movement
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className={styles["step-container"]}>
       <h2>Movement Configuration</h2>
       <p className={styles["step-description"]}>
-        Define how your piece moves on the board. Values: 0 = cannot move, positive = up to that many squares, negative = exactly that many squares (check "Exact"), 99 = infinite (check "Infinite").
+        Define how your piece moves on the board. Values: 0 = cannot move, positive = up to that many squares. Check "Exact" to require exactly that distance, or "Infinite" for unlimited range.
       </p>
 
       {/* Directional Movement */}
@@ -54,137 +242,217 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             <div className={styles["direction-row"]}>
               <div className={styles["direction-input"]}>
                 <label>↖ Up-Left</label>
-                <input
-                  type="number"
-                  value={pieceData.up_left_movement === 99 ? "" : Math.abs(pieceData.up_left_movement || 0)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    const isExact = pieceData.up_left_movement < 0 && pieceData.up_left_movement !== 99;
-                    handleChange("up_left_movement", isExact ? -val : val);
-                  }}
-                  disabled={pieceData.up_left_movement === 99}
-                />
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.up_left_movement < 0 && pieceData.up_left_movement !== 99}
-                    onChange={(e) => {
-                      const val = Math.abs(pieceData.up_left_movement || 0);
-                      handleChange("up_left_movement", e.target.checked ? -val : val);
-                    }}
-                    disabled={pieceData.up_left_movement === 99}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <NumberInput
+                    value={pieceData.up_left_movement === 99 ? "∞" : (pieceData.up_left_movement || 0)}
+                    onChange={(val) => handleChange("up_left_movement", val)}
+                    options={{ disabled: pieceData.up_left_movement === 99 }}
                   />
-                  <span>Exact</span>
-                </label>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.up_left_movement === 99}
-                    onChange={(e) => handleChange("up_left_movement", e.target.checked ? 99 : 0)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.up_left_movement_exact}
+                      onChange={(e) => handleChange("up_left_movement_exact", e.target.checked)}
+                      disabled={pieceData.up_left_movement === 99}
+                    />
+                    <span>Exact</span>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={pieceData.up_left_movement === 99}
+                      onChange={(e) => handleChange("up_left_movement", e.target.checked ? 99 : 0)}
+                    />
+                    <span>Infinite</span>
+                  </label>
+                </div>
+                <div className={styles["available-for-moves-group"]}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.up_left_movement_available_for}
+                      onChange={(e) => handleChange("up_left_movement_available_for", e.target.checked ? 1 : null)}
+                      disabled={pieceData.up_left_movement === 99}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                  </label>
+                  {pieceData.up_left_movement_available_for && (
+                    <>
+                      <NumberInput
+                        value={pieceData.up_left_movement_available_for || 1}
+                        onChange={(val) => handleChange("up_left_movement_available_for", val)}
+                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                      />
+                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                    </>
+                  )}
+                </div>
+                {renderAdditionalMovements("up_left", "Up-Left", "↖")}
               </div>
               <div className={styles["direction-input"]}>
                 <label>↑ Up</label>
-                <input
-                  type="number"
-                  value={pieceData.up_movement === 99 ? "" : Math.abs(pieceData.up_movement || 0)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    const isExact = pieceData.up_movement < 0 && pieceData.up_movement !== 99;
-                    handleChange("up_movement", isExact ? -val : val);
-                  }}
-                  disabled={pieceData.up_movement === 99}
-                />
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.up_movement < 0 && pieceData.up_movement !== 99}
-                    onChange={(e) => {
-                      const val = Math.abs(pieceData.up_movement || 0);
-                      handleChange("up_movement", e.target.checked ? -val : val);
-                    }}
-                    disabled={pieceData.up_movement === 99}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <NumberInput
+                    value={pieceData.up_movement === 99 ? "∞" : (pieceData.up_movement || 0)}
+                    onChange={(val) => handleChange("up_movement", val)}
+                    options={{ disabled: pieceData.up_movement === 99 }}
                   />
-                  <span>Exact</span>
-                </label>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.up_movement === 99}
-                    onChange={(e) => handleChange("up_movement", e.target.checked ? 99 : 0)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.up_movement_exact}
+                      onChange={(e) => handleChange("up_movement_exact", e.target.checked)}
+                      disabled={pieceData.up_movement === 99}
+                    />
+                    <span>Exact</span>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={pieceData.up_movement === 99}
+                      onChange={(e) => handleChange("up_movement", e.target.checked ? 99 : 0)}
+                    />
+                    <span>Infinite</span>
+                  </label>
+                </div>
+                <div className={styles["available-for-moves-group"]}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.up_movement_available_for}
+                      onChange={(e) => handleChange("up_movement_available_for", e.target.checked ? 1 : null)}
+                      disabled={pieceData.up_movement === 99}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                  </label>
+                  {pieceData.up_movement_available_for && (
+                    <>
+                      <NumberInput
+                        value={pieceData.up_movement_available_for || 1}
+                        onChange={(val) => handleChange("up_movement_available_for", val)}
+                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                      />
+                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                    </>
+                  )}
+                </div>
+                {renderAdditionalMovements("up", "Up", "↑")}
               </div>
               <div className={styles["direction-input"]}>
                 <label>↗ Up-Right</label>
-                <input
-                  type="number"
-                  value={pieceData.up_right_movement === 99 ? "" : Math.abs(pieceData.up_right_movement || 0)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    const isExact = pieceData.up_right_movement < 0 && pieceData.up_right_movement !== 99;
-                    handleChange("up_right_movement", isExact ? -val : val);
-                  }}
-                  disabled={pieceData.up_right_movement === 99}
-                />
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.up_right_movement < 0 && pieceData.up_right_movement !== 99}
-                    onChange={(e) => {
-                      const val = Math.abs(pieceData.up_right_movement || 0);
-                      handleChange("up_right_movement", e.target.checked ? -val : val);
-                    }}
-                    disabled={pieceData.up_right_movement === 99}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <NumberInput
+                    value={pieceData.up_right_movement === 99 ? "∞" : (pieceData.up_right_movement || 0)}
+                    onChange={(val) => handleChange("up_right_movement", val)}
+                    options={{ disabled: pieceData.up_right_movement === 99 }}
                   />
-                  <span>Exact</span>
-                </label>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.up_right_movement === 99}
-                    onChange={(e) => handleChange("up_right_movement", e.target.checked ? 99 : 0)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.up_right_movement_exact}
+                      onChange={(e) => handleChange("up_right_movement_exact", e.target.checked)}
+                      disabled={pieceData.up_right_movement === 99}
+                    />
+                    <span>Exact</span>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={pieceData.up_right_movement === 99}
+                      onChange={(e) => handleChange("up_right_movement", e.target.checked ? 99 : 0)}
+                    />
+                    <span>Infinite</span>
+                  </label>
+                </div>
+                <div className={styles["available-for-moves-group"]}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.up_right_movement_available_for}
+                      onChange={(e) => handleChange("up_right_movement_available_for", e.target.checked ? 1 : null)}
+                      disabled={pieceData.up_right_movement === 99}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                  </label>
+                  {pieceData.up_right_movement_available_for && (
+                    <>
+                      <NumberInput
+                        value={pieceData.up_right_movement_available_for || 1}
+                        onChange={(val) => handleChange("up_right_movement_available_for", val)}
+                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                      />
+                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                    </>
+                  )}
+                </div>
+                {renderAdditionalMovements("up_right", "Up-Right", "↗")}
               </div>
             </div>
             <div className={styles["direction-row"]}>
               <div className={styles["direction-input"]}>
                 <label>← Left</label>
-                <input
-                  type="number"
-                  value={pieceData.left_movement === 99 ? "" : Math.abs(pieceData.left_movement || 0)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    const isExact = pieceData.left_movement < 0 && pieceData.left_movement !== 99;
-                    handleChange("left_movement", isExact ? -val : val);
-                  }}
-                  disabled={pieceData.left_movement === 99}
-                />
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.left_movement < 0 && pieceData.left_movement !== 99}
-                    onChange={(e) => {
-                      const val = Math.abs(pieceData.left_movement || 0);
-                      handleChange("left_movement", e.target.checked ? -val : val);
-                    }}
-                    disabled={pieceData.left_movement === 99}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <NumberInput
+                    value={pieceData.left_movement === 99 ? "∞" : (pieceData.left_movement || 0)}
+                    onChange={(val) => handleChange("left_movement", val)}
+                    options={{ disabled: pieceData.left_movement === 99 }}
                   />
-                  <span>Exact</span>
-                </label>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.left_movement === 99}
-                    onChange={(e) => handleChange("left_movement", e.target.checked ? 99 : 0)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.left_movement_exact}
+                      onChange={(e) => handleChange("left_movement_exact", e.target.checked)}
+                      disabled={pieceData.left_movement === 99}
+                    />
+                    <span>Exact</span>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={pieceData.left_movement === 99}
+                      onChange={(e) => handleChange("left_movement", e.target.checked ? 99 : 0)}
+                    />
+                    <span>Infinite</span>
+                  </label>
+                </div>
+                <div className={styles["available-for-moves-group"]}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.left_movement_available_for}
+                      onChange={(e) => handleChange("left_movement_available_for", e.target.checked ? 1 : null)}
+                      disabled={pieceData.left_movement === 99}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                  </label>
+                  {pieceData.left_movement_available_for && (
+                    <>
+                      <NumberInput
+                        value={pieceData.left_movement_available_for || 1}
+                        onChange={(val) => handleChange("left_movement_available_for", val)}
+                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                      />
+                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                    </>
+                  )}
+                </div>
+                {renderAdditionalMovements("left", "Left", "←")}
               </div>
               <div className={styles["direction-center"]}>
                 <div className={styles["center-piece"]}>
@@ -197,137 +465,217 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               </div>
               <div className={styles["direction-input"]}>
                 <label>→ Right</label>
-                <input
-                  type="number"
-                  value={pieceData.right_movement === 99 ? "" : Math.abs(pieceData.right_movement || 0)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    const isExact = pieceData.right_movement < 0 && pieceData.right_movement !== 99;
-                    handleChange("right_movement", isExact ? -val : val);
-                  }}
-                  disabled={pieceData.right_movement === 99}
-                />
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.right_movement < 0 && pieceData.right_movement !== 99}
-                    onChange={(e) => {
-                      const val = Math.abs(pieceData.right_movement || 0);
-                      handleChange("right_movement", e.target.checked ? -val : val);
-                    }}
-                    disabled={pieceData.right_movement === 99}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <NumberInput
+                    value={pieceData.right_movement === 99 ? "∞" : (pieceData.right_movement || 0)}
+                    onChange={(val) => handleChange("right_movement", val)}
+                    options={{ disabled: pieceData.right_movement === 99 }}
                   />
-                  <span>Exact</span>
-                </label>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.right_movement === 99}
-                    onChange={(e) => handleChange("right_movement", e.target.checked ? 99 : 0)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.right_movement_exact}
+                      onChange={(e) => handleChange("right_movement_exact", e.target.checked)}
+                      disabled={pieceData.right_movement === 99}
+                    />
+                    <span>Exact</span>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={pieceData.right_movement === 99}
+                      onChange={(e) => handleChange("right_movement", e.target.checked ? 99 : 0)}
+                    />
+                    <span>Infinite</span>
+                  </label>
+                </div>
+                <div className={styles["available-for-moves-group"]}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.right_movement_available_for}
+                      onChange={(e) => handleChange("right_movement_available_for", e.target.checked ? 1 : null)}
+                      disabled={pieceData.right_movement === 99}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                  </label>
+                  {pieceData.right_movement_available_for && (
+                    <>
+                      <NumberInput
+                        value={pieceData.right_movement_available_for || 1}
+                        onChange={(val) => handleChange("right_movement_available_for", val)}
+                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                      />
+                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                    </>
+                  )}
+                </div>
+                {renderAdditionalMovements("right", "Right", "→")}
               </div>
             </div>
             <div className={styles["direction-row"]}>
               <div className={styles["direction-input"]}>
                 <label>↙ Down-Left</label>
-                <input
-                  type="number"
-                  value={pieceData.down_left_movement === 99 ? "" : Math.abs(pieceData.down_left_movement || 0)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    const isExact = pieceData.down_left_movement < 0 && pieceData.down_left_movement !== 99;
-                    handleChange("down_left_movement", isExact ? -val : val);
-                  }}
-                  disabled={pieceData.down_left_movement === 99}
-                />
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.down_left_movement < 0 && pieceData.down_left_movement !== 99}
-                    onChange={(e) => {
-                      const val = Math.abs(pieceData.down_left_movement || 0);
-                      handleChange("down_left_movement", e.target.checked ? -val : val);
-                    }}
-                    disabled={pieceData.down_left_movement === 99}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <NumberInput
+                    value={pieceData.down_left_movement === 99 ? "∞" : (pieceData.down_left_movement || 0)}
+                    onChange={(val) => handleChange("down_left_movement", val)}
+                    options={{ disabled: pieceData.down_left_movement === 99 }}
                   />
-                  <span>Exact</span>
-                </label>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.down_left_movement === 99}
-                    onChange={(e) => handleChange("down_left_movement", e.target.checked ? 99 : 0)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.down_left_movement_exact}
+                      onChange={(e) => handleChange("down_left_movement_exact", e.target.checked)}
+                      disabled={pieceData.down_left_movement === 99}
+                    />
+                    <span>Exact</span>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={pieceData.down_left_movement === 99}
+                      onChange={(e) => handleChange("down_left_movement", e.target.checked ? 99 : 0)}
+                    />
+                    <span>Infinite</span>
+                  </label>
+                </div>
+                <div className={styles["available-for-moves-group"]}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.down_left_movement_available_for}
+                      onChange={(e) => handleChange("down_left_movement_available_for", e.target.checked ? 1 : null)}
+                      disabled={pieceData.down_left_movement === 99}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                  </label>
+                  {pieceData.down_left_movement_available_for && (
+                    <>
+                      <NumberInput
+                        value={pieceData.down_left_movement_available_for || 1}
+                        onChange={(val) => handleChange("down_left_movement_available_for", val)}
+                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                      />
+                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                    </>
+                  )}
+                </div>
+                {renderAdditionalMovements("down_left", "Down-Left", "↙")}
               </div>
               <div className={styles["direction-input"]}>
                 <label>↓ Down</label>
-                <input
-                  type="number"
-                  value={pieceData.down_movement === 99 ? "" : Math.abs(pieceData.down_movement || 0)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    const isExact = pieceData.down_movement < 0 && pieceData.down_movement !== 99;
-                    handleChange("down_movement", isExact ? -val : val);
-                  }}
-                  disabled={pieceData.down_movement === 99}
-                />
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.down_movement < 0 && pieceData.down_movement !== 99}
-                    onChange={(e) => {
-                      const val = Math.abs(pieceData.down_movement || 0);
-                      handleChange("down_movement", e.target.checked ? -val : val);
-                    }}
-                    disabled={pieceData.down_movement === 99}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <NumberInput
+                    value={pieceData.down_movement === 99 ? "∞" : (pieceData.down_movement || 0)}
+                    onChange={(val) => handleChange("down_movement", val)}
+                    options={{ disabled: pieceData.down_movement === 99 }}
                   />
-                  <span>Exact</span>
-                </label>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.down_movement === 99}
-                    onChange={(e) => handleChange("down_movement", e.target.checked ? 99 : 0)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.down_movement_exact}
+                      onChange={(e) => handleChange("down_movement_exact", e.target.checked)}
+                      disabled={pieceData.down_movement === 99}
+                    />
+                    <span>Exact</span>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={pieceData.down_movement === 99}
+                      onChange={(e) => handleChange("down_movement", e.target.checked ? 99 : 0)}
+                    />
+                    <span>Infinite</span>
+                  </label>
+                </div>
+                <div className={styles["available-for-moves-group"]}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.down_movement_available_for}
+                      onChange={(e) => handleChange("down_movement_available_for", e.target.checked ? 1 : null)}
+                      disabled={pieceData.down_movement === 99}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                  </label>
+                  {pieceData.down_movement_available_for && (
+                    <>
+                      <NumberInput
+                        value={pieceData.down_movement_available_for || 1}
+                        onChange={(val) => handleChange("down_movement_available_for", val)}
+                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                      />
+                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                    </>
+                  )}
+                </div>
+                {renderAdditionalMovements("down", "Down", "↓")}
               </div>
               <div className={styles["direction-input"]}>
                 <label>↘ Down-Right</label>
-                <input
-                  type="number"
-                  value={pieceData.down_right_movement === 99 ? "" : Math.abs(pieceData.down_right_movement || 0)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    const isExact = pieceData.down_right_movement < 0 && pieceData.down_right_movement !== 99;
-                    handleChange("down_right_movement", isExact ? -val : val);
-                  }}
-                  disabled={pieceData.down_right_movement === 99}
-                />
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.down_right_movement < 0 && pieceData.down_right_movement !== 99}
-                    onChange={(e) => {
-                      const val = Math.abs(pieceData.down_right_movement || 0);
-                      handleChange("down_right_movement", e.target.checked ? -val : val);
-                    }}
-                    disabled={pieceData.down_right_movement === 99}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <NumberInput
+                    value={pieceData.down_right_movement === 99 ? "∞" : (pieceData.down_right_movement || 0)}
+                    onChange={(val) => handleChange("down_right_movement", val)}
+                    options={{ disabled: pieceData.down_right_movement === 99 }}
                   />
-                  <span>Exact</span>
-                </label>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.down_right_movement === 99}
-                    onChange={(e) => handleChange("down_right_movement", e.target.checked ? 99 : 0)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.down_right_movement_exact}
+                      onChange={(e) => handleChange("down_right_movement_exact", e.target.checked)}
+                      disabled={pieceData.down_right_movement === 99}
+                    />
+                    <span>Exact</span>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={pieceData.down_right_movement === 99}
+                      onChange={(e) => handleChange("down_right_movement", e.target.checked ? 99 : 0)}
+                    />
+                    <span>Infinite</span>
+                  </label>
+                </div>
+                <div className={styles["available-for-moves-group"]}>
+                  <label className={styles["checkbox-label-inline"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!pieceData.down_right_movement_available_for}
+                      onChange={(e) => handleChange("down_right_movement_available_for", e.target.checked ? 1 : null)}
+                      disabled={pieceData.down_right_movement === 99}
+                    />
+                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
+                  </label>
+                  {pieceData.down_right_movement_available_for && (
+                    <>
+                      <NumberInput
+                        value={pieceData.down_right_movement_available_for || 1}
+                        onChange={(val) => handleChange("down_right_movement_available_for", val)}
+                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+                      />
+                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+                    </>
+                  )}
+                </div>
+                {renderAdditionalMovements("down_right", "Down-Right", "↘")}
               </div>
             </div>
             
@@ -338,7 +686,15 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   checked={pieceData.repeating_movement}
                   onChange={(e) => handleChange("repeating_movement", e.target.checked)}
                 />
-                <span>Repeating movement (can move multiple times)</span>
+                <span>Repeating movement for exact movements (piece can repeat exact movement pattern infinitely, landing on every Nth square)</span>
+              </label>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={pieceData.first_move_only}
+                  onChange={(e) => handleChange("first_move_only", e.target.checked)}
+                />
+                <span>Global first move only override (applies to ALL directional movements - piece loses all movements after moving once)</span>
               </label>
             </div>
           </div>
@@ -376,22 +732,18 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             <div className={styles["form-row"]}>
               <div className={styles["sub-field"]}>
                 <label>Ratio One Movement</label>
-                <input
-                  type="number"
-                  className={styles["form-input-small"]}
+                <NumberInput
                   value={pieceData.ratio_one_movement || ""}
-                  onChange={(e) => handleNumberChange("ratio_one_movement", e.target.value)}
-                  placeholder="e.g., 2"
+                  onChange={(val) => handleNumberChange("ratio_one_movement", val || "")}
+                  options={{ placeholder: "e.g., 2", className: styles["form-input-small"] }}
                 />
               </div>
               <div className={styles["sub-field"]}>
                 <label>Ratio Two Movement</label>
-                <input
-                  type="number"
-                  className={styles["form-input-small"]}
+                <NumberInput
                   value={pieceData.ratio_two_movement || ""}
-                  onChange={(e) => handleNumberChange("ratio_two_movement", e.target.value)}
-                  placeholder="e.g., 1"
+                  onChange={(val) => handleNumberChange("ratio_two_movement", val || "")}
+                  options={{ placeholder: "e.g., 1", className: styles["form-input-small"] }}
                 />
               </div>
             </div>
@@ -439,18 +791,13 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
         {pieceData.step_by_step_movement_style && (
           <div className={styles["sub-field"]}>
             <label>Maximum Steps</label>
-            <input
-              type="number"
-              className={styles["form-input-small"]}
+            <NumberInput
               value={Math.abs(pieceData.step_by_step_movement_value || 0) || ""}
-              onChange={(e) => {
-                const value = parseInt(e.target.value) || 0;
-                // Store as negative if diagonal is excluded
+              onChange={(val) => {
                 const noDiagonal = document.getElementById("step_by_step_no_diagonal")?.checked;
-                handleNumberChange("step_by_step_movement_value", noDiagonal ? -Math.abs(value) : Math.abs(value));
+                handleNumberChange("step_by_step_movement_value", noDiagonal ? -Math.abs(val || 0) : Math.abs(val || 0));
               }}
-              placeholder="Total squares piece can move"
-              min="1"
+              options={{ min: 1, placeholder: "Total squares piece can move", className: styles["form-input-small"] }}
             />
             <div className={styles["checkbox-row"]}>
               <label className={styles["checkbox-label"]}>

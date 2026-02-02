@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import styles from "./gamewizard.module.scss";
 import SpecialSquareSelector from "./SpecialSquareSelector";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
+import NumberInput from "../common/NumberInput";
 
 const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [rangeSquares, setRangeSquares] = useState({});
@@ -446,16 +447,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           <label className={styles["form-label"]}>
             Board Width <span className={styles["required"]}>*</span>
           </label>
-          <input
-            type="number"
-            className={styles["form-input-small"]}
+          <NumberInput
             value={gameData.board_width}
-            onChange={(e) => {
-              const value = parseInt(e.target.value) || 1;
-              handleChange("board_width", Math.max(1, Math.min(96, value)));
-            }}
-            min="1"
-            max="96"
+            onChange={(val) => handleChange("board_width", Math.max(1, Math.min(96, val)))}
+            options={{ min: 1, max: 96, className: styles["form-input-small"] }}
           />
           <p className={styles["field-hint"]}>1-96 squares</p>
         </div>
@@ -464,16 +459,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           <label className={styles["form-label"]}>
             Board Height <span className={styles["required"]}>*</span>
           </label>
-          <input
-            type="number"
-            className={styles["form-input-small"]}
+          <NumberInput
             value={gameData.board_height}
-            onChange={(e) => {
-              const value = parseInt(e.target.value) || 1;
-              handleChange("board_height", Math.max(1, Math.min(96, value)));
-            }}
-            min="1"
-            max="96"
+            onChange={(val) => handleChange("board_height", Math.max(1, Math.min(96, val)))}
+            options={{ min: 1, max: 96, className: styles["form-input-small"] }}
           />
           <p className={styles["field-hint"]}>1-96 squares</p>
         </div>

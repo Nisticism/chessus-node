@@ -438,6 +438,92 @@ const Sandbox = () => {
     return false;
   };
 
+  // Check if a move is from a first-move-only additional movement option
+  const checkIfFirstMoveOnlyMove = (pieceData, fromX, fromY, toX, toY, playerPosition) => {
+    if (!pieceData.special_scenario_moves) return false;
+    
+    try {
+      const parsed = typeof pieceData.special_scenario_moves === 'string'
+        ? JSON.parse(pieceData.special_scenario_moves)
+        : pieceData.special_scenario_moves;
+      const additionalMovements = parsed?.additionalMovements || {};
+      
+      const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
+      const colDiff = playerPosition === 2 ? (fromX - toX) : (toX - fromX);
+      const distance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+      
+      // Determine direction
+      let direction = null;
+      if (rowDiff < 0 && colDiff === 0) direction = 'up';
+      else if (rowDiff > 0 && colDiff === 0) direction = 'down';
+      else if (rowDiff === 0 && colDiff < 0) direction = 'left';
+      else if (rowDiff === 0 && colDiff > 0) direction = 'right';
+      else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_left';
+      else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_right';
+      else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_left';
+      else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_right';
+      
+      if (!direction || !additionalMovements[direction]) return false;
+      
+      // Check if any of the additional movements for this direction are first-move-only
+      for (const movementOption of additionalMovements[direction]) {
+        if (!movementOption.firstMoveOnly) continue;
+        
+        const value = movementOption.value || 0;
+        if (movementOption.infinite && distance > 0) return true;
+        if (movementOption.exact && distance === value) return true;
+        if (!movementOption.exact && !movementOption.infinite && distance > 0 && distance <= value) return true;
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+    
+    return false;
+  };
+
+  // Check if a capture is from a first-move-only additional capture option
+  const checkIfFirstMoveOnlyCapture = (pieceData, fromX, fromY, toX, toY, playerPosition) => {
+    if (!pieceData.special_scenario_captures) return false;
+    
+    try {
+      const parsed = typeof pieceData.special_scenario_captures === 'string'
+        ? JSON.parse(pieceData.special_scenario_captures)
+        : pieceData.special_scenario_captures;
+      const additionalCaptures = parsed?.additionalCaptures || {};
+      
+      const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
+      const colDiff = playerPosition === 2 ? (fromX - toX) : (toX - fromX);
+      const distance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+      
+      // Determine direction
+      let direction = null;
+      if (rowDiff < 0 && colDiff === 0) direction = 'up';
+      else if (rowDiff > 0 && colDiff === 0) direction = 'down';
+      else if (rowDiff === 0 && colDiff < 0) direction = 'left';
+      else if (rowDiff === 0 && colDiff > 0) direction = 'right';
+      else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_left';
+      else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_right';
+      else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_left';
+      else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_right';
+      
+      if (!direction || !additionalCaptures[direction]) return false;
+      
+      // Check if any of the additional captures for this direction are first-move-only
+      for (const captureOption of additionalCaptures[direction]) {
+        if (!captureOption.firstMoveOnly) continue;
+        
+        const value = captureOption.value || 0;
+        if (captureOption.infinite && distance > 0) return true;
+        if (captureOption.exact && distance === value) return true;
+        if (!captureOption.exact && !captureOption.infinite && distance > 0 && distance <= value) return true;
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+    
+    return false;
+  };
+
   // Check if piece can move to a square
   const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition) => {
     if (!pieceData) return false;
@@ -638,7 +724,12 @@ const Sandbox = () => {
         }
 
         if (isValidMove && isPathClear(piece.x, piece.y, toX, toY, pieces, piece)) {
-          moves.push({ x: toX, y: toY, isCapture });
+          // Check if this is a first-move-only option
+          const isFirstMoveOnly = isCapture 
+            ? checkIfFirstMoveOnlyCapture(piece, piece.x, piece.y, toX, toY, pieceTeam)
+            : checkIfFirstMoveOnlyMove(piece, piece.x, piece.y, toX, toY, pieceTeam);
+          
+          moves.push({ x: toX, y: toY, isCapture, isFirstMoveOnly });
         }
       }
     }
@@ -966,10 +1057,14 @@ const Sandbox = () => {
               ${styles["board-square"]}
               ${isLight ? styles.light : styles.dark}
               ${isSelected ? styles.selected : ''}
-              ${validMove && !validMove.isCapture ? styles["valid-move"] : ''}
-              ${validMove && validMove.isCapture ? styles["valid-capture"] : ''}
-              ${hoveredMove && !hoveredMove.isCapture ? styles["hover-move"] : ''}
-              ${hoveredMove && hoveredMove.isCapture ? styles["hover-capture"] : ''}
+              ${validMove && !validMove.isCapture && !validMove.isFirstMoveOnly ? styles["valid-move"] : ''}
+              ${validMove && !validMove.isCapture && validMove.isFirstMoveOnly ? styles["valid-move-first-only"] : ''}
+              ${validMove && validMove.isCapture && !validMove.isFirstMoveOnly ? styles["valid-capture"] : ''}
+              ${validMove && validMove.isCapture && validMove.isFirstMoveOnly ? styles["valid-capture-first-only"] : ''}
+              ${hoveredMove && !hoveredMove.isCapture && !hoveredMove.isFirstMoveOnly ? styles["hover-move"] : ''}
+              ${hoveredMove && !hoveredMove.isCapture && hoveredMove.isFirstMoveOnly ? styles["hover-move-first-only"] : ''}
+              ${hoveredMove && hoveredMove.isCapture && !hoveredMove.isFirstMoveOnly ? styles["hover-capture"] : ''}
+              ${hoveredMove && hoveredMove.isCapture && hoveredMove.isFirstMoveOnly ? styles["hover-capture-first-only"] : ''}
               ${isLastMoveFrom || isLastMoveTo ? styles["last-move"] : ''}
             `}
             onClick={() => handleSquareClick(x, y)}

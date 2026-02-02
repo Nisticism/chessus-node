@@ -143,11 +143,13 @@ export const SocketProvider = ({ children }) => {
       socket.on('gameCreated', handleGameCreated);
       socket.on('error', handleError);
 
-      socket.emit('createGame', {
+      const emitData = {
         ...gameData,
         hostId: user?.id,
         hostUsername: user?.username
-      });
+      };
+      console.log('Creating game with data:', emitData);
+      socket.emit('createGame', emitData);
 
       // Timeout after 10 seconds
       setTimeout(() => {
@@ -284,6 +286,33 @@ export const SocketProvider = ({ children }) => {
     socket.emit('spectateGame', { gameId });
   }, [socket, connected]);
 
+  // Set a premove
+  const setPremove = useCallback((gameId, move) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+
+    socket.emit('setPremove', {
+      gameId,
+      userId: user?.id,
+      move
+    });
+  }, [socket, connected, user]);
+
+  // Clear a premove
+  const clearPremove = useCallback((gameId) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+
+    socket.emit('clearPremove', {
+      gameId,
+      userId: user?.id
+    });
+  }, [socket, connected, user]);
+
   // Subscribe to game events
   const onGameEvent = useCallback((event, callback) => {
     if (!socket) return () => {};
@@ -308,6 +337,8 @@ export const SocketProvider = ({ children }) => {
     resign,
     cancelGame,
     spectateGame,
+    setPremove,
+    clearPremove,
     onGameEvent
   };
 

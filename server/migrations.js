@@ -456,6 +456,306 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error adding show_piece_helpers column to games:', err.message);
   }
+
+  // Add is_news column to articles table
+  try {
+    if (!(await columnExists('articles', 'is_news'))) {
+      await runMigration(
+        "ALTER TABLE articles ADD COLUMN is_news TINYINT(1) DEFAULT 0 AFTER public",
+        "Add is_news column to articles table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_news column to articles:', err.message);
+  }
+
+  // Create welcome news article if no news articles exist
+  try {
+    const [newsCount] = await db_pool.query(
+      "SELECT COUNT(*) as count FROM articles WHERE is_news = 1"
+    );
+    
+    if (newsCount[0].count === 0) {
+      // Get admin user ID
+      const [adminUsers] = await db_pool.query(
+        "SELECT id FROM users WHERE role = 'admin' OR role = 'Admin' LIMIT 1"
+      );
+      
+      if (adminUsers.length > 0) {
+        const adminId = adminUsers[0].id;
+        await runMigration(
+          `INSERT INTO articles (
+            title, 
+            descript, 
+            content, 
+            created_at, 
+            genre, 
+            public, 
+            is_news, 
+            author_id, 
+            game_type_id
+          ) VALUES (
+            'Welcome to SquareStrat',
+            'Announcing the launch of SquareStrat, a revolutionary platform for creating and playing custom chess variants with unlimited possibilities.',
+            'We are excited to announce the official launch of SquareStrat, a groundbreaking platform that reimagines chess for the modern era.
+
+What is SquareStrat?
+
+SquareStrat is not just another chess platform—it\\'s a complete chess variant creation and playing system that puts the power of game design in your hands. Whether you\\'re a chess enthusiast looking to explore new strategic possibilities or a game designer wanting to experiment with novel mechanics, SquareStrat provides the tools you need.
+
+Key Features:
+
+Custom Piece Creation: Design pieces with unique movement patterns, capture mechanics, and special abilities. From traditional chess pieces to completely novel creations, the possibilities are endless.
+
+Game Type Builder: Create entirely new chess variants with custom board sizes, piece arrangements, and win conditions. Want to play on a 10x10 board? Add new piece types? Create asymmetric starting positions? It\\'s all possible.
+
+Live Multiplayer: Challenge friends or match with players from around the world. Our real-time game system supports time controls, premoves, and spectator mode.
+
+Rated Games: Compete in rated matches and climb the ELO leaderboards. Track your performance across different game types and variants.
+
+Community Forums: Share strategies, discuss game designs, and connect with other chess variant enthusiasts in our integrated forum system.
+
+What\\'s New:
+
+The platform now features a completely redesigned live game interface with support for complex piece mechanics including:
+- Directional movement and capture patterns
+- Hopping mechanics (for knight-like pieces)
+- Custom win conditions
+- Check and checkmate detection for royal pieces
+- Premove functionality for faster-paced games
+- Real-time game timers with increment support
+
+Coming Soon:
+
+We\\'re constantly improving SquareStrat with new features on the horizon:
+- Piece promotion mechanics
+- En passant and castling support for traditional variants
+- Tournament system
+- Puzzle mode
+- AI opponents
+- Mobile app
+
+Get Started:
+
+Ready to explore the world of chess variants? Create your account, design your first custom piece, or jump into a game of traditional chess to get familiar with the platform. The SquareStrat community is growing, and we can\\'t wait to see what amazing game variants you\\'ll create!
+
+Join us in revolutionizing chess, one variant at a time.
+
+— The SquareStrat Team',
+            NOW(),
+            'Announcement',
+            1,
+            1,
+            ${adminId},
+            NULL
+          )`,
+          "Create welcome news article"
+        );
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error creating welcome news article:', err.message);
+  }
+
+  // Add first_move_only columns to piece_movement and piece_capture tables
+  try {
+    const [movementCols] = await db_pool.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'piece_movement' 
+        AND COLUMN_NAME = 'first_move_only'
+    `);
+    
+    if (movementCols.length === 0) {
+      await db_pool.query(
+        `ALTER TABLE piece_movement ADD COLUMN first_move_only TINYINT(1) DEFAULT 0 AFTER repeating_movement`
+      );
+      console.log('✓ Added first_move_only column to piece_movement table');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding first_move_only to piece_movement:', err.message);
+  }
+
+  try {
+    const [captureCols] = await db_pool.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'piece_capture' 
+        AND COLUMN_NAME = 'first_move_only_capture'
+    `);
+    
+    if (captureCols.length === 0) {
+      await db_pool.query(
+        `ALTER TABLE piece_capture ADD COLUMN first_move_only_capture TINYINT(1) DEFAULT 0 AFTER can_attack_on_iteration`
+      );
+      console.log('✓ Added first_move_only_capture column to piece_capture table');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding first_move_only_capture to piece_capture:', err.message);
+  }
+
+  // Add exact movement columns
+  const exactMovementColumns = [
+    'up_left_movement_exact',
+    'up_movement_exact',
+    'up_right_movement_exact',
+    'right_movement_exact',
+    'down_right_movement_exact',
+    'down_movement_exact',
+    'down_left_movement_exact',
+    'left_movement_exact'
+  ];
+
+  for (const colName of exactMovementColumns) {
+    try {
+      const [cols] = await db_pool.query(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'piece_movement' 
+          AND COLUMN_NAME = ?
+      `, [colName]);
+      
+      if (cols.length === 0) {
+        await db_pool.query(
+          `ALTER TABLE piece_movement ADD COLUMN ${colName} TINYINT(1) DEFAULT 0`
+        );
+        console.log(`✓ Added ${colName} column to piece_movement table`);
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error(`Error adding ${colName} to piece_movement:`, err.message);
+    }
+  }
+
+  // Add available_for_moves columns
+  const availableForColumns = [
+    'up_left_movement_available_for',
+    'up_movement_available_for',
+    'up_right_movement_available_for',
+    'right_movement_available_for',
+    'down_right_movement_available_for',
+    'down_movement_available_for',
+    'down_left_movement_available_for',
+    'left_movement_available_for'
+  ];
+
+  for (const colName of availableForColumns) {
+    try {
+      const [cols] = await db_pool.query(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'piece_movement' 
+          AND COLUMN_NAME = ?
+      `, [colName]);
+      
+      if (cols.length === 0) {
+        await db_pool.query(
+          `ALTER TABLE piece_movement ADD COLUMN ${colName} INT UNSIGNED NULL`
+        );
+        console.log(`✓ Added ${colName} column to piece_movement table`);
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error(`Error adding ${colName} to piece_movement:`, err.message);
+    }
+  }
+
+  // Add exact capture columns
+  const exactCaptureColumns = [
+    'up_left_capture_exact',
+    'up_capture_exact',
+    'up_right_capture_exact',
+    'right_capture_exact',
+    'down_right_capture_exact',
+    'down_capture_exact',
+    'down_left_capture_exact',
+    'left_capture_exact'
+  ];
+
+  for (const colName of exactCaptureColumns) {
+    try {
+      const [cols] = await db_pool.query(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'piece_capture' 
+          AND COLUMN_NAME = ?
+      `, [colName]);
+      
+      if (cols.length === 0) {
+        await db_pool.query(
+          `ALTER TABLE piece_capture ADD COLUMN ${colName} TINYINT(1) DEFAULT 0`
+        );
+        console.log(`✓ Added ${colName} column to piece_capture table`);
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error(`Error adding ${colName} to piece_capture:`, err.message);
+    }
+  }
+
+  // Add available_for_capture columns
+  const availableForCaptureColumns = [
+    'up_left_capture_available_for',
+    'up_capture_available_for',
+    'up_right_capture_available_for',
+    'right_capture_available_for',
+    'down_right_capture_available_for',
+    'down_capture_available_for',
+    'down_left_capture_available_for',
+    'left_capture_available_for'
+  ];
+
+  for (const colName of availableForCaptureColumns) {
+    try {
+      const [cols] = await db_pool.query(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'piece_capture' 
+          AND COLUMN_NAME = ?
+      `, [colName]);
+      
+      if (cols.length === 0) {
+        await db_pool.query(
+          `ALTER TABLE piece_capture ADD COLUMN ${colName} INT UNSIGNED NULL`
+        );
+        console.log(`✓ Added ${colName} column to piece_capture table`);
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error(`Error adding ${colName} to piece_capture:`, err.message);
+    }
+  }
+
+  // Add can_castle column to pieces table
+  try {
+    const [cols] = await db_pool.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'pieces' 
+        AND COLUMN_NAME = 'can_castle'
+    `);
+    
+    if (cols.length === 0) {
+      await db_pool.query(
+        `ALTER TABLE pieces ADD COLUMN can_castle TINYINT(1) DEFAULT 0`
+      );
+      console.log('✓ Added can_castle column to pieces table');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding can_castle to pieces:', err.message);
+  }
   
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
