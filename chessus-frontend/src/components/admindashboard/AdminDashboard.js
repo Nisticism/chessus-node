@@ -121,6 +121,10 @@ const AdminDashboard = () => {
   };
 
   const renderPagination = () => {
+    if (!pagination || !pagination.totalPages) {
+      return null;
+    }
+
     const pages = [];
     for (let i = 1; i <= pagination.totalPages; i++) {
       pages.push(

@@ -908,12 +908,20 @@ app.get("/api/admin/users", authenticateToken, async (req, res) => {
       return res.status(403).send({ message: "Access denied. Admin or owner role required." });
     }
 
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
     const [users] = await db_pool.query(
       `SELECT id, username, email, first_name, last_name, role, elo, profile_picture, bio,
               banned, ban_reason, banned_at, banned_by, ban_expires_at
        FROM users
-       ORDER BY id DESC`
+       ORDER BY id DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
     );
+
+    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM users");
 
     // Don't send passwords or refresh tokens
     const sanitizedUsers = users.map(user => {
@@ -923,7 +931,15 @@ app.get("/api/admin/users", authenticateToken, async (req, res) => {
       return sanitized;
     });
 
-    res.json(sanitizedUsers);
+    res.json({
+      data: sanitizedUsers,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (err) {
     console.error("Error fetching users:", err);
     res.status(500).send({ message: "Failed to fetch users", err: err.message });
