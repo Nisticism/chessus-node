@@ -518,7 +518,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         actions_per_turn = ?, board_width = ?, board_height = ?, player_count = ?,
         starting_piece_count = ?, pieces_string = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?,
-        randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?
+        randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?
       WHERE id = ?
     `;
     
@@ -552,6 +552,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.randomized_starting_positions || null,
       gameData.other_game_data || null,
       gameData.optional_condition || null,
+      gameData.draw_move_limit || null,
       gameId
     ];
     
@@ -1313,8 +1314,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         actions_per_turn, board_width, board_height, player_count,
         starting_piece_count, pieces_string, range_squares_string,
         promotion_squares_string, special_squares_string,
-        randomized_starting_positions, other_game_data, optional_condition
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        randomized_starting_positions, other_game_data, optional_condition, draw_move_limit
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -1347,7 +1348,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.special_squares_string || null,
       gameData.randomized_starting_positions || null,
       gameData.other_game_data || null,
-      gameData.optional_condition || null
+      gameData.optional_condition || null,
+      gameData.draw_move_limit || null
     ];
 
     const [result] = await db_pool.query(sql, values);

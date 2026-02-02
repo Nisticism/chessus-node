@@ -1752,6 +1752,7 @@ const LiveGame = () => {
             <div className={styles.reason}>
               {gameOverData.reason === 'checkmate' ? 'By Checkmate' :
                gameOverData.reason === 'stalemate' ? 'By Stalemate' :
+               gameOverData.reason === 'draw_move_limit' ? 'By Move Limit (No Captures)' :
                gameOverData.reason === 'resignation' ? 'By Resignation' :
                gameOverData.reason === 'timeout' ? 'By Timeout' :
                gameOverData.reason}

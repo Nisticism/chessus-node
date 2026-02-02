@@ -624,6 +624,7 @@ function initializeSocket(server) {
           pieces: piecesArray,
           currentTurn: 1,
           moveHistory: [],
+          movesWithoutCapture: 0, // Track for draw by move limit
           startTime: null,
           playerTimes: {},
           allowSpectators,
@@ -964,6 +965,13 @@ function initializeSocket(server) {
         };
         gameState.moveHistory.push(moveRecord);
 
+        // Track moves without capture for draw conditions
+        if (moveResult.captured) {
+          gameState.movesWithoutCapture = 0; // Reset on capture
+        } else {
+          gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
+        }
+
         // Apply increment to current player's time
         if (gameState.increment && gameState.playerTimes[userId]) {
           gameState.playerTimes[userId] += gameState.increment;
@@ -1001,6 +1009,13 @@ function initializeSocket(server) {
               isPremove: true
             };
             gameState.moveHistory.push(premoveRecord);
+
+            // Track moves without capture for draw conditions
+            if (premoveResult.captured) {
+              gameState.movesWithoutCapture = 0; // Reset on capture
+            } else {
+              gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
+            }
             
             // Apply increment to player's time
             if (gameState.increment && gameState.playerTimes[nextPlayer.id]) {
@@ -1180,6 +1195,56 @@ function initializeSocket(server) {
                 console.log(`STALEMATE! Player ${stalematedPlayer?.username} has no legal moves in game ${gameId} after premove`);
                 return; // Exit early since game is over
               }
+            }
+
+            // Check for draw by move limit after premove
+            if (gameState.gameType?.draw_move_limit && gameState.movesWithoutCapture >= gameState.gameType.draw_move_limit) {
+              console.log(`DRAW BY MOVE LIMIT after premove! ${gameState.movesWithoutCapture} moves without capture in game ${gameId}`);
+              stopGameTimer(gameId);
+              
+              gameState.status = 'completed';
+              gameState.winner = null;
+              gameState.winReason = 'draw_move_limit';
+
+              // Update ELO ratings for draw (only if game is rated)
+              let eloChanges = null;
+              const player1 = gameState.players[0];
+              const player2 = gameState.players[1];
+              if (gameState.rated !== false && player1?.id && player2?.id) {
+                const p1Elo = player1.elo || 1000;
+                const p2Elo = player2.elo || 1000;
+                const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+                const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+                eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+                console.log('ELO updated for draw by move limit after premove:', eloChanges);
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              await db_pool.query(
+                `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+                 pieces = ?, other_data = ? WHERE id = ?`,
+                [endTime, JSON.stringify(gameState.pieces), 
+                 JSON.stringify({ 
+                   moves: gameState.moveHistory, 
+                   reason: 'draw_move_limit',
+                   movesWithoutCapture: gameState.movesWithoutCapture,
+                   eloChanges,
+                   rated: gameState.rated,
+                   allowPremoves: gameState.allowPremoves
+                 }),
+                 gameId]
+              );
+
+              io.to(`game-${gameId}`).emit("gameOver", {
+                gameId,
+                winner: null,
+                reason: 'draw_move_limit',
+                finalState: gameState,
+                eloChanges
+              });
+              
+              console.log(`DRAW BY MOVE LIMIT! Game ${gameId} drawn after premove`);
+              return; // Exit early since game is over
             }
             
             // Broadcast check status after premove
@@ -1388,6 +1453,60 @@ function initializeSocket(server) {
             }
           }
 
+          // Check for draw by move limit (X moves without captures)
+          if (gameState.gameType?.draw_move_limit && gameState.movesWithoutCapture >= gameState.gameType.draw_move_limit) {
+            console.log(`DRAW BY MOVE LIMIT! ${gameState.movesWithoutCapture} moves without capture in game ${gameId}`);
+            stopGameTimer(gameId);
+            
+            gameState.status = 'completed';
+            gameState.winner = null;
+            gameState.winReason = 'draw_move_limit';
+
+            // Update ELO ratings for draw (only if game is rated)
+            let eloChanges = null;
+            const player1 = gameState.players[0];
+            const player2 = gameState.players[1];
+            if (gameState.rated !== false && player1?.id && player2?.id) {
+              const p1Elo = player1.elo || 1000;
+              const p2Elo = player2.elo || 1000;
+              const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+              const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+              eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+              console.log('ELO updated for draw by move limit:', eloChanges);
+            }
+
+            const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            try {
+              await db_pool.query(
+                `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+                 pieces = ?, other_data = ? WHERE id = ?`,
+                [endTime, JSON.stringify(gameState.pieces), 
+                 JSON.stringify({ 
+                   moves: gameState.moveHistory, 
+                   reason: 'draw_move_limit',
+                   movesWithoutCapture: gameState.movesWithoutCapture,
+                   eloChanges,
+                   rated: gameState.rated,
+                   allowPremoves: gameState.allowPremoves
+                 }),
+                 gameId]
+              );
+              console.log('Database updated for draw by move limit');
+            } catch (dbError) {
+              console.error('Failed to update database:', dbError);
+            }
+
+            io.to(`game-${gameId}`).emit("gameOver", {
+              gameId,
+              winner: null,
+              reason: 'draw_move_limit',
+              finalState: gameState,
+              eloChanges
+            });
+            console.log('gameOver event emitted for draw by move limit in game-' + gameId);
+            return; // Exit early since game is over
+          }
+
           // Update game state in database
           await db_pool.query(
             "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
@@ -1395,6 +1514,7 @@ function initializeSocket(server) {
              JSON.stringify({ 
                moves: gameState.moveHistory, 
                inCheck: checkResult.inCheck,
+               movesWithoutCapture: gameState.movesWithoutCapture,
                rated: gameState.rated,
                allowPremoves: gameState.allowPremoves
              }), gameId]
@@ -1823,6 +1943,7 @@ function initializeSocket(server) {
             pieces: pieces,
             currentTurn: game.player_turn || 1,
             moveHistory: moveHistory,
+            movesWithoutCapture: otherData?.movesWithoutCapture || 0, // Load counter from DB
             startTime: game.start_time,
             playerTimes: playerTimes,
             allowSpectators: game.allow_spectators !== 0,

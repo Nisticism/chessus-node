@@ -194,6 +194,61 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           Reference to a custom condition defined elsewhere (optional).
         </p>
       </div>
+
+      {/* Draw Conditions Section */}
+      <div className={styles["section-divider"]}></div>
+      <h2 style={{ marginTop: '32px' }}>Draw Conditions</h2>
+      <p className={styles["step-description"]}>
+        Configure conditions that result in a draw (tie) instead of a win.
+      </p>
+
+      {/* Move Limit Draw Rule (50-move rule) */}
+      <div className={styles["condition-section"]}>
+        <h3>Move Limit Draw Rule</h3>
+        <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
+          Similar to chess's "50-move rule" - the game ends in a draw after X moves without any captures.
+          Future: Will also count moves by promotable pieces.
+        </p>
+        <div className={styles["radio-group"]}>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="draw_move_limit_enabled"
+              value="enabled"
+              checked={gameData.draw_move_limit !== null && gameData.draw_move_limit !== undefined}
+              onChange={(e) => handleChange("draw_move_limit", 50)}
+            />
+            <span>Enable move limit draw rule</span>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="draw_move_limit_enabled"
+              value="disabled"
+              checked={gameData.draw_move_limit === null || gameData.draw_move_limit === undefined}
+              onChange={(e) => handleChange("draw_move_limit", null)}
+            />
+            <span>Disable</span>
+          </label>
+        </div>
+        {(gameData.draw_move_limit !== null && gameData.draw_move_limit !== undefined) && (
+          <div className={styles["sub-field"]}>
+            <label className={styles["form-label"]}>Moves without capture before draw</label>
+            <input
+              type="number"
+              className={styles["form-input-small"]}
+              value={gameData.draw_move_limit || 50}
+              onChange={(e) => handleChange("draw_move_limit", e.target.value ? parseInt(e.target.value) : 50)}
+              placeholder="50"
+              min="1"
+              max="500"
+            />
+            <p className={styles["field-hint"]}>
+              Standard chess uses 50 moves. Adjust based on your game's pace.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

@@ -756,6 +756,19 @@ Join us in revolutionizing chess, one variant at a time.
   } catch (err) {
     console.error('Error adding can_castle to pieces:', err.message);
   }
+
+  // Add draw_move_limit column to game_types table
+  try {
+    if (!(await columnExists('game_types', 'draw_move_limit'))) {
+      await runMigration(
+        "ALTER TABLE game_types ADD COLUMN draw_move_limit INT NULL DEFAULT NULL COMMENT 'Number of moves without captures before game is drawn (NULL = disabled)'",
+        "Add draw_move_limit column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding draw_move_limit column to game_types:', err.message);
+  }
   
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
