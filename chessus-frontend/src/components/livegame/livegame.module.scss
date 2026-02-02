@@ -1047,6 +1047,39 @@
     margin-bottom: 24px;
   }
 
+  .eloChanges {
+    margin-bottom: 24px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+
+    .eloChange {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .eloLabel {
+      color: #aaa;
+      font-size: 0.9rem;
+    }
+
+    .eloValue {
+      font-size: 1rem;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+    }
+
+    .eloUp {
+      color: #44ff44;
+    }
+
+    .eloDown {
+      color: #ff4444;
+    }
+  }
+
   .game-over-actions {
     display: flex;
     justify-content: center;

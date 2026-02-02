@@ -1138,6 +1138,21 @@ function initializeSocket(server) {
                 gameState.winner = null;
                 gameState.winReason = 'stalemate';
 
+                // Update ELO ratings for draw (only if game is rated)
+                let eloChanges = null;
+                const player1 = gameState.players[0];
+                const player2 = gameState.players[1];
+                if (gameState.rated !== false && player1?.id && player2?.id) {
+                  // For draws, pass higher rated player as 'winner' and lower as 'loser' with isDraw=true
+                  // This ensures the higher player loses a bit and lower player gains a bit
+                  const p1Elo = player1.elo || 1000;
+                  const p2Elo = player2.elo || 1000;
+                  const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+                  const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+                  eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+                  console.log('ELO updated for stalemate (draw):', eloChanges);
+                }
+
                 const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
                 await db_pool.query(
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
@@ -1146,6 +1161,7 @@ function initializeSocket(server) {
                    JSON.stringify({ 
                      moves: gameState.moveHistory, 
                      reason: 'stalemate',
+                     eloChanges,
                      rated: gameState.rated,
                      allowPremoves: gameState.allowPremoves
                    }),
@@ -1157,7 +1173,7 @@ function initializeSocket(server) {
                   winner: null,
                   reason: 'stalemate',
                   finalState: gameState,
-                  eloChanges: null
+                  eloChanges
                 });
                 
                 const stalematedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
@@ -1322,6 +1338,21 @@ function initializeSocket(server) {
               gameState.winner = null; // Draw, no winner
               gameState.winReason = 'stalemate';
 
+              // Update ELO ratings for draw (only if game is rated)
+              let eloChanges = null;
+              const player1 = gameState.players[0];
+              const player2 = gameState.players[1];
+              if (gameState.rated !== false && player1?.id && player2?.id) {
+                // For draws, pass higher rated player as 'winner' and lower as 'loser' with isDraw=true
+                // This ensures the higher player loses a bit and lower player gains a bit
+                const p1Elo = player1.elo || 1000;
+                const p2Elo = player2.elo || 1000;
+                const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+                const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+                eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+                console.log('ELO updated for stalemate (draw):', eloChanges);
+              }
+
               const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
               try {
                 await db_pool.query(
@@ -1331,6 +1362,7 @@ function initializeSocket(server) {
                    JSON.stringify({ 
                      moves: gameState.moveHistory, 
                      reason: 'stalemate',
+                     eloChanges,
                      rated: gameState.rated,
                      allowPremoves: gameState.allowPremoves
                    }),
@@ -1346,7 +1378,7 @@ function initializeSocket(server) {
                 winner: null,
                 reason: 'stalemate',
                 finalState: gameState,
-                eloChanges: null
+                eloChanges
               });
               console.log('gameOver event emitted for stalemate in game-' + gameId);
               

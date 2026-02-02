@@ -154,9 +154,9 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState }) => {
+    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges }) => {
       if (parseInt(overGameId) === parseInt(gameId)) {
-        setGameOverData({ winner, winnerUsername, reason });
+        setGameOverData({ winner, winnerUsername, reason, eloChanges });
         setShowGameOver(true);
         setGameState(prev => ({ 
           ...prev, 
@@ -1756,6 +1756,23 @@ const LiveGame = () => {
                gameOverData.reason === 'timeout' ? 'By Timeout' :
                gameOverData.reason}
             </div>
+            {gameOverData.eloChanges && (
+              <div className={styles.eloChanges}>
+                <div className={styles.eloChange}>
+                  <span className={styles.eloLabel}>Your ELO:</span>
+                  <span className={`${styles.eloValue} ${
+                    gameOverData.eloChanges.winner?.id === currentUser?.id 
+                      ? (gameOverData.eloChanges.winner.change >= 0 ? styles.eloUp : styles.eloDown)
+                      : (gameOverData.eloChanges.loser?.change >= 0 ? styles.eloUp : styles.eloDown)
+                  }`}>
+                    {gameOverData.eloChanges.winner?.id === currentUser?.id 
+                      ? `${gameOverData.eloChanges.winner.oldElo} → ${gameOverData.eloChanges.winner.newElo} (${gameOverData.eloChanges.winner.change >= 0 ? '+' : ''}${gameOverData.eloChanges.winner.change})`
+                      : `${gameOverData.eloChanges.loser?.oldElo} → ${gameOverData.eloChanges.loser?.newElo} (${gameOverData.eloChanges.loser?.change >= 0 ? '+' : ''}${gameOverData.eloChanges.loser?.change})`
+                    }
+                  </span>
+                </div>
+              </div>
+            )}
             <div className={styles["game-over-actions"]}>
               <button 
                 className={`${styles.btn} ${styles["btn-secondary"]}`}
