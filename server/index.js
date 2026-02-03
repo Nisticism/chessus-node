@@ -20,7 +20,7 @@ const bcrypt = require("bcrypt");
 const { sendWelcomeEmail, sendDonationEmail, sendContactEmail } = require("./email-service");
 
 // Socket.io game handler
-const { initializeSocket } = require("./game-socket");
+const { initializeSocket, onlineUsers } = require("./game-socket");
 
 //  Express
 
@@ -322,6 +322,144 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
     });
   } catch (err) {
     console.error("Error in /api/users/:userId/match-history:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// ===== FRIENDS ENDPOINTS =====
+
+// Get user's friends list
+app.get("/api/users/:userId/friends", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const [friends] = await db_pool.query(`
+      SELECT 
+        u.id,
+        u.username,
+        u.elo,
+        u.profile_picture,
+        f.created_at as friendship_created_at
+      FROM friends f
+      JOIN users u ON f.friend_id = u.id
+      WHERE f.user_id = ?
+      ORDER BY u.username ASC
+    `, [userId]);
+    
+    res.json(friends);
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friends:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Add a friend
+app.post("/api/users/:userId/friends", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { friendId } = req.body;
+    
+    // Verify the requesting user is the same as userId
+    if (req.user.userId !== parseInt(userId)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    
+    // Check if friendship already exists
+    const [existing] = await db_pool.query(
+      "SELECT * FROM friends WHERE user_id = ? AND friend_id = ?",
+      [userId, friendId]
+    );
+    
+    if (existing.length > 0) {
+      return res.status(400).json({ error: "Already friends" });
+    }
+    
+    // Add friendship (bidirectional - add both directions)
+    await db_pool.query(
+      "INSERT INTO friends (user_id, friend_id) VALUES (?, ?), (?, ?)",
+      [userId, friendId, friendId, userId]
+    );
+    
+    // Get the new friend's info
+    const [friend] = await db_pool.query(
+      "SELECT id, username, elo, profile_picture FROM users WHERE id = ?",
+      [friendId]
+    );
+    
+    res.json({ message: "Friend added", friend: friend[0] });
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friends POST:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Remove a friend
+app.delete("/api/users/:userId/friends/:friendId", authenticateToken, async (req, res) => {
+  try {
+    const { userId, friendId } = req.params;
+    
+    // Verify the requesting user is the same as userId
+    if (req.user.userId !== parseInt(userId)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    
+    // Remove friendship (both directions)
+    await db_pool.query(
+      "DELETE FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
+      [userId, friendId, friendId, userId]
+    );
+    
+    res.json({ message: "Friend removed" });
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friends DELETE:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Check if two users are friends
+app.get("/api/users/:userId/friends/:friendId/status", async (req, res) => {
+  try {
+    const { userId, friendId } = req.params;
+    
+    const [result] = await db_pool.query(
+      "SELECT * FROM friends WHERE user_id = ? AND friend_id = ?",
+      [userId, friendId]
+    );
+    
+    res.json({ areFriends: result.length > 0 });
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friends/:friendId/status:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Get online friends
+app.get("/api/users/:userId/friends/online", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Get user's friends list
+    const [friends] = await db_pool.query(`
+      SELECT 
+        u.id,
+        u.username,
+        u.elo,
+        u.profile_picture
+      FROM friends f
+      JOIN users u ON f.friend_id = u.id
+      WHERE f.user_id = ?
+    `, [userId]);
+    
+    // Filter to only online friends
+    const onlineFriends = friends.filter(friend => onlineUsers.has(friend.id));
+    
+    res.json(onlineFriends);
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friends/online:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+    console.error("Error in /api/users/:userId/friends/:friendId/status:", err);
     res.status(500).send({ err: err.message });
   }
 });

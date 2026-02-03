@@ -3,8 +3,10 @@ import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
 import { getGames } from "../../actions/games";
+import { getOnlineFriends, setOnlineUsers } from "../../actions/friends";
 import authHeader from "../../services/auth-header";
 import styles from "./play.module.scss";
+import FriendsList from "../../components/friendslist/FriendsList";
 
 const Play = () => {
   const navigate = useNavigate();
@@ -12,9 +14,11 @@ const Play = () => {
   const [searchParams] = useSearchParams();
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const { gamesList } = useSelector((state) => state.games);
+  const { onlineFriends } = useSelector((state) => state.friends);
   
   const { 
     connected, 
+    socket,
     openGames,
     ongoingGames,
     fetchOpenGames,
@@ -74,6 +78,30 @@ const Play = () => {
       fetchOngoingGames();
     }
   }, [connected, fetchOpenGames, fetchOngoingGames]);
+
+  // Fetch online friends when user is logged in
+  useEffect(() => {
+    if (currentUser && connected) {
+      dispatch(getOnlineFriends(currentUser.id));
+    }
+  }, [currentUser, connected, dispatch]);
+
+  // Listen for online users updates from socket
+  useEffect(() => {
+    if (socket) {
+      socket.on("onlineUsers", (users) => {
+        dispatch(setOnlineUsers(users));
+        // Refresh online friends when online users change
+        if (currentUser) {
+          dispatch(getOnlineFriends(currentUser.id));
+        }
+      });
+
+      return () => {
+        socket.off("onlineUsers");
+      };
+    }
+  }, [socket, dispatch, currentUser]);
 
   // Listen for game events
   useEffect(() => {
@@ -270,6 +298,23 @@ const Play = () => {
 
         {/* Main Content */}
         <div className={styles["main-content"]}>
+          {/* Online Friends Section */}
+          {currentUser && onlineFriends && onlineFriends.length > 0 && (
+            <div className={styles["online-friends-section"]}>
+              <h2>
+                Online Friends
+                <span className={styles["match-count"]}>{onlineFriends.length}</span>
+              </h2>
+              <div className={styles["friends-compact-list"]}>
+                <FriendsList 
+                  userId={currentUser.id} 
+                  showOnlineOnly={true}
+                  socket={socket}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Open Matches Section */}
           <div className={styles["open-matches-section"]}>
             <h2>

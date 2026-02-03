@@ -17,7 +17,7 @@ const CreateHub = () => {
       icon: "♟️"
     },
     {
-      title: "View Games",
+      title: "View Game Varients",
       description: "Browse all custom games created by the Squarestrat community. Discover new game types, see what others have built, and find inspiration for your own creations.",
       link: "/create/games",
       icon: "📋"

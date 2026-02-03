@@ -10,6 +10,7 @@ const activeGames = new Map();
 const gameTimers = new Map(); // Maps gameId to timer interval
 const playerSockets = new Map(); // Maps socket.id to userId
 const userSockets = new Map(); // Maps userId to socket.id
+const onlineUsers = new Set(); // Set of online user IDs
 
 /**
  * ELO Rating System
@@ -414,9 +415,13 @@ function initializeSocket(server) {
         if (userId) {
           playerSockets.set(socket.id, { id: userId, username });
           userSockets.set(userId.toString(), socket.id);
+          onlineUsers.add(userId);
           socket.userId = userId;
           socket.username = username;
           console.log(`User ${username} (ID: ${userId}) authenticated on socket ${socket.id}`);
+          
+          // Broadcast updated online users list
+          io.emit("onlineUsers", Array.from(onlineUsers));
         }
       } catch (error) {
         console.error("Error in authenticate handler:", error);
@@ -1987,8 +1992,12 @@ function initializeSocket(server) {
       
       const userData = playerSockets.get(socket.id);
       if (userData) {
+        onlineUsers.delete(userData.id);
         userSockets.delete(userData.id.toString());
         playerSockets.delete(socket.id);
+        
+        // Broadcast updated online users list
+        io.emit("onlineUsers", Array.from(onlineUsers));
       }
 
       // Note: We don't automatically forfeit games on disconnect
@@ -3612,4 +3621,4 @@ function checkWinCondition(gameState, capturedPiece = null) {
   return { gameOver: false };
 }
 
-module.exports = { initializeSocket, activeGames };
+module.exports = { initializeSocket, activeGames, onlineUsers };

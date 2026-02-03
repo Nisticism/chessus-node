@@ -57,7 +57,7 @@ const Menu = ({ currentUser, logOut }) => {
           Sandbox
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/games">
-          View games
+          View game varients
         </Link>
         <Link as="div" className="inner-menu-item lower-corner" to="/home">
           Play with friends

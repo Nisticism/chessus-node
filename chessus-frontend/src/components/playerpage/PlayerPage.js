@@ -13,6 +13,8 @@ import BioSection from "../biosection/BioSection";
 import Divider from "../Divider/Divider";
 import DonorBadge from "../DonorBadge/DonorBadge";
 import MatchHistory from "../matchhistory/MatchHistory";
+import FriendsList from "../friendslist/FriendsList";
+import { addFriend, removeFriend, checkFriendshipStatus } from "../../actions/friends";
 // import NotFound from "../notfound/NotFound";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
@@ -38,6 +40,8 @@ const PlayerPage = (props) => {
   const [showBanner, setShowBanner] = useState(false);
   const [bannerMessage, setBannerMessage] = useState("");
   const [bannerType, setBannerType] = useState("success");
+  const [isFriend, setIsFriend] = useState(false);
+  const [checkingFriendship, setCheckingFriendship] = useState(false);
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
   const playerPageUser = useSelector((state) => state.authReducer.playerPage);
   
@@ -86,6 +90,26 @@ const PlayerPage = (props) => {
     }
   }, [showBanner]);
 
+  // Check friendship status when viewing another user's profile
+  useEffect(() => {
+    const checkFriendship = async () => {
+      if (currentUser && playerPageUser && playerPageUser.id !== currentUser.id) {
+        setCheckingFriendship(true);
+        try {
+          const areFriends = await dispatch(checkFriendshipStatus(currentUser.id, playerPageUser.id));
+          setIsFriend(areFriends);
+        } catch (error) {
+          console.error("Error checking friendship:", error);
+        } finally {
+          setCheckingFriendship(false);
+        }
+      }
+    };
+    
+    if (!loading && playerPageUser) {
+      checkFriendship();
+    }
+  }, [currentUser, playerPageUser, loading, dispatch]);
 
 
   useEffect(() => {
@@ -181,6 +205,42 @@ const PlayerPage = (props) => {
     e.preventDefault();
     navigate("/preferences");
   }
+
+  const handleAddFriend = async () => {
+    if (!currentUser || !playerPageUser) return;
+    
+    try {
+      await dispatch(addFriend(currentUser.id, playerPageUser.id));
+      setIsFriend(true);
+      setBannerMessage(`Added ${playerPageUser.username} as a friend!`);
+      setBannerType("success");
+      setShowBanner(true);
+    } catch (error) {
+      console.error("Error adding friend:", error);
+      setBannerMessage("Failed to add friend");
+      setBannerType("error");
+      setShowBanner(true);
+    }
+  };
+
+  const handleRemoveFriend = async () => {
+    if (!currentUser || !playerPageUser) return;
+    
+    if (window.confirm(`Remove ${playerPageUser.username} from your friends list?`)) {
+      try {
+        await dispatch(removeFriend(currentUser.id, playerPageUser.id));
+        setIsFriend(false);
+        setBannerMessage(`Removed ${playerPageUser.username} from friends`);
+        setBannerType("success");
+        setShowBanner(true);
+      } catch (error) {
+        console.error("Error removing friend:", error);
+        setBannerMessage("Failed to remove friend");
+        setBannerType("error");
+        setShowBanner(true);
+      }
+    }
+  };
 
   const handleLogInfo = (e) => {
     e.preventDefault();
@@ -356,6 +416,30 @@ const PlayerPage = (props) => {
                     } 
                   />
                 </div>
+                {/* Add Friend / Remove Friend button for other users */}
+                {currentUser && playerPageUser && currentUser.id !== playerPageUser.id && (
+                  <div className={styles["friend-action"]}>
+                    {checkingFriendship ? (
+                      <button className={styles["friend-button"]} disabled>
+                        Checking...
+                      </button>
+                    ) : isFriend ? (
+                      <button 
+                        className={`${styles["friend-button"]} ${styles["remove-friend"]}`}
+                        onClick={handleRemoveFriend}
+                      >
+                        ✓ Friends
+                      </button>
+                    ) : (
+                      <button 
+                        className={styles["friend-button"]}
+                        onClick={handleAddFriend}
+                      >
+                        + Add Friend
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <div className={styles["elo-display"]}>
                 <div className={styles["elo-label"]}>ELO Rating</div>
@@ -405,6 +489,14 @@ const PlayerPage = (props) => {
                 isEditable={false}
                 emptyMessage={currentUser && username === currentUser.username ? "No bio yet. Tell the community about yourself!" : "This user hasn't written a bio yet."}
               />
+
+              <div className={styles["info-card"]}>
+                <h2 className={styles["card-title"]}>Friends</h2>
+                <FriendsList 
+                  userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
+                  showOnlineOnly={false}
+                />
+              </div>
 
               <MatchHistory 
                 userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}

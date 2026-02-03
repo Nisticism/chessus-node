@@ -157,6 +157,56 @@
   gap: 24px;
 }
 
+// Online friends section
+.online-friends-section {
+  background: #1a1a2e;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+
+  h2 {
+    color: #fff;
+    font-size: 1.3rem;
+    margin: 0 0 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .match-count {
+      background: #4caf50;
+      color: #fff;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+    }
+  }
+
+  .friends-compact-list {
+    // Compact view for friends in play page
+    :global(.friends-list) {
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    :global(.friend-card) {
+      padding: 10px 12px;
+    }
+
+    :global(.friend-avatar) {
+      width: 40px;
+      height: 40px;
+    }
+
+    :global(.friend-username) {
+      font-size: 14px;
+    }
+
+    :global(.friend-elo) {
+      font-size: 12px;
+    }
+  }
+}
+
 // Open matches section
 .open-matches-section {
   background: #1a1a2e;

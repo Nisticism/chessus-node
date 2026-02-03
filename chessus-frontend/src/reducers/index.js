@@ -7,6 +7,7 @@ import forums from "./forums";
 import news from "./news";
 import pieces from "./pieces";
 import games from "./games";
+import friends from "./friends";
 export default combineReducers({
   authReducer,
   message,
@@ -16,4 +17,5 @@ export default combineReducers({
   news,
   pieces,
   games,
+  friends,
 });
