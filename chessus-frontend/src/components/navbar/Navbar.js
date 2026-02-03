@@ -56,6 +56,9 @@ const Menu = ({ currentUser, logOut }) => {
         <Link as="div" className="inner-menu-item" to="/sandbox">
           Sandbox
         </Link>
+        <Link as="div" className="inner-menu-item" to="/create/games">
+          View games
+        </Link>
         <Link as="div" className="inner-menu-item lower-corner" to="/home">
           Play with friends
         </Link>
@@ -78,11 +81,8 @@ const Menu = ({ currentUser, logOut }) => {
         <Link as="div" className="inner-menu-item upper-right-corner" to="/create/game">
           Design a game
         </Link>
-        <Link as="div" className="inner-menu-item" to="/create/piece">
+        <Link as="div" className="inner-menu-item lower-corner" to="/create/piece">
           Design a piece
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/create/games">
-          View games
         </Link>
         <Link as="div" className="inner-menu-item lower-corner" to="/create/pieces">
           View pieces

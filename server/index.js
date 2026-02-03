@@ -1797,8 +1797,8 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
     // Insert into pieces table (basic info only)
     const pieceSql = `
       INSERT INTO pieces (
-        piece_name, image_location, piece_width, piece_height, creator_id, piece_description
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        piece_name, image_location, piece_width, piece_height, creator_id, piece_description, can_promote
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceValues = [
@@ -1807,7 +1807,8 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.piece_width) || 1,
       parseInt(pieceData.piece_height) || 1,
       parseInt(pieceData.creator_id) || null,
-      pieceData.piece_description || null
+      pieceData.piece_description || null,
+      pieceData.can_promote === 'true'
     ];
 
     const [result] = await db_pool.query(pieceSql, pieceValues);
@@ -2034,7 +2035,8 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         has_checkmate_rule = ?,
         has_check_rule = ?,
         has_lose_on_capture_rule = ?,
-        can_castle = ?
+        can_castle = ?,
+        can_promote = ?
       WHERE id = ?
     `;
 
@@ -2049,6 +2051,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       pieceData.has_check_rule === 'true',
       pieceData.has_lose_on_capture_rule === 'true',
       pieceData.can_castle === 'true',
+      pieceData.can_promote === 'true',
       pieceId
     ];
 

@@ -279,7 +279,7 @@ const findArticleById = async (articleId) => {
  * @returns {Promise<Array>} Array of articles
  */
 const getAllArticles = async () => {
-  return await query("SELECT * FROM chessusnode.articles");
+  return await query("SELECT * FROM chessusnode.articles WHERE is_career IS NULL OR is_career = 0");
 };
 
 /**

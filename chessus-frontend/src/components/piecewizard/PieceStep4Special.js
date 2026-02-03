@@ -1,5 +1,6 @@
 import React from "react";
 import styles from "./piecewizard.module.scss";
+import NumberInput from "../common/NumberInput";
 
 const PieceStep4Special = ({ pieceData, updatePieceData }) => {
   const handleChange = (field, value) => {
@@ -27,13 +28,10 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
         <h3>Movement Restrictions</h3>
         <div className={styles["sub-field"]}>
           <label>Minimum Turns Before Move</label>
-          <input
-            type="number"
-            className={styles["form-input-small"]}
-            value={pieceData.min_turns_until_movement || ""}
-            onChange={(e) => handleNumberChange("min_turns_until_movement", e.target.value)}
-            placeholder="0 for immediate movement"
-            min="0"
+          <NumberInput 
+            value={pieceData.min_turns_until_movement || 0}
+            onChange={(value) => handleNumberChange("min_turns_until_movement", value)}
+            options={{ min: 0, max: 99, placeholder: "0" }}
           />
           <p className={styles["field-hint"]}>
             Number of turns that must pass before this piece can move (useful for special pieces that activate later)
@@ -58,9 +56,24 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             Allows this piece to castle with its partner piece. At the start of the game, the furthest allied piece to the left and right on the same row become this piece's castling partners. To castle, move 2 squares left or right, and the corresponding partner will move to the opposite side. Both pieces must not have moved since the game started, and all squares between must be unoccupied. If this piece has check or checkmate rules, it cannot castle through enemy-controlled squares.
           </p>
         </div>
+
+        <div className={styles["sub-field"]}>
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.can_promote || false}
+              onChange={(e) => handleChange("can_promote", e.target.checked)}
+            />
+            <span>Can Promote</span>
+          </label>
+          <p className={styles["field-hint"]}>
+            Allows this piece to promote to another piece when it reaches specific squares. Promotion squares are defined in the game type settings.
+          </p>
+        </div>
       </div>
 
-      {/* Advanced Special Scenarios */}
+      {/* Advanced Special Scenarios - Hidden for now */}
+      {false && (
       <div className={styles["condition-section"]}>
         <h3>Advanced: Special Scenarios (JSON)</h3>
         <p className={styles["field-hint"]}>
@@ -89,6 +102,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
           />
         </div>
       </div>
+      )}
 
       {/* Summary Section */}
       <div className={styles["summary-section"]}>
