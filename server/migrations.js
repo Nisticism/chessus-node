@@ -30,6 +30,21 @@ const columnExists = async (tableName, columnName) => {
 };
 
 /**
+ * Get column type
+ */
+const getColumnType = async (tableName, columnName) => {
+  const sql = `
+    SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+    FROM information_schema.COLUMNS 
+    WHERE TABLE_SCHEMA = ? 
+    AND TABLE_NAME = ? 
+    AND COLUMN_NAME = ?
+  `;
+  const [results] = await db_pool.query(sql, [process.env.DB_NAME || 'chessusnode', tableName, columnName]);
+  return results[0] || null;
+};
+
+/**
  * Run a migration SQL statement
  */
 const runMigration = async (sql, description) => {
@@ -850,6 +865,29 @@ Join us in revolutionizing chess, one variant at a time.
     }
   } catch (err) {
     console.error('Error adding owner role:', err.message);
+  }
+
+  // Expand randomized_starting_positions column from VARCHAR(1000) to TEXT
+  try {
+    const gameTypesColType = await getColumnType('game_types', 'randomized_starting_positions');
+    if (gameTypesColType && gameTypesColType.DATA_TYPE === 'varchar' && gameTypesColType.CHARACTER_MAXIMUM_LENGTH <= 1000) {
+      await runMigration(
+        `ALTER TABLE game_types MODIFY COLUMN randomized_starting_positions TEXT`,
+        "Expand game_types.randomized_starting_positions to TEXT"
+      );
+      migrationsRun++;
+    }
+    
+    const gamesColType = await getColumnType('games', 'randomized_starting_positions');
+    if (gamesColType && gamesColType.DATA_TYPE === 'varchar' && gamesColType.CHARACTER_MAXIMUM_LENGTH <= 1000) {
+      await runMigration(
+        `ALTER TABLE games MODIFY COLUMN randomized_starting_positions TEXT`,
+        "Expand games.randomized_starting_positions to TEXT"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error expanding randomized_starting_positions column:', err.message);
   }
   
   if (migrationsRun === 0) {

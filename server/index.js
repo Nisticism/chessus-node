@@ -1683,8 +1683,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     // Log the randomized_starting_positions length if present
     if (gameData.randomized_starting_positions) {
       console.log('randomized_starting_positions length:', gameData.randomized_starting_positions.length);
-      if (gameData.randomized_starting_positions.length > 1000) {
-        console.warn('WARNING: randomized_starting_positions exceeds 1000 characters!');
+      // TEXT column can handle up to 65,535 characters
+      if (gameData.randomized_starting_positions.length > 65000) {
+        console.warn('WARNING: randomized_starting_positions exceeds reasonable size!');
         return res.status(400).send({ 
           message: "Randomized starting positions data is too large. Please simplify your game configuration.",
           length: gameData.randomized_starting_positions.length 

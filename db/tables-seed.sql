@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS game_types (
     range_squares_string VARCHAR(1000),
     promotion_squares_string VARCHAR(1000),
     special_squares_string VARCHAR(1000),
-    randomized_starting_positions VARCHAR(1000),
+    randomized_starting_positions TEXT,
     other_game_data MEDIUMTEXT,
     optional_condition INT,
     board_width INT,
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS games (
     player_count INT,
     game_length INT,
     game_turn_length INT,
-    randomized_starting_positions VARCHAR(1000),
+    randomized_starting_positions TEXT,
     --  other piece data can be stored here (has the piece been move/how many times)
     pieces VARCHAR(8000),
     other_data VARCHAR(800),
