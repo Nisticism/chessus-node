@@ -772,6 +772,32 @@ Join us in revolutionizing chess, one variant at a time.
     console.error('Error adding can_castle to pieces:', err.message);
   }
 
+  // Add can_promote column to pieces table
+  try {
+    if (!(await columnExists('pieces', 'can_promote'))) {
+      await runMigration(
+        "ALTER TABLE pieces ADD COLUMN can_promote TINYINT(1) DEFAULT 0 COMMENT 'Whether piece can promote to other pieces'",
+        "Add can_promote column to pieces table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding can_promote to pieces:', err.message);
+  }
+
+  // Add promotion_options column to pieces table
+  try {
+    if (!(await columnExists('pieces', 'promotion_options'))) {
+      await runMigration(
+        "ALTER TABLE pieces ADD COLUMN promotion_options TEXT NULL COMMENT 'JSON array of piece IDs that this piece can promote to'",
+        "Add promotion_options column to pieces table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding promotion_options to pieces:', err.message);
+  }
+
   // Add draw_move_limit column to game_types table
   try {
     if (!(await columnExists('game_types', 'draw_move_limit'))) {
