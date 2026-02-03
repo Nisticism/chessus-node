@@ -2099,8 +2099,9 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         can_hop_over_allies, can_hop_over_enemies,
         min_turns_per_move,
         max_turns_per_move,
+        available_for_moves,
         special_scenario_moves
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         directional_movement_style = VALUES(directional_movement_style),
         repeating_movement = VALUES(repeating_movement),
@@ -2127,6 +2128,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         can_hop_over_enemies = VALUES(can_hop_over_enemies),
         min_turns_per_move = VALUES(min_turns_per_move),
         max_turns_per_move = VALUES(max_turns_per_move),
+        available_for_moves = VALUES(available_for_moves),
         special_scenario_moves = VALUES(special_scenario_moves)
     `;
 
@@ -2157,6 +2159,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       pieceData.can_hop_over_enemies === 'true',
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
+      pieceData.available_for_moves !== false && pieceData.available_for_moves !== 'false' ? 1 : 0,
       pieceData.special_scenario_moves || null
     ];
 
