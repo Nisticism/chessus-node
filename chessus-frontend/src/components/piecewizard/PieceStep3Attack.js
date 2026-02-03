@@ -57,13 +57,13 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
     updatePieceData({ [field]: numValue });
   };
 
-  // Parse additional captures from special_scenario_captures JSON
+  // Parse additional captures from special_scenario_capture JSON
   const getAdditionalCaptures = () => {
-    if (!pieceData.special_scenario_captures) return {};
+    if (!pieceData.special_scenario_capture) return {};
     try {
-      const parsed = typeof pieceData.special_scenario_captures === 'string' 
-        ? JSON.parse(pieceData.special_scenario_captures)
-        : pieceData.special_scenario_captures;
+      const parsed = typeof pieceData.special_scenario_capture === 'string' 
+        ? JSON.parse(pieceData.special_scenario_capture)
+        : pieceData.special_scenario_capture;
       return parsed.additionalCaptures || {};
     } catch {
       return {};
@@ -83,14 +83,14 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
       firstMoveOnly: false
     });
     
-    const scenarioData = pieceData.special_scenario_captures 
-      ? (typeof pieceData.special_scenario_captures === 'string' 
-          ? JSON.parse(pieceData.special_scenario_captures)
-          : pieceData.special_scenario_captures)
+    const scenarioData = pieceData.special_scenario_capture 
+      ? (typeof pieceData.special_scenario_capture === 'string' 
+          ? JSON.parse(pieceData.special_scenario_capture)
+          : pieceData.special_scenario_capture)
       : {};
     
     scenarioData.additionalCaptures = additionalCaptures;
-    updatePieceData({ special_scenario_captures: JSON.stringify(scenarioData) });
+    updatePieceData({ special_scenario_capture: JSON.stringify(scenarioData) });
   };
 
   // Update an additional capture
@@ -108,14 +108,14 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
       
       additionalCaptures[direction][index][field] = value;
       
-      const scenarioData = pieceData.special_scenario_captures 
-        ? (typeof pieceData.special_scenario_captures === 'string' 
-            ? JSON.parse(pieceData.special_scenario_captures)
-            : pieceData.special_scenario_captures)
+      const scenarioData = pieceData.special_scenario_capture 
+        ? (typeof pieceData.special_scenario_capture === 'string' 
+            ? JSON.parse(pieceData.special_scenario_capture)
+            : pieceData.special_scenario_capture)
         : {};
       
       scenarioData.additionalCaptures = additionalCaptures;
-      updatePieceData({ special_scenario_captures: JSON.stringify(scenarioData) });
+      updatePieceData({ special_scenario_capture: JSON.stringify(scenarioData) });
     }
   };
 
@@ -128,14 +128,14 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         delete additionalCaptures[direction];
       }
       
-      const scenarioData = pieceData.special_scenario_captures 
-        ? (typeof pieceData.special_scenario_captures === 'string' 
-            ? JSON.parse(pieceData.special_scenario_captures)
-            : pieceData.special_scenario_captures)
+      const scenarioData = pieceData.special_scenario_capture 
+        ? (typeof pieceData.special_scenario_capture === 'string' 
+            ? JSON.parse(pieceData.special_scenario_capture)
+            : pieceData.special_scenario_capture)
         : {};
       
       scenarioData.additionalCaptures = additionalCaptures;
-      updatePieceData({ special_scenario_captures: JSON.stringify(scenarioData) });
+      updatePieceData({ special_scenario_capture: JSON.stringify(scenarioData) });
     }
   };
 

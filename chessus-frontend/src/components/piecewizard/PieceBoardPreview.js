@@ -1,40 +1,40 @@
 import React, { useState, useMemo } from "react";
 import styles from "./piecewizard.module.scss";
 
-const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
+const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) => {
   const [isHovering, setIsHovering] = useState(false);
   
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
   const darkSquareColor = localStorage.getItem('boardDarkColor') || '#08234d';
 
-  // Parse special_scenario_moves JSON to get additional movements
+  // Parse special_scenario_movement JSON to get additional movements
   const parseSpecialScenarioMoves = useMemo(() => {
-    if (!pieceData.special_scenario_moves) return {};
+    if (!pieceData.special_scenario_movement) return {};
     try {
-      const parsed = typeof pieceData.special_scenario_moves === 'string'
-        ? JSON.parse(pieceData.special_scenario_moves)
-        : pieceData.special_scenario_moves;
+      const parsed = typeof pieceData.special_scenario_movement === 'string'
+        ? JSON.parse(pieceData.special_scenario_movement)
+        : pieceData.special_scenario_movement;
       return parsed || {};
     } catch (e) {
-      console.error('Error parsing special_scenario_moves:', e);
+      console.error('Error parsing special_scenario_movement:', e);
       return {};
     }
-  }, [pieceData.special_scenario_moves]);
+  }, [pieceData.special_scenario_movement]);
 
-  // Parse special_scenario_captures JSON to get additional captures
+  // Parse special_scenario_capture JSON to get additional captures
   const parseSpecialScenarioCaptures = useMemo(() => {
-    if (!pieceData.special_scenario_captures) return {};
+    if (!pieceData.special_scenario_capture) return {};
     try {
-      const parsed = typeof pieceData.special_scenario_captures === 'string'
-        ? JSON.parse(pieceData.special_scenario_captures)
-        : pieceData.special_scenario_captures;
+      const parsed = typeof pieceData.special_scenario_capture === 'string'
+        ? JSON.parse(pieceData.special_scenario_capture)
+        : pieceData.special_scenario_capture;
       return parsed || {};
     } catch (e) {
-      console.error('Error parsing special_scenario_captures:', e);
+      console.error('Error parsing special_scenario_capture:', e);
       return {};
     }
-  }, [pieceData.special_scenario_captures]);
+  }, [pieceData.special_scenario_capture]);
 
   // Helper function to check if a directional movement is first-move-only
   const isDirectionalMovementFirstMoveOnly = (direction) => {
@@ -733,37 +733,39 @@ const PieceBoardPreview = ({ pieceData, showAttack = true }) => {
       >
         {renderBoard()}
       </div>
-      <div className={styles["board-legend"]}>
-        <div className={styles["legend-title"]}>Legend (hover over piece to see):</div>
-        <div className={styles["legend-items"]}>
-          <div className={styles["legend-item"]}>
-            <div className={`${styles["legend-square"]} ${styles["legend-move"]}`}></div>
-            <span>Regular Movement</span>
-          </div>
-          <div className={styles["legend-item"]}>
-            <div className={`${styles["legend-square"]} ${styles["legend-move-first"]}`}></div>
-            <span>First Moves Movement</span>
-          </div>
-          {showAttack && (
-            <>
-              <div className={styles["legend-item"]}>
-                <div className={`${styles["legend-square"]} ${styles["legend-capture"]}`}></div>
-                <span>Capture on Move</span>
-              </div>
-              <div className={styles["legend-item"]}>
-                <div className={`${styles["legend-square"]} ${styles["legend-capture-first"]}`}></div>
-                <span>First Moves Capture</span>
-              </div>
-            </>
-          )}
-          {showAttack && (
+      {showLegend && (
+        <div className={styles["board-legend"]}>
+          <div className={styles["legend-title"]}>Legend (hover over piece to see):</div>
+          <div className={styles["legend-items"]}>
             <div className={styles["legend-item"]}>
-              <div className={`${styles["legend-square"]} ${styles["legend-ranged"]}`}></div>
-              <span>Ranged Attack 💥</span>
+              <div className={`${styles["legend-square"]} ${styles["legend-move"]}`}></div>
+              <span>Regular Movement</span>
             </div>
-          )}
+            <div className={styles["legend-item"]}>
+              <div className={`${styles["legend-square"]} ${styles["legend-move-first"]}`}></div>
+              <span>First Moves Movement</span>
+            </div>
+            {showAttack && (
+              <>
+                <div className={styles["legend-item"]}>
+                  <div className={`${styles["legend-square"]} ${styles["legend-capture"]}`}></div>
+                  <span>Capture on Move</span>
+                </div>
+                <div className={styles["legend-item"]}>
+                  <div className={`${styles["legend-square"]} ${styles["legend-capture-first"]}`}></div>
+                  <span>First Moves Capture</span>
+                </div>
+              </>
+            )}
+            {showAttack && (
+              <div className={styles["legend-item"]}>
+                <div className={`${styles["legend-square"]} ${styles["legend-ranged"]}`}></div>
+                <span>Ranged Attack 💥</span>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <div className={styles["board-info"]}>
         Board size: {boardSize}x{boardSize} | Piece position: ({centerPos}, {centerPos})
       </div>

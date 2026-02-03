@@ -1889,7 +1889,10 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       pieceData.available_for_moves !== false && pieceData.available_for_moves !== 'false' ? 1 : 0,
-      pieceData.special_scenario_moves || null
+      // Ensure special_scenario_moves is always a string, not an array
+      Array.isArray(pieceData.special_scenario_moves) 
+        ? (pieceData.special_scenario_moves.find(s => s && s.length > 0) || null)
+        : (pieceData.special_scenario_moves || null)
     ];
 
     await db_pool.query(movementSql, movementValues);
@@ -2162,7 +2165,10 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       pieceData.available_for_moves !== false && pieceData.available_for_moves !== 'false' ? 1 : 0,
-      pieceData.special_scenario_moves || null
+      // Ensure special_scenario_moves is always a string, not an array
+      Array.isArray(pieceData.special_scenario_moves) 
+        ? (pieceData.special_scenario_moves.find(s => s && s.length > 0) || null)
+        : (pieceData.special_scenario_moves || null)
     ];
 
     await db_pool.query(movementSql, movementValues);

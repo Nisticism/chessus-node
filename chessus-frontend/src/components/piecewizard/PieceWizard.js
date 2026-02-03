@@ -107,6 +107,8 @@ const PieceWizard = ({ editPieceId = null }) => {
     check_on_attack: false,
     lose_game_on_capture: false,
     min_turns_until_movement: 0,
+    can_castle: false,
+    can_promote: false,
   });
 
   // Load existing piece data when in edit mode
@@ -240,6 +242,8 @@ const PieceWizard = ({ editPieceId = null }) => {
             check_on_attack: !!piece.has_check_rule,
             lose_game_on_capture: !!piece.has_lose_on_capture_rule,
             min_turns_until_movement: piece.min_turns_per_move || 0,
+            can_castle: !!piece.can_castle,
+            can_promote: !!piece.can_promote,
           });
           
           setIsEditMode(true);
@@ -376,8 +380,12 @@ const PieceWizard = ({ editPieceId = null }) => {
         'min_turns_until_movement': 'min_turns_per_move'
       };
       
+      // Skip database field names that should be mapped from form fields
+      const skipFields = ['special_scenario_moves', 'special_scenario_captures', 'has_checkmate_rule', 
+                          'has_check_rule', 'has_lose_on_capture_rule', 'min_turns_per_move'];
+      
       Object.keys(pieceData).forEach(key => {
-        if (key !== 'piece_images' && key !== 'piece_image_previews') {
+        if (key !== 'piece_images' && key !== 'piece_image_previews' && !skipFields.includes(key)) {
           const value = pieceData[key];
           const dbFieldName = fieldMapping[key] || key;
           

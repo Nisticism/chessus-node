@@ -181,11 +181,111 @@ const PieceView = () => {
       ratio_ranged_attack_style: !!piece.ratio_ranged_attack_style,
       step_by_step_ranged_attack_style: !!piece.step_by_step_ranged_attack_style,
       repeating_directional_ranged_attack: !!piece.repeating_directional_ranged_attack,
-      piece_image_previews: parsePieceImages()
+      piece_image_previews: parsePieceImages(),
+      // Map database field names to form field names for PieceBoardPreview
+      special_scenario_movement: piece.special_scenario_moves || "",
+      special_scenario_capture: piece.special_scenario_captures || ""
     };
     
     return sanitized;
   }, [piece]);
+
+  // Helper to get additional movements from special_scenario_moves
+  const getAdditionalMovements = useMemo(() => {
+    if (!piece?.special_scenario_moves) return {};
+    try {
+      const parsed = typeof piece.special_scenario_moves === 'string' 
+        ? JSON.parse(piece.special_scenario_moves)
+        : piece.special_scenario_moves;
+      return parsed?.additionalMovements || {};
+    } catch {
+      return {};
+    }
+  }, [piece]);
+
+  // Helper to get additional captures from special_scenario_captures
+  const getAdditionalCaptures = useMemo(() => {
+    if (!piece?.special_scenario_captures) return {};
+    try {
+      const parsed = typeof piece.special_scenario_captures === 'string' 
+        ? JSON.parse(piece.special_scenario_captures)
+        : piece.special_scenario_captures;
+      return parsed?.additionalCaptures || {};
+    } catch {
+      return {};
+    }
+  }, [piece]);
+
+  // Helper to format movement value
+  const formatMovementValue = (value) => {
+    if (value === null || value === undefined) return 'None';
+    if (value === 0) return '0 squares';
+    if (value < 0) return `Up to ${Math.abs(value)} squares`;
+    return `${value} square${value !== 1 ? 's' : ''}`;
+  };
+
+  // Helper to get directional arrow icon
+  const getDirectionArrow = (directionName) => {
+    const arrows = {
+      'Up': '⬆️',
+      'Down': '⬇️',
+      'Left': '⬅️',
+      'Right': '➡️',
+      'Up-Left': '↖️',
+      'Up-Right': '↗️',
+      'Down-Left': '↙️',
+      'Down-Right': '↘️'
+    };
+    return arrows[directionName] || '';
+  };
+
+  // Helper to get directional movement details
+  const getDirectionalDetails = () => {
+    if (!piece) return [];
+    const directions = [
+      { name: 'Up', value: piece.up_movement },
+      { name: 'Down', value: piece.down_movement },
+      { name: 'Left', value: piece.left_movement },
+      { name: 'Right', value: piece.right_movement },
+      { name: 'Up-Left', value: piece.up_left_movement },
+      { name: 'Up-Right', value: piece.up_right_movement },
+      { name: 'Down-Left', value: piece.down_left_movement },
+      { name: 'Down-Right', value: piece.down_right_movement }
+    ];
+    return directions.filter(d => d.value != null && d.value !== 0);
+  };
+
+  // Helper to get directional capture details
+  const getDirectionalCaptureDetails = () => {
+    if (!piece) return [];
+    const directions = [
+      { name: 'Up', value: piece.up_capture },
+      { name: 'Down', value: piece.down_capture },
+      { name: 'Left', value: piece.left_capture },
+      { name: 'Right', value: piece.right_capture },
+      { name: 'Up-Left', value: piece.up_left_capture },
+      { name: 'Up-Right', value: piece.up_right_capture },
+      { name: 'Down-Left', value: piece.down_left_capture },
+      { name: 'Down-Right', value: piece.down_right_capture }
+    ];
+    return directions.filter(d => d.value != null && d.value !== 0);
+  };
+
+  // Helper to get directional attack range details
+  const getDirectionalAttackDetails = () => {
+    if (!piece) return [];
+    const directions = [
+      { name: 'Up', value: piece.up_attack_range },
+      { name: 'Down', value: piece.down_attack_range },
+      { name: 'Left', value: piece.left_attack_range },
+      { name: 'Right', value: piece.right_attack_range },
+      { name: 'Up-Left', value: piece.up_left_attack_range },
+      { name: 'Up-Right', value: piece.up_right_attack_range },
+      { name: 'Down-Left', value: piece.down_left_attack_range },
+      { name: 'Down-Right', value: piece.down_right_attack_range }
+    ];
+    return directions.filter(d => d.value != null && d.value !== 0);
+  };
 
   const firstImageUrl = piece ? getFirstImage(piece.image_location) : null;
 
@@ -209,7 +309,13 @@ const PieceView = () => {
       directional_ranged_attack_style: !!piece.directional_ranged_attack_style,
       ratio_ranged_attack_style: !!piece.ratio_ranged_attack_style,
       step_by_step_ranged_attack_style: !!piece.step_by_step_ranged_attack_style,
-      repeating_directional_ranged_attack: !!piece.repeating_directional_ranged_attack
+      repeating_directional_ranged_attack: !!piece.repeating_directional_ranged_attack,
+      // Convert special ability fields to booleans
+      can_promote: !!piece.can_promote,
+      can_castle: !!piece.can_castle,
+      has_checkmate_rule: !!piece.has_checkmate_rule,
+      has_check_rule: !!piece.has_check_rule,
+      has_lose_on_capture_rule: !!piece.has_lose_on_capture_rule
     };
   }, [piece]);
 
@@ -299,13 +405,8 @@ const PieceView = () => {
         <div className={styles["section"]}>
           <h2>Movement & Attack Pattern</h2>
           <p className={styles["hint"]}>Hover over the board to see where this piece can move, capture, and ranged attack</p>
-          <p className={styles["preview-legend"]}>
-            <span className={styles["legend-movement"]}>Blue = Movement</span>
-            <span className={styles["legend-capture"]}>Orange = Capture on Move</span>
-            <span className={styles["legend-ranged"]}>Red = Ranged Attack 💥</span>
-          </p>
           <div className={styles["board-container"]}>
-            <PieceBoardPreview pieceData={pieceDataWithImages} />
+            <PieceBoardPreview pieceData={pieceDataWithImages} showLegend={false} />
           </div>
         </div>
 
@@ -337,7 +438,10 @@ const PieceView = () => {
             </span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Capture on Move</span>
+            <span className={styles["stat-label"]}>
+              Capture on Move
+              <span className={styles["info-icon"]} title="Can capture enemy pieces while moving (see Attack Details for specific squares)">ℹ️</span>
+            </span>
             <span className={styles["stat-value"]}>{pieceToDisplay.can_capture_enemy_on_move ? 'Yes' : 'No'}</span>
           </div>
           <div className={styles["stat-card"]}>
@@ -356,67 +460,148 @@ const PieceView = () => {
 
         <div className={styles["section"]}>
           <h2>Movement Details</h2>
-          <div className={styles["details-grid"]}>
-            <div className={styles["detail-item"]}>
-              <span className={styles["detail-label"]}>Directional Movement</span>
-              <span className={styles["detail-value"]}>{pieceToDisplay.directional_movement_style ? 'Yes' : 'No'}</span>
-            </div>
-            {pieceToDisplay.directional_movement_style && (
-              <>
-                <div className={styles["detail-item"]}>
-                  <span className={styles["detail-label"]}>Can Repeat Movement</span>
-                  <span className={styles["detail-value"]}>{pieceToDisplay.repeating_movement ? 'Yes' : 'No'}</span>
+          
+          {/* Directional Movement */}
+          {pieceToDisplay.directional_movement_style && (
+            <div className={styles["ability-card"]}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>🧭</span>
+                <h3>Directional Movement</h3>
+              </div>
+              {getDirectionalDetails().length > 0 && (
+                <div className={styles["direction-list"]}>
+                  {getDirectionalDetails().map(dir => (
+                    <div key={dir.name} className={styles["direction-item"]}>
+                      <span className={styles["direction-name"]}>
+                        <span className={styles["direction-arrow"]}>{getDirectionArrow(dir.name)}</span>
+                        {dir.name}
+                      </span>
+                      <span className={styles["direction-value"]}>{formatMovementValue(dir.value)}</span>
+                      {getAdditionalMovements[dir.name.toLowerCase().replace('-', '')] && (
+                        <div className={styles["additional-moves"]}>
+                          {getAdditionalMovements[dir.name.toLowerCase().replace('-', '')].map((move, idx) => (
+                            <span key={idx} className={styles["additional-tag"]}>
+                              + {formatMovementValue(move.value)}
+                              {move.exact && ' (exact)'}
+                              {move.infinite && ' (∞)'}
+                              {move.availableForMoves && ` (1st ${move.availableForMoves} move${move.availableForMoves !== 1 ? 's' : ''})`}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                {pieceToDisplay.repeating_movement && pieceToDisplay.max_directional_movement_iterations != null && (
-                  <div className={styles["detail-item"]}>
-                    <span className={styles["detail-label"]}>Max Movement Iterations</span>
-                    <span className={styles["detail-value"]}>{pieceToDisplay.max_directional_movement_iterations}</span>
+              )}
+              <div className={styles["ability-properties"]}>
+                {pieceToDisplay.repeating_movement && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🔄</span>
+                    Can Repeat Movement
+                    {pieceToDisplay.max_directional_movement_iterations != null && 
+                      ` (max ${pieceToDisplay.max_directional_movement_iterations}x)`}
                   </div>
                 )}
-              </>
-            )}
-            <div className={styles["detail-item"]}>
-              <span className={styles["detail-label"]}>Ratio Movement</span>
-              <span className={styles["detail-value"]}>{pieceToDisplay.ratio_movement_style ? 'Yes' : 'No'}</span>
+              </div>
             </div>
-            {pieceToDisplay.ratio_movement_style && (
-              <div className={styles["detail-item"]}>
-                <span className={styles["detail-label"]}>Ratio Pattern</span>
-                <span className={styles["detail-value"]}>
-                  {pieceToDisplay.ratio_one_movement && pieceToDisplay.ratio_two_movement 
-                    ? `${pieceToDisplay.ratio_one_movement}:${pieceToDisplay.ratio_two_movement}` 
-                    : 'None'}
+          )}
+
+          {/* Ratio Movement */}
+          {pieceToDisplay.ratio_movement_style && (
+            <div className={styles["ability-card"]}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>🔀</span>
+                <h3>Ratio Movement (L-Shape)</h3>
+              </div>
+              <div className={styles["ratio-display"]}>
+                Pattern: <span className={styles["ratio-value"]}>
+                  {pieceToDisplay.ratio_one_movement || '?'}:{pieceToDisplay.ratio_two_movement || '?'}
                 </span>
               </div>
-            )}
-            <div className={styles["detail-item"]}>
-              <span className={styles["detail-label"]}>Step-by-Step Movement</span>
-              <span className={styles["detail-value"]}>{pieceToDisplay.step_by_step_movement_style ? 'Yes' : 'No'}</span>
             </div>
-            {pieceToDisplay.step_by_step_movement_style && pieceToDisplay.step_by_step_movement_value != null && (
-              <div className={styles["detail-item"]}>
-                <span className={styles["detail-label"]}>Step Value</span>
-                <span className={styles["detail-value"]}>{pieceToDisplay.step_by_step_movement_value}</span>
+          )}
+
+          {/* Step by Step Movement */}
+          {pieceToDisplay.step_by_step_movement_style && (
+            <div className={styles["ability-card"]}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>👣</span>
+                <h3>Step-by-Step Movement</h3>
+              </div>
+              <div className={styles["step-display"]}>
+                Can move up to <span className={styles["step-value"]}>{pieceToDisplay.step_by_step_movement_value}</span> squares,
+                changing direction within a single move
+              </div>
+            </div>
+          )}
+
+          {/* Movement Modifiers */}
+          <div className={styles["modifiers-grid"]}>
+            {pieceToDisplay.can_hop_over_allies && (
+              <div className={styles["modifier-badge"]}>
+                <span className={styles["modifier-icon"]}>🦘</span>
+                Hop Over Allies
               </div>
             )}
-            <div className={styles["detail-item"]}>
-              <span className={styles["detail-label"]}>Can Jump Over Allies</span>
-              <span className={styles["detail-value"]}>{pieceToDisplay.can_hop_over_allies ? 'Yes' : 'No'}</span>
-            </div>
-            <div className={styles["detail-item"]}>
-              <span className={styles["detail-label"]}>Can Jump Over Enemies</span>
-              <span className={styles["detail-value"]}>{pieceToDisplay.can_hop_over_enemies ? 'Yes' : 'No'}</span>
-            </div>
-            {pieceToDisplay.min_turns_per_move != null && (
-              <div className={styles["detail-item"]}>
-                <span className={styles["detail-label"]}>Minimum Turns Per Move</span>
-                <span className={styles["detail-value"]}>{pieceToDisplay.min_turns_per_move}</span>
+            {pieceToDisplay.can_hop_over_enemies && (
+              <div className={styles["modifier-badge"]}>
+                <span className={styles["modifier-icon"]}>🦘</span>
+                Hop Over Enemies
+              </div>
+            )}
+            {pieceToDisplay.min_turns_per_move != null && pieceToDisplay.min_turns_per_move > 0 && (
+              <div className={styles["modifier-badge"]}>
+                <span className={styles["modifier-icon"]}>⏱️</span>
+                Min {pieceToDisplay.min_turns_per_move} turn{pieceToDisplay.min_turns_per_move !== 1 ? 's' : ''} per move
               </div>
             )}
             {pieceToDisplay.max_turns_per_move != null && (
-              <div className={styles["detail-item"]}>
-                <span className={styles["detail-label"]}>Maximum Turns Per Move</span>
-                <span className={styles["detail-value"]}>{pieceToDisplay.max_turns_per_move}</span>
+              <div className={styles["modifier-badge"]}>
+                <span className={styles["modifier-icon"]}>⏱️</span>
+                Max {pieceToDisplay.max_turns_per_move} turn{pieceToDisplay.max_turns_per_move !== 1 ? 's' : ''} per move
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className={styles["section"]}>
+          <h2>Special Abilities</h2>
+          <div className={styles["abilities-grid"]}>
+            {pieceToDisplay.can_promote && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>👑</span>
+                <span className={styles["special-name"]}>Can Promote</span>
+              </div>
+            )}
+            {pieceToDisplay.can_castle && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>🏰</span>
+                <span className={styles["special-name"]}>Can Castle</span>
+              </div>
+            )}
+            {pieceToDisplay.has_checkmate_rule && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>⚔️</span>
+                <span className={styles["special-name"]}>Checkmate on Attack</span>
+              </div>
+            )}
+            {pieceToDisplay.has_check_rule && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>⚠️</span>
+                <span className={styles["special-name"]}>Check on Attack</span>
+              </div>
+            )}
+            {pieceToDisplay.has_lose_on_capture_rule && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>💀</span>
+                <span className={styles["special-name"]}>Lose Game if Captured</span>
+              </div>
+            )}
+            {!pieceToDisplay.can_promote && !pieceToDisplay.can_castle && !pieceToDisplay.has_checkmate_rule && 
+             !pieceToDisplay.has_check_rule && !pieceToDisplay.has_lose_on_capture_rule && (
+              <div className={styles["no-abilities"]}>
+                <span className={styles["no-abilities-icon"]}>✨</span>
+                <span>No special abilities</span>
               </div>
             )}
           </div>
@@ -424,96 +609,117 @@ const PieceView = () => {
 
         <div className={styles["section"]}>
           <h2>Attack Details</h2>
-          <div className={styles["details-grid"]}>
-            <div className={styles["detail-item"]}>
-              <span className={styles["detail-label"]}>Can Capture While Moving</span>
-              <span className={styles["detail-value"]}>{pieceToDisplay.can_capture_enemy_on_move ? 'Yes' : 'No'}</span>
-            </div>
-            {pieceToDisplay.can_capture_enemy_on_move && (
-              <>
-                <div className={styles["detail-item"]}>
-                  <span className={styles["detail-label"]}>Directional Attack</span>
-                  <span className={styles["detail-value"]}>{pieceToDisplay.directional_attack_style ? 'Yes' : 'No'}</span>
+          
+          {/* Capture on Move */}
+          {pieceToDisplay.can_capture_enemy_on_move && (
+            <div className={styles["ability-card"]}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>⚔️</span>
+                <h3>Capture While Moving</h3>
+              </div>
+              {getDirectionalCaptureDetails().length > 0 && (
+                <div className={styles["direction-list"]}>
+                  {getDirectionalCaptureDetails().map(dir => (
+                    <div key={dir.name} className={styles["direction-item"]}>
+                      <span className={styles["direction-name"]}>
+                        <span className={styles["direction-arrow"]}>{getDirectionArrow(dir.name)}</span>
+                        {dir.name}
+                      </span>
+                      <span className={styles["direction-value"]}>{formatMovementValue(dir.value)}</span>
+                      {getAdditionalCaptures[dir.name.toLowerCase().replace('-', '')] && (
+                        <div className={styles["additional-moves"]}>
+                          {getAdditionalCaptures[dir.name.toLowerCase().replace('-', '')].map((capture, idx) => (
+                            <span key={idx} className={styles["additional-tag"]} style={{ background: 'rgba(255, 152, 0, 0.2)' }}>
+                              + {formatMovementValue(capture.value)}
+                              {capture.exact && ' (exact)'}
+                              {capture.infinite && ' (∞)'}
+                              {capture.availableForMoves && ` (1st ${capture.availableForMoves} move${capture.availableForMoves !== 1 ? 's' : ''})`}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <div className={styles["detail-item"]}>
-                  <span className={styles["detail-label"]}>Ratio Attack</span>
-                  <span className={styles["detail-value"]}>{pieceToDisplay.ratio_attack_style ? 'Yes' : 'No'}</span>
-                </div>
+              )}
+              <div className={styles["ability-properties"]}>
                 {pieceToDisplay.ratio_attack_style && (
-                  <div className={styles["detail-item"]}>
-                    <span className={styles["detail-label"]}>Ratio Attack Pattern</span>
-                    <span className={styles["detail-value"]}>
-                      {pieceToDisplay.ratio_one_attack && pieceToDisplay.ratio_two_attack 
-                        ? `${pieceToDisplay.ratio_one_attack}:${pieceToDisplay.ratio_two_attack}` 
-                        : 'None'}
-                    </span>
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🔀</span>
+                    Ratio Capture: {pieceToDisplay.ratio_one_capture || '?'}:{pieceToDisplay.ratio_two_capture || '?'}
                   </div>
                 )}
-                <div className={styles["detail-item"]}>
-                  <span className={styles["detail-label"]}>Step-by-Step Attack</span>
-                  <span className={styles["detail-value"]}>{pieceToDisplay.step_by_step_attack_style ? 'Yes' : 'No'}</span>
-                </div>
-                {pieceToDisplay.step_by_step_attack_style && pieceToDisplay.step_by_step_attack_value != null && (
-                  <div className={styles["detail-item"]}>
-                    <span className={styles["detail-label"]}>Step Attack Value</span>
-                    <span className={styles["detail-value"]}>{pieceToDisplay.step_by_step_attack_value}</span>
+                {pieceToDisplay.step_by_step_attack_style && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>👣</span>
+                    Step Capture: {pieceToDisplay.step_by_step_attack_value} squares
                   </div>
                 )}
-              </>
-            )}
-            <div className={styles["detail-item"]}>
-              <span className={styles["detail-label"]}>Has Ranged Attack</span>
-              <span className={styles["detail-value"]}>{pieceToDisplay.can_capture_enemy_via_range ? 'Yes' : 'No'}</span>
+                {pieceToDisplay.max_piece_captures_per_move != null && (
+                  <div className={styles["property-tag"]}>
+                    Max {pieceToDisplay.max_piece_captures_per_move} capture{pieceToDisplay.max_piece_captures_per_move !== 1 ? 's' : ''} per move
+                  </div>
+                )}
+              </div>
             </div>
-            {pieceToDisplay.can_capture_enemy_via_range && (
-              <>
-                <div className={styles["detail-item"]}>
-                  <span className={styles["detail-label"]}>Directional Ranged Attack</span>
-                  <span className={styles["detail-value"]}>{pieceToDisplay.directional_ranged_attack_style ? 'Yes' : 'No'}</span>
+          )}
+
+          {/* Ranged Attack */}
+          {pieceToDisplay.can_capture_enemy_via_range && (
+            <div className={styles["ability-card"]} style={{ borderLeftColor: '#f44336' }}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>💥</span>
+                <h3>Ranged Attack</h3>
+              </div>
+              {getDirectionalAttackDetails().length > 0 && (
+                <div className={styles["direction-list"]}>
+                  {getDirectionalAttackDetails().map(dir => (
+                    <div key={dir.name} className={styles["direction-item"]}>
+                      <span className={styles["direction-name"]}>
+                        <span className={styles["direction-arrow"]}>{getDirectionArrow(dir.name)}</span>
+                        {dir.name}
+                      </span>
+                      <span className={styles["direction-value"]}>{formatMovementValue(dir.value)} range</span>
+                    </div>
+                  ))}
                 </div>
-                <div className={styles["detail-item"]}>
-                  <span className={styles["detail-label"]}>Ratio Ranged Attack</span>
-                  <span className={styles["detail-value"]}>{pieceToDisplay.ratio_ranged_attack_style ? 'Yes' : 'No'}</span>
-                </div>
+              )}
+              <div className={styles["ability-properties"]}>
                 {pieceToDisplay.ratio_ranged_attack_style && (
-                  <div className={styles["detail-item"]}>
-                    <span className={styles["detail-label"]}>Ratio Ranged Pattern</span>
-                    <span className={styles["detail-value"]}>
-                      {pieceToDisplay.ratio_one_ranged_attack && pieceToDisplay.ratio_two_ranged_attack 
-                        ? `${pieceToDisplay.ratio_one_ranged_attack}:${pieceToDisplay.ratio_two_ranged_attack}` 
-                        : 'None'}
-                    </span>
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🔀</span>
+                    Ratio Range: {pieceToDisplay.ratio_one_attack_range || '?'}:{pieceToDisplay.ratio_two_attack_range || '?'}
                   </div>
                 )}
-                <div className={styles["detail-item"]}>
-                  <span className={styles["detail-label"]}>Step-by-Step Ranged Attack</span>
-                  <span className={styles["detail-value"]}>{pieceToDisplay.step_by_step_ranged_attack_style ? 'Yes' : 'No'}</span>
-                </div>
-                {pieceToDisplay.step_by_step_ranged_attack_style && pieceToDisplay.step_by_step_ranged_attack_value != null && (
-                  <div className={styles["detail-item"]}>
-                    <span className={styles["detail-label"]}>Step Ranged Value</span>
-                    <span className={styles["detail-value"]}>{pieceToDisplay.step_by_step_ranged_attack_value}</span>
+                {pieceToDisplay.step_by_step_ranged_attack_style && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>👣</span>
+                    Step Range: {pieceToDisplay.step_by_step_ranged_attack_value} squares
                   </div>
                 )}
                 {pieceToDisplay.max_piece_captures_per_ranged_attack != null && (
-                  <div className={styles["detail-item"]}>
-                    <span className={styles["detail-label"]}>Max Captures Per Ranged Attack</span>
-                    <span className={styles["detail-value"]}>{pieceToDisplay.max_piece_captures_per_ranged_attack}</span>
+                  <div className={styles["property-tag"]}>
+                    Max {pieceToDisplay.max_piece_captures_per_ranged_attack} capture{pieceToDisplay.max_piece_captures_per_ranged_attack !== 1 ? 's' : ''} per attack
                   </div>
                 )}
-                <div className={styles["detail-item"]}>
-                  <span className={styles["detail-label"]}>Can Repeat Ranged Attack</span>
-                  <span className={styles["detail-value"]}>{pieceToDisplay.repeating_directional_ranged_attack ? 'Yes' : 'No'}</span>
-                </div>
-                {pieceToDisplay.repeating_directional_ranged_attack && pieceToDisplay.max_directional_ranged_attack_iterations != null && (
-                  <div className={styles["detail-item"]}>
-                    <span className={styles["detail-label"]}>Max Ranged Attack Iterations</span>
-                    <span className={styles["detail-value"]}>{pieceToDisplay.max_directional_ranged_attack_iterations}</span>
+                {pieceToDisplay.repeating_directional_ranged_attack && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🔄</span>
+                    Can Repeat Attack
+                    {pieceToDisplay.max_directional_ranged_attack_iterations != null && 
+                      ` (max ${pieceToDisplay.max_directional_ranged_attack_iterations}x)`}
                   </div>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
+
+          {!pieceToDisplay.can_capture_enemy_on_move && !pieceToDisplay.can_capture_enemy_via_range && (
+            <div className={styles["no-abilities"]}>
+              <span className={styles["no-abilities-icon"]}>🛡️</span>
+              <span>This piece cannot attack</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
