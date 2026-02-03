@@ -459,10 +459,6 @@ app.get("/api/users/:userId/friends/online", async (req, res) => {
     res.status(500).send({ err: err.message });
   }
 });
-    console.error("Error in /api/users/:userId/friends/:friendId/status:", err);
-    res.status(500).send({ err: err.message });
-  }
-});
 
 // Get a specific completed game with full details (for viewing past games)
 app.get("/api/match/:gameId", async (req, res) => {
