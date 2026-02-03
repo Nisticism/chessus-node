@@ -444,6 +444,20 @@
   }
 }
 
+.btn-danger {
+  background: #cc4444;
+  color: #fff;
+
+  &:hover:not(:disabled) {
+    background: #aa3333;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 .btn-small {
   padding: 8px 14px;
   font-size: 0.85rem;

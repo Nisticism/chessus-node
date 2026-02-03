@@ -1025,6 +1025,28 @@ app.post("/api/admin/users/:userId/unban", authenticateToken, async (req, res) =
   }
 });
 
+// Delete bugged game (admin/owner only) - does not affect player ELO
+app.delete("/api/admin/games/:gameId", authenticateToken, async (req, res) => {
+  try {
+    const { gameId } = req.params;
+    const requesterRole = req.user.role;
+
+    if (requesterRole !== 'admin' && requesterRole !== 'owner') {
+      return res.status(403).send({ message: "Access denied. Admin or owner role required." });
+    }
+
+    // Delete game and associated data
+    await db_pool.query("DELETE FROM players WHERE game_id = ?", [gameId]);
+    await db_pool.query("DELETE FROM games WHERE id = ?", [gameId]);
+
+    console.log(`Admin ${req.user.id} deleted bugged game ${gameId}`);
+    res.json({ message: "Game deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting game:", err);
+    res.status(500).send({ message: "Failed to delete game", err: err.message });
+  }
+});
+
 // Promote user to admin (owner only)
 app.post("/api/admin/users/:userId/promote", authenticateToken, async (req, res) => {
   try {

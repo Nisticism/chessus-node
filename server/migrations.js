@@ -858,13 +858,28 @@ Join us in revolutionizing chess, one variant at a time.
         "Add owner role to users table"
       );
       migrationsRun++;
-      
-      // Set Nisticism as owner
-      await db_pool.query("UPDATE users SET role = 'owner' WHERE username = 'Nisticism'");
-      console.log('✓ Set Nisticism as owner');
     }
   } catch (err) {
     console.error('Error adding owner role:', err.message);
+  }
+
+  // Always ensure Nisticism is set as owner (separate from role ENUM migration)
+  try {
+    const [nisticismUser] = await db_pool.query(
+      "SELECT id, username, role FROM users WHERE username = 'Nisticism'"
+    );
+    
+    if (nisticismUser.length > 0 && nisticismUser[0].role !== 'owner') {
+      await db_pool.query("UPDATE users SET role = 'owner' WHERE username = 'Nisticism'");
+      console.log(`✓ Set Nisticism (ID: ${nisticismUser[0].id}) as owner`);
+      migrationsRun++;
+    } else if (nisticismUser.length > 0) {
+      console.log(`✓ Nisticism (ID: ${nisticismUser[0].id}) is already owner`);
+    } else {
+      console.log('ℹ User "Nisticism" not found - skipping owner promotion');
+    }
+  } catch (err) {
+    console.error('Error setting Nisticism as owner:', err.message);
   }
 
   // Expand randomized_starting_positions column from VARCHAR(1000) to TEXT

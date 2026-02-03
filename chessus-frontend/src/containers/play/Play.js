@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
 import { getGames } from "../../actions/games";
+import authHeader from "../../services/auth-header";
 import styles from "./play.module.scss";
 
 const Play = () => {
@@ -35,6 +36,7 @@ const Play = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState(null);
+  const [deletingGameId, setDeletingGameId] = useState(null);
 
   // Fetch game types on mount
   useEffect(() => {
@@ -157,6 +159,43 @@ const Play = () => {
       setIsJoining(false);
     }
   };
+
+  // Handle admin deleting a bugged game
+  const handleDeleteGame = async (gameId) => {
+    if (!window.confirm("Are you sure you want to delete this game? This action cannot be undone. Player ELO will not be affected.")) {
+      return;
+    }
+
+    setDeletingGameId(gameId);
+    setError(null);
+
+    try {
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_URL}/api/admin/games/${gameId}`, {
+        method: 'DELETE',
+        headers: {
+          ...authHeader(),
+          'Content-Type': 'application/json'
+        },
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to delete game');
+      }
+
+      // Refresh game lists
+      fetchOpenGames();
+      fetchOngoingGames();
+    } catch (err) {
+      setError(err.message || "Failed to delete game");
+    } finally {
+      setDeletingGameId(null);
+    }
+  };
+
+  // Check if user is admin or owner
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin' || currentUser?.role?.toLowerCase() === 'owner';
 
   // If not logged in, show login prompt
   if (!currentUser) {
@@ -285,6 +324,16 @@ const Play = () => {
                             {isJoining ? "Joining..." : "Join Game"}
                           </button>
                         )}
+                        {isAdmin && (
+                          <button
+                            className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
+                            onClick={() => handleDeleteGame(game.id || game.gameId)}
+                            disabled={deletingGameId === (game.id || game.gameId)}
+                            title="Delete bugged game (admin only)"
+                          >
+                            {deletingGameId === (game.id || game.gameId) ? "Deleting..." : "🗑️"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -331,6 +380,16 @@ const Play = () => {
                       >
                         {game.player_ids?.includes(currentUser?.id) ? 'Re-join' : 'Watch'}
                       </button>
+                      {isAdmin && (
+                        <button
+                          className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
+                          onClick={() => handleDeleteGame(game.id)}
+                          disabled={deletingGameId === game.id}
+                          title="Delete bugged game (admin only)"
+                        >
+                          {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
