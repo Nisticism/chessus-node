@@ -5,21 +5,28 @@ import styles from "./forums.module.scss";
 import StandardButton from "../../components/standardbutton/StandardButton";
 import { forums, deleteForum, firstForumsRender } from "../../actions/forums";
 import { formatDateLegacy } from "../../helpers/date-formatter";
+import Pagination from "../../components/pagination/Pagination";
+
 const Forums = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allForums = useSelector((state) => state.forums);
   const navigate = useNavigate();
   const firstRender = useSelector((state) => state.forums.first_forums_render);
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const dispatch = useDispatch();
 
   useEffect(() => {
+    dispatch(forums(currentPage, 20));
     if (!firstRender) {
-      // dispatch(users());
-      dispatch(forums());
       dispatch(firstForumsRender());
     }
-  }, [firstRender, dispatch]);
+  }, [currentPage, firstRender, dispatch]);
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
@@ -153,6 +160,15 @@ const Forums = () => {
     <h1>{searchTerm ? "No forums found matching your search" : "No Forums Found"}</h1>
       }
     </div>
+
+      {allForums.pagination && !searchTerm && (
+        <Pagination
+          currentPage={allForums.pagination.page}
+          totalPages={allForums.pagination.totalPages}
+          onPageChange={handlePageChange}
+        />
+      )}
+
       <div className="buttons">
         <StandardButton buttonText={"Create New Post"} onClick={createNewPost}/>
       </div>

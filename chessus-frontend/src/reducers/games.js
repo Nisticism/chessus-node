@@ -18,7 +18,8 @@ export default function gamesReducer(state = initialState, action) {
     case GET_GAMES_SUCCESS:
       return {
         ...state,
-        gamesList: payload,
+        gamesList: payload.games || payload,
+        pagination: payload.pagination || null,
         loading: false,
         error: null,
       };
@@ -27,6 +28,7 @@ export default function gamesReducer(state = initialState, action) {
       return {
         ...state,
         loading: false,
+        pagination: null,
         error: payload,
       };
 

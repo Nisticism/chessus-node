@@ -1,12 +1,12 @@
 import axios from "axios";
 import * as types from "./types";
-
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001/api";
+import API_URL from "../global/global";
+import authHeader from "../services/auth-header";
 
 // Get user's friends list
 export const getFriends = (userId) => async (dispatch) => {
   try {
-    const response = await axios.get(`${API_URL}/users/${userId}/friends`);
+    const response = await axios.get(`${API_URL}users/${userId}/friends`);
     dispatch({
       type: types.GET_FRIENDS_SUCCESS,
       payload: response.data,
@@ -22,16 +22,13 @@ export const getFriends = (userId) => async (dispatch) => {
 };
 
 // Add a friend
-export const addFriend = (userId, friendId) => async (dispatch, getState) => {
+export const addFriend = (userId, friendId) => async (dispatch) => {
   try {
-    const token = getState().authReducer.user?.token;
     const response = await axios.post(
-      `${API_URL}/users/${userId}/friends`,
+      `${API_URL}users/${userId}/friends`,
       { friendId },
       {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: authHeader(),
       }
     );
     dispatch({
@@ -49,13 +46,10 @@ export const addFriend = (userId, friendId) => async (dispatch, getState) => {
 };
 
 // Remove a friend
-export const removeFriend = (userId, friendId) => async (dispatch, getState) => {
+export const removeFriend = (userId, friendId) => async (dispatch) => {
   try {
-    const token = getState().authReducer.user?.token;
-    await axios.delete(`${API_URL}/users/${userId}/friends/${friendId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    await axios.delete(`${API_URL}users/${userId}/friends/${friendId}`, {
+      headers: authHeader(),
     });
     dispatch({
       type: types.REMOVE_FRIEND_SUCCESS,
@@ -74,7 +68,7 @@ export const removeFriend = (userId, friendId) => async (dispatch, getState) => 
 export const checkFriendshipStatus = (userId, friendId) => async (dispatch) => {
   try {
     const response = await axios.get(
-      `${API_URL}/users/${userId}/friends/${friendId}/status`
+      `${API_URL}users/${userId}/friends/${friendId}/status`
     );
     return response.data.areFriends;
   } catch (error) {
@@ -86,7 +80,7 @@ export const checkFriendshipStatus = (userId, friendId) => async (dispatch) => {
 // Get online friends
 export const getOnlineFriends = (userId) => async (dispatch) => {
   try {
-    const response = await axios.get(`${API_URL}/users/${userId}/friends/online`);
+    const response = await axios.get(`${API_URL}users/${userId}/friends/online`);
     dispatch({
       type: types.GET_ONLINE_FRIENDS_SUCCESS,
       payload: response.data,

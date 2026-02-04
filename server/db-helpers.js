@@ -137,39 +137,133 @@ const getAllPiecesWithMovement = async () => {
       u.username as creator_username,
       u.id as creator_user_id,
       gt.game_name as game_type_name,
-      -- Movement data from piece_movement table
-      pm.directional_movement_style,
-      pm.up_movement,
-      pm.down_movement,
-      pm.left_movement,
-      pm.right_movement,
-      pm.up_left_movement,
-      pm.up_right_movement,
-      pm.down_left_movement,
-      pm.down_right_movement,
-      pm.ratio_movement_style,
-      pm.ratio_one_movement,
-      pm.ratio_two_movement,
-      pm.step_by_step_movement_style,
-      pm.step_by_step_movement_value,
-      pm.can_hop_over_allies,
-      pm.can_hop_over_enemies,
-      -- Capture data from piece_capture table
-      pc.can_capture_enemy_on_move,
-      pc.up_capture,
-      pc.down_capture,
-      pc.left_capture,
-      pc.right_capture,
-      pc.up_left_capture,
-      pc.up_right_capture,
-      pc.down_left_capture,
-      pc.down_right_capture,
-      pc.ratio_one_capture,
-      pc.ratio_two_capture,
-      pc.step_by_step_capture
+      -- Movement data
+      p.directional_movement_style,
+      p.repeating_movement,
+      p.first_move_only,
+      p.max_directional_movement_iterations,
+      p.min_directional_movement_iterations,
+      p.up_movement,
+      p.down_movement,
+      p.left_movement,
+      p.right_movement,
+      p.up_left_movement,
+      p.up_right_movement,
+      p.down_left_movement,
+      p.down_right_movement,
+      -- Movement exact flags
+      p.up_left_movement_exact,
+      p.up_movement_exact,
+      p.up_right_movement_exact,
+      p.right_movement_exact,
+      p.down_right_movement_exact,
+      p.down_movement_exact,
+      p.down_left_movement_exact,
+      p.left_movement_exact,
+      -- Movement available_for flags
+      p.up_left_movement_available_for,
+      p.up_movement_available_for,
+      p.up_right_movement_available_for,
+      p.right_movement_available_for,
+      p.down_right_movement_available_for,
+      p.down_movement_available_for,
+      p.down_left_movement_available_for,
+      p.left_movement_available_for,
+      p.ratio_movement_style,
+      p.ratio_one_movement,
+      p.ratio_two_movement,
+      p.repeating_ratio,
+      p.max_ratio_iterations,
+      p.min_ratio_iterations,
+      p.step_by_step_movement_style,
+      p.step_by_step_movement_value,
+      p.can_hop_over_allies,
+      p.can_hop_over_enemies,
+      p.min_turns_per_move,
+      p.max_turns_per_move,
+      p.available_for_moves,
+      p.special_scenario_moves,
+      -- Capture data
+      p.can_capture_enemy_via_range,
+      p.can_capture_ally_via_range,
+      p.can_capture_enemy_on_move,
+      p.can_capture_ally_on_range,
+      p.can_attack_on_iteration,
+      p.first_move_only_capture,
+      p.available_for_captures,
+      p.up_capture,
+      p.down_capture,
+      p.left_capture,
+      p.right_capture,
+      p.up_left_capture,
+      p.up_right_capture,
+      p.down_left_capture,
+      p.down_right_capture,
+      -- Capture exact flags
+      p.up_left_capture_exact,
+      p.up_capture_exact,
+      p.up_right_capture_exact,
+      p.right_capture_exact,
+      p.down_right_capture_exact,
+      p.down_capture_exact,
+      p.down_left_capture_exact,
+      p.left_capture_exact,
+      -- Capture available_for flags
+      p.up_left_capture_available_for,
+      p.up_capture_available_for,
+      p.up_right_capture_available_for,
+      p.right_capture_available_for,
+      p.down_right_capture_available_for,
+      p.down_capture_available_for,
+      p.down_left_capture_available_for,
+      p.left_capture_available_for,
+      p.ratio_one_capture,
+      p.ratio_two_capture,
+      p.step_by_step_capture,
+      -- Attack range values
+      p.up_left_attack_range,
+      p.up_attack_range,
+      p.up_right_attack_range,
+      p.right_attack_range,
+      p.down_right_attack_range,
+      p.down_attack_range,
+      p.down_left_attack_range,
+      p.left_attack_range,
+      -- Attack range exact flags
+      p.up_left_attack_range_exact,
+      p.up_attack_range_exact,
+      p.up_right_attack_range_exact,
+      p.right_attack_range_exact,
+      p.down_right_attack_range_exact,
+      p.down_attack_range_exact,
+      p.down_left_attack_range_exact,
+      p.left_attack_range_exact,
+      -- Attack range available_for flags
+      p.up_left_attack_range_available_for,
+      p.up_attack_range_available_for,
+      p.up_right_attack_range_available_for,
+      p.right_attack_range_available_for,
+      p.down_right_attack_range_available_for,
+      p.down_attack_range_available_for,
+      p.down_left_attack_range_available_for,
+      p.left_attack_range_available_for,
+      p.repeating_directional_ranged_attack,
+      p.max_directional_ranged_attack_iterations,
+      p.min_directional_ranged_attack_iterations,
+      p.ratio_one_attack_range,
+      p.ratio_two_attack_range,
+      p.repeating_ratio_ranged_attack,
+      p.max_ratio_ranged_attack_iterations,
+      p.min_ratio_ranged_attack_iterations,
+      p.step_by_step_attack_style,
+      p.step_by_step_attack_value,
+      p.max_piece_captures_per_move,
+      p.max_piece_captures_per_ranged_attack,
+      p.special_scenario_captures,
+      p.has_checkmate_rule,
+      p.has_check_rule,
+      p.has_lose_on_capture_rule
     FROM chessusnode.pieces p
-    LEFT JOIN chessusnode.piece_movement pm ON p.id = pm.piece_id
-    LEFT JOIN chessusnode.piece_capture pc ON p.id = pc.piece_id
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id
     ORDER BY p.id DESC
@@ -198,79 +292,133 @@ const getPieceById = async (pieceId) => {
       u.username as creator_username, 
       u.id as creator_user_id, 
       gt.game_name as game_type_name,
-      -- Movement data from piece_movement table
-      pm.directional_movement_style,
-      pm.repeating_movement,
-      pm.first_move_only,
-      pm.max_directional_movement_iterations,
-      pm.min_directional_movement_iterations,
-      pm.up_movement,
-      pm.down_movement,
-      pm.left_movement,
-      pm.right_movement,
-      pm.up_left_movement,
-      pm.up_right_movement,
-      pm.down_left_movement,
-      pm.down_right_movement,
-      pm.ratio_movement_style,
-      pm.ratio_one_movement,
-      pm.ratio_two_movement,
-      pm.repeating_ratio,
-      pm.max_ratio_iterations,
-      pm.min_ratio_iterations,
-      pm.step_by_step_movement_style,
-      pm.step_by_step_movement_value,
-      pm.can_hop_over_allies,
-      pm.can_hop_over_enemies,
-      pm.min_turns_per_move,
-      pm.max_turns_per_move,
-      pm.available_for_moves,
-      pm.special_scenario_moves,
-      -- Capture data from piece_capture table
-      pc.can_capture_enemy_via_range,
-      pc.can_capture_ally_via_range,
-      pc.can_capture_enemy_on_move,
-      pc.can_capture_ally_on_range,
-      pc.can_attack_on_iteration,
-      pc.first_move_only_capture,
-      pc.up_capture,
-      pc.down_capture,
-      pc.left_capture,
-      pc.right_capture,
-      pc.up_left_capture,
-      pc.up_right_capture,
-      pc.down_left_capture,
-      pc.down_right_capture,
-      pc.ratio_one_capture,
-      pc.ratio_two_capture,
-      pc.step_by_step_capture,
-      pc.up_left_attack_range,
-      pc.up_attack_range,
-      pc.up_right_attack_range,
-      pc.right_attack_range,
-      pc.down_right_attack_range,
-      pc.down_attack_range,
-      pc.down_left_attack_range,
-      pc.left_attack_range,
-      pc.repeating_directional_ranged_attack,
-      pc.max_directional_ranged_attack_iterations,
-      pc.min_directional_ranged_attack_iterations,
-      pc.ratio_one_attack_range,
-      pc.ratio_two_attack_range,
-      pc.repeating_ratio_ranged_attack,
-      pc.max_ratio_ranged_attack_iterations,
-      pc.min_ratio_ranged_attack_iterations,
-      pc.step_by_step_attack_style,
-      pc.step_by_step_attack_value,
-      pc.max_piece_captures_per_move,
-      pc.max_piece_captures_per_ranged_attack,
-      pc.special_scenario_captures,
+      -- Movement data
+      p.directional_movement_style,
+      p.repeating_movement,
+      p.first_move_only,
+      p.max_directional_movement_iterations,
+      p.min_directional_movement_iterations,
+      p.up_movement,
+      p.down_movement,
+      p.left_movement,
+      p.right_movement,
+      p.up_left_movement,
+      p.up_right_movement,
+      p.down_left_movement,
+      p.down_right_movement,
+      -- Movement exact flags
+      p.up_left_movement_exact,
+      p.up_movement_exact,
+      p.up_right_movement_exact,
+      p.right_movement_exact,
+      p.down_right_movement_exact,
+      p.down_movement_exact,
+      p.down_left_movement_exact,
+      p.left_movement_exact,
+      -- Movement available_for flags
+      p.up_left_movement_available_for,
+      p.up_movement_available_for,
+      p.up_right_movement_available_for,
+      p.right_movement_available_for,
+      p.down_right_movement_available_for,
+      p.down_movement_available_for,
+      p.down_left_movement_available_for,
+      p.left_movement_available_for,
+      p.ratio_movement_style,
+      p.ratio_one_movement,
+      p.ratio_two_movement,
+      p.repeating_ratio,
+      p.max_ratio_iterations,
+      p.min_ratio_iterations,
+      p.step_by_step_movement_style,
+      p.step_by_step_movement_value,
+      p.can_hop_over_allies,
+      p.can_hop_over_enemies,
+      p.min_turns_per_move,
+      p.max_turns_per_move,
+      p.available_for_moves,
+      p.special_scenario_moves,
+      -- Capture data
+      p.can_capture_enemy_via_range,
+      p.can_capture_ally_via_range,
+      p.can_capture_enemy_on_move,
+      p.can_capture_ally_on_range,
+      p.can_attack_on_iteration,
+      p.first_move_only_capture,
+      p.available_for_captures,
+      p.up_capture,
+      p.down_capture,
+      p.left_capture,
+      p.right_capture,
+      p.up_left_capture,
+      p.up_right_capture,
+      p.down_left_capture,
+      p.down_right_capture,
+      -- Capture exact flags
+      p.up_left_capture_exact,
+      p.up_capture_exact,
+      p.up_right_capture_exact,
+      p.right_capture_exact,
+      p.down_right_capture_exact,
+      p.down_capture_exact,
+      p.down_left_capture_exact,
+      p.left_capture_exact,
+      -- Capture available_for flags
+      p.up_left_capture_available_for,
+      p.up_capture_available_for,
+      p.up_right_capture_available_for,
+      p.right_capture_available_for,
+      p.down_right_capture_available_for,
+      p.down_capture_available_for,
+      p.down_left_capture_available_for,
+      p.left_capture_available_for,
+      p.ratio_one_capture,
+      p.ratio_two_capture,
+      p.step_by_step_capture,
+      -- Attack range values
+      p.up_left_attack_range,
+      p.up_attack_range,
+      p.up_right_attack_range,
+      p.right_attack_range,
+      p.down_right_attack_range,
+      p.down_attack_range,
+      p.down_left_attack_range,
+      p.left_attack_range,
+      -- Attack range exact flags
+      p.up_left_attack_range_exact,
+      p.up_attack_range_exact,
+      p.up_right_attack_range_exact,
+      p.right_attack_range_exact,
+      p.down_right_attack_range_exact,
+      p.down_attack_range_exact,
+      p.down_left_attack_range_exact,
+      p.left_attack_range_exact,
+      -- Attack range available_for flags
+      p.up_left_attack_range_available_for,
+      p.up_attack_range_available_for,
+      p.up_right_attack_range_available_for,
+      p.right_attack_range_available_for,
+      p.down_right_attack_range_available_for,
+      p.down_attack_range_available_for,
+      p.down_left_attack_range_available_for,
+      p.left_attack_range_available_for,
+      p.repeating_directional_ranged_attack,
+      p.max_directional_ranged_attack_iterations,
+      p.min_directional_ranged_attack_iterations,
+      p.ratio_one_attack_range,
+      p.ratio_two_attack_range,
+      p.repeating_ratio_ranged_attack,
+      p.max_ratio_ranged_attack_iterations,
+      p.min_ratio_ranged_attack_iterations,
+      p.step_by_step_attack_style,
+      p.step_by_step_attack_value,
+      p.max_piece_captures_per_move,
+      p.max_piece_captures_per_ranged_attack,
+      p.special_scenario_captures,
       p.has_checkmate_rule,
       p.has_check_rule,
       p.has_lose_on_capture_rule
     FROM chessusnode.pieces p
-    LEFT JOIN chessusnode.piece_movement pm ON p.id = pm.piece_id
-    LEFT JOIN chessusnode.piece_capture pc ON p.id = pc.piece_id
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id
     WHERE p.id = ?
@@ -304,6 +452,70 @@ const getGameById = async (gameId) => {
     WHERE gt.id = ?
   `, [gameId]);
   return result.length > 0 ? result[0] : null;
+};
+
+/**
+ * Get all game types that use a specific piece
+ * @param {number} pieceId - Piece ID
+ * @returns {Promise<Array>} Array of game type objects
+ */
+const getGameTypesByPieceId = async (pieceId) => {
+  const result = await query(`
+    SELECT DISTINCT gt.*, u.username as creator_username, u.id as creator_user_id
+    FROM chessusnode.game_types gt
+    LEFT JOIN chessusnode.users u ON gt.creator_id = u.id
+    INNER JOIN chessusnode.game_type_pieces gtp ON gt.id = gtp.game_type_id
+    WHERE gtp.piece_id = ?
+    ORDER BY gt.id DESC
+  `, [pieceId]);
+  return result;
+};
+
+/**
+ * Get pieces for a game type from junction table
+ * @param {number} gameTypeId - Game type ID
+ * @returns {Promise<Array>} Array of piece objects with positions
+ */
+const getPiecesForGameType = async (gameTypeId) => {
+  const result = await query(`
+    SELECT gtp.*, p.*,
+      gtp.x, gtp.y, gtp.player_number,
+      gtp.id as junction_id
+    FROM chessusnode.game_type_pieces gtp
+    INNER JOIN chessusnode.pieces p ON gtp.piece_id = p.id
+    WHERE gtp.game_type_id = ?
+    ORDER BY gtp.player_number, gtp.y, gtp.x
+  `, [gameTypeId]);
+  return result;
+};
+
+/**
+ * Add piece to game type
+ * @param {number} gameTypeId - Game type ID
+ * @param {number} pieceId - Piece ID
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @param {number} playerNumber - Player number (default 1)
+ * @returns {Promise<Object>} Insert result
+ */
+const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1) => {
+  const result = await query(`
+    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number)
+    VALUES (?, ?, ?, ?, ?)
+  `, [gameTypeId, pieceId, x, y, playerNumber]);
+  return result;
+};
+
+/**
+ * Remove all pieces from a game type
+ * @param {number} gameTypeId - Game type ID
+ * @returns {Promise<Object>} Delete result
+ */
+const removeAllPiecesFromGameType = async (gameTypeId) => {
+  const result = await query(`
+    DELETE FROM chessusnode.game_type_pieces WHERE game_type_id = ?
+  `, [gameTypeId]);
+  return result;
 };
 
 /**
@@ -498,6 +710,10 @@ module.exports = {
   getPieceById,
   getAllGames,
   getGameById,
+  getGameTypesByPieceId,
+  getPiecesForGameType,
+  addPieceToGameType,
+  removeAllPiecesFromGameType,
   findArticleById,
   getAllArticles,
   createForum,

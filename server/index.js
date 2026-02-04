@@ -205,8 +205,28 @@ app.get("/api/user", async (params, res) => {
 
 app.get("/api/users", async (req, res) => {
   try {
-    const users = await dbHelpers.getAllUsers();
-    res.json(users);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    // Get total count
+    const [countResult] = await db_pool.query("SELECT COUNT(*) as total FROM users");
+    const total = countResult[0].total;
+    
+    // Get paginated users
+    const [users] = await db_pool.query(
+      `SELECT id, username, email, first_name, last_name, role, profile_picture, elo FROM users ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
+    );
+    
+    res.json({
+      users,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (err) {
     console.error("Error in /api/users:", err);
     res.status(500).send({ err: err.message });
@@ -360,7 +380,7 @@ app.post("/api/users/:userId/friends", authenticateToken, async (req, res) => {
     const { friendId } = req.body;
     
     // Verify the requesting user is the same as userId
-    if (req.user.userId !== parseInt(userId)) {
+    if (req.user.id !== parseInt(userId)) {
       return res.status(403).json({ error: "Not authorized" });
     }
     
@@ -399,7 +419,7 @@ app.delete("/api/users/:userId/friends/:friendId", authenticateToken, async (req
     const { userId, friendId } = req.params;
     
     // Verify the requesting user is the same as userId
-    if (req.user.userId !== parseInt(userId)) {
+    if (req.user.id !== parseInt(userId)) {
       return res.status(403).json({ error: "Not authorized" });
     }
     
@@ -542,8 +562,28 @@ app.get("/api/match/:gameId", async (req, res) => {
 
 app.get("/api/pieces", async (req, res) => {
   try {
-    const pieces = await dbHelpers.getAllPieces();
-    res.json(pieces);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    // Get total count
+    const [countResult] = await db_pool.query("SELECT COUNT(*) as total FROM pieces");
+    const total = countResult[0].total;
+    
+    // Get paginated pieces
+    const [pieces] = await db_pool.query(
+      `SELECT * FROM pieces ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
+    );
+    
+    res.json({
+      pieces,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (err) {
     console.error("Error in /api/pieces:", err);
     res.status(500).send({ err: err.message });
@@ -576,10 +616,42 @@ app.get("/api/pieces/:pieceId", async (req, res) => {
   }
 });
 
+// Get all game types that use a specific piece
+app.get("/api/pieces/:pieceId/games", async (req, res) => {
+  try {
+    const { pieceId } = req.params;
+    const games = await dbHelpers.getGameTypesByPieceId(pieceId);
+    res.json(games);
+  } catch (err) {
+    console.error("Error in /api/pieces/:pieceId/games:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
 app.get("/api/games", async (req, res) => {
   try {
-    const games = await dbHelpers.getAllGames();
-    res.json(games);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    // Get total count
+    const [countResult] = await db_pool.query("SELECT COUNT(*) as total FROM game_types");
+    const total = countResult[0].total;
+    
+    // Get paginated games
+    const [games] = await db_pool.query(
+      `SELECT * FROM game_types ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
+    );
+    
+    res.json({
+      games,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (err) {
     console.error("Error in /api/games:", err);
     res.status(500).send({ err: err.message });
@@ -653,7 +725,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         value_condition = ?, value_piece = ?, value_max = ?, value_title = ?,
         squares_condition = ?, squares_count = ?, hill_condition = ?, hill_x = ?, hill_y = ?, hill_turns = ?,
         actions_per_turn = ?, board_width = ?, board_height = ?, player_count = ?,
-        starting_piece_count = ?, pieces_string = ?, range_squares_string = ?,
+        starting_piece_count = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?,
         randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?
       WHERE id = ?
@@ -682,7 +754,6 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.board_height || 8,
       gameData.player_count || 2,
       gameData.starting_piece_count || 0,
-      gameData.pieces_string || "[]",
       gameData.range_squares_string || null,
       gameData.promotion_squares_string || null,
       gameData.special_squares_string || null,
@@ -694,6 +765,48 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     ];
     
     await db_pool.query(sql, values);
+
+    // Update pieces in junction table if provided
+    if (gameData.pieces_string) {
+      try {
+        // Remove existing pieces
+        await dbHelpers.removeAllPiecesFromGameType(gameId);
+
+        // Parse and insert new pieces
+        const piecesData = JSON.parse(gameData.pieces_string);
+        let piecesToInsert = [];
+
+        // Handle both array and object formats
+        if (Array.isArray(piecesData)) {
+          piecesToInsert = piecesData;
+        } else if (typeof piecesData === 'object') {
+          // Convert object format {"row,col": {...}} to array
+          piecesToInsert = Object.entries(piecesData).map(([key, piece]) => {
+            const [row, col] = key.split(',').map(Number);
+            return {
+              ...piece,
+              x: col || piece.x || 0,
+              y: row || piece.y || 0
+            };
+          });
+        }
+
+        // Insert each piece
+        for (const piece of piecesToInsert) {
+          if (piece.piece_id) {
+            await dbHelpers.addPieceToGameType(
+              gameId,
+              piece.piece_id,
+              piece.x || 0,
+              piece.y || 0,
+              piece.player_number || piece.player || 1
+            );
+          }
+        }
+      } catch (parseError) {
+        console.error('Error parsing pieces_string:', parseError);
+      }
+    }
     
     res.json({ 
       message: "Game updated successfully",
@@ -1384,7 +1497,28 @@ app.post("/api/forums/new", async (req, res) => {
 
 app.get("/api/forums", async (req, res) => {
   try {
-    const articles = await dbHelpers.getAllArticles();
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    const gameTypeId = req.query.gameTypeId;
+    
+    // Build query with optional gameTypeId filter
+    let countQuery = "SELECT COUNT(*) as total FROM articles";
+    let articlesQuery = "SELECT * FROM articles";
+    
+    if (gameTypeId) {
+      countQuery += ` WHERE game_type_id = ${db_pool.escape(gameTypeId)}`;
+      articlesQuery += ` WHERE game_type_id = ${db_pool.escape(gameTypeId)}`;
+    }
+    
+    articlesQuery += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    
+    // Get total count
+    const [countResult] = await db_pool.query(countQuery);
+    const total = countResult[0].total;
+    
+    // Get paginated articles
+    const [articles] = await db_pool.query(articlesQuery);
     
     // Enrich each forum with author name, comment count, likes, and game name
     const forums = await Promise.all(articles.map(async (forum) => {
@@ -1415,7 +1549,15 @@ app.get("/api/forums", async (req, res) => {
     }));
     
     console.log("in get all forums route. Forums: " + forums.length);
-    res.json(forums);
+    res.json({
+      forums,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (err) {
     console.error("Error in /api/forums:", err);
     res.status(500).send({ err: err.message });
@@ -1857,10 +1999,10 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         value_condition, value_piece, value_max, value_title,
         squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
         actions_per_turn, board_width, board_height, player_count,
-        starting_piece_count, pieces_string, range_squares_string,
+        starting_piece_count, range_squares_string,
         promotion_squares_string, special_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -1887,7 +2029,6 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.board_height || 8,
       gameData.player_count || 2,
       gameData.starting_piece_count || 0,
-      gameData.pieces_string || "[]",
       gameData.range_squares_string || null,
       gameData.promotion_squares_string || null,
       gameData.special_squares_string || null,
@@ -1900,6 +2041,44 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     const [result] = await db_pool.query(sql, values);
     
     const gameId = result.insertId;
+
+    // Insert pieces into junction table if provided
+    if (gameData.pieces_string) {
+      try {
+        const piecesData = JSON.parse(gameData.pieces_string);
+        let piecesToInsert = [];
+
+        // Handle both array and object formats
+        if (Array.isArray(piecesData)) {
+          piecesToInsert = piecesData;
+        } else if (typeof piecesData === 'object') {
+          // Convert object format {"row,col": {...}} to array
+          piecesToInsert = Object.entries(piecesData).map(([key, piece]) => {
+            const [row, col] = key.split(',').map(Number);
+            return {
+              ...piece,
+              x: col || piece.x || 0,
+              y: row || piece.y || 0
+            };
+          });
+        }
+
+        // Insert each piece
+        for (const piece of piecesToInsert) {
+          if (piece.piece_id) {
+            await dbHelpers.addPieceToGameType(
+              gameId,
+              piece.piece_id,
+              piece.x || 0,
+              piece.y || 0,
+              piece.player_number || piece.player || 1
+            );
+          }
+        }
+      } catch (parseError) {
+        console.error('Error parsing pieces_string:', parseError);
+      }
+    }
     
     // Automatically create a forum for this game
     const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -1950,12 +2129,42 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
 
     const imagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
     const imagesJSON = JSON.stringify(imagePaths);
+    const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
 
-    // Insert into pieces table (basic info only)
+    // Insert into consolidated pieces table (all fields in one table now)
     const pieceSql = `
       INSERT INTO pieces (
-        piece_name, image_location, piece_width, piece_height, creator_id, piece_description, can_promote
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        piece_name, image_location, piece_width, piece_height, creator_id, piece_description,
+        piece_category, has_checkmate_rule, has_check_rule, has_lose_on_capture_rule, can_castle, can_promote,
+        directional_movement_style, repeating_movement, max_directional_movement_iterations, min_directional_movement_iterations,
+        up_left_movement, up_movement, up_right_movement, right_movement, down_right_movement, down_movement, down_left_movement, left_movement,
+        up_left_movement_exact, up_movement_exact, up_right_movement_exact, right_movement_exact, 
+        down_right_movement_exact, down_movement_exact, down_left_movement_exact, left_movement_exact,
+        up_left_movement_available_for, up_movement_available_for, up_right_movement_available_for, right_movement_available_for,
+        down_right_movement_available_for, down_movement_available_for, down_left_movement_available_for, left_movement_available_for,
+        ratio_movement_style, ratio_one_movement, ratio_two_movement, repeating_ratio, max_ratio_iterations, min_ratio_iterations,
+        step_by_step_movement_style, step_by_step_movement_value,
+        can_hop_over_allies, can_hop_over_enemies, min_turns_per_move, max_turns_per_move,
+        first_move_only, available_for_moves, special_scenario_moves,
+        can_capture_enemy_via_range, can_capture_ally_via_range, can_capture_enemy_on_move, can_capture_ally_on_range, can_attack_on_iteration,
+        first_move_only_capture, available_for_captures,
+        up_left_capture, up_capture, up_right_capture, right_capture, down_right_capture, down_capture, down_left_capture, left_capture,
+        up_left_capture_exact, up_capture_exact, up_right_capture_exact, right_capture_exact,
+        down_right_capture_exact, down_capture_exact, down_left_capture_exact, left_capture_exact,
+        up_left_capture_available_for, up_capture_available_for, up_right_capture_available_for, right_capture_available_for,
+        down_right_capture_available_for, down_capture_available_for, down_left_capture_available_for, left_capture_available_for,
+        ratio_one_capture, ratio_two_capture, step_by_step_capture,
+        up_left_attack_range, up_attack_range, up_right_attack_range, right_attack_range, down_right_attack_range, down_attack_range, down_left_attack_range, left_attack_range,
+        up_left_attack_range_exact, up_attack_range_exact, up_right_attack_range_exact, right_attack_range_exact,
+        down_right_attack_range_exact, down_attack_range_exact, down_left_attack_range_exact, left_attack_range_exact,
+        up_left_attack_range_available_for, up_attack_range_available_for, up_right_attack_range_available_for, right_attack_range_available_for,
+        down_right_attack_range_available_for, down_attack_range_available_for, down_left_attack_range_available_for, left_attack_range_available_for,
+        repeating_directional_ranged_attack, max_directional_ranged_attack_iterations, min_directional_ranged_attack_iterations,
+        ratio_one_attack_range, ratio_two_attack_range, repeating_ratio_ranged_attack, max_ratio_ranged_attack_iterations, min_ratio_ranged_attack_iterations,
+        step_by_step_attack_style, step_by_step_attack_value,
+        max_piece_captures_per_move, max_piece_captures_per_ranged_attack,
+        special_scenario_captures
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceValues = [
@@ -1965,41 +2174,16 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.piece_height) || 1,
       parseInt(pieceData.creator_id) || null,
       pieceData.piece_description || null,
-      pieceData.can_promote === 'true'
-    ];
-
-    const [result] = await db_pool.query(pieceSql, pieceValues);
-    const pieceId = result.insertId;
-
-    // Insert into piece_movement table
-    const movementSql = `
-      INSERT INTO piece_movement (
-        piece_id,
-        directional_movement_style,
-        repeating_movement,
-        first_move_only,
-        max_directional_movement_iterations,
-        min_directional_movement_iterations,
-        up_left_movement, up_movement, up_right_movement,
-        right_movement, down_right_movement, down_movement, down_left_movement, left_movement,
-        ratio_movement_style, ratio_one_movement, ratio_two_movement,
-        repeating_ratio,
-        max_ratio_iterations,
-        min_ratio_iterations,
-        step_by_step_movement_style, step_by_step_movement_value,
-        can_hop_over_allies, can_hop_over_enemies,
-        min_turns_per_move,
-        max_turns_per_move,
-        available_for_moves,
-        special_scenario_moves
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const movementValues = [
-      pieceId,
+      // Piece metadata
+      pieceData.piece_category || null,
+      pieceData.has_checkmate_rule === 'true',
+      pieceData.has_check_rule === 'true',
+      pieceData.has_lose_on_capture_rule === 'true',
+      pieceData.can_castle === 'true',
+      pieceData.can_promote === 'true',
+      // Movement fields
       pieceData.directional_movement_style === 'true',
       pieceData.repeating_movement === 'true',
-      pieceData.first_move_only === 'true' || pieceData.first_move_only === true,
       parseInt(pieceData.max_directional_movement_iterations) || null,
       parseInt(pieceData.min_directional_movement_iterations) || null,
       parseInt(pieceData.up_left_movement) || 0,
@@ -2010,6 +2194,24 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.down_movement) || 0,
       parseInt(pieceData.down_left_movement) || 0,
       parseInt(pieceData.left_movement) || 0,
+      // Movement exact flags
+      pieceData.up_left_movement_exact === 'true' || pieceData.up_left_movement_exact === true,
+      pieceData.up_movement_exact === 'true' || pieceData.up_movement_exact === true,
+      pieceData.up_right_movement_exact === 'true' || pieceData.up_right_movement_exact === true,
+      pieceData.right_movement_exact === 'true' || pieceData.right_movement_exact === true,
+      pieceData.down_right_movement_exact === 'true' || pieceData.down_right_movement_exact === true,
+      pieceData.down_movement_exact === 'true' || pieceData.down_movement_exact === true,
+      pieceData.down_left_movement_exact === 'true' || pieceData.down_left_movement_exact === true,
+      pieceData.left_movement_exact === 'true' || pieceData.left_movement_exact === true,
+      // Movement available_for flags
+      parseInt(pieceData.up_left_movement_available_for) || null,
+      parseInt(pieceData.up_movement_available_for) || null,
+      parseInt(pieceData.up_right_movement_available_for) || null,
+      parseInt(pieceData.right_movement_available_for) || null,
+      parseInt(pieceData.down_right_movement_available_for) || null,
+      parseInt(pieceData.down_movement_available_for) || null,
+      parseInt(pieceData.down_left_movement_available_for) || null,
+      parseInt(pieceData.left_movement_available_for) || null,
       pieceData.ratio_movement_style === 'true',
       parseInt(pieceData.ratio_one_movement) || null,
       parseInt(pieceData.ratio_two_movement) || null,
@@ -2022,55 +2224,22 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       pieceData.can_hop_over_enemies === 'true',
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
-      pieceData.available_for_moves !== false && pieceData.available_for_moves !== 'false' ? 1 : 0,
-      // Ensure special_scenario_moves is always a string, not an array
+      // Movement special scenario fields
+      pieceData.first_move_only === 'true',
+      parseInt(pieceData.available_for_moves) || null,
       Array.isArray(pieceData.special_scenario_moves) 
         ? (pieceData.special_scenario_moves.find(s => s && s.length > 0) || null)
-        : (pieceData.special_scenario_moves || null)
-    ];
-
-    await db_pool.query(movementSql, movementValues);
-
-    // Insert into piece_capture table
-    const captureSql = `
-      INSERT INTO piece_capture (
-        piece_id,
-        can_capture_enemy_via_range,
-        can_capture_ally_via_range,
-        can_capture_enemy_on_move,
-        can_capture_ally_on_range,
-        can_attack_on_iteration,
-        first_move_only_capture,
-        up_left_capture, up_capture, up_right_capture,
-        right_capture, down_right_capture, down_capture, down_left_capture, left_capture,
-        ratio_one_capture, ratio_two_capture, step_by_step_capture,
-        up_left_attack_range, up_attack_range, up_right_attack_range,
-        right_attack_range, down_right_attack_range, down_attack_range, down_left_attack_range, left_attack_range,
-        repeating_directional_ranged_attack,
-        max_directional_ranged_attack_iterations,
-        min_directional_ranged_attack_iterations,
-        ratio_one_attack_range, ratio_two_attack_range,
-        repeating_ratio_ranged_attack,
-        max_ratio_ranged_attack_iterations,
-        min_ratio_ranged_attack_iterations,
-        step_by_step_attack_style,
-        step_by_step_attack_value,
-        max_piece_captures_per_move,
-        max_piece_captures_per_ranged_attack,
-        special_scenario_captures
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
-    
-    const captureValues = [
-      pieceId,
+        : (pieceData.special_scenario_moves || null),
+      // Capture fields
       hasRangedAttack,
       pieceData.can_capture_ally_via_range === 'true',
       pieceData.can_capture_enemy_on_move === 'true',
       pieceData.can_capture_ally_on_range === 'true',
       pieceData.can_attack_on_iteration === 'true',
-      pieceData.first_move_only_capture === 'true' || pieceData.first_move_only_capture === true,
+      // Capture special scenario fields
+      pieceData.first_move_only_capture === 'true',
+      parseInt(pieceData.available_for_captures) || null,
+      // Capture directional values
       parseInt(pieceData.up_left_capture) || 0,
       parseInt(pieceData.up_capture) || 0,
       parseInt(pieceData.up_right_capture) || 0,
@@ -2079,9 +2248,28 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.down_capture) || 0,
       parseInt(pieceData.down_left_capture) || 0,
       parseInt(pieceData.left_capture) || 0,
+      // Capture exact flags
+      pieceData.up_left_capture_exact === 'true' || pieceData.up_left_capture_exact === true,
+      pieceData.up_capture_exact === 'true' || pieceData.up_capture_exact === true,
+      pieceData.up_right_capture_exact === 'true' || pieceData.up_right_capture_exact === true,
+      pieceData.right_capture_exact === 'true' || pieceData.right_capture_exact === true,
+      pieceData.down_right_capture_exact === 'true' || pieceData.down_right_capture_exact === true,
+      pieceData.down_capture_exact === 'true' || pieceData.down_capture_exact === true,
+      pieceData.down_left_capture_exact === 'true' || pieceData.down_left_capture_exact === true,
+      pieceData.left_capture_exact === 'true' || pieceData.left_capture_exact === true,
+      // Capture available_for flags
+      parseInt(pieceData.up_left_capture_available_for) || null,
+      parseInt(pieceData.up_capture_available_for) || null,
+      parseInt(pieceData.up_right_capture_available_for) || null,
+      parseInt(pieceData.right_capture_available_for) || null,
+      parseInt(pieceData.down_right_capture_available_for) || null,
+      parseInt(pieceData.down_capture_available_for) || null,
+      parseInt(pieceData.down_left_capture_available_for) || null,
+      parseInt(pieceData.left_capture_available_for) || null,
       parseInt(pieceData.ratio_one_capture) || null,
       parseInt(pieceData.ratio_two_capture) || null,
       parseInt(pieceData.step_by_step_capture) || null,
+      // Attack range values
       parseInt(pieceData.up_left_attack_range) || 0,
       parseInt(pieceData.up_attack_range) || 0,
       parseInt(pieceData.up_right_attack_range) || 0,
@@ -2090,6 +2278,24 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.down_attack_range) || 0,
       parseInt(pieceData.down_left_attack_range) || 0,
       parseInt(pieceData.left_attack_range) || 0,
+      // Attack range exact flags
+      pieceData.up_left_attack_range_exact === 'true' || pieceData.up_left_attack_range_exact === true,
+      pieceData.up_attack_range_exact === 'true' || pieceData.up_attack_range_exact === true,
+      pieceData.up_right_attack_range_exact === 'true' || pieceData.up_right_attack_range_exact === true,
+      pieceData.right_attack_range_exact === 'true' || pieceData.right_attack_range_exact === true,
+      pieceData.down_right_attack_range_exact === 'true' || pieceData.down_right_attack_range_exact === true,
+      pieceData.down_attack_range_exact === 'true' || pieceData.down_attack_range_exact === true,
+      pieceData.down_left_attack_range_exact === 'true' || pieceData.down_left_attack_range_exact === true,
+      pieceData.left_attack_range_exact === 'true' || pieceData.left_attack_range_exact === true,
+      // Attack range available_for flags
+      parseInt(pieceData.up_left_attack_range_available_for) || null,
+      parseInt(pieceData.up_attack_range_available_for) || null,
+      parseInt(pieceData.up_right_attack_range_available_for) || null,
+      parseInt(pieceData.right_attack_range_available_for) || null,
+      parseInt(pieceData.down_right_attack_range_available_for) || null,
+      parseInt(pieceData.down_attack_range_available_for) || null,
+      parseInt(pieceData.down_left_attack_range_available_for) || null,
+      parseInt(pieceData.left_attack_range_available_for) || null,
       pieceData.repeating_directional_ranged_attack === 'true',
       parseInt(pieceData.max_directional_ranged_attack_iterations) || null,
       parseInt(pieceData.min_directional_ranged_attack_iterations) || null,
@@ -2100,12 +2306,13 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.min_ratio_ranged_attack_iterations) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
-      parseInt(pieceData.max_captures_per_move) || null,
-      hasRangedAttack ? (parseInt(pieceData.max_captures_via_ranged_attack) || null) : null,
-      pieceData.special_scenario_capture || null
+      parseInt(pieceData.max_piece_captures_per_move) || 1,
+      hasRangedAttack ? (parseInt(pieceData.max_piece_captures_per_ranged_attack) || 1) : null,
+      pieceData.special_scenario_captures || null
     ];
 
-    await db_pool.query(captureSql, captureValues);
+    const [result] = await db_pool.query(pieceSql, pieceValues);
+    const pieceId = result.insertId;
 
     res.status(201).send({
       message: "Piece created successfully!",
@@ -2185,7 +2392,9 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
     const allImagePaths = [...keptImagePaths, ...newImagePaths].slice(0, 8);
     imagesJSON = JSON.stringify(allImagePaths);
 
-    // Update pieces table (basic info only)
+    const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
+    
+    // Update consolidated pieces table (all fields in one table now)
     const pieceSql = `
       UPDATE pieces SET
         piece_name = ?,
@@ -2198,7 +2407,121 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         has_check_rule = ?,
         has_lose_on_capture_rule = ?,
         can_castle = ?,
-        can_promote = ?
+        can_promote = ?,
+        directional_movement_style = ?,
+        repeating_movement = ?,
+        max_directional_movement_iterations = ?,
+        min_directional_movement_iterations = ?,
+        up_left_movement = ?,
+        up_movement = ?,
+        up_right_movement = ?,
+        right_movement = ?,
+        down_right_movement = ?,
+        down_movement = ?,
+        down_left_movement = ?,
+        left_movement = ?,
+        up_left_movement_exact = ?,
+        up_movement_exact = ?,
+        up_right_movement_exact = ?,
+        right_movement_exact = ?,
+        down_right_movement_exact = ?,
+        down_movement_exact = ?,
+        down_left_movement_exact = ?,
+        left_movement_exact = ?,
+        up_left_movement_available_for = ?,
+        up_movement_available_for = ?,
+        up_right_movement_available_for = ?,
+        right_movement_available_for = ?,
+        down_right_movement_available_for = ?,
+        down_movement_available_for = ?,
+        down_left_movement_available_for = ?,
+        left_movement_available_for = ?,
+        ratio_movement_style = ?,
+        ratio_one_movement = ?,
+        ratio_two_movement = ?,
+        repeating_ratio = ?,
+        max_ratio_iterations = ?,
+        min_ratio_iterations = ?,
+        step_by_step_movement_style = ?,
+        step_by_step_movement_value = ?,
+        can_hop_over_allies = ?,
+        can_hop_over_enemies = ?,
+        min_turns_per_move = ?,
+        max_turns_per_move = ?,
+        first_move_only = ?,
+        available_for_moves = ?,
+        special_scenario_moves = ?,
+        can_capture_enemy_via_range = ?,
+        can_capture_ally_via_range = ?,
+        can_capture_enemy_on_move = ?,
+        can_capture_ally_on_range = ?,
+        can_attack_on_iteration = ?,
+        first_move_only_capture = ?,
+        available_for_captures = ?,
+        up_left_capture = ?,
+        up_capture = ?,
+        up_right_capture = ?,
+        right_capture = ?,
+        down_right_capture = ?,
+        down_capture = ?,
+        down_left_capture = ?,
+        left_capture = ?,
+        up_left_capture_exact = ?,
+        up_capture_exact = ?,
+        up_right_capture_exact = ?,
+        right_capture_exact = ?,
+        down_right_capture_exact = ?,
+        down_capture_exact = ?,
+        down_left_capture_exact = ?,
+        left_capture_exact = ?,
+        up_left_capture_available_for = ?,
+        up_capture_available_for = ?,
+        up_right_capture_available_for = ?,
+        right_capture_available_for = ?,
+        down_right_capture_available_for = ?,
+        down_capture_available_for = ?,
+        down_left_capture_available_for = ?,
+        left_capture_available_for = ?,
+        ratio_one_capture = ?,
+        ratio_two_capture = ?,
+        step_by_step_capture = ?,
+        up_left_attack_range = ?,
+        up_attack_range = ?,
+        up_right_attack_range = ?,
+        right_attack_range = ?,
+        down_right_attack_range = ?,
+        down_attack_range = ?,
+        down_left_attack_range = ?,
+        left_attack_range = ?,
+        up_left_attack_range_exact = ?,
+        up_attack_range_exact = ?,
+        up_right_attack_range_exact = ?,
+        right_attack_range_exact = ?,
+        down_right_attack_range_exact = ?,
+        down_attack_range_exact = ?,
+        down_left_attack_range_exact = ?,
+        left_attack_range_exact = ?,
+        up_left_attack_range_available_for = ?,
+        up_attack_range_available_for = ?,
+        up_right_attack_range_available_for = ?,
+        right_attack_range_available_for = ?,
+        down_right_attack_range_available_for = ?,
+        down_attack_range_available_for = ?,
+        down_left_attack_range_available_for = ?,
+        left_attack_range_available_for = ?,
+        repeating_directional_ranged_attack = ?,
+        max_directional_ranged_attack_iterations = ?,
+        min_directional_ranged_attack_iterations = ?,
+        ratio_one_attack_range = ?,
+        ratio_two_attack_range = ?,
+        repeating_ratio_ranged_attack = ?,
+        max_ratio_ranged_attack_iterations = ?,
+        min_ratio_ranged_attack_iterations = ?,
+        step_by_step_attack_style = ?,
+        step_by_step_attack_value = ?,
+        max_piece_captures_per_move = ?,
+        max_piece_captures_per_ranged_attack = ?,
+        special_scenario_captures = ?
       WHERE id = ?
     `;
 
@@ -2214,68 +2537,9 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       pieceData.has_lose_on_capture_rule === 'true',
       pieceData.can_castle === 'true',
       pieceData.can_promote === 'true',
-      pieceId
-    ];
-
-    await db_pool.query(pieceSql, pieceValues);
-
-    // Update or insert into piece_movement table
-    const movementSql = `
-      INSERT INTO piece_movement (
-        piece_id,
-        directional_movement_style,
-        repeating_movement,
-        first_move_only,
-        max_directional_movement_iterations,
-        min_directional_movement_iterations,
-        up_left_movement, up_movement, up_right_movement,
-        right_movement, down_right_movement, down_movement, down_left_movement, left_movement,
-        ratio_movement_style, ratio_one_movement, ratio_two_movement,
-        repeating_ratio,
-        max_ratio_iterations,
-        min_ratio_iterations,
-        step_by_step_movement_style, step_by_step_movement_value,
-        can_hop_over_allies, can_hop_over_enemies,
-        min_turns_per_move,
-        max_turns_per_move,
-        available_for_moves,
-        special_scenario_moves
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        directional_movement_style = VALUES(directional_movement_style),
-        repeating_movement = VALUES(repeating_movement),
-        first_move_only = VALUES(first_move_only),
-        max_directional_movement_iterations = VALUES(max_directional_movement_iterations),
-        min_directional_movement_iterations = VALUES(min_directional_movement_iterations),
-        up_left_movement = VALUES(up_left_movement),
-        up_movement = VALUES(up_movement),
-        up_right_movement = VALUES(up_right_movement),
-        right_movement = VALUES(right_movement),
-        down_right_movement = VALUES(down_right_movement),
-        down_movement = VALUES(down_movement),
-        down_left_movement = VALUES(down_left_movement),
-        left_movement = VALUES(left_movement),
-        ratio_movement_style = VALUES(ratio_movement_style),
-        ratio_one_movement = VALUES(ratio_one_movement),
-        ratio_two_movement = VALUES(ratio_two_movement),
-        repeating_ratio = VALUES(repeating_ratio),
-        max_ratio_iterations = VALUES(max_ratio_iterations),
-        min_ratio_iterations = VALUES(min_ratio_iterations),
-        step_by_step_movement_style = VALUES(step_by_step_movement_style),
-        step_by_step_movement_value = VALUES(step_by_step_movement_value),
-        can_hop_over_allies = VALUES(can_hop_over_allies),
-        can_hop_over_enemies = VALUES(can_hop_over_enemies),
-        min_turns_per_move = VALUES(min_turns_per_move),
-        max_turns_per_move = VALUES(max_turns_per_move),
-        available_for_moves = VALUES(available_for_moves),
-        special_scenario_moves = VALUES(special_scenario_moves)
-    `;
-
-    const movementValues = [
-      pieceId,
+      // Movement fields
       pieceData.directional_movement_style === 'true',
       pieceData.repeating_movement === 'true',
-      pieceData.first_move_only === 'true' || pieceData.first_move_only === true,
       parseInt(pieceData.max_directional_movement_iterations) || null,
       parseInt(pieceData.min_directional_movement_iterations) || null,
       parseInt(pieceData.up_left_movement) || 0,
@@ -2286,6 +2550,24 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.down_movement) || 0,
       parseInt(pieceData.down_left_movement) || 0,
       parseInt(pieceData.left_movement) || 0,
+      // Movement exact flags
+      pieceData.up_left_movement_exact === 'true' || pieceData.up_left_movement_exact === true,
+      pieceData.up_movement_exact === 'true' || pieceData.up_movement_exact === true,
+      pieceData.up_right_movement_exact === 'true' || pieceData.up_right_movement_exact === true,
+      pieceData.right_movement_exact === 'true' || pieceData.right_movement_exact === true,
+      pieceData.down_right_movement_exact === 'true' || pieceData.down_right_movement_exact === true,
+      pieceData.down_movement_exact === 'true' || pieceData.down_movement_exact === true,
+      pieceData.down_left_movement_exact === 'true' || pieceData.down_left_movement_exact === true,
+      pieceData.left_movement_exact === 'true' || pieceData.left_movement_exact === true,
+      // Movement available_for flags
+      parseInt(pieceData.up_left_movement_available_for) || null,
+      parseInt(pieceData.up_movement_available_for) || null,
+      parseInt(pieceData.up_right_movement_available_for) || null,
+      parseInt(pieceData.right_movement_available_for) || null,
+      parseInt(pieceData.down_right_movement_available_for) || null,
+      parseInt(pieceData.down_movement_available_for) || null,
+      parseInt(pieceData.down_left_movement_available_for) || null,
+      parseInt(pieceData.left_movement_available_for) || null,
       pieceData.ratio_movement_style === 'true',
       parseInt(pieceData.ratio_one_movement) || null,
       parseInt(pieceData.ratio_two_movement) || null,
@@ -2298,94 +2580,22 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       pieceData.can_hop_over_enemies === 'true',
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
-      pieceData.available_for_moves !== false && pieceData.available_for_moves !== 'false' ? 1 : 0,
-      // Ensure special_scenario_moves is always a string, not an array
+      // Movement special scenario fields
+      pieceData.first_move_only === 'true',
+      parseInt(pieceData.available_for_moves) || null,
       Array.isArray(pieceData.special_scenario_moves) 
         ? (pieceData.special_scenario_moves.find(s => s && s.length > 0) || null)
-        : (pieceData.special_scenario_moves || null)
-    ];
-
-    await db_pool.query(movementSql, movementValues);
-
-    // Update or insert into piece_capture table
-    const captureSql = `
-      INSERT INTO piece_capture (
-        piece_id,
-        can_capture_enemy_via_range,
-        can_capture_ally_via_range,
-        can_capture_enemy_on_move,
-        can_capture_ally_on_range,
-        can_attack_on_iteration,
-        first_move_only_capture,
-        up_left_capture, up_capture, up_right_capture,
-        right_capture, down_right_capture, down_capture, down_left_capture, left_capture,
-        ratio_one_capture, ratio_two_capture, step_by_step_capture,
-        up_left_attack_range, up_attack_range, up_right_attack_range,
-        right_attack_range, down_right_attack_range, down_attack_range, down_left_attack_range, left_attack_range,
-        repeating_directional_ranged_attack,
-        max_directional_ranged_attack_iterations,
-        min_directional_ranged_attack_iterations,
-        ratio_one_attack_range, ratio_two_attack_range,
-        repeating_ratio_ranged_attack,
-        max_ratio_ranged_attack_iterations,
-        min_ratio_ranged_attack_iterations,
-        step_by_step_attack_style,
-        step_by_step_attack_value,
-        max_piece_captures_per_move,
-        max_piece_captures_per_ranged_attack,
-        special_scenario_captures
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        can_capture_enemy_via_range = VALUES(can_capture_enemy_via_range),
-        can_capture_ally_via_range = VALUES(can_capture_ally_via_range),
-        can_capture_enemy_on_move = VALUES(can_capture_enemy_on_move),
-        can_capture_ally_on_range = VALUES(can_capture_ally_on_range),
-        can_attack_on_iteration = VALUES(can_attack_on_iteration),
-        first_move_only_capture = VALUES(first_move_only_capture),
-        up_left_capture = VALUES(up_left_capture),
-        up_capture = VALUES(up_capture),
-        up_right_capture = VALUES(up_right_capture),
-        right_capture = VALUES(right_capture),
-        down_right_capture = VALUES(down_right_capture),
-        down_capture = VALUES(down_capture),
-        down_left_capture = VALUES(down_left_capture),
-        left_capture = VALUES(left_capture),
-        ratio_one_capture = VALUES(ratio_one_capture),
-        ratio_two_capture = VALUES(ratio_two_capture),
-        step_by_step_capture = VALUES(step_by_step_capture),
-        up_left_attack_range = VALUES(up_left_attack_range),
-        up_attack_range = VALUES(up_attack_range),
-        up_right_attack_range = VALUES(up_right_attack_range),
-        right_attack_range = VALUES(right_attack_range),
-        down_right_attack_range = VALUES(down_right_attack_range),
-        down_attack_range = VALUES(down_attack_range),
-        down_left_attack_range = VALUES(down_left_attack_range),
-        left_attack_range = VALUES(left_attack_range),
-        repeating_directional_ranged_attack = VALUES(repeating_directional_ranged_attack),
-        max_directional_ranged_attack_iterations = VALUES(max_directional_ranged_attack_iterations),
-        min_directional_ranged_attack_iterations = VALUES(min_directional_ranged_attack_iterations),
-        ratio_one_attack_range = VALUES(ratio_one_attack_range),
-        ratio_two_attack_range = VALUES(ratio_two_attack_range),
-        repeating_ratio_ranged_attack = VALUES(repeating_ratio_ranged_attack),
-        max_ratio_ranged_attack_iterations = VALUES(max_ratio_ranged_attack_iterations),
-        min_ratio_ranged_attack_iterations = VALUES(min_ratio_ranged_attack_iterations),
-        step_by_step_attack_style = VALUES(step_by_step_attack_style),
-        step_by_step_attack_value = VALUES(step_by_step_attack_value),
-        max_piece_captures_per_move = VALUES(max_piece_captures_per_move),
-        max_piece_captures_per_ranged_attack = VALUES(max_piece_captures_per_ranged_attack),
-        special_scenario_captures = VALUES(special_scenario_captures)
-    `;
-
-    const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
-    
-    const captureValues = [
-      pieceId,
+        : (pieceData.special_scenario_moves || null),
+      // Capture fields
       hasRangedAttack,
       pieceData.can_capture_ally_via_range === 'true',
       pieceData.can_capture_enemy_on_move === 'true',
       pieceData.can_capture_ally_on_range === 'true',
       pieceData.can_attack_on_iteration === 'true',
-      pieceData.first_move_only_capture === 'true' || pieceData.first_move_only_capture === true,
+      // Capture special scenario fields
+      pieceData.first_move_only_capture === 'true',
+      parseInt(pieceData.available_for_captures) || null,
+      // Capture directional values
       parseInt(pieceData.up_left_capture) || 0,
       parseInt(pieceData.up_capture) || 0,
       parseInt(pieceData.up_right_capture) || 0,
@@ -2394,9 +2604,28 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.down_capture) || 0,
       parseInt(pieceData.down_left_capture) || 0,
       parseInt(pieceData.left_capture) || 0,
+      // Capture exact flags
+      pieceData.up_left_capture_exact === 'true' || pieceData.up_left_capture_exact === true,
+      pieceData.up_capture_exact === 'true' || pieceData.up_capture_exact === true,
+      pieceData.up_right_capture_exact === 'true' || pieceData.up_right_capture_exact === true,
+      pieceData.right_capture_exact === 'true' || pieceData.right_capture_exact === true,
+      pieceData.down_right_capture_exact === 'true' || pieceData.down_right_capture_exact === true,
+      pieceData.down_capture_exact === 'true' || pieceData.down_capture_exact === true,
+      pieceData.down_left_capture_exact === 'true' || pieceData.down_left_capture_exact === true,
+      pieceData.left_capture_exact === 'true' || pieceData.left_capture_exact === true,
+      // Capture available_for flags
+      parseInt(pieceData.up_left_capture_available_for) || null,
+      parseInt(pieceData.up_capture_available_for) || null,
+      parseInt(pieceData.up_right_capture_available_for) || null,
+      parseInt(pieceData.right_capture_available_for) || null,
+      parseInt(pieceData.down_right_capture_available_for) || null,
+      parseInt(pieceData.down_capture_available_for) || null,
+      parseInt(pieceData.down_left_capture_available_for) || null,
+      parseInt(pieceData.left_capture_available_for) || null,
       parseInt(pieceData.ratio_one_capture) || null,
       parseInt(pieceData.ratio_two_capture) || null,
       parseInt(pieceData.step_by_step_capture) || null,
+      // Attack range values
       parseInt(pieceData.up_left_attack_range) || 0,
       parseInt(pieceData.up_attack_range) || 0,
       parseInt(pieceData.up_right_attack_range) || 0,
@@ -2405,6 +2634,24 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.down_attack_range) || 0,
       parseInt(pieceData.down_left_attack_range) || 0,
       parseInt(pieceData.left_attack_range) || 0,
+      // Attack range exact flags
+      pieceData.up_left_attack_range_exact === 'true' || pieceData.up_left_attack_range_exact === true,
+      pieceData.up_attack_range_exact === 'true' || pieceData.up_attack_range_exact === true,
+      pieceData.up_right_attack_range_exact === 'true' || pieceData.up_right_attack_range_exact === true,
+      pieceData.right_attack_range_exact === 'true' || pieceData.right_attack_range_exact === true,
+      pieceData.down_right_attack_range_exact === 'true' || pieceData.down_right_attack_range_exact === true,
+      pieceData.down_attack_range_exact === 'true' || pieceData.down_attack_range_exact === true,
+      pieceData.down_left_attack_range_exact === 'true' || pieceData.down_left_attack_range_exact === true,
+      pieceData.left_attack_range_exact === 'true' || pieceData.left_attack_range_exact === true,
+      // Attack range available_for flags
+      parseInt(pieceData.up_left_attack_range_available_for) || null,
+      parseInt(pieceData.up_attack_range_available_for) || null,
+      parseInt(pieceData.up_right_attack_range_available_for) || null,
+      parseInt(pieceData.right_attack_range_available_for) || null,
+      parseInt(pieceData.down_right_attack_range_available_for) || null,
+      parseInt(pieceData.down_attack_range_available_for) || null,
+      parseInt(pieceData.down_left_attack_range_available_for) || null,
+      parseInt(pieceData.left_attack_range_available_for) || null,
       pieceData.repeating_directional_ranged_attack === 'true',
       parseInt(pieceData.max_directional_ranged_attack_iterations) || null,
       parseInt(pieceData.min_directional_ranged_attack_iterations) || null,
@@ -2417,10 +2664,11 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.step_by_step_attack_value) || null,
       parseInt(pieceData.max_piece_captures_per_move) || 1,
       hasRangedAttack ? (parseInt(pieceData.max_piece_captures_per_ranged_attack) || 1) : null,
-      pieceData.special_scenario_captures || null
+      pieceData.special_scenario_captures || null,
+      pieceId
     ];
 
-    await db_pool.query(captureSql, captureValues);
+    await db_pool.query(pieceSql, pieceValues);
 
     res.status(200).send({
       message: "Piece updated successfully!",
@@ -2557,13 +2805,11 @@ app.get("/api/admin/pieces", authenticateAdmin, async (req, res) => {
       `SELECT p.id, p.piece_name, p.piece_category, p.piece_description, 
        p.creator_id, p.image_location,
        u.username as creator_name,
-       pm.directional_movement_style as movement_directional, 
-       pm.ratio_movement_style as movement_ratio,
-       pc.can_capture_enemy_on_move as can_capture
+       p.directional_movement_style as movement_directional, 
+       p.ratio_movement_style as movement_ratio,
+       p.can_capture_enemy_on_move as can_capture
        FROM pieces p
        LEFT JOIN users u ON p.creator_id = u.id
-       LEFT JOIN piece_movement pm ON p.id = pm.piece_id
-       LEFT JOIN piece_capture pc ON p.id = pc.piece_id
        ORDER BY p.id DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
@@ -2755,31 +3001,34 @@ app.put("/api/admin/pieces/:pieceId", authenticateAdmin, async (req, res) => {
     const { pieceId } = req.params;
     const updates = req.body;
     
-    const fields = Object.keys(updates).filter(key => key !== 'id' && !key.includes('movement_') && !key.includes('attack_'));
-    if (fields.length > 0) {
-      const setClause = fields.map(field => `${field} = ?`).join(', ');
-      const values = fields.map(field => updates[field]);
-      values.push(pieceId);
-      await db_pool.query(`UPDATE pieces SET ${setClause} WHERE id = ?`, values);
+    // Map frontend field names to database column names
+    const fieldMapping = {
+      'movement_': '',
+      'attack_': ''
+    };
+    
+    const allFields = Object.keys(updates).filter(key => key !== 'id');
+    if (allFields.length === 0) {
+      return res.status(400).send({ message: "No fields to update" });
     }
-
-    // Update movement fields if present
-    const movementFields = Object.keys(updates).filter(key => key.startsWith('movement_'));
-    if (movementFields.length > 0) {
-      const setClause = movementFields.map(field => `${field.replace('movement_', '')} = ?`).join(', ');
-      const values = movementFields.map(field => updates[field]);
-      values.push(pieceId);
-      await db_pool.query(`UPDATE piece_movement SET ${setClause} WHERE piece_id = ?`, values);
-    }
-
-    // Update attack/capture fields if present
-    const attackFields = Object.keys(updates).filter(key => key.startsWith('attack_'));
-    if (attackFields.length > 0) {
-      const setClause = attackFields.map(field => `${field.replace('attack_', '')} = ?`).join(', ');
-      const values = attackFields.map(field => updates[field]);
-      values.push(pieceId);
-      await db_pool.query(`UPDATE piece_capture SET ${setClause} WHERE piece_id = ?`, values);
-    }
+    
+    // Map field names - remove movement_ and attack_ prefixes
+    const mappedFields = {};
+    allFields.forEach(key => {
+      let dbField = key;
+      if (key.startsWith('movement_')) {
+        dbField = key.replace('movement_', '');
+      } else if (key.startsWith('attack_')) {
+        dbField = key.replace('attack_', '');
+      }
+      mappedFields[dbField] = updates[key];
+    });
+    
+    const setClause = Object.keys(mappedFields).map(field => `${field} = ?`).join(', ');
+    const values = Object.values(mappedFields);
+    values.push(pieceId);
+    
+    await db_pool.query(`UPDATE pieces SET ${setClause} WHERE id = ?`, values);
 
     res.json({ success: true, message: "Piece updated successfully" });
   } catch (err) {

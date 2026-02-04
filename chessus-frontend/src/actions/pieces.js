@@ -6,9 +6,9 @@ import {
   SET_MESSAGE,
 } from "./types";
 
-export const getPieces = () => async (dispatch) => {
+export const getPieces = (page = 1, limit = 20) => async (dispatch) => {
   try {
-    const response = await PiecesService.getPieces();
+    const response = await PiecesService.getPieces(page, limit);
     console.log("pieces action");
     dispatch({
       type: LIST_PIECES,
@@ -44,7 +44,15 @@ export const getPieceById = async (pieceId) => {
     return Promise.reject(message);
   }
 };
-
+export const getGamesByPieceId = async (pieceId) => {
+  try {
+    const response = await PiecesService.getGamesByPieceId(pieceId);
+    return response.data;
+  } catch (error) {
+    const message = getErrorMessage(error);
+    return Promise.reject(message);
+  }
+};
 export const createPiece = async (formData) => {
   try {
     const response = await PiecesService.createPiece(formData);

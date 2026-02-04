@@ -1,3 +1,11 @@
+-- ============================================
+-- LEGACY MIGRATION FILE (NOT USED)
+-- This migration is no longer needed - the consolidation migration in server/migrations.js
+-- handles adding all movement and capture columns directly to the pieces table.
+-- The piece_capture table has been deprecated and consolidated into pieces.
+-- This file is kept for historical reference only.
+-- ============================================
+
 -- Migration: Add available_for_moves columns to pieces table
 -- This replaces the boolean "first move only" concept with numeric "available for first X moves"
 

@@ -38,7 +38,8 @@ const forumsReducer = (state = initialState, action) => {
       // console.log(payload);
       return {
         ...state,
-        forums: payload,
+        forums: payload.forums || payload,
+        pagination: payload.pagination || null,
       }
     case ALL_FORUMS_FAILURE:
       return {

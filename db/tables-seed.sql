@@ -196,6 +196,15 @@ CREATE TABLE articles (
       REFERENCES game_types(id) DEFAULT NULL
 );
 
+-- ============================================
+-- LEGACY TABLE DEFINITION (NOT USED)
+-- The piece_capture table is no longer used - all capture data
+-- has been consolidated into the pieces table above.
+-- This CREATE TABLE statement is commented out but kept for historical reference.
+-- If the table already exists in your database, it can be dropped after backup.
+-- ============================================
+
+/*
 CREATE TABLE IF NOT EXISTS piece_capture (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     piece_id INT UNSIGNED NOT NULL,
@@ -248,6 +257,7 @@ CREATE TABLE IF NOT EXISTS piece_capture (
     FOREIGN KEY (piece_id)
       REFERENCES pieces(id) ON DELETE CASCADE
 );
+*/
 
 CREATE TABLE IF NOT EXISTS comments (
     id INT AUTO_INCREMENT PRIMARY KEY,

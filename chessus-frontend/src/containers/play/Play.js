@@ -5,6 +5,7 @@ import { useSocket } from "../../contexts/SocketContext";
 import { getGames } from "../../actions/games";
 import { getOnlineFriends, setOnlineUsers } from "../../actions/friends";
 import authHeader from "../../services/auth-header";
+import axios from "../../services/axios-interceptor";
 import styles from "./play.module.scss";
 import FriendsList from "../../components/friendslist/FriendsList";
 
@@ -199,24 +200,15 @@ const Play = () => {
 
     try {
       const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-      const response = await fetch(`${API_URL}/api/admin/games/${gameId}`, {
-        method: 'DELETE',
-        headers: {
-          ...authHeader(),
-          'Content-Type': 'application/json'
-        },
+      await axios.delete(`${API_URL}/api/admin/games/${gameId}`, {
+        headers: authHeader()
       });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to delete game');
-      }
 
       // Refresh game lists
       fetchOpenGames();
       fetchOngoingGames();
     } catch (err) {
-      setError(err.message || "Failed to delete game");
+      setError(err.response?.data?.message || err.message || "Failed to delete game");
     } finally {
       setDeletingGameId(null);
     }
@@ -310,6 +302,7 @@ const Play = () => {
                   userId={currentUser.id} 
                   showOnlineOnly={true}
                   socket={socket}
+                  friendsOverride={onlineFriends}
                 />
               </div>
             </div>
@@ -543,7 +536,7 @@ const Play = () => {
               </div>
             )}
 
-            <div className={styles["form-group"]}>
+            <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["checkbox-label"]}>
                 <input
                   type="checkbox"
@@ -557,7 +550,7 @@ const Play = () => {
               </div>
             </div>
 
-            <div className={styles["form-group"]}>
+            <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["checkbox-label"]}>
                 <input
                   type="checkbox"
@@ -571,7 +564,7 @@ const Play = () => {
               </div>
             </div>
 
-            <div className={styles["form-group"]}>
+            <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["checkbox-label"]}>
                 <input
                   type="checkbox"
@@ -585,7 +578,7 @@ const Play = () => {
               </div>
             </div>
 
-            <div className={styles["form-group"]}>
+            <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["checkbox-label"]}>
                 <input
                   type="checkbox"

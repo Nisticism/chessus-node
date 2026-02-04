@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Navigate, Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { getPieces, deletePiece } from "../../actions/pieces";
+import Pagination from "../pagination/Pagination";
 import styles from "./piecelist.module.scss";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -9,7 +10,7 @@ const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 const PieceList = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allPieces = useSelector((state) => state.pieces);
-  const [firstRender, setFirstRender] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [pieceToDelete, setPieceToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -20,11 +21,8 @@ const PieceList = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!firstRender) {
-      dispatch(getPieces());
-      setFirstRender(true);
-    }
-  }, [firstRender, dispatch]);
+    dispatch(getPieces(currentPage, 20));
+  }, [currentPage, dispatch]);
 
   useEffect(() => {
     let timer;
@@ -37,6 +35,11 @@ const PieceList = () => {
     }
     return () => clearTimeout(timer);
   }, [showAlert]);
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
@@ -75,6 +78,9 @@ const PieceList = () => {
     ? allPieces.piecesList.filter(piece => piece.id && piece.creator_id !== currentUser.id)
     : [];
 
+  const pagination = allPieces.pagination;
+  const totalCount = pagination?.total || 0;
+
   const canEditPiece = (piece) => {
     return piece.creator_id === currentUser.id || currentUser.role === "Admin";
   };
@@ -101,7 +107,7 @@ const PieceList = () => {
       setShowAlert(true);
       // Force a fresh fetch after delete
       setTimeout(() => {
-        dispatch(getPieces());
+        dispatch(getPieces(currentPage, 20));
       }, 100);
     } catch (error) {
       console.error("Error deleting piece:", error);
@@ -217,7 +223,7 @@ const PieceList = () => {
         <section className={styles["pieces-section"]}>
           <div className={styles["section-header"]}>
             <h2>🎨 My Pieces</h2>
-            <span className={styles["piece-count"]}>{myPieces.length} piece{myPieces.length !== 1 ? 's' : ''}</span>
+            <span className={styles["piece-count"]}>{myPieces.length} on this page</span>
           </div>
           <div className={styles["pieces-grid"]}>
             {myPieces.map(piece => (
@@ -232,9 +238,9 @@ const PieceList = () => {
       {/* Community Pieces Section */}
       <section className={styles["pieces-section"]}>
         <div className={styles["section-header"]}>
-          <h2>🌍 Community Pieces</h2>
+          <h2>🌍 All Pieces</h2>
           <span className={styles["piece-count"]}>
-            {otherPieces.length} piece{otherPieces.length !== 1 ? 's' : ''}
+            {totalCount} total piece{totalCount !== 1 ? 's' : ''}
           </span>
         </div>
         
@@ -246,12 +252,20 @@ const PieceList = () => {
               </React.Fragment>
             ))}
           </div>
-        ) : (
+        ) : myPieces.length === 0 ? (
           <div className={styles["empty-section"]}>
-            <p>No community pieces yet. Be the first to share!</p>
+            <p>No pieces found.</p>
           </div>
-        )}
+        ) : null}
       </section>
+
+      {pagination && (
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          onPageChange={handlePageChange}
+        />
+      )}
 
       {/* All Pieces Empty State */}
       {(!allPieces.piecesList || allPieces.piecesList.length === 0) && (

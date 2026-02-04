@@ -644,22 +644,45 @@
     color: #666;
     font-size: 0.85rem;
     margin-top: 6px;
+    text-align: center;
+  }
+
+  &.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    
+    &:first-of-type {
+      margin-top: 30px;
+    }
+    
+    .input-hint {
+      padding-left: 28px; // Align with checkbox text
+      text-align: left;
+    }
   }
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 12px;
   cursor: pointer;
   color: #ccc;
   font-size: 0.95rem;
+  margin-bottom: 0;
 
   input[type="checkbox"] {
     width: 18px;
     height: 18px;
     accent-color: #6c63ff;
     cursor: pointer;
+    margin-right: 10px;
+  }
+
+  span {
+    margin: 0;
   }
 }
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { getPieceById } from "../../actions/pieces";
+import { getPieceById, getGamesByPieceId } from "../../actions/pieces";
 import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
 import styles from "./pieceview.module.scss";
 
@@ -15,6 +15,8 @@ const PieceView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [imageBgColor, setImageBgColor] = useState('#6b6b6b'); // Default neutral gray
+  const [gamesUsingPiece, setGamesUsingPiece] = useState([]);
+  const [gamesLoading, setGamesLoading] = useState(true);
 
   useEffect(() => {
     const loadPiece = async () => {
@@ -32,6 +34,25 @@ const PieceView = () => {
 
     if (pieceId) {
       loadPiece();
+    }
+  }, [pieceId]);
+
+  // Load games that use this piece
+  useEffect(() => {
+    const loadGames = async () => {
+      try {
+        setGamesLoading(true);
+        const games = await getGamesByPieceId(pieceId);
+        setGamesUsingPiece(games);
+        setGamesLoading(false);
+      } catch (err) {
+        console.error("Error loading games for piece:", err);
+        setGamesLoading(false);
+      }
+    };
+
+    if (pieceId) {
+      loadGames();
     }
   }, [pieceId]);
 
@@ -119,24 +140,6 @@ const PieceView = () => {
     return currentUser && piece && (piece.creator_id === currentUser.id || currentUser.role === "Admin");
   };
 
-  const hasMovementData = () => {
-    if (!piece) return false;
-    return piece.directional_movement_style || 
-           piece.ratio_movement_style || 
-           piece.step_by_step_movement_style ||
-           piece.min_turns_per_move != null || 
-           piece.max_turns_per_move != null ||
-           piece.max_directional_movement_iterations != null;
-  };
-
-  const hasAttackData = () => {
-    if (!piece) return false;
-    return piece.can_capture_enemy_on_move || 
-           piece.can_capture_enemy_via_range ||
-           piece.max_piece_captures_per_ranged_attack != null ||
-           piece.repeating_directional_ranged_attack;
-  };
-
   // Parse piece images for the board preview - must be before early returns
   const parsePieceImages = () => {
     if (!piece?.image_location) return [];
@@ -181,13 +184,44 @@ const PieceView = () => {
       ratio_ranged_attack_style: !!piece.ratio_ranged_attack_style,
       step_by_step_ranged_attack_style: !!piece.step_by_step_ranged_attack_style,
       repeating_directional_ranged_attack: !!piece.repeating_directional_ranged_attack,
+      // First move only flags
+      first_move_only: !!piece.first_move_only,
+      first_move_only_capture: !!piece.first_move_only_capture,
+      // Movement exact flags
+      up_left_movement_exact: !!piece.up_left_movement_exact,
+      up_movement_exact: !!piece.up_movement_exact,
+      up_right_movement_exact: !!piece.up_right_movement_exact,
+      right_movement_exact: !!piece.right_movement_exact,
+      down_right_movement_exact: !!piece.down_right_movement_exact,
+      down_movement_exact: !!piece.down_movement_exact,
+      down_left_movement_exact: !!piece.down_left_movement_exact,
+      left_movement_exact: !!piece.left_movement_exact,
+      // Capture exact flags
+      up_left_capture_exact: !!piece.up_left_capture_exact,
+      up_capture_exact: !!piece.up_capture_exact,
+      up_right_capture_exact: !!piece.up_right_capture_exact,
+      right_capture_exact: !!piece.right_capture_exact,
+      down_right_capture_exact: !!piece.down_right_capture_exact,
+      down_capture_exact: !!piece.down_capture_exact,
+      down_left_capture_exact: !!piece.down_left_capture_exact,
+      left_capture_exact: !!piece.left_capture_exact,
+      // Attack range exact flags
+      up_left_attack_range_exact: !!piece.up_left_attack_range_exact,
+      up_attack_range_exact: !!piece.up_attack_range_exact,
+      up_right_attack_range_exact: !!piece.up_right_attack_range_exact,
+      right_attack_range_exact: !!piece.right_attack_range_exact,
+      down_right_attack_range_exact: !!piece.down_right_attack_range_exact,
+      down_attack_range_exact: !!piece.down_attack_range_exact,
+      down_left_attack_range_exact: !!piece.down_left_attack_range_exact,
+      left_attack_range_exact: !!piece.left_attack_range_exact,
       piece_image_previews: parsePieceImages(),
-      // Map database field names to form field names for PieceBoardPreview
-      special_scenario_movement: piece.special_scenario_moves || "",
+      // Use database field names directly for PieceBoardPreview
+      special_scenario_moves: piece.special_scenario_moves || "",
       special_scenario_capture: piece.special_scenario_captures || ""
     };
     
     return sanitized;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [piece]);
 
   // Helper to get additional movements from special_scenario_moves
@@ -220,6 +254,7 @@ const PieceView = () => {
   const formatMovementValue = (value) => {
     if (value === null || value === undefined) return 'None';
     if (value === 0) return '0 squares';
+    if (value === 99) return 'Infinite (∞)';
     if (value < 0) return `Up to ${Math.abs(value)} squares`;
     return `${value} square${value !== 1 ? 's' : ''}`;
   };
@@ -243,14 +278,14 @@ const PieceView = () => {
   const getDirectionalDetails = () => {
     if (!piece) return [];
     const directions = [
-      { name: 'Up', value: piece.up_movement },
-      { name: 'Down', value: piece.down_movement },
-      { name: 'Left', value: piece.left_movement },
-      { name: 'Right', value: piece.right_movement },
-      { name: 'Up-Left', value: piece.up_left_movement },
-      { name: 'Up-Right', value: piece.up_right_movement },
-      { name: 'Down-Left', value: piece.down_left_movement },
-      { name: 'Down-Right', value: piece.down_right_movement }
+      { name: 'Up', value: piece.up_movement, exact: !!piece.up_movement_exact, availableFor: piece.up_movement_available_for },
+      { name: 'Down', value: piece.down_movement, exact: !!piece.down_movement_exact, availableFor: piece.down_movement_available_for },
+      { name: 'Left', value: piece.left_movement, exact: !!piece.left_movement_exact, availableFor: piece.left_movement_available_for },
+      { name: 'Right', value: piece.right_movement, exact: !!piece.right_movement_exact, availableFor: piece.right_movement_available_for },
+      { name: 'Up-Left', value: piece.up_left_movement, exact: !!piece.up_left_movement_exact, availableFor: piece.up_left_movement_available_for },
+      { name: 'Up-Right', value: piece.up_right_movement, exact: !!piece.up_right_movement_exact, availableFor: piece.up_right_movement_available_for },
+      { name: 'Down-Left', value: piece.down_left_movement, exact: !!piece.down_left_movement_exact, availableFor: piece.down_left_movement_available_for },
+      { name: 'Down-Right', value: piece.down_right_movement, exact: !!piece.down_right_movement_exact, availableFor: piece.down_right_movement_available_for }
     ];
     return directions.filter(d => d.value != null && d.value !== 0);
   };
@@ -259,14 +294,14 @@ const PieceView = () => {
   const getDirectionalCaptureDetails = () => {
     if (!piece) return [];
     const directions = [
-      { name: 'Up', value: piece.up_capture },
-      { name: 'Down', value: piece.down_capture },
-      { name: 'Left', value: piece.left_capture },
-      { name: 'Right', value: piece.right_capture },
-      { name: 'Up-Left', value: piece.up_left_capture },
-      { name: 'Up-Right', value: piece.up_right_capture },
-      { name: 'Down-Left', value: piece.down_left_capture },
-      { name: 'Down-Right', value: piece.down_right_capture }
+      { name: 'Up', value: piece.up_capture, exact: !!piece.up_capture_exact, availableFor: piece.up_capture_available_for },
+      { name: 'Down', value: piece.down_capture, exact: !!piece.down_capture_exact, availableFor: piece.down_capture_available_for },
+      { name: 'Left', value: piece.left_capture, exact: !!piece.left_capture_exact, availableFor: piece.left_capture_available_for },
+      { name: 'Right', value: piece.right_capture, exact: !!piece.right_capture_exact, availableFor: piece.right_capture_available_for },
+      { name: 'Up-Left', value: piece.up_left_capture, exact: !!piece.up_left_capture_exact, availableFor: piece.up_left_capture_available_for },
+      { name: 'Up-Right', value: piece.up_right_capture, exact: !!piece.up_right_capture_exact, availableFor: piece.up_right_capture_available_for },
+      { name: 'Down-Left', value: piece.down_left_capture, exact: !!piece.down_left_capture_exact, availableFor: piece.down_left_capture_available_for },
+      { name: 'Down-Right', value: piece.down_right_capture, exact: !!piece.down_right_capture_exact, availableFor: piece.down_right_capture_available_for }
     ];
     return directions.filter(d => d.value != null && d.value !== 0);
   };
@@ -275,14 +310,14 @@ const PieceView = () => {
   const getDirectionalAttackDetails = () => {
     if (!piece) return [];
     const directions = [
-      { name: 'Up', value: piece.up_attack_range },
-      { name: 'Down', value: piece.down_attack_range },
-      { name: 'Left', value: piece.left_attack_range },
-      { name: 'Right', value: piece.right_attack_range },
-      { name: 'Up-Left', value: piece.up_left_attack_range },
-      { name: 'Up-Right', value: piece.up_right_attack_range },
-      { name: 'Down-Left', value: piece.down_left_attack_range },
-      { name: 'Down-Right', value: piece.down_right_attack_range }
+      { name: 'Up', value: piece.up_attack_range, exact: !!piece.up_attack_range_exact, availableFor: piece.up_attack_range_available_for },
+      { name: 'Down', value: piece.down_attack_range, exact: !!piece.down_attack_range_exact, availableFor: piece.down_attack_range_available_for },
+      { name: 'Left', value: piece.left_attack_range, exact: !!piece.left_attack_range_exact, availableFor: piece.left_attack_range_available_for },
+      { name: 'Right', value: piece.right_attack_range, exact: !!piece.right_attack_range_exact, availableFor: piece.right_attack_range_available_for },
+      { name: 'Up-Left', value: piece.up_left_attack_range, exact: !!piece.up_left_attack_range_exact, availableFor: piece.up_left_attack_range_available_for },
+      { name: 'Up-Right', value: piece.up_right_attack_range, exact: !!piece.up_right_attack_range_exact, availableFor: piece.up_right_attack_range_available_for },
+      { name: 'Down-Left', value: piece.down_left_attack_range, exact: !!piece.down_left_attack_range_exact, availableFor: piece.down_left_attack_range_available_for },
+      { name: 'Down-Right', value: piece.down_right_attack_range, exact: !!piece.down_right_attack_range_exact, availableFor: piece.down_right_attack_range_available_for }
     ];
     return directions.filter(d => d.value != null && d.value !== 0);
   };
@@ -310,6 +345,9 @@ const PieceView = () => {
       ratio_ranged_attack_style: !!piece.ratio_ranged_attack_style,
       step_by_step_ranged_attack_style: !!piece.step_by_step_ranged_attack_style,
       repeating_directional_ranged_attack: !!piece.repeating_directional_ranged_attack,
+      // First move only flags
+      first_move_only: !!piece.first_move_only,
+      first_move_only_capture: !!piece.first_move_only_capture,
       // Convert special ability fields to booleans
       can_promote: !!piece.can_promote,
       can_castle: !!piece.can_castle,
@@ -468,6 +506,12 @@ const PieceView = () => {
                 <span className={styles["ability-icon"]}>🧭</span>
                 <h3>Directional Movement</h3>
               </div>
+              {pieceToDisplay.first_move_only && (
+                <div className={styles["global-modifier"]}>
+                  <span className={styles["modifier-icon"]}>⏱️</span>
+                  <span>All directional movement is first-move only</span>
+                </div>
+              )}
               {getDirectionalDetails().length > 0 && (
                 <div className={styles["direction-list"]}>
                   {getDirectionalDetails().map(dir => (
@@ -476,15 +520,18 @@ const PieceView = () => {
                         <span className={styles["direction-arrow"]}>{getDirectionArrow(dir.name)}</span>
                         {dir.name}
                       </span>
-                      <span className={styles["direction-value"]}>{formatMovementValue(dir.value)}</span>
-                      {getAdditionalMovements[dir.name.toLowerCase().replace('-', '')] && (
+                      <span className={styles["direction-value"]}>
+                        {dir.exact ? 'Exactly ' : ''}{formatMovementValue(dir.value)}
+                        {dir.availableFor && <span className={styles["first-move-badge"]}> (1st {dir.availableFor} move{dir.availableFor !== 1 ? 's' : ''})</span>}
+                      </span>
+                      {getAdditionalMovements[dir.name.toLowerCase().replace('-', '_')] && (
                         <div className={styles["additional-moves"]}>
-                          {getAdditionalMovements[dir.name.toLowerCase().replace('-', '')].map((move, idx) => (
+                          {getAdditionalMovements[dir.name.toLowerCase().replace('-', '_')].map((move, idx) => (
                             <span key={idx} className={styles["additional-tag"]}>
                               + {formatMovementValue(move.value)}
-                              {move.exact && ' (exact)'}
-                              {move.infinite && ' (∞)'}
-                              {move.availableForMoves && ` (1st ${move.availableForMoves} move${move.availableForMoves !== 1 ? 's' : ''})`}
+                              {move.exact && <span className={styles["mini-badge"] + ' ' + styles["exact-mini"]}>exact</span>}
+                              {move.firstMoveOnly && <span className={styles["mini-badge"] + ' ' + styles["first-move-mini"]}>1st move</span>}
+                              {move.availableForMoves && <span className={styles["mini-badge"] + ' ' + styles["first-move-mini"]}>{move.availableForMoves === 1 ? '1st move' : `1st ${move.availableForMoves} moves`}</span>}
                             </span>
                           ))}
                         </div>
@@ -608,6 +655,35 @@ const PieceView = () => {
         </div>
 
         <div className={styles["section"]}>
+          <h2>Used In Games</h2>
+          {gamesLoading ? (
+            <div className={styles["loading-games"]}>
+              <span>Loading games...</span>
+            </div>
+          ) : gamesUsingPiece.length > 0 ? (
+            <div className={styles["games-grid"]}>
+              {gamesUsingPiece.map((game) => (
+                <Link 
+                  key={game.id} 
+                  to={`/games/${game.id}`} 
+                  className={styles["game-card"]}
+                >
+                  <div className={styles["game-name"]}>{game.game_name}</div>
+                  <div className={styles["game-creator"]}>
+                    by {game.creator_username || 'Unknown'}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className={styles["no-abilities"]}>
+              <span className={styles["no-abilities-icon"]}>🎮</span>
+              <span>Not used in any games yet</span>
+            </div>
+          )}
+        </div>
+
+        <div className={styles["section"]}>
           <h2>Attack Details</h2>
           
           {/* Capture on Move */}
@@ -617,6 +693,12 @@ const PieceView = () => {
                 <span className={styles["ability-icon"]}>⚔️</span>
                 <h3>Capture While Moving</h3>
               </div>
+              {pieceToDisplay.first_move_only_capture && (
+                <div className={styles["global-modifier"]}>
+                  <span className={styles["modifier-icon"]}>⏱️</span>
+                  <span>All directional capture is first-move only</span>
+                </div>
+              )}
               {getDirectionalCaptureDetails().length > 0 && (
                 <div className={styles["direction-list"]}>
                   {getDirectionalCaptureDetails().map(dir => (
@@ -625,15 +707,18 @@ const PieceView = () => {
                         <span className={styles["direction-arrow"]}>{getDirectionArrow(dir.name)}</span>
                         {dir.name}
                       </span>
-                      <span className={styles["direction-value"]}>{formatMovementValue(dir.value)}</span>
-                      {getAdditionalCaptures[dir.name.toLowerCase().replace('-', '')] && (
+                      <span className={styles["direction-value"]}>
+                        {dir.exact ? 'Exactly ' : ''}{formatMovementValue(dir.value)}
+                        {dir.availableFor && <span className={styles["first-move-badge"]}> (1st {dir.availableFor} move{dir.availableFor !== 1 ? 's' : ''})</span>}
+                      </span>
+                      {getAdditionalCaptures[dir.name.toLowerCase().replace('-', '_')] && (
                         <div className={styles["additional-moves"]}>
-                          {getAdditionalCaptures[dir.name.toLowerCase().replace('-', '')].map((capture, idx) => (
+                          {getAdditionalCaptures[dir.name.toLowerCase().replace('-', '_')].map((capture, idx) => (
                             <span key={idx} className={styles["additional-tag"]} style={{ background: 'rgba(255, 152, 0, 0.2)' }}>
                               + {formatMovementValue(capture.value)}
-                              {capture.exact && ' (exact)'}
-                              {capture.infinite && ' (∞)'}
-                              {capture.availableForMoves && ` (1st ${capture.availableForMoves} move${capture.availableForMoves !== 1 ? 's' : ''})`}
+                              {capture.exact && <span className={styles["mini-badge"] + ' ' + styles["exact-mini"]}>exact</span>}
+                              {capture.firstMoveOnly && <span className={styles["mini-badge"] + ' ' + styles["first-move-mini"]}>1st move</span>}
+                              {capture.availableForMoves && <span className={styles["mini-badge"] + ' ' + styles["first-move-mini"]}>{capture.availableForMoves === 1 ? '1st move' : `1st ${capture.availableForMoves} moves`}</span>}
                             </span>
                           ))}
                         </div>
@@ -643,16 +728,16 @@ const PieceView = () => {
                 </div>
               )}
               <div className={styles["ability-properties"]}>
-                {pieceToDisplay.ratio_attack_style && (
+                {(pieceToDisplay.ratio_one_capture || pieceToDisplay.ratio_two_capture) && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>🔀</span>
                     Ratio Capture: {pieceToDisplay.ratio_one_capture || '?'}:{pieceToDisplay.ratio_two_capture || '?'}
                   </div>
                 )}
-                {pieceToDisplay.step_by_step_attack_style && (
+                {pieceToDisplay.step_by_step_capture != null && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>👣</span>
-                    Step Capture: {pieceToDisplay.step_by_step_attack_value} squares
+                    Step Capture: {pieceToDisplay.step_by_step_capture} squares
                   </div>
                 )}
                 {pieceToDisplay.max_piece_captures_per_move != null && (
@@ -679,22 +764,26 @@ const PieceView = () => {
                         <span className={styles["direction-arrow"]}>{getDirectionArrow(dir.name)}</span>
                         {dir.name}
                       </span>
-                      <span className={styles["direction-value"]}>{formatMovementValue(dir.value)} range</span>
+                      <span className={styles["direction-value"]}>
+                        {dir.exact ? 'Exactly ' : ''}{formatMovementValue(dir.value)} range
+                        {dir.exact && <span className={styles["exact-badge"]}> (exact)</span>}
+                        {dir.availableFor && <span className={styles["first-move-badge"]}> (1st {dir.availableFor} move{dir.availableFor !== 1 ? 's' : ''})</span>}
+                      </span>
                     </div>
                   ))}
                 </div>
               )}
               <div className={styles["ability-properties"]}>
-                {pieceToDisplay.ratio_ranged_attack_style && (
+                {(pieceToDisplay.ratio_one_attack_range || pieceToDisplay.ratio_two_attack_range) && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>🔀</span>
                     Ratio Range: {pieceToDisplay.ratio_one_attack_range || '?'}:{pieceToDisplay.ratio_two_attack_range || '?'}
                   </div>
                 )}
-                {pieceToDisplay.step_by_step_ranged_attack_style && (
+                {pieceToDisplay.step_by_step_attack_range != null && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>👣</span>
-                    Step Range: {pieceToDisplay.step_by_step_ranged_attack_value} squares
+                    Step Range: {Math.abs(pieceToDisplay.step_by_step_attack_range)} squares{pieceToDisplay.step_by_step_attack_range < 0 ? ' (orthogonal only)' : ''}
                   </div>
                 )}
                 {pieceToDisplay.max_piece_captures_per_ranged_attack != null && (

@@ -5,6 +5,34 @@ import { useSocket } from "../../contexts/SocketContext";
 import styles from "./livegame.module.scss";
 import soundManager from "../../utils/soundEffects";
 
+const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
+
+// Helper to parse image_location and get the first image URL
+const getFirstImageUrl = (imageLocation) => {
+  if (!imageLocation) return null;
+  
+  try {
+    const images = JSON.parse(imageLocation);
+    if (Array.isArray(images) && images.length > 0) {
+      const imagePath = images[0];
+      if (imagePath.startsWith('http')) {
+        return imagePath;
+      }
+      // Add ASSET_URL prefix if path starts with /
+      return imagePath.startsWith('/') ? `${ASSET_URL}${imagePath}` : `${ASSET_URL}/uploads/pieces/${imagePath}`;
+    }
+  } catch {
+    const imagePath = imageLocation;
+    if (imagePath.startsWith('http')) {
+      return imagePath;
+    }
+    // Add ASSET_URL prefix for all relative paths
+    return imagePath.startsWith('/') ? `${ASSET_URL}${imagePath}` : `${ASSET_URL}/uploads/pieces/${imagePath}`;
+  }
+  
+  return null;
+};
+
 // Helper to ensure pieces is always an array
 const parsePieces = (pieces) => {
   if (!pieces) return [];
@@ -332,7 +360,7 @@ const LiveGame = () => {
 
   // Check if a move is from a first-move-only additional movement option
   const checkIfFirstMoveOnlyMove = (pieceData, fromX, fromY, toX, toY, playerPosition) => {
-    if (!pieceData.special_scenario_moves) return false;
+    if (!pieceData.special_scenario_moves) return 0;
     
     try {
       const parsed = typeof pieceData.special_scenario_moves === 'string'
@@ -355,27 +383,39 @@ const LiveGame = () => {
       else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_left';
       else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_right';
       
-      if (!direction || !additionalMovements[direction]) return false;
+      if (!direction || !additionalMovements[direction]) return 0;
       
-      // Check if any of the additional movements for this direction are first-move-only
+      // Check if any of the additional movements for this direction have firstMoves/availableForMoves value
       for (const movementOption of additionalMovements[direction]) {
-        if (!movementOption.firstMoveOnly) continue;
+        // Support both firstMoves and availableForMoves fields
+        const firstMoves = movementOption.firstMoves || movementOption.availableForMoves || 0;
+        // Also check firstMoveOnly boolean for backwards compatibility
+        const isFirstMoveOnly = movementOption.firstMoveOnly || false;
+        
+        if (firstMoves === 0 && !isFirstMoveOnly) continue;
         
         const value = movementOption.value || 0;
-        if (movementOption.infinite && distance > 0) return true;
-        if (movementOption.exact && distance === value) return true;
-        if (!movementOption.exact && !movementOption.infinite && distance > 0 && distance <= value) return true;
+        const matchesMove = (movementOption.infinite && distance > 0) ||
+                           (movementOption.exact && distance === value) ||
+                           (!movementOption.exact && !movementOption.infinite && distance > 0 && distance <= value);
+        
+        // CRITICAL: Only return firstMoves if this specific move matches AND the distance doesn't match the regular movement
+        // For example, pawn's 1-square move should NOT be affected by the 2-square special scenario
+        if (matchesMove && distance === value) {
+          // Return the number of first moves allowed (or 1 if just firstMoveOnly flag is set)
+          return firstMoves || (isFirstMoveOnly ? 1 : 0);
+        }
       }
     } catch (e) {
       // Ignore parse errors
     }
     
-    return false;
+    return 0;
   };
 
   // Check if a capture is from a first-move-only additional capture option
   const checkIfFirstMoveOnlyCapture = (pieceData, fromX, fromY, toX, toY, playerPosition) => {
-    if (!pieceData.special_scenario_captures) return false;
+    if (!pieceData.special_scenario_captures) return 0;
     
     try {
       const parsed = typeof pieceData.special_scenario_captures === 'string'
@@ -398,22 +438,33 @@ const LiveGame = () => {
       else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_left';
       else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_right';
       
-      if (!direction || !additionalCaptures[direction]) return false;
+      if (!direction || !additionalCaptures[direction]) return 0;
       
-      // Check if any of the additional captures for this direction are first-move-only
+      // Check if any of the additional captures for this direction have firstMoves/availableForMoves value
       for (const captureOption of additionalCaptures[direction]) {
-        if (!captureOption.firstMoveOnly) continue;
+        // Support both firstMoves and availableForMoves fields
+        const firstMoves = captureOption.firstMoves || captureOption.availableForMoves || 0;
+        // Also check firstMoveOnly boolean for backwards compatibility
+        const isFirstMoveOnly = captureOption.firstMoveOnly || false;
+        
+        if (firstMoves === 0 && !isFirstMoveOnly) continue;
         
         const value = captureOption.value || 0;
-        if (captureOption.infinite && distance > 0) return true;
-        if (captureOption.exact && distance === value) return true;
-        if (!captureOption.exact && !captureOption.infinite && distance > 0 && distance <= value) return true;
+        const matchesCapture = (captureOption.infinite && distance > 0) ||
+                              (captureOption.exact && distance === value) ||
+                              (!captureOption.exact && !captureOption.infinite && distance > 0 && distance <= value);
+        
+        // Only return firstMoves if this exact distance matches the special scenario value
+        if (matchesCapture && distance === value) {
+          // Return the number of first moves allowed (or 1 if just firstMoveOnly flag is set)
+          return firstMoves || (isFirstMoveOnly ? 1 : 0);
+        }
       }
     } catch (e) {
       // Ignore parse errors
     }
     
-    return false;
+    return 0;
   };
 
   // Check if piece can move to a square (not capturing)
@@ -483,6 +534,43 @@ const LiveGame = () => {
       } else {
         // Default to chebyshev if value exists but style not specified
         return checkMovement(stepValue, chebyshevDistance);
+      }
+    }
+
+    // Check additional movements from special_scenario_moves
+    if (pieceData.special_scenario_moves) {
+      try {
+        const parsed = typeof pieceData.special_scenario_moves === 'string'
+          ? JSON.parse(pieceData.special_scenario_moves)
+          : pieceData.special_scenario_moves;
+        const additionalMovements = parsed?.additionalMovements || {};
+        
+        const distance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+        
+        // Determine direction
+        let direction = null;
+        if (rowDiff < 0 && colDiff === 0) direction = 'up';
+        else if (rowDiff > 0 && colDiff === 0) direction = 'down';
+        else if (rowDiff === 0 && colDiff < 0) direction = 'left';
+        else if (rowDiff === 0 && colDiff > 0) direction = 'right';
+        else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_left';
+        else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_right';
+        else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_left';
+        else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_right';
+        
+        if (direction && additionalMovements[direction]) {
+          for (const movementOption of additionalMovements[direction]) {
+            const value = movementOption.value || 0;
+            const matches = (movementOption.infinite && distance > 0) ||
+                           (movementOption.exact && distance === value) ||
+                           (!movementOption.exact && !movementOption.infinite && distance > 0 && distance <= value);
+            if (matches) {
+              return true;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing special_scenario_moves:', e);
       }
     }
 
@@ -557,6 +645,40 @@ const LiveGame = () => {
       // Default to chebyshev if no style specified
       return checkMovement(pieceData.step_capture_value, chebyshevDistance) || 
              checkMovement(pieceData.step_capture_value, manhattanDistance);
+    }
+
+    // Check additional captures from special_scenario_captures
+    if (pieceData.special_scenario_captures) {
+      try {
+        const parsed = typeof pieceData.special_scenario_captures === 'string'
+          ? JSON.parse(pieceData.special_scenario_captures)
+          : pieceData.special_scenario_captures;
+        const additionalCaptures = parsed?.additionalCaptures || {};
+        
+        const distance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+        
+        // Determine direction
+        let direction = null;
+        if (rowDiff < 0 && colDiff === 0) direction = 'up';
+        else if (rowDiff > 0 && colDiff === 0) direction = 'down';
+        else if (rowDiff === 0 && colDiff < 0) direction = 'left';
+        else if (rowDiff === 0 && colDiff > 0) direction = 'right';
+        else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_left';
+        else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_right';
+        else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_left';
+        else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_right';
+        
+        if (direction && additionalCaptures[direction]) {
+          for (const captureOption of additionalCaptures[direction]) {
+            const value = captureOption.value || 0;
+            if (captureOption.infinite && distance > 0) return true;
+            if (captureOption.exact && distance === value) return true;
+            if (!captureOption.exact && !captureOption.infinite && distance > 0 && distance <= value) return true;
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
     }
 
     return false;
@@ -782,26 +904,6 @@ const LiveGame = () => {
     const moves = [];
     const pieceTeam = piece.player_id || piece.team;
 
-    // Debug: Log piece movement data
-    console.log('Calculating moves for piece:', {
-      id: piece.id,
-      piece_id: piece.piece_id,
-      name: piece.piece_name || piece.name,
-      x: piece.x,
-      y: piece.y,
-      team: pieceTeam,
-      directional_movement_style: piece.directional_movement_style,
-      up_movement: piece.up_movement,
-      down_movement: piece.down_movement,
-      left_movement: piece.left_movement,
-      right_movement: piece.right_movement,
-      ratio_movement_style: piece.ratio_movement_style,
-      ratio_movement_1: piece.ratio_movement_1,
-      ratio_movement_2: piece.ratio_movement_2,
-      can_capture_enemy_on_move: piece.can_capture_enemy_on_move
-    });
-
-    // Iterate through all squares on the board
     for (let toY = 0; toY < boardHeight; toY++) {
       for (let toX = 0; toX < boardWidth; toX++) {
         // Skip current position
@@ -841,30 +943,34 @@ const LiveGame = () => {
         }
         
         if (isValidMove && pathClear) {
-          // Check if this is a first-move-only option
-          const isFirstMoveOnly = isCapture 
+          // Check if this move requires a certain number of first moves
+          const firstMovesRequired = isCapture 
             ? checkIfFirstMoveOnlyCapture(piece, piece.x, piece.y, toX, toY, pieceTeam)
             : checkIfFirstMoveOnlyMove(piece, piece.x, piece.y, toX, toY, pieceTeam);
+          
+          // If this move requires first moves, check if the piece has moved too many times
+          if (firstMovesRequired > 0) {
+            const pieceMovesCount = gameState?.moveHistory?.filter(move => move.pieceId === piece.id).length || 0;
+            if (pieceMovesCount >= firstMovesRequired) {
+              continue;
+            }
+          }
           
           moves.push({
             x: toX,
             y: toY,
             isCapture,
-            isFirstMoveOnly
+            isFirstMoveOnly: firstMovesRequired > 0
           });
         }
       }
     }
-
-    console.log('Valid moves found:', moves.length, moves);
     
     // Filter out moves that would leave the player in check (if mate_condition is enabled and not skipped)
     if (!skipCheckFilter && gameState?.gameType?.mate_condition && currentPlayer) {
-      const legalMoves = moves.filter(move => 
+      return moves.filter(move => 
         wouldMoveResolveCheck(piece, move.x, move.y, pieces, currentPlayer.position, boardWidth, boardHeight)
       );
-      console.log('Legal moves (after check filter):', legalMoves.length, legalMoves);
-      return legalMoves;
     }
     
     return moves;
@@ -872,12 +978,9 @@ const LiveGame = () => {
 
   // Handle square click
   const handleSquareClick = useCallback((x, y) => {
-    console.log('Square clicked:', { x, y, isMyTurn, status: gameState?.status, selectedPiece: selectedPiece?.piece_name });
-    
     // Allow selecting pieces to preview moves when waiting or during gameplay
     const canInteract = gameState && gameState.status !== 'completed';
     if (!canInteract) {
-      console.log('Cannot interact: game completed or no game state');
       return;
     }
 
@@ -891,18 +994,8 @@ const LiveGame = () => {
       clickedPiece.team === currentPlayer?.position
     );
     
-    console.log('Click context:', { 
-      clickedPiece: clickedPiece?.piece_name, 
-      isPreviewMode, 
-      isOwnPiece,
-      piecePlayerId: clickedPiece?.player_id,
-      pieceTeam: clickedPiece?.team,
-      currentPlayerPosition: currentPlayer?.position
-    });
-
     // If clicking on opponent's piece, clear selection and return
     if (clickedPiece && !isOwnPiece && !isPreviewMode) {
-      console.log('Clicked opponent piece, clearing selection');
       setSelectedPiece(null);
       setValidMoves([]);
       return;
@@ -912,13 +1005,6 @@ const LiveGame = () => {
     // In game mode, only allow selecting own pieces when it's your turn
     // OR allow selecting own pieces when it's opponent's turn for premoves
     const canSelectForPremove = !isMyTurn && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && isOwnPiece;
-    console.log('Piece selection check:', { 
-      canSelectForPremove, 
-      isMyTurn, 
-      status: gameState.status, 
-      allowPremoves: gameState.allowPremoves, 
-      isOwnPiece 
-    });
     if (clickedPiece && (isPreviewMode || (isOwnPiece && isMyTurn) || canSelectForPremove)) {
       setSelectedPiece(clickedPiece);
       const moves = calculateValidMoves(
@@ -935,13 +1021,15 @@ const LiveGame = () => {
     const canMakeMove = selectedPiece && isMyTurn && (gameState.status === 'active' || gameState.status === 'ready');
     const canPremove = selectedPiece && !isMyTurn && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false;
     
-    console.log('Move conditions:', { canMakeMove, canPremove, selectedPiece: !!selectedPiece, isMyTurn, status: gameState.status, allowPremoves: gameState.allowPremoves });
-    
     if (canMakeMove) {
       const move = validMoves.find(m => m.x === x && m.y === y);
-      console.log('Attempting move:', { move, validMovesCount: validMoves.length });
       if (move) {
-        console.log('Making move!', { from: { x: selectedPiece.x, y: selectedPiece.y }, to: { x, y } });
+        console.log('[MOVE ATTEMPT]', { 
+          piece: selectedPiece.piece_name, 
+          from: { x: selectedPiece.x, y: selectedPiece.y }, 
+          to: { x, y },
+          move 
+        });
         makeMove(parseInt(gameId), {
           from: { x: selectedPiece.x, y: selectedPiece.y },
           to: { x, y },
@@ -950,7 +1038,6 @@ const LiveGame = () => {
         setSelectedPiece(null);
         setValidMoves([]);
       } else {
-        console.log('Not a valid move, deselecting');
         // Clicking elsewhere, deselect
         setSelectedPiece(null);
         setValidMoves([]);
@@ -1325,6 +1412,27 @@ const LiveGame = () => {
               const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
               const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
               
+              // Get the image URL - always process through helper to ensure ASSET_URL prefix
+              let imageUrl = null;
+              if (piece.image || piece.image_url) {
+                const rawPath = piece.image || piece.image_url;
+                // If it's already a full URL, use it; otherwise add ASSET_URL prefix
+                imageUrl = rawPath.startsWith('http') ? rawPath : `${ASSET_URL}${rawPath}`;
+              } else if (piece.image_location) {
+                imageUrl = getFirstImageUrl(piece.image_location);
+              }
+              
+              // Debug logging
+              if (!imageUrl) {
+                console.log('No image URL for piece:', {
+                  piece_id: piece.piece_id,
+                  piece_name: piece.piece_name,
+                  image: piece.image,
+                  image_url: piece.image_url,
+                  image_location: piece.image_location
+                });
+              }
+              
               return (
                 <div 
                   className={styles.piece}
@@ -1334,11 +1442,18 @@ const LiveGame = () => {
                   onMouseEnter={() => (showHelpers || showMovableIndicators) && handlePieceHover(piece)}
                   onMouseLeave={() => (showHelpers || showMovableIndicators) && handlePieceHover(null)}
                 >
-                {(piece.image || piece.image_url) ? (
+                {imageUrl ? (
                   <img 
-                    src={piece.image || piece.image_url} 
+                    src={imageUrl} 
                     alt={piece.piece_name || piece.name || 'piece'} 
                     draggable={false}
+                    onError={(e) => {
+                      console.error('Failed to load piece image:', {
+                        src: imageUrl,
+                        piece_id: piece.piece_id,
+                        piece_name: piece.piece_name
+                      });
+                    }}
                   />
                 ) : (
                   // Fallback to unicode chess pieces

@@ -33,13 +33,13 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
     updatePieceData({ [field]: numValue });
   };
 
-  // Parse additional movements from special_scenario_movement JSON
+  // Parse additional movements from special_scenario_moves JSON
   const getAdditionalMovements = () => {
-    if (!pieceData.special_scenario_movement) return {};
+    if (!pieceData.special_scenario_moves) return {};
     try {
-      const parsed = typeof pieceData.special_scenario_movement === 'string' 
-        ? JSON.parse(pieceData.special_scenario_movement)
-        : pieceData.special_scenario_movement;
+      const parsed = typeof pieceData.special_scenario_moves === 'string' 
+        ? JSON.parse(pieceData.special_scenario_moves)
+        : pieceData.special_scenario_moves;
       return parsed.additionalMovements || {};
     } catch {
       return {};
@@ -59,14 +59,14 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       firstMoveOnly: false
     });
     
-    const scenarioData = pieceData.special_scenario_movement 
-      ? (typeof pieceData.special_scenario_movement === 'string' 
-          ? JSON.parse(pieceData.special_scenario_movement)
-          : pieceData.special_scenario_movement)
+    const scenarioData = pieceData.special_scenario_moves 
+      ? (typeof pieceData.special_scenario_moves === 'string' 
+          ? JSON.parse(pieceData.special_scenario_moves)
+          : pieceData.special_scenario_moves)
       : {};
     
     scenarioData.additionalMovements = additionalMovements;
-    updatePieceData({ special_scenario_movement: JSON.stringify(scenarioData) });
+    updatePieceData({ special_scenario_moves: JSON.stringify(scenarioData) });
   };
 
   // Update an additional movement
@@ -84,14 +84,14 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       
       additionalMovements[direction][index][field] = value;
       
-      const scenarioData = pieceData.special_scenario_movement 
-        ? (typeof pieceData.special_scenario_movement === 'string' 
-            ? JSON.parse(pieceData.special_scenario_movement)
-            : pieceData.special_scenario_movement)
+      const scenarioData = pieceData.special_scenario_moves 
+        ? (typeof pieceData.special_scenario_moves === 'string' 
+            ? JSON.parse(pieceData.special_scenario_moves)
+            : pieceData.special_scenario_moves)
         : {};
       
       scenarioData.additionalMovements = additionalMovements;
-      updatePieceData({ special_scenario_movement: JSON.stringify(scenarioData) });
+      updatePieceData({ special_scenario_moves: JSON.stringify(scenarioData) });
     }
   };
 
@@ -104,14 +104,14 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
         delete additionalMovements[direction];
       }
       
-      const scenarioData = pieceData.special_scenario_movement 
-        ? (typeof pieceData.special_scenario_movement === 'string' 
-            ? JSON.parse(pieceData.special_scenario_movement)
-            : pieceData.special_scenario_movement)
+      const scenarioData = pieceData.special_scenario_moves 
+        ? (typeof pieceData.special_scenario_moves === 'string' 
+            ? JSON.parse(pieceData.special_scenario_moves)
+            : pieceData.special_scenario_moves)
         : {};
       
       scenarioData.additionalMovements = additionalMovements;
-      updatePieceData({ special_scenario_movement: JSON.stringify(scenarioData) });
+      updatePieceData({ special_scenario_moves: JSON.stringify(scenarioData) });
     }
   };
 

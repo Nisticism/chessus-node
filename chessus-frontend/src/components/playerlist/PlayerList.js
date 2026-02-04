@@ -2,31 +2,37 @@ import React, { useState, useEffect } from "react";
 import { Navigate, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { users } from "../../actions/users";
+import Pagination from "../pagination/Pagination";
 import styles from "../../styles/list-view.module.scss";
 
 const PlayerList = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allUsers = useSelector((state) => state.users);
-  const [firstRender, setFirstRender] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const dispatch = useDispatch();
 
   useEffect(() => {
-    if (!firstRender) {
-      dispatch(users());
-      setFirstRender(true);
-    }
-  }, [firstRender, dispatch]);
+    dispatch(users(currentPage, 20));
+  }, [currentPage, dispatch]);
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
   }
+
+  const pagination = allUsers.pagination;
+  const totalCount = pagination?.total || 0;
 
   return (
     <div className={styles["list-container"]}>
       <div className={styles["list-header"]}>
         <h1>Players</h1>
         <div className={styles["item-count"]}>
-          {allUsers.usersList ? allUsers.usersList.length : 0} registered players
+          {totalCount} registered players
         </div>
       </div>
 
@@ -104,6 +110,14 @@ const PlayerList = () => {
           </div>
         )}
       </div>
+
+      {pagination && (
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          onPageChange={handlePageChange}
+        />
+      )}
     </div>
   );
 };

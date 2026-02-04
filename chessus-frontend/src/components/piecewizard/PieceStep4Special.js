@@ -84,8 +84,8 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
           <label>Special Scenario Movement</label>
           <textarea
             className={styles["form-textarea"]}
-            value={pieceData.special_scenario_movement || ""}
-            onChange={(e) => handleChange("special_scenario_movement", e.target.value)}
+            value={pieceData.special_scenario_moves || ""}
+            onChange={(e) => handleChange("special_scenario_moves", e.target.value)}
             placeholder='{"condition": "example", "movement": "special"}'
             rows="3"
           />

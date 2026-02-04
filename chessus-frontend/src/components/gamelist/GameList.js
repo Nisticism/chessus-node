@@ -2,12 +2,13 @@ import React, { useState, useEffect } from "react";
 import { Navigate, Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { getGames, deleteGame } from "../../actions/games";
+import Pagination from "../pagination/Pagination";
 import styles from "./gamelist.module.scss";
 
 const GameList = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allGames = useSelector((state) => state.games);
-  const [firstRender, setFirstRender] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [gameToDelete, setGameToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -18,11 +19,8 @@ const GameList = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!firstRender) {
-      dispatch(getGames());
-      setFirstRender(true);
-    }
-  }, [firstRender, dispatch]);
+    dispatch(getGames(currentPage, 20));
+  }, [currentPage, dispatch]);
 
   useEffect(() => {
     let timer;
@@ -35,6 +33,11 @@ const GameList = () => {
     }
     return () => clearTimeout(timer);
   }, [showAlert]);
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
@@ -49,6 +52,9 @@ const GameList = () => {
   const otherGames = allGames.gamesList 
     ? allGames.gamesList.filter(game => game.id && game.creator_id !== currentUser.id)
     : [];
+
+  const pagination = allGames.pagination;
+  const totalCount = pagination?.total || 0;
 
   const canEditGame = (game) => {
     return game.creator_id === currentUser.id || currentUser.role === "Admin";
@@ -76,7 +82,7 @@ const GameList = () => {
       setShowAlert(true);
       // Force a fresh fetch after delete
       setTimeout(() => {
-        dispatch(getGames());
+        dispatch(getGames(currentPage, 20));
       }, 100);
     } catch (error) {
       console.error("Error deleting game:", error);
@@ -200,7 +206,7 @@ const GameList = () => {
         <section className={styles["games-section"]}>
           <div className={styles["section-header"]}>
             <h2>♟️ My Games</h2>
-            <span className={styles["game-count"]}>{myGames.length} game{myGames.length !== 1 ? 's' : ''}</span>
+            <span className={styles["game-count"]}>{myGames.length} on this page</span>
           </div>
           <div className={styles["games-grid"]}>
             {myGames.map(game => renderGameCard(game, true))}
@@ -211,9 +217,9 @@ const GameList = () => {
       {/* Community Games Section */}
       <section className={styles["games-section"]}>
         <div className={styles["section-header"]}>
-          <h2>🌍 Community Games</h2>
+          <h2>🌍 All Games</h2>
           <span className={styles["game-count"]}>
-            {otherGames.length} game{otherGames.length !== 1 ? 's' : ''}
+            {totalCount} total game{totalCount !== 1 ? 's' : ''}
           </span>
         </div>
         
@@ -221,12 +227,20 @@ const GameList = () => {
           <div className={styles["games-grid"]}>
             {otherGames.map(game => renderGameCard(game, currentUser.role === "Admin"))}
           </div>
-        ) : (
+        ) : myGames.length === 0 ? (
           <div className={styles["empty-section"]}>
-            <p>No community games yet. Be the first to share!</p>
+            <p>No games found.</p>
           </div>
-        )}
+        ) : null}
       </section>
+
+      {pagination && (
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          onPageChange={handlePageChange}
+        />
+      )}
 
       {/* All Games Empty State */}
       {(!allGames.gamesList || allGames.gamesList.length === 0) && (

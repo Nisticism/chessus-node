@@ -12,17 +12,20 @@ export default function (state = initialState, action) {
     case LIST_PIECES:
       return {
         ...state,
-        piecesList: payload,
+        piecesList: payload.pieces || payload,
+        pagination: payload.pagination || null,
       };
     case LIST_PIECES_FAIL:
       return {
         ...state,
         piecesList: null,
+        pagination: null,
         message: "Pieces list failed",
       };
     case REMOVE_PIECES:
       const newState = {...state};
       delete newState["piecesList"];
+      delete newState["pagination"];
       return newState;
     default:
       return state;

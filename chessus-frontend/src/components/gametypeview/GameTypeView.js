@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { getGameById } from "../../actions/games";
-import { getAllPieces, getPieceById } from "../../actions/pieces";
+import { getPieceById } from "../../actions/pieces";
 import styles from "./gametypeview.module.scss";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -605,11 +605,19 @@ const GameTypeView = () => {
 
     // Starting pieces
     const startingPiecesContent = [];
+    const uniquePieceLinks = new Map(); // Track unique pieces with their IDs
+    
     Object.entries(piecesByPlayer).forEach(([playerId, placements]) => {
       const pieceCounts = {};
       placements.forEach(p => {
         const name = p.piece_name || 'Unknown';
+        const pieceId = p.piece_id || p.id;
         pieceCounts[name] = (pieceCounts[name] || 0) + 1;
+        
+        // Store unique piece with ID for links
+        if (pieceId && name !== 'Unknown') {
+          uniquePieceLinks.set(name, pieceId);
+        }
       });
       
       const pieceList = Object.entries(pieceCounts)
@@ -620,9 +628,16 @@ const GameTypeView = () => {
     });
 
     if (startingPiecesContent.length > 0) {
+      // Build the content with piece links
+      const pieceLinksArray = Array.from(uniquePieceLinks.entries()).map(([name, id]) => ({
+        name,
+        id
+      }));
+      
       rules.push({
         title: "Starting Pieces",
-        content: startingPiecesContent.join('\n')
+        content: startingPiecesContent.join('\n'),
+        pieceLinks: pieceLinksArray
       });
     }
 
@@ -1072,6 +1087,20 @@ const GameTypeView = () => {
                         </p>
                       );
                     })}
+                    {section.pieceLinks && section.pieceLinks.length > 0 && (
+                      <div className={styles["piece-links"]}>
+                        <strong>Pieces used:</strong>
+                        <ul className={styles["piece-link-list"]}>
+                          {section.pieceLinks.map((piece) => (
+                            <li key={piece.id}>
+                              <Link to={`/pieces/${piece.id}`} className={styles["piece-link"]}>
+                                {piece.name}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

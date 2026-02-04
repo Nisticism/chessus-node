@@ -6,9 +6,32 @@ import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyle }) => {
   
+  // Helper to convert additionalMovements to additionalCaptures format
+  const convertMovementsToCaptures = (specialScenarioMoves) => {
+    if (!specialScenarioMoves) return null;
+    try {
+      const parsed = typeof specialScenarioMoves === 'string' 
+        ? JSON.parse(specialScenarioMoves)
+        : specialScenarioMoves;
+      
+      if (!parsed.additionalMovements) return null;
+      
+      // Convert additionalMovements to additionalCaptures
+      // The structure is the same, just different naming
+      return JSON.stringify({
+        additionalCaptures: parsed.additionalMovements
+      });
+    } catch {
+      return null;
+    }
+  };
+  
   // When component mounts, if attacks_like_movement is checked, import current movement values
   useEffect(() => {
     if (pieceData.attacks_like_movement) {
+      // Convert additional movements to additional captures
+      const convertedCaptures = convertMovementsToCaptures(pieceData.special_scenario_moves);
+      
       updatePieceData({
         can_capture_enemy_on_move: true,
         // Copy directional movement to capture
@@ -20,14 +43,35 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         down_left_capture: pieceData.down_left_movement,
         down_capture: pieceData.down_movement,
         down_right_capture: pieceData.down_right_movement,
+        // Copy exact flags for directional captures
+        up_left_capture_exact: pieceData.up_left_movement_exact,
+        up_capture_exact: pieceData.up_movement_exact,
+        up_right_capture_exact: pieceData.up_right_movement_exact,
+        left_capture_exact: pieceData.left_movement_exact,
+        right_capture_exact: pieceData.right_movement_exact,
+        down_left_capture_exact: pieceData.down_left_movement_exact,
+        down_capture_exact: pieceData.down_movement_exact,
+        down_right_capture_exact: pieceData.down_right_movement_exact,
+        // Copy available_for flags for directional captures
+        up_left_capture_available_for: pieceData.up_left_movement_available_for,
+        up_capture_available_for: pieceData.up_movement_available_for,
+        up_right_capture_available_for: pieceData.up_right_movement_available_for,
+        left_capture_available_for: pieceData.left_movement_available_for,
+        right_capture_available_for: pieceData.right_movement_available_for,
+        down_left_capture_available_for: pieceData.down_left_movement_available_for,
+        down_capture_available_for: pieceData.down_movement_available_for,
+        down_right_capture_available_for: pieceData.down_right_movement_available_for,
         // Copy ratio movement
         ratio_one_capture: pieceData.ratio_one_movement,
         ratio_two_capture: pieceData.ratio_two_movement,
         // Copy step-by-step
-        step_by_step_capture: pieceData.step_by_step_movement_value
+        step_by_step_capture: pieceData.step_by_step_movement_value,
+        // Copy additional movements to additional captures
+        ...(convertedCaptures && { special_scenario_capture: convertedCaptures })
       });
     }
-  }, []); // Run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount - intentionally using initial values only
   
   const handleChange = (field, value) => {
     const updates = { [field]: value };
@@ -235,6 +279,9 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
     }
     
     if (checked) {
+      // Convert additional movements to additional captures
+      const convertedCaptures = convertMovementsToCaptures(pieceData.special_scenario_moves);
+      
       // Import all movement settings to capture settings
       updatePieceData({
         attacks_like_movement: true,
@@ -248,11 +295,31 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         down_left_capture: pieceData.down_left_movement,
         down_capture: pieceData.down_movement,
         down_right_capture: pieceData.down_right_movement,
+        // Copy exact flags for directional captures
+        up_left_capture_exact: pieceData.up_left_movement_exact,
+        up_capture_exact: pieceData.up_movement_exact,
+        up_right_capture_exact: pieceData.up_right_movement_exact,
+        left_capture_exact: pieceData.left_movement_exact,
+        right_capture_exact: pieceData.right_movement_exact,
+        down_left_capture_exact: pieceData.down_left_movement_exact,
+        down_capture_exact: pieceData.down_movement_exact,
+        down_right_capture_exact: pieceData.down_right_movement_exact,
+        // Copy available_for flags for directional captures
+        up_left_capture_available_for: pieceData.up_left_movement_available_for,
+        up_capture_available_for: pieceData.up_movement_available_for,
+        up_right_capture_available_for: pieceData.up_right_movement_available_for,
+        left_capture_available_for: pieceData.left_movement_available_for,
+        right_capture_available_for: pieceData.right_movement_available_for,
+        down_left_capture_available_for: pieceData.down_left_movement_available_for,
+        down_capture_available_for: pieceData.down_movement_available_for,
+        down_right_capture_available_for: pieceData.down_right_movement_available_for,
         // Copy ratio movement
         ratio_one_capture: pieceData.ratio_one_movement,
         ratio_two_capture: pieceData.ratio_two_movement,
         // Copy step-by-step
         step_by_step_capture: pieceData.step_by_step_movement_value,
+        // Copy additional movements to additional captures
+        ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
         // Disable ranged by default when capturing on move
         can_capture_enemy_via_range: false
       });

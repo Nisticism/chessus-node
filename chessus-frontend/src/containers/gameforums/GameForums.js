@@ -5,21 +5,26 @@ import styles from "../forums/forums.module.scss";
 import StandardButton from "../../components/standardbutton/StandardButton";
 import { forums } from "../../actions/forums";
 import { formatDateLegacy } from "../../helpers/date-formatter";
+import Pagination from "../../components/pagination/Pagination";
 
 const GameForums = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allForums = useSelector((state) => state.forums);
   const navigate = useNavigate();
-  const [firstRender, setFirstRender] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const dispatch = useDispatch();
 
   useEffect(() => {
-    if (!firstRender) {
-      dispatch(forums());
-      setFirstRender(true);
-    }
-  }, [firstRender, dispatch]);
+    // Fetch game forums with gameTypeId filter - for now we fetch all and filter on frontend
+    // In a real implementation, you'd pass the specific gameTypeId
+    dispatch(forums(currentPage, 20));
+  }, [currentPage, dispatch]);
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
@@ -139,6 +144,14 @@ const GameForums = () => {
           <h1>{searchTerm ? "No game forums found matching your search" : "No Game Forums Found"}</h1>
         }
       </div>
+
+      {allForums.pagination && !searchTerm && (
+        <Pagination
+          currentPage={allForums.pagination.page}
+          totalPages={allForums.pagination.totalPages}
+          onPageChange={handlePageChange}
+        />
+      )}
     </div>
   );
 };

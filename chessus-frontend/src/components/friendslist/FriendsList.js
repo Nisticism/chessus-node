@@ -6,16 +6,20 @@ import styles from "./friendslist.module.scss";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
-const FriendsList = ({ userId, showOnlineOnly = false, socket }) => {
+const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride }) => {
   const dispatch = useDispatch();
   const { friends, onlineUsers } = useSelector((state) => state.friends);
   const currentUser = useSelector((state) => state.authReducer.user);
 
+  // Use friendsOverride if provided, otherwise use friends from Redux
+  const friendsList = friendsOverride || friends;
+
   useEffect(() => {
-    if (userId) {
+    // Only fetch friends if no override is provided
+    if (userId && !friendsOverride) {
       dispatch(getFriends(userId));
     }
-  }, [userId, dispatch]);
+  }, [userId, dispatch, friendsOverride]);
 
   // Listen for online users updates from socket
   useEffect(() => {
@@ -45,8 +49,8 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket }) => {
   };
 
   const displayedFriends = showOnlineOnly
-    ? friends.filter((friend) => isOnline(friend.id))
-    : friends;
+    ? friendsList.filter((friend) => isOnline(friend.id))
+    : friendsList;
 
   if (displayedFriends.length === 0) {
     return (
@@ -65,7 +69,7 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket }) => {
     <div className={styles["friends-list"]}>
       {displayedFriends.map((friend) => (
         <div key={friend.id} className={styles["friend-card"]}>
-          <Link to={`/users/${friend.id}`} className={styles["friend-info"]}>
+          <Link to={`/profile/${friend.username}`} className={styles["friend-info"]}>
             <div className={styles["friend-avatar-wrapper"]}>
               <img
                 src={

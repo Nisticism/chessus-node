@@ -3,9 +3,9 @@
 
 -- Create friends table
 CREATE TABLE IF NOT EXISTS friends (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NOT NULL,
-  friend_id INT NOT NULL,
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNSIGNED NOT NULL,
+  friend_id INT UNSIGNED NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY unique_friendship (user_id, friend_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

@@ -76,6 +76,30 @@ const tableMigrations = [
     description: "Create pieces table"
   },
   {
+    table: 'game_type_pieces',
+    sql: `CREATE TABLE IF NOT EXISTS game_type_pieces (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      game_type_id INT UNSIGNED NOT NULL,
+      piece_id INT UNSIGNED NOT NULL,
+      x INT NOT NULL,
+      y INT NOT NULL,
+      player_number INT DEFAULT 1,
+      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+      FOREIGN KEY (piece_id) REFERENCES pieces(id) ON DELETE CASCADE,
+      INDEX idx_game_type_id (game_type_id),
+      INDEX idx_piece_id (piece_id),
+      UNIQUE KEY unique_piece_position (game_type_id, x, y, player_number)
+    )`,
+    description: "Create game_type_pieces junction table"
+  },
+  // ============================================
+  // LEGACY TABLE DEFINITIONS (HISTORICAL ONLY)
+  // These definitions are kept for reference but are no longer used.
+  // The piece_movement and piece_capture tables have been consolidated
+  // into the pieces table (see consolidation migration at lines 1105-1356).
+  // These old table definitions will not be created if they don't exist.
+  // ============================================
+  {
     table: 'piece_movement',
     sql: `CREATE TABLE IF NOT EXISTS piece_movement (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -320,6 +344,14 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error checking/modifying pieces.image_location:', err.message);
   }
+
+  // ============================================
+  // LEGACY MIGRATIONS FOR OLD TABLE STRUCTURE (HISTORICAL ONLY)
+  // The following migrations modify piece_movement and piece_capture tables.
+  // These tables are no longer used - data has been consolidated into the pieces table.
+  // These migrations are kept for historical reference and won't run if tables don't exist.
+  // See consolidation migration below (lines 1105-1356).
+  // ============================================
 
   // Ensure piece_movement.piece_id has UNIQUE constraint for upserts
   try {
@@ -931,11 +963,8 @@ Join us in revolutionizing chess, one variant at a time.
       await db_pool.query("UPDATE users SET role = 'owner' WHERE username = 'Nisticism'");
       console.log(`✓ Set Nisticism (ID: ${nisticismUser[0].id}) as owner`);
       migrationsRun++;
-    } else if (nisticismUser.length > 0) {
-      console.log(`✓ Nisticism (ID: ${nisticismUser[0].id}) is already owner`);
-    } else {
-      console.log('ℹ User "Nisticism" not found - skipping owner promotion');
     }
+    // Silent if already owner - no need to log every startup
   } catch (err) {
     console.error('Error setting Nisticism as owner:', err.message);
   }
@@ -961,6 +990,449 @@ Join us in revolutionizing chess, one variant at a time.
     }
   } catch (err) {
     console.error('Error expanding randomized_starting_positions column:', err.message);
+  }
+
+  // Create friends table for user friendships
+  try {
+    const friendsTableExists = await tableExists('friends');
+    if (!friendsTableExists) {
+      await runMigration(
+        `CREATE TABLE friends (
+          id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          user_id INT UNSIGNED NOT NULL,
+          friend_id INT UNSIGNED NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY unique_friendship (user_id, friend_id),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE,
+          INDEX idx_user_id (user_id),
+          INDEX idx_friend_id (friend_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        "Create friends table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating friends table:', err.message);
+  }
+
+  // Migrate pieces_string data to game_type_pieces junction table
+  try {
+    // Check if junction table exists and has data
+    const junctionTableExists = await tableExists('game_type_pieces');
+    if (junctionTableExists) {
+      const [junctionCount] = await db_pool.query('SELECT COUNT(*) as count FROM game_type_pieces');
+      
+      // Only migrate if junction table is empty
+      if (junctionCount[0].count === 0) {
+        console.log('Migrating pieces_string data to junction table...');
+        
+        const [gameTypes] = await db_pool.query(
+          'SELECT id, pieces_string FROM game_types WHERE pieces_string IS NOT NULL AND pieces_string != ""'
+        );
+        
+        let totalPiecesInserted = 0;
+        
+        for (const gameType of gameTypes) {
+          try {
+            const piecesData = JSON.parse(gameType.pieces_string);
+            let piecesToInsert = [];
+            
+            // Handle both array and object formats
+            if (Array.isArray(piecesData)) {
+              piecesToInsert = piecesData;
+            } else if (typeof piecesData === 'object') {
+              // Convert object format {"row,col": {...}} to array
+              piecesToInsert = Object.entries(piecesData).map(([key, piece]) => {
+                const [row, col] = key.split(',').map(Number);
+                return {
+                  ...piece,
+                  x: col || piece.x || 0,
+                  y: row || piece.y || 0
+                };
+              });
+            }
+            
+            // Insert each piece
+            for (const piece of piecesToInsert) {
+              if (piece.piece_id) {
+                await db_pool.query(
+                  `INSERT INTO game_type_pieces (game_type_id, piece_id, x, y, player_number)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE piece_id = piece_id`,
+                  [
+                    gameType.id,
+                    piece.piece_id,
+                    piece.x || 0,
+                    piece.y || 0,
+                    piece.player_number || piece.player || 1
+                  ]
+                );
+                totalPiecesInserted++;
+              }
+            }
+          } catch (parseError) {
+            console.error(`Error migrating pieces for game_type ${gameType.id}:`, parseError.message);
+          }
+        }
+        
+        if (totalPiecesInserted > 0) {
+          console.log(`✓ Migrated ${totalPiecesInserted} pieces from ${gameTypes.length} game types`);
+          migrationsRun++;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error migrating pieces_string to junction table:', err.message);
+  }
+
+  // Populate special_scenario_moves for pawns (skip - pawns already have this data)
+  // The existing pawn data uses availableForMoves field which is already correct
+  try {
+    // Check if any pawns are missing special_scenario_moves
+    const [pawnsWithoutSpecialMoves] = await db_pool.query(
+      `SELECT COUNT(*) as count FROM pieces 
+       WHERE piece_name = 'Pawn'
+       AND (special_scenario_moves IS NULL OR special_scenario_moves = '')`
+    );
+    
+    // Only populate if some pawns are missing the data (don't overwrite existing data)
+    if (pawnsWithoutSpecialMoves[0].count > 0) {
+      const [result] = await db_pool.query(
+        `UPDATE pieces 
+         SET special_scenario_moves = '{"additionalMovements":{"up":[{"value":2,"exact":false,"infinite":false,"firstMoveOnly":false,"availableForMoves":1}],"down":[{"value":2,"exact":false,"infinite":false,"firstMoveOnly":false,"availableForMoves":1}]}}'
+         WHERE piece_name = 'Pawn'
+         AND (special_scenario_moves IS NULL OR special_scenario_moves = '')`
+      );
+      
+      if (result.affectedRows > 0) {
+        console.log(`✓ Populated special_scenario_moves for ${result.affectedRows} pawns`);
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error populating pawn special moves:', err.message);
+  }
+
+  // Add attack range exact columns to pieces table (these were missing from initial consolidation)
+  try {
+    const attackRangeExactColumns = [
+      'up_left_attack_range_exact',
+      'up_attack_range_exact',
+      'up_right_attack_range_exact',
+      'right_attack_range_exact',
+      'down_right_attack_range_exact',
+      'down_attack_range_exact',
+      'down_left_attack_range_exact',
+      'left_attack_range_exact'
+    ];
+
+    for (const colName of attackRangeExactColumns) {
+      const exists = await columnExists('pieces', colName);
+      if (!exists) {
+        await db_pool.query(`ALTER TABLE pieces ADD COLUMN ${colName} TINYINT(1) DEFAULT 0`);
+        console.log(`✓ Added ${colName} column to pieces table`);
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('❌ Error adding attack_range exact columns:', err.message);
+  }
+
+  // Add attack range available_for columns to pieces table
+  try {
+    const attackRangeAvailableForColumns = [
+      'up_left_attack_range_available_for',
+      'up_attack_range_available_for',
+      'up_right_attack_range_available_for',
+      'right_attack_range_available_for',
+      'down_right_attack_range_available_for',
+      'down_attack_range_available_for',
+      'down_left_attack_range_available_for',
+      'left_attack_range_available_for'
+    ];
+
+    for (const colName of attackRangeAvailableForColumns) {
+      const exists = await columnExists('pieces', colName);
+      if (!exists) {
+        await db_pool.query(`ALTER TABLE pieces ADD COLUMN ${colName} INT UNSIGNED NULL`);
+        console.log(`✓ Added ${colName} column to pieces table`);
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('❌ Error adding attack_range available_for columns:', err.message);
+  }
+
+  // Consolidate piece_movement and piece_capture tables into pieces table
+  try {
+    // Check if pieces table already has movement columns (check for one of the _exact columns to ensure full migration)
+    const movementColumnExists = await columnExists('pieces', 'directional_movement_style');
+    const exactColumnExists = await columnExists('pieces', 'up_movement_exact');
+    
+    if (!movementColumnExists || !exactColumnExists) {
+      console.log('Consolidating piece_movement and piece_capture tables into pieces...');
+      
+      // Add all movement columns
+      const movementColumns = [
+        ['directional_movement_style', 'TINYINT(1) DEFAULT NULL'],
+        ['repeating_movement', 'TINYINT(1) DEFAULT NULL'],
+        ['max_directional_movement_iterations', 'INT DEFAULT NULL'],
+        ['min_directional_movement_iterations', 'INT DEFAULT NULL'],
+        ['up_left_movement', 'INT DEFAULT 0'],
+        ['up_movement', 'INT DEFAULT 0'],
+        ['up_right_movement', 'INT DEFAULT 0'],
+        ['right_movement', 'INT DEFAULT 0'],
+        ['down_right_movement', 'INT DEFAULT 0'],
+        ['down_movement', 'INT DEFAULT 0'],
+        ['down_left_movement', 'INT DEFAULT 0'],
+        ['left_movement', 'INT DEFAULT 0'],
+        ['ratio_movement_style', 'TINYINT(1) DEFAULT NULL'],
+        ['ratio_one_movement', 'INT DEFAULT NULL'],
+        ['ratio_two_movement', 'INT DEFAULT NULL'],
+        ['repeating_ratio', 'TINYINT(1) DEFAULT NULL'],
+        ['max_ratio_iterations', 'INT DEFAULT NULL'],
+        ['min_ratio_iterations', 'INT DEFAULT NULL'],
+        ['step_by_step_movement_style', 'TINYINT(1) DEFAULT NULL'],
+        ['step_by_step_movement_value', 'INT DEFAULT NULL'],
+        ['can_hop_over_allies', 'TINYINT(1) DEFAULT NULL'],
+        ['can_hop_over_enemies', 'TINYINT(1) DEFAULT NULL'],
+        ['min_turns_per_move', 'INT DEFAULT NULL'],
+        ['max_turns_per_move', 'INT DEFAULT NULL'],
+        ['first_move_only', 'TINYINT(1) DEFAULT 0'],
+        ['available_for_moves', 'INT UNSIGNED NULL'],
+        ['special_scenario_moves', 'VARCHAR(1000) DEFAULT NULL'],
+        ['up_left_movement_exact', 'TINYINT(1) DEFAULT 0'],
+        ['up_movement_exact', 'TINYINT(1) DEFAULT 0'],
+        ['up_right_movement_exact', 'TINYINT(1) DEFAULT 0'],
+        ['right_movement_exact', 'TINYINT(1) DEFAULT 0'],
+        ['down_right_movement_exact', 'TINYINT(1) DEFAULT 0'],
+        ['down_movement_exact', 'TINYINT(1) DEFAULT 0'],
+        ['down_left_movement_exact', 'TINYINT(1) DEFAULT 0'],
+        ['left_movement_exact', 'TINYINT(1) DEFAULT 0'],
+        ['up_left_movement_available_for', 'INT UNSIGNED NULL'],
+        ['up_movement_available_for', 'INT UNSIGNED NULL'],
+        ['up_right_movement_available_for', 'INT UNSIGNED NULL'],
+        ['right_movement_available_for', 'INT UNSIGNED NULL'],
+        ['down_right_movement_available_for', 'INT UNSIGNED NULL'],
+        ['down_movement_available_for', 'INT UNSIGNED NULL'],
+        ['down_left_movement_available_for', 'INT UNSIGNED NULL'],
+        ['left_movement_available_for', 'INT UNSIGNED NULL']
+      ];
+      
+      for (const [colName, colDef] of movementColumns) {
+        if (!(await columnExists('pieces', colName))) {
+          await db_pool.query(`ALTER TABLE pieces ADD COLUMN ${colName} ${colDef}`);
+        }
+      }
+      
+      // Add all capture columns
+      const captureColumns = [
+        ['can_capture_enemy_via_range', 'TINYINT(1) DEFAULT NULL'],
+        ['can_capture_ally_via_range', 'TINYINT(1) DEFAULT NULL'],
+        ['can_capture_enemy_on_move', 'TINYINT(1) DEFAULT NULL'],
+        ['can_capture_ally_on_range', 'TINYINT(1) DEFAULT NULL'],
+        ['can_attack_on_iteration', 'TINYINT(1) DEFAULT NULL'],
+        ['first_move_only_capture', 'TINYINT(1) DEFAULT 0'],
+        ['up_left_capture', 'INT DEFAULT 0'],
+        ['up_capture', 'INT DEFAULT 0'],
+        ['up_right_capture', 'INT DEFAULT 0'],
+        ['right_capture', 'INT DEFAULT 0'],
+        ['down_right_capture', 'INT DEFAULT 0'],
+        ['down_capture', 'INT DEFAULT 0'],
+        ['down_left_capture', 'INT DEFAULT 0'],
+        ['left_capture', 'INT DEFAULT 0'],
+        ['ratio_one_capture', 'INT DEFAULT NULL'],
+        ['ratio_two_capture', 'INT DEFAULT NULL'],
+        ['step_by_step_capture', 'INT DEFAULT NULL'],
+        ['up_left_attack_range', 'INT DEFAULT NULL'],
+        ['up_attack_range', 'INT DEFAULT NULL'],
+        ['up_right_attack_range', 'INT DEFAULT NULL'],
+        ['right_attack_range', 'INT DEFAULT NULL'],
+        ['down_right_attack_range', 'INT DEFAULT NULL'],
+        ['down_attack_range', 'INT DEFAULT NULL'],
+        ['down_left_attack_range', 'INT DEFAULT NULL'],
+        ['left_attack_range', 'INT DEFAULT NULL'],
+        ['repeating_directional_ranged_attack', 'TINYINT(1) DEFAULT NULL'],
+        ['max_directional_ranged_attack_iterations', 'INT DEFAULT NULL'],
+        ['min_directional_ranged_attack_iterations', 'INT DEFAULT NULL'],
+        ['ratio_one_attack_range', 'INT DEFAULT NULL'],
+        ['ratio_two_attack_range', 'INT DEFAULT NULL'],
+        ['repeating_ratio_ranged_attack', 'TINYINT(1) DEFAULT NULL'],
+        ['max_ratio_ranged_attack_iterations', 'INT DEFAULT NULL'],
+        ['min_ratio_ranged_attack_iterations', 'INT DEFAULT NULL'],
+        ['step_by_step_attack_style', 'TINYINT(1) DEFAULT NULL'],
+        ['step_by_step_attack_value', 'TINYINT(1) DEFAULT NULL'],
+        ['max_piece_captures_per_move', 'INT DEFAULT NULL'],
+        ['max_piece_captures_per_ranged_attack', 'INT DEFAULT NULL'],
+        ['special_scenario_captures', 'TEXT DEFAULT NULL'],
+        ['up_left_capture_exact', 'TINYINT(1) DEFAULT 0'],
+        ['up_capture_exact', 'TINYINT(1) DEFAULT 0'],
+        ['up_right_capture_exact', 'TINYINT(1) DEFAULT 0'],
+        ['right_capture_exact', 'TINYINT(1) DEFAULT 0'],
+        ['down_right_capture_exact', 'TINYINT(1) DEFAULT 0'],
+        ['down_capture_exact', 'TINYINT(1) DEFAULT 0'],
+        ['down_left_capture_exact', 'TINYINT(1) DEFAULT 0'],
+        ['left_capture_exact', 'TINYINT(1) DEFAULT 0'],
+        ['up_left_capture_available_for', 'INT UNSIGNED NULL'],
+        ['up_capture_available_for', 'INT UNSIGNED NULL'],
+        ['up_right_capture_available_for', 'INT UNSIGNED NULL'],
+        ['right_capture_available_for', 'INT UNSIGNED NULL'],
+        ['down_right_capture_available_for', 'INT UNSIGNED NULL'],
+        ['down_capture_available_for', 'INT UNSIGNED NULL'],
+        ['down_left_capture_available_for', 'INT UNSIGNED NULL'],
+        ['left_capture_available_for', 'INT UNSIGNED NULL']
+      ];
+      
+      for (const [colName, colDef] of captureColumns) {
+        if (!(await columnExists('pieces', colName))) {
+          await db_pool.query(`ALTER TABLE pieces ADD COLUMN ${colName} ${colDef}`);
+        }
+      }
+      
+      // Copy data from piece_movement to pieces
+      await db_pool.query(`
+        UPDATE pieces p
+        INNER JOIN piece_movement pm ON p.id = pm.piece_id
+        SET 
+            p.directional_movement_style = pm.directional_movement_style,
+            p.repeating_movement = pm.repeating_movement,
+            p.max_directional_movement_iterations = pm.max_directional_movement_iterations,
+            p.min_directional_movement_iterations = pm.min_directional_movement_iterations,
+            p.up_left_movement = pm.up_left_movement,
+            p.up_movement = pm.up_movement,
+            p.up_right_movement = pm.up_right_movement,
+            p.right_movement = pm.right_movement,
+            p.down_right_movement = pm.down_right_movement,
+            p.down_movement = pm.down_movement,
+            p.down_left_movement = pm.down_left_movement,
+            p.left_movement = pm.left_movement,
+            p.ratio_movement_style = pm.ratio_movement_style,
+            p.ratio_one_movement = pm.ratio_one_movement,
+            p.ratio_two_movement = pm.ratio_two_movement,
+            p.repeating_ratio = pm.repeating_ratio,
+            p.max_ratio_iterations = pm.max_ratio_iterations,
+            p.min_ratio_iterations = pm.min_ratio_iterations,
+            p.step_by_step_movement_style = pm.step_by_step_movement_style,
+            p.step_by_step_movement_value = pm.step_by_step_movement_value,
+            p.can_hop_over_allies = pm.can_hop_over_allies,
+            p.can_hop_over_enemies = pm.can_hop_over_enemies,
+            p.min_turns_per_move = pm.min_turns_per_move,
+            p.max_turns_per_move = pm.max_turns_per_move,
+            p.first_move_only = COALESCE(pm.first_move_only, 0),
+            p.available_for_moves = pm.available_for_moves,
+            p.special_scenario_moves = pm.special_scenario_moves,
+            p.up_left_movement_exact = COALESCE(pm.up_left_movement_exact, 0),
+            p.up_movement_exact = COALESCE(pm.up_movement_exact, 0),
+            p.up_right_movement_exact = COALESCE(pm.up_right_movement_exact, 0),
+            p.right_movement_exact = COALESCE(pm.right_movement_exact, 0),
+            p.down_right_movement_exact = COALESCE(pm.down_right_movement_exact, 0),
+            p.down_movement_exact = COALESCE(pm.down_movement_exact, 0),
+            p.down_left_movement_exact = COALESCE(pm.down_left_movement_exact, 0),
+            p.left_movement_exact = COALESCE(pm.left_movement_exact, 0),
+            p.up_left_movement_available_for = pm.up_left_movement_available_for,
+            p.up_movement_available_for = pm.up_movement_available_for,
+            p.up_right_movement_available_for = pm.up_right_movement_available_for,
+            p.right_movement_available_for = pm.right_movement_available_for,
+            p.down_right_movement_available_for = pm.down_right_movement_available_for,
+            p.down_movement_available_for = pm.down_movement_available_for,
+            p.down_left_movement_available_for = pm.down_left_movement_available_for,
+            p.left_movement_available_for = pm.left_movement_available_for
+      `);
+      
+      // Copy data from piece_capture to pieces
+      await db_pool.query(`
+        UPDATE pieces p
+        INNER JOIN piece_capture pc ON p.id = pc.piece_id
+        SET 
+            p.can_capture_enemy_via_range = pc.can_capture_enemy_via_range,
+            p.can_capture_ally_via_range = pc.can_capture_ally_via_range,
+            p.can_capture_enemy_on_move = pc.can_capture_enemy_on_move,
+            p.can_capture_ally_on_range = pc.can_capture_ally_on_range,
+            p.can_attack_on_iteration = pc.can_attack_on_iteration,
+            p.up_left_capture = pc.up_left_capture,
+            p.up_capture = pc.up_capture,
+            p.up_right_capture = pc.up_right_capture,
+            p.right_capture = pc.right_capture,
+            p.down_right_capture = pc.down_right_capture,
+            p.down_capture = pc.down_capture,
+            p.down_left_capture = pc.down_left_capture,
+            p.left_capture = pc.left_capture,
+            p.ratio_one_capture = pc.ratio_one_capture,
+            p.ratio_two_capture = pc.ratio_two_capture,
+            p.step_by_step_capture = pc.step_by_step_capture,
+            p.up_left_attack_range = pc.up_left_attack_range,
+            p.up_attack_range = pc.up_attack_range,
+            p.up_right_attack_range = pc.up_right_attack_range,
+            p.right_attack_range = pc.right_attack_range,
+            p.down_right_attack_range = pc.down_right_attack_range,
+            p.down_attack_range = pc.down_attack_range,
+            p.down_left_attack_range = pc.down_left_attack_range,
+            p.left_attack_range = pc.left_attack_range,
+            p.repeating_directional_ranged_attack = pc.repeating_directional_ranged_attack,
+            p.max_directional_ranged_attack_iterations = pc.max_directional_ranged_attack_iterations,
+            p.min_directional_ranged_attack_iterations = pc.min_directional_ranged_attack_iterations,
+            p.ratio_one_attack_range = pc.ratio_one_attack_range,
+            p.ratio_two_attack_range = pc.ratio_two_attack_range,
+            p.repeating_ratio_ranged_attack = pc.repeating_ratio_ranged_attack,
+            p.max_ratio_ranged_attack_iterations = pc.max_ratio_ranged_attack_iterations,
+            p.min_ratio_ranged_attack_iterations = pc.min_ratio_ranged_attack_iterations,
+            p.step_by_step_attack_style = pc.step_by_step_attack_style,
+            p.step_by_step_attack_value = pc.step_by_step_attack_value,
+            p.max_piece_captures_per_move = pc.max_piece_captures_per_move,
+            p.max_piece_captures_per_ranged_attack = pc.max_piece_captures_per_ranged_attack,
+            p.special_scenario_captures = pc.special_scenario_captures,
+            p.first_move_only_capture = COALESCE(pc.first_move_only_capture, 0),
+            p.up_left_capture_exact = COALESCE(pc.up_left_capture_exact, 0),
+            p.up_capture_exact = COALESCE(pc.up_capture_exact, 0),
+            p.up_right_capture_exact = COALESCE(pc.up_right_capture_exact, 0),
+            p.right_capture_exact = COALESCE(pc.right_capture_exact, 0),
+            p.down_right_capture_exact = COALESCE(pc.down_right_capture_exact, 0),
+            p.down_capture_exact = COALESCE(pc.down_capture_exact, 0),
+            p.down_left_capture_exact = COALESCE(pc.down_left_capture_exact, 0),
+            p.left_capture_exact = COALESCE(pc.left_capture_exact, 0),
+            p.up_left_capture_available_for = pc.up_left_capture_available_for,
+            p.up_capture_available_for = pc.up_capture_available_for,
+            p.up_right_capture_available_for = pc.up_right_capture_available_for,
+            p.right_capture_available_for = pc.right_capture_available_for,
+            p.down_right_capture_available_for = pc.down_right_capture_available_for,
+            p.down_capture_available_for = pc.down_capture_available_for,
+            p.down_left_capture_available_for = pc.down_left_capture_available_for,
+            p.left_capture_available_for = pc.left_capture_available_for
+      `);
+      
+      console.log('✓ Consolidated piece tables into single pieces table');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error consolidating piece tables:', err.message);
+  }
+
+  // Convert special_scenario_moves and special_scenario_captures to TEXT type for larger JSON storage
+  try {
+    const specialMovesColType = await getColumnType('pieces', 'special_scenario_moves');
+    if (specialMovesColType && specialMovesColType.DATA_TYPE === 'varchar') {
+      await runMigration(
+        `ALTER TABLE pieces MODIFY COLUMN special_scenario_moves TEXT DEFAULT NULL`,
+        "Convert pieces.special_scenario_moves from VARCHAR to TEXT"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error converting special_scenario_moves to TEXT:', err.message);
+  }
+
+  try {
+    const specialCapturesColType = await getColumnType('pieces', 'special_scenario_captures');
+    if (specialCapturesColType && specialCapturesColType.DATA_TYPE === 'varchar') {
+      await runMigration(
+        `ALTER TABLE pieces MODIFY COLUMN special_scenario_captures TEXT DEFAULT NULL`,
+        "Convert pieces.special_scenario_captures from VARCHAR to TEXT"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error converting special_scenario_captures to TEXT:', err.message);
   }
   
   if (migrationsRun === 0) {

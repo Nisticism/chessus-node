@@ -14,9 +14,11 @@ import axios from "../services/axios-interceptor";
 import API_URL from "../global/global";
 import authHeader from "../services/auth-header";
 
-export const getGames = () => async (dispatch) => {
+export const getGames = (page = 1, limit = 20) => async (dispatch) => {
   try {
-    const response = await axios.get(API_URL + "games");
+    const response = await axios.get(API_URL + "games", {
+      params: { page, limit }
+    });
     
     dispatch({
       type: GET_GAMES_SUCCESS,

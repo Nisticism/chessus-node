@@ -9,7 +9,7 @@
     "@testing-library/jest-dom": "^5.16.4",
     "@testing-library/react": "^13.1.1",
     "@testing-library/user-event": "^13.5.0",
-    "axios": "^0.27.2",
+    "axios": "^1.13.4",
     "memfs": "^4.42.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
@@ -23,10 +23,11 @@
     "redux-thunk": "^2.4.1",
     "socket.io-client": "^4.8.3",
     "validator": "^13.7.0",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "ws": "^8.19.0"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "cross-env NODE_OPTIONS=--no-deprecation react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -50,6 +51,7 @@
     ]
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "redux-devtools-extension": "^2.13.9",
     "sass": "^1.54.0",
     "sass-loader": "^13.0.2",

@@ -8,19 +8,21 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
   const darkSquareColor = localStorage.getItem('boardDarkColor') || '#08234d';
 
-  // Parse special_scenario_movement JSON to get additional movements
+  // Parse special_scenario_moves JSON to get additional movements
+  // Check both special_scenario_moves (database/new) and special_scenario_movement (legacy frontend state)
   const parseSpecialScenarioMoves = useMemo(() => {
-    if (!pieceData.special_scenario_movement) return {};
+    const data = pieceData.special_scenario_moves || pieceData.special_scenario_movement;
+    if (!data) return {};
     try {
-      const parsed = typeof pieceData.special_scenario_movement === 'string'
-        ? JSON.parse(pieceData.special_scenario_movement)
-        : pieceData.special_scenario_movement;
+      const parsed = typeof data === 'string'
+        ? JSON.parse(data)
+        : data;
       return parsed || {};
     } catch (e) {
-      console.error('Error parsing special_scenario_movement:', e);
+      console.error('Error parsing special_scenario_moves:', e);
       return {};
     }
-  }, [pieceData.special_scenario_movement]);
+  }, [pieceData.special_scenario_moves, pieceData.special_scenario_movement]);
 
   // Parse special_scenario_capture JSON to get additional captures
   const parseSpecialScenarioCaptures = useMemo(() => {
@@ -183,7 +185,9 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
   const checkMovement = (value, distance, isExact = false) => {
     if (value === 99) return true; // Infinite movement
     if (value === 0 || value === null) return false;
-    if (isExact) return distance === value; // Exact distance
+    if (isExact) {
+      return distance === value; // Exact distance
+    }
     return distance <= value; // Up to that distance
   };
 

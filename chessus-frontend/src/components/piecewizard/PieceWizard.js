@@ -55,6 +55,26 @@ const PieceWizard = ({ editPieceId = null }) => {
     down_left_movement: 0,
     left_movement: 0,
     
+    // Movement exact flags
+    up_left_movement_exact: false,
+    up_movement_exact: false,
+    up_right_movement_exact: false,
+    right_movement_exact: false,
+    down_right_movement_exact: false,
+    down_movement_exact: false,
+    down_left_movement_exact: false,
+    left_movement_exact: false,
+    
+    // Movement available_for fields
+    up_left_movement_available_for: null,
+    up_movement_available_for: null,
+    up_right_movement_available_for: null,
+    right_movement_available_for: null,
+    down_right_movement_available_for: null,
+    down_movement_available_for: null,
+    down_left_movement_available_for: null,
+    left_movement_available_for: null,
+    
     ratio_movement_style: false,
     ratio_one_movement: null,
     ratio_two_movement: null,
@@ -84,6 +104,46 @@ const PieceWizard = ({ editPieceId = null }) => {
     down_left_attack_range: 0,
     left_attack_range: 0,
     
+    // Capture exact flags
+    up_left_capture_exact: false,
+    up_capture_exact: false,
+    up_right_capture_exact: false,
+    right_capture_exact: false,
+    down_right_capture_exact: false,
+    down_capture_exact: false,
+    down_left_capture_exact: false,
+    left_capture_exact: false,
+    
+    // Capture available_for fields
+    up_left_capture_available_for: null,
+    up_capture_available_for: null,
+    up_right_capture_available_for: null,
+    right_capture_available_for: null,
+    down_right_capture_available_for: null,
+    down_capture_available_for: null,
+    down_left_capture_available_for: null,
+    left_capture_available_for: null,
+    
+    // Attack range exact flags
+    up_left_attack_range_exact: false,
+    up_attack_range_exact: false,
+    up_right_attack_range_exact: false,
+    right_attack_range_exact: false,
+    down_right_attack_range_exact: false,
+    down_attack_range_exact: false,
+    down_left_attack_range_exact: false,
+    left_attack_range_exact: false,
+    
+    // Attack range available_for fields
+    up_left_attack_range_available_for: null,
+    up_attack_range_available_for: null,
+    up_right_attack_range_available_for: null,
+    right_attack_range_available_for: null,
+    down_right_attack_range_available_for: null,
+    down_attack_range_available_for: null,
+    down_left_attack_range_available_for: null,
+    left_attack_range_available_for: null,
+    
     repeating_directional_ranged_attack: false,
     max_directional_ranged_attack_iterations: null,
     min_directional_ranged_attack_iterations: null,
@@ -101,7 +161,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     max_piece_captures_per_ranged_attack: 1,
     
     // Step 4: Special Rules
-    special_scenario_movement: "",
+    special_scenario_moves: "",
     special_scenario_capture: "",
     checkmate_on_attack: false,
     check_on_attack: false,
@@ -160,6 +220,26 @@ const PieceWizard = ({ editPieceId = null }) => {
             down_left_movement: piece.down_left_movement || 0,
             left_movement: piece.left_movement || 0,
             
+            // Movement exact flags
+            up_left_movement_exact: !!piece.up_left_movement_exact,
+            up_movement_exact: !!piece.up_movement_exact,
+            up_right_movement_exact: !!piece.up_right_movement_exact,
+            right_movement_exact: !!piece.right_movement_exact,
+            down_right_movement_exact: !!piece.down_right_movement_exact,
+            down_movement_exact: !!piece.down_movement_exact,
+            down_left_movement_exact: !!piece.down_left_movement_exact,
+            left_movement_exact: !!piece.left_movement_exact,
+            
+            // Movement available_for fields
+            up_left_movement_available_for: piece.up_left_movement_available_for,
+            up_movement_available_for: piece.up_movement_available_for,
+            up_right_movement_available_for: piece.up_right_movement_available_for,
+            right_movement_available_for: piece.right_movement_available_for,
+            down_right_movement_available_for: piece.down_right_movement_available_for,
+            down_movement_available_for: piece.down_movement_available_for,
+            down_left_movement_available_for: piece.down_left_movement_available_for,
+            left_movement_available_for: piece.left_movement_available_for,
+            
             ratio_movement_style: !!piece.ratio_movement_style,
             ratio_one_movement: piece.ratio_one_movement,
             ratio_two_movement: piece.ratio_two_movement,
@@ -190,6 +270,26 @@ const PieceWizard = ({ editPieceId = null }) => {
             down_left_capture: piece.down_left_capture || 0,
             left_capture: piece.left_capture || 0,
             
+            // Capture exact flags
+            up_left_capture_exact: !!piece.up_left_capture_exact,
+            up_capture_exact: !!piece.up_capture_exact,
+            up_right_capture_exact: !!piece.up_right_capture_exact,
+            right_capture_exact: !!piece.right_capture_exact,
+            down_right_capture_exact: !!piece.down_right_capture_exact,
+            down_capture_exact: !!piece.down_capture_exact,
+            down_left_capture_exact: !!piece.down_left_capture_exact,
+            left_capture_exact: !!piece.left_capture_exact,
+            
+            // Capture available_for fields
+            up_left_capture_available_for: piece.up_left_capture_available_for,
+            up_capture_available_for: piece.up_capture_available_for,
+            up_right_capture_available_for: piece.up_right_capture_available_for,
+            right_capture_available_for: piece.right_capture_available_for,
+            down_right_capture_available_for: piece.down_right_capture_available_for,
+            down_capture_available_for: piece.down_capture_available_for,
+            down_left_capture_available_for: piece.down_left_capture_available_for,
+            left_capture_available_for: piece.left_capture_available_for,
+            
             ratio_one_capture: piece.ratio_one_capture,
             ratio_two_capture: piece.ratio_two_capture,
             step_by_step_capture: piece.step_by_step_capture,
@@ -203,6 +303,26 @@ const PieceWizard = ({ editPieceId = null }) => {
             down_attack_range: piece.down_attack_range || 0,
             down_left_attack_range: piece.down_left_attack_range || 0,
             left_attack_range: piece.left_attack_range || 0,
+            
+            // Attack range exact flags
+            up_left_attack_range_exact: !!piece.up_left_attack_range_exact,
+            up_attack_range_exact: !!piece.up_attack_range_exact,
+            up_right_attack_range_exact: !!piece.up_right_attack_range_exact,
+            right_attack_range_exact: !!piece.right_attack_range_exact,
+            down_right_attack_range_exact: !!piece.down_right_attack_range_exact,
+            down_attack_range_exact: !!piece.down_attack_range_exact,
+            down_left_attack_range_exact: !!piece.down_left_attack_range_exact,
+            left_attack_range_exact: !!piece.left_attack_range_exact,
+            
+            // Attack range available_for fields
+            up_left_attack_range_available_for: piece.up_left_attack_range_available_for,
+            up_attack_range_available_for: piece.up_attack_range_available_for,
+            up_right_attack_range_available_for: piece.up_right_attack_range_available_for,
+            right_attack_range_available_for: piece.right_attack_range_available_for,
+            down_right_attack_range_available_for: piece.down_right_attack_range_available_for,
+            down_attack_range_available_for: piece.down_attack_range_available_for,
+            down_left_attack_range_available_for: piece.down_left_attack_range_available_for,
+            left_attack_range_available_for: piece.left_attack_range_available_for,
             
             repeating_directional_ranged_attack: !!piece.repeating_directional_ranged_attack,
             max_directional_ranged_attack_iterations: piece.max_directional_ranged_attack_iterations,
@@ -236,7 +356,7 @@ const PieceWizard = ({ editPieceId = null }) => {
               (piece.ratio_two_movement == null || piece.ratio_two_capture === piece.ratio_two_movement),
             
             // Special rules - map database fields to form fields
-            special_scenario_movement: piece.special_scenario_moves || "",
+            special_scenario_moves: piece.special_scenario_moves || "",
             special_scenario_capture: piece.special_scenario_captures || "",
             checkmate_on_attack: !!piece.has_checkmate_rule,
             check_on_attack: !!piece.has_check_rule,
@@ -286,27 +406,68 @@ const PieceWizard = ({ editPieceId = null }) => {
     
     const hasAnyMovement = hasDirectionalMovement || hasRatioMovement || hasStepByStepMovement;
     
+    // Helper to convert additionalMovements to additionalCaptures format
+    const convertMovementsToCaptures = (specialScenarioMoves) => {
+      if (!specialScenarioMoves) return null;
+      try {
+        const parsed = typeof specialScenarioMoves === 'string' 
+          ? JSON.parse(specialScenarioMoves)
+          : specialScenarioMoves;
+        
+        if (!parsed.additionalMovements) return null;
+        
+        return JSON.stringify({
+          additionalCaptures: parsed.additionalMovements
+        });
+      } catch {
+        return null;
+      }
+    };
+    
     // Auto-check if movement exists and it's not already set
     if (hasAnyMovement && !pieceData.attacks_like_movement) {
-      setPieceData(prev => ({ 
-        ...prev, 
-        attacks_like_movement: true,
-        can_capture_enemy_on_move: true,
-        // Copy directional movement to capture
-        up_left_capture: prev.up_left_movement,
-        up_capture: prev.up_movement,
-        up_right_capture: prev.up_right_movement,
-        left_capture: prev.left_movement,
-        right_capture: prev.right_movement,
-        down_left_capture: prev.down_left_movement,
-        down_capture: prev.down_movement,
-        down_right_capture: prev.down_right_movement,
-        // Copy ratio movement
-        ratio_one_capture: prev.ratio_one_movement,
-        ratio_two_capture: prev.ratio_two_movement,
-        // Copy step-by-step
-        step_by_step_capture: prev.step_by_step_movement_value
-      }));
+      setPieceData(prev => {
+        const convertedCaptures = convertMovementsToCaptures(prev.special_scenario_moves);
+        return { 
+          ...prev, 
+          attacks_like_movement: true,
+          can_capture_enemy_on_move: true,
+          // Copy directional movement to capture
+          up_left_capture: prev.up_left_movement,
+          up_capture: prev.up_movement,
+          up_right_capture: prev.up_right_movement,
+          left_capture: prev.left_movement,
+          right_capture: prev.right_movement,
+          down_left_capture: prev.down_left_movement,
+          down_capture: prev.down_movement,
+          down_right_capture: prev.down_right_movement,
+          // Copy exact flags for directional captures
+          up_left_capture_exact: prev.up_left_movement_exact,
+          up_capture_exact: prev.up_movement_exact,
+          up_right_capture_exact: prev.up_right_movement_exact,
+          left_capture_exact: prev.left_movement_exact,
+          right_capture_exact: prev.right_movement_exact,
+          down_left_capture_exact: prev.down_left_movement_exact,
+          down_capture_exact: prev.down_movement_exact,
+          down_right_capture_exact: prev.down_right_movement_exact,
+          // Copy available_for flags for directional captures
+          up_left_capture_available_for: prev.up_left_movement_available_for,
+          up_capture_available_for: prev.up_movement_available_for,
+          up_right_capture_available_for: prev.up_right_movement_available_for,
+          left_capture_available_for: prev.left_movement_available_for,
+          right_capture_available_for: prev.right_movement_available_for,
+          down_left_capture_available_for: prev.down_left_movement_available_for,
+          down_capture_available_for: prev.down_movement_available_for,
+          down_right_capture_available_for: prev.down_right_movement_available_for,
+          // Copy ratio movement
+          ratio_one_capture: prev.ratio_one_movement,
+          ratio_two_capture: prev.ratio_two_movement,
+          // Copy step-by-step
+          step_by_step_capture: prev.step_by_step_movement_value,
+          // Copy additional movements to additional captures
+          ...(convertedCaptures && { special_scenario_capture: convertedCaptures })
+        };
+      });
     }
   }, [
     pieceData.up_left_movement,
@@ -372,7 +533,6 @@ const PieceWizard = ({ editPieceId = null }) => {
       // Convert booleans to strings explicitly
       // Map form fields to database fields
       const fieldMapping = {
-        'special_scenario_movement': 'special_scenario_moves',
         'special_scenario_capture': 'special_scenario_captures',
         'checkmate_on_attack': 'has_checkmate_rule',
         'check_on_attack': 'has_check_rule',
@@ -381,7 +541,7 @@ const PieceWizard = ({ editPieceId = null }) => {
       };
       
       // Skip database field names that should be mapped from form fields
-      const skipFields = ['special_scenario_moves', 'special_scenario_captures', 'has_checkmate_rule', 
+      const skipFields = ['special_scenario_captures', 'has_checkmate_rule', 
                           'has_check_rule', 'has_lose_on_capture_rule', 'min_turns_per_move'];
       
       Object.keys(pieceData).forEach(key => {

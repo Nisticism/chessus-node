@@ -3,9 +3,14 @@ import authHeader from "./auth-header";
 
 import API_URL from "../global/global.js";
 
-const getForums = async () => {
+const getForums = async (page = 1, limit = 20, gameTypeId = null) => {
   console.log("in forums service");
+  const params = { page, limit };
+  if (gameTypeId) {
+    params.gameTypeId = gameTypeId;
+  }
   const response = await axios.get(API_URL + "forums", { 
+    params,
     headers: authHeader() 
   });
   return response;

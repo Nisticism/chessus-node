@@ -78,9 +78,9 @@ export const editForum = (title, content, last_updated_at, id) => async (dispatc
   }
 };
 
-export const forums = () => async (dispatch) => {
+export const forums = (page = 1, limit = 20, gameTypeId = null) => async (dispatch) => {
   try {
-    const response = await ForumsService.getForums();
+    const response = await ForumsService.getForums(page, limit, gameTypeId);
     console.log("in forums action");
     console.log(response);
     dispatch({

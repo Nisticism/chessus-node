@@ -3,8 +3,9 @@ import authHeader from "./auth-header";
 
 import API_URL from "../global/global.js";
 
-const getPieces = async () => {
+const getPieces = async (page = 1, limit = 20) => {
   const response = await axios.get(API_URL + "pieces", { 
+    params: { page, limit },
     headers: authHeader() 
   });
   return response;
@@ -51,6 +52,13 @@ const deletePiece = async (pieceId) => {
   return response;
 };
 
+const getGamesByPieceId = async (pieceId) => {
+  const response = await axios.get(API_URL + `pieces/${pieceId}/games`, {
+    headers: authHeader()
+  });
+  return response;
+};
+
 const PiecesService = {
   getPieces,
   getPieceById,
@@ -58,6 +66,7 @@ const PiecesService = {
   createPiece,
   updatePiece,
   deletePiece,
+  getGamesByPieceId,
 }
 
 export default PiecesService;

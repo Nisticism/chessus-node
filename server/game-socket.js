@@ -13,6 +13,34 @@ const userSockets = new Map(); // Maps userId to socket.id
 const onlineUsers = new Set(); // Set of online user IDs
 
 /**
+ * Helper function to parse image_location and get the correct image URL based on player
+ */
+function getImageUrlForPlayer(imageLocation, playerNumber) {
+  if (!imageLocation) return null;
+  
+  try {
+    const images = JSON.parse(imageLocation);
+    if (Array.isArray(images) && images.length > 0) {
+      // Use player 1's image (index 0) or player 2's image (index 1) if available
+      const imageIndex = (playerNumber === 2 && images.length > 1) ? 1 : 0;
+      const imagePath = images[imageIndex];
+      return imagePath.startsWith('http') ? imagePath : imagePath.startsWith('/uploads/') ? imagePath : `/uploads/pieces/${imagePath}`;
+    }
+  } catch {
+    const imagePath = imageLocation;
+    if (imagePath.startsWith('http')) {
+      return imagePath;
+    } else if (imagePath.startsWith('/uploads/')) {
+      return imagePath;
+    } else {
+      return `/uploads/pieces/${imagePath}`;
+    }
+  }
+  
+  return null;
+}
+
+/**
  * ELO Rating System
  * Standard ELO calculation with K-factor of 32 for all players
  */
@@ -469,32 +497,28 @@ function initializeSocket(server) {
         // Create the live game in database
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
         
-        // Convert pieces_string from object format {"row,col": {...}} to array format [{x, y, ...}]
-        // AND load full piece movement data from pieces table
+        // Load pieces from junction table with full piece movement data
         let piecesArray = [];
         const pieceIdsToLoad = new Set();
         
         try {
-          const piecesObj = JSON.parse(gameType.pieces_string || "{}");
-          // If it's already an array, use it directly
-          if (Array.isArray(piecesObj)) {
-            piecesArray = piecesObj;
-            piecesArray.forEach(p => { if (p.piece_id) pieceIdsToLoad.add(p.piece_id); });
-          } else {
-            // Convert from object format to array format
-            Object.entries(piecesObj).forEach(([key, pieceData]) => {
-              const [row, col] = key.split(',').map(Number);
-              piecesArray.push({
-                ...pieceData,
-                x: col,  // col is x coordinate
-                y: row,  // row is y coordinate
-                id: `${pieceData.piece_id}_${row}_${col}` // Unique ID for this piece instance
-              });
-              if (pieceData.piece_id) pieceIdsToLoad.add(pieceData.piece_id);
-            });
-          }
+          // Get pieces from junction table
+          const [junctionPieces] = await db_pool.query(
+            `SELECT gtp.*, p.piece_name, p.image_location
+             FROM game_type_pieces gtp
+             INNER JOIN pieces p ON gtp.piece_id = p.id
+             WHERE gtp.game_type_id = ?`,
+            [gameTypeId]
+          );
+
+          piecesArray = junctionPieces.map(piece => ({
+            ...piece,
+            id: `${piece.piece_id}_${piece.y}_${piece.x}` // Unique ID for this piece instance
+          }));
+          
+          junctionPieces.forEach(p => { if (p.piece_id) pieceIdsToLoad.add(p.piece_id); });
         } catch (e) {
-          console.error("Error parsing pieces_string:", e);
+          console.error("Error loading pieces from junction table:", e);
           piecesArray = [];
         }
         
@@ -502,26 +526,32 @@ function initializeSocket(server) {
         const pieceDataMap = {};
         if (pieceIdsToLoad.size > 0) {
           const [pieceRows] = await db_pool.query(
-            `SELECT p.*, 
-                    pm.directional_movement_style, pm.up_movement, pm.down_movement, 
-                    pm.left_movement, pm.right_movement, pm.up_left_movement, 
-                    pm.up_right_movement, pm.down_left_movement, pm.down_right_movement,
-                    pm.ratio_movement_style, pm.ratio_one_movement, pm.ratio_two_movement,
-                    pm.step_by_step_movement_style, pm.step_by_step_movement_value,
-                    pm.can_hop_over_allies, pm.can_hop_over_enemies,
-                    pc.can_capture_enemy_on_move, pc.can_capture_ally_on_range,
-                    pc.up_capture, pc.down_capture, pc.left_capture, pc.right_capture,
-                    pc.up_left_capture, pc.up_right_capture, pc.down_left_capture, pc.down_right_capture,
-                    pc.ratio_one_capture, pc.ratio_two_capture,
-                    pc.step_by_step_capture
-             FROM pieces p
-             LEFT JOIN piece_movement pm ON p.id = pm.piece_id
-             LEFT JOIN piece_capture pc ON p.id = pc.piece_id
-             WHERE p.id IN (?)`,
+            `SELECT * FROM pieces WHERE id IN (?)`,
             [Array.from(pieceIdsToLoad)]
           );
           pieceRows.forEach(p => { pieceDataMap[p.id] = p; });
           
+            // Debug: Check what's in the piece data
+            if (pieceRows.length > 0) {
+              console.log('CREATE GAME - First piece from DB:', {
+                id: pieceRows[0].id,
+                piece_name: pieceRows[0].piece_name,
+                special_scenario_moves: pieceRows[0].special_scenario_moves,
+                special_scenario_captures: pieceRows[0].special_scenario_captures
+              });
+              
+              // Find a pawn to specifically check
+              const pawn = pieceRows.find(p => p.piece_name === 'Pawn');
+              if (pawn) {
+                console.log('CREATE GAME - Pawn data from DB:', {
+                  id: pawn.id,
+                  piece_name: pawn.piece_name,
+                  special_scenario_moves: pawn.special_scenario_moves,
+                  special_scenario_captures: pawn.special_scenario_captures
+                });
+              }
+            }
+            
           // Debug: Log first piece data from database
           if (pieceRows.length > 0) {
             console.log('First piece data loaded from DB:', {
@@ -532,18 +562,54 @@ function initializeSocket(server) {
               down_movement: pieceRows[0].down_movement,
               ratio_movement_style: pieceRows[0].ratio_movement_style,
               ratio_one_movement: pieceRows[0].ratio_one_movement,
-              can_capture_enemy_on_move: pieceRows[0].can_capture_enemy_on_move
+              can_capture_enemy_on_move: pieceRows[0].can_capture_enemy_on_move,
+              special_scenario_moves: pieceRows[0].special_scenario_moves,
+              special_scenario_captures: pieceRows[0].special_scenario_captures
             });
           }
         }
         
-        // Merge piece movement data into pieces array
+        // Fix player_id assignment based on Y position FIRST (before setting images)
+        // This ensures pieces have the correct ownership regardless of what's in the database
+        const boardHeight = gameType.board_height || 8;
+        piecesArray = piecesArray.map(piece => {
+          // Determine player based on Y position
+          // Bottom half of board (lower Y values) = Player 2
+          // Top half of board (higher Y values) = Player 1
+          const inferredPlayerId = piece.y < (boardHeight / 2) ? 2 : 1;
+          
+          return {
+            ...piece,
+            player_id: inferredPlayerId
+          };
+        });
+        
+        // Merge piece movement data into pieces array (now that player_id is set)
         piecesArray = piecesArray.map(piece => {
           const fullPieceData = pieceDataMap[piece.piece_id];
           if (fullPieceData) {
+            const imageLocation = piece.image_location || fullPieceData.image_location;
+            const imageUrl = getImageUrlForPlayer(imageLocation, piece.player_id);
+            
+            // Debug logging for first piece
+            if (piece.piece_id === piecesArray[0]?.piece_id) {
+              console.log('Processing piece image:', {
+                piece_id: piece.piece_id,
+                piece_name: piece.piece_name || fullPieceData.piece_name,
+                player_id: piece.player_id,
+                image_location: imageLocation,
+                computed_image_url: imageUrl
+              });
+            }
+            
             return {
               ...piece,
-              // Movement data from piece_movement table
+              // Image fields for frontend
+              image_location: imageLocation,
+              image: imageUrl,
+              image_url: imageUrl,
+              piece_name: piece.piece_name || fullPieceData.piece_name,
+              // Movement data
               directional_movement_style: fullPieceData.directional_movement_style,
               up_movement: fullPieceData.up_movement,
               down_movement: fullPieceData.down_movement,
@@ -560,7 +626,7 @@ function initializeSocket(server) {
               step_movement_value: fullPieceData.step_by_step_movement_value,
               can_hop_over_allies: fullPieceData.can_hop_over_allies,
               can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
-              // Capture data from piece_capture table
+              // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               up_capture: fullPieceData.up_capture,
               down_capture: fullPieceData.down_capture,
@@ -577,25 +643,12 @@ function initializeSocket(server) {
               piece_value: fullPieceData.piece_value,
               is_royal: fullPieceData.is_royal,
               can_promote: fullPieceData.can_promote,
-              promotion_options: fullPieceData.promotion_options
+              promotion_options: fullPieceData.promotion_options,
+              special_scenario_moves: fullPieceData.special_scenario_moves,
+              special_scenario_captures: fullPieceData.special_scenario_captures
             };
           }
           return piece;
-        });
-        
-        // Fix player_id assignment based on Y position (for standard chess setup)
-        // This ensures pieces have the correct ownership regardless of what's in the database
-        const boardHeight = gameType.board_height || 8;
-        piecesArray = piecesArray.map(piece => {
-          // Determine player based on Y position
-          // Bottom half of board (lower Y values) = Player 2
-          // Top half of board (higher Y values) = Player 1
-          const inferredPlayerId = piece.y < (boardHeight / 2) ? 2 : 1;
-          
-          return {
-            ...piece,
-            player_id: inferredPlayerId
-          };
         });
         
         const piecesData = JSON.stringify(piecesArray);
@@ -704,7 +757,7 @@ function initializeSocket(server) {
             [gameId]
           );
 
-          // Parse and enrich pieces with movement data from piece_movement and piece_capture tables
+          // Parse and enrich pieces with movement and capture data
           let pieces = JSON.parse(game.pieces || "[]");
           const pieceIdsToLoad = new Set();
           pieces.forEach(p => {
@@ -715,26 +768,21 @@ function initializeSocket(server) {
           
           if (pieceIdsToLoad.size > 0) {
             const [pieceRows] = await db_pool.query(
-              `SELECT p.*, 
-                      pm.directional_movement_style, pm.up_movement, pm.down_movement, 
-                      pm.left_movement, pm.right_movement, pm.up_left_movement, 
-                      pm.up_right_movement, pm.down_left_movement, pm.down_right_movement,
-                      pm.ratio_movement_style, pm.ratio_one_movement, pm.ratio_two_movement,
-                      pm.step_by_step_movement_style, pm.step_by_step_movement_value,
-                      pm.can_hop_over_allies, pm.can_hop_over_enemies,
-                      pc.can_capture_enemy_on_move, pc.can_capture_ally_on_range,
-                      pc.up_capture, pc.down_capture, pc.left_capture, pc.right_capture,
-                      pc.up_left_capture, pc.up_right_capture, pc.down_left_capture, pc.down_right_capture,
-                      pc.ratio_one_capture, pc.ratio_two_capture,
-                      pc.step_by_step_capture
-               FROM pieces p
-               LEFT JOIN piece_movement pm ON p.id = pm.piece_id
-               LEFT JOIN piece_capture pc ON p.id = pc.piece_id
-               WHERE p.id IN (?)`,
+              `SELECT * FROM pieces WHERE id IN (?)`,
               [Array.from(pieceIdsToLoad)]
             );
             const pieceDataMap = {};
             pieceRows.forEach(p => { pieceDataMap[p.id] = p; });
+            
+            // Debug: Check what's in the piece data
+            if (pieceRows.length > 0) {
+              console.log('JOIN GAME - First piece from DB:', {
+                id: pieceRows[0].id,
+                name: pieceRows[0].name,
+                special_scenario_moves: pieceRows[0].special_scenario_moves,
+                special_scenario_captures: pieceRows[0].special_scenario_captures
+              });
+            }
             
             pieces = pieces.map(piece => {
               const fullPieceData = pieceDataMap[piece.piece_id];
@@ -758,7 +806,7 @@ function initializeSocket(server) {
                   step_movement_value: fullPieceData.step_by_step_movement_value,
                   can_hop_over_allies: fullPieceData.can_hop_over_allies,
                   can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
-                  // Capture data from piece_capture table
+                  // Capture data
                   can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
                   up_capture: fullPieceData.up_capture,
                   down_capture: fullPieceData.down_capture,
@@ -775,7 +823,9 @@ function initializeSocket(server) {
                   piece_value: fullPieceData.piece_value,
                   is_royal: fullPieceData.is_royal,
                   can_promote: fullPieceData.can_promote,
-                  promotion_options: fullPieceData.promotion_options
+                  promotion_options: fullPieceData.promotion_options,
+                  special_scenario_moves: fullPieceData.special_scenario_moves,
+                  special_scenario_captures: fullPieceData.special_scenario_captures
                 };
               }
               return piece;
@@ -1794,22 +1844,20 @@ function initializeSocket(server) {
               });
             }
             
-            // Fall back to game type pieces if still empty
-            if (pieces.length === 0 && gameType?.pieces_string) {
-              const piecesObj = JSON.parse(gameType.pieces_string);
-              if (Array.isArray(piecesObj)) {
-                pieces = piecesObj;
-              } else {
-                Object.entries(piecesObj).forEach(([key, pieceData]) => {
-                  const [row, col] = key.split(',').map(Number);
-                  pieces.push({
-                    ...pieceData,
-                    x: col,
-                    y: row,
-                    id: `${pieceData.piece_id}_${row}_${col}`
-                  });
-                });
-              }
+            // Fall back to game type pieces from junction table if still empty
+            if (pieces.length === 0 && gameType?.id) {
+              const [junctionPieces] = await db_pool.query(
+                `SELECT gtp.*, p.piece_name, p.image_location
+                 FROM game_type_pieces gtp
+                 INNER JOIN pieces p ON gtp.piece_id = p.id
+                 WHERE gtp.game_type_id = ?`,
+                [gameType.id]
+              );
+              
+              pieces = junctionPieces.map(piece => ({
+                ...piece,
+                id: `${piece.piece_id}_${piece.y}_${piece.x}`
+              }));
             }
             
             // Load full piece data including movement rules if not already present
@@ -1823,22 +1871,7 @@ function initializeSocket(server) {
             
             if (pieceIdsToLoad.size > 0) {
               const [pieceRows] = await db_pool.query(
-                `SELECT p.*, 
-                        pm.directional_movement_style, pm.up_movement, pm.down_movement, 
-                        pm.left_movement, pm.right_movement, pm.up_left_movement, 
-                        pm.up_right_movement, pm.down_left_movement, pm.down_right_movement,
-                        pm.ratio_movement_style, pm.ratio_one_movement, pm.ratio_two_movement,
-                        pm.step_by_step_movement_style, pm.step_by_step_movement_value,
-                        pm.can_hop_over_allies, pm.can_hop_over_enemies,
-                        pc.can_capture_enemy_on_move, pc.can_capture_ally_on_range,
-                        pc.up_capture, pc.down_capture, pc.left_capture, pc.right_capture,
-                        pc.up_left_capture, pc.up_right_capture, pc.down_left_capture, pc.down_right_capture,
-                        pc.ratio_one_capture, pc.ratio_two_capture,
-                        pc.step_by_step_capture
-                 FROM pieces p
-                 LEFT JOIN piece_movement pm ON p.id = pm.piece_id
-                 LEFT JOIN piece_capture pc ON p.id = pc.piece_id
-                 WHERE p.id IN (?)`,
+                `SELECT * FROM pieces WHERE id IN (?)`,
                 [Array.from(pieceIdsToLoad)]
               );
               const pieceDataMap = {};
@@ -1867,7 +1900,7 @@ function initializeSocket(server) {
                     step_movement_value: fullPieceData.step_by_step_movement_value,
                     can_hop_over_allies: fullPieceData.can_hop_over_allies,
                     can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
-                    // Capture data from piece_capture table
+                    // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
                     up_capture: fullPieceData.up_capture,
                     down_capture: fullPieceData.down_capture,
@@ -1884,7 +1917,9 @@ function initializeSocket(server) {
                     piece_value: fullPieceData.piece_value,
                     is_royal: fullPieceData.is_royal,
                     can_promote: fullPieceData.can_promote,
-                    promotion_options: fullPieceData.promotion_options
+                    promotion_options: fullPieceData.promotion_options,
+                    special_scenario_moves: fullPieceData.special_scenario_moves,
+                    special_scenario_captures: fullPieceData.special_scenario_captures
                   };
                 }
                 return piece;
@@ -1919,8 +1954,9 @@ function initializeSocket(server) {
           let moveHistory = [];
           let rated = true;
           let allowPremoves = true;
+          let otherData = {};
           try {
-            const otherData = JSON.parse(game.other_data || '{}');
+            otherData = JSON.parse(game.other_data || '{}');
             moveHistory = otherData.moves || [];
             rated = otherData.rated !== false; // Default to true
             allowPremoves = otherData.allowPremoves !== false; // Default to true
@@ -2950,6 +2986,46 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
       }
       
       return path1Clear || path2Clear;
+    }
+  }
+
+  // Check special scenario moves (e.g., pawn's 2-square first move)
+  if (piece.special_scenario_moves) {
+    try {
+      const specialMoves = typeof piece.special_scenario_moves === 'string' 
+        ? JSON.parse(piece.special_scenario_moves) 
+        : piece.special_scenario_moves;
+      
+      const additionalMovements = specialMoves?.additionalMovements || {};
+      
+      // Determine direction based on effective movement (player perspective)
+      let direction = null;
+      const distance = Math.max(absDx, absDy);
+      
+      // Use effective dx/dy for direction (already flipped for player 2)
+      if (effectiveDy < 0 && effectiveDx === 0) direction = 'up';
+      else if (effectiveDy > 0 && effectiveDx === 0) direction = 'down';
+      else if (effectiveDy === 0 && effectiveDx < 0) direction = 'left';
+      else if (effectiveDy === 0 && effectiveDx > 0) direction = 'right';
+      else if (effectiveDy < 0 && effectiveDx < 0 && absDx === absDy) direction = 'up_left';
+      else if (effectiveDy < 0 && effectiveDx > 0 && absDx === absDy) direction = 'up_right';
+      else if (effectiveDy > 0 && effectiveDx < 0 && absDx === absDy) direction = 'down_left';
+      else if (effectiveDy > 0 && effectiveDx > 0 && absDx === absDy) direction = 'down_right';
+      
+      if (direction && additionalMovements[direction]) {
+        for (const movementOption of additionalMovements[direction]) {
+          const value = movementOption.value || 0;
+          const matches = (movementOption.infinite && distance > 0) ||
+                         (movementOption.exact && distance === value) ||
+                         (!movementOption.exact && !movementOption.infinite && distance > 0 && distance <= value);
+          
+          if (matches && isPathClear(piece.x, piece.y, targetX, targetY)) {
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore JSON parse errors
     }
   }
 
