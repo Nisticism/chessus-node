@@ -1114,6 +1114,28 @@ Join us in revolutionizing chess, one variant at a time.
     console.error('Error populating pawn special moves:', err.message);
   }
 
+  // Add missing piece columns that were never in the migration system
+  try {
+    const missingPieceColumns = [
+      ['piece_category', 'VARCHAR(50) DEFAULT NULL'],
+      ['has_checkmate_rule', 'TINYINT(1) DEFAULT 0'],
+      ['has_check_rule', 'TINYINT(1) DEFAULT 0'],
+      ['has_lose_on_capture_rule', 'TINYINT(1) DEFAULT 0'],
+      ['available_for_captures', 'INT UNSIGNED NULL']
+    ];
+
+    for (const [colName, colDef] of missingPieceColumns) {
+      const exists = await columnExists('pieces', colName);
+      if (!exists) {
+        await db_pool.query(`ALTER TABLE pieces ADD COLUMN ${colName} ${colDef}`);
+        console.log(`✓ Added ${colName} column to pieces table`);
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('❌ Error adding missing piece columns:', err.message);
+  }
+
   // Add attack range exact columns to pieces table (these were missing from initial consolidation)
   try {
     const attackRangeExactColumns = [
@@ -1234,6 +1256,7 @@ Join us in revolutionizing chess, one variant at a time.
         ['can_capture_ally_on_range', 'TINYINT(1) DEFAULT NULL'],
         ['can_attack_on_iteration', 'TINYINT(1) DEFAULT NULL'],
         ['first_move_only_capture', 'TINYINT(1) DEFAULT 0'],
+        ['available_for_captures', 'INT UNSIGNED NULL'],
         ['up_left_capture', 'INT DEFAULT 0'],
         ['up_capture', 'INT DEFAULT 0'],
         ['up_right_capture', 'INT DEFAULT 0'],
