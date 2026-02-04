@@ -1168,12 +1168,12 @@ Join us in revolutionizing chess, one variant at a time.
   try {
     // Check if pieces table already has movement columns (check for one of the _exact columns to ensure full migration)
     const movementColumnExists = await columnExists('pieces', 'directional_movement_style');
-    const exactColumnExists = await columnExists('pieces', 'up_movement_exact');
+    const captureColumnExists = await columnExists('pieces', 'can_capture_enemy_via_range');
     
-    if (!movementColumnExists || !exactColumnExists) {
+    if (!movementColumnExists || !captureColumnExists) {
       console.log('Consolidating piece_movement and piece_capture tables into pieces...');
       
-      // Add all movement columns
+      // Add all movement columns to pieces table
       const movementColumns = [
         ['directional_movement_style', 'TINYINT(1) DEFAULT NULL'],
         ['repeating_movement', 'TINYINT(1) DEFAULT NULL'],
@@ -1226,7 +1226,7 @@ Join us in revolutionizing chess, one variant at a time.
         }
       }
       
-      // Add all capture columns
+      // Add all capture columns to pieces table
       const captureColumns = [
         ['can_capture_enemy_via_range', 'TINYINT(1) DEFAULT NULL'],
         ['can_capture_ally_via_range', 'TINYINT(1) DEFAULT NULL'],
@@ -1290,122 +1290,200 @@ Join us in revolutionizing chess, one variant at a time.
         }
       }
       
-      // Copy data from piece_movement to pieces
-      await db_pool.query(`
-        UPDATE pieces p
-        INNER JOIN piece_movement pm ON p.id = pm.piece_id
-        SET 
-            p.directional_movement_style = pm.directional_movement_style,
-            p.repeating_movement = pm.repeating_movement,
-            p.max_directional_movement_iterations = pm.max_directional_movement_iterations,
-            p.min_directional_movement_iterations = pm.min_directional_movement_iterations,
-            p.up_left_movement = pm.up_left_movement,
-            p.up_movement = pm.up_movement,
-            p.up_right_movement = pm.up_right_movement,
-            p.right_movement = pm.right_movement,
-            p.down_right_movement = pm.down_right_movement,
-            p.down_movement = pm.down_movement,
-            p.down_left_movement = pm.down_left_movement,
-            p.left_movement = pm.left_movement,
-            p.ratio_movement_style = pm.ratio_movement_style,
-            p.ratio_one_movement = pm.ratio_one_movement,
-            p.ratio_two_movement = pm.ratio_two_movement,
-            p.repeating_ratio = pm.repeating_ratio,
-            p.max_ratio_iterations = pm.max_ratio_iterations,
-            p.min_ratio_iterations = pm.min_ratio_iterations,
-            p.step_by_step_movement_style = pm.step_by_step_movement_style,
-            p.step_by_step_movement_value = pm.step_by_step_movement_value,
-            p.can_hop_over_allies = pm.can_hop_over_allies,
-            p.can_hop_over_enemies = pm.can_hop_over_enemies,
-            p.min_turns_per_move = pm.min_turns_per_move,
-            p.max_turns_per_move = pm.max_turns_per_move,
-            p.first_move_only = COALESCE(pm.first_move_only, 0),
-            p.available_for_moves = pm.available_for_moves,
-            p.special_scenario_moves = pm.special_scenario_moves,
-            p.up_left_movement_exact = COALESCE(pm.up_left_movement_exact, 0),
-            p.up_movement_exact = COALESCE(pm.up_movement_exact, 0),
-            p.up_right_movement_exact = COALESCE(pm.up_right_movement_exact, 0),
-            p.right_movement_exact = COALESCE(pm.right_movement_exact, 0),
-            p.down_right_movement_exact = COALESCE(pm.down_right_movement_exact, 0),
-            p.down_movement_exact = COALESCE(pm.down_movement_exact, 0),
-            p.down_left_movement_exact = COALESCE(pm.down_left_movement_exact, 0),
-            p.left_movement_exact = COALESCE(pm.left_movement_exact, 0),
-            p.up_left_movement_available_for = pm.up_left_movement_available_for,
-            p.up_movement_available_for = pm.up_movement_available_for,
-            p.up_right_movement_available_for = pm.up_right_movement_available_for,
-            p.right_movement_available_for = pm.right_movement_available_for,
-            p.down_right_movement_available_for = pm.down_right_movement_available_for,
-            p.down_movement_available_for = pm.down_movement_available_for,
-            p.down_left_movement_available_for = pm.down_left_movement_available_for,
-            p.left_movement_available_for = pm.left_movement_available_for
-      `);
+      // Check if legacy tables exist before trying to copy data
+      const pieceMovementExists = await tableExists('piece_movement');
+      const pieceCaptureExists = await tableExists('piece_capture');
       
-      // Copy data from piece_capture to pieces
-      await db_pool.query(`
-        UPDATE pieces p
-        INNER JOIN piece_capture pc ON p.id = pc.piece_id
-        SET 
-            p.can_capture_enemy_via_range = pc.can_capture_enemy_via_range,
-            p.can_capture_ally_via_range = pc.can_capture_ally_via_range,
-            p.can_capture_enemy_on_move = pc.can_capture_enemy_on_move,
-            p.can_capture_ally_on_range = pc.can_capture_ally_on_range,
-            p.can_attack_on_iteration = pc.can_attack_on_iteration,
-            p.up_left_capture = pc.up_left_capture,
-            p.up_capture = pc.up_capture,
-            p.up_right_capture = pc.up_right_capture,
-            p.right_capture = pc.right_capture,
-            p.down_right_capture = pc.down_right_capture,
-            p.down_capture = pc.down_capture,
-            p.down_left_capture = pc.down_left_capture,
-            p.left_capture = pc.left_capture,
-            p.ratio_one_capture = pc.ratio_one_capture,
-            p.ratio_two_capture = pc.ratio_two_capture,
-            p.step_by_step_capture = pc.step_by_step_capture,
-            p.up_left_attack_range = pc.up_left_attack_range,
-            p.up_attack_range = pc.up_attack_range,
-            p.up_right_attack_range = pc.up_right_attack_range,
-            p.right_attack_range = pc.right_attack_range,
-            p.down_right_attack_range = pc.down_right_attack_range,
-            p.down_attack_range = pc.down_attack_range,
-            p.down_left_attack_range = pc.down_left_attack_range,
-            p.left_attack_range = pc.left_attack_range,
-            p.repeating_directional_ranged_attack = pc.repeating_directional_ranged_attack,
-            p.max_directional_ranged_attack_iterations = pc.max_directional_ranged_attack_iterations,
-            p.min_directional_ranged_attack_iterations = pc.min_directional_ranged_attack_iterations,
-            p.ratio_one_attack_range = pc.ratio_one_attack_range,
-            p.ratio_two_attack_range = pc.ratio_two_attack_range,
-            p.repeating_ratio_ranged_attack = pc.repeating_ratio_ranged_attack,
-            p.max_ratio_ranged_attack_iterations = pc.max_ratio_ranged_attack_iterations,
-            p.min_ratio_ranged_attack_iterations = pc.min_ratio_ranged_attack_iterations,
-            p.step_by_step_attack_style = pc.step_by_step_attack_style,
-            p.step_by_step_attack_value = pc.step_by_step_attack_value,
-            p.max_piece_captures_per_move = pc.max_piece_captures_per_move,
-            p.max_piece_captures_per_ranged_attack = pc.max_piece_captures_per_ranged_attack,
-            p.special_scenario_captures = pc.special_scenario_captures,
-            p.first_move_only_capture = COALESCE(pc.first_move_only_capture, 0),
-            p.up_left_capture_exact = COALESCE(pc.up_left_capture_exact, 0),
-            p.up_capture_exact = COALESCE(pc.up_capture_exact, 0),
-            p.up_right_capture_exact = COALESCE(pc.up_right_capture_exact, 0),
-            p.right_capture_exact = COALESCE(pc.right_capture_exact, 0),
-            p.down_right_capture_exact = COALESCE(pc.down_right_capture_exact, 0),
-            p.down_capture_exact = COALESCE(pc.down_capture_exact, 0),
-            p.down_left_capture_exact = COALESCE(pc.down_left_capture_exact, 0),
-            p.left_capture_exact = COALESCE(pc.left_capture_exact, 0),
-            p.up_left_capture_available_for = pc.up_left_capture_available_for,
-            p.up_capture_available_for = pc.up_capture_available_for,
-            p.up_right_capture_available_for = pc.up_right_capture_available_for,
-            p.right_capture_available_for = pc.right_capture_available_for,
-            p.down_right_capture_available_for = pc.down_right_capture_available_for,
-            p.down_capture_available_for = pc.down_capture_available_for,
-            p.down_left_capture_available_for = pc.down_left_capture_available_for,
-            p.left_capture_available_for = pc.left_capture_available_for
-      `);
+      // Copy data from piece_movement to pieces (dynamically check which columns exist)
+      if (pieceMovementExists) {
+        // Get columns that actually exist in piece_movement table
+        const [pmColumns] = await db_pool.query(`
+          SELECT COLUMN_NAME 
+          FROM information_schema.COLUMNS 
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'piece_movement'
+        `, [process.env.DB_NAME || 'chessusnode']);
+        const pmColumnNames = pmColumns.map(c => c.COLUMN_NAME);
+        
+        // Build dynamic SET clause based on columns that exist in source table
+        const movementMappings = [
+          'directional_movement_style',
+          'repeating_movement',
+          'max_directional_movement_iterations',
+          'min_directional_movement_iterations',
+          'up_left_movement',
+          'up_movement',
+          'up_right_movement',
+          'right_movement',
+          'down_right_movement',
+          'down_movement',
+          'down_left_movement',
+          'left_movement',
+          'ratio_movement_style',
+          'ratio_one_movement',
+          'ratio_two_movement',
+          'repeating_ratio',
+          'max_ratio_iterations',
+          'min_ratio_iterations',
+          'step_by_step_movement_style',
+          'step_by_step_movement_value',
+          'can_hop_over_allies',
+          'can_hop_over_enemies',
+          'min_turns_per_move',
+          'max_turns_per_move',
+          'special_scenario_moves'
+        ];
+        
+        // Optional columns that may not exist in legacy table
+        const optionalMovementMappings = [
+          'first_move_only',
+          'available_for_moves',
+          'up_left_movement_exact',
+          'up_movement_exact',
+          'up_right_movement_exact',
+          'right_movement_exact',
+          'down_right_movement_exact',
+          'down_movement_exact',
+          'down_left_movement_exact',
+          'left_movement_exact',
+          'up_left_movement_available_for',
+          'up_movement_available_for',
+          'up_right_movement_available_for',
+          'right_movement_available_for',
+          'down_right_movement_available_for',
+          'down_movement_available_for',
+          'down_left_movement_available_for',
+          'left_movement_available_for'
+        ];
+        
+        // Build SET clause
+        const setClauses = [];
+        for (const col of movementMappings) {
+          if (pmColumnNames.includes(col)) {
+            setClauses.push(`p.${col} = pm.${col}`);
+          }
+        }
+        for (const col of optionalMovementMappings) {
+          if (pmColumnNames.includes(col)) {
+            setClauses.push(`p.${col} = COALESCE(pm.${col}, p.${col})`);
+          }
+        }
+        
+        if (setClauses.length > 0) {
+          const updateSql = `
+            UPDATE pieces p
+            INNER JOIN piece_movement pm ON p.id = pm.piece_id
+            SET ${setClauses.join(',\n                ')}
+          `;
+          await db_pool.query(updateSql);
+          console.log(`  ✓ Copied ${setClauses.length} columns from piece_movement`);
+        }
+      } else {
+        console.log('  ℹ piece_movement table not found, skipping data copy');
+      }
+      
+      // Copy data from piece_capture to pieces (dynamically check which columns exist)
+      if (pieceCaptureExists) {
+        // Get columns that actually exist in piece_capture table
+        const [pcColumns] = await db_pool.query(`
+          SELECT COLUMN_NAME 
+          FROM information_schema.COLUMNS 
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'piece_capture'
+        `, [process.env.DB_NAME || 'chessusnode']);
+        const pcColumnNames = pcColumns.map(c => c.COLUMN_NAME);
+        
+        // Build dynamic SET clause based on columns that exist in source table
+        const captureMappings = [
+          'can_capture_enemy_via_range',
+          'can_capture_ally_via_range',
+          'can_capture_enemy_on_move',
+          'can_capture_ally_on_range',
+          'can_attack_on_iteration',
+          'up_left_capture',
+          'up_capture',
+          'up_right_capture',
+          'right_capture',
+          'down_right_capture',
+          'down_capture',
+          'down_left_capture',
+          'left_capture',
+          'ratio_one_capture',
+          'ratio_two_capture',
+          'step_by_step_capture',
+          'up_left_attack_range',
+          'up_attack_range',
+          'up_right_attack_range',
+          'right_attack_range',
+          'down_right_attack_range',
+          'down_attack_range',
+          'down_left_attack_range',
+          'left_attack_range',
+          'repeating_directional_ranged_attack',
+          'max_directional_ranged_attack_iterations',
+          'min_directional_ranged_attack_iterations',
+          'ratio_one_attack_range',
+          'ratio_two_attack_range',
+          'repeating_ratio_ranged_attack',
+          'max_ratio_ranged_attack_iterations',
+          'min_ratio_ranged_attack_iterations',
+          'step_by_step_attack_style',
+          'step_by_step_attack_value',
+          'max_piece_captures_per_move',
+          'max_piece_captures_per_ranged_attack',
+          'special_scenario_captures'
+        ];
+        
+        // Optional columns that may not exist in legacy table
+        const optionalCaptureMappings = [
+          'first_move_only_capture',
+          'up_left_capture_exact',
+          'up_capture_exact',
+          'up_right_capture_exact',
+          'right_capture_exact',
+          'down_right_capture_exact',
+          'down_capture_exact',
+          'down_left_capture_exact',
+          'left_capture_exact',
+          'up_left_capture_available_for',
+          'up_capture_available_for',
+          'up_right_capture_available_for',
+          'right_capture_available_for',
+          'down_right_capture_available_for',
+          'down_capture_available_for',
+          'down_left_capture_available_for',
+          'left_capture_available_for'
+        ];
+        
+        // Build SET clause
+        const setClauses = [];
+        for (const col of captureMappings) {
+          if (pcColumnNames.includes(col)) {
+            setClauses.push(`p.${col} = pc.${col}`);
+          }
+        }
+        for (const col of optionalCaptureMappings) {
+          if (pcColumnNames.includes(col)) {
+            setClauses.push(`p.${col} = COALESCE(pc.${col}, p.${col})`);
+          }
+        }
+        
+        if (setClauses.length > 0) {
+          const updateSql = `
+            UPDATE pieces p
+            INNER JOIN piece_capture pc ON p.id = pc.piece_id
+            SET ${setClauses.join(',\n                ')}
+          `;
+          await db_pool.query(updateSql);
+          console.log(`  ✓ Copied ${setClauses.length} columns from piece_capture`);
+        }
+      } else {
+        console.log('  ℹ piece_capture table not found, skipping data copy');
+      }
       
       console.log('✓ Consolidated piece tables into single pieces table');
       migrationsRun++;
     }
   } catch (err) {
-    console.error('Error consolidating piece tables:', err.message);
+    console.error('❌ Error consolidating piece tables:', err.message);
   }
 
   // Convert special_scenario_moves and special_scenario_captures to TEXT type for larger JSON storage
