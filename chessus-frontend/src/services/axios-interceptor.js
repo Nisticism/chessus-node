@@ -50,6 +50,7 @@ axios.interceptors.response.use(
         return axios(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
+        // Auth service handles logout/redirect, but we still reject for proper error handling
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

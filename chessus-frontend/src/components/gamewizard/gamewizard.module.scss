@@ -536,6 +536,28 @@
   align-items: center;
   justify-content: center;
   position: relative;
+  cursor: grab;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  border-radius: 4px;
+
+  &:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+    z-index: 10;
+  }
+
+  &:active {
+    cursor: grabbing;
+    transform: scale(1.02);
+  }
+
+  img {
+    transition: filter 0.15s ease;
+  }
+
+  &:hover img {
+    filter: brightness(1.15) drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
+  }
 }
 
 .piece-stats {
