@@ -28,10 +28,16 @@ export const getAllPieces = async () => {
   try {
     const response = await PiecesService.getPieces();
     console.log("pieces action");
-    return response.data;
+    // Handle paginated response { pieces: [...], pagination: {...} }
+    if (response.data && response.data.pieces) {
+      return response.data.pieces;
+    }
+    // Fallback for direct array response
+    return Array.isArray(response.data) ? response.data : [];
   } catch (error) {
     const message = getErrorMessage(error);
-    return Promise.reject();
+    console.error("Error getting all pieces:", message);
+    return []; // Return empty array instead of rejecting to avoid breaking callers
   }
 };
 

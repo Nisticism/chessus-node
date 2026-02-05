@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import styles from "./gamewizard.module.scss";
 import PieceSelector from "./PieceSelector";
-import { getAllPieces, getPieceById } from "../../actions/pieces";
+import PiecesService from "../../services/pieces.service";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 import { 
   canPieceMoveTo as canPieceMoveToUtil,
@@ -121,20 +121,16 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   useEffect(() => {
     const loadPieces = async () => {
       try {
-        const allPieces = await getAllPieces();
-        const pieceMap = {};
+        // Use /api/pieces/full to get ALL pieces with movement data in one call
+        const response = await PiecesService.getPiecesWithMovement();
+        const allPieces = response.data || [];
         
-        // Load full details for each piece (includes movement/capture data from JOINs)
-        await Promise.all(allPieces.map(async (piece) => {
-          try {
-            const fullPieceData = await getPieceById(piece.id);
-            pieceMap[piece.id] = fullPieceData;
-          } catch (err) {
-            console.error(`Error loading piece ${piece.id}:`, err);
-            // Fallback to basic piece data
-            pieceMap[piece.id] = piece;
-          }
-        }));
+        const pieceMap = {};
+        allPieces.forEach(piece => {
+          // piece_id is returned from the full query, use it as the key
+          const id = piece.piece_id || piece.id;
+          pieceMap[id] = piece;
+        });
         
         setPieceDataMap(pieceMap);
       } catch (error) {
