@@ -959,6 +959,15 @@
   }
 }
 
+.btn-success {
+  background: #44aa44;
+  color: #fff;
+
+  &:hover:not(:disabled) {
+    background: #338833;
+  }
+}
+
 .btn-small {
   padding: 8px 14px;
   font-size: 0.85rem;
@@ -1387,6 +1396,301 @@
 
     .result {
       font-size: 1.1rem;
+    }
+  }
+}
+
+// Promotion Modal styles
+.promotion-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.promotion-modal {
+  background: linear-gradient(135deg, #1a2a4a 0%, #0d1a2d 100%);
+  border: 2px solid #3a5a8a;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideIn 0.3s ease-out;
+
+  h3 {
+    color: #fff;
+    margin: 0 0 8px 0;
+    font-size: 1.5rem;
+  }
+
+  p {
+    color: #aac;
+    margin: 0 0 20px 0;
+    font-size: 0.95rem;
+  }
+}
+
+.promotion-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.promotion-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid #3a5a8a;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: #5a8aca;
+    transform: translateY(-2px);
+  }
+
+  img {
+    width: 50px;
+    height: 50px;
+    object-fit: contain;
+  }
+
+  .piece-name {
+    font-size: 2rem;
+    color: #fff;
+  }
+
+  .piece-label {
+    font-size: 0.75rem;
+    color: #8ac;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+}
+
+.cancel-button {
+  background: transparent;
+  border: 1px solid #666;
+  color: #888;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border-color: #888;
+  }
+}
+
+.no-promotion-message {
+  font-size: 0.85rem;
+  color: #f8a;
+  margin: 10px 0;
+  font-style: italic;
+}
+
+// Special square indicators
+.special-square-indicator {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 0.6rem;
+  font-weight: bold;
+  color: #fff;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+  pointer-events: none;
+
+  &.promotion {
+    background: #4b0082;
+  }
+
+  &.range {
+    background: #ff8c00;
+  }
+
+  &.control {
+    background: #32CD32;
+  }
+
+  &.special {
+    background: #ffd700;
+    color: #000;
+  }
+}
+
+// Special square background overlays
+.board-square {
+  &.promotion-square {
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(75, 0, 130, 0.3);
+      pointer-events: none;
+      z-index: 1;
+    }
+  }
+
+  &.range-square {
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 140, 0, 0.3);
+      pointer-events: none;
+      z-index: 1;
+    }
+  }
+
+  &.control-square {
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(50, 205, 50, 0.3);
+      pointer-events: none;
+      z-index: 1;
+    }
+  }
+
+  &.special-square {
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 215, 0, 0.3);
+      pointer-events: none;
+      z-index: 1;
+    }
+  }
+}
+
+// Special squares legend
+.special-squares-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  margin-top: 8px;
+  font-size: 0.8rem;
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #ccc;
+
+    .legend-color {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+
+      &.promotion {
+        background: rgba(75, 0, 130, 0.7);
+      }
+
+      &.range {
+        background: rgba(255, 140, 0, 0.7);
+      }
+
+      &.control {
+        background: rgba(50, 205, 50, 0.7);
+      }
+
+      &.special {
+        background: rgba(255, 215, 0, 0.7);
+      }
+    }
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Draw offer notification
+.draw-offer-notification {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(135deg, #3a3a5c 0%, #2a2a4c 100%);
+  border: 2px solid #6c63ff;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  animation: slideIn 0.3s ease;
+  
+  span {
+    color: #fff;
+    font-weight: 500;
+    font-size: 1rem;
+  }
+  
+  .draw-offer-buttons {
+    display: flex;
+    gap: 8px;
+    
+    .btn {
+      padding: 8px 16px;
+      font-size: 0.9rem;
     }
   }
 }

@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import { useSocket } from "../../contexts/SocketContext";
 import styles from "./livegame.module.scss";
 import soundManager from "../../utils/soundEffects";
+import PromotionModal from "./PromotionModal";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -59,9 +60,13 @@ const LiveGame = () => {
     joinGame,
     makeMove,
     resign,
+    offerDraw,
+    acceptDraw,
+    declineDraw,
     cancelGame,
     setPremove: sendPremove,
     clearPremove: sendClearPremove,
+    promotePiece,
     onGameEvent
   } = useSocket();
 
@@ -80,9 +85,15 @@ const LiveGame = () => {
   const [inCheck, setInCheck] = useState(false);
   const [checkedPieces, setCheckedPieces] = useState([]);
   const [showMovableIndicators, setShowMovableIndicators] = useState(false);
+  const [showPromotionSquares, setShowPromotionSquares] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const soundEnabledRef = useRef(false);
   const [premove, setPremove] = useState(null); // Store premove {from, to, pieceId}
+  const [showPromotionModal, setShowPromotionModal] = useState(false);
+  const [promotionData, setPromotionData] = useState(null); // {pieceId, options, promotingPiece}
+  const [specialSquares, setSpecialSquares] = useState({ range: {}, promotion: {}, control: {}, special: {} });
+  const [pendingDrawOffer, setPendingDrawOffer] = useState(null); // {from, fromUsername} when opponent offers draw
+  const [drawOfferSent, setDrawOfferSent] = useState(false); // Track if current user sent a draw offer
 
   // Load game state on mount
   useEffect(() => {
@@ -101,6 +112,32 @@ const LiveGame = () => {
           state.premove = null;
         }
         setGameState(state);
+        
+        // Parse special squares from game type
+        if (state.gameType) {
+          const squares = { range: {}, promotion: {}, control: {}, special: {} };
+          try {
+            if (state.gameType.range_squares_string) {
+              squares.range = JSON.parse(state.gameType.range_squares_string);
+            }
+          } catch (e) { console.error('Error parsing range_squares_string:', e); }
+          try {
+            if (state.gameType.promotion_squares_string) {
+              squares.promotion = JSON.parse(state.gameType.promotion_squares_string);
+            }
+          } catch (e) { console.error('Error parsing promotion_squares_string:', e); }
+          try {
+            if (state.gameType.control_squares_string) {
+              squares.control = JSON.parse(state.gameType.control_squares_string);
+            }
+          } catch (e) { console.error('Error parsing control_squares_string:', e); }
+          try {
+            if (state.gameType.special_squares_string) {
+              squares.special = JSON.parse(state.gameType.special_squares_string);
+            }
+          } catch (e) { console.error('Error parsing special_squares_string:', e); }
+          setSpecialSquares(squares);
+        }
       } catch (err) {
         setError(err.message || "Failed to load game");
       } finally {
@@ -186,6 +223,8 @@ const LiveGame = () => {
       if (parseInt(overGameId) === parseInt(gameId)) {
         setGameOverData({ winner, winnerUsername, reason, eloChanges });
         setShowGameOver(true);
+        setPendingDrawOffer(null); // Clear any pending draw offer
+        setDrawOfferSent(false); // Clear any sent draw offer
         setGameState(prev => ({ 
           ...prev, 
           status: 'completed', 
@@ -306,6 +345,79 @@ const LiveGame = () => {
       }
     });
 
+    // Promotion events
+    const unsubscribePromotionRequired = onGameEvent("promotionRequired", ({ gameId: promoGameId, pieceId, pieceName, options, move, gameState: newState }) => {
+      if (parseInt(promoGameId) === parseInt(gameId)) {
+        // Update game state with the move
+        setGameState(prev => ({
+          ...prev,
+          pieces: newState.pieces,
+          playerTimes: newState.playerTimes,
+          moveHistory: newState.moveHistory
+        }));
+        
+        // Find the promoting piece
+        const promotingPiece = newState.pieces.find(p => p.id === pieceId);
+        
+        // Show promotion modal
+        setPromotionData({
+          pieceId,
+          pieceName,
+          options,
+          promotingPiece
+        });
+        setShowPromotionModal(true);
+        
+        // Play promotion sound
+        if (soundEnabledRef.current) {
+          soundManager.playMove();
+        }
+      }
+    });
+
+    const unsubscribePiecePromoted = onGameEvent("piecePromoted", ({ gameId: promoGameId, pieceId, newPieceId, newPieceName, promotedPiece, gameState: newState }) => {
+      if (parseInt(promoGameId) === parseInt(gameId)) {
+        // Hide promotion modal
+        setShowPromotionModal(false);
+        setPromotionData(null);
+        
+        // Update game state
+        setGameState(prev => ({
+          ...prev,
+          pieces: newState.pieces,
+          currentTurn: newState.currentTurn
+        }));
+        
+        // Play a sound for promotion
+        if (soundEnabledRef.current) {
+          soundManager.playMove();
+        }
+        
+        console.log(`Piece ${pieceId} promoted to ${newPieceName}`);
+      }
+    });
+
+    // Draw events
+    const unsubscribeDrawOffered = onGameEvent("drawOffered", ({ gameId: drawGameId, from, fromUsername }) => {
+      if (parseInt(drawGameId) === parseInt(gameId)) {
+        if (from === currentUser?.id) {
+          // Current user sent the offer
+          setDrawOfferSent(true);
+        } else {
+          // Opponent sent the offer
+          setPendingDrawOffer({ from, fromUsername });
+        }
+      }
+    });
+
+    const unsubscribeDrawDeclined = onGameEvent("drawDeclined", ({ gameId: drawGameId, by, byUsername }) => {
+      if (parseInt(drawGameId) === parseInt(gameId)) {
+        setPendingDrawOffer(null);
+        setDrawOfferSent(false); // Clear the sent state when declined
+        console.log(`Draw declined by ${byUsername}`);
+      }
+    });
+
     return () => {
       unsubscribeMove();
       unsubscribeCheck();
@@ -318,6 +430,10 @@ const LiveGame = () => {
       unsubscribePremoveCancelled();
       unsubscribePremoveExecuted();
       unsubscribePremoveCleared();
+      unsubscribePromotionRequired();
+      unsubscribePiecePromoted();
+      unsubscribeDrawOffered();
+      unsubscribeDrawDeclined();
     };
   }, [gameId, onGameEvent]);
 
@@ -1263,6 +1379,55 @@ const LiveGame = () => {
     }
   };
 
+  // Handle draw offer
+  const handleOfferDraw = () => {
+    offerDraw(parseInt(gameId));
+  };
+
+  // Handle accepting draw offer
+  const handleAcceptDraw = () => {
+    acceptDraw(parseInt(gameId));
+    setPendingDrawOffer(null);
+  };
+
+  // Handle declining draw offer
+  const handleDeclineDraw = () => {
+    declineDraw(parseInt(gameId));
+    setPendingDrawOffer(null);
+  };
+
+  // Handle promotion selection
+  const handlePromotionSelect = useCallback((selectedPiece) => {
+    if (!promotionData) return;
+    
+    promotePiece(parseInt(gameId), promotionData.pieceId, selectedPiece.piece_id);
+    
+    // Don't close modal yet - wait for piecePromoted event
+  }, [gameId, promotePiece, promotionData]);
+
+  // Handle promotion cancel (should not normally happen, but handle gracefully)
+  const handlePromotionCancel = useCallback(() => {
+    // Can't really cancel - just ignore
+    // The modal will stay until a selection is made
+  }, []);
+
+  // Helper to get special square type at a position
+  const getSpecialSquareType = useCallback((row, col) => {
+    const key = `${row},${col}`;
+    if (showPromotionSquares && specialSquares.promotion[key]) return 'promotion';
+    if (specialSquares.range[key]) return 'range';
+    if (specialSquares.control[key]) return 'control';
+    if (specialSquares.special[key]) return 'special';
+    return null;
+  }, [specialSquares, showPromotionSquares]);
+
+  // Check if there are any special squares defined (excluding promotion which has its own toggle)
+  const hasSpecialSquares = useMemo(() => {
+    return Object.keys(specialSquares.range).length > 0 ||
+           Object.keys(specialSquares.control).length > 0 ||
+           Object.keys(specialSquares.special).length > 0;
+  }, [specialSquares]);
+
   // Handle rematch / new game
   const handlePlayAgain = () => {
     // Save the last played game type to localStorage
@@ -1376,6 +1541,9 @@ const LiveGame = () => {
         const isPremoveFrom = premove && premove.from.x === gameX && premove.from.y === gameY;
         const isPremoveTo = premove && premove.to.x === gameX && premove.to.y === gameY;
 
+        // Check for special square type
+        const specialSquareType = getSpecialSquareType(gameY, gameX);
+
         squares.push(
           <div
             key={`${displayX}-${displayY}`}
@@ -1395,6 +1563,10 @@ const LiveGame = () => {
               ${canMove ? styles["can-move"] : ''}
               ${isInCheck ? styles["in-check"] : ''}
               ${isPremoveFrom || isPremoveTo ? styles["premove"] : ''}
+              ${specialSquareType === 'promotion' ? styles["promotion-square"] : ''}
+              ${specialSquareType === 'range' ? styles["range-square"] : ''}
+              ${specialSquareType === 'control' ? styles["control-square"] : ''}
+              ${specialSquareType === 'special' ? styles["special-square"] : ''}
             `}
             onClick={() => handleSquareClick(gameX, gameY)}
             onDragOver={handleDragOver}
@@ -1403,9 +1575,19 @@ const LiveGame = () => {
             style={{
               backgroundColor: isLight 
                 ? (currentUser?.light_square_color || '#cad5e8')
-                : (currentUser?.dark_square_color || '#08234d')
+                : (currentUser?.dark_square_color || '#08234d'),
+              position: 'relative'
             }}
           >
+            {/* Special square indicator */}
+            {specialSquareType && (
+              <div className={`${styles["special-square-indicator"]} ${styles[specialSquareType]}`}>
+                {specialSquareType === 'promotion' && 'P'}
+                {specialSquareType === 'range' && 'R'}
+                {specialSquareType === 'control' && 'C'}
+                {specialSquareType === 'special' && 'S'}
+              </div>
+            )}
             {piece && (() => {
               const pieceTeam = piece.player_id || piece.team;
               const isOwnPiece = currentPlayer && pieceTeam === currentPlayer.position;
@@ -1687,9 +1869,54 @@ const LiveGame = () => {
                 <p className={styles["preview-hint"]}>Click on pieces to preview their moves</p>
               </div>
             )}
+
+            {/* Draw Offer Notification */}
+            {pendingDrawOffer && (
+              <div className={styles["draw-offer-notification"]}>
+                <span>{pendingDrawOffer.fromUsername} offers a draw</span>
+                <div className={styles["draw-offer-buttons"]}>
+                  <button 
+                    className={`${styles.btn} ${styles["btn-success"]}`}
+                    onClick={handleAcceptDraw}
+                  >
+                    Accept
+                  </button>
+                  <button 
+                    className={`${styles.btn} ${styles["btn-danger"]}`}
+                    onClick={handleDeclineDraw}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
             
             <div className={styles["game-board-wrapper"]}>
               {renderBoard()}
+              
+              {/* Special Squares Legend */}
+              {hasSpecialSquares && (
+                <div className={styles["special-squares-legend"]}>
+                  {Object.keys(specialSquares.range).length > 0 && (
+                    <div className={styles["legend-item"]}>
+                      <div className={`${styles["legend-color"]} ${styles.range}`}></div>
+                      <span>Range</span>
+                    </div>
+                  )}
+                  {Object.keys(specialSquares.control).length > 0 && (
+                    <div className={styles["legend-item"]}>
+                      <div className={`${styles["legend-color"]} ${styles.control}`}></div>
+                      <span>Control</span>
+                    </div>
+                  )}
+                  {Object.keys(specialSquares.special).length > 0 && (
+                    <div className={styles["legend-item"]}>
+                      <div className={`${styles["legend-color"]} ${styles.special}`}></div>
+                      <span>Special</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1726,6 +1953,16 @@ const LiveGame = () => {
               />
               <span>Show movable pieces</span>
             </label>
+            {Object.keys(specialSquares.promotion).length > 0 && (
+              <label className={styles["option-checkbox"]}>
+                <input
+                  type="checkbox"
+                  checked={showPromotionSquares}
+                  onChange={(e) => setShowPromotionSquares(e.target.checked)}
+                />
+                <span>Show promotion squares</span>
+              </label>
+            )}
             <label className={styles["option-checkbox"]}>
               <input
                 type="checkbox"
@@ -1744,6 +1981,14 @@ const LiveGame = () => {
               <div className={styles["game-controls-inline"]}>
                 <h4>Actions</h4>
                 <div className={styles["control-buttons"]}>
+                  <button 
+                    className={`${styles.btn} ${styles["btn-secondary"]}`}
+                    onClick={handleOfferDraw}
+                    disabled={drawOfferSent || pendingDrawOffer}
+                    title={drawOfferSent ? "Waiting for opponent's response" : "Offer a draw to your opponent"}
+                  >
+                    {drawOfferSent ? "Draw Offered..." : "Offer Draw"}
+                  </button>
                   <button 
                     className={`${styles.btn} ${styles["btn-danger"]}`}
                     onClick={handleResign}
@@ -1789,6 +2034,16 @@ const LiveGame = () => {
             />
             <span>Show movable pieces</span>
           </label>
+          {Object.keys(specialSquares.promotion).length > 0 && (
+            <label className={styles["option-checkbox"]}>
+              <input
+                type="checkbox"
+                checked={showPromotionSquares}
+                onChange={(e) => setShowPromotionSquares(e.target.checked)}
+              />
+              <span>Show promotion squares</span>
+            </label>
+          )}
           <label className={styles["option-checkbox"]}>
             <input
               type="checkbox"
@@ -1806,6 +2061,14 @@ const LiveGame = () => {
             <div className={styles["game-controls-inline"]}>
               <h4>Actions</h4>
               <div className={styles["control-buttons"]}>
+                <button 
+                  className={`${styles.btn} ${styles["btn-secondary"]}`}
+                  onClick={handleOfferDraw}
+                  disabled={drawOfferSent || pendingDrawOffer}
+                  title={drawOfferSent ? "Waiting for opponent's response" : "Offer a draw to your opponent"}
+                >
+                  {drawOfferSent ? "Draw Offered..." : "Offer Draw"}
+                </button>
                 <button 
                   className={`${styles.btn} ${styles["btn-danger"]}`}
                   onClick={handleResign}
@@ -1868,6 +2131,8 @@ const LiveGame = () => {
               {gameOverData.reason === 'checkmate' ? 'By Checkmate' :
                gameOverData.reason === 'stalemate' ? 'By Stalemate' :
                gameOverData.reason === 'draw_move_limit' ? 'By Move Limit (No Captures)' :
+               gameOverData.reason === 'repetition' ? 'By Repetition' :
+               gameOverData.reason === 'agreement' ? 'By Agreement' :
                gameOverData.reason === 'resignation' ? 'By Resignation' :
                gameOverData.reason === 'timeout' ? 'By Timeout' :
                gameOverData.reason}
@@ -1905,6 +2170,16 @@ const LiveGame = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Promotion Modal */}
+      {showPromotionModal && promotionData && (
+        <PromotionModal
+          promotionOptions={promotionData.options}
+          promotingPiece={promotionData.promotingPiece}
+          onSelect={handlePromotionSelect}
+          onCancel={handlePromotionCancel}
+        />
       )}
       </div>
     </div>
