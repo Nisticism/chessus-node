@@ -11,6 +11,7 @@ const gameTimers = new Map(); // Maps gameId to timer interval
 const playerSockets = new Map(); // Maps socket.id to userId
 const userSockets = new Map(); // Maps userId to socket.id
 const onlineUsers = new Set(); // Set of online user IDs
+const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grace period)
 
 /**
  * Helper function to parse image_location and get the correct image URL based on player
@@ -441,6 +442,14 @@ function initializeSocket(server) {
       try {
         const { userId, username } = data;
         if (userId) {
+          // Cancel any pending disconnect timeout for this user
+          const existingTimeout = disconnectTimeouts.get(userId);
+          if (existingTimeout) {
+            clearTimeout(existingTimeout);
+            disconnectTimeouts.delete(userId);
+            console.log(`Cancelled disconnect timeout for user ${username} (ID: ${userId}) - reconnected`);
+          }
+          
           playerSockets.set(socket.id, { id: userId, username });
           userSockets.set(userId.toString(), socket.id);
           onlineUsers.add(userId);
@@ -502,19 +511,27 @@ function initializeSocket(server) {
         const pieceIdsToLoad = new Set();
         
         try {
-          // Get pieces from junction table
+          // Get pieces from junction table (now includes checkmate/capture flags)
           const [junctionPieces] = await db_pool.query(
-            `SELECT gtp.*, p.piece_name, p.image_location
+            `SELECT gtp.*, gtp.ends_game_on_checkmate, gtp.ends_game_on_capture, p.piece_name, p.image_location
              FROM game_type_pieces gtp
              INNER JOIN pieces p ON gtp.piece_id = p.id
              WHERE gtp.game_type_id = ?`,
             [gameTypeId]
           );
 
-          piecesArray = junctionPieces.map(piece => ({
-            ...piece,
-            id: `${piece.piece_id}_${piece.y}_${piece.x}` // Unique ID for this piece instance
-          }));
+          piecesArray = junctionPieces.map(piece => {
+            return {
+              ...piece,
+              id: `${piece.piece_id}_${piece.y}_${piece.x}`, // Unique ID for this piece instance
+              // Store initial position for promotion square checking
+              initial_x: piece.x,
+              initial_y: piece.y,
+              // Checkmate/Capture flags from junction table
+              ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
+              ends_game_on_capture: !!piece.ends_game_on_capture
+            };
+          });
           
           junctionPieces.forEach(p => { if (p.piece_id) pieceIdsToLoad.add(p.piece_id); });
         } catch (e) {
@@ -644,6 +661,7 @@ function initializeSocket(server) {
               is_royal: fullPieceData.is_royal,
               can_promote: fullPieceData.can_promote,
               promotion_options: fullPieceData.promotion_options,
+              has_checkmate_rule: fullPieceData.has_checkmate_rule,
               special_scenario_moves: fullPieceData.special_scenario_moves,
               special_scenario_captures: fullPieceData.special_scenario_captures
             };
@@ -683,6 +701,7 @@ function initializeSocket(server) {
           currentTurn: 1,
           moveHistory: [],
           movesWithoutCapture: 0, // Track for draw by move limit
+          positionHistory: {}, // Track position occurrences for N-fold repetition
           startTime: null,
           playerTimes: {},
           allowSpectators,
@@ -824,6 +843,7 @@ function initializeSocket(server) {
                   is_royal: fullPieceData.is_royal,
                   can_promote: fullPieceData.can_promote,
                   promotion_options: fullPieceData.promotion_options,
+                  has_checkmate_rule: fullPieceData.has_checkmate_rule,
                   special_scenario_moves: fullPieceData.special_scenario_moves,
                   special_scenario_captures: fullPieceData.special_scenario_captures
                 };
@@ -988,6 +1008,12 @@ function initializeSocket(server) {
           // Initialize castling partners for all pieces that can castle
           initializeCastlingPartners(gameState);
           
+          // Initialize position history with starting position (for N-fold repetition)
+          if (gameState.gameType?.repetition_draw_count) {
+            const initialPositionHash = getPositionHash(gameState.pieces, 1); // Player 1 starts
+            gameState.positionHistory = { [initialPositionHash]: 1 };
+          }
+          
           // Notify everyone that a new game has started (for ongoing games list)
           io.emit("gameStarted", { gameId });
           
@@ -1020,9 +1046,10 @@ function initializeSocket(server) {
         };
         gameState.moveHistory.push(moveRecord);
 
-        // Track moves without capture for draw conditions
-        if (moveResult.captured) {
-          gameState.movesWithoutCapture = 0; // Reset on capture
+        // Track moves without capture/promotable piece moves for draw conditions
+        // Reset if capture OR if a promotable piece moved (like pawn in chess 50-move rule)
+        if (moveResult.captured || moveResult.movingPiece?.can_promote) {
+          gameState.movesWithoutCapture = 0; // Reset on capture or pawn/promotable piece move
         } else {
           gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
         }
@@ -1030,6 +1057,63 @@ function initializeSocket(server) {
         // Apply increment to current player's time
         if (gameState.increment && gameState.playerTimes[userId]) {
           gameState.playerTimes[userId] += gameState.increment;
+        }
+
+        // Check if promotion is required (only if there are valid options)
+        if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
+          // Store pending promotion
+          gameState.pendingPromotion = {
+            pieceId: moveResult.promotionEligible.pieceId,
+            options: moveResult.promotionEligible.options,
+            userId: userId,
+            capturedPiece: moveResult.captured
+          };
+
+          // Update database with current state (before turn switch)
+          await db_pool.query(
+            "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+            [JSON.stringify(gameState.pieces), 
+             JSON.stringify({ 
+               moves: gameState.moveHistory, 
+               pendingPromotion: gameState.pendingPromotion,
+               rated: gameState.rated,
+               allowPremoves: gameState.allowPremoves
+             }), gameId]
+          );
+
+          // Find the promoted piece for additional data
+          const promotingPiece = gameState.pieces.find(p => p.id === moveResult.promotionEligible.pieceId);
+
+          // Emit promotion required event - this will pause the game until promotion is complete
+          socket.emit("promotionRequired", {
+            gameId,
+            pieceId: moveResult.promotionEligible.pieceId,
+            pieceName: promotingPiece?.piece_name || 'Unknown',
+            options: moveResult.promotionEligible.options,
+            move: moveRecord,
+            gameState: {
+              pieces: gameState.pieces,
+              currentTurn: gameState.currentTurn,
+              playerTimes: gameState.playerTimes,
+              moveHistory: gameState.moveHistory
+            }
+          });
+
+          // Also broadcast the move to other players (but not the promotion modal)
+          socket.to(`game-${gameId}`).emit("moveMade", {
+            gameId,
+            move: moveRecord,
+            gameState: {
+              pieces: gameState.pieces,
+              currentTurn: gameState.currentTurn,
+              playerTimes: gameState.playerTimes,
+              moveHistory: gameState.moveHistory,
+              pendingPromotion: true
+            }
+          });
+
+          console.log(`Promotion required in game ${gameId} for piece ${moveResult.promotionEligible.pieceId}`);
+          return; // Wait for promotion choice before continuing
         }
 
         // Switch turns
@@ -1065,9 +1149,11 @@ function initializeSocket(server) {
             };
             gameState.moveHistory.push(premoveRecord);
 
-            // Track moves without capture for draw conditions
-            if (premoveResult.captured) {
-              gameState.movesWithoutCapture = 0; // Reset on capture
+            // Track moves without capture/promotable piece moves for draw conditions
+            // Reset if capture OR if a promotable piece moved
+            const premovePiece = gameState.pieces.find(p => p.id === premove.move.pieceId);
+            if (premoveResult.captured || premovePiece?.can_promote) {
+              gameState.movesWithoutCapture = 0; // Reset on capture or pawn/promotable piece move
             } else {
               gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
             }
@@ -1252,9 +1338,18 @@ function initializeSocket(server) {
               }
             }
 
+            // Track position for N-fold repetition detection after premove
+            const premovePositionHash = getPositionHash(gameState.pieces, gameState.currentTurn);
+            if (!gameState.positionHistory) {
+              gameState.positionHistory = {};
+            }
+            gameState.positionHistory[premovePositionHash] = (gameState.positionHistory[premovePositionHash] || 0) + 1;
+
             // Check for draw by move limit after premove
-            if (gameState.gameType?.draw_move_limit && gameState.movesWithoutCapture >= gameState.gameType.draw_move_limit) {
-              console.log(`DRAW BY MOVE LIMIT after premove! ${gameState.movesWithoutCapture} moves without capture in game ${gameId}`);
+            // Multiply limit by 2 since each 'move' in chess is one move per player
+            const effectiveMoveLimit = gameState.gameType?.draw_move_limit ? gameState.gameType.draw_move_limit * 2 : null;
+            if (effectiveMoveLimit && gameState.movesWithoutCapture >= effectiveMoveLimit) {
+              console.log(`DRAW BY MOVE LIMIT after premove! ${gameState.movesWithoutCapture} half-moves without capture (limit: ${effectiveMoveLimit}) in game ${gameId}`);
               stopGameTimer(gameId);
               
               gameState.status = 'completed';
@@ -1299,6 +1394,59 @@ function initializeSocket(server) {
               });
               
               console.log(`DRAW BY MOVE LIMIT! Game ${gameId} drawn after premove`);
+              return; // Exit early since game is over
+            }
+
+            // Check for draw by N-fold repetition after premove
+            const premoveRepetitionLimit = gameState.gameType?.repetition_draw_count;
+            const premovePositionCount = gameState.positionHistory[premovePositionHash] || 0;
+            if (premoveRepetitionLimit && premovePositionCount >= premoveRepetitionLimit) {
+              console.log(`DRAW BY ${premoveRepetitionLimit}-FOLD REPETITION after premove! Position occurred ${premovePositionCount} times in game ${gameId}`);
+              stopGameTimer(gameId);
+              
+              gameState.status = 'completed';
+              gameState.winner = null;
+              gameState.winReason = 'repetition';
+
+              // Update ELO ratings for draw (only if game is rated)
+              let eloChanges = null;
+              const player1 = gameState.players[0];
+              const player2 = gameState.players[1];
+              if (gameState.rated !== false && player1?.id && player2?.id) {
+                const p1Elo = player1.elo || 1000;
+                const p2Elo = player2.elo || 1000;
+                const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+                const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+                eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+                console.log('ELO updated for draw by repetition after premove:', eloChanges);
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              await db_pool.query(
+                `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+                 pieces = ?, other_data = ? WHERE id = ?`,
+                [endTime, JSON.stringify(gameState.pieces), 
+                 JSON.stringify({ 
+                   moves: gameState.moveHistory, 
+                   reason: 'repetition',
+                   repetitionCount: premovePositionCount,
+                   positionHistory: gameState.positionHistory,
+                   eloChanges,
+                   rated: gameState.rated,
+                   allowPremoves: gameState.allowPremoves
+                 }),
+                 gameId]
+              );
+
+              io.to(`game-${gameId}`).emit("gameOver", {
+                gameId,
+                winner: null,
+                reason: 'repetition',
+                finalState: gameState,
+                eloChanges
+              });
+              
+              console.log(`DRAW BY REPETITION! Game ${gameId} drawn after premove`);
               return; // Exit early since game is over
             }
             
@@ -1508,9 +1656,18 @@ function initializeSocket(server) {
             }
           }
 
+          // Track position for N-fold repetition detection
+          const positionHash = getPositionHash(gameState.pieces, gameState.currentTurn);
+          if (!gameState.positionHistory) {
+            gameState.positionHistory = {};
+          }
+          gameState.positionHistory[positionHash] = (gameState.positionHistory[positionHash] || 0) + 1;
+
           // Check for draw by move limit (X moves without captures)
-          if (gameState.gameType?.draw_move_limit && gameState.movesWithoutCapture >= gameState.gameType.draw_move_limit) {
-            console.log(`DRAW BY MOVE LIMIT! ${gameState.movesWithoutCapture} moves without capture in game ${gameId}`);
+          // Multiply limit by 2 since each 'move' in chess is one move per player
+          const effectiveMoveLimit = gameState.gameType?.draw_move_limit ? gameState.gameType.draw_move_limit * 2 : null;
+          if (effectiveMoveLimit && gameState.movesWithoutCapture >= effectiveMoveLimit) {
+            console.log(`DRAW BY MOVE LIMIT! ${gameState.movesWithoutCapture} half-moves without capture (limit: ${effectiveMoveLimit}) in game ${gameId}`);
             stopGameTimer(gameId);
             
             gameState.status = 'completed';
@@ -1562,6 +1719,63 @@ function initializeSocket(server) {
             return; // Exit early since game is over
           }
 
+          // Check for draw by N-fold repetition
+          const repetitionLimit = gameState.gameType?.repetition_draw_count;
+          const currentPositionCount = gameState.positionHistory[positionHash] || 0;
+          if (repetitionLimit && currentPositionCount >= repetitionLimit) {
+            console.log(`DRAW BY ${repetitionLimit}-FOLD REPETITION! Position occurred ${currentPositionCount} times in game ${gameId}`);
+            stopGameTimer(gameId);
+            
+            gameState.status = 'completed';
+            gameState.winner = null;
+            gameState.winReason = 'repetition';
+
+            // Update ELO ratings for draw (only if game is rated)
+            let eloChanges = null;
+            const player1 = gameState.players[0];
+            const player2 = gameState.players[1];
+            if (gameState.rated !== false && player1?.id && player2?.id) {
+              const p1Elo = player1.elo || 1000;
+              const p2Elo = player2.elo || 1000;
+              const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+              const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+              eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+              console.log('ELO updated for draw by repetition:', eloChanges);
+            }
+
+            const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            try {
+              await db_pool.query(
+                `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+                 pieces = ?, other_data = ? WHERE id = ?`,
+                [endTime, JSON.stringify(gameState.pieces), 
+                 JSON.stringify({ 
+                   moves: gameState.moveHistory, 
+                   reason: 'repetition',
+                   repetitionCount: currentPositionCount,
+                   positionHistory: gameState.positionHistory,
+                   eloChanges,
+                   rated: gameState.rated,
+                   allowPremoves: gameState.allowPremoves
+                 }),
+                 gameId]
+              );
+              console.log('Database updated for draw by repetition');
+            } catch (dbError) {
+              console.error('Failed to update database:', dbError);
+            }
+
+            io.to(`game-${gameId}`).emit("gameOver", {
+              gameId,
+              winner: null,
+              reason: 'repetition',
+              finalState: gameState,
+              eloChanges
+            });
+            console.log('gameOver event emitted for draw by repetition in game-' + gameId);
+            return; // Exit early since game is over
+          }
+
           // Update game state in database
           await db_pool.query(
             "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
@@ -1570,6 +1784,7 @@ function initializeSocket(server) {
                moves: gameState.moveHistory, 
                inCheck: checkResult.inCheck,
                movesWithoutCapture: gameState.movesWithoutCapture,
+               positionHistory: gameState.positionHistory,
                rated: gameState.rated,
                allowPremoves: gameState.allowPremoves
              }), gameId]
@@ -1673,6 +1888,257 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error processing resignation:", error);
         socket.emit("error", { message: "Failed to resign" });
+      }
+    });
+
+    // Handle piece promotion
+    socket.on("promotePiece", async (data) => {
+      try {
+        const { gameId, userId, pieceId, promoteToPieceId } = data;
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+
+        if (!gameState) {
+          return socket.emit("error", { message: "Game not found" });
+        }
+
+        // Check if there's a pending promotion for this user
+        if (!gameState.pendingPromotion || gameState.pendingPromotion.userId !== userId) {
+          return socket.emit("error", { message: "No pending promotion for you" });
+        }
+
+        const pendingPromotion = gameState.pendingPromotion;
+        if (pendingPromotion.pieceId !== pieceId) {
+          return socket.emit("error", { message: "Wrong piece for promotion" });
+        }
+
+        // Find the piece to promote
+        const pieceIndex = gameState.pieces.findIndex(p => p.id === pieceId);
+        if (pieceIndex === -1) {
+          gameState.pendingPromotion = null;
+          return socket.emit("error", { message: "Piece not found" });
+        }
+
+        const piece = gameState.pieces[pieceIndex];
+
+        // Find the promotion target piece data
+        const targetPieceData = pendingPromotion.options.find(p => p.piece_id === promoteToPieceId);
+        if (!targetPieceData) {
+          return socket.emit("error", { message: "Invalid promotion choice" });
+        }
+
+        // Load full piece data for the new piece type
+        const [[fullPieceData]] = await db_pool.query(
+          `SELECT * FROM pieces WHERE id = ?`,
+          [promoteToPieceId]
+        );
+
+        if (!fullPieceData) {
+          return socket.emit("error", { message: "Promotion piece type not found" });
+        }
+
+        // Get the correct image for this player
+        let imageUrl = null;
+        if (fullPieceData.image_location) {
+          try {
+            const images = JSON.parse(fullPieceData.image_location);
+            if (Array.isArray(images) && images.length > 0) {
+              const playerIndex = (piece.player_id || piece.team || 1) - 1;
+              imageUrl = images[playerIndex] || images[0];
+            }
+          } catch (e) {
+            console.error('Error parsing image_location for promotion:', e);
+          }
+        }
+
+        // Create the promoted piece, keeping position and ownership
+        const promotedPiece = {
+          ...piece,
+          // New piece data
+          piece_id: fullPieceData.id,
+          piece_name: fullPieceData.piece_name,
+          image_location: fullPieceData.image_location,
+          image: imageUrl,
+          image_url: imageUrl,
+          // Movement data
+          directional_movement_style: fullPieceData.directional_movement_style,
+          up_movement: fullPieceData.up_movement,
+          down_movement: fullPieceData.down_movement,
+          left_movement: fullPieceData.left_movement,
+          right_movement: fullPieceData.right_movement,
+          up_left_movement: fullPieceData.up_left_movement,
+          up_right_movement: fullPieceData.up_right_movement,
+          down_left_movement: fullPieceData.down_left_movement,
+          down_right_movement: fullPieceData.down_right_movement,
+          ratio_movement_style: fullPieceData.ratio_movement_style,
+          ratio_movement_1: fullPieceData.ratio_one_movement,
+          ratio_movement_2: fullPieceData.ratio_two_movement,
+          step_movement_style: fullPieceData.step_by_step_movement_style,
+          step_movement_value: fullPieceData.step_by_step_movement_value,
+          can_hop_over_allies: fullPieceData.can_hop_over_allies,
+          can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+          // Capture data
+          can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
+          up_capture: fullPieceData.up_capture,
+          down_capture: fullPieceData.down_capture,
+          left_capture: fullPieceData.left_capture,
+          right_capture: fullPieceData.right_capture,
+          up_left_capture: fullPieceData.up_left_capture,
+          up_right_capture: fullPieceData.up_right_capture,
+          down_left_capture: fullPieceData.down_left_capture,
+          down_right_capture: fullPieceData.down_right_capture,
+          ratio_capture_1: fullPieceData.ratio_one_capture,
+          ratio_capture_2: fullPieceData.ratio_two_capture,
+          step_capture_value: fullPieceData.step_by_step_capture,
+          // Special attributes
+          piece_value: fullPieceData.piece_value,
+          is_royal: fullPieceData.is_royal,
+          can_promote: fullPieceData.can_promote,
+          can_castle: fullPieceData.can_castle,
+          has_checkmate_rule: fullPieceData.has_checkmate_rule,
+          has_check_rule: fullPieceData.has_check_rule,
+          special_scenario_moves: fullPieceData.special_scenario_moves,
+          special_scenario_captures: fullPieceData.special_scenario_captures,
+          // Reset move tracking for the new piece type
+          moveCount: 0,
+          hasMoved: false
+        };
+
+        // Update the piece in the game state
+        gameState.pieces[pieceIndex] = promotedPiece;
+
+        // Clear pending promotion
+        gameState.pendingPromotion = null;
+
+        // Switch turns after promotion
+        gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+
+        // Update database
+        await db_pool.query(
+          "UPDATE games SET pieces = ?, player_turn = ? WHERE id = ?",
+          [JSON.stringify(gameState.pieces), gameState.currentTurn, gameId]
+        );
+
+        // Broadcast the promotion to all players
+        io.to(`game-${gameId}`).emit("piecePromoted", {
+          gameId,
+          pieceId: piece.id,
+          newPieceId: promotedPiece.piece_id,
+          newPieceName: promotedPiece.piece_name,
+          promotedPiece: promotedPiece,
+          gameState: {
+            pieces: gameState.pieces,
+            currentTurn: gameState.currentTurn
+          }
+        });
+
+        console.log(`Piece ${pieceId} promoted to ${promotedPiece.piece_name} in game ${gameId}`);
+
+        // Now continue with the normal post-move flow that was paused
+        // Check for win conditions after promotion
+        const winResult = checkWinCondition(gameState, pendingPromotion.capturedPiece);
+        if (winResult.gameOver) {
+          stopGameTimer(gameId);
+          gameState.status = 'completed';
+          gameState.winner = winResult.winner;
+          gameState.winReason = winResult.reason;
+
+          const loser = gameState.players.find(p => p.id !== winResult.winner);
+          let eloChanges = null;
+          if (gameState.rated !== false && winResult.winner && loser) {
+            eloChanges = await updateEloRatings(winResult.winner, loser.id);
+          }
+
+          const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          await db_pool.query(
+            `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+             pieces = ?, other_data = ? WHERE id = ?`,
+            [endTime, winResult.winner, JSON.stringify(gameState.pieces), 
+             JSON.stringify({ 
+               moves: gameState.moveHistory, 
+               winner: winResult.winner, 
+               reason: winResult.reason, 
+               eloChanges,
+               rated: gameState.rated,
+               allowPremoves: gameState.allowPremoves
+             }),
+             gameId]
+          );
+
+          io.to(`game-${gameId}`).emit("gameOver", {
+            gameId,
+            winner: winResult.winner,
+            reason: winResult.reason,
+            finalState: gameState,
+            eloChanges
+          });
+          return;
+        }
+
+        // Check for check/checkmate after promotion
+        const checkResult = checkForCheck(gameState, gameState.currentTurn);
+        gameState.inCheck = checkResult.inCheck;
+        gameState.checkedPieces = checkResult.checkedPieces;
+
+        if (checkResult.inCheck && gameState.gameType?.mate_condition) {
+          const isInCheckmate = isCheckmate(gameState, gameState.currentTurn);
+          
+          if (isInCheckmate) {
+            stopGameTimer(gameId);
+            gameState.status = 'completed';
+            const checkmatedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+            const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+            gameState.winner = winner?.id;
+            gameState.winReason = 'checkmate';
+
+            let eloChanges = null;
+            if (gameState.rated !== false && winner?.id && checkmatedPlayer?.id) {
+              eloChanges = await updateEloRatings(winner.id, checkmatedPlayer.id);
+            }
+
+            const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            await db_pool.query(
+              `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+               pieces = ?, other_data = ? WHERE id = ?`,
+              [endTime, winner?.id, JSON.stringify(gameState.pieces), 
+               JSON.stringify({ 
+                 moves: gameState.moveHistory, 
+                 winner: winner?.id, 
+                 reason: 'checkmate', 
+                 eloChanges,
+                 rated: gameState.rated,
+                 allowPremoves: gameState.allowPremoves
+               }),
+               gameId]
+            );
+
+            io.to(`game-${gameId}`).emit("gameOver", {
+              gameId,
+              winner: winner?.id,
+              reason: 'checkmate',
+              finalState: gameState,
+              eloChanges
+            });
+            return;
+          }
+        }
+
+        // Broadcast check status if in check
+        if (checkResult.inCheck) {
+          io.to(`game-${gameId}`).emit("check", {
+            gameId,
+            playerInCheck: gameState.currentTurn,
+            checkedPieces: checkResult.checkedPieces,
+            gameState: {
+              inCheck: true,
+              checkedPieces: checkResult.checkedPieces
+            }
+          });
+        }
+
+      } catch (error) {
+        console.error("Error processing promotion:", error);
+        socket.emit("error", { message: "Failed to promote piece" });
       }
     });
 
@@ -1847,7 +2313,7 @@ function initializeSocket(server) {
             // Fall back to game type pieces from junction table if still empty
             if (pieces.length === 0 && gameType?.id) {
               const [junctionPieces] = await db_pool.query(
-                `SELECT gtp.*, p.piece_name, p.image_location
+                `SELECT gtp.*, gtp.ends_game_on_checkmate, gtp.ends_game_on_capture, p.piece_name, p.image_location
                  FROM game_type_pieces gtp
                  INNER JOIN pieces p ON gtp.piece_id = p.id
                  WHERE gtp.game_type_id = ?`,
@@ -1856,7 +2322,9 @@ function initializeSocket(server) {
               
               pieces = junctionPieces.map(piece => ({
                 ...piece,
-                id: `${piece.piece_id}_${piece.y}_${piece.x}`
+                id: `${piece.piece_id}_${piece.y}_${piece.x}`,
+                ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
+                ends_game_on_capture: !!piece.ends_game_on_capture
               }));
             }
             
@@ -1985,6 +2453,7 @@ function initializeSocket(server) {
             currentTurn: game.player_turn || 1,
             moveHistory: moveHistory,
             movesWithoutCapture: otherData?.movesWithoutCapture || 0, // Load counter from DB
+            positionHistory: otherData?.positionHistory || {}, // Load position history for repetition
             startTime: game.start_time,
             playerTimes: playerTimes,
             allowSpectators: game.allow_spectators !== 0,
@@ -2022,18 +2491,215 @@ function initializeSocket(server) {
       }
     });
 
+    // Handle draw offer request
+    socket.on("offerDraw", async ({ gameId }) => {
+      try {
+        const gameState = activeGames.get(gameId.toString());
+        if (!gameState) {
+          socket.emit("error", { message: "Game not found" });
+          return;
+        }
+
+        if (gameState.status !== 'active') {
+          socket.emit("error", { message: "Game is not active" });
+          return;
+        }
+
+        const userId = socket.userId;
+        const playerIdx = gameState.players.findIndex(p => p.id === userId);
+        if (playerIdx === -1) {
+          socket.emit("error", { message: "You are not a player in this game" });
+          return;
+        }
+
+        // Check if there's already a pending draw offer
+        if (gameState.pendingDrawOffer) {
+          socket.emit("error", { message: "A draw offer is already pending" });
+          return;
+        }
+
+        // Set the pending draw offer
+        gameState.pendingDrawOffer = {
+          from: userId,
+          fromUsername: gameState.players[playerIdx].username,
+          timestamp: Date.now()
+        };
+
+        console.log(`Draw offered by ${gameState.players[playerIdx].username} in game ${gameId}`);
+
+        // Notify all players in the game
+        io.to(`game-${gameId}`).emit("drawOffered", {
+          gameId,
+          from: userId,
+          fromUsername: gameState.players[playerIdx].username
+        });
+      } catch (error) {
+        console.error("Error offering draw:", error);
+        socket.emit("error", { message: "Failed to offer draw" });
+      }
+    });
+
+    // Handle draw acceptance
+    socket.on("acceptDraw", async ({ gameId }) => {
+      try {
+        const gameState = activeGames.get(gameId.toString());
+        if (!gameState) {
+          socket.emit("error", { message: "Game not found" });
+          return;
+        }
+
+        if (!gameState.pendingDrawOffer) {
+          socket.emit("error", { message: "No draw offer pending" });
+          return;
+        }
+
+        const userId = socket.userId;
+        const playerIdx = gameState.players.findIndex(p => p.id === userId);
+        if (playerIdx === -1) {
+          socket.emit("error", { message: "You are not a player in this game" });
+          return;
+        }
+
+        // Only the opponent can accept (not the one who offered)
+        if (gameState.pendingDrawOffer.from === userId) {
+          socket.emit("error", { message: "You cannot accept your own draw offer" });
+          return;
+        }
+
+        console.log(`Draw accepted by ${gameState.players[playerIdx].username} in game ${gameId}`);
+
+        // Stop the timer
+        stopGameTimer(gameId);
+
+        // Mark game as drawn
+        gameState.status = 'completed';
+        gameState.winner = null;
+        gameState.winReason = 'agreement';
+        gameState.pendingDrawOffer = null;
+
+        // Update ELO ratings for draw
+        let eloChanges = null;
+        const player1 = gameState.players[0];
+        const player2 = gameState.players[1];
+        if (gameState.rated !== false && player1?.id && player2?.id) {
+          const p1Elo = player1.elo || 1000;
+          const p2Elo = player2.elo || 1000;
+          const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+          const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+          eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+          console.log('ELO updated for draw by agreement:', eloChanges);
+        }
+
+        // Update database
+        const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        try {
+          await db_pool.query(
+            `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+             pieces = ?, other_data = ? WHERE id = ?`,
+            [endTime, JSON.stringify(gameState.pieces), 
+             JSON.stringify({ 
+               moves: gameState.moveHistory, 
+               reason: 'agreement',
+               eloChanges,
+               rated: gameState.rated,
+               allowPremoves: gameState.allowPremoves
+             }),
+             gameId]
+          );
+          console.log('Database updated for draw by agreement');
+        } catch (dbError) {
+          console.error('Failed to update database:', dbError);
+        }
+
+        // Emit game over to all players
+        io.to(`game-${gameId}`).emit("gameOver", {
+          gameId,
+          winner: null,
+          reason: 'agreement',
+          finalState: gameState,
+          eloChanges
+        });
+        console.log('gameOver event emitted for draw by agreement in game-' + gameId);
+      } catch (error) {
+        console.error("Error accepting draw:", error);
+        socket.emit("error", { message: "Failed to accept draw" });
+      }
+    });
+
+    // Handle draw decline
+    socket.on("declineDraw", async ({ gameId }) => {
+      try {
+        const gameState = activeGames.get(gameId.toString());
+        if (!gameState) {
+          socket.emit("error", { message: "Game not found" });
+          return;
+        }
+
+        if (!gameState.pendingDrawOffer) {
+          socket.emit("error", { message: "No draw offer pending" });
+          return;
+        }
+
+        const userId = socket.userId;
+        const playerIdx = gameState.players.findIndex(p => p.id === userId);
+        if (playerIdx === -1) {
+          socket.emit("error", { message: "You are not a player in this game" });
+          return;
+        }
+
+        // Only the opponent can decline (not the one who offered)
+        if (gameState.pendingDrawOffer.from === userId) {
+          socket.emit("error", { message: "You cannot decline your own draw offer" });
+          return;
+        }
+
+        console.log(`Draw declined by ${gameState.players[playerIdx].username} in game ${gameId}`);
+
+        // Clear the pending draw offer
+        gameState.pendingDrawOffer = null;
+
+        // Notify all players
+        io.to(`game-${gameId}`).emit("drawDeclined", {
+          gameId,
+          by: userId,
+          byUsername: gameState.players[playerIdx].username
+        });
+      } catch (error) {
+        console.error("Error declining draw:", error);
+        socket.emit("error", { message: "Failed to decline draw" });
+      }
+    });
+
     // Handle disconnection
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);
       
       const userData = playerSockets.get(socket.id);
       if (userData) {
-        onlineUsers.delete(userData.id);
-        userSockets.delete(userData.id.toString());
+        // Don't immediately remove from onlineUsers - use a grace period
+        // This allows users to refresh without disappearing from online friends
+        const userId = userData.id;
+        const username = userData.username;
+        
+        // Clear socket mappings immediately
+        userSockets.delete(userId.toString());
         playerSockets.delete(socket.id);
         
-        // Broadcast updated online users list
-        io.emit("onlineUsers", Array.from(onlineUsers));
+        // Set a timeout before removing from onlineUsers (5 second grace period)
+        const disconnectTimeout = setTimeout(() => {
+          // Only remove if they haven't reconnected
+          if (!userSockets.has(userId.toString())) {
+            onlineUsers.delete(userId);
+            console.log(`User ${username} (ID: ${userId}) removed from online users after grace period`);
+            
+            // Broadcast updated online users list
+            io.emit("onlineUsers", Array.from(onlineUsers));
+          }
+          disconnectTimeouts.delete(userId);
+        }, 5000); // 5 second grace period
+        
+        disconnectTimeouts.set(userId, disconnectTimeout);
+        console.log(`Started disconnect grace period for user ${username} (ID: ${userId})`);
       }
 
       // Note: We don't automatically forfeit games on disconnect
@@ -2399,6 +3065,8 @@ function validateAndApplyMove(gameState, move) {
 
   // Update piece position
   const movingPiece = pieces.find(p => p.id === pieceId);
+  let promotionEligible = null;
+  
   if (movingPiece) {
     movingPiece.x = to.x;
     movingPiece.y = to.y;
@@ -2434,9 +3102,156 @@ function validateAndApplyMove(gameState, move) {
         }
       }
     }
+
+    // Check for promotion eligibility
+    promotionEligible = checkPromotionEligibility(movingPiece, to, gameState);
   }
 
-  return { valid: true, captured: capturedPiece };
+  return { valid: true, captured: capturedPiece, promotionEligible, movingPiece };
+}
+
+/**
+ * Generate a hash string representing the current board position
+ * Used for N-fold repetition detection
+ * @param {Array} pieces - Array of pieces on the board
+ * @param {number} currentTurn - Whose turn it is (important for repetition)
+ * @returns {string} - Position hash string
+ */
+function getPositionHash(pieces, currentTurn) {
+  // Sort pieces by position and create a deterministic string representation
+  const sortedPieces = pieces
+    .map(p => `${p.piece_id}:${p.x},${p.y}:${p.team || p.player_id}`)
+    .sort()
+    .join('|');
+  return `${currentTurn}:${sortedPieces}`;
+}
+
+/**
+ * Check if a piece is eligible for promotion after moving to a square
+ * @param {Object} piece - The piece that moved
+ * @param {Object} targetSquare - The destination square {x, y}
+ * @param {Object} gameState - The current game state
+ * @returns {Object|null} - Promotion info if eligible, null otherwise
+ */
+function checkPromotionEligibility(piece, targetSquare, gameState) {
+  if (!piece || !piece.can_promote) return null;
+  
+  const gameType = gameState.gameType;
+  if (!gameType || !gameType.promotion_squares_string) return null;
+  
+  // Parse promotion squares
+  let promotionSquares = {};
+  try {
+    promotionSquares = JSON.parse(gameType.promotion_squares_string);
+  } catch (e) {
+    console.error('Error parsing promotion_squares_string:', e);
+    return null;
+  }
+  
+  // Check if target square is a promotion square
+  const squareKey = `${targetSquare.y},${targetSquare.x}`;
+  if (!promotionSquares[squareKey]) return null;
+  
+  // Check if the piece started on this promotion square
+  const initialKey = `${piece.initial_y},${piece.initial_x}`;
+  if (initialKey === squareKey) return null; // Can't promote on starting square
+  
+  // Get eligible pieces for promotion (all starting piece types except:
+  // - the piece being promoted
+  // - any piece with has_checkmate_rule (can be checkmated)
+  const eligiblePieces = getPromotionOptions(gameState, piece);
+  
+  if (eligiblePieces.length === 0) return null;
+  
+  return {
+    eligible: true,
+    pieceId: piece.id,
+    options: eligiblePieces
+  };
+}
+
+/**
+ * Get available promotion options for a piece
+ * @param {Object} gameState - The current game state
+ * @param {Object} promotingPiece - The piece being promoted
+ * @returns {Array} - Array of piece objects that can be promoted to
+ */
+function getPromotionOptions(gameState, promotingPiece) {
+  const pieces = gameState.pieces;
+  const pieceOwner = promotingPiece.player_id || promotingPiece.team;
+  
+  console.log('getPromotionOptions called:', {
+    promotingPieceId: promotingPiece.piece_id,
+    promotingPieceName: promotingPiece.piece_name,
+  });
+  
+  // Get all unique piece types that the player started with
+  const playerPieces = pieces.filter(p => {
+    const owner = p.player_id || p.team;
+    return owner === pieceOwner;
+  });
+  
+  // Create a map of piece_id to piece data, keeping one example of each type
+  // Also track if any piece of that type has checkmate/capture rules
+  const pieceTypeMap = new Map();
+  for (const p of playerPieces) {
+    if (!pieceTypeMap.has(p.piece_id)) {
+      pieceTypeMap.set(p.piece_id, {
+        ...p,
+        hasCheckmateRule: p.ends_game_on_checkmate || false,
+        hasCaptureRule: p.ends_game_on_capture || false
+      });
+    } else {
+      // If any piece of this type has the checkmate/capture rule, mark it
+      const existing = pieceTypeMap.get(p.piece_id);
+      if (p.ends_game_on_checkmate) existing.hasCheckmateRule = true;
+      if (p.ends_game_on_capture) existing.hasCaptureRule = true;
+    }
+  }
+  
+  console.log('Piece type map:', Array.from(pieceTypeMap.entries()).map(([id, p]) => ({
+    pieceId: id,
+    pieceName: p.piece_name,
+    hasCheckmateRule: p.hasCheckmateRule,
+    hasCaptureRule: p.hasCaptureRule
+  })));
+  
+  // Filter out:
+  // 1. The piece type being promoted
+  // 2. Pieces that have ends_game_on_checkmate flag (can be checkmated)
+  // 3. Pieces that have ends_game_on_capture flag (lose on capture)
+  const eligiblePieces = [];
+  
+  for (const [pieceId, pieceData] of pieceTypeMap) {
+    const pieceIdNum = parseInt(pieceId);
+    
+    // Skip the same piece type
+    if (pieceIdNum === parseInt(promotingPiece.piece_id)) continue;
+    
+    // Skip pieces with checkmate rule
+    if (pieceData.hasCheckmateRule) {
+      console.log(`Filtering out piece ${pieceId} (${pieceData.piece_name}) - has checkmate rule`);
+      continue;
+    }
+    
+    // Skip pieces with capture-loss rule
+    if (pieceData.hasCaptureRule) {
+      console.log(`Filtering out piece ${pieceId} (${pieceData.piece_name}) - has capture-loss rule`);
+      continue;
+    }
+    
+    console.log(`Adding eligible piece: ${pieceId} (${pieceData.piece_name})`);
+    eligiblePieces.push({
+      piece_id: pieceData.piece_id,
+      piece_name: pieceData.piece_name,
+      image_location: pieceData.image_location,
+      image: pieceData.image,
+      image_url: pieceData.image_url
+    });
+  }
+  
+  console.log(`Returning ${eligiblePieces.length} eligible pieces for promotion`);
+  return eligiblePieces;
 }
 
 /**
@@ -3692,6 +4507,34 @@ function checkWinCondition(gameState, capturedPiece = null) {
   // Check hill condition (piece on specific square for X turns)
   if (gameType.hill_condition) {
     // Check if a piece has been on the hill square for required turns
+  }
+
+  // Fallback: If no win conditions are defined, capturing all opponent pieces wins
+  // This provides a reasonable default so games without explicit win conditions can still end
+  const hasAnyWinCondition = gameType.mate_condition || gameType.capture_condition || 
+                              gameType.value_condition || gameType.squares_condition || 
+                              gameType.hill_condition;
+  
+  if (!hasAnyWinCondition) {
+    for (const player of players) {
+      // Get all pieces belonging to this player
+      const playerPieces = pieces.filter(p => 
+        p.team === player.position || 
+        p.player_id === player.position || 
+        p.player === player.id ||
+        p.player_number === player.position
+      );
+      
+      // If this player has no pieces left, they lose
+      if (playerPieces.length === 0) {
+        const winner = players.find(p => p.id !== player.id);
+        return {
+          gameOver: true,
+          winner: winner?.id,
+          reason: 'elimination'
+        };
+      }
+    }
   }
 
   return { gameOver: false };

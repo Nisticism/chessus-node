@@ -259,6 +259,18 @@ const migrations = [
     column: 'total_donations',
     sql: "ALTER TABLE users ADD COLUMN total_donations DECIMAL(10, 2) DEFAULT 0.00 AFTER refresh_token",
     description: "Add total_donations column to users table for donor badge system"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'ends_game_on_checkmate',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN ends_game_on_checkmate BOOLEAN DEFAULT FALSE",
+    description: "Add ends_game_on_checkmate column to game_type_pieces junction table"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'ends_game_on_capture',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN ends_game_on_capture BOOLEAN DEFAULT FALSE",
+    description: "Add ends_game_on_capture column to game_type_pieces junction table"
   }
 ];
 
@@ -859,6 +871,19 @@ Join us in revolutionizing chess, one variant at a time.
     }
   } catch (err) {
     console.error('Error adding draw_move_limit column to game_types:', err.message);
+  }
+
+  // Add repetition_draw_count column to game_types table (N-fold repetition rule)
+  try {
+    if (!(await columnExists('game_types', 'repetition_draw_count'))) {
+      await runMigration(
+        "ALTER TABLE game_types ADD COLUMN repetition_draw_count INT NULL DEFAULT NULL COMMENT 'Number of times same position must repeat for draw (NULL = disabled, min 2, max 9)'",
+        "Add repetition_draw_count column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding repetition_draw_count column to game_types:', err.message);
   }
 
   // Add is_career column to articles table
@@ -1535,6 +1560,23 @@ Join us in revolutionizing chess, one variant at a time.
   } catch (err) {
     console.error('Error converting special_scenario_captures to TEXT:', err.message);
   }
+
+  // Add status column to friends table for friend request approval system
+  try {
+    const friendsStatusCol = await columnExists('friends', 'status');
+    if (!friendsStatusCol) {
+      await runMigration(
+        `ALTER TABLE friends ADD COLUMN status ENUM('pending', 'accepted', 'declined') DEFAULT 'accepted' AFTER friend_id`,
+        "Add status column to friends table for request approval"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding status column to friends table:', err.message);
+  }
+
+  // Drop the unique constraint and add a new one that allows duplicate pending requests to be declined then re-sent
+  // This is handled by the application logic - we'll keep the unique constraint but use status appropriately
   
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
