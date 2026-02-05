@@ -4,6 +4,12 @@ import { useDispatch, useSelector } from "react-redux";
 import { getGameById } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import styles from "./gametypeview.module.scss";
+import {
+  canPieceMoveTo as canPieceMoveToUtil,
+  canCaptureOnMoveTo as canCaptureOnMoveToUtil,
+  canRangedAttackTo as canRangedAttackToUtil,
+  getSquareHighlightStyle
+} from "../../helpers/pieceMovementUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -247,6 +253,7 @@ const GameTypeView = () => {
   const [specialSquares, setSpecialSquares] = useState({
     range: {},
     promotion: {},
+    control: {},
     special: {}
   });
 
@@ -328,6 +335,15 @@ const GameTypeView = () => {
           }
         }
 
+        if (gameData.control_squares_string) {
+          try {
+            const parsed = JSON.parse(gameData.control_squares_string);
+            setSpecialSquares(prev => ({ ...prev, control: parsed }));
+          } catch (e) {
+            console.error("Error parsing control_squares_string:", e);
+          }
+        }
+
         setLoading(false);
       } catch (err) {
         console.error("Error loading game:", err);
@@ -351,6 +367,7 @@ const GameTypeView = () => {
   const getSquareType = (key) => {
     if (specialSquares.range[key]) return 'range';
     if (specialSquares.promotion[key]) return 'promotion';
+    if (specialSquares.control[key]) return 'control';
     if (specialSquares.special[key]) return 'special';
     return null;
   };
@@ -359,6 +376,7 @@ const GameTypeView = () => {
     switch (type) {
       case 'range': return '#ff8c00';
       case 'promotion': return '#4b0082';
+      case 'control': return '#32CD32';
       case 'special': return '#ffd700';
       default: return null;
     }
@@ -391,170 +409,22 @@ const GameTypeView = () => {
     return null;
   };
 
-  // Helper function to check if a value allows movement at a distance
-  const checkMovement = (value, distance) => {
-    if (value === 99) return true; // Infinite movement
-    if (value === 0 || value === null) return false;
-    if (value > 0) return distance <= value; // Up to X squares
-    if (value < 0) return distance === Math.abs(value); // Exact X squares
-    return false;
+  // Check if piece can perform ranged attack to target square
+  const canRangedAttackTo = (fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
+    if (!pieceData) return false;
+    return canRangedAttackToUtil(fromRow, fromCol, toRow, toCol, pieceData, playerPosition);
   };
 
-  // Check if piece can move to a square
-  const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
-    if (!pieceData) return false;
-    if (fromRow === toRow && fromCol === toCol) return false;
-
-    // For player 2, flip the perspective (so "up" is towards player 1)
-    const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
-    const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
-
-    // Check directional movement - accept if style is set OR if any directional movement values are present
-    const directionalStyle = pieceData.directional_movement_style;
-    const hasDirectionalValues = pieceData.up_movement || pieceData.down_movement || 
-                                  pieceData.left_movement || pieceData.right_movement ||
-                                  pieceData.up_left_movement || pieceData.up_right_movement ||
-                                  pieceData.down_left_movement || pieceData.down_right_movement;
-    
-    if (directionalStyle || hasDirectionalValues) {
-      let directionalAllowed = false;
-
-      // Check 8 directions
-      if (rowDiff < 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.up_movement, Math.abs(rowDiff));
-      } else if (rowDiff > 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.down_movement, Math.abs(rowDiff));
-      } else if (rowDiff === 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff));
-      } else if (rowDiff === 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff));
-      } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff));
-      } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff));
-      } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff));
-      } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff));
-      }
-
-      if (directionalAllowed) return true;
-    }
-
-    // Check ratio movement (L-shape like knight)
-    const ratioStyle = pieceData.ratio_movement_style;
-    const ratio1 = pieceData.ratio_movement_1 || pieceData.ratio_one_movement || 0;
-    const ratio2 = pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0;
-    
-    if ((ratioStyle || (ratio1 > 0 && ratio2 > 0)) && ratio1 > 0 && ratio2 > 0) {
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
-      }
-    }
-
-    // Check step-by-step movement
-    const stepStyle = pieceData.step_movement_style;
-    const stepValue = pieceData.step_movement_value;
-    if (stepStyle || stepValue) {
-      const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      
-      if (stepStyle === 'manhattan' || stepStyle === 1) {
-        return checkMovement(stepValue, manhattanDistance);
-      } else if (stepStyle === 'chebyshev' || stepStyle === 2) {
-        return checkMovement(stepValue, chebyshevDistance);
-      } else {
-        // Default to chebyshev if value exists but style not specified
-        return checkMovement(stepValue, chebyshevDistance);
-      }
-    }
-
-    return false;
+  // Get full movement info including first-move-only status
+  const getMoveInfo = (fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
+    if (!pieceData) return { allowed: false, isFirstMoveOnly: false };
+    return canPieceMoveToUtil(fromRow, fromCol, toRow, toCol, pieceData, playerPosition);
   };
 
-  // Check if piece can capture on a square
-  const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
-    if (!pieceData) return false;
-    if (fromRow === toRow && fromCol === toCol) return false;
-
-    // For player 2, flip the perspective (so "up" is towards player 1)
-    const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
-    const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
-
-    // Check if separate capture fields are defined
-    const hasSeparateCaptureFields = pieceData.up_capture || pieceData.down_capture || 
-                                     pieceData.left_capture || pieceData.right_capture || 
-                                     pieceData.up_left_capture || pieceData.up_right_capture ||
-                                     pieceData.down_left_capture || pieceData.down_right_capture ||
-                                     pieceData.ratio_capture_1 || pieceData.ratio_capture_2 ||
-                                     pieceData.step_capture_style;
-
-    // If piece can capture on move AND no separate capture fields, use movement logic
-    if (pieceData.can_capture_enemy_on_move && !hasSeparateCaptureFields) {
-      return canPieceMoveTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosition);
-    }
-
-    // Check directional capture (handle both string and numeric values, or if individual capture fields are set)
-    const directionalCaptureStyle = pieceData.directional_capture_style;
-    const hasDirectionalCapture = directionalCaptureStyle === 'directional' || directionalCaptureStyle === 'both' || 
-                                   directionalCaptureStyle === 1 || directionalCaptureStyle === 3 ||
-                                   // Also check if any directional capture fields are set
-                                   pieceData.up_capture || pieceData.down_capture || pieceData.left_capture || 
-                                   pieceData.right_capture || pieceData.up_left_capture || pieceData.up_right_capture ||
-                                   pieceData.down_left_capture || pieceData.down_right_capture;
-    
-    if (hasDirectionalCapture) {
-      let directionalAllowed = false;
-
-      if (rowDiff < 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.up_capture, Math.abs(rowDiff));
-      } else if (rowDiff > 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.down_capture, Math.abs(rowDiff));
-      } else if (rowDiff === 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff));
-      } else if (rowDiff === 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff));
-      } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff));
-      } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff));
-      } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff));
-      } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff));
-      }
-
-      if (directionalAllowed) return true;
-    }
-
-    // Check ratio capture (L-shape)
-    const ratio1 = pieceData.ratio_capture_1 || pieceData.ratio_one_capture || 0;
-    const ratio2 = pieceData.ratio_capture_2 || pieceData.ratio_two_capture || 0;
-    if (ratio1 > 0 && ratio2 > 0) {
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
-      }
-    }
-
-    // Check step-by-step capture
-    const stepCaptureStyle = pieceData.step_capture_style;
-    const stepCaptureValue = pieceData.step_capture_value;
-    if (stepCaptureStyle || stepCaptureValue) {
-      const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      
-      if (stepCaptureStyle === 'manhattan' || stepCaptureStyle === 1) {
-        return checkMovement(stepCaptureValue, manhattanDistance);
-      } else if (stepCaptureStyle === 'chebyshev' || stepCaptureStyle === 2) {
-        return checkMovement(stepCaptureValue, chebyshevDistance);
-      } else {
-        return checkMovement(stepCaptureValue, chebyshevDistance);
-      }
-    }
-
-    return false;
+  // Get full capture info including first-move-only status
+  const getCaptureInfo = (fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
+    if (!pieceData) return { allowed: false, isFirstMoveOnly: false };
+    return canCaptureOnMoveToUtil(fromRow, fromCol, toRow, toCol, pieceData, playerPosition);
   };
 
   // Generate auto-generated rules based on game configuration
@@ -733,6 +603,29 @@ const GameTypeView = () => {
       winConditions.push(`**King of the Hill**: Occupy the center hill square at (${game.hill_x || 'center'}, ${game.hill_y || 'center'}) for ${game.hill_turns || 3} consecutive turns to win.`);
     }
 
+    // Draw conditions
+    const drawConditions = [];
+
+    // Stalemate condition (only when mate_condition is enabled)
+    if (game.mate_condition) {
+      const stalemateCheckmatePieceNames = [...new Set(checkmatePieces.map(p => p.piece_name || 'designated piece'))];
+      const pieceRef = stalemateCheckmatePieceNames.length > 0 ? stalemateCheckmatePieceNames.join(' or ') : 'key piece';
+      
+      let stalemateDesc = `**Stalemate**: If a player has no legal moves but their ${pieceRef} is NOT in check, the game ends in a draw.\n\n`;
+      stalemateDesc += "• This occurs when every possible move would either leave or put your " + pieceRef + " in check.\n";
+      stalemateDesc += "• Unlike checkmate, stalemate is a draw because the " + pieceRef + " is not currently under attack.";
+      
+      drawConditions.push(stalemateDesc);
+    }
+    
+    if (game.draw_move_limit != null) {
+      drawConditions.push(`**Move Limit Draw**: If ${game.draw_move_limit} moves pass without any captures or promotable piece moves, the game ends in a draw. (A "move" = one turn by each player)`);
+    }
+
+    if (game.repetition_draw_count != null) {
+      drawConditions.push(`**${game.repetition_draw_count}-Fold Repetition**: If the same board position occurs ${game.repetition_draw_count} times, the game ends in a draw.`);
+    }
+
     if (winConditions.length > 0) {
       rules.push({
         title: "How to Win",
@@ -742,6 +635,14 @@ const GameTypeView = () => {
       rules.push({
         title: "How to Win",
         content: "No specific win conditions have been configured for this game type."
+      });
+    }
+
+    // Draw conditions section
+    if (drawConditions.length > 0) {
+      rules.push({
+        title: "Draw Conditions",
+        content: drawConditions.join('\n\n')
       });
     }
 
@@ -796,39 +697,16 @@ const GameTypeView = () => {
         const borderColor = getSquareColor(squareType);
 
         // Check if this square is valid for the hovered piece
-        let canMove = false;
-        let canCapture = false;
+        let moveInfo = { allowed: false, isFirstMoveOnly: false };
+        let captureInfo = { allowed: false, isFirstMoveOnly: false };
+        let canRanged = false;
         
         if (hoveredPiecePosition) {
           const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
-          if (row === 0 && col === 0) {
-            console.log('Hovered piece position:', hoveredPiecePosition);
-            console.log('Piece data:', pieceData);
-            console.log('Movement fields:', {
-              directional_movement_style: pieceData?.directional_movement_style,
-              up_movement: pieceData?.up_movement,
-              down_movement: pieceData?.down_movement,
-              left_movement: pieceData?.left_movement,
-              right_movement: pieceData?.right_movement,
-              can_capture_enemy_on_move: pieceData?.can_capture_enemy_on_move
-            });
-            console.log('Capture fields:', {
-              directional_capture_style: pieceData?.directional_capture_style,
-              up_capture: pieceData?.up_capture,
-              down_capture: pieceData?.down_capture,
-              up_left_capture: pieceData?.up_left_capture,
-              up_right_capture: pieceData?.up_right_capture,
-              can_capture_enemy_on_move: pieceData?.can_capture_enemy_on_move,
-              'typeof can_capture_enemy_on_move': typeof pieceData?.can_capture_enemy_on_move,
-              'truthy check': !!pieceData?.can_capture_enemy_on_move
-            });
-          }
           if (pieceData) {
-            canMove = canPieceMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
-            canCapture = canCaptureOnMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
-            if ((canMove || canCapture) && row === 0 && col === 0) {
-              console.log('Square 0,0: canMove=', canMove, 'canCapture=', canCapture);
-            }
+            moveInfo = getMoveInfo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
+            captureInfo = getCaptureInfo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
+            canRanged = canRangedAttackTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
           }
         }
 
@@ -841,20 +719,19 @@ const GameTypeView = () => {
           boxSizing: 'border-box'
         };
 
-        // Add hover highlighting (override special square borders if applicable)
-        if (canMove && canCapture) {
-          // Outer border for movement (blue), inner border for attack (orange)
-          squareStyle.border = '4px solid #2196F3';
-          squareStyle.boxShadow = 'inset 0 0 0 3px #FF9800, inset 0 0 10px rgba(255, 152, 0, 0.3)';
-          squareStyle.zIndex = 10;
-        } else if (canMove) {
-          squareStyle.border = '5px solid #2196F3';
-          squareStyle.boxShadow = 'inset 0 0 10px rgba(33, 150, 243, 0.3)';
-          squareStyle.zIndex = 10;
-        } else if (canCapture) {
-          squareStyle.border = '3px solid #FF9800';
-          squareStyle.boxShadow = 'inset 0 0 10px rgba(255, 152, 0, 0.3)';
-          squareStyle.zIndex = 10;
+        // Get highlight style using the utility function
+        const { style: highlightStyle, icon: highlightIcon } = getSquareHighlightStyle(
+          moveInfo.allowed,
+          moveInfo.isFirstMoveOnly,
+          captureInfo.allowed,
+          captureInfo.isFirstMoveOnly,
+          canRanged,
+          isLight
+        );
+        
+        // Merge highlight style (but keep special square border if no movement highlight)
+        if (highlightStyle.border) {
+          squareStyle = { ...squareStyle, ...highlightStyle };
         }
 
         board.push(
@@ -863,6 +740,23 @@ const GameTypeView = () => {
             className={styles["board-square"]}
             style={squareStyle}
           >
+            {/* Ranged attack icon */}
+            {highlightIcon && (
+              <span className={styles["ranged-icon"]} style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                fontSize: `${squareSize * 0.4}px`,
+                pointerEvents: 'none',
+                zIndex: 5,
+                backgroundColor: isLight ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.6)',
+                borderRadius: '4px',
+                padding: '2px 4px'
+              }}>
+                {highlightIcon}
+              </span>
+            )}
             {squareType && !placement && (
               <div 
                 style={{
@@ -883,6 +777,7 @@ const GameTypeView = () => {
               >
                 {squareType === 'range' && 'R'}
                 {squareType === 'promotion' && 'P'}
+                {squareType === 'control' && 'C'}
                 {squareType === 'special' && 'S'}
               </div>
             )}
@@ -940,8 +835,37 @@ const GameTypeView = () => {
                   height: `${squareSize * 0.2}px`,
                   borderRadius: '50%',
                   border: '1px solid #fff',
-                  pointerEvents: 'none'
+                  pointerEvents: 'none',
+                  zIndex: 2
                 }} />
+                {/* Checkmate piece indicator - upper right, styled for player */}
+                {placement.ends_game_on_checkmate && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '2px',
+                    right: '2px',
+                    fontSize: `${squareSize * 0.25}px`,
+                    pointerEvents: 'none',
+                    zIndex: 3,
+                    color: placement.player_id === 2 ? 'white' : 'black',
+                    WebkitTextStroke: placement.player_id === 2 ? '1px black' : 'none'
+                  }} title="Game ends if checkmated">
+                    ♔
+                  </div>
+                )}
+                {/* Capture piece indicator - upper left */}
+                {placement.ends_game_on_capture && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '2px',
+                    left: '2px',
+                    fontSize: `${squareSize * 0.25}px`,
+                    pointerEvents: 'none',
+                    zIndex: 3
+                  }} title="Game ends if captured">
+                    ⚔️
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1047,6 +971,78 @@ const GameTypeView = () => {
 
         <div className={styles["section"]}>
           <h2>Board Setup</h2>
+          <div className={styles["board-legend"]} style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '15px',
+            justifyContent: 'center',
+            marginBottom: '15px',
+            fontSize: '0.9rem',
+            color: '#ccc'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '20px', height: '20px', border: '3px solid #2196F3', borderRadius: '3px' }}></div>
+              <span>Movement</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '20px', height: '20px', border: '3px solid #9C27B0', borderRadius: '3px' }}></div>
+              <span>First Move</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '20px', height: '20px', border: '3px solid #FF9800', borderRadius: '3px' }}></div>
+              <span>Attack</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '20px', height: '20px', border: '3px solid #E91E63', borderRadius: '3px' }}></div>
+              <span>First Attack</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '20px', height: '20px', border: '3px solid #f44336', borderRadius: '3px' }}></div>
+              <span>Ranged 💥</span>
+            </div>
+            {/* Special Squares Legend */}
+            {Object.keys(specialSquares.promotion).length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <div style={{ width: '20px', height: '20px', border: '3px solid #4b0082', borderRadius: '3px', background: 'rgba(75, 0, 130, 0.3)' }}></div>
+                <span>Promotion</span>
+              </div>
+            )}
+            {Object.keys(specialSquares.range).length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <div style={{ width: '20px', height: '20px', border: '3px solid #ff8c00', borderRadius: '3px', background: 'rgba(255, 140, 0, 0.3)' }}></div>
+                <span>Range Boost</span>
+              </div>
+            )}
+            {Object.keys(specialSquares.control).length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <div style={{ width: '20px', height: '20px', border: '3px solid #32CD32', borderRadius: '3px', background: 'rgba(50, 205, 50, 0.3)' }}></div>
+                <span>Control</span>
+              </div>
+            )}
+            {Object.keys(specialSquares.special).length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <div style={{ width: '20px', height: '20px', border: '3px solid #ffd700', borderRadius: '3px', background: 'rgba(255, 215, 0, 0.3)' }}></div>
+                <span>Special</span>
+              </div>
+            )}
+            {/* Checkmate/Capture Piece Legend - show if any pieces have these properties */}
+            {Object.values(piecePlacements).some(p => p.ends_game_on_checkmate) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ fontSize: '16px' }}>♔</span>
+                <span style={{ fontSize: '16px', color: 'white', WebkitTextStroke: '1px black' }}>♔</span>
+                <span>Checkmate Piece</span>
+              </div>
+            )}
+            {Object.values(piecePlacements).some(p => p.ends_game_on_capture) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ fontSize: '16px' }}>⚔️</span>
+                <span>Capture-Loss Piece</span>
+              </div>
+            )}
+          </div>
+          <p style={{ textAlign: 'center', fontSize: '0.85rem', color: '#888', marginBottom: '10px' }}>
+            Hover over a piece to see where it can move and attack
+          </p>
           <div className={styles["board-container"]}>
             <div
               className={styles["board"]}

@@ -86,7 +86,8 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         )}
       </div>
 
-      {/* Value Condition */}
+      {/* Value Condition - Hidden until implemented */}
+      {/* TODO: Uncomment when point-based win condition is implemented
       <div className={styles["condition-section"]}>
         <h3>Value/Point Condition</h3>
         <div className={styles["radio-group"]}>
@@ -143,6 +144,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           </div>
         )}
       </div>
+      */}
 
       {/* Squares Condition */}
       <div className={styles["condition-section"]}>
@@ -201,8 +203,8 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
       <div className={styles["condition-section"]}>
         <h3>Move Limit Draw Rule</h3>
         <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
-          Similar to chess's "50-move rule" - the game ends in a draw after X moves without any captures.
-          Future: Will also count moves by promotable pieces.
+          Similar to chess's "50-move rule" - the game ends in a draw after X moves without any captures or promotable piece moves.
+          A "move" counts as one turn by each player (e.g., 50 moves = 50 turns by white + 50 turns by black).
         </p>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
@@ -236,6 +238,50 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
             />
             <p className={styles["field-hint"]}>
               Standard chess uses 50 moves. Adjust based on your game's pace.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* N-Fold Repetition Draw Rule */}
+      <div className={styles["condition-section"]}>
+        <h3>Position Repetition Draw Rule</h3>
+        <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
+          Similar to chess's "3-fold repetition" - the game ends in a draw when the same board position occurs N times.
+          The position is considered the same when all pieces are on the same squares.
+        </p>
+        <div className={styles["radio-group"]}>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="repetition_draw_enabled"
+              value="enabled"
+              checked={gameData.repetition_draw_count !== null && gameData.repetition_draw_count !== undefined}
+              onChange={(e) => handleChange("repetition_draw_count", 3)}
+            />
+            <span>Enable repetition draw rule</span>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="repetition_draw_enabled"
+              value="disabled"
+              checked={gameData.repetition_draw_count === null || gameData.repetition_draw_count === undefined}
+              onChange={(e) => handleChange("repetition_draw_count", null)}
+            />
+            <span>Disable</span>
+          </label>
+        </div>
+        {(gameData.repetition_draw_count !== null && gameData.repetition_draw_count !== undefined) && (
+          <div className={styles["sub-field"]}>
+            <label className={styles["form-label"]}>Number of repetitions for draw</label>
+            <NumberInput
+              value={gameData.repetition_draw_count || 3}
+              onChange={(val) => handleChange("repetition_draw_count", Math.max(2, Math.min(9, val)))}
+              options={{ min: 2, max: 9, placeholder: "3", className: styles["form-input-small"] }}
+            />
+            <p className={styles["field-hint"]}>
+              Standard chess uses 3-fold repetition. Set to 2 for faster draws, or higher for longer games.
             </p>
           </div>
         )}

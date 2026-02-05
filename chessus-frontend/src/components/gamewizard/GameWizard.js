@@ -45,6 +45,8 @@ const GameWizard = ({ editGameId }) => {
     hill_y: null,
     hill_turns: null,
     optional_condition: null,
+    draw_move_limit: null,
+    repetition_draw_count: null,
     
     // Step 3: Board & Players
     board_width: 8,
@@ -98,6 +100,8 @@ const GameWizard = ({ editGameId }) => {
             hill_y: existingGame.hill_y || null,
             hill_turns: existingGame.hill_turns || null,
             optional_condition: existingGame.optional_condition || null,
+            draw_move_limit: existingGame.draw_move_limit != null ? existingGame.draw_move_limit : null,
+            repetition_draw_count: existingGame.repetition_draw_count != null ? existingGame.repetition_draw_count : null,
             board_width: existingGame.board_width || 8,
             board_height: existingGame.board_height || 8,
             player_count: existingGame.player_count || 2,

@@ -3,6 +3,12 @@ import styles from "./gamewizard.module.scss";
 import PieceSelector from "./PieceSelector";
 import { getAllPieces, getPieceById } from "../../actions/pieces";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
+import { 
+  canPieceMoveTo as canPieceMoveToUtil,
+  canCaptureOnMoveTo as canCaptureOnMoveToUtil,
+  canRangedAttackTo as canRangedAttackToUtil,
+  getSquareHighlightStyle
+} from "../../helpers/pieceMovementUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -19,7 +25,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [draggedPiece, setDraggedPiece] = useState(null);
   const [randomizationMode, setRandomizationMode] = useState('none'); // 'none', 'mirrored', 'backrow', 'independent', 'shared', 'full'
   const [pieceDataMap, setPieceDataMap] = useState({});
-  const [hoveredSquare, setHoveredSquare] = useState(null);
+  const [, setHoveredSquare] = useState(null);
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
   const [draggedPiecePosition, setDraggedPiecePosition] = useState(null);
   const initializedRef = useRef(false);
@@ -245,137 +251,23 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     setSelectedSquare(null);
   }, []);
 
-  // Helper to check if a value allows movement at distance
-  const checkMovement = useCallback((value, distance) => {
-    if (value === 99) return true; // Infinite movement
-    if (value === 0 || value === null) return false;
-    if (value > 0) return distance <= value; // Up to that distance
-    if (value < 0) return distance === Math.abs(value); // Exact distance
-    return false;
+  // Check if piece can perform ranged attack to target square
+  const canRangedAttackTo = useCallback((fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
+    if (!pieceData) return false;
+    return canRangedAttackToUtil(fromRow, fromCol, toRow, toCol, pieceData, playerPosition);
   }, []);
 
-  // Check if piece can move to target square
-  const canPieceMoveTo = useCallback((fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
-    if (!pieceData) return true; // If no piece data, allow free movement (fallback)
-    if (fromRow === toRow && fromCol === toCol) return false;
-    
-    // For player 2, flip the perspective (so "up" is towards player 1)
-    const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
-    const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
-    
-    let directionalAllowed = false;
-    
-    // Directional movement
-    if (pieceData.directional_movement_style) {
-      if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff));
-      } else if (rowDiff < 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.up_movement, Math.abs(rowDiff));
-      } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff));
-      } else if (rowDiff === 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff));
-      } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff));
-      } else if (rowDiff > 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.down_movement, Math.abs(rowDiff));
-      } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff));
-      } else if (rowDiff === 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff));
-      }
-      
-      if (directionalAllowed) return true;
-    }
+  // Get full movement info including first-move-only status
+  const getMoveInfo = useCallback((fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
+    if (!pieceData) return { allowed: false, isFirstMoveOnly: false };
+    return canPieceMoveToUtil(fromRow, fromCol, toRow, toCol, pieceData, playerPosition);
+  }, []);
 
-    // Ratio movement (L-shape like knight)
-    if (pieceData.ratio_movement_style && pieceData.ratio_one_movement && pieceData.ratio_two_movement) {
-      const ratio1 = Math.abs(pieceData.ratio_one_movement);
-      const ratio2 = Math.abs(pieceData.ratio_two_movement);
-      
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
-      }
-    }
-
-    // Step-by-step movement
-    if (pieceData.step_by_step_movement_style && pieceData.step_by_step_movement_value) {
-      const maxSteps = Math.abs(pieceData.step_by_step_movement_value);
-      const noDiagonal = pieceData.step_by_step_movement_value < 0;
-      
-      if (noDiagonal) {
-        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-        if (manhattanDistance <= maxSteps) return true;
-      } else {
-        const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-        if (chebyshevDistance <= maxSteps) return true;
-      }
-    }
-
-    return false;
-  }, [checkMovement]);
-
-  // Check if piece can capture on move to target square
-  const canCaptureOnMoveTo = useCallback((fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
-    if (!pieceData) return false;
-    if (fromRow === toRow && fromCol === toCol) return false;
-    if (!pieceData.can_capture_enemy_on_move) return false;
-    
-    // For player 2, flip the perspective (so "up" is towards player 1)
-    const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
-    const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
-    
-    let directionalCaptureAllowed = false;
-    
-    // Check directional capture
-    if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff));
-    } else if (rowDiff < 0 && colDiff === 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.up_capture, Math.abs(rowDiff));
-    } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff));
-    } else if (rowDiff === 0 && colDiff > 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff));
-    } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff));
-    } else if (rowDiff > 0 && colDiff === 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.down_capture, Math.abs(rowDiff));
-    } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff));
-    } else if (rowDiff === 0 && colDiff < 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff));
-    }
-    
-    if (directionalCaptureAllowed) return true;
-    
-    // Ratio capture
-    if (pieceData.ratio_one_capture && pieceData.ratio_two_capture) {
-      const ratio1 = Math.abs(pieceData.ratio_one_capture);
-      const ratio2 = Math.abs(pieceData.ratio_two_capture);
-      
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
-      }
-    }
-    
-    // Step-by-step capture
-    if (pieceData.step_by_step_capture) {
-      const maxSteps = Math.abs(pieceData.step_by_step_capture);
-      const noDiagonal = pieceData.step_by_step_capture < 0;
-      
-      if (noDiagonal) {
-        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-        if (manhattanDistance <= maxSteps) return true;
-      } else {
-        const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-        if (chebyshevDistance <= maxSteps) return true;
-      }
-    }
-
-    return false;
-  }, [checkMovement]);
+  // Get full capture info including first-move-only status
+  const getCaptureInfo = useCallback((fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
+    if (!pieceData) return { allowed: false, isFirstMoveOnly: false };
+    return canCaptureOnMoveToUtil(fromRow, fromCol, toRow, toCol, pieceData, playerPosition);
+  }, []);
 
   // Drag and drop handlers
   const handleDragStart = useCallback((e, key) => {
@@ -494,23 +386,26 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         const placement = piecePlacements[key];
         
         // Check if this square is valid for the hovered or dragged piece
-        let canMove = false;
-        let canCapture = false;
+        let moveInfo = { allowed: false, isFirstMoveOnly: false };
+        let captureInfo = { allowed: false, isFirstMoveOnly: false };
+        let canRanged = false;
         
         // Check for dragged piece
         if (draggedPiece && draggedPiecePosition) {
           const pieceData = pieceDataMap[draggedPiece.data.piece_id];
           if (pieceData) {
-            canMove = canPieceMoveTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
-            canCapture = canCaptureOnMoveTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
+            moveInfo = getMoveInfo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
+            captureInfo = getCaptureInfo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
+            canRanged = canRangedAttackTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
           }
         }
         // Check for hovered piece (not dragging)
         else if (hoveredPiecePosition && !draggedPiece) {
           const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
           if (pieceData) {
-            canMove = canPieceMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
-            canCapture = canCaptureOnMoveTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
+            moveInfo = getMoveInfo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
+            captureInfo = getCaptureInfo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
+            canRanged = canRangedAttackTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
           }
         }
         
@@ -521,21 +416,18 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           boxSizing: 'border-box'
         };
         
-        // Highlight valid moves and attacks - use border and box-shadow for offset borders
-        if (canMove && canCapture) {
-          // Outer border for movement (blue), inner border for attack (orange)
-          squareStyle.border = '4px solid #2196F3';
-          squareStyle.boxShadow = 'inset 0 0 0 3px #FF9800, inset 0 0 10px rgba(255, 152, 0, 0.3)';
-          squareStyle.zIndex = 10;
-        } else if (canMove) {
-          squareStyle.border = '5px solid #2196F3';
-          squareStyle.boxShadow = 'inset 0 0 10px rgba(33, 150, 243, 0.3)';
-          squareStyle.zIndex = 10;
-        } else if (canCapture) {
-          squareStyle.border = '3px solid #FF9800';
-          squareStyle.boxShadow = 'inset 0 0 10px rgba(255, 152, 0, 0.3)';
-          squareStyle.zIndex = 10;
-        }
+        // Get highlight style using the utility function
+        const { style: highlightStyle, icon: highlightIcon } = getSquareHighlightStyle(
+          moveInfo.allowed,
+          moveInfo.isFirstMoveOnly,
+          captureInfo.allowed,
+          captureInfo.isFirstMoveOnly,
+          canRanged,
+          isLight
+        );
+        
+        // Merge highlight style
+        squareStyle = { ...squareStyle, ...highlightStyle };
         
         board.push(
           <div
@@ -554,6 +446,23 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               }
             }}
           >
+            {/* Ranged attack icon */}
+            {highlightIcon && (
+              <span className={styles["ranged-icon"]} style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                fontSize: `${squareSize * 0.4}px`,
+                pointerEvents: 'none',
+                zIndex: 5,
+                backgroundColor: isLight ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.6)',
+                borderRadius: '4px',
+                padding: '2px 4px'
+              }}>
+                {highlightIcon}
+              </span>
+            )}
             {placement && (
               <div 
                 className={styles["piece-on-square"]}
@@ -636,7 +545,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     }
     
     return board;
-  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, canPieceMoveTo, canCaptureOnMoveTo, boardDimensions]);
+  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd]);
 
   const getPieceCounts = () => {
     const counts = {};
@@ -694,13 +603,23 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               <span>Movement</span>
             </div>
             <div className={styles["legend-item"]}>
+              <div className={styles["legend-square"]} style={{ border: '3px solid #9C27B0' }}></div>
+              <span>First Move</span>
+            </div>
+            <div className={styles["legend-item"]}>
               <div className={styles["legend-square"]} style={{ border: '3px solid #FF9800' }}></div>
               <span>Attack</span>
             </div>
-            <div className={styles["legend-item"]} style={{ gap: '4px' }}>
-              <span className={styles["ranged-icon"]}>💥</span>
-              <span>Ranged</span>
+            <div className={styles["legend-item"]}>
+              <div className={styles["legend-square"]} style={{ border: '3px solid #E91E63' }}></div>
+              <span>First Attack</span>
             </div>
+            <div className={styles["legend-item"]}>
+              <div className={styles["legend-square"]} style={{ border: '3px solid #f44336' }}></div>
+              <span>Ranged 💥</span>
+            </div>
+          </div>
+          <div className={styles["legend-row"]} style={{ marginTop: '8px' }}>
             <div className={styles["legend-item"]} style={{ gap: '4px' }}>
               <span className={styles["condition-icon"]}>♔</span>
               <span>Checkmate</span>
@@ -710,7 +629,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               <span>Capture</span>
             </div>
           </div>
-          <div className={styles["legend-row"]} style={{ justifyContent: 'space-around' }}>
+          <div className={styles["legend-row"]} style={{ justifyContent: 'space-around', marginTop: '8px' }}>
             {Array.from({ length: Math.min(4, gameData.player_count || 2) }, (_, i) => i + 1).map(playerId => (
               <div key={playerId} className={styles["legend-item"]}>
                 <div 
