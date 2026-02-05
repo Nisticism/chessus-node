@@ -14,7 +14,8 @@ import Divider from "../Divider/Divider";
 import DonorBadge from "../DonorBadge/DonorBadge";
 import MatchHistory from "../matchhistory/MatchHistory";
 import FriendsList from "../friendslist/FriendsList";
-import { addFriend, removeFriend, checkFriendshipStatus } from "../../actions/friends";
+import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests } from "../../actions/friends";
+import DefaultAvatar from "../../assets/pieces/White-pawn.png";
 // import NotFound from "../notfound/NotFound";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
@@ -40,8 +41,9 @@ const PlayerPage = (props) => {
   const [showBanner, setShowBanner] = useState(false);
   const [bannerMessage, setBannerMessage] = useState("");
   const [bannerType, setBannerType] = useState("success");
-  const [isFriend, setIsFriend] = useState(false);
+  const [friendshipStatus, setFriendshipStatus] = useState({ status: 'none', areFriends: false });
   const [checkingFriendship, setCheckingFriendship] = useState(false);
+  const [incomingRequests, setIncomingRequests] = useState([]);
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
   const playerPageUser = useSelector((state) => state.authReducer.playerPage);
   
@@ -96,8 +98,8 @@ const PlayerPage = (props) => {
       if (currentUser && playerPageUser && playerPageUser.id !== currentUser.id) {
         setCheckingFriendship(true);
         try {
-          const areFriends = await dispatch(checkFriendshipStatus(currentUser.id, playerPageUser.id));
-          setIsFriend(areFriends);
+          const statusResult = await dispatch(checkFriendshipStatus(currentUser.id, playerPageUser.id));
+          setFriendshipStatus(statusResult);
         } catch (error) {
           console.error("Error checking friendship:", error);
         } finally {
@@ -108,6 +110,24 @@ const PlayerPage = (props) => {
     
     if (!loading && playerPageUser) {
       checkFriendship();
+    }
+  }, [currentUser, playerPageUser, loading, dispatch]);
+
+  // Fetch incoming friend requests when viewing own profile
+  useEffect(() => {
+    const fetchIncomingRequests = async () => {
+      if (currentUser && playerPageUser && playerPageUser.id === currentUser.id) {
+        try {
+          const requests = await dispatch(getIncomingRequests(currentUser.id));
+          setIncomingRequests(requests || []);
+        } catch (error) {
+          console.error("Error fetching friend requests:", error);
+        }
+      }
+    };
+    
+    if (!loading && playerPageUser) {
+      fetchIncomingRequests();
     }
   }, [currentUser, playerPageUser, loading, dispatch]);
 
@@ -211,13 +231,13 @@ const PlayerPage = (props) => {
     
     try {
       await dispatch(addFriend(currentUser.id, playerPageUser.id));
-      setIsFriend(true);
-      setBannerMessage(`Added ${playerPageUser.username} as a friend!`);
+      setFriendshipStatus({ status: 'pending_outgoing', areFriends: false });
+      setBannerMessage(`Friend request sent to ${playerPageUser.username}!`);
       setBannerType("success");
       setShowBanner(true);
     } catch (error) {
-      console.error("Error adding friend:", error);
-      setBannerMessage("Failed to add friend");
+      console.error("Error sending friend request:", error);
+      setBannerMessage(error.response?.data?.error || "Failed to send friend request");
       setBannerType("error");
       setShowBanner(true);
     }
@@ -229,7 +249,7 @@ const PlayerPage = (props) => {
     if (window.confirm(`Remove ${playerPageUser.username} from your friends list?`)) {
       try {
         await dispatch(removeFriend(currentUser.id, playerPageUser.id));
-        setIsFriend(false);
+        setFriendshipStatus({ status: 'none', areFriends: false });
         setBannerMessage(`Removed ${playerPageUser.username} from friends`);
         setBannerType("success");
         setShowBanner(true);
@@ -239,6 +259,75 @@ const PlayerPage = (props) => {
         setBannerType("error");
         setShowBanner(true);
       }
+    }
+  };
+
+  const handleCancelRequest = async () => {
+    if (!currentUser || !playerPageUser || !friendshipStatus.requestId) return;
+    
+    try {
+      await dispatch(cancelFriendRequest(currentUser.id, friendshipStatus.requestId));
+      setFriendshipStatus({ status: 'none', areFriends: false });
+      setBannerMessage(`Friend request to ${playerPageUser.username} cancelled`);
+      setBannerType("success");
+      setShowBanner(true);
+    } catch (error) {
+      console.error("Error cancelling friend request:", error);
+      setBannerMessage("Failed to cancel friend request");
+      setBannerType("error");
+      setShowBanner(true);
+    }
+  };
+
+  const handleAcceptRequest = async () => {
+    if (!currentUser || !playerPageUser || !friendshipStatus.requestId) return;
+    
+    try {
+      await dispatch(acceptFriendRequest(currentUser.id, friendshipStatus.requestId));
+      setFriendshipStatus({ status: 'friends', areFriends: true });
+      setBannerMessage(`You are now friends with ${playerPageUser.username}!`);
+      setBannerType("success");
+      setShowBanner(true);
+    } catch (error) {
+      console.error("Error accepting friend request:", error);
+      setBannerMessage("Failed to accept friend request");
+      setBannerType("error");
+      setShowBanner(true);
+    }
+  };
+
+  const handleAcceptIncomingRequest = async (request) => {
+    if (!currentUser) return;
+    
+    try {
+      await dispatch(acceptFriendRequest(currentUser.id, request.request_id));
+      setIncomingRequests(prev => prev.filter(r => r.request_id !== request.request_id));
+      setBannerMessage(`You are now friends with ${request.username}!`);
+      setBannerType("success");
+      setShowBanner(true);
+    } catch (error) {
+      console.error("Error accepting friend request:", error);
+      setBannerMessage("Failed to accept friend request");
+      setBannerType("error");
+      setShowBanner(true);
+    }
+  };
+
+  const handleDeclineIncomingRequest = async (request) => {
+    if (!currentUser) return;
+    
+    try {
+      const { declineFriendRequest } = await import("../../actions/friends");
+      await dispatch(declineFriendRequest(currentUser.id, request.request_id));
+      setIncomingRequests(prev => prev.filter(r => r.request_id !== request.request_id));
+      setBannerMessage(`Declined friend request from ${request.username}`);
+      setBannerType("success");
+      setShowBanner(true);
+    } catch (error) {
+      console.error("Error declining friend request:", error);
+      setBannerMessage("Failed to decline friend request");
+      setBannerType("error");
+      setShowBanner(true);
     }
   };
 
@@ -370,21 +459,19 @@ const PlayerPage = (props) => {
                 onClick={handleProfilePictureClick}
                 style={{ cursor: (currentUser && (currentUser.username === username || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner")) ? 'pointer' : 'default' }}
               >
-                {displayPictureUrl || 
-                 (currentUser && username === currentUser.username && currentUser.profile_picture) || 
-                 (playerPageUser && playerPageUser.username === username && playerPageUser.profile_picture) ? (
-                  <img 
-                    src={displayPictureUrl || `${ASSET_URL}${currentUser && username === currentUser.username ? currentUser.profile_picture : playerPageUser?.profile_picture}?t=${Date.now()}`}
-                    alt={`${username}'s profile`}
-                    className={styles["profile-avatar-img"]}
-                    onError={(e) => {
-                      console.error('Failed to load profile picture:', e.target.src);
-                      e.target.style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  username.charAt(0).toUpperCase()
-                )}
+                <img 
+                  src={displayPictureUrl || 
+                       ((currentUser && username === currentUser.username && currentUser.profile_picture) || 
+                        (playerPageUser && playerPageUser.username === username && playerPageUser.profile_picture))
+                       ? (displayPictureUrl || `${ASSET_URL}${currentUser && username === currentUser.username ? currentUser.profile_picture : playerPageUser?.profile_picture}?t=${Date.now()}`)
+                       : DefaultAvatar}
+                  alt={`${username}'s profile`}
+                  className={styles["profile-avatar-img"]}
+                  onError={(e) => {
+                    console.error('Failed to load profile picture:', e.target.src);
+                    e.target.src = DefaultAvatar;
+                  }}
+                />
                 {currentUser && (currentUser.username === username || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner") && (
                   <div className={styles["edit-icon"]}>
                     <span>📷</span>
@@ -423,12 +510,27 @@ const PlayerPage = (props) => {
                       <button className={styles["friend-button"]} disabled>
                         Checking...
                       </button>
-                    ) : isFriend ? (
+                    ) : friendshipStatus.areFriends || friendshipStatus.status === 'friends' ? (
                       <button 
                         className={`${styles["friend-button"]} ${styles["remove-friend"]}`}
                         onClick={handleRemoveFriend}
                       >
                         ✓ Friends
+                      </button>
+                    ) : friendshipStatus.status === 'pending_outgoing' ? (
+                      <button 
+                        className={`${styles["friend-button"]} ${styles["pending"]}`}
+                        onClick={handleCancelRequest}
+                        title="Click to cancel request"
+                      >
+                        ⏳ Request Sent
+                      </button>
+                    ) : friendshipStatus.status === 'pending_incoming' ? (
+                      <button 
+                        className={`${styles["friend-button"]} ${styles["accept"]}`}
+                        onClick={handleAcceptRequest}
+                      >
+                        ✓ Accept Request
                       </button>
                     ) : (
                       <button 
@@ -489,6 +591,54 @@ const PlayerPage = (props) => {
                 isEditable={false}
                 emptyMessage={currentUser && username === currentUser.username ? "No bio yet. Tell the community about yourself!" : "This user hasn't written a bio yet."}
               />
+
+              {/* Friend Requests - only show on own profile */}
+              {currentUser && playerPageUser && currentUser.id === playerPageUser.id && incomingRequests.length > 0 && (
+                <div className={styles["info-card"]}>
+                  <h2 className={styles["card-title"]}>
+                    Friend Requests
+                    <span className={styles["request-count"]}>{incomingRequests.length}</span>
+                  </h2>
+                  <div className={styles["friend-requests-list"]}>
+                    {incomingRequests.map((request) => (
+                      <div key={request.request_id} className={styles["friend-request-item"]}>
+                        <div className={styles["request-user-info"]}>
+                          <img 
+                            src={request.profile_picture 
+                              ? `${ASSET_URL}${request.profile_picture}` 
+                              : DefaultAvatar}
+                            alt={request.username}
+                            className={styles["request-avatar"]}
+                          />
+                          <div className={styles["request-details"]}>
+                            <span 
+                              className={styles["request-username"]}
+                              onClick={() => navigate(`/profile/${request.username}`)}
+                            >
+                              {request.username}
+                            </span>
+                            <span className={styles["request-elo"]}>ELO: {request.elo || 1000}</span>
+                          </div>
+                        </div>
+                        <div className={styles["request-actions"]}>
+                          <button 
+                            className={styles["accept-button"]}
+                            onClick={() => handleAcceptIncomingRequest(request)}
+                          >
+                            Accept
+                          </button>
+                          <button 
+                            className={styles["decline-button"]}
+                            onClick={() => handleDeclineIncomingRequest(request)}
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className={styles["info-card"]}>
                 <h2 className={styles["card-title"]}>Friends</h2>

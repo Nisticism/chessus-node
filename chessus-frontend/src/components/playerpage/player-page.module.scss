@@ -189,6 +189,25 @@
         box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
       }
     }
+
+    &.pending {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+      
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+      }
+    }
+
+    &.accept {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+      
+      &:hover:not(:disabled) {
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+      }
+    }
   }
 
   .role-badge {
@@ -274,6 +293,117 @@
     font-weight: 600;
     border-bottom: 2px solid #2a4d6c;
     padding-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .request-count {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: #fff;
+      font-size: 0.85rem;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+  }
+}
+
+// Friend Requests List
+.friend-requests-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.friend-request-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(42, 77, 108, 0.3);
+  border-radius: 10px;
+  border: 1px solid rgba(74, 144, 226, 0.2);
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: rgba(74, 144, 226, 0.4);
+    background: rgba(42, 77, 108, 0.5);
+  }
+}
+
+.request-user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.request-avatar {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #4a90e2;
+}
+
+.request-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.request-username {
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: #4a90e2;
+  }
+}
+
+.request-elo {
+  font-size: 0.85rem;
+  color: #8097ae;
+}
+
+.request-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.accept-button {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #fff;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+  }
+}
+
+.decline-button {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: #fff;
+    border-color: transparent;
   }
 }
 

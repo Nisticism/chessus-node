@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import { getFriends, removeFriend, setOnlineUsers } from "../../actions/friends";
 import styles from "./friendslist.module.scss";
+import DefaultAvatar from "../../assets/pieces/White-pawn.png";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -48,7 +49,9 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride }
     return onlineUsers.includes(friendId);
   };
 
-  const displayedFriends = showOnlineOnly
+  // If friendsOverride is provided, it's already filtered (e.g., server-side online filter)
+  // Don't apply additional showOnlineOnly filter to avoid desync issues
+  const displayedFriends = showOnlineOnly && !friendsOverride
     ? friendsList.filter((friend) => isOnline(friend.id))
     : friendsList;
 
@@ -75,7 +78,7 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride }
                 src={
                   friend.profile_picture
                     ? `${ASSET_URL}${friend.profile_picture}`
-                    : `${ASSET_URL}/uploads/profile-pictures/default-avatar.png`
+                    : DefaultAvatar
                 }
                 alt={friend.username}
                 className={styles["friend-avatar"]}

@@ -348,7 +348,7 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
 
 // ===== FRIENDS ENDPOINTS =====
 
-// Get user's friends list
+// Get user's friends list (only accepted friendships)
 app.get("/api/users/:userId/friends", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -362,7 +362,7 @@ app.get("/api/users/:userId/friends", async (req, res) => {
         f.created_at as friendship_created_at
       FROM friends f
       JOIN users u ON f.friend_id = u.id
-      WHERE f.user_id = ?
+      WHERE f.user_id = ? AND f.status = 'accepted'
       ORDER BY u.username ASC
     `, [userId]);
     
@@ -373,7 +373,7 @@ app.get("/api/users/:userId/friends", async (req, res) => {
   }
 });
 
-// Add a friend
+// Send a friend request (creates a pending request)
 app.post("/api/users/:userId/friends", authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -384,31 +384,233 @@ app.post("/api/users/:userId/friends", authenticateToken, async (req, res) => {
       return res.status(403).json({ error: "Not authorized" });
     }
     
-    // Check if friendship already exists
-    const [existing] = await db_pool.query(
-      "SELECT * FROM friends WHERE user_id = ? AND friend_id = ?",
-      [userId, friendId]
-    );
-    
-    if (existing.length > 0) {
-      return res.status(400).json({ error: "Already friends" });
+    // Can't friend yourself
+    if (parseInt(userId) === parseInt(friendId)) {
+      return res.status(400).json({ error: "Cannot send friend request to yourself" });
     }
     
-    // Add friendship (bidirectional - add both directions)
-    await db_pool.query(
-      "INSERT INTO friends (user_id, friend_id) VALUES (?, ?), (?, ?)",
+    // Check if any relationship already exists (pending or accepted)
+    const [existing] = await db_pool.query(
+      "SELECT * FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
       [userId, friendId, friendId, userId]
     );
     
-    // Get the new friend's info
+    if (existing.length > 0) {
+      const existingRequest = existing[0];
+      if (existingRequest.status === 'accepted') {
+        return res.status(400).json({ error: "Already friends" });
+      } else if (existingRequest.status === 'pending') {
+        // Check if this is a request TO me that I can accept
+        if (existingRequest.user_id === parseInt(friendId)) {
+          return res.status(400).json({ error: "This user has already sent you a friend request. Check your pending requests." });
+        }
+        return res.status(400).json({ error: "Friend request already sent" });
+      } else if (existingRequest.status === 'declined') {
+        // Allow re-sending if previously declined - update existing record
+        await db_pool.query(
+          "UPDATE friends SET status = 'pending', created_at = CURRENT_TIMESTAMP WHERE user_id = ? AND friend_id = ?",
+          [userId, friendId]
+        );
+        
+        const [friend] = await db_pool.query(
+          "SELECT id, username, elo, profile_picture FROM users WHERE id = ?",
+          [friendId]
+        );
+        
+        return res.json({ message: "Friend request sent", friend: friend[0] });
+      }
+    }
+    
+    // Create a pending friend request (one-way only)
+    await db_pool.query(
+      "INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, 'pending')",
+      [userId, friendId]
+    );
+    
+    // Get the friend's info
     const [friend] = await db_pool.query(
       "SELECT id, username, elo, profile_picture FROM users WHERE id = ?",
       [friendId]
     );
     
-    res.json({ message: "Friend added", friend: friend[0] });
+    res.json({ message: "Friend request sent", friend: friend[0] });
   } catch (err) {
     console.error("Error in /api/users/:userId/friends POST:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Get incoming friend requests (requests sent TO this user)
+app.get("/api/users/:userId/friend-requests/incoming", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Verify the requesting user is the same as userId
+    if (req.user.id !== parseInt(userId)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    
+    const [requests] = await db_pool.query(`
+      SELECT 
+        f.id as request_id,
+        u.id,
+        u.username,
+        u.elo,
+        u.profile_picture,
+        f.created_at as request_date
+      FROM friends f
+      JOIN users u ON f.user_id = u.id
+      WHERE f.friend_id = ? AND f.status = 'pending'
+      ORDER BY f.created_at DESC
+    `, [userId]);
+    
+    res.json(requests);
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friend-requests/incoming:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Get outgoing friend requests (requests sent BY this user)
+app.get("/api/users/:userId/friend-requests/outgoing", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Verify the requesting user is the same as userId
+    if (req.user.id !== parseInt(userId)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    
+    const [requests] = await db_pool.query(`
+      SELECT 
+        f.id as request_id,
+        u.id,
+        u.username,
+        u.elo,
+        u.profile_picture,
+        f.created_at as request_date
+      FROM friends f
+      JOIN users u ON f.friend_id = u.id
+      WHERE f.user_id = ? AND f.status = 'pending'
+      ORDER BY f.created_at DESC
+    `, [userId]);
+    
+    res.json(requests);
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friend-requests/outgoing:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Accept a friend request
+app.post("/api/users/:userId/friend-requests/:requestId/accept", authenticateToken, async (req, res) => {
+  try {
+    const { userId, requestId } = req.params;
+    
+    // Verify the requesting user is the same as userId
+    if (req.user.id !== parseInt(userId)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    
+    // Get the request to verify it's TO this user
+    const [request] = await db_pool.query(
+      "SELECT * FROM friends WHERE id = ? AND friend_id = ? AND status = 'pending'",
+      [requestId, userId]
+    );
+    
+    if (request.length === 0) {
+      return res.status(404).json({ error: "Friend request not found" });
+    }
+    
+    const senderId = request[0].user_id;
+    
+    // Update the request to accepted
+    await db_pool.query(
+      "UPDATE friends SET status = 'accepted' WHERE id = ?",
+      [requestId]
+    );
+    
+    // Create the reverse friendship (so both users see each other as friends)
+    await db_pool.query(
+      "INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, 'accepted') ON DUPLICATE KEY UPDATE status = 'accepted'",
+      [userId, senderId]
+    );
+    
+    // Get the friend's info
+    const [friend] = await db_pool.query(
+      "SELECT id, username, elo, profile_picture FROM users WHERE id = ?",
+      [senderId]
+    );
+    
+    res.json({ message: "Friend request accepted", friend: friend[0] });
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friend-requests/:requestId/accept:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Decline a friend request
+app.post("/api/users/:userId/friend-requests/:requestId/decline", authenticateToken, async (req, res) => {
+  try {
+    const { userId, requestId } = req.params;
+    
+    // Verify the requesting user is the same as userId
+    if (req.user.id !== parseInt(userId)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    
+    // Get the request to verify it's TO this user
+    const [request] = await db_pool.query(
+      "SELECT * FROM friends WHERE id = ? AND friend_id = ? AND status = 'pending'",
+      [requestId, userId]
+    );
+    
+    if (request.length === 0) {
+      return res.status(404).json({ error: "Friend request not found" });
+    }
+    
+    // Update the request to declined
+    await db_pool.query(
+      "UPDATE friends SET status = 'declined' WHERE id = ?",
+      [requestId]
+    );
+    
+    res.json({ message: "Friend request declined" });
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friend-requests/:requestId/decline:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Cancel a sent friend request
+app.delete("/api/users/:userId/friend-requests/:requestId", authenticateToken, async (req, res) => {
+  try {
+    const { userId, requestId } = req.params;
+    
+    // Verify the requesting user is the same as userId
+    if (req.user.id !== parseInt(userId)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    
+    // Verify this is an outgoing request FROM this user
+    const [request] = await db_pool.query(
+      "SELECT * FROM friends WHERE id = ? AND user_id = ? AND status = 'pending'",
+      [requestId, userId]
+    );
+    
+    if (request.length === 0) {
+      return res.status(404).json({ error: "Friend request not found" });
+    }
+    
+    // Delete the request
+    await db_pool.query(
+      "DELETE FROM friends WHERE id = ?",
+      [requestId]
+    );
+    
+    res.json({ message: "Friend request cancelled" });
+  } catch (err) {
+    console.error("Error in /api/users/:userId/friend-requests/:requestId DELETE:", err);
     res.status(500).send({ err: err.message });
   }
 });
@@ -436,29 +638,54 @@ app.delete("/api/users/:userId/friends/:friendId", authenticateToken, async (req
   }
 });
 
-// Check if two users are friends
+// Check friendship status between two users
 app.get("/api/users/:userId/friends/:friendId/status", async (req, res) => {
   try {
     const { userId, friendId } = req.params;
     
-    const [result] = await db_pool.query(
-      "SELECT * FROM friends WHERE user_id = ? AND friend_id = ?",
+    // Check for accepted friendship
+    const [accepted] = await db_pool.query(
+      "SELECT * FROM friends WHERE user_id = ? AND friend_id = ? AND status = 'accepted'",
       [userId, friendId]
     );
     
-    res.json({ areFriends: result.length > 0 });
+    if (accepted.length > 0) {
+      return res.json({ status: 'friends', areFriends: true });
+    }
+    
+    // Check for pending request FROM userId TO friendId
+    const [outgoing] = await db_pool.query(
+      "SELECT id FROM friends WHERE user_id = ? AND friend_id = ? AND status = 'pending'",
+      [userId, friendId]
+    );
+    
+    if (outgoing.length > 0) {
+      return res.json({ status: 'pending_outgoing', areFriends: false, requestId: outgoing[0].id });
+    }
+    
+    // Check for pending request FROM friendId TO userId
+    const [incoming] = await db_pool.query(
+      "SELECT id FROM friends WHERE user_id = ? AND friend_id = ? AND status = 'pending'",
+      [friendId, userId]
+    );
+    
+    if (incoming.length > 0) {
+      return res.json({ status: 'pending_incoming', areFriends: false, requestId: incoming[0].id });
+    }
+    
+    res.json({ status: 'none', areFriends: false });
   } catch (err) {
     console.error("Error in /api/users/:userId/friends/:friendId/status:", err);
     res.status(500).send({ err: err.message });
   }
 });
 
-// Get online friends
+// Get online friends (only accepted friendships)
 app.get("/api/users/:userId/friends/online", async (req, res) => {
   try {
     const { userId } = req.params;
     
-    // Get user's friends list
+    // Get user's accepted friends list
     const [friends] = await db_pool.query(`
       SELECT 
         u.id,
@@ -467,7 +694,7 @@ app.get("/api/users/:userId/friends/online", async (req, res) => {
         u.profile_picture
       FROM friends f
       JOIN users u ON f.friend_id = u.id
-      WHERE f.user_id = ?
+      WHERE f.user_id = ? AND f.status = 'accepted'
     `, [userId]);
     
     // Filter to only online friends
@@ -727,7 +954,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         actions_per_turn = ?, board_width = ?, board_height = ?, player_count = ?,
         starting_piece_count = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?,
-        randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?
+        randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?
       WHERE id = ?
     `;
     
@@ -736,11 +963,11 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.descript,
       gameData.rules,
       gameData.mate_condition || false,
-      gameData.mate_piece || null,
+      gameData.mate_piece != null ? gameData.mate_piece : null,
       gameData.capture_condition || false,
-      gameData.capture_piece || null,
+      gameData.capture_piece != null ? gameData.capture_piece : null,
       gameData.value_condition || false,
-      gameData.value_piece || null,
+      gameData.value_piece != null ? gameData.value_piece : null,
       gameData.value_max || null,
       gameData.value_title || null,
       gameData.squares_condition || false,
@@ -760,7 +987,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.randomized_starting_positions || null,
       gameData.other_game_data || null,
       gameData.optional_condition || null,
-      gameData.draw_move_limit || null,
+      gameData.draw_move_limit != null ? gameData.draw_move_limit : null,
+      gameData.repetition_draw_count != null && gameData.repetition_draw_count >= 2 && gameData.repetition_draw_count <= 9 ? gameData.repetition_draw_count : null,
       gameId
     ];
     
@@ -799,7 +1027,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.piece_id,
               piece.x || 0,
               piece.y || 0,
-              piece.player_number || piece.player || 1
+              piece.player_number || piece.player || 1,
+              piece.ends_game_on_checkmate || false,
+              piece.ends_game_on_capture || false
             );
           }
         }
@@ -1276,7 +1506,7 @@ app.post("/api/admin/users/:userId/unban", authenticateToken, async (req, res) =
 app.delete("/api/admin/games/:gameId", authenticateToken, async (req, res) => {
   try {
     const { gameId } = req.params;
-    const requesterRole = req.user.role;
+    const requesterRole = req.user.role?.toLowerCase();
 
     if (requesterRole !== 'admin' && requesterRole !== 'owner') {
       return res.status(403).send({ message: "Access denied. Admin or owner role required." });
@@ -2001,8 +2231,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         actions_per_turn, board_width, board_height, player_count,
         starting_piece_count, range_squares_string,
         promotion_squares_string, special_squares_string,
-        randomized_starting_positions, other_game_data, optional_condition, draw_move_limit
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
+        pieces_string
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -2011,11 +2242,11 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.descript,
       gameData.rules,
       gameData.mate_condition || false,
-      gameData.mate_piece || null,
+      gameData.mate_piece != null ? gameData.mate_piece : null,
       gameData.capture_condition || false,
-      gameData.capture_piece || null,
+      gameData.capture_piece != null ? gameData.capture_piece : null,
       gameData.value_condition || false,
-      gameData.value_piece || null,
+      gameData.value_piece != null ? gameData.value_piece : null,
       gameData.value_max || null,
       gameData.value_title || null,
       gameData.squares_condition || false,
@@ -2035,7 +2266,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.randomized_starting_positions || null,
       gameData.other_game_data || null,
       gameData.optional_condition || null,
-      gameData.draw_move_limit || null
+      gameData.draw_move_limit != null ? gameData.draw_move_limit : null,
+      gameData.repetition_draw_count != null && gameData.repetition_draw_count >= 2 && gameData.repetition_draw_count <= 9 ? gameData.repetition_draw_count : null,
+      gameData.pieces_string || '{}'
     ];
 
     const [result] = await db_pool.query(sql, values);
@@ -2071,7 +2304,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.piece_id,
               piece.x || 0,
               piece.y || 0,
-              piece.player_number || piece.player || 1
+              piece.player_number || piece.player || 1,
+              piece.ends_game_on_checkmate || false,
+              piece.ends_game_on_capture || false
             );
           }
         }

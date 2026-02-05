@@ -262,6 +262,42 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, user]);
 
+  // Offer a draw
+  const offerDraw = useCallback((gameId) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+
+    socket.emit('offerDraw', {
+      gameId
+    });
+  }, [socket, connected]);
+
+  // Accept a draw offer
+  const acceptDraw = useCallback((gameId) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+
+    socket.emit('acceptDraw', {
+      gameId
+    });
+  }, [socket, connected]);
+
+  // Decline a draw offer
+  const declineDraw = useCallback((gameId) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+
+    socket.emit('declineDraw', {
+      gameId
+    });
+  }, [socket, connected]);
+
   // Cancel a waiting game
   const cancelGame = useCallback((gameId) => {
     if (!socket || !connected) {
@@ -313,6 +349,21 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, user]);
 
+  // Promote a piece
+  const promotePiece = useCallback((gameId, pieceId, promoteToPieceId) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+
+    socket.emit('promotePiece', {
+      gameId,
+      userId: user?.id,
+      pieceId,
+      promoteToPieceId
+    });
+  }, [socket, connected, user]);
+
   // Subscribe to game events
   const onGameEvent = useCallback((event, callback) => {
     if (!socket) return () => {};
@@ -335,10 +386,14 @@ export const SocketProvider = ({ children }) => {
     getGameState,
     makeMove,
     resign,
+    offerDraw,
+    acceptDraw,
+    declineDraw,
     cancelGame,
     spectateGame,
     setPremove,
     clearPremove,
+    promotePiece,
     onGameEvent
   };
 

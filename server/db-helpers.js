@@ -496,13 +496,15 @@ const getPiecesForGameType = async (gameTypeId) => {
  * @param {number} x - X coordinate
  * @param {number} y - Y coordinate
  * @param {number} playerNumber - Player number (default 1)
+ * @param {boolean} endsGameOnCheckmate - If true, game ends when this piece is checkmated
+ * @param {boolean} endsGameOnCapture - If true, game ends when this piece is captured
  * @returns {Promise<Object>} Insert result
  */
-const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1) => {
+const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false) => {
   const result = await query(`
-    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number)
-    VALUES (?, ?, ?, ?, ?)
-  `, [gameTypeId, pieceId, x, y, playerNumber]);
+    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0]);
   return result;
 };
 

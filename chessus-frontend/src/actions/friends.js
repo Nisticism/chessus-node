@@ -21,7 +21,7 @@ export const getFriends = (userId) => async (dispatch) => {
   }
 };
 
-// Add a friend
+// Send a friend request
 export const addFriend = (userId, friendId) => async (dispatch) => {
   try {
     const response = await axios.post(
@@ -64,16 +64,16 @@ export const removeFriend = (userId, friendId) => async (dispatch) => {
   }
 };
 
-// Check friendship status
+// Check friendship status (returns object with status info)
 export const checkFriendshipStatus = (userId, friendId) => async (dispatch) => {
   try {
     const response = await axios.get(
       `${API_URL}users/${userId}/friends/${friendId}/status`
     );
-    return response.data.areFriends;
+    return response.data;
   } catch (error) {
     console.error("Error checking friendship status:", error);
-    return false;
+    return { status: 'none', areFriends: false };
   }
 };
 
@@ -101,4 +101,109 @@ export const setOnlineUsers = (userIds) => (dispatch) => {
     type: types.SET_ONLINE_USERS,
     payload: userIds,
   });
+};
+
+// Get incoming friend requests
+export const getIncomingRequests = (userId) => async (dispatch) => {
+  try {
+    const response = await axios.get(
+      `${API_URL}users/${userId}/friend-requests/incoming`,
+      { headers: authHeader() }
+    );
+    dispatch({
+      type: types.GET_INCOMING_REQUESTS_SUCCESS,
+      payload: response.data,
+    });
+    return response.data;
+  } catch (error) {
+    dispatch({
+      type: types.GET_INCOMING_REQUESTS_FAIL,
+      payload: error.response?.data?.message || error.message,
+    });
+    throw error;
+  }
+};
+
+// Get outgoing friend requests
+export const getOutgoingRequests = (userId) => async (dispatch) => {
+  try {
+    const response = await axios.get(
+      `${API_URL}users/${userId}/friend-requests/outgoing`,
+      { headers: authHeader() }
+    );
+    dispatch({
+      type: types.GET_OUTGOING_REQUESTS_SUCCESS,
+      payload: response.data,
+    });
+    return response.data;
+  } catch (error) {
+    dispatch({
+      type: types.GET_OUTGOING_REQUESTS_FAIL,
+      payload: error.response?.data?.message || error.message,
+    });
+    throw error;
+  }
+};
+
+// Accept a friend request
+export const acceptFriendRequest = (userId, requestId) => async (dispatch) => {
+  try {
+    const response = await axios.post(
+      `${API_URL}users/${userId}/friend-requests/${requestId}/accept`,
+      {},
+      { headers: authHeader() }
+    );
+    dispatch({
+      type: types.ACCEPT_FRIEND_REQUEST_SUCCESS,
+      payload: { requestId, friend: response.data.friend },
+    });
+    return response.data;
+  } catch (error) {
+    dispatch({
+      type: types.ACCEPT_FRIEND_REQUEST_FAIL,
+      payload: error.response?.data?.error || error.message,
+    });
+    throw error;
+  }
+};
+
+// Decline a friend request
+export const declineFriendRequest = (userId, requestId) => async (dispatch) => {
+  try {
+    await axios.post(
+      `${API_URL}users/${userId}/friend-requests/${requestId}/decline`,
+      {},
+      { headers: authHeader() }
+    );
+    dispatch({
+      type: types.DECLINE_FRIEND_REQUEST_SUCCESS,
+      payload: requestId,
+    });
+  } catch (error) {
+    dispatch({
+      type: types.DECLINE_FRIEND_REQUEST_FAIL,
+      payload: error.response?.data?.error || error.message,
+    });
+    throw error;
+  }
+};
+
+// Cancel a sent friend request
+export const cancelFriendRequest = (userId, requestId) => async (dispatch) => {
+  try {
+    await axios.delete(
+      `${API_URL}users/${userId}/friend-requests/${requestId}`,
+      { headers: authHeader() }
+    );
+    dispatch({
+      type: types.CANCEL_FRIEND_REQUEST_SUCCESS,
+      payload: requestId,
+    });
+  } catch (error) {
+    dispatch({
+      type: types.CANCEL_FRIEND_REQUEST_FAIL,
+      payload: error.response?.data?.error || error.message,
+    });
+    throw error;
+  }
 };
