@@ -15,6 +15,16 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 
 const bcrypt = require("bcrypt");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+
+// Security: bcrypt rounds (12 is recommended for modern hardware)
+const BCRYPT_ROUNDS = 12;
+
+// Security: Track failed login attempts (in-memory, resets on server restart)
+const loginAttempts = new Map();
+const LOGIN_LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
+const MAX_LOGIN_ATTEMPTS = 5;
 
 // Email service
 const { sendWelcomeEmail, sendDonationEmail, sendContactEmail } = require("./email-service");
@@ -68,6 +78,41 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Security headers with helmet
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable if it breaks your frontend
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+// Rate limiting configuration
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // 500 requests per 15 minutes (generous for heavy API usage)
+  message: { message: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per 15 minutes
+  message: { message: "Too many login attempts, please try again in 15 minutes" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 registrations per hour per IP
+  message: { message: "Too many accounts created, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply general rate limiting to all routes
+app.use('/api/', generalLimiter);
 
 // Additional middleware to handle Private Network Access
 app.use((req, res, next) => {
@@ -1082,29 +1127,49 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
 
 // })
 
-app.post("/api/register", async (req, res) => {
+app.post("/api/register", registerLimiter, async (req, res) => {
   try {
     const { username, password, email } = req.body;
 
     if (!username || username.length === 0) {
-      return res.status(500).send({ message: "Username cannot be blank" });
+      return res.status(400).send({ message: "Username cannot be blank" });
+    }
+
+    // Security: Username validation
+    if (username.length < 3 || username.length > 20) {
+      return res.status(400).send({ message: "Username must be between 3 and 20 characters" });
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+      return res.status(400).send({ message: "Username can only contain letters, numbers, underscores, and hyphens" });
+    }
+
+    // Security: Password validation
+    if (!password || password.length < 8) {
+      return res.status(400).send({ message: "Password must be at least 8 characters long" });
+    }
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      return res.status(400).send({ message: "Password must contain at least one uppercase letter, one lowercase letter, and one number" });
+    }
+
+    // Security: Email validation
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).send({ message: "Please provide a valid email address" });
     }
 
     // Check if username already exists
     const existingUser = await dbHelpers.findUserByUsername(username);
     if (existingUser) {
-      return res.status(500).send({ message: "Username already exists" });
+      return res.status(400).send({ message: "Username already exists" });
     }
 
     // Check if email already taken
     const existingEmail = await dbHelpers.findUserByEmail(email);
     if (existingEmail) {
-      return res.status(500).send({ message: "Email already taken" });
+      return res.status(400).send({ message: "Email already taken" });
     }
 
-    // Create new user
-    const salt = bcrypt.genSaltSync();
-    const hashedPassword = bcrypt.hashSync(password, salt);
+    // Create new user with stronger bcrypt rounds
+    const hashedPassword = bcrypt.hashSync(password, BCRYPT_ROUNDS);
     const user = await dbHelpers.createUser(username, hashedPassword, email);
     
     // Send welcome email (non-blocking, won't fail registration if SendGrid not configured)
@@ -1136,7 +1201,7 @@ app.post("/api/profile/edit", async (req, res) => {
     console.log("in the edit backend");
     console.log("username: " + username + " id: " + id);
     console.log("previous username: " + logged_in_username);
-    console.log("the password is still " + password);
+    // Security: Never log passwords
 
     // Verify the user exists
     const currentUser = await dbHelpers.findUserByUsername(logged_in_username);
@@ -1186,10 +1251,17 @@ app.post("/api/profile/edit", async (req, res) => {
         }
       }
       
-      const salt = bcrypt.genSaltSync();
-      const hashedPassword = bcrypt.hashSync(password, salt);
+      // Security: Validate new password
+      if (password.length < 8) {
+        return res.status(400).send({ message: "Password must be at least 8 characters long" });
+      }
+      if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+        return res.status(400).send({ message: "Password must contain at least one uppercase letter, one lowercase letter, and one number" });
+      }
+      
+      const hashedPassword = bcrypt.hashSync(password, BCRYPT_ROUNDS);
       updatedUser.password = hashedPassword;
-      console.log("about to attempt update on id of: " + id + " WITH a password change");
+      console.log("Password updated for user id: " + id);
     } else {
       console.log("about to attempt update on id of: " + id + " with no password change");
     }
@@ -1265,15 +1337,33 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
   }
 });
 
-app.post("/api/login", async (req, res) => {
+app.post("/api/login", authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
+    const clientIP = req.ip || req.connection.remoteAddress;
+    const lockoutKey = `${clientIP}:${username}`;
+
+    // Security: Check for account lockout
+    const attempts = loginAttempts.get(lockoutKey);
+    if (attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) {
+      const timeLeft = Math.ceil((attempts.lockoutUntil - Date.now()) / 60000);
+      if (Date.now() < attempts.lockoutUntil) {
+        return res.status(429).send({ 
+          auth: false, 
+          message: `Account temporarily locked. Try again in ${timeLeft} minutes.` 
+        });
+      } else {
+        // Lockout expired, reset
+        loginAttempts.delete(lockoutKey);
+      }
+    }
 
     // Find user
     const user = await dbHelpers.findUserByUsername(username);
     if (!user) {
-      console.log("username does not exist");
-      return res.status(400).send({ auth: false, message: "Username does not exist" });
+      // Security: Track failed attempt (but don't reveal if user exists)
+      trackFailedLogin(lockoutKey);
+      return res.status(400).send({ auth: false, message: "Invalid username or password" });
     }
 
     // Check if user is banned
@@ -1302,8 +1392,13 @@ app.post("/api/login", async (req, res) => {
     // Compare passwords
     const passwordMatch = bcrypt.compareSync(password, user.password);
     if (!passwordMatch) {
-      return res.status(400).send({ auth: false, message: "Incorrect password" });
+      // Security: Track failed attempt
+      trackFailedLogin(lockoutKey);
+      return res.status(400).send({ auth: false, message: "Invalid username or password" });
     }
+
+    // Security: Clear failed attempts on successful login
+    loginAttempts.delete(lockoutKey);
 
     // Generate tokens
     const userPayload = { id: user.id, username: user.username, role: user.role };
@@ -1354,13 +1449,19 @@ app.post("/api/logout", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/api/delete", async (req, res) => {
+app.post("/api/delete", authenticateToken, async (req, res) => {
   try {
-    const { username, admin_id } = req.body;
-    console.log("attempting to delete user with username " + username);
-    if (admin_id) {
-      console.log("admin with id of " + admin_id + " attempting deletion of user");
+    const { username } = req.body;
+    const requestingUser = req.user;
+    
+    // Security: Only allow users to delete their own account, or admins/owners to delete any account
+    if (requestingUser.username !== username && 
+        requestingUser.role !== 'admin' && 
+        requestingUser.role !== 'owner') {
+      return res.status(403).send({ message: "Not authorized to delete this account" });
     }
+    
+    console.log(`User ${requestingUser.username} (role: ${requestingUser.role}) deleting account: ${username}`);
     
     await dbHelpers.deleteUser(username);
     res.json({ message: "Account deleted" });
@@ -2149,20 +2250,20 @@ app.post('/api/token', async (req, res) => {
       return res.status(401).send({ message: "Refresh token required" });
     }
 
-    // Verify the refresh token
+    // Verify the refresh token JWT signature
     jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, async (err, user) => {
       if (err) {
         return res.status(403).send({ message: "Invalid refresh token" });
       }
 
-      // Check if refresh token exists in database and user is not banned
+      // Check if user exists and is not banned (but allow multiple devices - don't require exact token match)
       const [users] = await db_pool.query(
-        "SELECT id, username, role, refresh_token, banned, ban_expires_at FROM users WHERE id = ?",
+        "SELECT id, username, role, banned, ban_expires_at FROM users WHERE id = ?",
         [user.id]
       );
 
-      if (users.length === 0 || users[0].refresh_token !== refreshToken) {
-        return res.status(403).send({ message: "Refresh token not found or revoked" });
+      if (users.length === 0) {
+        return res.status(403).send({ message: "User not found" });
       }
 
       const dbUser = users[0];
@@ -2965,7 +3066,10 @@ function authenticateToken(req, res, next) {
   }
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
     if (err) {
-      console.log('JWT verification failed:', err.message);
+      // Only log unexpected errors, not routine token expirations
+      if (err.name !== 'TokenExpiredError') {
+        console.log('JWT verification failed:', err.message);
+      }
       return res.status(403).send({ message: "Invalid or expired token" });
     }
     req.user = user
@@ -2993,6 +3097,26 @@ function generateRefreshToken(user) {
   const token = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
   return token;
 }
+
+// Security: Track failed login attempts
+function trackFailedLogin(lockoutKey) {
+  const attempts = loginAttempts.get(lockoutKey) || { count: 0 };
+  attempts.count += 1;
+  if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
+    attempts.lockoutUntil = Date.now() + LOGIN_LOCKOUT_TIME;
+  }
+  loginAttempts.set(lockoutKey, attempts);
+}
+
+// Security: Clean up old lockout entries periodically (every hour)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of loginAttempts.entries()) {
+    if (value.lockoutUntil && now > value.lockoutUntil) {
+      loginAttempts.delete(key);
+    }
+  }
+}, 60 * 60 * 1000);
 
 // ----------------------- Admin Dashboard Routes ------------------------------
 
