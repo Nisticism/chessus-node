@@ -1162,6 +1162,54 @@
   margin-left: 24px;
 }
 
+.checkbox-group-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  
+  .checkbox-label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    padding: 12px 15px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
+    
+    &:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    
+    input[type="checkbox"] {
+      position: absolute;
+      left: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    
+    > span {
+      font-weight: 500;
+      color: var(--light-gray);
+      padding-left: 28px;
+    }
+  }
+  
+  .checkbox-label {
+    position: relative;
+  }
+}
+
+.checkbox-hint {
+  font-size: 13px;
+  color: var(--text-light-gray);
+  margin: 0;
+  padding-left: 28px;
+  font-style: italic;
+}
+
 // Textarea code style
 .form-textarea-code {
   width: 100%;

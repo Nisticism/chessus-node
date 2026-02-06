@@ -23,7 +23,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
   const [draggedPiece, setDraggedPiece] = useState(null);
-  const [randomizationMode, setRandomizationMode] = useState('none'); // 'none', 'mirrored', 'backrow', 'independent', 'shared', 'full'
+  const [allowedStartingModes, setAllowedStartingModes] = useState(['none', 'backrow', 'mirrored', 'independent', 'shared', 'full']); // All enabled by default
   const [pieceDataMap, setPieceDataMap] = useState({});
   const [, setHoveredSquare] = useState(null);
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
@@ -156,20 +156,22 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       console.error("Error parsing pieces_string:", error);
     }
 
-    // Parse randomized_starting_positions to get mode
+    // Parse randomized_starting_positions to get allowed modes
     try {
       if (gameData.randomized_starting_positions) {
         const parsed = JSON.parse(gameData.randomized_starting_positions);
-        if (parsed && parsed.mode) {
-          setRandomizationMode(parsed.mode);
+        if (parsed && parsed.allowedModes && Array.isArray(parsed.allowedModes)) {
+          setAllowedStartingModes(parsed.allowedModes);
+        } else if (parsed && parsed.mode) {
+          // Legacy support: single mode means only that mode is allowed
+          setAllowedStartingModes([parsed.mode]);
         } else if (parsed && parsed.enabled === true) {
           // Legacy support: enabled: true means 'independent'
-          setRandomizationMode('independent');
+          setAllowedStartingModes(['independent']);
         }
       }
     } catch (error) {
-      // If it's not JSON, treat it as legacy
-      setRandomizationMode('none');
+      // If it's not JSON, keep all modes enabled (default)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -323,14 +325,25 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     setHoveredPiecePosition(null);
   }, []);
 
-  const handleRandomizedChange = (mode) => {
-    setRandomizationMode(mode);
-    
-    // Store the randomization mode
-    const randomizedData = {
-      mode: mode  // 'none', 'mirrored', 'independent', 'full'
-    };
-    updateGameData({ randomized_starting_positions: JSON.stringify(randomizedData) });
+  const handleStartingModeToggle = (mode) => {
+    setAllowedStartingModes(prev => {
+      let newModes;
+      if (prev.includes(mode)) {
+        // Don't allow removing the last mode
+        if (prev.length === 1) return prev;
+        newModes = prev.filter(m => m !== mode);
+      } else {
+        newModes = [...prev, mode];
+      }
+      
+      // Store the allowed starting modes
+      const randomizedData = {
+        allowedModes: newModes
+      };
+      updateGameData({ randomized_starting_positions: JSON.stringify(randomizedData) });
+      
+      return newModes;
+    });
   };
 
   // Helper function to get placement image URL with fallback
@@ -517,7 +530,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                     top: '2px',
                     left: '2px',
                     fontSize: `${squareSize * 0.25}px`,
-                    pointerEvents: 'none'
+                    pointerEvents: 'none',
+                    color: Number(placement.player_id) === 1 ? 'white' : 'black'
                   }} title="Game ends if checkmated">
                     ♔
                   </div>
@@ -589,72 +603,54 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       <div className={styles["board-placement-preview"]}>
         <div className={styles["preview-legend"]} style={{
           width: `${boardDimensions.boardWidth}px`,
-          fontSize: '1.15rem',
-          marginBottom: '1rem',
-          margin: '0 auto 1rem'
+          fontSize: '0.85rem',
+          marginBottom: '0.5rem',
+          margin: '0 auto 0.5rem'
         }}>
-          <div className={styles["legend-row"]}>
+          <div className={styles["legend-row"]} style={{ flexWrap: 'wrap', gap: '6px 12px' }}>
             <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '3px solid #2196F3' }}></div>
-              <span>Movement</span>
+              <div className={styles["legend-square"]} style={{ border: '2px solid #2196F3', width: '14px', height: '14px' }}></div>
+              <span>Move</span>
             </div>
             <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '3px solid #9C27B0' }}></div>
-              <span>First Move</span>
+              <div className={styles["legend-square"]} style={{ border: '2px solid #9C27B0', width: '14px', height: '14px' }}></div>
+              <span>1st Move</span>
             </div>
             <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '3px solid #FF9800' }}></div>
+              <div className={styles["legend-square"]} style={{ border: '2px solid #FF9800', width: '14px', height: '14px' }}></div>
               <span>Attack</span>
             </div>
             <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '3px solid #E91E63' }}></div>
-              <span>First Attack</span>
+              <div className={styles["legend-square"]} style={{ border: '2px solid #E91E63', width: '14px', height: '14px' }}></div>
+              <span>1st Atk</span>
             </div>
             <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '3px solid #f44336' }}></div>
-              <span>Ranged 💥</span>
+              <div className={styles["legend-square"]} style={{ border: '2px solid #f44336', width: '14px', height: '14px' }}></div>
+              <span>Range</span>
             </div>
-          </div>
-          <div className={styles["legend-row"]} style={{ marginTop: '8px' }}>
-            <div className={styles["legend-item"]} style={{ gap: '4px' }}>
-              <span className={styles["condition-icon"]}>♔</span>
-              <span>Checkmate</span>
+            <div className={styles["legend-item"]} style={{ gap: '3px' }}>
+              <span style={{ fontSize: '0.9rem' }}>♔</span>
+              <span>Mate</span>
             </div>
-            <div className={styles["legend-item"]} style={{ gap: '4px' }}>
-              <span className={styles["condition-icon"]}>⚔️</span>
-              <span>Capture</span>
+            <div className={styles["legend-item"]} style={{ gap: '3px' }}>
+              <span style={{ fontSize: '0.9rem' }}>⚔️</span>
+              <span>Cap</span>
             </div>
-          </div>
-          <div className={styles["legend-row"]} style={{ justifyContent: 'space-around', marginTop: '8px' }}>
-            {Array.from({ length: Math.min(4, gameData.player_count || 2) }, (_, i) => i + 1).map(playerId => (
+            {Array.from({ length: gameData.player_count || 2 }, (_, i) => i + 1).map(playerId => (
               <div key={playerId} className={styles["legend-item"]}>
                 <div 
                   className={styles["legend-player-dot"]} 
                   style={{ 
                     background: getPlayerColor(playerId),
-                    border: playerId === 1 ? '1px solid #666' : '1px solid #fff'
+                    border: playerId === 1 ? '1px solid #666' : '1px solid #fff',
+                    width: '12px',
+                    height: '12px'
                   }}
                 ></div>
-                <span>Player {playerId}</span>
+                <span>P{playerId}</span>
               </div>
             ))}
           </div>
-          {(gameData.player_count || 2) > 4 && (
-            <div className={styles["legend-row"]} style={{ justifyContent: 'space-around' }}>
-              {Array.from({ length: (gameData.player_count || 2) - 4 }, (_, i) => i + 5).map(playerId => (
-                <div key={playerId} className={styles["legend-item"]}>
-                  <div 
-                    className={styles["legend-player-dot"]} 
-                    style={{ 
-                      background: getPlayerColor(playerId),
-                      border: '1px solid #fff'
-                    }}
-                  ></div>
-                  <span>Player {playerId}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
         <div 
           className={styles["placement-board"]}
@@ -687,84 +683,85 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         </ul>
       </div>
 
-      {/* Randomized Starting Positions */}
+      {/* Allowed Starting Position Modes */}
       <div className={styles["form-group"]} style={{ marginTop: '30px' }}>
         <label className={styles["form-label"]}>
-          Starting Position Mode
+          Allowed Starting Position Modes
           <span style={{ marginLeft: '10px', fontSize: '12px', color: '#888' }}>
-            (Board symmetric: {isBoardSymmetric ? 'Yes ✓' : 'No ✗'} | Pieces: {Object.keys(piecePlacements).length})
+            (Board symmetric: {isBoardSymmetric ? 'Yes ✓' : 'No ✗'} | At least one mode must be enabled)
           </span>
         </label>
-        <div className={styles["radio-group"]}>
-          <label className={styles["radio-label"]}>
+        <p className={styles["field-hint"]} style={{ marginBottom: '15px' }}>
+          Select which starting position modes players can choose from when creating a match with this game type.
+        </p>
+        <div className={styles["checkbox-group-vertical"]}>
+          <label className={styles["checkbox-label"]}>
             <input
-              type="radio"
-              name="randomized"
-              checked={randomizationMode === 'none'}
-              onChange={() => handleRandomizedChange('none')}
+              type="checkbox"
+              checked={allowedStartingModes.includes('none')}
+              onChange={() => handleStartingModeToggle('none')}
+              disabled={allowedStartingModes.length === 1 && allowedStartingModes.includes('none')}
             />
             <span>Fixed Starting Positions</span>
-            <p className={styles["radio-hint"]}>Pieces always start in the positions configured above</p>
+            <p className={styles["checkbox-hint"]}>Pieces always start in the positions configured above</p>
           </label>
-          <label className={styles["radio-label"]} style={{ opacity: isBoardSymmetric ? 1 : 0.5 }}>
+          <label className={styles["checkbox-label"]} style={{ opacity: isBoardSymmetric ? 1 : 0.5 }}>
             <input
-              type="radio"
-              name="randomized"
-              checked={randomizationMode === 'backrow'}
-              onChange={() => handleRandomizedChange('backrow')}
-              disabled={!isBoardSymmetric}
+              type="checkbox"
+              checked={allowedStartingModes.includes('backrow')}
+              onChange={() => handleStartingModeToggle('backrow')}
+              disabled={!isBoardSymmetric || (allowedStartingModes.length === 1 && allowedStartingModes.includes('backrow'))}
             />
             <span>Back Row Only Mirrored Randomization</span>
-            <p className={styles["radio-hint"]}>
+            <p className={styles["checkbox-hint"]}>
               {isBoardSymmetric 
                 ? "Only the back row is randomized in a mirrored fashion. Other pieces (like pawns) stay in place. Like Chess960!"
                 : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups"}
             </p>
           </label>
-          <label className={styles["radio-label"]} style={{ opacity: isBoardSymmetric ? 1 : 0.5 }}>
+          <label className={styles["checkbox-label"]} style={{ opacity: isBoardSymmetric ? 1 : 0.5 }}>
             <input
-              type="radio"
-              name="randomized"
-              checked={randomizationMode === 'mirrored'}
-              onChange={() => handleRandomizedChange('mirrored')}
-              disabled={!isBoardSymmetric}
+              type="checkbox"
+              checked={allowedStartingModes.includes('mirrored')}
+              onChange={() => handleStartingModeToggle('mirrored')}
+              disabled={!isBoardSymmetric || (allowedStartingModes.length === 1 && allowedStartingModes.includes('mirrored'))}
             />
             <span>Full Mirrored Randomization</span>
-            <p className={styles["radio-hint"]}>
+            <p className={styles["checkbox-hint"]}>
               {isBoardSymmetric 
                 ? "Both players get the same random configuration for all pieces, maintaining mirror symmetry."
                 : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups"}
             </p>
           </label>
-          <label className={styles["radio-label"]}>
+          <label className={styles["checkbox-label"]}>
             <input
-              type="radio"
-              name="randomized"
-              checked={randomizationMode === 'independent'}
-              onChange={() => handleRandomizedChange('independent')}
+              type="checkbox"
+              checked={allowedStartingModes.includes('independent')}
+              onChange={() => handleStartingModeToggle('independent')}
+              disabled={allowedStartingModes.length === 1 && allowedStartingModes.includes('independent')}
             />
             <span>Independent Randomization</span>
-            <p className={styles["radio-hint"]}>Each player's pieces randomized independently within their starting squares</p>
+            <p className={styles["checkbox-hint"]}>Each player's pieces randomized independently within their starting squares</p>
           </label>
-          <label className={styles["radio-label"]}>
+          <label className={styles["checkbox-label"]}>
             <input
-              type="radio"
-              name="randomized"
-              checked={randomizationMode === 'shared'}
-              onChange={() => handleRandomizedChange('shared')}
+              type="checkbox"
+              checked={allowedStartingModes.includes('shared')}
+              onChange={() => handleStartingModeToggle('shared')}
+              disabled={allowedStartingModes.length === 1 && allowedStartingModes.includes('shared')}
             />
             <span>Shared Starting Squares</span>
-            <p className={styles["radio-hint"]}>All pieces from both players redistributed randomly across all starting squares</p>
+            <p className={styles["checkbox-hint"]}>All pieces from both players redistributed randomly across all starting squares</p>
           </label>
-          <label className={styles["radio-label"]}>
+          <label className={styles["checkbox-label"]}>
             <input
-              type="radio"
-              name="randomized"
-              checked={randomizationMode === 'full'}
-              onChange={() => handleRandomizedChange('full')}
+              type="checkbox"
+              checked={allowedStartingModes.includes('full')}
+              onChange={() => handleStartingModeToggle('full')}
+              disabled={allowedStartingModes.length === 1 && allowedStartingModes.includes('full')}
             />
             <span>Full Board Randomization</span>
-            <p className={styles["radio-hint"]}>Pieces placed randomly anywhere on the board. Maximum chaos!</p>
+            <p className={styles["checkbox-hint"]}>Pieces placed randomly anywhere on the board. Maximum chaos!</p>
           </label>
         </div>
       </div>

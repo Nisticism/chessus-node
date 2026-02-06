@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
@@ -38,6 +38,7 @@ const Play = () => {
   const [showPieceHelpers, setShowPieceHelpers] = useState(false);
   const [rated, setRated] = useState(true);
   const [allowPremoves, setAllowPremoves] = useState(true);
+  const [startingMode, setStartingMode] = useState("none");
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState(null);
@@ -71,6 +72,39 @@ const Play = () => {
       }
     }
   }, [gamesList, searchParams]);
+
+  // Parse allowed starting modes from the selected game type
+  const allowedStartingModes = useMemo(() => {
+    if (!selectedGameType?.randomized_starting_positions) {
+      // Default: all modes allowed for legacy game types
+      return ['none', 'backrow', 'mirrored', 'independent', 'shared', 'full'];
+    }
+    try {
+      const parsed = JSON.parse(selectedGameType.randomized_starting_positions);
+      if (parsed?.allowedModes && Array.isArray(parsed.allowedModes)) {
+        return parsed.allowedModes;
+      }
+      // Legacy: single mode
+      if (parsed?.mode) {
+        return [parsed.mode];
+      }
+    } catch (e) {
+      console.error("Error parsing randomized_starting_positions:", e);
+    }
+    return ['none'];
+  }, [selectedGameType]);
+
+  // Reset starting mode when game type changes
+  useEffect(() => {
+    if (allowedStartingModes.length > 0) {
+      // Prefer 'none' if available, otherwise use first allowed mode
+      if (allowedStartingModes.includes('none')) {
+        setStartingMode('none');
+      } else {
+        setStartingMode(allowedStartingModes[0]);
+      }
+    }
+  }, [allowedStartingModes]);
 
   // Fetch open games when connected
   useEffect(() => {
@@ -161,7 +195,8 @@ const Play = () => {
         allowSpectators,
         showPieceHelpers,
         rated,
-        allowPremoves
+        allowPremoves,
+        startingMode
       });
 
       setShowCreateModal(false);
@@ -591,6 +626,81 @@ const Play = () => {
                 Let other players watch this game
               </div>
             </div>
+
+            {/* Starting Position Mode Selection */}
+            {allowedStartingModes.length > 1 && (
+              <div className={styles["form-group"]}>
+                <label>Starting Position Mode</label>
+                <div className={styles["radio-group"]}>
+                  {allowedStartingModes.includes('none') && (
+                    <label className={styles["radio-label"]}>
+                      <input
+                        type="radio"
+                        name="startingMode"
+                        checked={startingMode === 'none'}
+                        onChange={() => setStartingMode('none')}
+                      />
+                      <span>Fixed Positions</span>
+                    </label>
+                  )}
+                  {allowedStartingModes.includes('backrow') && (
+                    <label className={styles["radio-label"]}>
+                      <input
+                        type="radio"
+                        name="startingMode"
+                        checked={startingMode === 'backrow'}
+                        onChange={() => setStartingMode('backrow')}
+                      />
+                      <span>Back Row Randomized (Chess960)</span>
+                    </label>
+                  )}
+                  {allowedStartingModes.includes('mirrored') && (
+                    <label className={styles["radio-label"]}>
+                      <input
+                        type="radio"
+                        name="startingMode"
+                        checked={startingMode === 'mirrored'}
+                        onChange={() => setStartingMode('mirrored')}
+                      />
+                      <span>Full Mirrored Random</span>
+                    </label>
+                  )}
+                  {allowedStartingModes.includes('independent') && (
+                    <label className={styles["radio-label"]}>
+                      <input
+                        type="radio"
+                        name="startingMode"
+                        checked={startingMode === 'independent'}
+                        onChange={() => setStartingMode('independent')}
+                      />
+                      <span>Independent Random</span>
+                    </label>
+                  )}
+                  {allowedStartingModes.includes('shared') && (
+                    <label className={styles["radio-label"]}>
+                      <input
+                        type="radio"
+                        name="startingMode"
+                        checked={startingMode === 'shared'}
+                        onChange={() => setStartingMode('shared')}
+                      />
+                      <span>Shared Squares Random</span>
+                    </label>
+                  )}
+                  {allowedStartingModes.includes('full') && (
+                    <label className={styles["radio-label"]}>
+                      <input
+                        type="radio"
+                        name="startingMode"
+                        checked={startingMode === 'full'}
+                        onChange={() => setStartingMode('full')}
+                      />
+                      <span>Full Board Random</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className={styles["modal-actions"]}>
               <button
