@@ -707,6 +707,25 @@ const GameTypeView = () => {
       });
     }
 
+    // Castling information
+    const castlingPieces = Object.values(uniquePieces).filter(piece => {
+      const pieceData = pieceDataMap[piece.id] || piece;
+      return pieceData.can_castle;
+    });
+
+    if (castlingPieces.length > 0) {
+      const castlingDesc = castlingPieces.map(piece => {
+        const pieceData = pieceDataMap[piece.id] || piece;
+        const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+        return `• **${pieceName}** can castle with partner pieces`;
+      }).join('\n');
+
+      rules.push({
+        title: "Castling",
+        content: `Castling is a special move where a piece moves toward a partner piece, and the partner moves to the other side.\n\n${castlingDesc}\n\n**Castling Rules:**\n• Neither piece may have moved yet\n• The path must be clear (except for close-range castling)\n• The castling piece moves 2 squares toward its partner\n• The partner piece moves to the other side of the castling piece\n\n*Tip: Enable "Show castling info" during a game to see which pieces can castle with each other.*`
+      });
+    }
+
     // General gameplay rules
     rules.push({
       title: "General Rules",
