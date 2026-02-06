@@ -224,7 +224,11 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           image_url: pieceData.image_url,
           piece_name: pieceData.piece_name,
           ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
-          ends_game_on_capture: pieceData.ends_game_on_capture || false
+          ends_game_on_capture: pieceData.ends_game_on_capture || false,
+          // Castling override data
+          manual_castling_partners: pieceData.manual_castling_partners || false,
+          castling_partner_left_key: pieceData.castling_partner_left_key || null,
+          castling_partner_right_key: pieceData.castling_partner_right_key || null
         }
       }));
     }
@@ -794,6 +798,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           squarePosition={selectedSquare}
           mateCondition={gameData.mate_condition}
           captureCondition={gameData.capture_condition}
+          piecePlacements={piecePlacements}
+          boardWidth={gameData.board_width}
         />
       )}
     </div>

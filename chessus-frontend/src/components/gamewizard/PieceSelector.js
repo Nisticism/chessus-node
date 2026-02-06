@@ -20,6 +20,8 @@ const PieceSelector = ({
   squarePosition,
   mateCondition,
   captureCondition,
+  piecePlacements = {},  // All piece placements on the board
+  boardWidth = 8,        // Board width for finding pieces on same row
   embedded = false  // New prop: if true, don't render modal wrapper
 }) => {
   const [pieces, setPieces] = useState([]);
@@ -43,6 +45,11 @@ const PieceSelector = ({
   const [availableImages, setAvailableImages] = useState([]);
   const [endsGameOnCheckmate, setEndsGameOnCheckmate] = useState(currentPlacement?.ends_game_on_checkmate || false);
   const [endsGameOnCapture, setEndsGameOnCapture] = useState(currentPlacement?.ends_game_on_capture || false);
+  
+  // Castling partner override state
+  const [manualCastlingPartners, setManualCastlingPartners] = useState(currentPlacement?.manual_castling_partners || false);
+  const [leftCastlingPartnerKey, setLeftCastlingPartnerKey] = useState(currentPlacement?.castling_partner_left_key || null);
+  const [rightCastlingPartnerKey, setRightCastlingPartnerKey] = useState(currentPlacement?.castling_partner_right_key || null);
   
   // Save selected player ID to localStorage whenever it changes
   useEffect(() => {
@@ -163,9 +170,54 @@ const PieceSelector = ({
       player_id: selectedPlayerId,
       image_url: selectedImageUrl,
       ends_game_on_checkmate: endsGameOnCheckmate,
-      ends_game_on_capture: endsGameOnCapture
+      ends_game_on_capture: endsGameOnCapture,
+      // Castling override data - if manual is enabled, default partners are disabled
+      manual_castling_partners: manualCastlingPartners,
+      castling_partner_left_key: manualCastlingPartners ? leftCastlingPartnerKey : null,
+      castling_partner_right_key: manualCastlingPartners ? rightCastlingPartnerKey : null
     });
   };
+
+  // Get pieces on the same row for castling partner selection
+  const piecesOnSameRow = React.useMemo(() => {
+    if (!squarePosition) return [];
+    const currentRow = squarePosition.row;
+    const currentCol = squarePosition.col;
+    
+    const rowPieces = [];
+    Object.entries(piecePlacements).forEach(([key, placement]) => {
+      const [row, col] = key.split(',').map(Number);
+      if (row === currentRow && col !== currentCol) {
+        rowPieces.push({
+          key,
+          col,
+          ...placement,
+          displayName: `${placement.piece_name} (col ${col})`
+        });
+      }
+    });
+    
+    // Sort by column
+    return rowPieces.sort((a, b) => a.col - b.col);
+  }, [piecePlacements, squarePosition]);
+  
+  // Get pieces to the left and right of the current square
+  const { leftPieces, rightPieces } = React.useMemo(() => {
+    if (!squarePosition) return { leftPieces: [], rightPieces: [] };
+    const currentCol = squarePosition.col;
+    
+    return {
+      leftPieces: piecesOnSameRow.filter(p => p.col < currentCol),
+      rightPieces: piecesOnSameRow.filter(p => p.col > currentCol)
+    };
+  }, [piecesOnSameRow, squarePosition]);
+  
+  // Check if selected piece can castle
+  const selectedPieceCanCastle = React.useMemo(() => {
+    if (!selectedPieceId) return false;
+    const piece = pieces.find(p => (p.id || p.piece_id) === selectedPieceId);
+    return piece?.can_castle === 1 || piece?.can_castle === true;
+  }, [selectedPieceId, pieces]);
 
   // Content to render (shared between embedded and modal modes)
   const selectorContent = (
@@ -301,6 +353,77 @@ const PieceSelector = ({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Castling Partner Override (shown when piece can castle) */}
+        {selectedPieceCanCastle && (
+          <div className={styles["castling-section"]}>
+            <h3>Castling Partners:</h3>
+            <p className={styles["castling-note"]}>
+              By default, this piece will castle with the furthest allied piece on each side.
+              Check below to manually specify castling partners.
+            </p>
+            <label className={styles["checkbox-label"]}>
+              <input
+                type="checkbox"
+                checked={manualCastlingPartners}
+                onChange={(e) => {
+                  setManualCastlingPartners(e.target.checked);
+                  if (!e.target.checked) {
+                    setLeftCastlingPartnerKey(null);
+                    setRightCastlingPartnerKey(null);
+                  }
+                }}
+              />
+              <span>Manually set castling partners</span>
+            </label>
+            
+            {manualCastlingPartners && (
+              <div className={styles["castling-partner-selectors"]}>
+                {/* Left Partner */}
+                <div className={styles["partner-selector"]}>
+                  <label>Left Partner:</label>
+                  <select
+                    value={leftCastlingPartnerKey || ""}
+                    onChange={(e) => setLeftCastlingPartnerKey(e.target.value || null)}
+                  >
+                    <option value="">None</option>
+                    {leftPieces.map(p => (
+                      <option key={p.key} value={p.key}>
+                        {p.displayName}
+                      </option>
+                    ))}
+                  </select>
+                  {leftPieces.length === 0 && (
+                    <span className={styles["no-partners-hint"]}>No pieces to the left</span>
+                  )}
+                </div>
+                
+                {/* Right Partner */}
+                <div className={styles["partner-selector"]}>
+                  <label>Right Partner:</label>
+                  <select
+                    value={rightCastlingPartnerKey || ""}
+                    onChange={(e) => setRightCastlingPartnerKey(e.target.value || null)}
+                  >
+                    <option value="">None</option>
+                    {rightPieces.map(p => (
+                      <option key={p.key} value={p.key}>
+                        {p.displayName}
+                      </option>
+                    ))}
+                  </select>
+                  {rightPieces.length === 0 && (
+                    <span className={styles["no-partners-hint"]}>No pieces to the right</span>
+                  )}
+                </div>
+                
+                <p className={styles["castling-warning"]}>
+                  ⚠️ When manually set, only selected partners will be used (default partners are disabled).
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
