@@ -1694,3 +1694,59 @@
     }
   }
 }
+
+// Castling info display
+.castling-info {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(108, 99, 255, 0.1);
+  border: 1px solid rgba(108, 99, 255, 0.3);
+  border-radius: 8px;
+
+  h4 {
+    margin: 0 0 8px 0;
+    color: #a9a9ff;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+}
+
+.castling-piece-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  margin-bottom: 8px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  .piece-name {
+    font-weight: 600;
+    color: #fff;
+    font-size: 0.95rem;
+  }
+}
+
+.castling-partners {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+
+  .partner {
+    font-size: 0.85rem;
+    color: #8f8;
+    background: rgba(136, 255, 136, 0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .no-partner {
+    font-size: 0.85rem;
+    color: #f88;
+    font-style: italic;
+  }
+}

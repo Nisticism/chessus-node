@@ -86,6 +86,7 @@ const LiveGame = () => {
   const [checkedPieces, setCheckedPieces] = useState([]);
   const [showMovableIndicators, setShowMovableIndicators] = useState(false);
   const [showPromotionSquares, setShowPromotionSquares] = useState(false);
+  const [showCastlingInfo, setShowCastlingInfo] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const soundEnabledRef = useRef(false);
   const [premove, setPremove] = useState(null); // Store premove {from, to, pieceId}
@@ -1082,6 +1083,95 @@ const LiveGame = () => {
       }
     }
     
+    // Check for castling moves
+    if (piece.can_castle && !piece.hasMoved) {
+      // Check left castling (2 squares left)
+      if (piece.castling_partner_left_id) {
+        const partner = pieces.find(p => p.id === piece.castling_partner_left_id);
+        if (partner && !partner.hasMoved) {
+          const targetX = piece.x - 2;
+          const targetY = piece.y;
+          const distanceToPartner = piece.x - partner.x;
+          
+          // Check if this is close-range castling (partner within 2 squares)
+          const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+          
+          if (isCloseRange) {
+            // Close-range castling: king hops over pieces, partner can be at target or adjacent
+            // Target is valid if: empty, OR occupied by the partner itself (who will move)
+            const targetOccupiedByOther = pieces.some(p => p.x === targetX && p.y === targetY && p.id !== partner.id);
+            if (!targetOccupiedByOther) {
+              moves.push({
+                x: targetX,
+                y: targetY,
+                isCapture: false,
+                isCastling: true,
+                castlingWith: piece.castling_partner_left_id,
+                castlingDirection: 'left'
+              });
+            }
+          } else {
+            // Standard long-range castling: path must be clear
+            const targetOccupied = pieces.some(p => p.x === targetX && p.y === targetY);
+            const pathClear = isPathClear(piece.x, piece.y, targetX, targetY, pieces);
+            if (!targetOccupied && pathClear) {
+              moves.push({
+                x: targetX,
+                y: targetY,
+                isCapture: false,
+                isCastling: true,
+                castlingWith: piece.castling_partner_left_id,
+                castlingDirection: 'left'
+              });
+            }
+          }
+        }
+      }
+      
+      // Check right castling (2 squares right)
+      if (piece.castling_partner_right_id) {
+        const partner = pieces.find(p => p.id === piece.castling_partner_right_id);
+        if (partner && !partner.hasMoved) {
+          const targetX = piece.x + 2;
+          const targetY = piece.y;
+          const distanceToPartner = partner.x - piece.x;
+          
+          // Check if this is close-range castling (partner within 2 squares)
+          const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+          
+          if (isCloseRange) {
+            // Close-range castling: king hops over pieces, partner can be at target or adjacent
+            // Target is valid if: empty, OR occupied by the partner itself (who will move)
+            const targetOccupiedByOther = pieces.some(p => p.x === targetX && p.y === targetY && p.id !== partner.id);
+            if (!targetOccupiedByOther) {
+              moves.push({
+                x: targetX,
+                y: targetY,
+                isCapture: false,
+                isCastling: true,
+                castlingWith: piece.castling_partner_right_id,
+                castlingDirection: 'right'
+              });
+            }
+          } else {
+            // Standard long-range castling: path must be clear
+            const targetOccupied = pieces.some(p => p.x === targetX && p.y === targetY);
+            const pathClear = isPathClear(piece.x, piece.y, targetX, targetY, pieces);
+            if (!targetOccupied && pathClear) {
+              moves.push({
+                x: targetX,
+                y: targetY,
+                isCapture: false,
+                isCastling: true,
+                castlingWith: piece.castling_partner_right_id,
+                castlingDirection: 'right'
+              });
+            }
+          }
+        }
+      }
+    }
+    
     // Filter out moves that would leave the player in check (if mate_condition is enabled and not skipped)
     if (!skipCheckFilter && gameState?.gameType?.mate_condition && currentPlayer) {
       return moves.filter(move => 
@@ -1146,11 +1236,18 @@ const LiveGame = () => {
           to: { x, y },
           move 
         });
-        makeMove(parseInt(gameId), {
+        const moveData = {
           from: { x: selectedPiece.x, y: selectedPiece.y },
           to: { x, y },
           pieceId: selectedPiece.id
-        });
+        };
+        // Include castling data if this is a castling move
+        if (move.isCastling) {
+          moveData.isCastling = true;
+          moveData.castlingWith = move.castlingWith;
+          moveData.castlingDirection = move.castlingDirection;
+        }
+        makeMove(parseInt(gameId), moveData);
         setSelectedPiece(null);
         setValidMoves([]);
       } else {
@@ -1311,11 +1408,18 @@ const LiveGame = () => {
       
       if (canMakeMove) {
         console.log('Making move:', { from: { x: draggedPiece.x, y: draggedPiece.y }, to: { x: targetX, y: targetY } });
-        makeMove(parseInt(gameId), {
+        const moveData = {
           from: { x: draggedPiece.x, y: draggedPiece.y },
           to: { x: targetX, y: targetY },
           pieceId: draggedPiece.id
-        });
+        };
+        // Include castling data if this is a castling move
+        if (validMove.isCastling) {
+          moveData.isCastling = true;
+          moveData.castlingWith = validMove.castlingWith;
+          moveData.castlingDirection = validMove.castlingDirection;
+        }
+        makeMove(parseInt(gameId), moveData);
       } else if (canMakePremove) {
         console.log('Setting premove via drag:', { from: { x: draggedPiece.x, y: draggedPiece.y }, to: { x: targetX, y: targetY } });
         const premoveData = {
@@ -1357,11 +1461,18 @@ const LiveGame = () => {
       console.log('Right-click move check:', { move, validMovesCount: validMoves.length });
       if (move) {
         console.log('Right-click move executing:', { from: { x: selectedPiece.x, y: selectedPiece.y }, to: { x, y } });
-        makeMove(parseInt(gameId), {
+        const moveData = {
           from: { x: selectedPiece.x, y: selectedPiece.y },
           to: { x, y },
           pieceId: selectedPiece.id
-        });
+        };
+        // Include castling data if this is a castling move
+        if (move.isCastling) {
+          moveData.isCastling = true;
+          moveData.castlingWith = move.castlingWith;
+          moveData.castlingDirection = move.castlingDirection;
+        }
+        makeMove(parseInt(gameId), moveData);
         setSelectedPiece(null);
         setValidMoves([]);
       }
@@ -1459,6 +1570,29 @@ const LiveGame = () => {
     if (!currentPlayer) return false;
     return currentPlayer.position === 2;
   }, [currentPlayer]);
+
+  // Get castling info for display
+  const castlingInfo = useMemo(() => {
+    if (!gameState?.pieces) return [];
+    const pieces = parsePieces(gameState.pieces);
+    
+    return pieces
+      .filter(piece => piece.can_castle)
+      .map(piece => {
+        const leftPartner = piece.castling_partner_left_id 
+          ? pieces.find(p => p.id === piece.castling_partner_left_id)
+          : null;
+        const rightPartner = piece.castling_partner_right_id 
+          ? pieces.find(p => p.id === piece.castling_partner_right_id)
+          : null;
+        
+        return {
+          piece,
+          leftPartner,
+          rightPartner
+        };
+      });
+  }, [gameState?.pieces]);
 
   // Convert display coordinates to game coordinates
   const toGameCoords = useCallback((displayX, displayY, boardWidth, boardHeight) => {
@@ -1975,6 +2109,38 @@ const LiveGame = () => {
               />
               <span>Enable sound effects</span>
             </label>
+            {castlingInfo.length > 0 && (
+              <label className={styles["option-checkbox"]}>
+                <input
+                  type="checkbox"
+                  checked={showCastlingInfo}
+                  onChange={(e) => setShowCastlingInfo(e.target.checked)}
+                />
+                <span>Show castling info</span>
+              </label>
+            )}
+            
+            {showCastlingInfo && castlingInfo.length > 0 && (
+              <div className={styles["castling-info"]}>
+                <h4>Castling Pieces</h4>
+                {castlingInfo.map((info, index) => (
+                  <div key={index} className={styles["castling-piece-info"]}>
+                    <span className={styles["piece-name"]}>{info.piece.name}</span>
+                    <div className={styles["castling-partners"]}>
+                      {info.leftPartner && (
+                        <span className={styles["partner"]}>← {info.leftPartner.name}</span>
+                      )}
+                      {info.rightPartner && (
+                        <span className={styles["partner"]}>{info.rightPartner.name} →</span>
+                      )}
+                      {!info.leftPartner && !info.rightPartner && (
+                        <span className={styles["no-partner"]}>No partners assigned</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Game Controls */}
             {currentPlayer && (gameState.status === 'active' || gameState.status === 'ready') && (
@@ -2056,6 +2222,38 @@ const LiveGame = () => {
             />
             <span>Enable sound effects</span>
           </label>
+          {castlingInfo.length > 0 && (
+            <label className={styles["option-checkbox"]}>
+              <input
+                type="checkbox"
+                checked={showCastlingInfo}
+                onChange={(e) => setShowCastlingInfo(e.target.checked)}
+              />
+              <span>Show castling info</span>
+            </label>
+          )}
+          
+          {showCastlingInfo && castlingInfo.length > 0 && (
+            <div className={styles["castling-info"]}>
+              <h4>Castling Pieces</h4>
+              {castlingInfo.map((info, index) => (
+                <div key={index} className={styles["castling-piece-info"]}>
+                  <span className={styles["piece-name"]}>{info.piece.name}</span>
+                  <div className={styles["castling-partners"]}>
+                    {info.leftPartner && (
+                      <span className={styles["partner"]}>← {info.leftPartner.name}</span>
+                    )}
+                    {info.rightPartner && (
+                      <span className={styles["partner"]}>{info.rightPartner.name} →</span>
+                    )}
+                    {!info.leftPartner && !info.rightPartner && (
+                      <span className={styles["no-partner"]}>No partners assigned</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {currentPlayer && (gameState.status === 'active' || gameState.status === 'ready') && (
             <div className={styles["game-controls-inline"]}>
