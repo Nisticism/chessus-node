@@ -646,6 +646,45 @@ const GameTypeView = () => {
       });
     }
 
+    // Randomization options section
+    const modeDescriptions = {
+      'none': 'Standard (default positions)',
+      'mirrored': 'Mirrored - pieces swap positions symmetrically for both players',
+      'backrow': 'Back Row Only (Chess960-style) - only the back row is randomized',
+      'independent': 'Independent - each player\'s pieces are randomized separately',
+      'shared': 'Shared Shuffle - all pieces redistributed among all starting squares',
+      'full': 'Full Board Random - pieces placed anywhere on the board'
+    };
+    
+    // Default all modes if not specified
+    let allowedModes = ['none', 'backrow', 'mirrored', 'independent', 'shared', 'full'];
+    
+    if (game.randomized_starting_positions) {
+      try {
+        const randomConfig = JSON.parse(game.randomized_starting_positions);
+        if (randomConfig.allowedModes && randomConfig.allowedModes.length > 0) {
+          allowedModes = randomConfig.allowedModes;
+        }
+      } catch (e) {
+        console.error('Error parsing randomized_starting_positions:', e);
+      }
+    }
+    
+    // Only show section if there are options beyond just 'none'
+    if (allowedModes.length > 1 || (allowedModes.length === 1 && allowedModes[0] !== 'none')) {
+      const modesList = allowedModes
+        .filter(mode => mode !== 'none')
+        .map(mode => `• **${modeDescriptions[mode] || mode}**`)
+        .join('\n');
+      
+      const hasStandard = allowedModes.includes('none');
+      
+      rules.push({
+        title: "Starting Position Options",
+        content: `When creating a game, players can choose from the following starting position modes:\n\n${hasStandard ? '• **Standard** - use the default piece positions\n' : ''}${modesList}`
+      });
+    }
+
     // Special squares
     const specialSquaresDesc = [];
     
@@ -847,8 +886,7 @@ const GameTypeView = () => {
                     fontSize: `${squareSize * 0.25}px`,
                     pointerEvents: 'none',
                     zIndex: 3,
-                    color: placement.player_id === 2 ? 'white' : 'black',
-                    WebkitTextStroke: placement.player_id === 2 ? '1px black' : 'none'
+                    color: Number(placement.player_id) === 1 ? 'white' : 'black'
                   }} title="Game ends if checkmated">
                     ♔
                   </div>

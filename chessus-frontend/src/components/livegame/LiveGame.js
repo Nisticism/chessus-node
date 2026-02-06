@@ -2110,6 +2110,19 @@ const LiveGame = () => {
                 <span className={styles["setting-value"]}>{gameState.allowSpectators ? 'Allowed' : 'Not allowed'}</span>
               </div>
             )}
+            {gameState.startingMode && gameState.startingMode !== 'none' && (
+              <div className={styles["settings-row"]}>
+                <span className={styles["setting-label"]}>Starting Positions:</span>
+                <span className={styles["setting-value"]}>
+                  {gameState.startingMode === 'mirrored' ? 'Mirrored' :
+                   gameState.startingMode === 'backrow' ? 'Back Row (960)' :
+                   gameState.startingMode === 'independent' ? 'Independent' :
+                   gameState.startingMode === 'shared' ? 'Shared' :
+                   gameState.startingMode === 'full' ? 'Full Random' :
+                   gameState.startingMode}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
