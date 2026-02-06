@@ -180,6 +180,7 @@ function randomizeFullBoard(pieces, gameType) {
 
 /**
  * Mirrored randomization - maintain symmetry between players
+ * Both players' pieces swap among their own starting squares, maintaining mirror symmetry
  */
 function randomizeMirrored(pieces, players, gameType) {
   const boardHeight = gameType.board_height || 8;
@@ -193,7 +194,7 @@ function randomizeMirrored(pieces, players, gameType) {
     piecesByPlayer[piece.player_id].push(piece);
   });
   
-  const playerIds = Object.keys(piecesByPlayer);
+  const playerIds = Object.keys(piecesByPlayer).sort((a, b) => Number(a) - Number(b));
   if (playerIds.length !== 2) {
     console.warn('Mirrored randomization requires exactly 2 players, falling back to independent');
     return randomizeIndependent(pieces);
@@ -208,18 +209,23 @@ function randomizeMirrored(pieces, players, gameType) {
     return randomizeIndependent(pieces);
   }
   
-  // Check if pieces are at mirrored positions (basic validation)
-  const p1Positions = player1Pieces.map(p => `${p.x},${boardHeight - 1 - p.y}`).sort();
-  const p2Positions = player2Pieces.map(p => `${p.x},${p.y}`).sort();
-  const isSymmetric = p1Positions.every((pos, idx) => pos === p2Positions[idx]);
+  // Sort both arrays by position (y then x) to pair corresponding pieces
+  // Player 1 pieces sorted normally, Player 2 pieces sorted with Y inverted
+  const sortedP1 = [...player1Pieces].sort((a, b) => {
+    if (a.y !== b.y) return a.y - b.y;
+    return a.x - b.x;
+  });
   
-  if (!isSymmetric) {
-    console.warn('Board is not symmetric, falling back to independent');
-    return randomizeIndependent(pieces);
-  }
+  const sortedP2 = [...player2Pieces].sort((a, b) => {
+    // Invert Y for sorting to match P1's order (bottom row of P2 = top row of P1)
+    const aInvertedY = boardHeight - 1 - a.y;
+    const bInvertedY = boardHeight - 1 - b.y;
+    if (aInvertedY !== bInvertedY) return aInvertedY - bInvertedY;
+    return a.x - b.x;
+  });
   
   // Get starting squares for player 1
-  const player1Squares = player1Pieces.map(p => ({ x: p.x, y: p.y }));
+  const player1Squares = sortedP1.map(p => ({ x: p.x, y: p.y }));
   
   // Shuffle player 1's squares
   for (let i = player1Squares.length - 1; i > 0; i--) {
@@ -227,22 +233,22 @@ function randomizeMirrored(pieces, players, gameType) {
     [player1Squares[i], player1Squares[j]] = [player1Squares[j], player1Squares[i]];
   }
   
-  // Apply to player 1 and mirror to player 2
+  // Apply to both players - player 2 gets mirrored positions
   const newPieces = [];
   
-  player1Pieces.forEach((piece, index) => {
+  sortedP1.forEach((piece, index) => {
     const newSquare = player1Squares[index];
     newPieces.push({ ...piece, x: newSquare.x, y: newSquare.y });
     console.log(`Player 1 - ${piece.piece_name}: (${piece.x},${piece.y}) -> (${newSquare.x},${newSquare.y})`);
   });
   
-  player2Pieces.forEach((piece, index) => {
-    // Mirror the position: if player 1 is at row 0, player 2 mirrors at row (boardHeight - 1)
-    const player1Square = player1Squares[index];
-    const mirroredY = boardHeight - 1 - player1Square.y;
-    const mirroredX = player1Square.x;
+  sortedP2.forEach((piece, index) => {
+    // Mirror the shuffled position from player 1
+    const p1Square = player1Squares[index];
+    const mirroredY = boardHeight - 1 - p1Square.y;
+    const mirroredX = p1Square.x;
     newPieces.push({ ...piece, x: mirroredX, y: mirroredY });
-    console.log(`Player 2 - ${piece.piece_name}: (${piece.x},${piece.y}) -> (${mirroredX},${mirroredY}) [mirrored from (${player1Square.x},${player1Square.y})]`);
+    console.log(`Player 2 - ${piece.piece_name}: (${piece.x},${piece.y}) -> (${mirroredX},${mirroredY}) [mirrored from (${p1Square.x},${p1Square.y})]`);
   });
   
   return newPieces;
@@ -263,7 +269,7 @@ function randomizeBackRow(pieces, players, gameType) {
     piecesByPlayer[piece.player_id].push(piece);
   });
   
-  const playerIds = Object.keys(piecesByPlayer);
+  const playerIds = Object.keys(piecesByPlayer).sort((a, b) => Number(a) - Number(b));
   if (playerIds.length !== 2) {
     console.warn('Back row randomization requires exactly 2 players, falling back to independent');
     return randomizeIndependent(pieces);
@@ -291,9 +297,13 @@ function randomizeBackRow(pieces, players, gameType) {
   
   console.log(`Player 1 back row: ${player1BackRow}, Player 2 back row: ${player2BackRow}`);
   
-  // Get back row pieces for player 1
-  const player1BackRowPieces = player1Pieces.filter(p => p.y === parseInt(player1BackRow));
-  const player2BackRowPieces = player2Pieces.filter(p => p.y === parseInt(player2BackRow));
+  // Get back row pieces for each player, sorted by X position
+  const player1BackRowPieces = player1Pieces
+    .filter(p => p.y === parseInt(player1BackRow))
+    .sort((a, b) => a.x - b.x);
+  const player2BackRowPieces = player2Pieces
+    .filter(p => p.y === parseInt(player2BackRow))
+    .sort((a, b) => a.x - b.x);
   
   // Get their x coordinates (column positions)
   const backRowXPositions = player1BackRowPieces.map(p => p.x);
@@ -304,14 +314,14 @@ function randomizeBackRow(pieces, players, gameType) {
     [backRowXPositions[i], backRowXPositions[j]] = [backRowXPositions[j], backRowXPositions[i]];
   }
   
-  // Apply shuffled positions to player 1 back row
+  // Apply shuffled positions to both players' back rows (now sorted by X, so matching pieces)
   player1BackRowPieces.forEach((piece, index) => {
     const oldX = piece.x;
     piece.x = backRowXPositions[index];
     console.log(`Player 1 back row - ${piece.piece_name}: (${oldX},${piece.y}) -> (${piece.x},${piece.y})`);
   });
   
-  // Apply same shuffle pattern to player 2 (mirrored)
+  // Apply same shuffle pattern to player 2 (mirrored - same X positions)
   player2BackRowPieces.forEach((piece, index) => {
     const oldX = piece.x;
     piece.x = backRowXPositions[index];
@@ -491,7 +501,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none' } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -674,7 +684,7 @@ function initializeSocket(server) {
         const [result] = await db_pool.query(
           `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers)
            VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?)`,
-          [currentTime, timeControl, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0]
+          [currentTime, timeControl, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0]
         );
 
         const gameId = result.insertId;
@@ -708,6 +718,7 @@ function initializeSocket(server) {
           showPieceHelpers,
           rated,
           allowPremoves,
+          startingMode,
           premove: null
         };
 
@@ -871,6 +882,12 @@ function initializeSocket(server) {
             showPieceHelpers: game.show_piece_helpers === 1,
             allowPremoves: game.allow_premoves !== 0,
             rated: game.is_rated !== 0,
+            startingMode: (() => {
+              try {
+                const otherData = JSON.parse(game.other_data || '{}');
+                return otherData.startingMode || 'none';
+              } catch { return 'none'; }
+            })(),
             premove: null
           };
 
@@ -920,25 +937,18 @@ function initializeSocket(server) {
           gameState.playerTimes[player.id] = timeInSeconds;
         });
 
-        // Check if randomized starting positions is enabled
-        if (gameState.gameType.randomized_starting_positions) {
-          try {
-            const randomConfig = JSON.parse(gameState.gameType.randomized_starting_positions);
-            const mode = randomConfig.mode || (randomConfig.enabled === true ? 'independent' : 'none');
-            
-            if (mode && mode !== 'none') {
-              console.log(`Randomizing starting positions for game ${gameId} with mode: ${mode}`);
-              gameState.pieces = randomizePiecePositions(gameState.pieces, gameState.players, mode, gameState.gameType);
-              
-              // Update the database with randomized pieces
-              await db_pool.query(
-                "UPDATE games SET pieces = ? WHERE id = ?",
-                [JSON.stringify(gameState.pieces), gameId]
-              );
-            }
-          } catch (err) {
-            console.error("Error parsing randomized_starting_positions:", err);
-          }
+        // Check if randomized starting positions is enabled (use startingMode from game creation)
+        const mode = gameState.startingMode || 'none';
+        
+        if (mode && mode !== 'none') {
+          console.log(`Randomizing starting positions for game ${gameId} with mode: ${mode}`);
+          gameState.pieces = randomizePiecePositions(gameState.pieces, gameState.players, mode, gameState.gameType);
+          
+          // Update the database with randomized pieces
+          await db_pool.query(
+            "UPDATE games SET pieces = ? WHERE id = ?",
+            [JSON.stringify(gameState.pieces), gameId]
+          );
         }
 
         // Update game status to ready
