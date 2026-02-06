@@ -539,7 +539,11 @@ function initializeSocket(server) {
               initial_y: piece.y,
               // Checkmate/Capture flags from junction table
               ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
-              ends_game_on_capture: !!piece.ends_game_on_capture
+              ends_game_on_capture: !!piece.ends_game_on_capture,
+              // Castling partner override data from junction table
+              manual_castling_partners: !!piece.manual_castling_partners,
+              castling_partner_left_key: piece.castling_partner_left_key || null,
+              castling_partner_right_key: piece.castling_partner_right_key || null
             };
           });
           
@@ -670,6 +674,7 @@ function initializeSocket(server) {
               piece_value: fullPieceData.piece_value,
               is_royal: fullPieceData.is_royal,
               can_promote: fullPieceData.can_promote,
+              can_castle: fullPieceData.can_castle,
               promotion_options: fullPieceData.promotion_options,
               has_checkmate_rule: fullPieceData.has_checkmate_rule,
               special_scenario_moves: fullPieceData.special_scenario_moves,
@@ -957,6 +962,9 @@ function initializeSocket(server) {
           "UPDATE games SET status = 'ready' WHERE id = ?",
           [gameId]
         );
+        
+        // Initialize castling partners so they're available during the 'ready' phase
+        initializeCastlingPartners(gameState);
 
         // Join the game room
         socket.join(`game-${gameId}`);
@@ -2334,7 +2342,11 @@ function initializeSocket(server) {
                 ...piece,
                 id: `${piece.piece_id}_${piece.y}_${piece.x}`,
                 ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
-                ends_game_on_capture: !!piece.ends_game_on_capture
+                ends_game_on_capture: !!piece.ends_game_on_capture,
+                // Castling partner override data from junction table
+                manual_castling_partners: !!piece.manual_castling_partners,
+                castling_partner_left_key: piece.castling_partner_left_key || null,
+                castling_partner_right_key: piece.castling_partner_right_key || null
               }));
             }
             
@@ -2395,6 +2407,7 @@ function initializeSocket(server) {
                     piece_value: fullPieceData.piece_value,
                     is_royal: fullPieceData.is_royal,
                     can_promote: fullPieceData.can_promote,
+                    can_castle: fullPieceData.can_castle,
                     promotion_options: fullPieceData.promotion_options,
                     special_scenario_moves: fullPieceData.special_scenario_moves,
                     special_scenario_captures: fullPieceData.special_scenario_captures
@@ -2482,6 +2495,9 @@ function initializeSocket(server) {
             gameState.inCheck = false;
             gameState.checkedPieces = [];
           }
+
+          // Initialize castling partners for pieces that can castle
+          initializeCastlingPartners(gameState);
 
           // Store in memory for future use
           activeGames.set(gameId.toString(), gameState);
@@ -2938,41 +2954,76 @@ function initializeCastlingPartners(gameState) {
   const boardWidth = gameType?.board_width || 8;
   
   pieces.forEach(piece => {
-    if (piece.can_castle && !piece.castling_partner_id) {
-      const pieceOwner = piece.team || piece.player_id;
+    // Only initialize if piece can castle and partners aren't already set
+    if (piece.can_castle && 
+        piece.castling_partner_left_id === undefined && 
+        piece.castling_partner_right_id === undefined) {
       
-      // Find furthest allied piece to the left
-      let leftPartner = null;
-      for (let x = piece.x - 1; x >= 0; x--) {
-        const foundPiece = pieces.find(p => p.x === x && p.y === piece.y);
-        if (foundPiece) {
-          const foundOwner = foundPiece.team || foundPiece.player_id;
-          if (foundOwner === pieceOwner) {
-            leftPartner = foundPiece;
+      // Check if manual castling partners are specified
+      if (piece.manual_castling_partners) {
+        // Manual override mode - use specified keys or null (disabling default)
+        if (piece.castling_partner_left_key) {
+          // Parse the key "row,col" to find the piece
+          const [row, col] = piece.castling_partner_left_key.split(',').map(Number);
+          const leftPartner = pieces.find(p => p.x === col && p.y === row);
+          if (leftPartner) {
+            piece.castling_partner_left_id = leftPartner.id;
           }
-          break; // Stop at first piece found
         }
-      }
-      
-      // Find furthest allied piece to the right
-      let rightPartner = null;
-      for (let x = piece.x + 1; x < boardWidth; x++) {
-        const foundPiece = pieces.find(p => p.x === x && p.y === piece.y);
-        if (foundPiece) {
-          const foundOwner = foundPiece.team || foundPiece.player_id;
-          if (foundOwner === pieceOwner) {
-            rightPartner = foundPiece;
+        // Left partner explicitly not set = no left castling
+        
+        if (piece.castling_partner_right_key) {
+          // Parse the key "row,col" to find the piece
+          const [row, col] = piece.castling_partner_right_key.split(',').map(Number);
+          const rightPartner = pieces.find(p => p.x === col && p.y === row);
+          if (rightPartner) {
+            piece.castling_partner_right_id = rightPartner.id;
           }
-          break; // Stop at first piece found
         }
-      }
-      
-      // Store the castling partners
-      if (leftPartner) {
-        piece.castling_partner_left_id = leftPartner.id;
-      }
-      if (rightPartner) {
-        piece.castling_partner_right_id = rightPartner.id;
+        // Right partner explicitly not set = no right castling
+        
+        // Set to null (not undefined) to indicate partners were checked
+        if (piece.castling_partner_left_id === undefined) {
+          piece.castling_partner_left_id = null;
+        }
+        if (piece.castling_partner_right_id === undefined) {
+          piece.castling_partner_right_id = null;
+        }
+      } else {
+        // Default auto-discovery mode
+        const pieceOwner = piece.team || piece.player_id;
+        
+        // Find furthest allied piece to the left (scan entire row)
+        let leftPartner = null;
+        for (let x = piece.x - 1; x >= 0; x--) {
+          const foundPiece = pieces.find(p => p.x === x && p.y === piece.y);
+          if (foundPiece) {
+            const foundOwner = foundPiece.team || foundPiece.player_id;
+            if (foundOwner === pieceOwner) {
+              leftPartner = foundPiece;
+            }
+          }
+        }
+        
+        // Find furthest allied piece to the right (scan entire row)
+        let rightPartner = null;
+        for (let x = piece.x + 1; x < boardWidth; x++) {
+          const foundPiece = pieces.find(p => p.x === x && p.y === piece.y);
+          if (foundPiece) {
+            const foundOwner = foundPiece.team || foundPiece.player_id;
+            if (foundOwner === pieceOwner) {
+              rightPartner = foundPiece;
+            }
+          }
+        }
+        
+        // Store the castling partners
+        if (leftPartner) {
+          piece.castling_partner_left_id = leftPartner.id;
+        }
+        if (rightPartner) {
+          piece.castling_partner_right_id = rightPartner.id;
+        }
       }
     }
   });
@@ -3854,6 +3905,40 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
     }
   }
 
+  // Check for castling moves
+  if (piece.can_castle && !piece.hasMoved && dy === 0 && absDx === 2) {
+    const direction = dx < 0 ? 'left' : 'right';
+    const partnerId = direction === 'left' 
+      ? piece.castling_partner_left_id 
+      : piece.castling_partner_right_id;
+    
+    if (partnerId) {
+      const partner = allPieces.find(p => p.id === partnerId);
+      if (partner && !partner.hasMoved) {
+        // Calculate distance to partner
+        const distanceToPartner = Math.abs(partner.x - piece.x);
+        
+        // Check if this is close-range castling (partner within 2 squares)
+        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+        
+        if (isCloseRange) {
+          // Close-range castling: king hops over pieces
+          // Target is valid if: empty, OR occupied by the partner itself (who will move)
+          const targetOccupiedByOther = allPieces.some(p => p.x === targetX && p.y === targetY && p.id !== partnerId);
+          if (!targetOccupiedByOther) {
+            return true;
+          }
+        } else {
+          // Standard long-range castling: path must be clear
+          const pathIsClear = isPathClear(piece.x, piece.y, targetX, targetY);
+          if (pathIsClear) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
   return false;
 }
 
@@ -4247,12 +4332,22 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       const rookPiece = allPieces.find(p => p.id === piece.castling_partner_left_id);
       
       if (rookPiece && !rookPiece.hasMoved) {
-        // Check if all squares between are unoccupied
+        const distanceToPartner = piece.x - rookPiece.x;
+        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+        
         let pathClear = true;
-        for (let x = piece.x - 1; x >= rookPiece.x + 1; x--) {
-          if (allPieces.some(p => p.x === x && p.y === piece.y)) {
-            pathClear = false;
-            break;
+        
+        if (isCloseRange) {
+          // Close-range castling: king hops, target can be partner's position or empty
+          const targetOccupiedByOther = allPieces.some(p => p.x === leftTarget.x && p.y === leftTarget.y && p.id !== rookPiece.id);
+          pathClear = !targetOccupiedByOther;
+        } else {
+          // Standard long-range castling: check if all squares between are unoccupied
+          for (let x = piece.x - 1; x >= rookPiece.x + 1; x--) {
+            if (allPieces.some(p => p.x === x && p.y === piece.y)) {
+              pathClear = false;
+              break;
+            }
           }
         }
         
@@ -4289,12 +4384,22 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       const rookPiece = allPieces.find(p => p.id === piece.castling_partner_right_id);
       
       if (rookPiece && !rookPiece.hasMoved) {
-        // Check if all squares between are unoccupied
+        const distanceToPartner = rookPiece.x - piece.x;
+        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+        
         let pathClear = true;
-        for (let x = piece.x + 1; x <= rookPiece.x - 1; x++) {
-          if (allPieces.some(p => p.x === x && p.y === piece.y)) {
-            pathClear = false;
-            break;
+        
+        if (isCloseRange) {
+          // Close-range castling: king hops, target can be partner's position or empty
+          const targetOccupiedByOther = allPieces.some(p => p.x === rightTarget.x && p.y === rightTarget.y && p.id !== rookPiece.id);
+          pathClear = !targetOccupiedByOther;
+        } else {
+          // Standard long-range castling: check if all squares between are unoccupied
+          for (let x = piece.x + 1; x <= rookPiece.x - 1; x++) {
+            if (allPieces.some(p => p.x === x && p.y === piece.y)) {
+              pathClear = false;
+              break;
+            }
           }
         }
         

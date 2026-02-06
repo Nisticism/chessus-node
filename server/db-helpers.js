@@ -262,7 +262,10 @@ const getAllPiecesWithMovement = async () => {
       p.special_scenario_captures,
       p.has_checkmate_rule,
       p.has_check_rule,
-      p.has_lose_on_capture_rule
+      p.has_lose_on_capture_rule,
+      p.can_castle,
+      p.can_promote,
+      p.promotion_options
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id
@@ -417,7 +420,8 @@ const getPieceById = async (pieceId) => {
       p.special_scenario_captures,
       p.has_checkmate_rule,
       p.has_check_rule,
-      p.has_lose_on_capture_rule
+      p.has_lose_on_capture_rule,
+      p.can_castle
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id
@@ -498,13 +502,16 @@ const getPiecesForGameType = async (gameTypeId) => {
  * @param {number} playerNumber - Player number (default 1)
  * @param {boolean} endsGameOnCheckmate - If true, game ends when this piece is checkmated
  * @param {boolean} endsGameOnCapture - If true, game ends when this piece is captured
+ * @param {boolean} manualCastlingPartners - Whether castling partners are manually set
+ * @param {string|null} castlingPartnerLeftKey - Key for left castling partner (e.g., "0,0")
+ * @param {string|null} castlingPartnerRightKey - Key for right castling partner (e.g., "0,7")
  * @returns {Promise<Object>} Insert result
  */
-const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false) => {
+const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null) => {
   const result = await query(`
-    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0]);
+    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey]);
   return result;
 };
 

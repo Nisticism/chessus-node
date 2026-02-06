@@ -5,6 +5,7 @@ require("dotenv").config();
 const express = require("express");
 const path = require("path");
 const http = require("http");
+const crypto = require("crypto");
 
 // const mysql = require("mysql");
 
@@ -17,6 +18,53 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+
+// JWT Secret Management - Generate stable secrets that persist across restarts
+const SECRETS_FILE = path.join(__dirname, '.jwt-secrets.json');
+
+function ensureJwtSecrets() {
+  let secrets = {};
+  
+  // Try to load existing secrets from file
+  if (fs.existsSync(SECRETS_FILE)) {
+    try {
+      secrets = JSON.parse(fs.readFileSync(SECRETS_FILE, 'utf8'));
+      console.log('Loaded JWT secrets from file');
+    } catch (err) {
+      console.warn('Failed to parse secrets file, will regenerate');
+    }
+  }
+  
+  // Use environment variables if set, otherwise use file secrets, otherwise generate new ones
+  const accessSecret = process.env.ACCESS_TOKEN_SECRET || secrets.accessTokenSecret || crypto.randomBytes(64).toString('hex');
+  const refreshSecret = process.env.REFRESH_TOKEN_SECRET || secrets.refreshTokenSecret || crypto.randomBytes(64).toString('hex');
+  
+  // Save secrets to file if they weren't loaded from env vars
+  if (!process.env.ACCESS_TOKEN_SECRET || !process.env.REFRESH_TOKEN_SECRET) {
+    const newSecrets = {
+      accessTokenSecret: secrets.accessTokenSecret || accessSecret,
+      refreshTokenSecret: secrets.refreshTokenSecret || refreshSecret,
+      createdAt: secrets.createdAt || new Date().toISOString()
+    };
+    
+    // Only write if secrets are new or file doesn't exist
+    if (!secrets.accessTokenSecret || !secrets.refreshTokenSecret) {
+      try {
+        fs.writeFileSync(SECRETS_FILE, JSON.stringify(newSecrets, null, 2));
+        console.log('Generated and saved new JWT secrets to file');
+      } catch (err) {
+        console.warn('Could not save secrets to file:', err.message);
+      }
+    }
+  }
+  
+  // Set process.env so the rest of the code can use them
+  process.env.ACCESS_TOKEN_SECRET = accessSecret;
+  process.env.REFRESH_TOKEN_SECRET = refreshSecret;
+}
+
+// Initialize JWT secrets before anything else
+ensureJwtSecrets();
 
 // Security: bcrypt rounds (12 is recommended for modern hardware)
 const BCRYPT_ROUNDS = 12;
@@ -1074,7 +1122,10 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.y || 0,
               piece.player_number || piece.player || 1,
               piece.ends_game_on_checkmate || false,
-              piece.ends_game_on_capture || false
+              piece.ends_game_on_capture || false,
+              piece.manual_castling_partners || false,
+              piece.castling_partner_left_key || null,
+              piece.castling_partner_right_key || null
             );
           }
         }
@@ -2407,7 +2458,10 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.y || 0,
               piece.player_number || piece.player || 1,
               piece.ends_game_on_checkmate || false,
-              piece.ends_game_on_capture || false
+              piece.ends_game_on_capture || false,
+              piece.manual_castling_partners || false,
+              piece.castling_partner_left_key || null,
+              piece.castling_partner_right_key || null
             );
           }
         }
@@ -3093,8 +3147,8 @@ function generateAccessToken(user) {
 }
 
 function generateRefreshToken(user) {
-  // Refresh tokens expire in 7 days
-  const token = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+  // Refresh tokens expire in 30 days (extended from 7 days for better UX)
+  const token = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '30d' });
   return token;
 }
 

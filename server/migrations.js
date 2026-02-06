@@ -271,6 +271,24 @@ const migrations = [
     column: 'ends_game_on_capture',
     sql: "ALTER TABLE game_type_pieces ADD COLUMN ends_game_on_capture BOOLEAN DEFAULT FALSE",
     description: "Add ends_game_on_capture column to game_type_pieces junction table"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'manual_castling_partners',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN manual_castling_partners BOOLEAN DEFAULT FALSE",
+    description: "Add manual_castling_partners column to game_type_pieces for castling override"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'castling_partner_left_key',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN castling_partner_left_key VARCHAR(20) DEFAULT NULL",
+    description: "Add castling_partner_left_key column to game_type_pieces for manual left partner"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'castling_partner_right_key',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN castling_partner_right_key VARCHAR(20) DEFAULT NULL",
+    description: "Add castling_partner_right_key column to game_type_pieces for manual right partner"
   }
 ];
 
