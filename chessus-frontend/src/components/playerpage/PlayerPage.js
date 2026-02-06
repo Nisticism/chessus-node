@@ -337,10 +337,15 @@ const PlayerPage = (props) => {
   }
 
   const handleProfilePictureClick = () => {
-    const userRole = currentUser?.role?.toLowerCase();
-    if (currentUser && (currentUser.username === username || userRole === "admin" || userRole === "owner")) {
-      setShowPictureModal(true);
-    }
+    // Allow any user to view enlarged profile picture
+    setShowPictureModal(true);
+  }
+
+  // Check if current user can edit the profile picture
+  const canEditPicture = () => {
+    if (!currentUser) return false;
+    const userRole = currentUser.role?.toLowerCase();
+    return currentUser.username === username || userRole === "admin" || userRole === "owner";
   }
 
   const handleFileChange = (e) => {
@@ -457,7 +462,8 @@ const PlayerPage = (props) => {
               <div 
                 className={styles["profile-avatar"]}
                 onClick={handleProfilePictureClick}
-                style={{ cursor: (currentUser && (currentUser.username === username || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner")) ? 'pointer' : 'default' }}
+                style={{ cursor: 'pointer' }}
+                title="Click to view profile picture"
               >
                 <img 
                   src={displayPictureUrl || 
@@ -472,11 +478,9 @@ const PlayerPage = (props) => {
                     e.target.src = DefaultAvatar;
                   }}
                 />
-                {currentUser && (currentUser.username === username || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner") && (
-                  <div className={styles["edit-icon"]}>
-                    <span>📷</span>
-                  </div>
-                )}
+                <div className={styles["view-icon"]}>
+                  <span>🔍</span>
+                </div>
               </div>
               <div className={styles["profile-header-info"]}>
                 <h1 className={styles["username"]}>{username}</h1>
@@ -687,55 +691,77 @@ const PlayerPage = (props) => {
         <div className={styles["modal-overlay"]} onClick={() => setShowPictureModal(false)}>
           <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
             <div className={styles["modal-header"]}>
-              <h2>Update Profile Picture</h2>
+              <h2>{username}'s Profile Picture</h2>
               <button className={styles["close-button"]} onClick={() => setShowPictureModal(false)}>×</button>
             </div>
             <div className={styles["modal-body"]}>
-              <div className={styles["current-picture"]}>
-                <div className={styles["preview-avatar"]}>
-                  {profilePicturePreview ? (
-                    <img src={profilePicturePreview} alt="Preview" />
-                  ) : (currentUser && currentUser.profile_picture ? (
-                    <img src={`${ASSET_URL}${currentUser.profile_picture}`} alt="Current" />
-                  ) : (
-                    <span>{username.charAt(0).toUpperCase()}</span>
-                  ))}
-                </div>
-              </div>
-              <div className={styles["file-upload-section"]}>
-                <label htmlFor="picture-upload" className={styles["file-label"]}>
-                  Choose New Picture
-                </label>
-                <input
-                  id="picture-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className={styles["file-input-hidden"]}
-                />
-                {profilePicture && (
-                  <div className={styles["file-name"]}>{profilePicture.name}</div>
-                )}
-              </div>
-              <div className={styles["modal-actions"]}>
-                <button
-                  className={styles["cancel-button"]}
-                  onClick={() => {
-                    setShowPictureModal(false);
-                    setProfilePicture(null);
-                    setProfilePicturePreview(null);
+              <div className={styles["enlarged-picture"]}>
+                <img 
+                  src={profilePicturePreview || displayPictureUrl || 
+                       ((currentUser && username === currentUser.username && currentUser.profile_picture) || 
+                        (playerPageUser && playerPageUser.username === username && playerPageUser.profile_picture))
+                       ? (profilePicturePreview || displayPictureUrl || `${ASSET_URL}${currentUser && username === currentUser.username ? currentUser.profile_picture : playerPageUser?.profile_picture}?t=${Date.now()}`)
+                       : DefaultAvatar}
+                  alt={`${username}'s profile`}
+                  className={styles["enlarged-picture-img"]}
+                  onError={(e) => {
+                    e.target.src = DefaultAvatar;
                   }}
-                >
-                  Cancel
-                </button>
-                <button
-                  className={styles["upload-button"]}
-                  onClick={handleUploadPicture}
-                  disabled={!profilePicture || uploadingPicture}
-                >
-                  {uploadingPicture ? 'Uploading...' : 'Upload'}
-                </button>
+                />
               </div>
+              
+              {canEditPicture() && (
+                <>
+                  <div className={styles["upload-divider"]}>
+                    <span>Change Picture</span>
+                  </div>
+                  <div className={styles["file-upload-section"]}>
+                    <label htmlFor="picture-upload" className={styles["file-label"]}>
+                      Choose New Picture
+                    </label>
+                    <input
+                      id="picture-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className={styles["file-input-hidden"]}
+                    />
+                    {profilePicture && (
+                      <div className={styles["file-name"]}>{profilePicture.name}</div>
+                    )}
+                  </div>
+                  <div className={styles["modal-actions"]}>
+                    <button
+                      className={styles["cancel-button"]}
+                      onClick={() => {
+                        setShowPictureModal(false);
+                        setProfilePicture(null);
+                        setProfilePicturePreview(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className={styles["upload-button"]}
+                      onClick={handleUploadPicture}
+                      disabled={!profilePicture || uploadingPicture}
+                    >
+                      {uploadingPicture ? 'Uploading...' : 'Upload'}
+                    </button>
+                  </div>
+                </>
+              )}
+              
+              {!canEditPicture() && (
+                <div className={styles["modal-actions"]}>
+                  <button
+                    className={styles["cancel-button"]}
+                    onClick={() => setShowPictureModal(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

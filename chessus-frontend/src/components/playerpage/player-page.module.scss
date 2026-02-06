@@ -102,7 +102,7 @@
   transition: all 0.3s ease;
   z-index: 1;
 
-  &:hover .edit-icon {
+  &:hover .view-icon {
     opacity: 1;
   }
 
@@ -112,7 +112,7 @@
     object-fit: cover;
   }
 
-  .edit-icon {
+  .view-icon {
     position: absolute;
     bottom: 0;
     right: 0;
@@ -616,7 +616,7 @@
   border: 2px solid #2a4d6c;
   border-radius: 16px;
   width: 90%;
-  max-width: 500px;
+  max-width: 600px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   animation: modalSlideIn 0.3s ease;
 }
@@ -669,6 +669,46 @@
 
 .modal-body {
   padding: 30px;
+}
+
+.enlarged-picture {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.enlarged-picture-img {
+  max-width: 100%;
+  max-height: 400px;
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+  border: 3px solid #2a4d6c;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  object-fit: contain;
+}
+
+.upload-divider {
+  display: flex;
+  align-items: center;
+  margin: 25px 0 20px;
+  
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #2a4d6c;
+  }
+  
+  span {
+    padding: 0 15px;
+    color: #8097ae;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
 }
 
 .current-picture {

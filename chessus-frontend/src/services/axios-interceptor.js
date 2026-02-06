@@ -24,8 +24,17 @@ axios.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // If error is 403 and we haven't tried to refresh yet
-    if (error.response?.status === 403 && !originalRequest._retry) {
+    // If error is 401 (unauthorized) or 403 (forbidden/expired token) and we haven't tried to refresh yet
+    // Skip refresh attempts for login/register/token endpoints to avoid infinite loops
+    const isAuthEndpoint = originalRequest?.url?.includes('/login') || 
+                          originalRequest?.url?.includes('/register') || 
+                          originalRequest?.url?.includes('/token');
+    
+    const shouldRefresh = (error.response?.status === 401 || error.response?.status === 403) && 
+                         !originalRequest._retry && 
+                         !isAuthEndpoint;
+    
+    if (shouldRefresh) {
       if (isRefreshing) {
         // If already refreshing, queue this request
         return new Promise((resolve, reject) => {

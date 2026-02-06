@@ -9,3 +9,6 @@ authServer-old.js
 seed-old.js
 profile-pictures
 uploads/
+
+# JWT secrets file (auto-generated, do not commit)
+server/.jwt-secrets.json
