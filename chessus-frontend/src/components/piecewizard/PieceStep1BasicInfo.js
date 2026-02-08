@@ -2,9 +2,13 @@ import React, { useRef, useState } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
 import NumberInput from "../common/NumberInput";
+import { pieceImageLibrary } from "../../assets/piece-images";
 
 const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, existingImages = [], setExistingImages }) => {
   const [visibleImageCount, setVisibleImageCount] = useState(2);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [libraryTargetIndex, setLibraryTargetIndex] = useState(0);
+  const [libraryFilter, setLibraryFilter] = useState('All');
   const fileInputRefs = useRef([]);
 
   const handleChange = (field, value) => {
@@ -102,6 +106,47 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
     }
   };
 
+  const openLibrary = (index) => {
+    setLibraryTargetIndex(index);
+    setShowLibraryModal(true);
+  };
+
+  const handleLibrarySelect = async (libraryImage) => {
+    // Fetch the image as a blob to create a File object
+    try {
+      const response = await fetch(libraryImage.src);
+      const blob = await response.blob();
+      const file = new File([blob], `${libraryImage.name.replace(/[^a-zA-Z0-9]/g, '_')}.png`, { type: 'image/png' });
+      
+      // If in edit mode and replacing an existing image, remove it from existingImages
+      if (isEditMode && setExistingImages && existingImages.length > 0 && libraryTargetIndex < existingImages.length) {
+        const newExistingImages = [...existingImages];
+        newExistingImages.splice(libraryTargetIndex, 1);
+        setExistingImages(newExistingImages);
+      }
+      
+      const newImages = [...(pieceData.piece_images || [])];
+      const newPreviews = [...(pieceData.piece_image_previews || [])];
+      newImages[libraryTargetIndex] = file;
+      newPreviews[libraryTargetIndex] = libraryImage.src;
+      
+      updatePieceData({
+        piece_images: newImages,
+        piece_image_previews: newPreviews
+      });
+      
+      setShowLibraryModal(false);
+    } catch (error) {
+      console.error('Error selecting library image:', error);
+      alert('Failed to select image. Please try again.');
+    }
+  };
+
+  const libraryCategories = ['All', ...new Set(pieceImageLibrary.map(img => img.category))];
+  const filteredLibraryImages = libraryFilter === 'All' 
+    ? pieceImageLibrary 
+    : pieceImageLibrary.filter(img => img.category === libraryFilter);
+
   return (
     <div className={styles["step-container"]}>
       <h2>Basic Piece Information</h2>
@@ -197,7 +242,14 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
                         onClick={() => handleImageClick(index)}
                         type="button"
                       >
-                        Change Image
+                        Upload New
+                      </button>
+                      <button 
+                        className={styles["change-image-btn"]} 
+                        onClick={() => openLibrary(index)}
+                        type="button"
+                      >
+                        Library
                       </button>
                       <button 
                         className={styles["remove-image-btn"]} 
@@ -210,15 +262,26 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
                   </div>
                 ) : (
                   <div className={styles["image-placeholder"]}>
-                    <button 
-                      type="button"
-                      className={styles["upload-trigger-btn"]}
-                      onClick={() => handleImageClick(index)}
-                    >
-                      <div className={styles["upload-icon"]}>📁</div>
-                      <p>Click to upload image</p>
-                      <p className={styles["upload-hint"]}>PNG, JPG up to 5MB</p>
-                    </button>
+                    <div className={styles["image-picker-buttons"]}>
+                      <button 
+                        type="button"
+                        className={styles["upload-trigger-btn"]}
+                        onClick={() => handleImageClick(index)}
+                      >
+                        <div className={styles["upload-icon"]}>📁</div>
+                        <p>Upload Image</p>
+                        <p className={styles["upload-hint"]}>PNG, JPG up to 5MB</p>
+                      </button>
+                      <button 
+                        type="button"
+                        className={styles["library-trigger-btn"]}
+                        onClick={() => openLibrary(index)}
+                      >
+                        <div className={styles["upload-icon"]}>🖼️</div>
+                        <p>Browse Library</p>
+                        <p className={styles["upload-hint"]}>Choose from collection</p>
+                      </button>
+                    </div>
                     {index >= 2 && (
                       <button 
                         className={styles["delete-slot-btn"]} 
@@ -283,6 +346,52 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
             Hover over the piece to see movement (blue) and attack (red) patterns based on your settings.
           </p>
           <PieceBoardPreview pieceData={pieceData} />
+        </div>
+      )}
+
+      {/* Library Modal */}
+      {showLibraryModal && (
+        <div className={styles["library-modal-overlay"]} onClick={() => setShowLibraryModal(false)}>
+          <div className={styles["library-modal"]} onClick={e => e.stopPropagation()}>
+            <div className={styles["library-modal-header"]}>
+              <h3>Piece Image Library</h3>
+              <button 
+                className={styles["library-modal-close"]}
+                onClick={() => setShowLibraryModal(false)}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className={styles["library-filter"]}>
+              {libraryCategories.map(category => (
+                <button
+                  key={category}
+                  type="button"
+                  className={`${styles["filter-btn"]} ${libraryFilter === category ? styles["active"] : ''}`}
+                  onClick={() => setLibraryFilter(category)}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+            
+            <div className={styles["library-grid"]}>
+              {filteredLibraryImages.map((image, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className={styles["library-item"]}
+                  onClick={() => handleLibrarySelect(image)}
+                  title={image.name}
+                >
+                  <img src={image.src} alt={image.name} />
+                  <span className={styles["library-item-name"]}>{image.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
