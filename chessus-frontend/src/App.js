@@ -39,6 +39,7 @@ import MediaHub from "./containers/mediahub/MediaHub";
 import SocialMedia from "./containers/socialmedia/SocialMedia";
 import Streams from "./containers/streams/Streams";
 import Careers from "./containers/careers/Careers";
+import CareerEditor from "./components/careereditor/CareerEditor";
 
 import DeletedAccount from "./components/deletedaccount/DeletedAccount";
 import Preferences from "./components/preferences/Preferences";
@@ -136,6 +137,8 @@ function App() {
             <Route exact path="/news/new" element={<CreateNews />} />
             <Route exact path="/news/edit/:newsId" element={<EditNews />} />
             <Route exact path="/careers" element={<Careers />} />
+            <Route exact path="/careers/create" element={<CareerEditor />} />
+            <Route exact path="/careers/edit/:jobId" element={<CareerEditor />} />
             <Route exact path="/preferences" element={<Preferences />} />
             <Route exact path="/donate" element={<Donate />} />
             <Route exact path="/contact" element={<Contact />} />

@@ -12,7 +12,7 @@ const Careers = () => {
   const { user: currentUser } = useSelector(state => state.authReducer);
   const navigate = useNavigate();
 
-  const isAdmin = currentUser && currentUser.role === 'admin';
+  const isOwner = currentUser && currentUser.role === 'owner';
 
   useEffect(() => {
     fetchJobs();
@@ -119,7 +119,7 @@ const Careers = () => {
           </p>
         </div>
 
-        {isAdmin && (
+        {isOwner && (
           <div className={styles.adminControls}>
             <StandardButton onClick={handleCreate}>
               Create New Job Posting
@@ -158,7 +158,7 @@ const Careers = () => {
                   />
                 )}
 
-                {isAdmin && (
+                {isOwner && (
                   <div className={styles.adminActions}>
                     <StandardButton 
                       onClick={() => handleEdit(job.article_id)}

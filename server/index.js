@@ -280,13 +280,21 @@ app.get("/api/", (req, res) => {
   res.json({ message: "Home page!" });
 })
 
-app.get("/api/user", async (params, res) => {
+app.get("/api/user", optionalAuthenticate, async (req, res) => {
   try {
-    const username = params.query.username;
+    const username = req.query.username;
     const user = await dbHelpers.findUserByUsername(username);
     
     if (!user) {
       return res.status(400).send({ auth: false, message: "Username does not exist" });
+    }
+    
+    // Strip personal information if viewing someone else's profile
+    const isOwnProfile = req.user && req.user.username === username;
+    if (!isOwnProfile) {
+      delete user.email;
+      delete user.first_name;
+      delete user.last_name;
     }
     
     res.json({ result: user, message: "User found" });
@@ -306,9 +314,9 @@ app.get("/api/users", async (req, res) => {
     const [countResult] = await db_pool.query("SELECT COUNT(*) as total FROM users");
     const total = countResult[0].total;
     
-    // Get paginated users
+    // Get paginated users - exclude personal information (email, first_name, last_name)
     const [users] = await db_pool.query(
-      `SELECT id, username, email, first_name, last_name, role, profile_picture, elo FROM users ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
+      `SELECT id, username, role, profile_picture, elo FROM users ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
     );
     
     res.json({
@@ -1885,13 +1893,17 @@ app.get("/api/forums", async (req, res) => {
     const gameTypeId = req.query.gameTypeId;
     
     // Build query with optional gameTypeId filter
-    let countQuery = "SELECT COUNT(*) as total FROM articles";
-    let articlesQuery = "SELECT * FROM articles";
+    // Always exclude career postings (is_career = 1) and news articles (is_news = 1)
+    let whereConditions = ["(is_career IS NULL OR is_career = 0)", "(is_news IS NULL OR is_news = 0)"];
     
     if (gameTypeId) {
-      countQuery += ` WHERE game_type_id = ${db_pool.escape(gameTypeId)}`;
-      articlesQuery += ` WHERE game_type_id = ${db_pool.escape(gameTypeId)}`;
+      whereConditions.push(`game_type_id = ${db_pool.escape(gameTypeId)}`);
     }
+    
+    const whereClause = whereConditions.length > 0 ? ` WHERE ${whereConditions.join(" AND ")}` : "";
+    
+    let countQuery = "SELECT COUNT(*) as total FROM articles" + whereClause;
+    let articlesQuery = "SELECT * FROM articles" + whereClause;
     
     articlesQuery += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
     
@@ -2190,6 +2202,37 @@ app.get("/api/careers", async (req, res) => {
   }
 });
 
+// Get a single career posting by ID
+app.get("/api/careers/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [careers] = await db_pool.query(
+      `SELECT 
+        a.id as article_id,
+        a.author_id,
+        a.title,
+        a.descript,
+        a.content,
+        a.created_at,
+        a.genre,
+        u.username as author_name
+      FROM articles a
+      LEFT JOIN users u ON a.author_id = u.id
+      WHERE a.id = ? AND a.is_career = 1`,
+      [id]
+    );
+
+    if (careers.length === 0) {
+      return res.status(404).send({ message: "Job posting not found" });
+    }
+
+    res.json(careers[0]);
+  } catch (err) {
+    console.error("Error fetching career:", err);
+    res.status(500).send({ message: "Failed to fetch job posting", err: err.message });
+  }
+});
+
 app.post("/api/careers", async (req, res) => {
   try {
     const { author_id, title, descript, content, genre } = req.body;
@@ -2201,7 +2244,7 @@ app.post("/api/careers", async (req, res) => {
     );
 
     if (users.length === 0 || (users[0].role !== 'admin' && users[0].role !== 'owner')) {
-      return res.status(403).send({ message: "Only admins can create job postings" });
+      return res.status(403).send({ message: "Only owners can create job postings" });
     }
 
     if (!title || !content) {
@@ -2243,7 +2286,7 @@ app.put("/api/careers/:id", async (req, res) => {
     );
 
     if (users.length === 0 || (users[0].role !== 'admin' && users[0].role !== 'owner')) {
-      return res.status(403).send({ message: "Only admins can edit job postings" });
+      return res.status(403).send({ message: "Only owners can edit job postings" });
     }
 
     if (!title || !content) {
@@ -2276,7 +2319,7 @@ app.delete("/api/careers/:id", async (req, res) => {
     );
 
     if (users.length === 0 || (users[0].role !== 'admin' && users[0].role !== 'owner')) {
-      return res.status(403).send({ message: "Only admins can delete job postings" });
+      return res.status(403).send({ message: "Only owners can delete job postings" });
     }
 
     await db_pool.query(
@@ -3128,6 +3171,21 @@ function authenticateToken(req, res, next) {
     }
     req.user = user
     next()
+  })
+}
+
+// Optional authentication - sets req.user if token is valid, but doesn't fail if not
+function optionalAuthenticate(req, res, next) {
+  const authHeader = req.headers['authorization']
+  const token = authHeader && authHeader.split(' ')[1]
+  if (token == null) {
+    return next(); // No token, continue without user
+  }
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
+    if (!err) {
+      req.user = user;
+    }
+    next(); // Continue regardless of token validity
   })
 }
 

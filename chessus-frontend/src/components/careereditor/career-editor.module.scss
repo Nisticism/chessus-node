@@ -1,0 +1,150 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 10px;
+  min-height: calc(100vh - 100px);
+}
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 90%;
+  max-width: 800px;
+  background: var(--forum-background);
+  border: 2px solid var(--forum-border);
+  margin-top: 25px;
+  border-radius: 10px;
+  padding: 30px 40px;
+}
+
+.pageTitle {
+  color: var(--text-primary);
+  margin-bottom: 25px;
+  font-size: 24px;
+  text-align: center;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 20px;
+}
+
+.fieldLabel {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.required {
+  color: var(--error-color, #e74c3c);
+}
+
+.titleInput {
+  width: 100%;
+  padding: 12px 15px;
+  font-size: 16px;
+  border: 2px solid var(--input-border, #3a3a3a);
+  border-radius: 6px;
+  background: var(--input-background, #2a2a2a);
+  color: var(--text-primary);
+  transition: border-color 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: var(--button-primary-bg, #4a90d9);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  &::placeholder {
+    color: var(--text-secondary, #888);
+  }
+}
+
+.contentInput {
+  width: 100%;
+  min-height: 300px;
+  padding: 12px 15px;
+  font-size: 14px;
+  font-family: inherit;
+  border: 2px solid var(--input-border, #3a3a3a);
+  border-radius: 6px;
+  background: var(--input-background, #2a2a2a);
+  color: var(--text-primary);
+  resize: vertical;
+  line-height: 1.6;
+  transition: border-color 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: var(--button-primary-bg, #4a90d9);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  &::placeholder {
+    color: var(--text-secondary, #888);
+  }
+}
+
+.hint {
+  color: var(--text-secondary, #888);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.buttonGroup {
+  display: flex;
+  gap: 15px;
+  margin-top: 20px;
+  justify-content: center;
+}
+
+.cancelButton {
+  background-color: var(--button-secondary-bg, #555) !important;
+  
+  &:hover {
+    background-color: var(--button-secondary-hover, #666) !important;
+  }
+}
+
+.error {
+  background-color: rgba(231, 76, 60, 0.1);
+  border: 1px solid var(--error-color, #e74c3c);
+  color: var(--error-color, #e74c3c);
+  padding: 12px 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.loading {
+  color: var(--text-primary);
+  text-align: center;
+  padding: 40px;
+  font-size: 16px;
+}
+
+@media (max-width: 600px) {
+  .wrapper {
+    padding: 20px 15px;
+    width: 95%;
+  }
+
+  .buttonGroup {
+    flex-direction: column;
+    
+    button {
+      width: 100%;
+    }
+  }
+}
