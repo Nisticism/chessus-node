@@ -5,6 +5,44 @@ import { users } from "../../actions/users";
 import Pagination from "../pagination/Pagination";
 import styles from "../../styles/list-view.module.scss";
 
+const getRoleBadge = (role) => {
+  const roleLower = role?.toLowerCase();
+  if (roleLower === 'owner') {
+    return (
+      <span style={{
+        background: 'linear-gradient(135deg, #ffd700 0%, #ff8c00 100%)',
+        color: '#1a1a2e',
+        padding: '3px 8px',
+        borderRadius: '4px',
+        fontSize: '0.7rem',
+        fontWeight: '700',
+        marginLeft: '8px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px'
+      }}>
+        OWNER
+      </span>
+    );
+  } else if (roleLower === 'admin') {
+    return (
+      <span style={{
+        background: 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)',
+        color: '#ffffff',
+        padding: '3px 8px',
+        borderRadius: '4px',
+        fontSize: '0.7rem',
+        fontWeight: '700',
+        marginLeft: '8px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px'
+      }}>
+        ADMIN
+      </span>
+    );
+  }
+  return null;
+};
+
 const PlayerList = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allUsers = useSelector((state) => state.users);
@@ -67,38 +105,20 @@ const PlayerList = () => {
                   )}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <h2 className={styles["item-title"]} style={{ margin: 0 }}>
+                  <h2 className={styles["item-title"]} style={{ margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
                     <Link to={"/profile/" + user.username} style={{color: '#ffffff', textDecoration: 'none'}}>
                       {user.username}
                     </Link>
+                    {getRoleBadge(user.role)}
                   </h2>
                 </div>
               </div>
               
               <div className={styles["item-meta"]}>
-                {user.first_name && (
+                {user.elo !== undefined && user.elo !== null && (
                   <div className={styles["meta-row"]}>
-                    <span className={styles["label"]}>Name:</span>
-                    <span>{user.first_name} {user.last_name || ''}</span>
-                  </div>
-                )}
-
-                {user.email && (
-                  <div className={styles["meta-row"]}>
-                    <span className={styles["label"]}>Email:</span>
-                    <span>{user.email}</span>
-                  </div>
-                )}
-
-                <div className={styles["meta-row"]}>
-                  <span className={styles["label"]}>User ID:</span>
-                  <span>{user.id}</span>
-                </div>
-
-                {user.role && (
-                  <div className={styles["meta-row"]}>
-                    <span className={styles["label"]}>Role:</span>
-                    <span>{user.role}</span>
+                    <span className={styles["label"]}>Rating:</span>
+                    <span style={{ fontWeight: '600', color: '#4a90e2' }}>{user.elo}</span>
                   </div>
                 )}
               </div>
