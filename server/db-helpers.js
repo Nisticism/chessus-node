@@ -49,11 +49,15 @@ const findUserById = async (id) => {
  * @returns {Promise<Object>} Created user object
  */
 const createUser = async (username, hashedPassword, email) => {
+  // Default board colors are the "Wood" theme
+  const defaultLightColor = '#e3d4bf';  // Wood light: hsl(35, 40%, 82%)
+  const defaultDarkColor = '#64472b';   // Wood dark: hsl(30, 40%, 28%)
+  
   await query(
-    "INSERT INTO chessusnode.users (username, password, email) VALUES (?,?,?)",
-    [username, hashedPassword, email]
+    "INSERT INTO chessusnode.users (username, password, email, light_square_color, dark_square_color) VALUES (?,?,?,?,?)",
+    [username, hashedPassword, email, defaultLightColor, defaultDarkColor]
   );
-  return { username, password: hashedPassword, email };
+  return { username, password: hashedPassword, email, light_square_color: defaultLightColor, dark_square_color: defaultDarkColor };
 };
 
 /**
