@@ -34,6 +34,7 @@ const PlayerPage = (props) => {
   const [alertMessage, setAlertMessage] = useState("");
   const [alertType, setAlertType] = useState(""); // "delete" or "picture"
   const [showPictureModal, setShowPictureModal] = useState(false);
+  const [pictureZoomLevel, setPictureZoomLevel] = useState(1);
   const [profilePicture, setProfilePicture] = useState(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState(null);
   const [uploadingPicture, setUploadingPicture] = useState(false);
@@ -556,39 +557,38 @@ const PlayerPage = (props) => {
             </div>
 
             <div className={styles["profile-content"]}>
-              <div className={styles["info-card"]}>
-                <h2 className={styles["card-title"]}>Personal Information</h2>
-                <div className={styles["info-grid"]}>
-                  <div className={styles["info-item"]}>
-                    <span className={styles["info-label"]}>First Name</span>
-                    <span className={styles["info-value"]}>
-                      {currentUser && username === currentUser.username ? (currentUser.first_name || "N/A") 
-                      : playerPageUser && playerPageUser.first_name ? playerPageUser.first_name : "N/A"}
-                    </span>
-                  </div>
-                  <div className={styles["info-item"]}>
-                    <span className={styles["info-label"]}>Last Name</span>
-                    <span className={styles["info-value"]}>
-                      {currentUser && username === currentUser.username ? (currentUser.last_name || "N/A") 
-                      : playerPageUser && playerPageUser.last_name ? playerPageUser.last_name : "N/A"}
-                    </span>
-                  </div>
-                  <div className={styles["info-item"]}>
-                    <span className={styles["info-label"]}>Email</span>
-                    <span className={styles["info-value"]}>
-                      {currentUser && username === currentUser.username ? (currentUser.email || "N/A") 
-                      : playerPageUser && playerPageUser.email ? playerPageUser.email : "N/A"}
-                    </span>
-                  </div>
-                  <div className={styles["info-item"]}>
-                    <span className={styles["info-label"]}>Last Active</span>
-                    <span className={styles["info-value"]}>
-                      {currentUser && username === currentUser.username ? (currentUser.last_active_at || "N/A") 
-                      : playerPageUser && playerPageUser.last_active_at ? playerPageUser.last_active_at : "N/A"}
-                    </span>
+              {/* Personal Information - only show on own profile */}
+              {currentUser && username === currentUser.username && (
+                <div className={styles["info-card"]}>
+                  <h2 className={styles["card-title"]}>Personal Information</h2>
+                  <div className={styles["info-grid"]}>
+                    <div className={styles["info-item"]}>
+                      <span className={styles["info-label"]}>First Name</span>
+                      <span className={styles["info-value"]}>
+                        {currentUser.first_name || "N/A"}
+                      </span>
+                    </div>
+                    <div className={styles["info-item"]}>
+                      <span className={styles["info-label"]}>Last Name</span>
+                      <span className={styles["info-value"]}>
+                        {currentUser.last_name || "N/A"}
+                      </span>
+                    </div>
+                    <div className={styles["info-item"]}>
+                      <span className={styles["info-label"]}>Email</span>
+                      <span className={styles["info-value"]}>
+                        {currentUser.email || "N/A"}
+                      </span>
+                    </div>
+                    <div className={styles["info-item"]}>
+                      <span className={styles["info-label"]}>Last Active</span>
+                      <span className={styles["info-value"]}>
+                        {currentUser.last_active_at || "N/A"}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <BioSection 
                 bio={playerPageUser?.bio}
@@ -688,26 +688,58 @@ const PlayerPage = (props) => {
       )}
 
       {showPictureModal && (
-        <div className={styles["modal-overlay"]} onClick={() => setShowPictureModal(false)}>
+        <div className={styles["modal-overlay"]} onClick={() => { setShowPictureModal(false); setPictureZoomLevel(1); }}>
           <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
             <div className={styles["modal-header"]}>
               <h2>{username}'s Profile Picture</h2>
-              <button className={styles["close-button"]} onClick={() => setShowPictureModal(false)}>×</button>
+              <button className={styles["close-button"]} onClick={() => { setShowPictureModal(false); setPictureZoomLevel(1); }}>×</button>
             </div>
             <div className={styles["modal-body"]}>
-              <div className={styles["enlarged-picture"]}>
-                <img 
-                  src={profilePicturePreview || displayPictureUrl || 
-                       ((currentUser && username === currentUser.username && currentUser.profile_picture) || 
-                        (playerPageUser && playerPageUser.username === username && playerPageUser.profile_picture))
-                       ? (profilePicturePreview || displayPictureUrl || `${ASSET_URL}${currentUser && username === currentUser.username ? currentUser.profile_picture : playerPageUser?.profile_picture}?t=${Date.now()}`)
-                       : DefaultAvatar}
-                  alt={`${username}'s profile`}
-                  className={styles["enlarged-picture-img"]}
-                  onError={(e) => {
-                    e.target.src = DefaultAvatar;
-                  }}
-                />
+              <div className={styles["enlarged-picture"]} style={{ overflow: pictureZoomLevel > 1 ? 'auto' : 'visible' }}>
+                <div className={styles["picture-container"]}>
+                  <img 
+                    src={profilePicturePreview || displayPictureUrl || 
+                         ((currentUser && username === currentUser.username && currentUser.profile_picture) || 
+                          (playerPageUser && playerPageUser.username === username && playerPageUser.profile_picture))
+                         ? (profilePicturePreview || displayPictureUrl || `${ASSET_URL}${currentUser && username === currentUser.username ? currentUser.profile_picture : playerPageUser?.profile_picture}?t=${Date.now()}`)
+                         : DefaultAvatar}
+                    alt={`${username}'s profile`}
+                    className={styles["enlarged-picture-img"]}
+                    style={{ 
+                      transform: `scale(${pictureZoomLevel})`,
+                      transformOrigin: 'center center',
+                      minWidth: pictureZoomLevel > 1 ? '400px' : 'auto',
+                      minHeight: pictureZoomLevel > 1 ? '400px' : 'auto'
+                    }}
+                    onError={(e) => {
+                      e.target.src = DefaultAvatar;
+                    }}
+                  />
+                  <div className={styles["zoom-controls"]}>
+                    <button 
+                      className={styles["zoom-button"]}
+                      onClick={() => setPictureZoomLevel(prev => Math.min(prev + 0.5, 4))}
+                      title="Zoom In"
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                        <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                        <path d="M12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/>
+                      </svg>
+                    </button>
+                    {pictureZoomLevel > 1 && (
+                      <button 
+                        className={styles["zoom-button"]}
+                        onClick={() => setPictureZoomLevel(prev => Math.max(prev - 0.5, 1))}
+                        title="Zoom Out"
+                      >
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                          <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                          <path d="M7 9h5v1H7z"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
               
               {canEditPicture() && (
@@ -735,6 +767,7 @@ const PlayerPage = (props) => {
                       className={styles["cancel-button"]}
                       onClick={() => {
                         setShowPictureModal(false);
+                        setPictureZoomLevel(1);
                         setProfilePicture(null);
                         setProfilePicturePreview(null);
                       }}
@@ -756,7 +789,7 @@ const PlayerPage = (props) => {
                 <div className={styles["modal-actions"]}>
                   <button
                     className={styles["cancel-button"]}
-                    onClick={() => setShowPictureModal(false)}
+                    onClick={() => { setShowPictureModal(false); setPictureZoomLevel(1); }}
                   >
                     Close
                   </button>
