@@ -157,6 +157,9 @@
 
   .friend-action {
     margin-top: 16px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .friend-button {
@@ -187,6 +190,16 @@
       &:hover:not(:disabled) {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
         box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+      }
+    }
+
+    &.challenge-friend {
+      background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+      box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+      
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.5);
       }
     }
 
@@ -270,6 +283,30 @@
     font-size: 2.5rem;
     color: #4a90e2;
     font-weight: 700;
+  }
+}
+
+.last-active-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 20px;
+  background: rgba(136, 136, 136, 0.1);
+  border: 1px solid #3a3a5c;
+  border-radius: 8px;
+
+  .last-active-label {
+    font-size: 0.75rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .last-active-value {
+    font-size: 0.95rem;
+    color: #ccc;
+    font-weight: 500;
   }
 }
 

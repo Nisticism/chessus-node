@@ -7,7 +7,7 @@ import DefaultAvatar from "../../assets/pieces/White-pawn.png";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
-const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride }) => {
+const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride, onChallenge }) => {
   const dispatch = useDispatch();
   const { friends, onlineUsers } = useSelector((state) => state.friends);
   const currentUser = useSelector((state) => state.authReducer.user);
@@ -92,15 +92,26 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride }
               <span className={styles["friend-elo"]}>ELO: {friend.elo || 1000}</span>
             </div>
           </Link>
-          {currentUser && currentUser.id === parseInt(userId) && (
-            <button
-              className={styles["remove-button"]}
-              onClick={() => handleRemoveFriend(friend.id)}
-              title="Remove friend"
-            >
-              ✕
-            </button>
-          )}
+          <div className={styles["friend-actions"]}>
+            {onChallenge && isOnline(friend.id) && (
+              <button
+                className={styles["challenge-button"]}
+                onClick={() => onChallenge(friend.id, friend.username)}
+                title="Challenge to a game"
+              >
+                ⚔️
+              </button>
+            )}
+            {currentUser && currentUser.id === parseInt(userId) && (
+              <button
+                className={styles["remove-button"]}
+                onClick={() => handleRemoveFriend(friend.id)}
+                title="Remove friend"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       ))}
     </div>

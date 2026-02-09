@@ -15,6 +15,7 @@ import DonorBadge from "../DonorBadge/DonorBadge";
 import MatchHistory from "../matchhistory/MatchHistory";
 import FriendsList from "../friendslist/FriendsList";
 import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests } from "../../actions/friends";
+import { useSocket } from "../../contexts/SocketContext";
 import DefaultAvatar from "../../assets/pieces/White-pawn.png";
 // import NotFound from "../notfound/NotFound";
 
@@ -22,7 +23,8 @@ const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 
 const PlayerPage = (props) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
-
+  const { onlineUsers } = useSelector((state) => state.friends);
+  const { connected } = useSocket();
   
   const [loading, setLoading] = useState(true);
   // const [ messageDisplay, setMessageDisplay ] = useState(false);
@@ -53,6 +55,23 @@ const PlayerPage = (props) => {
 
   const { username: routeUsername } = useParams();
   const username = routeUsername || (currentUser ? currentUser.username : "");
+
+  // Check if user is online
+  const isUserOnline = playerPageUser && onlineUsers?.includes(playerPageUser.id);
+
+  // Navigate to play page with challenge modal open
+  const handleChallenge = () => {
+    if (playerPageUser) {
+      navigate('/play', { 
+        state: { 
+          openChallengeFor: { 
+            id: playerPageUser.id, 
+            username: playerPageUser.username 
+          } 
+        } 
+      });
+    }
+  };
 
   const handleHome = () => {
     navigate("/");
@@ -516,12 +535,23 @@ const PlayerPage = (props) => {
                         Checking...
                       </button>
                     ) : friendshipStatus.areFriends || friendshipStatus.status === 'friends' ? (
-                      <button 
-                        className={`${styles["friend-button"]} ${styles["remove-friend"]}`}
-                        onClick={handleRemoveFriend}
-                      >
-                        ✓ Friends
-                      </button>
+                      <>
+                        <button 
+                          className={`${styles["friend-button"]} ${styles["remove-friend"]}`}
+                          onClick={handleRemoveFriend}
+                        >
+                          ✓ Friends
+                        </button>
+                        {isUserOnline && connected && (
+                          <button 
+                            className={`${styles["friend-button"]} ${styles["challenge-friend"]}`}
+                            onClick={handleChallenge}
+                            title="Challenge to a game"
+                          >
+                            ⚔️ Challenge
+                          </button>
+                        )}
+                      </>
                     ) : friendshipStatus.status === 'pending_outgoing' ? (
                       <button 
                         className={`${styles["friend-button"]} ${styles["pending"]}`}
@@ -554,6 +584,18 @@ const PlayerPage = (props) => {
                   {playerPageUser?.elo ?? currentUser?.elo ?? 1000}
                 </div>
               </div>
+              {playerPageUser?.last_active_at && (
+                <div className={styles["last-active-display"]}>
+                  <span className={styles["last-active-label"]}>Last Active:</span>
+                  <span className={styles["last-active-value"]}>
+                    {new Date(playerPageUser.last_active_at).toLocaleDateString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
+                    })}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className={styles["profile-content"]}>
@@ -583,7 +625,15 @@ const PlayerPage = (props) => {
                     <div className={styles["info-item"]}>
                       <span className={styles["info-label"]}>Last Active</span>
                       <span className={styles["info-value"]}>
-                        {currentUser.last_active_at || "N/A"}
+                        {currentUser.last_active_at 
+                          ? new Date(currentUser.last_active_at).toLocaleDateString(undefined, {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          : "N/A"}
                       </span>
                     </div>
                   </div>

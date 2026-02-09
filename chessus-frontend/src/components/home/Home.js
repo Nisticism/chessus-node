@@ -335,7 +335,7 @@ const Home = () => {
                   <span>Create boards of any size from tiny 4×4 arenas to massive 96×96 battlefields</span>
                 </li>
                 <li>
-                  <span className={styles["info-icon"]}>👥</span>
+                  <span className={styles["info-icon"]}>⚔</span>
                   <span>Support 2+ players with customizable turn actions and team configurations</span>
                 </li>
               </ul>
@@ -377,7 +377,7 @@ const Home = () => {
           </Link>
 
           <Link to="/community/players" className={styles["feature-card"]}>
-            <div className={styles["feature-icon"]}>👥</div>
+            <div className={styles["feature-icon"]}>⚔</div>
             <h3>Community</h3>
             <p>
               Connect with other strategists, view player profiles, check the leaderboard, 

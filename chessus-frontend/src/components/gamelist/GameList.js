@@ -144,7 +144,7 @@ const GameList = () => {
 
             <div className={styles["game-stats"]}>
               <div className={styles["stat-item"]}>
-                <span className={styles["stat-icon"]}>👥</span>
+                <span className={styles["stat-icon"]}>⚔</span>
                 <span>{formatPlayerCount(game.player_count)}</span>
               </div>
               <div className={styles["stat-item"]}>

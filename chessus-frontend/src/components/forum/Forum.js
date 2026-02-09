@@ -149,7 +149,7 @@ const Forum = () => {
             {currentForum.game_type_id && (
               <div className={styles["forum-game-link"]}>
                 <Link to={`/games/${currentForum.game_type_id}`}>
-                  🎮 {currentForum.game_name || 'View Game'}
+                  ♟ {currentForum.game_name || 'View Game'}
                 </Link>
               </div>
             )}

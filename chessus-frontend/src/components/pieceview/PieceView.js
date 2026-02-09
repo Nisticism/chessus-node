@@ -677,7 +677,7 @@ const PieceView = () => {
             </div>
           ) : (
             <div className={styles["no-abilities"]}>
-              <span className={styles["no-abilities-icon"]}>🎮</span>
+              <span className={styles["no-abilities-icon"]}>♟</span>
               <span>Not used in any games yet</span>
             </div>
           )}

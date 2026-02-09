@@ -67,7 +67,7 @@ const Streams = () => {
     { id: "tournament", name: "Tournaments", icon: "🏆" },
     { id: "tutorial", name: "Tutorials", icon: "📚" },
     { id: "casual", name: "Casual", icon: "☕" },
-    { id: "community", name: "Community", icon: "👥" },
+    { id: "community", name: "Community", icon: "⚔" },
   ];
 
   const filteredStreams = streams.filter((stream) => {
