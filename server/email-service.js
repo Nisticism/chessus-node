@@ -166,7 +166,7 @@ const getWelcomeEmailContent = (username) => `
   </p>
   
   <div class="highlight-box">
-    <p class="highlight-text">🎮 Your account is now active!</p>
+    <p class="highlight-text">♟ Your account is now active!</p>
   </div>
 
   <p class="message">
@@ -214,7 +214,7 @@ const getDonationEmailContent = (username, amount) => `
   <p class="message">
     🚀 <strong>Platform Development</strong> - New features and improvements<br>
     🖥️ <strong>Server Costs</strong> - Keeping the site fast and reliable<br>
-    👥 <strong>Community Growth</strong> - Tools and resources for our players<br>
+    ⚔ <strong>Community Growth</strong> - Tools and resources for our players<br>
     🎨 <strong>Content Creation</strong> - Tutorials, guides, and game showcases<br>
     🐛 <strong>Maintenance</strong> - Bug fixes and security updates
   </p>
