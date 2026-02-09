@@ -22,6 +22,7 @@ export const SocketProvider = ({ children }) => {
   const [currentGame, setCurrentGame] = useState(null);
   const { user } = useSelector((state) => state.authReducer);
   const reconnectAttempts = useRef(0);
+  const lastAuthRef = useRef(null); // Track last auth to prevent duplicate emits
   const maxReconnectAttempts = 5;
 
   // Initialize socket connection
@@ -40,19 +41,13 @@ export const SocketProvider = ({ children }) => {
       console.log('Socket connected:', newSocket.id);
       setConnected(true);
       reconnectAttempts.current = 0;
-
-      // Authenticate if user is logged in
-      if (user) {
-        newSocket.emit('authenticate', {
-          userId: user.id,
-          username: user.username
-        });
-      }
+      // Authentication is handled by the separate useEffect that watches [user, socket, connected]
     });
 
     newSocket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
       setConnected(false);
+      lastAuthRef.current = null; // Reset so re-auth works on reconnect
     });
 
     newSocket.on('connect_error', (error) => {
@@ -98,6 +93,11 @@ export const SocketProvider = ({ children }) => {
   // Re-authenticate when user changes
   useEffect(() => {
     if (socket && connected && user) {
+      // Prevent duplicate auth for the same user/socket combination
+      const authKey = `${user.id}-${socket.id}`;
+      if (lastAuthRef.current === authKey) return;
+      lastAuthRef.current = authKey;
+
       socket.emit('authenticate', {
         userId: user.id,
         username: user.username
@@ -127,16 +127,22 @@ export const SocketProvider = ({ children }) => {
         return;
       }
 
-      const handleGameCreated = ({ gameId, gameState }) => {
+      let timeoutId;
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
         socket.off('gameCreated', handleGameCreated);
         socket.off('error', handleError);
+      };
+
+      const handleGameCreated = ({ gameId, gameState }) => {
+        cleanup();
         setCurrentGame(gameState);
         resolve({ gameId, gameState });
       };
 
       const handleError = ({ message }) => {
-        socket.off('gameCreated', handleGameCreated);
-        socket.off('error', handleError);
+        cleanup();
         reject(new Error(message));
       };
 
@@ -152,9 +158,8 @@ export const SocketProvider = ({ children }) => {
       socket.emit('createGame', emitData);
 
       // Timeout after 10 seconds
-      setTimeout(() => {
-        socket.off('gameCreated', handleGameCreated);
-        socket.off('error', handleError);
+      timeoutId = setTimeout(() => {
+        cleanup();
         reject(new Error('Game creation timed out'));
       }, 10000);
     });
@@ -168,18 +173,24 @@ export const SocketProvider = ({ children }) => {
         return;
       }
 
+      let timeoutId;
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        socket.off('playerJoined', handlePlayerJoined);
+        socket.off('error', handleError);
+      };
+
       const handlePlayerJoined = ({ gameId: joinedGameId, gameState, newPlayer }) => {
         if (joinedGameId === gameId) {
-          socket.off('playerJoined', handlePlayerJoined);
-          socket.off('error', handleError);
+          cleanup();
           setCurrentGame(gameState);
           resolve({ gameState, newPlayer });
         }
       };
 
       const handleError = ({ message }) => {
-        socket.off('playerJoined', handlePlayerJoined);
-        socket.off('error', handleError);
+        cleanup();
         reject(new Error(message));
       };
 
@@ -193,9 +204,8 @@ export const SocketProvider = ({ children }) => {
       });
 
       // Timeout after 10 seconds
-      setTimeout(() => {
-        socket.off('playerJoined', handlePlayerJoined);
-        socket.off('error', handleError);
+      timeoutId = setTimeout(() => {
+        cleanup();
         reject(new Error('Join game timed out'));
       }, 10000);
     });
@@ -209,16 +219,22 @@ export const SocketProvider = ({ children }) => {
         return;
       }
 
-      const handleGameState = (gameState) => {
+      let timeoutId;
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
         socket.off('gameState', handleGameState);
         socket.off('error', handleError);
+      };
+
+      const handleGameState = (gameState) => {
+        cleanup();
         setCurrentGame(gameState);
         resolve(gameState);
       };
 
       const handleError = ({ message }) => {
-        socket.off('gameState', handleGameState);
-        socket.off('error', handleError);
+        cleanup();
         reject(new Error(message));
       };
 
@@ -227,9 +243,8 @@ export const SocketProvider = ({ children }) => {
 
       socket.emit('getGameState', { gameId });
 
-      setTimeout(() => {
-        socket.off('gameState', handleGameState);
-        socket.off('error', handleError);
+      timeoutId = setTimeout(() => {
+        cleanup();
         reject(new Error('Get game state timed out'));
       }, 10000);
     });

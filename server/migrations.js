@@ -1595,6 +1595,33 @@ Join us in revolutionizing chess, one variant at a time.
 
   // Drop the unique constraint and add a new one that allows duplicate pending requests to be declined then re-sent
   // This is handled by the application logic - we'll keep the unique constraint but use status appropriately
+
+  // Add friend challenge columns to games table
+  try {
+    const isChallengeCol = await columnExists('games', 'is_challenge');
+    if (!isChallengeCol) {
+      await runMigration(
+        `ALTER TABLE games ADD COLUMN is_challenge TINYINT(1) DEFAULT 0 AFTER other_data`,
+        "Add is_challenge column to games table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_challenge column to games table:', err.message);
+  }
+
+  try {
+    const challengedUserIdCol = await columnExists('games', 'challenged_user_id');
+    if (!challengedUserIdCol) {
+      await runMigration(
+        `ALTER TABLE games ADD COLUMN challenged_user_id INT NULL AFTER is_challenge`,
+        "Add challenged_user_id column to games table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding challenged_user_id column to games table:', err.message);
+  }
   
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
