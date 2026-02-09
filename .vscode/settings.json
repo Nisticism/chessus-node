@@ -1,0 +1,17 @@
+{
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/build/**": true,
+    "**/sound-library-backup/**": true,
+    "**/uploads/**": true
+  },
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/sound-library-backup": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/build": true,
+    "**/sound-library-backup": true
+  }
+}
