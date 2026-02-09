@@ -1110,12 +1110,14 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
           piecesToInsert = piecesData;
         } else if (typeof piecesData === 'object') {
           // Convert object format {"row,col": {...}} to array
+          // The key determines the position - use it as the source of truth
           piecesToInsert = Object.entries(piecesData).map(([key, piece]) => {
             const [row, col] = key.split(',').map(Number);
             return {
               ...piece,
-              x: col || piece.x || 0,
-              y: row || piece.y || 0
+              // Key is the source of truth for position (handles 0 values correctly)
+              x: col,
+              y: row
             };
           });
         }
@@ -1123,12 +1125,12 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         // Insert each piece
         for (const piece of piecesToInsert) {
           if (piece.piece_id) {
-            const playerNum = piece.player_id || piece.player_number || piece.player || 1;
+            const playerNum = Number(piece.player_id ?? piece.player_number ?? piece.player ?? 1);
             await dbHelpers.addPieceToGameType(
               gameId,
               piece.piece_id,
-              piece.x || 0,
-              piece.y || 0,
+              piece.x ?? 0,
+              piece.y ?? 0,
               playerNum,
               piece.ends_game_on_checkmate || false,
               piece.ends_game_on_capture || false,
@@ -2482,12 +2484,14 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
           piecesToInsert = piecesData;
         } else if (typeof piecesData === 'object') {
           // Convert object format {"row,col": {...}} to array
+          // The key determines the position - use it as the source of truth
           piecesToInsert = Object.entries(piecesData).map(([key, piece]) => {
             const [row, col] = key.split(',').map(Number);
             return {
               ...piece,
-              x: col || piece.x || 0,
-              y: row || piece.y || 0
+              // Key is the source of truth for position (handles 0 values correctly)
+              x: col,
+              y: row
             };
           });
         }
@@ -2498,9 +2502,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
             await dbHelpers.addPieceToGameType(
               gameId,
               piece.piece_id,
-              piece.x || 0,
-              piece.y || 0,
-              piece.player_id || piece.player_number || piece.player || 1,
+              piece.x ?? 0,
+              piece.y ?? 0,
+              Number(piece.player_id ?? piece.player_number ?? piece.player ?? 1),
               piece.ends_game_on_checkmate || false,
               piece.ends_game_on_capture || false,
               piece.manual_castling_partners || false,
