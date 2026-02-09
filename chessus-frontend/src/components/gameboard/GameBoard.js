@@ -44,14 +44,19 @@ const GameBoard = (props) => {
 
   createGrid();
 
+  // Use squareLength prop or calculate default
+  const squareSize = props.squareLength || Math.min(60, 480 / Math.max(getHorizontal(props.horizontal), getVertical(props.vertical)));
+
   return (
     <div className={styles["game-board-wrapper"]}>
       <div className={styles["game-board"]}>
         <div 
           className={styles["board-grid"]}
           style={{
-            gridTemplateRows: `repeat(${getVertical(props.vertical)}, 1fr)`,
-            gridTemplateColumns: `repeat(${getHorizontal(props.horizontal)}, 1fr)`
+            gridTemplateRows: `repeat(${getVertical(props.vertical)}, ${squareSize}px)`,
+            gridTemplateColumns: `repeat(${getHorizontal(props.horizontal)}, ${squareSize}px)`,
+            width: 'fit-content',
+            aspectRatio: 'unset'
           }}
         >
           { board }

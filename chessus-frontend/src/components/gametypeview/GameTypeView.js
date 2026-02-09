@@ -1120,11 +1120,12 @@ const GameTypeView = () => {
               className={styles["board"]}
               style={{
                 display: 'grid',
-                gridTemplateRows: `repeat(${game.board_height}, 1fr)`,
-                gridTemplateColumns: `repeat(${game.board_width}, 1fr)`,
+                gridTemplateRows: `repeat(${game.board_height}, ${Math.min(60, 720 / Math.max(game.board_width, game.board_height))}px)`,
+                gridTemplateColumns: `repeat(${game.board_width}, ${Math.min(60, 720 / Math.max(game.board_width, game.board_height))}px)`,
                 border: '2px solid #ccc',
                 width: 'fit-content',
-                margin: '0 auto'
+                margin: '0 auto',
+                aspectRatio: 'unset'
               }}
             >
               {renderBoard()}

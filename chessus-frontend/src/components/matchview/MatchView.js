@@ -88,6 +88,8 @@ const MatchView = () => {
 
     const boardWidth = match.boardWidth || 8;
     const boardHeight = match.boardHeight || 8;
+    // Calculate square size to keep squares square
+    const squareSize = Math.min(60, 480 / Math.max(boardWidth, boardHeight));
     const squares = [];
     const pieces = Array.isArray(match.pieces) ? match.pieces : [];
 
@@ -126,8 +128,10 @@ const MatchView = () => {
       <div 
         className={styles["game-board"]}
         style={{
-          gridTemplateColumns: `repeat(${boardWidth}, 1fr)`,
-          gridTemplateRows: `repeat(${boardHeight}, 1fr)`
+          gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
+          gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
+          width: 'fit-content',
+          aspectRatio: 'unset'
         }}
       >
         {squares}

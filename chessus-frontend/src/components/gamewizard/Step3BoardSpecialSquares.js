@@ -512,13 +512,15 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           className={styles["placement-board"]}
           style={{
             display: 'grid',
-            gridTemplateRows: `repeat(${gameData.board_height}, 1fr)`,
-            gridTemplateColumns: `repeat(${gameData.board_width}, 1fr)`,
+            gridTemplateRows: `repeat(${gameData.board_height}, ${Math.min(80, 600 / Math.max(gameData.board_width, gameData.board_height))}px)`,
+            gridTemplateColumns: `repeat(${gameData.board_width}, ${Math.min(80, 600 / Math.max(gameData.board_width, gameData.board_height))}px)`,
             border: '1px solid var(--board-border, #333)',
             borderRadius: '5px',
             padding: '15px',
             gap: 0,
-            overflow: 'hidden'
+            overflow: 'hidden',
+            width: 'fit-content',
+            aspectRatio: 'unset'
           }}
         >
           {renderBoard}

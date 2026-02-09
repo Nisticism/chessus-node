@@ -366,11 +366,12 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
           className={styles["placement-board"]}
           style={{
             display: 'grid',
-            gridTemplateRows: `repeat(${gameData.board_height}, 1fr)`,
-            gridTemplateColumns: `repeat(${gameData.board_width}, 1fr)`,
+            gridTemplateRows: `repeat(${gameData.board_height}, ${Math.min(60, 480 / Math.max(gameData.board_width, gameData.board_height))}px)`,
+            gridTemplateColumns: `repeat(${gameData.board_width}, ${Math.min(60, 480 / Math.max(gameData.board_width, gameData.board_height))}px)`,
             border: '2px solid #ccc',
             width: 'fit-content',
-            margin: '20px auto'
+            margin: '20px auto',
+            aspectRatio: 'unset'
           }}
         >
           {renderBoard()}

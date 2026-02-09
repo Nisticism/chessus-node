@@ -1880,6 +1880,8 @@ const LiveGame = () => {
 
     const boardWidth = gameState.gameType?.board_width || 8;
     const boardHeight = gameState.gameType?.board_height || 8;
+    // Calculate square size to keep squares square on smaller screens
+    const smallScreenSquareSize = Math.min(50, Math.min(window.innerWidth * 0.9, 480) / Math.max(boardWidth, boardHeight));
     const pieces = parsePieces(gameState.pieces);
     const lastMove = gameState.moveHistory?.slice(-1)[0];
     const showHelpers = gameState.showPieceHelpers;
@@ -2083,9 +2085,11 @@ const LiveGame = () => {
         ref={boardRef}
         className={styles["game-board"]}
         style={{
-          gridTemplateColumns: windowWidth > 1200 ? `repeat(${boardWidth}, 85px)` : `repeat(${boardWidth}, 1fr)`,
-          gridTemplateRows: windowWidth > 1200 ? `repeat(${boardHeight}, 85px)` : `repeat(${boardHeight}, 1fr)`,
-          position: 'relative'
+          gridTemplateColumns: windowWidth > 1200 ? `repeat(${boardWidth}, 85px)` : `repeat(${boardWidth}, ${smallScreenSquareSize}px)`,
+          gridTemplateRows: windowWidth > 1200 ? `repeat(${boardHeight}, 85px)` : `repeat(${boardHeight}, ${smallScreenSquareSize}px)`,
+          position: 'relative',
+          width: 'fit-content',
+          aspectRatio: 'unset'
         }}
       >
         {squares}
