@@ -50,7 +50,7 @@ const Menu = ({ currentUser, logOut }) => {
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'play' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item upper-right-corner" to="/play">
+        <Link as="div" className="inner-menu-item" to="/play">
           Browse open games
         </Link>
         <Link as="div" className="inner-menu-item" to="/sandbox">
@@ -59,7 +59,7 @@ const Menu = ({ currentUser, logOut }) => {
         <Link as="div" className="inner-menu-item" to="/create/games">
           View game varients
         </Link>
-        <Link as="div" className="inner-menu-item lower-corner" to="/home">
+        <Link as="div" className="inner-menu-item" to="/home">
           Play with friends
         </Link>
       </div>
@@ -78,13 +78,13 @@ const Menu = ({ currentUser, logOut }) => {
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'create' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item upper-right-corner" to="/create/game">
+        <Link as="div" className="inner-menu-item" to="/create/game">
           Design a game
         </Link>
-        <Link as="div" className="inner-menu-item lower-corner" to="/create/piece">
+        <Link as="div" className="inner-menu-item" to="/create/piece">
           Design a piece
         </Link>
-        <Link as="div" className="inner-menu-item lower-corner" to="/create/pieces">
+        <Link as="div" className="inner-menu-item" to="/create/pieces">
           View pieces
         </Link>
       </div>
@@ -101,7 +101,7 @@ const Menu = ({ currentUser, logOut }) => {
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'media' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item upper-right-corner" to="/forums">
+        <Link as="div" className="inner-menu-item" to="/forums">
           General forums
         </Link>
         <Link as="div" className="inner-menu-item" to="/forums/game">
@@ -113,7 +113,7 @@ const Menu = ({ currentUser, logOut }) => {
         <Link as="div" className="inner-menu-item" to="/media/streams">
           Streams
         </Link>
-        <Link as="div" className="inner-menu-item lower-corner" to="/news">
+        <Link as="div" className="inner-menu-item" to="/news">
           News
         </Link>
       </div>
@@ -127,13 +127,13 @@ const Menu = ({ currentUser, logOut }) => {
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'community' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item upper-right-corner" to="/community/players">
+        <Link as="div" className="inner-menu-item" to="/community/players">
           Players
         </Link>
         <Link as="div" className="inner-menu-item" to="/community/leaderboard">
           Leaderboard
         </Link>
-        <Link as="div" className="inner-menu-item lower-corner" to="/donate">
+        <Link as="div" className="inner-menu-item" to="/donate">
           Donate
         </Link>
       </div>

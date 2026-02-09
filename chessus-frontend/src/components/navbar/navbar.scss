@@ -165,13 +165,8 @@ p {
   display: none;
 }
 
-.upper-right-corner {
-  border-radius: 0px 4px 0px 0px;
-}
-
-.lower-corner {
-  border-radius: 0px 0px 4px 4px;
-}
+// Removed hardcoded .upper-right-corner and .lower-corner classes
+// Border radius is now automatically applied via :first-child and :last-child selectors
 
 .nav-item:hover {
   background: $nav-hover-color;
@@ -197,6 +192,20 @@ p {
   }
   .inner-menu-item:hover {
     background:$lighter-hover;
+  }
+  
+  // Auto-apply rounded corners to first and last submenu items
+  .inner-menu-item:first-child {
+    border-radius: 0px 4px 0px 0px;
+  }
+  
+  .inner-menu-item:last-child {
+    border-radius: 0px 0px 4px 4px;
+  }
+  
+  // Single item gets both top-right and bottom corners
+  .inner-menu-item:only-child {
+    border-radius: 0px 4px 4px 4px;
   }
 }
 
