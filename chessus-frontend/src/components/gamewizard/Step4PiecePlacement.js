@@ -42,19 +42,26 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       return false; // Mirrored only works for 2 players
     }
     
+    // Helper to get the player ID from a piece (handles different property names and type coercion)
+    const getPiecePlayerId = (piece) => {
+      const id = piece.player_id ?? piece.player_number ?? piece.player;
+      return id !== undefined && id !== null ? Number(id) : undefined;
+    };
+    
     // Group pieces by player, including their positions from the key
     const piecesByPlayer = {};
     Object.entries(piecePlacements).forEach(([key, piece]) => {
       const [row, col] = key.split(',').map(Number);
       const pieceWithPos = { ...piece, y: row, x: col };
+      const playerId = getPiecePlayerId(piece);
       
-      if (!piecesByPlayer[piece.player_id]) {
-        piecesByPlayer[piece.player_id] = [];
+      if (!piecesByPlayer[playerId]) {
+        piecesByPlayer[playerId] = [];
       }
-      piecesByPlayer[piece.player_id].push(pieceWithPos);
+      piecesByPlayer[playerId].push(pieceWithPos);
     });
     
-    const playerIds = Object.keys(piecesByPlayer).sort();
+    const playerIds = Object.keys(piecesByPlayer).map(Number).sort((a, b) => a - b);
     
     // Empty board is considered symmetric - allow mirrored mode
     if (playerIds.length === 0) {
@@ -364,7 +371,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         const images = JSON.parse(placement.image_location);
         if (Array.isArray(images) && images.length > 0) {
           // player_number/player_id 1 -> index 0, player_number/player_id 2 -> index 1, etc.
-          const playerId = placement.player_id || placement.player_number || placement.player || 1;
+          const playerId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
           const imageIndex = Math.min(playerId - 1, images.length - 1);
           return getImageUrl(images[imageIndex]);
         }
@@ -381,7 +388,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           const images = JSON.parse(piece.image_location);
           if (Array.isArray(images) && images.length > 0) {
             // Use player_id/player_number to select correct image
-            const playerId = placement.player_id || placement.player_number || placement.player || 1;
+            const playerId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
             const imageIndex = Math.min(playerId - 1, images.length - 1);
             return getImageUrl(images[imageIndex]);
           }
@@ -502,7 +509,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                 onDragStart={(e) => handleDragStart(e, key)}
                 onDragEnd={handleDragEnd}
                 onMouseEnter={() => {
-                  setHoveredPiecePosition({ row, col, pieceId: placement.piece_id, playerId: placement.player_id });
+                  const playerId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
+                  setHoveredPiecePosition({ row, col, pieceId: placement.piece_id, playerId });
                 }}
                 onMouseLeave={() => {
                   if (!draggedPiece) setHoveredPiecePosition(null);
@@ -536,17 +544,22 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                     {placement.piece_name?.charAt(0) || '?'}
                   </span>
                 )}
-                <div className={styles["player-indicator"]} style={{
-                  position: 'absolute',
-                  bottom: '2px',
-                  right: '2px',
-                  background: getPlayerColor(placement.player_id),
-                  width: `${squareSize * 0.2}px`,
-                  height: `${squareSize * 0.2}px`,
-                  borderRadius: '50%',
-                  border: placement.player_id === 1 ? '1px solid #666' : '1px solid #fff',
-                  pointerEvents: 'none'
-                }} />
+                {(() => {
+                  const playerId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
+                  return (
+                    <div className={styles["player-indicator"]} style={{
+                      position: 'absolute',
+                      bottom: '2px',
+                      right: '2px',
+                      background: getPlayerColor(playerId),
+                      width: `${squareSize * 0.2}px`,
+                      height: `${squareSize * 0.2}px`,
+                      borderRadius: '50%',
+                      border: playerId === 1 ? '1px solid #666' : '1px solid #fff',
+                      pointerEvents: 'none'
+                    }} />
+                  );
+                })()}
                 {placement.ends_game_on_checkmate && (
                   <div className={styles["checkmate-indicator"]} style={{
                     position: 'absolute',
@@ -554,7 +567,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                     left: '2px',
                     fontSize: `${squareSize * 0.25}px`,
                     pointerEvents: 'none',
-                    color: Number(placement.player_id) === 1 ? 'white' : 'black'
+                    color: Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1) === 1 ? 'white' : 'black'
                   }} title="Game ends if checkmated">
                     ♔
                   </div>
@@ -583,9 +596,15 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const handleMirrorPieces = useCallback((sourcePlayerId, targetPlayerId) => {
     const boardHeight = gameData.board_height || 8;
 
+    // Helper to get the player ID from a piece (handles different property names and type coercion)
+    const getPiecePlayerId = (piece) => {
+      const id = piece.player_id ?? piece.player_number ?? piece.player;
+      return id !== undefined && id !== null ? Number(id) : undefined;
+    };
+
     // Get source player's pieces
     const sourcePieces = Object.entries(piecePlacements).filter(
-      ([, piece]) => piece.player_id === sourcePlayerId
+      ([, piece]) => getPiecePlayerId(piece) === Number(sourcePlayerId)
     );
 
     if (sourcePieces.length === 0) {
@@ -595,7 +614,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
 
     // Check if target player already has pieces
     const targetPieceCount = Object.values(piecePlacements).filter(
-      piece => piece.player_id === targetPlayerId
+      piece => getPiecePlayerId(piece) === Number(targetPlayerId)
     ).length;
 
     if (targetPieceCount > 0) {
@@ -609,26 +628,36 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     // Build new placements: start by removing all target player's pieces
     const newPlacements = {};
     Object.entries(piecePlacements).forEach(([key, piece]) => {
-      if (piece.player_id !== targetPlayerId) {
+      if (getPiecePlayerId(piece) !== Number(targetPlayerId)) {
         newPlacements[key] = piece;
       }
     });
 
     // Mirror source player's pieces to target side
     let skipped = 0;
-    sourcePieces.forEach(([key]) => {
+    sourcePieces.forEach(([key, sourcePiece]) => {
       const [row, col] = key.split(',').map(Number);
       const mirroredRow = boardHeight - 1 - row;
       const mirroredKey = `${mirroredRow},${col}`;
 
       // Don't overwrite source player's own pieces at the mirrored position
-      if (newPlacements[mirroredKey] && newPlacements[mirroredKey].player_id === sourcePlayerId) {
+      if (newPlacements[mirroredKey] && getPiecePlayerId(newPlacements[mirroredKey]) === Number(sourcePlayerId)) {
         skipped++;
         return;
       }
 
+      // Copy the piece, keeping all fields but setting the correct player_id
+      // We need to explicitly set coordinates to avoid any stale x/y values from the source
+      // and remove image_url so the fallback logic uses image_location with the new player_id
       newPlacements[mirroredKey] = {
-        ...piecePlacements[key],
+        piece_id: sourcePiece.piece_id,
+        piece_name: sourcePiece.piece_name,
+        image_location: sourcePiece.image_location,
+        ends_game_on_checkmate: sourcePiece.ends_game_on_checkmate || false,
+        ends_game_on_capture: sourcePiece.ends_game_on_capture || false,
+        manual_castling_partners: sourcePiece.manual_castling_partners || false,
+        castling_partner_left_key: sourcePiece.castling_partner_left_key || null,
+        castling_partner_right_key: sourcePiece.castling_partner_right_key || null,
         player_id: targetPlayerId,
       };
     });
@@ -643,7 +672,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const getPieceCounts = () => {
     const counts = {};
     Object.values(piecePlacements).forEach(placement => {
-      const key = `Player ${placement.player_id}`;
+      const playerId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
+      const key = `Player ${playerId}`;
       counts[key] = (counts[key] || 0) + 1;
     });
     return counts;
@@ -753,13 +783,15 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           className={styles["placement-board"]}
           style={{
             display: 'grid',
-            gridTemplateRows: `repeat(${gameData.board_height}, 1fr)`,
-            gridTemplateColumns: `repeat(${gameData.board_width}, 1fr)`,
+            gridTemplateRows: `repeat(${gameData.board_height}, ${boardDimensions.squareSize}px)`,
+            gridTemplateColumns: `repeat(${gameData.board_width}, ${boardDimensions.squareSize}px)`,
             border: '1px solid var(--board-border, #333)',
             borderRadius: '5px',
             padding: '15px',
             gap: 0,
-            overflow: 'hidden'
+            overflow: 'hidden',
+            width: 'fit-content',
+            aspectRatio: 'unset'
           }}
         >
           {renderBoard}
