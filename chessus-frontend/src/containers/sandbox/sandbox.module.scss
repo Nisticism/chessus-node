@@ -412,6 +412,11 @@
   box-shadow: 0 2px 8px rgba(42, 91, 141, 0.3);
 }
 
+.board-container {
+  position: relative;
+  width: 100%;
+}
+
 .board {
   display: grid;
   gap: 0;
@@ -423,6 +428,8 @@
   border: 3px solid #1a2b3d;
   border-radius: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-sizing: border-box;
+  position: relative;
 }
 
 .board-square {
@@ -432,6 +439,9 @@
   justify-content: center;
   cursor: pointer;
   transition: filter 0.15s;
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
 
   &.light {
     background: #cad5e8;
@@ -541,6 +551,71 @@
   &.last-move {
     background: rgba(255, 235, 59, 0.35) !important;
   }
+
+  // Ranged attack highlights (selected piece) - uses ::before overlay so it stacks with move/capture styles
+  &.ranged-attack {
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 34, 34, 0.15);
+      border: 2px solid rgba(255, 34, 34, 0.5);
+      pointer-events: none;
+      z-index: 1;
+    }
+  }
+
+  // Ranged hover highlights - lighter overlay
+  &.hover-ranged {
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 34, 34, 0.1);
+      border: 2px solid rgba(255, 34, 34, 0.35);
+      pointer-events: none;
+      z-index: 1;
+    }
+  }
+
+  // Ranged drag target highlights
+  &.ranged-drag-target {
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 34, 34, 0.18);
+      border: 2px solid rgba(255, 34, 34, 0.6);
+      pointer-events: none;
+      z-index: 1;
+      animation: ranged-border-pulse 0.8s ease-in-out infinite alternate;
+    }
+  }
+}
+
+@keyframes ranged-border-pulse {
+  from { border-width: 2px; border-color: rgba(255, 34, 34, 0.5); }
+  to { border-width: 3px; border-color: rgba(255, 34, 34, 0.7); }
+}
+
+.ranged-icon {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 0.7rem;
+  z-index: 5;
+  pointer-events: none;
+  line-height: 1;
+}
+
+.ranged-arrow-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 100;
 }
 
 .special-square-indicator {
@@ -687,6 +762,27 @@
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+}
+
+.btn-mirror {
+  padding: 10px 18px;
+  background: rgba(33, 150, 243, 0.15);
+  border: 1px solid rgba(33, 150, 243, 0.4);
+  border-radius: 6px;
+  color: #2196F3;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(33, 150, 243, 0.25);
+    border-color: #2196F3;
+  }
+
+  &:active {
+    transform: scale(0.98);
   }
 }
 
@@ -870,6 +966,7 @@
 
   .board {
     max-width: 100%;
+    max-height: none;
     padding: 10px;
   }
   
@@ -944,6 +1041,8 @@
   }
 
   .board {
+    max-width: 100%;
+    max-height: none;
     padding: 8px;
   }
 

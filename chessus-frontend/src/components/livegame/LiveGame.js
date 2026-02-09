@@ -5,6 +5,7 @@ import { useSocket } from "../../contexts/SocketContext";
 import styles from "./livegame.module.scss";
 import soundManager from "../../utils/soundEffects";
 import PromotionModal from "./PromotionModal";
+import { canRangedAttackTo } from "../../helpers/pieceMovementUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -28,6 +29,35 @@ const getFirstImageUrl = (imageLocation) => {
       return imagePath;
     }
     // Add ASSET_URL prefix for all relative paths
+    return imagePath.startsWith('/') ? `${ASSET_URL}${imagePath}` : `${ASSET_URL}/uploads/pieces/${imagePath}`;
+  }
+  
+  return null;
+};
+
+// Helper to get image URL for a specific player (player 1 uses index 0, player 2 uses index 1)
+const getPlayerImageUrl = (imageLocation, playerNumber) => {
+  if (!imageLocation) return null;
+  
+  // Default to first image index for player 1, second for player 2
+  const imageIndex = playerNumber === 2 ? 1 : 0;
+  
+  try {
+    const images = JSON.parse(imageLocation);
+    if (Array.isArray(images) && images.length > 0) {
+      // Use the appropriate index, or fall back to the last available image
+      const actualIndex = Math.min(imageIndex, images.length - 1);
+      const imagePath = images[actualIndex];
+      if (imagePath.startsWith('http')) {
+        return imagePath;
+      }
+      return imagePath.startsWith('/') ? `${ASSET_URL}${imagePath}` : `${ASSET_URL}/uploads/pieces/${imagePath}`;
+    }
+  } catch {
+    const imagePath = imageLocation;
+    if (imagePath.startsWith('http')) {
+      return imagePath;
+    }
     return imagePath.startsWith('/') ? `${ASSET_URL}${imagePath}` : `${ASSET_URL}/uploads/pieces/${imagePath}`;
   }
   
@@ -95,6 +125,27 @@ const LiveGame = () => {
   const [specialSquares, setSpecialSquares] = useState({ range: {}, promotion: {}, control: {}, special: {} });
   const [pendingDrawOffer, setPendingDrawOffer] = useState(null); // {from, fromUsername} when opponent offers draw
   const [drawOfferSent, setDrawOfferSent] = useState(false); // Track if current user sent a draw offer
+  const [showCapturedPieces, setShowCapturedPieces] = useState(true); // Show/hide captured pieces section
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
+
+  // Ranged attack state
+  const [rangedAttackSource, setRangedAttackSource] = useState(null);
+  const [rangedMousePos, setRangedMousePos] = useState(null);
+  const [rangedTargetSquare, setRangedTargetSquare] = useState(null);
+  const boardRef = useRef(null);
+  const rightClickDataRef = useRef(null);
+  const [isRightClickActive, setIsRightClickActive] = useState(false);
+  const [rangedSelectedPiece, setRangedSelectedPiece] = useState(null); // for right-click-twice mode
+
+  // Track window width for responsive board sizing
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Load game state on mount
   useEffect(() => {
@@ -1172,11 +1223,39 @@ const LiveGame = () => {
       }
     }
     
+    // Check for ranged attack targets
+    if (piece.can_capture_enemy_via_range) {
+      for (let toY = 0; toY < boardHeight; toY++) {
+        for (let toX = 0; toX < boardWidth; toX++) {
+          if (toX === piece.x && toY === piece.y) continue;
+          const targetPiece = pieces.find(p => p.x === toX && p.y === toY);
+          const targetTeam = targetPiece?.player_id || targetPiece?.team;
+          // Skip friendly pieces - show all other squares within range
+          if (targetPiece && targetTeam === pieceTeam) continue;
+          // Already in moves as a regular capture? skip
+          if (moves.some(m => m.x === toX && m.y === toY)) continue;
+          if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
+            moves.push({
+              x: toX,
+              y: toY,
+              isCapture: !!targetPiece,
+              isFirstMoveOnly: false,
+              isRangedAttack: true
+            });
+          }
+        }
+      }
+    }
+    
     // Filter out moves that would leave the player in check (if mate_condition is enabled and not skipped)
     if (!skipCheckFilter && gameState?.gameType?.mate_condition && currentPlayer) {
-      return moves.filter(move => 
+      // Don't filter ranged attacks through check filter (they don't move the piece)
+      const regularMoves = moves.filter(m => !m.isRangedAttack);
+      const rangedMoves = moves.filter(m => m.isRangedAttack);
+      const filteredRegular = regularMoves.filter(move => 
         wouldMoveResolveCheck(piece, move.x, move.y, pieces, currentPlayer.position, boardWidth, boardHeight)
       );
+      return [...filteredRegular, ...rangedMoves];
     }
     
     return moves;
@@ -1184,6 +1263,11 @@ const LiveGame = () => {
 
   // Handle square click
   const handleSquareClick = useCallback((x, y) => {
+    // Clear ranged-twice selection on any left click
+    if (rangedSelectedPiece) {
+      setRangedSelectedPiece(null);
+    }
+
     // Allow selecting pieces to preview moves when waiting or during gameplay
     const canInteract = gameState && gameState.status !== 'completed';
     if (!canInteract) {
@@ -1230,6 +1314,12 @@ const LiveGame = () => {
     if (canMakeMove) {
       const move = validMoves.find(m => m.x === x && m.y === y);
       if (move) {
+        // Ranged zone squares (no enemy piece) are display-only, not executable
+        if (move.isRangedAttack && !move.isCapture) {
+          setSelectedPiece(null);
+          setValidMoves([]);
+          return;
+        }
         console.log('[MOVE ATTEMPT]', { 
           piece: selectedPiece.piece_name, 
           from: { x: selectedPiece.x, y: selectedPiece.y }, 
@@ -1246,6 +1336,10 @@ const LiveGame = () => {
           moveData.isCastling = true;
           moveData.castlingWith = move.castlingWith;
           moveData.castlingDirection = move.castlingDirection;
+        }
+        // Include ranged attack flag
+        if (move.isRangedAttack) {
+          moveData.isRangedAttack = true;
         }
         makeMove(parseInt(gameId), moveData);
         setSelectedPiece(null);
@@ -1279,7 +1373,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, makeMove, sendPremove, setPremove, gameId]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, makeMove, sendPremove, setPremove, gameId, rangedSelectedPiece]);
 
   // Handle piece hover for movement helpers
   const handlePieceHover = useCallback((piece) => {
@@ -1438,35 +1532,77 @@ const LiveGame = () => {
     setDragValidMoves([]);
   }, [draggedPiece, dragValidMoves, isMyTurn, gameState, makeMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef]);
 
-  // Handle right-click to move selected piece or cancel premove
-  const handleSquareRightClick = useCallback((e, x, y) => {
+  // Handle right-click mousedown for ranged attack drag detection
+  const handleSquareMouseDown = useCallback((e, x, y) => {
+    if (e.button !== 2) return;
+    if (!gameState || gameState.status === 'completed') return;
+
+    const pieces = parsePieces(gameState.pieces || []);
+    const clickedPiece = pieces.find(p => p.x === x && p.y === y);
+    const isOwnPiece = clickedPiece && currentPlayer &&
+      (clickedPiece.player_id === currentPlayer.position || clickedPiece.team === currentPlayer.position);
+
+    rightClickDataRef.current = {
+      piece: clickedPiece, x, y, time: Date.now(),
+      clientX: e.clientX, clientY: e.clientY,
+      isDrag: false, isOwnRangedPiece: !!(isOwnPiece && clickedPiece?.can_capture_enemy_via_range)
+    };
+
+    if (isOwnPiece && clickedPiece?.can_capture_enemy_via_range && isMyTurn &&
+        (gameState?.status === 'active' || gameState?.status === 'ready')) {
+      setIsRightClickActive(true);
+    }
+  }, [gameState, currentPlayer, isMyTurn, parsePieces]);
+
+  // Handle contextmenu on square
+  const handleSquareContextMenu = useCallback((e, x, y) => {
     e.preventDefault();
-    
-    console.log('Right-click:', { x, y, selectedPiece: selectedPiece?.piece_name, isMyTurn, status: gameState?.status, hasPremove: !!premove });
-    
+
+    const data = rightClickDataRef.current;
+    // If a ranged right-click is pending (hold detection active), skip normal handling
+    if (data && data.isOwnRangedPiece) return;
+
     // Right-click cancels premove if one exists
     if (premove) {
-      console.log('Cancelling premove via right-click');
       setPremove(null);
       sendClearPremove(parseInt(gameId));
       setSelectedPiece(null);
       setValidMoves([]);
+      rightClickDataRef.current = null;
       return;
     }
-    
+
+    // Right-click-twice: if a ranged piece was previously selected, execute ranged attack
+    if (rangedSelectedPiece && isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready')) {
+      const pieces = parsePieces(gameState?.pieces || []);
+      const targetPiece = pieces.find(p => p.x === x && p.y === y);
+      const sourceTeam = rangedSelectedPiece.player_id || rangedSelectedPiece.team;
+      const targetTeam = targetPiece?.player_id || targetPiece?.team;
+
+      if (targetPiece && targetTeam !== sourceTeam &&
+          canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam)) {
+        makeMove(parseInt(gameId), {
+          from: { x: rangedSelectedPiece.x, y: rangedSelectedPiece.y },
+          to: { x, y },
+          pieceId: rangedSelectedPiece.id,
+          isRangedAttack: true
+        });
+      }
+      setRangedSelectedPiece(null);
+      rightClickDataRef.current = null;
+      return;
+    }
+
     // If a piece is selected and it's our turn, try to move to the right-clicked square
-    const canMove = selectedPiece && isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
-    if (canMove) {
+    const canMoveSelected = selectedPiece && isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
+    if (canMoveSelected) {
       const move = validMoves.find(m => m.x === x && m.y === y);
-      console.log('Right-click move check:', { move, validMovesCount: validMoves.length });
       if (move) {
-        console.log('Right-click move executing:', { from: { x: selectedPiece.x, y: selectedPiece.y }, to: { x, y } });
         const moveData = {
           from: { x: selectedPiece.x, y: selectedPiece.y },
           to: { x, y },
           pieceId: selectedPiece.id
         };
-        // Include castling data if this is a castling move
         if (move.isCastling) {
           moveData.isCastling = true;
           moveData.castlingWith = move.castlingWith;
@@ -1477,11 +1613,121 @@ const LiveGame = () => {
         setValidMoves([]);
       }
     } else {
-      console.log('Right-click: clearing selection');
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [selectedPiece, validMoves, isMyTurn, gameState, makeMove, gameId, premove, sendClearPremove]);
+    rightClickDataRef.current = null;
+  }, [selectedPiece, validMoves, isMyTurn, gameState, makeMove, gameId, premove, sendClearPremove, currentPlayer, parsePieces, rangedSelectedPiece]);
+
+  // Global listeners for ranged right-click drag detection
+  useEffect(() => {
+    if (!isRightClickActive) return;
+
+    const DRAG_DISTANCE_THRESHOLD = 5;
+    const DRAG_TIME_THRESHOLD = 200;
+    const bw = gameState?.gameType?.board_width || 8;
+    const bh = gameState?.gameType?.board_height || 8;
+    const isFlipped = currentPlayer?.position === 2;
+
+    const getTargetSquare = (clientX, clientY) => {
+      if (!boardRef.current) return null;
+      const boardRect = boardRef.current.getBoundingClientRect();
+      const squareW = boardRect.width / bw;
+      const squareH = boardRect.height / bh;
+      const relX = clientX - boardRect.left;
+      const relY = clientY - boardRect.top;
+      if (relX >= 0 && relX < boardRect.width && relY >= 0 && relY < boardRect.height) {
+        const displayCol = Math.floor(relX / squareW);
+        const displayRow = Math.floor(relY / squareH);
+        const gameX = isFlipped ? (bw - 1 - displayCol) : displayCol;
+        const gameY = isFlipped ? (bh - 1 - displayRow) : displayRow;
+        return { x: gameX, y: gameY };
+      }
+      return null;
+    };
+
+    const handleMouseMove = (e) => {
+      const data = rightClickDataRef.current;
+      if (!data || !data.isOwnRangedPiece) return;
+
+      const dx = e.clientX - data.clientX;
+      const dy = e.clientY - data.clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const elapsed = Date.now() - data.time;
+
+      if (!data.isDrag && (dist > DRAG_DISTANCE_THRESHOLD || elapsed > DRAG_TIME_THRESHOLD)) {
+        data.isDrag = true;
+        setRangedAttackSource(data.piece);
+      }
+
+      if (data.isDrag) {
+        setRangedMousePos({ x: e.clientX, y: e.clientY });
+        setRangedTargetSquare(getTargetSquare(e.clientX, e.clientY));
+      }
+    };
+
+    const handleMouseUp = (e) => {
+      if (e.button !== 2) return;
+      const data = rightClickDataRef.current;
+      if (!data) { cleanup(); return; }
+
+      if (data.isDrag) {
+        // Drag mode — execute ranged attack
+        const target = getTargetSquare(e.clientX, e.clientY);
+        if (target && gameState?.pieces) {
+          const pieces = parsePieces(gameState.pieces);
+          const targetPiece = pieces.find(p => p.x === target.x && p.y === target.y);
+          const sourceTeam = data.piece.player_id || data.piece.team;
+          const targetTeam = targetPiece?.player_id || targetPiece?.team;
+
+          if (targetPiece && targetTeam !== sourceTeam &&
+              canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam)) {
+            makeMove(parseInt(gameId), {
+              from: { x: data.piece.x, y: data.piece.y },
+              to: { x: target.x, y: target.y },
+              pieceId: data.piece.id,
+              isRangedAttack: true
+            });
+          }
+        }
+      } else {
+        // Quick click on own ranged piece — enter right-click-twice mode
+        setRangedSelectedPiece(data.piece);
+      }
+      cleanup();
+    };
+
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleResize = () => {
+      if (rightClickDataRef.current?.isDrag) {
+        setRangedMousePos(prev => prev ? { ...prev } : null);
+      }
+    };
+
+    const cleanup = () => {
+      rightClickDataRef.current = null;
+      setIsRightClickActive(false);
+      setRangedAttackSource(null);
+      setRangedMousePos(null);
+      setRangedTargetSquare(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('contextmenu', handleContextMenu, { capture: true });
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isRightClickActive, gameState, currentPlayer, parsePieces, makeMove, gameId]);
 
   // Handle resign
   const handleResign = () => {
@@ -1594,6 +1840,29 @@ const LiveGame = () => {
       });
   }, [gameState?.pieces]);
 
+  // Compute captured pieces for each player from move history
+  const capturedPieces = useMemo(() => {
+    if (!gameState?.moveHistory) return { player1: [], player2: [] };
+    
+    const result = { player1: [], player2: [] };
+    
+    gameState.moveHistory.forEach(move => {
+      if (move.captured) {
+        // The capturing player is indicated by move.position (1 or 2)
+        // The captured piece belongs to the opponent
+        if (move.position === 1) {
+          // Player 1 captured this piece (so it was player 2's piece)
+          result.player1.push(move.captured);
+        } else {
+          // Player 2 captured this piece (so it was player 1's piece)
+          result.player2.push(move.captured);
+        }
+      }
+    });
+    
+    return result;
+  }, [gameState?.moveHistory]);
+
   // Convert display coordinates to game coordinates
   const toGameCoords = useCallback((displayX, displayY, boardWidth, boardHeight) => {
     if (shouldFlipBoard) {
@@ -1654,7 +1923,9 @@ const LiveGame = () => {
         const isLight = (gameX + gameY) % 2 === 0;
         const piece = pieces.find(p => p.x === gameX && p.y === gameY);
         const isSelected = selectedPiece && selectedPiece.x === gameX && selectedPiece.y === gameY;
-        const validMove = validMoves.find(m => m.x === gameX && m.y === gameY);
+        // Find regular and ranged moves separately so both styles can overlap
+        const regularMove = validMoves.find(m => m.x === gameX && m.y === gameY && !m.isRangedAttack);
+        const rangedMove = validMoves.find(m => m.x === gameX && m.y === gameY && m.isRangedAttack);
         const isLastMove = lastMove && (
           (lastMove.from?.x === gameX && lastMove.from?.y === gameY) ||
           (lastMove.to?.x === gameX && lastMove.to?.y === gameY)
@@ -1663,9 +1934,12 @@ const LiveGame = () => {
         // Check if this piece can move (only shown when it's your turn)
         const canMove = piece && movablePieceIds.has(piece.id);
         
-        // Check if this square shows a hovered piece's possible move
-        const hoveredMove = showHelpers && hoveredPiece && !selectedPiece 
-          ? hoveredMoves.find(m => m.x === gameX && m.y === gameY) 
+        // Check if this square shows a hovered piece's possible move (separate regular/ranged)
+        const hoveredRegularMove = showHelpers && hoveredPiece && !selectedPiece 
+          ? hoveredMoves.find(m => m.x === gameX && m.y === gameY && !m.isRangedAttack) 
+          : null;
+        const hoveredRangedMove = showHelpers && hoveredPiece && !selectedPiece 
+          ? hoveredMoves.find(m => m.x === gameX && m.y === gameY && m.isRangedAttack) 
           : null;
 
         // Check if this piece is in check
@@ -1678,6 +1952,19 @@ const LiveGame = () => {
         // Check for special square type
         const specialSquareType = getSpecialSquareType(gameY, gameX);
 
+        // Ranged attack highlights
+        const isRangedMove = !!rangedMove;
+        const isRangedHover = !!hoveredRangedMove;
+        // During ranged drag, highlight all valid ranged target squares (including empty)
+        const isRangedDragTarget = rangedAttackSource
+          && !(piece && ((piece.player_id || piece.team) === (rangedAttackSource.player_id || rangedAttackSource.team)))
+          && canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, gameY, gameX, rangedAttackSource, rangedAttackSource.player_id || rangedAttackSource.team);
+        // Right-click-twice mode: highlight all valid ranged squares (including empty)
+        const isRangedSelectedTarget = !rangedAttackSource && rangedSelectedPiece
+          && !(piece && ((piece.player_id || piece.team) === (rangedSelectedPiece.player_id || rangedSelectedPiece.team)))
+          && canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, gameY, gameX, rangedSelectedPiece, rangedSelectedPiece.player_id || rangedSelectedPiece.team);
+        const isRangedSelectedSource = rangedSelectedPiece && rangedSelectedPiece.x === gameX && rangedSelectedPiece.y === gameY;
+
         squares.push(
           <div
             key={`${displayX}-${displayY}`}
@@ -1685,14 +1972,18 @@ const LiveGame = () => {
               ${styles["board-square"]}
               ${isLight ? styles.light : styles.dark}
               ${isSelected ? styles.selected : ''}
-              ${validMove && !validMove.isCapture && !validMove.isFirstMoveOnly ? styles["valid-move"] : ''}
-              ${validMove && !validMove.isCapture && validMove.isFirstMoveOnly ? styles["valid-move-first-only"] : ''}
-              ${validMove && validMove.isCapture && !validMove.isFirstMoveOnly ? styles["valid-capture"] : ''}
-              ${validMove && validMove.isCapture && validMove.isFirstMoveOnly ? styles["valid-capture-first-only"] : ''}
-              ${hoveredMove && !hoveredMove.isCapture && !hoveredMove.isFirstMoveOnly ? styles["hover-move"] : ''}
-              ${hoveredMove && !hoveredMove.isCapture && hoveredMove.isFirstMoveOnly ? styles["hover-move-first-only"] : ''}
-              ${hoveredMove && hoveredMove.isCapture && !hoveredMove.isFirstMoveOnly ? styles["hover-capture"] : ''}
-              ${hoveredMove && hoveredMove.isCapture && hoveredMove.isFirstMoveOnly ? styles["hover-capture-first-only"] : ''}
+              ${regularMove && !regularMove.isCapture && !regularMove.isFirstMoveOnly ? styles["valid-move"] : ''}
+              ${regularMove && !regularMove.isCapture && regularMove.isFirstMoveOnly ? styles["valid-move-first-only"] : ''}
+              ${regularMove && regularMove.isCapture && !regularMove.isFirstMoveOnly ? styles["valid-capture"] : ''}
+              ${regularMove && regularMove.isCapture && regularMove.isFirstMoveOnly ? styles["valid-capture-first-only"] : ''}
+              ${isRangedMove ? styles["ranged-attack"] : ''}
+              ${hoveredRegularMove && !hoveredRegularMove.isCapture && !hoveredRegularMove.isFirstMoveOnly ? styles["hover-move"] : ''}
+              ${hoveredRegularMove && !hoveredRegularMove.isCapture && hoveredRegularMove.isFirstMoveOnly ? styles["hover-move-first-only"] : ''}
+              ${hoveredRegularMove && hoveredRegularMove.isCapture && !hoveredRegularMove.isFirstMoveOnly ? styles["hover-capture"] : ''}
+              ${hoveredRegularMove && hoveredRegularMove.isCapture && hoveredRegularMove.isFirstMoveOnly ? styles["hover-capture-first-only"] : ''}
+              ${isRangedHover ? styles["hover-ranged"] : ''}
+              ${isRangedDragTarget || isRangedSelectedTarget ? styles["ranged-drag-target"] : ''}
+              ${isRangedSelectedSource ? styles["selected"] : ''}
               ${isLastMove ? styles["last-move"] : ''}
               ${canMove ? styles["can-move"] : ''}
               ${isInCheck ? styles["in-check"] : ''}
@@ -1705,7 +1996,8 @@ const LiveGame = () => {
             onClick={() => handleSquareClick(gameX, gameY)}
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, gameX, gameY)}
-            onContextMenu={(e) => handleSquareRightClick(e, gameX, gameY)}
+            onMouseDown={(e) => handleSquareMouseDown(e, gameX, gameY)}
+            onContextMenu={(e) => handleSquareContextMenu(e, gameX, gameY)}
             style={{
               backgroundColor: isLight 
                 ? (currentUser?.light_square_color || '#cad5e8')
@@ -1713,6 +2005,9 @@ const LiveGame = () => {
               position: 'relative'
             }}
           >
+            {((isRangedMove && rangedMove?.isCapture) || (isRangedHover && hoveredRangedMove?.isCapture) || ((isRangedDragTarget || isRangedSelectedTarget) && piece)) && (
+              <span className={styles["ranged-icon"]}>💥</span>
+            )}
             {/* Special square indicator */}
             {specialSquareType && (
               <div className={`${styles["special-square-indicator"]} ${styles[specialSquareType]}`}>
@@ -1785,13 +2080,65 @@ const LiveGame = () => {
 
     return (
       <div 
+        ref={boardRef}
         className={styles["game-board"]}
         style={{
-          gridTemplateColumns: `repeat(${boardWidth}, 1fr)`,
-          gridTemplateRows: `repeat(${boardHeight}, 1fr)`
+          gridTemplateColumns: windowWidth > 1200 ? `repeat(${boardWidth}, 85px)` : `repeat(${boardWidth}, 1fr)`,
+          gridTemplateRows: windowWidth > 1200 ? `repeat(${boardHeight}, 85px)` : `repeat(${boardHeight}, 1fr)`,
+          position: 'relative'
         }}
       >
         {squares}
+        {rangedAttackSource && rangedMousePos && boardRef.current && (() => {
+          const boardRect = boardRef.current.getBoundingClientRect();
+          const squareWidth = boardRect.width / boardWidth;
+          const squareHeight = boardRect.height / boardHeight;
+          // Convert game coords to display coords (account for board flip)
+          const displayX = shouldFlipBoard ? (boardWidth - 1 - rangedAttackSource.x) : rangedAttackSource.x;
+          const displayY = shouldFlipBoard ? (boardHeight - 1 - rangedAttackSource.y) : rangedAttackSource.y;
+          const startX = (displayX + 0.5) * squareWidth;
+          const startY = (displayY + 0.5) * squareHeight;
+          const endX = rangedMousePos.x - boardRect.left;
+          const endY = rangedMousePos.y - boardRect.top;
+          return (
+            <svg
+              className={styles["ranged-arrow-overlay"]}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: 100
+              }}
+            >
+              <defs>
+                <marker
+                  id="ranged-arrowhead-live"
+                  markerWidth="10"
+                  markerHeight="7"
+                  refX="9"
+                  refY="3.5"
+                  orient="auto"
+                >
+                  <polygon points="0 0, 10 3.5, 0 7" fill="#ff2222" />
+                </marker>
+              </defs>
+              <line
+                x1={startX}
+                y1={startY}
+                x2={endX}
+                y2={endY}
+                stroke="#ff2222"
+                strokeWidth="3"
+                strokeLinecap="round"
+                markerEnd="url(#ranged-arrowhead-live)"
+                opacity="0.9"
+              />
+            </svg>
+          );
+        })()}
       </div>
     );
   };
@@ -1897,6 +2244,32 @@ const LiveGame = () => {
       </div>
 
       <div className={styles["game-layout"]}>
+        {/* Top Clock Row - Only visible on small screens */}
+        <div className={styles["layout-row-top-clock"]}>
+          <div className={`
+            ${styles["player-clock"]} 
+            ${(!currentPlayer || (currentPlayer.position === 2 && gameState.currentTurn === 1) || (currentPlayer.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles["current-turn"] : ''}
+            ${gameState.winner === (currentPlayer?.position === 1 ? player2?.id : player1?.id) ? styles.winner : ''}
+          `}>
+            <div className={styles["player-info"]}>
+              <div className={styles["player-header"]}>
+                <span className={styles["player-name"]}>
+                  {currentPlayer?.position === 1 ? player2?.username : player1?.username}
+                  {(currentPlayer?.position === 1 ? player2?.id : player1?.id) === currentUser?.id && ' (You)'}
+                </span>
+                <span className={`${styles["player-indicator"]} ${((!currentPlayer && gameState.currentTurn === (currentPlayer?.position === 1 ? 2 : 1)) || (currentPlayer?.position === 2 && gameState.currentTurn === 1) || (currentPlayer?.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>
+              </div>
+              {gameState.timeControl && (
+                <div className={styles["player-time"]}>
+                  <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id] < 60 ? styles["low-time"] : ''}`}>
+                    {formatTime(gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id])}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Middle Row: Clocks | Board | Move History */}
         <div className={styles["layout-row-middle"]}>
           {/* Clocks Column */}
@@ -2168,6 +2541,113 @@ const LiveGame = () => {
         </div>
       </div>
 
+      {/* Bottom Clock Row - Only visible on small screens */}
+      <div className={styles["layout-row-bottom-clock"]}>
+        <div className={`
+          ${styles["player-clock"]} 
+          ${(currentPlayer && ((currentPlayer.position === 1 && gameState.currentTurn === 1) || (currentPlayer.position === 2 && gameState.currentTurn === 2))) && gameState.status === 'active' ? styles["current-turn"] : ''}
+          ${gameState.winner === currentPlayer?.id ? styles.winner : ''}
+        `}>
+          <div className={styles["player-info"]}>
+            {gameState.timeControl && (
+              <div className={styles["player-time"]}>
+                <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.id] < 60 ? styles["low-time"] : ''}`}>
+                  {formatTime(gameState.playerTimes?.[currentPlayer?.id])}
+                </div>
+              </div>
+            )}
+            <div className={styles["player-header"]}>
+              <span className={styles["player-name"]}>
+                {currentPlayer?.username}
+                {' (You)'}
+              </span>
+              <span className={`${styles["player-indicator"]} ${currentPlayer && ((currentPlayer.position === 1 && gameState.currentTurn === 1) || (currentPlayer.position === 2 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Captured Pieces Row */}
+      {(capturedPieces.player1.length > 0 || capturedPieces.player2.length > 0) && (
+        <div className={styles["layout-row-captured"]}>
+          <div className={styles["captured-pieces-section"]}>
+            <div 
+              className={styles["captured-header"]}
+              onClick={() => setShowCapturedPieces(!showCapturedPieces)}
+            >
+              <span className={styles["captured-title"]}>Captured Pieces</span>
+              <span className={`${styles["captured-toggle"]} ${showCapturedPieces ? styles.expanded : ''}`}>
+                ▼
+              </span>
+            </div>
+            {showCapturedPieces && (
+              <div className={styles["captured-content"]}>
+                {/* Player 1's captures (pieces they took from player 2) */}
+                <div className={styles["captured-row"]}>
+                  <span className={styles["captured-label"]}>
+                    {gameState?.players?.find(p => p.position === 1)?.username || 'White'} captured:
+                  </span>
+                  <div className={styles["captured-pieces"]}>
+                    {capturedPieces.player1.length > 0 ? (
+                      capturedPieces.player1.map((piece, index) => {
+                        let imgSrc = null;
+                        if (piece.image || piece.image_url) {
+                          const rawPath = piece.image || piece.image_url;
+                          imgSrc = rawPath.startsWith('http') ? rawPath : `${ASSET_URL}${rawPath}`;
+                        } else if (piece.image_location) {
+                          imgSrc = getPlayerImageUrl(piece.image_location, 2);
+                        }
+                        return (
+                          <div key={`p1-${index}`} className={styles["captured-piece"]} title={piece.piece_name}>
+                            {imgSrc ? (
+                              <img src={imgSrc} alt={piece.piece_name} />
+                            ) : (
+                              <span className={styles["piece-symbol"]}>♟</span>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <span className={styles["no-captures"]}>None</span>
+                    )}
+                  </div>
+                </div>
+                {/* Player 2's captures (pieces they took from player 1) */}
+                <div className={styles["captured-row"]}>
+                  <span className={styles["captured-label"]}>
+                    {gameState?.players?.find(p => p.position === 2)?.username || 'Black'} captured:
+                  </span>
+                  <div className={styles["captured-pieces"]}>
+                    {capturedPieces.player2.length > 0 ? (
+                      capturedPieces.player2.map((piece, index) => {
+                        let imgSrc = null;
+                        if (piece.image || piece.image_url) {
+                          const rawPath = piece.image || piece.image_url;
+                          imgSrc = rawPath.startsWith('http') ? rawPath : `${ASSET_URL}${rawPath}`;
+                        } else if (piece.image_location) {
+                          imgSrc = getPlayerImageUrl(piece.image_location, 1);
+                        }
+                        return (
+                          <div key={`p2-${index}`} className={styles["captured-piece"]} title={piece.piece_name}>
+                            {imgSrc ? (
+                              <img src={imgSrc} alt={piece.piece_name} />
+                            ) : (
+                              <span className={styles["piece-symbol"]}>♟</span>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <span className={styles["no-captures"]}>None</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Bottom Row - Move history for medium screens (1000-1200px) */}
       <div className={styles["layout-row-bottom"]}>
         <div className={styles["move-history"]}>
@@ -2313,7 +2793,7 @@ const LiveGame = () => {
                 <span className={styles["setting-label"]}>Starting Positions:</span>
                 <span className={styles["setting-value"]}>
                   {gameState.startingMode === 'mirrored' ? 'Mirrored' :
-                   gameState.startingMode === 'backrow' ? 'Back Row (960)' :
+                   gameState.startingMode === 'backrow' ? 'Back Row Mirrored (960)' :
                    gameState.startingMode === 'independent' ? 'Independent' :
                    gameState.startingMode === 'shared' ? 'Shared' :
                    gameState.startingMode === 'full' ? 'Full Random' :

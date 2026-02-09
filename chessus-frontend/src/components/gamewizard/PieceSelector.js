@@ -51,6 +51,13 @@ const PieceSelector = ({
   const [leftCastlingPartnerKey, setLeftCastlingPartnerKey] = useState(currentPlacement?.castling_partner_left_key || null);
   const [rightCastlingPartnerKey, setRightCastlingPartnerKey] = useState(currentPlacement?.castling_partner_right_key || null);
   
+  // Update selectedPlayerId when currentPlacement changes (e.g., when opening modal for different piece)
+  useEffect(() => {
+    if (currentPlacement?.player_id) {
+      setSelectedPlayerId(currentPlacement.player_id);
+    }
+  }, [currentPlacement?.player_id]);
+  
   // Save selected player ID to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('lastSelectedPlayerId', selectedPlayerId.toString());
@@ -449,9 +456,9 @@ const PieceSelector = ({
     </>
   );
 
-  // If embedded, wrap content in a div (not a fragment) to avoid key warnings
+  // If embedded, wrap content in a flex div so modal-body can scroll within parent
   if (embedded) {
-    return <div>{selectorContent}</div>;
+    return <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', minHeight: 0 }}>{selectorContent}</div>;
   }
 
   // Otherwise, wrap in modal

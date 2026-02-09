@@ -383,9 +383,26 @@ const GameTypeView = () => {
   };
 
   const getPlacementImageUrl = (placement) => {
+    // Support player_id, player_number, and player interchangeably
+    const playerId = placement.player_id || placement.player_number || placement.player || 1;
+    
     // First try to use the saved image_url from placement (player-specific)
     if (placement.image_url) {
       return getImageUrl(placement.image_url);
+    }
+    
+    // Try to use image_location from placement if available
+    if (placement.image_location) {
+      try {
+        const images = JSON.parse(placement.image_location);
+        if (Array.isArray(images) && images.length > 0) {
+          const imageIndex = Math.min(playerId - 1, images.length - 1);
+          const imagePath = images[imageIndex];
+          return imagePath.startsWith('http') ? imagePath : `${ASSET_URL}${imagePath}`;
+        }
+      } catch (e) {
+        console.error("Error parsing placement image_location:", e);
+      }
     }
     
     // Fall back to fetching from piece data using player_id to select correct image
@@ -395,10 +412,8 @@ const GameTypeView = () => {
         try {
           const images = JSON.parse(piece.image_location);
           if (Array.isArray(images) && images.length > 0) {
-            // Use player_id to select the correct image (1-indexed to 0-indexed)
-            const imageIndex = (placement.player_id || 1) - 1;
-            const targetIndex = imageIndex < images.length ? imageIndex : 0;
-            const imagePath = images[targetIndex];
+            const imageIndex = Math.min(playerId - 1, images.length - 1);
+            const imagePath = images[imageIndex];
             return imagePath.startsWith('http') ? imagePath : `${ASSET_URL}${imagePath}`;
           }
         } catch (e) {
@@ -650,7 +665,7 @@ const GameTypeView = () => {
     const modeDescriptions = {
       'none': 'Standard (default positions)',
       'mirrored': 'Mirrored - pieces swap positions symmetrically for both players',
-      'backrow': 'Back Row Only (Chess960-style) - only the back row is randomized',
+      'backrow': 'Back Row Mirrored (Chess960-style) - only the back row is randomized, mirrored for both players',
       'independent': 'Independent - each player\'s pieces are randomized separately',
       'shared': 'Shared Shuffle - all pieces redistributed among all starting squares',
       'full': 'Full Board Random - pieces placed anywhere on the board'
@@ -967,7 +982,7 @@ const GameTypeView = () => {
             onClick={() => navigate(`/play?gameTypeId=${gameId}`)} 
             className={styles["play-button"]}
           >
-            🎮 Play this Game
+            ♟ Play this Game
           </button>
           {canEdit() && (
             <button 

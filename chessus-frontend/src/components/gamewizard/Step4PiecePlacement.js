@@ -352,19 +352,38 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
 
   // Helper function to get placement image URL with fallback
   const getPlacementImageUrl = useCallback((placement) => {
-    // Use the selected image_url from placement (set by PieceSelector)
+    // Use the selected image_url from placement (set by PieceSelector or loaded from server)
     if (placement.image_url) {
-      return placement.image_url; // Already includes full URL from PieceSelector
+      // Handle both full URLs and paths
+      return getImageUrl(placement.image_url);
     }
     
-    // Fallback: try to get first image from piece data if no image_url is set
+    // Fallback: try to get image from image_location based on player_number/player_id
+    if (placement.image_location) {
+      try {
+        const images = JSON.parse(placement.image_location);
+        if (Array.isArray(images) && images.length > 0) {
+          // player_number/player_id 1 -> index 0, player_number/player_id 2 -> index 1, etc.
+          const playerId = placement.player_id || placement.player_number || placement.player || 1;
+          const imageIndex = Math.min(playerId - 1, images.length - 1);
+          return getImageUrl(images[imageIndex]);
+        }
+      } catch (e) {
+        console.error("Error parsing placement image_location:", e);
+      }
+    }
+    
+    // Last fallback: try to get first image from piece data if no image_url is set
     if (placement.piece_id && pieceDataMap[placement.piece_id]) {
       const piece = pieceDataMap[placement.piece_id];
       if (piece.image_location) {
         try {
           const images = JSON.parse(piece.image_location);
           if (Array.isArray(images) && images.length > 0) {
-            return getImageUrl(images[0]);
+            // Use player_id/player_number to select correct image
+            const playerId = placement.player_id || placement.player_number || placement.player || 1;
+            const imageIndex = Math.min(playerId - 1, images.length - 1);
+            return getImageUrl(images[imageIndex]);
           }
         } catch (e) {
           console.error("Error parsing piece image_location:", e);
@@ -561,6 +580,66 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     return board;
   }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd]);
 
+  const handleMirrorPieces = useCallback((sourcePlayerId, targetPlayerId) => {
+    const boardHeight = gameData.board_height || 8;
+
+    // Get source player's pieces
+    const sourcePieces = Object.entries(piecePlacements).filter(
+      ([, piece]) => piece.player_id === sourcePlayerId
+    );
+
+    if (sourcePieces.length === 0) {
+      alert(`Player ${sourcePlayerId} has no pieces to mirror.`);
+      return;
+    }
+
+    // Check if target player already has pieces
+    const targetPieceCount = Object.values(piecePlacements).filter(
+      piece => piece.player_id === targetPlayerId
+    ).length;
+
+    if (targetPieceCount > 0) {
+      if (!window.confirm(
+        `Player ${targetPlayerId} already has ${targetPieceCount} piece(s). These will be replaced with mirrored pieces from Player ${sourcePlayerId}. Continue?`
+      )) {
+        return;
+      }
+    }
+
+    // Build new placements: start by removing all target player's pieces
+    const newPlacements = {};
+    Object.entries(piecePlacements).forEach(([key, piece]) => {
+      if (piece.player_id !== targetPlayerId) {
+        newPlacements[key] = piece;
+      }
+    });
+
+    // Mirror source player's pieces to target side
+    let skipped = 0;
+    sourcePieces.forEach(([key]) => {
+      const [row, col] = key.split(',').map(Number);
+      const mirroredRow = boardHeight - 1 - row;
+      const mirroredKey = `${mirroredRow},${col}`;
+
+      // Don't overwrite source player's own pieces at the mirrored position
+      if (newPlacements[mirroredKey] && newPlacements[mirroredKey].player_id === sourcePlayerId) {
+        skipped++;
+        return;
+      }
+
+      newPlacements[mirroredKey] = {
+        ...piecePlacements[key],
+        player_id: targetPlayerId,
+      };
+    });
+
+    setPiecePlacements(newPlacements);
+
+    if (skipped > 0) {
+      alert(`${skipped} piece(s) could not be mirrored because they would overlap with Player ${sourcePlayerId}'s own pieces.`);
+    }
+  }, [gameData.board_height, piecePlacements]);
+
   const getPieceCounts = () => {
     const counts = {};
     Object.values(piecePlacements).forEach(placement => {
@@ -601,6 +680,20 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           }}
         >
           Clear All Pieces
+        </button>
+        <button
+          className={styles["mirror-button"]}
+          onClick={() => handleMirrorPieces(1, 2)}
+          title="Copy Player 1's pieces to Player 2's side (mirrored vertically)"
+        >
+          Mirror P1 → P2
+        </button>
+        <button
+          className={styles["mirror-button"]}
+          onClick={() => handleMirrorPieces(2, 1)}
+          title="Copy Player 2's pieces to Player 1's side (mirrored vertically)"
+        >
+          Mirror P2 → P1
         </button>
       </div>
 

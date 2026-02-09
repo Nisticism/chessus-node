@@ -459,7 +459,87 @@ const getGameById = async (gameId) => {
     LEFT JOIN chessusnode.users u ON gt.creator_id = u.id
     WHERE gt.id = ?
   `, [gameId]);
-  return result.length > 0 ? result[0] : null;
+  
+  if (result.length === 0) return null;
+  
+  const game = result[0];
+  const boardHeight = game.board_height || 8;
+  
+  // Parse the original pieces_string to get player_id values (which are correct)
+  // This is needed because the junction table may have incorrect player_number values
+  let originalPiecePlayerMap = {};
+  if (game.pieces_string) {
+    try {
+      const originalPieces = JSON.parse(game.pieces_string);
+      if (typeof originalPieces === 'object' && !Array.isArray(originalPieces)) {
+        Object.entries(originalPieces).forEach(([key, piece]) => {
+          originalPiecePlayerMap[key] = piece.player_id || piece.player_number || piece.player || null;
+        });
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
+  
+  // Fetch pieces from junction table and construct pieces_string
+  const pieces = await getPiecesForGameType(gameId);
+  if (pieces && pieces.length > 0) {
+    const piecesObj = {};
+    for (const piece of pieces) {
+      const key = `${piece.y},${piece.x}`;
+      
+      // Priority: 1) original pieces_string, 2) junction table, 3) infer from Y position (like LiveGame)
+      let playerId = originalPiecePlayerMap[key] || piece.player_number;
+      if (!playerId || playerId === 1) {
+        // If still 1 or missing, infer from Y position as fallback
+        // Top half (y < boardHeight/2) = Player 2, Bottom half = Player 1
+        const inferredPlayerId = piece.y < (boardHeight / 2) ? 2 : 1;
+        // Only use inferred if we don't have original data
+        if (!originalPiecePlayerMap[key]) {
+          playerId = inferredPlayerId;
+        }
+      }
+      
+      // Parse image_location and get the correct player image
+      let imageUrl = null;
+      if (piece.image_location) {
+        try {
+          const images = JSON.parse(piece.image_location);
+          if (Array.isArray(images) && images.length > 0) {
+            const imageIndex = Math.min((playerId || 1) - 1, images.length - 1);
+            const imagePath = images[imageIndex];
+            if (imagePath) {
+              imageUrl = imagePath.startsWith('http') ? imagePath : 
+                         imagePath.startsWith('/') ? imagePath : `/uploads/pieces/${imagePath}`;
+            }
+          }
+        } catch (e) {
+          imageUrl = piece.image_location;
+        }
+      }
+      
+      piecesObj[key] = {
+        piece_id: piece.piece_id,
+        x: piece.x,
+        y: piece.y,
+        player_number: playerId,
+        player_id: playerId,
+        player: playerId,
+        ends_game_on_checkmate: Boolean(piece.ends_game_on_checkmate),
+        ends_game_on_capture: Boolean(piece.ends_game_on_capture),
+        manual_castling_partners: Boolean(piece.manual_castling_partners),
+        castling_partner_left_key: piece.castling_partner_left_key,
+        castling_partner_right_key: piece.castling_partner_right_key,
+        piece_name: piece.piece_name,
+        image_url: imageUrl,
+        image_location: piece.image_location
+      };
+    }
+    game.pieces_string = JSON.stringify(piecesObj);
+  }
+  // If no junction pieces, keep original pieces_string as-is
+  
+  return game;
 };
 
 /**

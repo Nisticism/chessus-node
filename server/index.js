@@ -316,7 +316,7 @@ app.get("/api/users", async (req, res) => {
     
     // Get paginated users - exclude personal information (email, first_name, last_name)
     const [users] = await db_pool.query(
-      `SELECT id, username, role, profile_picture, elo FROM users ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
+      `SELECT id, username, role, profile_picture, elo, last_active_at FROM users ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
     );
     
     res.json({
@@ -1123,12 +1123,13 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         // Insert each piece
         for (const piece of piecesToInsert) {
           if (piece.piece_id) {
+            const playerNum = piece.player_id || piece.player_number || piece.player || 1;
             await dbHelpers.addPieceToGameType(
               gameId,
               piece.piece_id,
               piece.x || 0,
               piece.y || 0,
-              piece.player_number || piece.player || 1,
+              playerNum,
               piece.ends_game_on_checkmate || false,
               piece.ends_game_on_capture || false,
               piece.manual_castling_partners || false,
@@ -1464,10 +1465,10 @@ app.post("/api/login", authLimiter, async (req, res) => {
     const accessToken = generateAccessToken(userPayload);
     const refreshToken = generateRefreshToken(userPayload);
     
-    // Store refresh token in database (ignore error if column doesn't exist yet)
+    // Store refresh token and update last_active_at in database
     try {
       await db_pool.query(
-        "UPDATE users SET refresh_token = ? WHERE id = ?",
+        "UPDATE users SET refresh_token = ?, last_active_at = NOW() WHERE id = ?",
         [refreshToken, user.id]
       );
     } catch (dbErr) {
@@ -2499,7 +2500,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.piece_id,
               piece.x || 0,
               piece.y || 0,
-              piece.player_number || piece.player || 1,
+              piece.player_id || piece.player_number || piece.player || 1,
               piece.ends_game_on_checkmate || false,
               piece.ends_game_on_capture || false,
               piece.manual_castling_partners || false,

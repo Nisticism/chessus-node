@@ -305,27 +305,37 @@ function randomizeBackRow(pieces, players, gameType) {
     .filter(p => p.y === parseInt(player2BackRow))
     .sort((a, b) => a.x - b.x);
   
-  // Get their x coordinates (column positions)
-  const backRowXPositions = player1BackRowPieces.map(p => p.x);
+  // Get player 1's x coordinates and shuffle them
+  const p1XPositions = player1BackRowPieces.map(p => p.x);
+  const shuffledXPositions = [...p1XPositions];
   
   // Shuffle the x positions using Fisher-Yates
-  for (let i = backRowXPositions.length - 1; i > 0; i--) {
+  for (let i = shuffledXPositions.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [backRowXPositions[i], backRowXPositions[j]] = [backRowXPositions[j], backRowXPositions[i]];
+    [shuffledXPositions[i], shuffledXPositions[j]] = [shuffledXPositions[j], shuffledXPositions[i]];
   }
   
-  // Apply shuffled positions to both players' back rows (now sorted by X, so matching pieces)
+  // Build a mapping from old X -> new X for player 1
+  const xMapping = {};
+  player1BackRowPieces.forEach((piece, index) => {
+    xMapping[p1XPositions[index]] = shuffledXPositions[index];
+  });
+  
+  // Apply shuffled positions to player 1's back row
   player1BackRowPieces.forEach((piece, index) => {
     const oldX = piece.x;
-    piece.x = backRowXPositions[index];
+    piece.x = shuffledXPositions[index];
     console.log(`Player 1 back row - ${piece.piece_name}: (${oldX},${piece.y}) -> (${piece.x},${piece.y})`);
   });
   
-  // Apply same shuffle pattern to player 2 (mirrored - same X positions)
-  player2BackRowPieces.forEach((piece, index) => {
+  // Apply the SAME mapping to player 2's back row so it mirrors player 1
+  // This ensures that whatever piece type was at X=0 for P1 is also at X=0 for P2
+  player2BackRowPieces.forEach((piece) => {
     const oldX = piece.x;
-    piece.x = backRowXPositions[index];
-    console.log(`Player 2 back row - ${piece.piece_name}: (${oldX},${piece.y}) -> (${piece.x},${piece.y})`);
+    if (xMapping.hasOwnProperty(oldX)) {
+      piece.x = xMapping[oldX];
+    }
+    console.log(`Player 2 back row - ${piece.piece_name}: (${oldX},${piece.y}) -> (${piece.x},${piece.y}) [mirrored]`);
   });
   
   return pieces;
@@ -501,7 +511,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none' } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -678,7 +688,29 @@ function initializeSocket(server) {
               promotion_options: fullPieceData.promotion_options,
               has_checkmate_rule: fullPieceData.has_checkmate_rule,
               special_scenario_moves: fullPieceData.special_scenario_moves,
-              special_scenario_captures: fullPieceData.special_scenario_captures
+              special_scenario_captures: fullPieceData.special_scenario_captures,
+              // Ranged attack data
+              can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
+              up_attack_range: fullPieceData.up_attack_range,
+              down_attack_range: fullPieceData.down_attack_range,
+              left_attack_range: fullPieceData.left_attack_range,
+              right_attack_range: fullPieceData.right_attack_range,
+              up_left_attack_range: fullPieceData.up_left_attack_range,
+              up_right_attack_range: fullPieceData.up_right_attack_range,
+              down_left_attack_range: fullPieceData.down_left_attack_range,
+              down_right_attack_range: fullPieceData.down_right_attack_range,
+              up_attack_range_exact: fullPieceData.up_attack_range_exact,
+              down_attack_range_exact: fullPieceData.down_attack_range_exact,
+              left_attack_range_exact: fullPieceData.left_attack_range_exact,
+              right_attack_range_exact: fullPieceData.right_attack_range_exact,
+              up_left_attack_range_exact: fullPieceData.up_left_attack_range_exact,
+              up_right_attack_range_exact: fullPieceData.up_right_attack_range_exact,
+              down_left_attack_range_exact: fullPieceData.down_left_attack_range_exact,
+              down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
+              ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
+              ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+              step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
+              max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack
             };
           }
           return piece;
@@ -686,10 +718,12 @@ function initializeSocket(server) {
         
         const piecesData = JSON.stringify(piecesArray);
         
+        const isChallenge = challengedUserId ? 1 : 0;
+        
         const [result] = await db_pool.query(
-          `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers)
-           VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?)`,
-          [currentTime, timeControl, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0]
+          `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id)
+           VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?)`,
+          [currentTime, timeControl, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId]
         );
 
         const gameId = result.insertId;
@@ -724,7 +758,9 @@ function initializeSocket(server) {
           rated,
           allowPremoves,
           startingMode,
-          premove: null
+          premove: null,
+          isChallenge: !!challengedUserId,
+          challengedUserId
         };
 
         activeGames.set(gameId.toString(), gameState);
@@ -735,14 +771,32 @@ function initializeSocket(server) {
         // Emit game created event
         socket.emit("gameCreated", { gameId, gameState });
 
-        // Broadcast to all users that a new game is available
-        io.emit("newOpenGame", {
-          gameId,
-          hostUsername,
-          gameTypeName: gameType.game_name,
-          timeControl,
-          increment: increment || 0
-        });
+        // For challenge games, notify only the challenged user
+        // For regular games, broadcast to all users
+        if (challengedUserId) {
+          // Find the challenged user's socket and send them a challenge notification
+          const challengedSocketId = userSockets.get(challengedUserId);
+          if (challengedSocketId) {
+            io.to(challengedSocketId).emit("friendChallenge", {
+              gameId,
+              challengerUsername: hostUsername,
+              challengerId: hostId,
+              gameTypeName: gameType.game_name,
+              timeControl,
+              increment: increment || 0
+            });
+          }
+          console.log(`Challenge game ${gameId} created by ${hostUsername} for user ${challengedUserId}`);
+        } else {
+          // Broadcast to all users that a new game is available
+          io.emit("newOpenGame", {
+            gameId,
+            hostUsername,
+            gameTypeName: gameType.game_name,
+            timeControl,
+            increment: increment || 0
+          });
+        }
 
         console.log(`Game ${gameId} created by ${hostUsername}`, {
           rated,
@@ -776,6 +830,11 @@ function initializeSocket(server) {
           
           if (!game) {
             return socket.emit("error", { message: "Game not found or already started" });
+          }
+
+          // Check if this is a challenge game and if user is allowed to join
+          if (game.is_challenge && game.challenged_user_id !== userId) {
+            return socket.emit("error", { message: "This is a private challenge. Only the challenged player can join." });
           }
 
           // Get game type
@@ -861,7 +920,29 @@ function initializeSocket(server) {
                   promotion_options: fullPieceData.promotion_options,
                   has_checkmate_rule: fullPieceData.has_checkmate_rule,
                   special_scenario_moves: fullPieceData.special_scenario_moves,
-                  special_scenario_captures: fullPieceData.special_scenario_captures
+                  special_scenario_captures: fullPieceData.special_scenario_captures,
+                  // Ranged attack data
+                  can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
+                  up_attack_range: fullPieceData.up_attack_range,
+                  down_attack_range: fullPieceData.down_attack_range,
+                  left_attack_range: fullPieceData.left_attack_range,
+                  right_attack_range: fullPieceData.right_attack_range,
+                  up_left_attack_range: fullPieceData.up_left_attack_range,
+                  up_right_attack_range: fullPieceData.up_right_attack_range,
+                  down_left_attack_range: fullPieceData.down_left_attack_range,
+                  down_right_attack_range: fullPieceData.down_right_attack_range,
+                  up_attack_range_exact: fullPieceData.up_attack_range_exact,
+                  down_attack_range_exact: fullPieceData.down_attack_range_exact,
+                  left_attack_range_exact: fullPieceData.left_attack_range_exact,
+                  right_attack_range_exact: fullPieceData.right_attack_range_exact,
+                  up_left_attack_range_exact: fullPieceData.up_left_attack_range_exact,
+                  up_right_attack_range_exact: fullPieceData.up_right_attack_range_exact,
+                  down_left_attack_range_exact: fullPieceData.down_left_attack_range_exact,
+                  down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
+                  ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
+                  ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+                  step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
+                  max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack
                 };
               }
               return piece;
@@ -893,10 +974,17 @@ function initializeSocket(server) {
                 return otherData.startingMode || 'none';
               } catch { return 'none'; }
             })(),
-            premove: null
+            premove: null,
+            isChallenge: !!game.is_challenge,
+            challengedUserId: game.challenged_user_id
           };
 
           activeGames.set(gameIdStr, gameState);
+        }
+
+        // Check if this is a challenge game and if user is allowed to join
+        if (gameState.isChallenge && gameState.challengedUserId !== userId) {
+          return socket.emit("error", { message: "This is a private challenge. Only the challenged player can join." });
         }
 
         // Check if game is full
@@ -1060,7 +1148,8 @@ function initializeSocket(server) {
           captured: moveResult.captured,
           player: userId,
           position: gameState.currentTurn,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          ...(moveResult.isRangedAttack ? { isRangedAttack: true } : {})
         };
         gameState.moveHistory.push(moveRecord);
 
@@ -2017,6 +2106,28 @@ function initializeSocket(server) {
           has_check_rule: fullPieceData.has_check_rule,
           special_scenario_moves: fullPieceData.special_scenario_moves,
           special_scenario_captures: fullPieceData.special_scenario_captures,
+          // Ranged attack data
+          can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
+          up_attack_range: fullPieceData.up_attack_range,
+          down_attack_range: fullPieceData.down_attack_range,
+          left_attack_range: fullPieceData.left_attack_range,
+          right_attack_range: fullPieceData.right_attack_range,
+          up_left_attack_range: fullPieceData.up_left_attack_range,
+          up_right_attack_range: fullPieceData.up_right_attack_range,
+          down_left_attack_range: fullPieceData.down_left_attack_range,
+          down_right_attack_range: fullPieceData.down_right_attack_range,
+          up_attack_range_exact: fullPieceData.up_attack_range_exact,
+          down_attack_range_exact: fullPieceData.down_attack_range_exact,
+          left_attack_range_exact: fullPieceData.left_attack_range_exact,
+          right_attack_range_exact: fullPieceData.right_attack_range_exact,
+          up_left_attack_range_exact: fullPieceData.up_left_attack_range_exact,
+          up_right_attack_range_exact: fullPieceData.up_right_attack_range_exact,
+          down_left_attack_range_exact: fullPieceData.down_left_attack_range_exact,
+          down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
+          ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
+          ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+          step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
+          max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
           // Reset move tracking for the new piece type
           moveCount: 0,
           hasMoved: false
@@ -2410,7 +2521,29 @@ function initializeSocket(server) {
                     can_castle: fullPieceData.can_castle,
                     promotion_options: fullPieceData.promotion_options,
                     special_scenario_moves: fullPieceData.special_scenario_moves,
-                    special_scenario_captures: fullPieceData.special_scenario_captures
+                    special_scenario_captures: fullPieceData.special_scenario_captures,
+                    // Ranged attack data
+                    can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
+                    up_attack_range: fullPieceData.up_attack_range,
+                    down_attack_range: fullPieceData.down_attack_range,
+                    left_attack_range: fullPieceData.left_attack_range,
+                    right_attack_range: fullPieceData.right_attack_range,
+                    up_left_attack_range: fullPieceData.up_left_attack_range,
+                    up_right_attack_range: fullPieceData.up_right_attack_range,
+                    down_left_attack_range: fullPieceData.down_left_attack_range,
+                    down_right_attack_range: fullPieceData.down_right_attack_range,
+                    up_attack_range_exact: fullPieceData.up_attack_range_exact,
+                    down_attack_range_exact: fullPieceData.down_attack_range_exact,
+                    left_attack_range_exact: fullPieceData.left_attack_range_exact,
+                    right_attack_range_exact: fullPieceData.right_attack_range_exact,
+                    up_left_attack_range_exact: fullPieceData.up_left_attack_range_exact,
+                    up_right_attack_range_exact: fullPieceData.up_right_attack_range_exact,
+                    down_left_attack_range_exact: fullPieceData.down_left_attack_range_exact,
+                    down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
+                    ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
+                    ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+                    step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
+                    max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack
                   };
                 }
                 return piece;
@@ -2737,7 +2870,7 @@ function initializeSocket(server) {
 }
 
 /**
- * Get list of games waiting for players
+ * Get list of games waiting for players (excludes challenge games)
  */
 async function getOpenLiveGames() {
   try {
@@ -2746,7 +2879,7 @@ async function getOpenLiveGames() {
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
        JOIN users u ON g.host_id = u.id
-       WHERE g.status = 'waiting'
+       WHERE g.status = 'waiting' AND (g.is_challenge = 0 OR g.is_challenge IS NULL)
        ORDER BY g.created_at DESC`
     );
     return games;
@@ -3080,6 +3213,43 @@ function validateAndApplyMove(gameState, move) {
     p.x === to.x && p.y === to.y && p.id !== pieceId
   );
   
+  // Handle ranged attacks - piece stays in place, target is captured at range
+  const isRangedAttack = move.isRangedAttack === true;
+  
+  if (isRangedAttack) {
+    // Ranged attack: validate target exists and is an enemy
+    if (destinationPieceIndex === -1) {
+      return { valid: false, reason: "No target for ranged attack" };
+    }
+    const destPiece = pieces[destinationPieceIndex];
+    const destPieceOwnerPosition = destPiece.team || destPiece.player_id;
+    if (destPieceOwnerPosition === pieceOwnerPosition) {
+      return { valid: false, reason: "Cannot ranged attack your own piece" };
+    }
+    // Validate using ranged attack rules
+    const canRanged = canRangedAttackTo(piece.y, piece.x, to.y, to.x, piece, pieceOwnerPosition);
+    if (!canRanged) {
+      return { valid: false, reason: "Piece cannot ranged attack that square" };
+    }
+    capturedPiece = destPiece;
+    
+    // Remove the captured piece
+    pieces.splice(destinationPieceIndex, 1);
+    
+    // Piece stays in place but turn still counts
+    const movingPiece = pieces.find(p => p.id === pieceId);
+    if (movingPiece) {
+      movingPiece.hasMoved = true;
+      if (movingPiece.moveCount === undefined) {
+        movingPiece.moveCount = 1;
+      } else {
+        movingPiece.moveCount++;
+      }
+    }
+    
+    return { valid: true, captured: capturedPiece, promotionEligible: null, movingPiece, isRangedAttack: true };
+  }
+  
   if (destinationPieceIndex !== -1) {
     const destPiece = pieces[destinationPieceIndex];
     const destPieceOwnerPosition = destPiece.team || destPiece.player_id;
@@ -3338,6 +3508,98 @@ function isPieceUnderAttack(gameState, targetPiece) {
     }
   }
   
+  return false;
+}
+
+/**
+ * Helper: Get direction name from row/col differences (mirrors client pieceMovementUtils)
+ */
+function getDirectionFromDiff(rowDiff, colDiff) {
+  if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) return 'up_left';
+  if (rowDiff < 0 && colDiff === 0) return 'up';
+  if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) return 'up_right';
+  if (rowDiff === 0 && colDiff > 0) return 'right';
+  if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) return 'down_right';
+  if (rowDiff > 0 && colDiff === 0) return 'down';
+  if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) return 'down_left';
+  if (rowDiff === 0 && colDiff < 0) return 'left';
+  return null;
+}
+
+/**
+ * Helper: Get distance for a direction from row/col differences
+ */
+function getDistanceForDirection(rowDiff, colDiff, direction) {
+  switch (direction) {
+    case 'up': case 'down': return Math.abs(rowDiff);
+    case 'left': case 'right': return Math.abs(colDiff);
+    case 'up_left': case 'up_right': case 'down_left': case 'down_right': return Math.abs(rowDiff);
+    default: return 0;
+  }
+}
+
+/**
+ * Helper: Check if a movement value allows a given distance
+ */
+function checkRangedMovement(value, distance, isExact) {
+  if (value === 99) return true;
+  if (value === 0 || value === null || value === undefined) return false;
+  if (isExact) return distance === Math.abs(value);
+  if (value > 0) return distance <= value;
+  if (value < 0) return distance === Math.abs(value);
+  return false;
+}
+
+/**
+ * Check if a piece can perform a ranged attack to a target position
+ * Server-side mirror of client's canRangedAttackTo from pieceMovementUtils.js
+ */
+function canRangedAttackTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosition) {
+  if (!pieceData) return false;
+  if (fromRow === toRow && fromCol === toCol) return false;
+  if (!pieceData.can_capture_enemy_via_range) return false;
+
+  const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
+  const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
+
+  const direction = getDirectionFromDiff(rowDiff, colDiff);
+  const distance = direction ? getDistanceForDirection(rowDiff, colDiff, direction) : 0;
+
+  // Check directional ranged attack
+  if (direction) {
+    const attackFieldMap = {
+      'up': 'up_attack_range', 'down': 'down_attack_range',
+      'left': 'left_attack_range', 'right': 'right_attack_range',
+      'up_left': 'up_left_attack_range', 'up_right': 'up_right_attack_range',
+      'down_left': 'down_left_attack_range', 'down_right': 'down_right_attack_range'
+    };
+    const attackValue = pieceData[attackFieldMap[direction]];
+    const isExact = !!pieceData[`${direction}_attack_range_exact`];
+    if (checkRangedMovement(attackValue, distance, isExact)) return true;
+  }
+
+  // Check ratio attack range (L-shape)
+  const ratio1 = pieceData.ratio_one_attack_range || 0;
+  const ratio2 = pieceData.ratio_two_attack_range || 0;
+  if (ratio1 > 0 && ratio2 > 0) {
+    if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
+        (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
+      return true;
+    }
+  }
+
+  // Check step-by-step attack
+  const stepAttackValue = pieceData.step_by_step_attack_range;
+  if (stepAttackValue) {
+    const maxSteps = Math.abs(stepAttackValue);
+    const noDiagonal = stepAttackValue < 0;
+    if (noDiagonal) {
+      if (Math.abs(rowDiff) + Math.abs(colDiff) <= maxSteps) return true;
+    } else {
+      if (Math.max(Math.abs(rowDiff), Math.abs(colDiff)) <= maxSteps) return true;
+    }
+  }
+
   return false;
 }
 
