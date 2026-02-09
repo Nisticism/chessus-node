@@ -1017,19 +1017,39 @@ const Sandbox = () => {
     }
   }, [activeSandbox, activeSandboxId, selectedPiece]);
 
-  // Handle long press for mobile
+  // Handle Delete key to remove selected piece
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedPiece && activeSandbox) {
+          e.preventDefault();
+          removePieceFromBoard(selectedPiece.id);
+          setSelectedPiece(null);
+          setValidMoves([]);
+        }
+      } else if (e.key === 'Escape') {
+        setSelectedPiece(null);
+        setValidMoves([]);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedPiece, activeSandbox, removePieceFromBoard]);
+
+  // Handle long press for mobile - only for adding pieces
   const handleLongPress = useCallback((x, y) => {
     if (!activeSandbox) return;
 
     const piece = activeSandbox.pieces.find(p => p.x === x && p.y === y);
-    if (piece) {
-      removePieceFromBoard(piece.id);
-    } else {
+    if (!piece) {
+      // Long press on empty square opens add-piece modal
       setRightClickPosition({ row: y, col: x });
       setRightClickMode('piece');
       setShowRightClickModal(true);
     }
-  }, [activeSandbox, removePieceFromBoard]);
+    // If there's a piece, do nothing - use the Delete button instead
+  }, [activeSandbox]);
 
   // Handle touch start for long press detection
   const handleTouchStart = useCallback((e, x, y) => {
@@ -1066,7 +1086,7 @@ const Sandbox = () => {
     }
   }, [activeSandbox]);
 
-  // Handle contextmenu on square
+  // Handle contextmenu on square - only for adding pieces to empty squares
   const handleSquareContextMenu = useCallback((e, x, y) => {
     e.preventDefault();
     if (!activeSandbox) return;
@@ -1075,17 +1095,16 @@ const Sandbox = () => {
     // If a ranged right-click is pending (global listeners active), don't do normal action
     if (data && data.piece?.can_capture_enemy_via_range) return;
 
-    // Normal right-click: remove piece or open add-piece modal
+    // Only open add-piece modal on empty squares (don't delete on right-click)
     const piece = activeSandbox.pieces.find(p => p.x === x && p.y === y);
-    if (piece) {
-      removePieceFromBoard(piece.id);
-    } else {
+    if (!piece) {
       setRightClickPosition({ row: y, col: x });
       setRightClickMode('piece');
       setShowRightClickModal(true);
     }
+    // If there's a piece, do nothing - use select + Delete key instead
     rightClickDataRef.current = null;
-  }, [activeSandbox, removePieceFromBoard]);
+  }, [activeSandbox]);
 
   // Global listeners for ranged right-click drag detection
   useEffect(() => {
@@ -1166,9 +1185,10 @@ const Sandbox = () => {
           }
         }
       } else {
-        // Was a quick click — remove the ranged piece (same as normal right-click)
+        // Was a quick click — select the piece for potential deletion instead
         if (data.piece) {
-          removePieceFromBoard(data.piece.id);
+          setSelectedPiece(data.piece);
+          setValidMoves([]);
         }
       }
       cleanup();
@@ -1403,6 +1423,9 @@ const Sandbox = () => {
 
     const boardWidth = activeSandbox.gameType.board_width || 8;
     const boardHeight = activeSandbox.gameType.board_height || 8;
+    // Calculate square size to fit within max dimensions while keeping squares square
+    const maxBoardSize = 600;
+    const squareSize = Math.min(60, maxBoardSize / Math.max(boardWidth, boardHeight));
     const pieces = activeSandbox.pieces;
     const specialSquares = activeSandbox.specialSquares || {};
 
@@ -1524,8 +1547,12 @@ const Sandbox = () => {
           ref={boardRef}
           className={styles.board}
           style={{
-            gridTemplateColumns: `repeat(${boardWidth}, 1fr)`,
-            gridTemplateRows: `repeat(${boardHeight}, 1fr)`
+            gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
+            gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
+            width: 'fit-content',
+            maxWidth: 'none',
+            maxHeight: 'none',
+            aspectRatio: 'unset'
           }}
         >
           {squares}
@@ -1632,6 +1659,19 @@ const Sandbox = () => {
           >
             Mirror P2 → P1
           </button>
+          {selectedPiece && (
+            <button
+              onClick={() => {
+                removePieceFromBoard(selectedPiece.id);
+                setSelectedPiece(null);
+                setValidMoves([]);
+              }}
+              className={styles["btn-delete"]}
+              title="Delete selected piece (or press Delete key)"
+            >
+              🗑️ Delete {selectedPiece.piece_name || 'Piece'}
+            </button>
+          )}
         </div>
         <div className={styles["board-instructions"]}>
           <div className={styles["instructions-row"]}>
@@ -1651,7 +1691,13 @@ const Sandbox = () => {
             </span>
             <span className={styles["instruction-item"]}>
               <span className={styles["instruction-icon"]}>❌</span>
-              <strong>Remove:</strong> {isMobile ? 'Long press on piece' : 'Right-click on piece'}
+              <strong>Remove:</strong> {isMobile ? 'Select piece, tap Delete button' : 'Select piece, press Delete key'}
+            </span>
+          </div>
+          <div className={styles["instructions-row"]}>
+            <span className={styles["instruction-item"]}>
+              <span className={styles["instruction-icon"]}>🎯</span>
+              <strong>Ranged Attack:</strong> Right-click and drag from ranged piece to target
             </span>
           </div>
         </div>
