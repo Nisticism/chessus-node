@@ -122,7 +122,7 @@
     color: #ffffff;
     padding: 6px 15px;
     border-radius: 20px;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     font-weight: 700;
     display: flex;
     align-items: center;
@@ -165,7 +165,7 @@
       color: #ffffff;
       padding: 6px 12px;
       border-radius: 15px;
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       font-weight: 600;
     }
   }
@@ -190,7 +190,7 @@
 
     .game-name {
       color: #8097ae;
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       margin: 0;
     }
   }
@@ -256,7 +256,7 @@
 
   .category-button {
     padding: 10px 18px;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .streams-grid {

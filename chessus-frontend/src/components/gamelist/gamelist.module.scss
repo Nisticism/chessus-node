@@ -121,7 +121,7 @@
   }
 
   .game-board-info {
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: #6b8ba8;
   }
 }
@@ -188,7 +188,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: #6b8ba8;
   background: rgba(74, 144, 226, 0.1);
   padding: 6px 12px;

@@ -127,7 +127,7 @@
 }
 
 .forums-date {
-  font-size: 13px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: #6b8ba8;
   white-space: nowrap;
 }
@@ -184,7 +184,7 @@
   .forums {
     th, td {
       padding: 12px 10px;
-      font-size: 12px;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     }
   }
   
@@ -203,7 +203,7 @@
   .forum-content {
     -webkit-line-clamp: 2;
     line-clamp: 2;
-    font-size: 12px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 }
 

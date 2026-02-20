@@ -98,7 +98,7 @@
 
 .hint {
   color: var(--text-secondary, #888);
-  font-size: 12px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   margin-top: 6px;
 }
 

@@ -393,7 +393,7 @@
   }
 
   .player-position {
-    font-size: 0.8rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: #888;
     text-transform: uppercase;
   }
@@ -439,7 +439,7 @@
     }
 
     .time-label {
-      font-size: 0.75rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       color: #888;
       margin-top: 4px;
     }
@@ -542,7 +542,7 @@
       border-radius: 6px;
       padding: 6px 12px;
       color: #4ecdc4;
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       width: 250px;
 
       &:focus {
@@ -555,7 +555,7 @@
   .preview-hint {
     margin: 12px 0 0;
     color: #888;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     text-align: center;
   }
 }
@@ -818,7 +818,7 @@
   position: absolute;
   top: 2px;
   right: 2px;
-  font-size: 0.7rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   z-index: 5;
   pointer-events: none;
   line-height: 1;
@@ -1068,7 +1068,7 @@
 
 .btn-small {
   padding: 8px 14px;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
 }
 
 // Loading and error states
@@ -1467,7 +1467,7 @@
 
   .move-history {
     padding: 10px;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .game-controls h3,
@@ -1477,7 +1477,7 @@
 
   .btn {
     padding: 8px 12px;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .turn-indicator {
@@ -1574,7 +1574,7 @@
   }
 
   .piece-label {
-    font-size: 0.75rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: #8ac;
     text-overflow: ellipsis;
     overflow: hidden;
@@ -1601,7 +1601,7 @@
 }
 
 .no-promotion-message {
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: #f8a;
   margin: 10px 0;
   font-style: italic;
@@ -1612,7 +1612,7 @@
   position: absolute;
   top: 2px;
   right: 2px;
-  font-size: 0.6rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: bold;
   color: #fff;
   width: 14px;
@@ -1711,7 +1711,7 @@
   background: rgba(0, 0, 0, 0.2);
   border-radius: 8px;
   margin-top: 8px;
-  font-size: 0.8rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
 
   @media (max-width: 1200px) {
     max-width: 700px;
@@ -1845,7 +1845,7 @@
   flex-wrap: wrap;
 
   .partner {
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: #8f8;
     background: rgba(136, 255, 136, 0.1);
     padding: 2px 8px;
@@ -1853,7 +1853,7 @@
   }
 
   .no-partner {
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: #f88;
     font-style: italic;
   }
@@ -1891,7 +1891,7 @@
 
 .captured-toggle {
   color: #888;
-  font-size: 0.8rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   transition: transform 0.2s;
 
   &.expanded {
@@ -1913,7 +1913,7 @@
 }
 
 .captured-label {
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: #aaa;
   font-weight: 500;
 }
@@ -1955,6 +1955,6 @@
 
 .no-captures {
   color: #666;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-style: italic;
 }

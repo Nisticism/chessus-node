@@ -82,7 +82,7 @@
 
   p {
     margin: 0;
-    font-size: 13px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: var(--text-gray);
   }
 }
@@ -97,14 +97,14 @@
   }
 
   .footerLinks a {
-    font-size: 13px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .footerDescription {
-    font-size: 13px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .footerBottom p {
-    font-size: 12px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 }

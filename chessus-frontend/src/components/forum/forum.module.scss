@@ -131,7 +131,7 @@
 
 .comment-date {
   color: #6b8ba8;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   display: flex;
   align-items: center;
   white-space: nowrap;
@@ -247,7 +247,7 @@
 .edited-text {
   color: #8097ae;
   font-style: italic;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   margin-left: 5px;
 }
 

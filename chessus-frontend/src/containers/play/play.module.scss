@@ -137,7 +137,7 @@
     }
 
     .game-type-info {
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       color: #888;
     }
   }
@@ -177,7 +177,7 @@
       color: #fff;
       padding: 2px 10px;
       border-radius: 12px;
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     }
   }
 
@@ -202,7 +202,7 @@
     }
 
     :global(.friend-elo) {
-      font-size: 12px;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     }
   }
 }
@@ -226,7 +226,7 @@
       color: #fff;
       padding: 2px 10px;
       border-radius: 12px;
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     }
   }
 
@@ -278,7 +278,7 @@
     color: #fff;
     padding: 4px 10px;
     border-radius: 6px;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     white-space: nowrap;
   }
 
@@ -358,7 +358,7 @@
     color: #fff;
     padding: 4px 10px;
     border-radius: 6px;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     white-space: nowrap;
   }
 
@@ -423,7 +423,7 @@
 
       .detail-label {
         color: #888;
-        font-size: 0.85rem;
+        font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
         margin-bottom: 4px;
       }
 
@@ -510,7 +510,7 @@
 
 .btn-small {
   padding: 8px 14px;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
 }
 
 // Waiting room (when hosting)
@@ -642,7 +642,7 @@
 
   .input-hint {
     color: #666;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     margin-top: 6px;
     text-align: center;
   }
@@ -848,7 +848,7 @@
     }
 
     .connection-status {
-      font-size: 0.8rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     }
   }
 
@@ -1027,7 +1027,7 @@
 
       .stat-divider {
         color: #555;
-        font-size: 0.7rem;
+        font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       }
     }
   }
@@ -1134,7 +1134,7 @@
 
     .game-size {
       color: #888;
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     }
   }
 }
@@ -1171,14 +1171,14 @@
       color: #8b85ff;
       font-weight: 600;
       text-transform: uppercase;
-      font-size: 0.75rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       letter-spacing: 0.05em;
     }
   }
 
   .stat-divider {
     color: #555;
-    font-size: 0.7rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .creator {

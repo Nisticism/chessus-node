@@ -63,6 +63,6 @@
     min-width: 36px;
     height: 36px;
     padding: 6px 10px;
-    font-size: 13px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 }

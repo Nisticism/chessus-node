@@ -112,7 +112,7 @@
   color: white;
   padding: 4px 12px;
   border-radius: 6px;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: 600;
   display: inline-block;
 }
@@ -122,7 +122,7 @@
   color: #000;
   padding: 4px 12px;
   border-radius: 6px;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: 600;
   display: inline-block;
 }
@@ -132,7 +132,7 @@
   color: white;
   padding: 4px 12px;
   border-radius: 6px;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: 600;
   display: inline-block;
 }
@@ -581,7 +581,7 @@
   }
 
   .data-table {
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
 
     thead tr th,
     tbody tr td {
@@ -595,7 +595,7 @@
 
   .page-button {
     padding: 8px 12px;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .modal-content {

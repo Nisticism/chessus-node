@@ -29,10 +29,13 @@ p {
   align-items: center;
   justify-content: space-between;
   width: -webkit-fill-available;
+  min-width: 0;
 }
 
 .nav-container {
   display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .main-logo {
@@ -83,7 +86,7 @@ p {
 .navbar-menu-container p {
   font-family: var(--font-family);
   font-weight: 500;
-  font-size: 18px;
+  font-size: clamp(1rem, 0.2vw + 0.95rem, 1.125rem);
   text-transform: capitalize;
   cursor: pointer;
   height: $nav-height;
@@ -96,6 +99,7 @@ p {
   display: flex;
   align-items: center;
   font-weight: 500;
+  font-size: inherit;
 }
 
 .sign-up {
@@ -144,6 +148,13 @@ p {
 .user-info {
   display: flex;
   justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.user-info .nav-item-inner,
+.user-menu-item,
+.logout-link {
+  white-space: nowrap;
 }
 
 .admin-link {
@@ -188,7 +199,7 @@ p {
     height: 40px;
     box-shadow:inset 2px 0px $lighter-hover;
     text-decoration: none;
-    font-size: 14px;
+    font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
   }
   .inner-menu-item:hover {
     background:$lighter-hover;
@@ -219,7 +230,7 @@ p {
 }
 
 // Intermediate breakpoint for tablets and small desktops
-@media screen and (max-width: 1000px) and (min-width: 751px) {
+@media screen and (max-width: 1100px) and (min-width: 751px) {
   .navbar-links-container {
     margin-left: 5px;
     margin-right: 5px;
@@ -229,7 +240,7 @@ p {
 
   .nav-item-inner {
     padding: 0px 8px;
-    font-size: 15px;
+    font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
   }
 
   .main-logo {
@@ -279,7 +290,7 @@ p {
     background: $nav-background;
     border-radius: 4px;
     text-decoration: none;
-    font-size: 14px;
+    font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
     min-height: 45px;
     transition: background 0.2s;
 
@@ -299,6 +310,24 @@ p {
     max-height: 70vh;
     padding: 0.75rem;
     overflow-y: auto;
+  }
+}
+
+@media screen and (max-width: 1200px) and (min-width: 1101px) {
+  .navbar-links-container {
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+
+  .nav-item-inner {
+    padding: 0px 10px;
+    font-size: clamp(0.95rem, 0.18vw + 0.9rem, 1rem);
+  }
+
+  .main-logo {
+    margin-left: 16px;
+    margin-right: 10px;
+    font-size: 24px;
   }
 }
 
@@ -339,7 +368,7 @@ p {
     justify-content: center;
     margin-left: auto;
     color: inherit;
-    font-size: 12px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     transition: transform 0.2s;
 
     &:hover {
@@ -464,6 +493,7 @@ p {
     padding: 12px 15px;
     white-space: normal;
     word-wrap: break-word;
+    overflow-wrap: anywhere;
     display: flex;
     align-items: center;
     text-decoration: none;
@@ -515,7 +545,7 @@ p {
     border-radius: 4px;
     margin-bottom: 4px;
     text-decoration: none;
-    font-size: 14px;
+    font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
     
     &:hover {
       background: $nav-hover-color;

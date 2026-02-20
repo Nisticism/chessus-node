@@ -151,12 +151,12 @@
 }
 
 .player-elo {
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: rgba(255, 255, 255, 0.6);
 }
 
 .elo-change {
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: 600;
 }
 
@@ -277,7 +277,7 @@
 }
 
 .detail-label {
-  font-size: 0.8rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
 }
@@ -312,7 +312,7 @@
   padding: 4px 10px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-family: monospace;
 }
 

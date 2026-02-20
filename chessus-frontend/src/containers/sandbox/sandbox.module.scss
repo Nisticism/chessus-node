@@ -47,7 +47,7 @@
   height: 28px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -92,7 +92,7 @@
 
   p {
     color: #8ab4e8;
-    font-size: 0.8rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     margin: 0;
     text-align: center;
   }
@@ -114,7 +114,7 @@
 .toggle-label {
   display: block;
   color: #aaa;
-  font-size: 0.8rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   margin-bottom: 8px;
   text-align: center;
 }
@@ -131,7 +131,7 @@
   border: 2px solid #1a2b3d;
   border-radius: 6px;
   color: #888;
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -176,7 +176,7 @@
   }
 
   span {
-    font-size: 0.8rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: #888;
   }
 
@@ -239,7 +239,7 @@
 
   span {
     color: #fff;
-    font-size: 0.8rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     text-align: center;
     word-wrap: break-word;
   }
@@ -333,7 +333,7 @@
 .max-reached {
   padding: 8px 12px;
   color: #666;
-  font-size: 0.8rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-style: italic;
 }
 
@@ -392,7 +392,7 @@
 
   span {
     color: #aaa;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     user-select: none;
   }
 
@@ -602,7 +602,7 @@
   position: absolute;
   top: 2px;
   right: 2px;
-  font-size: 0.7rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   z-index: 5;
   pointer-events: none;
   line-height: 1;
@@ -630,7 +630,7 @@
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 0.7rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: bold;
 }
 
@@ -697,7 +697,7 @@
   align-items: center;
   gap: 6px;
   color: #8ab4e8;
-  font-size: 0.8rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
 }
 
 .instruction-icon {
@@ -926,7 +926,7 @@
 
   span {
     color: #fff;
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   &.remove-btn {
@@ -986,7 +986,7 @@
     padding: 12px;
     
     p {
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       line-height: 1.4;
     }
   }
@@ -1041,7 +1041,7 @@
     padding: 10px;
     
     p {
-      font-size: 0.8rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       line-height: 1.3;
     }
   }
@@ -1063,7 +1063,7 @@
     }
 
     .piece-name {
-      font-size: 0.75rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     }
   }
 
@@ -1075,14 +1075,14 @@
 
   .board-controls {
     button {
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       padding: 8px 12px;
       min-width: 100px;
     }
   }
 
   .instruction {
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     padding: 6px 10px;
   }
 }

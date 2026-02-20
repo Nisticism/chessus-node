@@ -272,7 +272,7 @@
   min-width: 160px;
 
   .elo-label {
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: #8097ae;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -297,7 +297,7 @@
   border-radius: 8px;
 
   .last-active-label {
-    font-size: 0.75rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: #888;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -337,7 +337,7 @@
     .request-count {
       background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
       color: #fff;
-      font-size: 0.85rem;
+      font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       padding: 4px 12px;
       border-radius: 12px;
       font-weight: 600;
@@ -400,7 +400,7 @@
 }
 
 .request-elo {
-  font-size: 0.85rem;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: #8097ae;
 }
 
@@ -456,7 +456,7 @@
   gap: 8px;
 
   .info-label {
-    font-size: 0.85rem;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     color: #8097ae;
     text-transform: uppercase;
     letter-spacing: 1px;

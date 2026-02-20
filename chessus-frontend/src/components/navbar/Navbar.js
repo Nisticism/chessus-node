@@ -19,7 +19,7 @@ const UserMenu = ({ currentUser, logOut }) => (
             ⚡ Admin
           </Link>
         )}
-        <Link className="user-menu-item" to="/login" onClick={logOut}>
+        <Link className="user-menu-item logout-link" to="/login" onClick={logOut}>
           🚪 Log Out
         </Link>
       </>
@@ -165,7 +165,7 @@ const Menu = ({ currentUser, logOut }) => {
           </div>
         )}
         <div className="nav-item mobile-only">
-          <Link as="div" className="nav-item-inner" to="/login" onClick={logOut}>
+          <Link as="div" className="nav-item-inner logout-link" to="/login" onClick={logOut}>
             🚪 Log Out
           </Link>
         </div>
@@ -244,7 +244,7 @@ const Navbar = () => {
                 </div>
               )}
               <div className="nav-item">
-                <Link to="/login" className="nav-item-inner" onClick={logOut}>
+                <Link to="/login" className="nav-item-inner logout-link" onClick={logOut}>
                   Log Out
                 </Link>
               </div>

@@ -860,7 +860,7 @@
 
 .piece-count-hint {
   color: var(--text-light-gray);
-  font-size: 13px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   margin-bottom: 10px;
   font-style: italic;
 }
@@ -951,7 +951,7 @@
 }
 
 .piece-id {
-  font-size: 12px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: var(--text-light-gray);
 }
 
@@ -1115,13 +1115,13 @@
 
 .no-partners-hint {
   color: var(--text-light-gray);
-  font-size: 12px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-style: italic;
 }
 
 .castling-warning {
   color: #f5a623;
-  font-size: 13px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   padding: 10px;
   background: rgba(245, 166, 35, 0.1);
   border-radius: 5px;
@@ -1252,7 +1252,7 @@
 }
 
 .radio-hint {
-  font-size: 13px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: var(--text-light-gray);
   margin: 0;
   margin-left: 24px;
@@ -1299,7 +1299,7 @@
 }
 
 .checkbox-hint {
-  font-size: 13px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: var(--text-light-gray);
   margin: 0;
   padding-left: 28px;

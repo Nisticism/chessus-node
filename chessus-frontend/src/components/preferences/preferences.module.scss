@@ -167,7 +167,7 @@
 }
 
 .preset-name {
-  font-size: 12px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: 500;
   color: var(--medium-gray, #b0b0b0);
   text-align: center;
@@ -228,7 +228,7 @@
 }
 
 .slider-value {
-  font-size: 13px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   color: var(--medium-gray, #b0b0b0);
   min-width: 45px;
   text-align: right;
@@ -361,13 +361,13 @@
   }
 
   .preset-name {
-    font-size: 11px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .preset-check {
     top: 2px;
     right: 4px;
-    font-size: 12px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .color-selector-container {
@@ -386,12 +386,12 @@
 
   .slider-label {
     min-width: 70px;
-    font-size: 13px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .slider-value {
     min-width: 40px;
-    font-size: 12px;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
 
   .preview-square {

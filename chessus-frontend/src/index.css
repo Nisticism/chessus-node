@@ -3,6 +3,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
+  font-size: clamp(1rem, 0.2vw + 0.95rem, 1.08rem);
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -85,10 +87,15 @@ code {
   box-sizing: border-box;
 }
 
+html {
+  font-size: 16px;
+}
+
 /* Ensure buttons don't overflow containers on mobile */
 button, .btn, a.btn {
   max-width: 100%;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Prevent horizontal scrolling on mobile */
@@ -99,7 +106,7 @@ body {
 /* Mobile responsive font sizes */
 @media (max-width: 768px) {
   html {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   h1 {
@@ -130,7 +137,7 @@ body {
 
 @media (max-width: 480px) {
   html {
-    font-size: 13px;
+    font-size: 14.5px;
   }
 
   h1 {
