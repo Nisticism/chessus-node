@@ -116,7 +116,9 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
     try {
       const response = await fetch(libraryImage.src);
       const blob = await response.blob();
-      const file = new File([blob], `${libraryImage.name.replace(/[^a-zA-Z0-9]/g, '_')}.png`, { type: 'image/png' });
+      const extension = blob.type ? blob.type.split('/').pop() : 'png';
+      const safeName = libraryImage.name.replace(/[^a-zA-Z0-9]/g, '_');
+      const file = new File([blob], `${safeName}.${extension}`, { type: blob.type || 'image/png' });
       
       // If in edit mode and replacing an existing image, remove it from existingImages
       if (isEditMode && setExistingImages && existingImages.length > 0 && libraryTargetIndex < existingImages.length) {

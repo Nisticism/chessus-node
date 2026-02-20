@@ -98,36 +98,32 @@ export const BlackTierThreeMelee = blacktierthreemelee;
 export const WhiteTierThreeRange = whitetierthreerange;
 export const BlackTierThreeRange = blacktierthreerange;
 
-// Library array for piece wizard picker - organized by piece type
-export const pieceImageLibrary = [
-  { name: 'Pawn (White)', src: whitepawn, category: 'Classic Chess' },
-  { name: 'Pawn (Black)', src: blackpawn, category: 'Classic Chess' },
-  { name: 'Knight (White)', src: whiteknight, category: 'Classic Chess' },
-  { name: 'Knight (Black)', src: blackknight, category: 'Classic Chess' },
-  { name: 'Bishop (White)', src: whitebishup, category: 'Classic Chess' },
-  { name: 'Bishop (Black)', src: blackbishup, category: 'Classic Chess' },
-  { name: 'Rook (White)', src: whiterook, category: 'Classic Chess' },
-  { name: 'Rook (Black)', src: blackrook, category: 'Classic Chess' },
-  { name: 'Queen (White)', src: whitequeen, category: 'Classic Chess' },
-  { name: 'Queen (Black)', src: blackqueen, category: 'Classic Chess' },
-  { name: 'King (White)', src: whiteking, category: 'Classic Chess' },
-  { name: 'King (Black)', src: blackking, category: 'Classic Chess' },
-  { name: 'Chest (White)', src: whitechest, category: 'Fantasy' },
-  { name: 'Chest (Black)', src: blackchest, category: 'Fantasy' },
-  { name: 'Swordsman (White)', src: whiteswordsman, category: 'Fantasy' },
-  { name: 'Swordsman (Black)', src: blackswordsman, category: 'Fantasy' },
-  { name: 'Wizard (White)', src: whitewizard, category: 'Fantasy' },
-  { name: 'Wizard (Black)', src: blackwizard, category: 'Fantasy' },
-  { name: 'Tier 1 Melee (White)', src: whitetieronemelee, category: 'Tiered Units' },
-  { name: 'Tier 1 Melee (Black)', src: blacktieronemelee, category: 'Tiered Units' },
-  { name: 'Tier 1 Range (White)', src: whitetieronerange, category: 'Tiered Units' },
-  { name: 'Tier 1 Range (Black)', src: blacktieronerange, category: 'Tiered Units' },
-  { name: 'Tier 2 Melee (White)', src: whitetiertwomelee, category: 'Tiered Units' },
-  { name: 'Tier 2 Melee (Black)', src: blacktiertwomelee, category: 'Tiered Units' },
-  { name: 'Tier 2 Range (White)', src: whitetiertworange, category: 'Tiered Units' },
-  { name: 'Tier 2 Range (Black)', src: blacktiertworange, category: 'Tiered Units' },
-  { name: 'Tier 3 Melee (White)', src: whitetierthreemelee, category: 'Tiered Units' },
-  { name: 'Tier 3 Melee (Black)', src: blacktierthreemelee, category: 'Tiered Units' },
-  { name: 'Tier 3 Range (White)', src: whitetierthreerange, category: 'Tiered Units' },
-  { name: 'Tier 3 Range (Black)', src: blacktierthreerange, category: 'Tiered Units' },
-];
+const toTitleCase = (value) => value
+  .replace(/[-_]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const imageLibraryContext = require.context('./pieces', true, /\.(png|jpe?g|svg|webp)$/i);
+
+export const pieceImageLibrary = imageLibraryContext
+  .keys()
+  .map((key) => {
+    const normalizedPath = key.replace('./', '');
+    const pathParts = normalizedPath.split('/');
+    const fileName = pathParts[pathParts.length - 1];
+    const folderName = pathParts.length > 1 ? pathParts[0] : 'Core';
+    const displayName = toTitleCase(fileName.replace(/\.[^.]+$/, ''));
+
+    return {
+      name: displayName,
+      src: imageLibraryContext(key),
+      category: toTitleCase(folderName)
+    };
+  })
+  .sort((left, right) => {
+    if (left.category === right.category) {
+      return left.name.localeCompare(right.name);
+    }
+    return left.category.localeCompare(right.category);
+  });
