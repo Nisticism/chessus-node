@@ -69,7 +69,7 @@ const EditForum = () => {
   }
 
   if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+    return <Navigate to="/login" state={{ message: "Please log in to edit forum posts." }} />;
   }
 
   if (currentUser && currentForum && (currentForum.author_id != currentUser.id && currentUser.role !== "Admin")) {

@@ -16,7 +16,7 @@ const Profile = (props) => {
   const navigate = useNavigate();
 
   if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+    return <Navigate to="/login" state={{ message: "Please log in to view your profile." }} />;
   }
 
   const handleDelete = (e) => {

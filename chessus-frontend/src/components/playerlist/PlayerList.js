@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { users } from "../../actions/users";
 import Pagination from "../pagination/Pagination";
@@ -44,7 +44,6 @@ const getRoleBadge = (role) => {
 };
 
 const PlayerList = () => {
-  const { user: currentUser } = useSelector((state) => state.authReducer);
   const allUsers = useSelector((state) => state.users);
   const [currentPage, setCurrentPage] = useState(1);
   const dispatch = useDispatch();
@@ -57,10 +56,6 @@ const PlayerList = () => {
     setCurrentPage(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
-  }
 
   const pagination = allUsers.pagination;
   const totalCount = pagination?.total || 0;

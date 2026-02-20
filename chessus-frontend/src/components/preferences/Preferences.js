@@ -172,7 +172,7 @@ const Preferences = () => {
   }, [lightSquareColor, darkSquareColor]);
 
   if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+    return <Navigate to="/login" state={{ message: "Please log in to manage your account preferences." }} />;
   }
 
   const handleSave = async () => {

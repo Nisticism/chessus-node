@@ -90,7 +90,7 @@ const CreateForum = () => {
 
 
   if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+    return <Navigate to="/login" state={{ message: "Please log in to create a forum post." }} />;
   }
 
   return (

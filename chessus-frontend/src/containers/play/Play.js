@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { useNavigate, Link, useSearchParams, useLocation } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
 import { getGames } from "../../actions/games";
 import { getOnlineFriends, setOnlineUsers } from "../../actions/friends";
@@ -56,6 +56,10 @@ const Play = () => {
   const [friendsPage, setFriendsPage] = useState(1);
   const [openGamesPage, setOpenGamesPage] = useState(1);
   const [ongoingGamesPage, setOngoingGamesPage] = useState(1);
+
+  const redirectToLogin = (message) => {
+    navigate('/login', { state: { message } });
+  };
 
   // Fetch game types on mount
   useEffect(() => {
@@ -216,6 +220,10 @@ const Play = () => {
 
   // Open create modal in challenge mode
   const openChallengeModal = (friendId, friendUsername) => {
+    if (!currentUser) {
+      redirectToLogin("Please log in to challenge friends to a game.");
+      return;
+    }
     setChallengedUserId(friendId);
     setChallengedUsername(friendUsername);
     setModalGameSearch("");
@@ -232,6 +240,10 @@ const Play = () => {
 
   // Accept an incoming challenge
   const acceptChallenge = async (challenge) => {
+    if (!currentUser) {
+      redirectToLogin("Please log in to accept and join challenge games.");
+      return;
+    }
     try {
       await joinGame(challenge.gameId);
       setPendingChallenges(prev => prev.filter(c => c.gameId !== challenge.gameId));
@@ -335,6 +347,10 @@ const Play = () => {
 
   // Handle creating a new game
   const handleCreateGame = async () => {
+    if (!currentUser) {
+      redirectToLogin("Please log in to host a game.");
+      return;
+    }
     if (!selectedGameType) return;
     
     setIsCreating(true);
@@ -374,6 +390,10 @@ const Play = () => {
 
   // Handle joining a game
   const handleJoinGame = async (gameId) => {
+    if (!currentUser) {
+      redirectToLogin("Please log in to join a game.");
+      return;
+    }
     setIsJoining(true);
     setError(null);
 
@@ -415,29 +435,6 @@ const Play = () => {
   // Check if user is admin or owner
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin' || currentUser?.role?.toLowerCase() === 'owner';
 
-  // If not logged in, show login prompt
-  if (!currentUser) {
-    return (
-      <div className={styles["play-container"]}>
-        <div className={styles["play-header"]}>
-          <h1>Play</h1>
-        </div>
-        <div className={styles["must-login"]}>
-          <h2>Login Required</h2>
-          <p>You need to be logged in to play games.</p>
-          <div className={styles["login-buttons"]}>
-            <Link to="/login" className={`${styles.btn} ${styles["btn-primary"]}`}>
-              Login
-            </Link>
-            <Link to="/register" className={`${styles.btn} ${styles["btn-secondary"]}`}>
-              Register
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={styles["play-container"]}>
       <div className={styles["play-header"]}>
@@ -450,6 +447,12 @@ const Play = () => {
 
       {error && (
         <div className={styles["error-message"]}>{error}</div>
+      )}
+
+      {!currentUser && (
+        <div className={styles["error-message"]}>
+          Guest mode: you can browse open and ongoing matches, but you must log in to host, join, or challenge.
+        </div>
       )}
 
       <div className={styles["play-content"]}>
@@ -569,7 +572,13 @@ const Play = () => {
                 </div>
                 <button
                   className={`${styles.btn} ${styles["btn-primary"]}`}
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={() => {
+                    if (!currentUser) {
+                      redirectToLogin("Please log in to host a game.");
+                      return;
+                    }
+                    setShowCreateModal(true);
+                  }}
                   disabled={!connected}
                 >
                   Host Game
@@ -635,7 +644,7 @@ const Play = () => {
               <>
                 <div className={styles["open-matches-list"]}>
                   {paginatedOpenGames.map((game) => {
-                    const isOwnGame = game.host_id === currentUser.id;
+                    const isOwnGame = currentUser ? game.host_id === currentUser.id : false;
                     return (
                       <div 
                         key={game.id || game.gameId} 
@@ -670,7 +679,7 @@ const Play = () => {
                               onClick={() => handleJoinGame(game.id || game.gameId)}
                               disabled={isJoining}
                             >
-                              {isJoining ? "Joining..." : "Join Game"}
+                              {isJoining ? "Joining..." : currentUser ? "Join Game" : "Sign in to Join"}
                             </button>
                           )}
                           {isAdmin && (
@@ -794,7 +803,7 @@ const Play = () => {
       </div>
 
       {/* Create Game Modal */}
-      {showCreateModal && (
+      {showCreateModal && currentUser && (
         <div className={styles["modal-overlay"]} onClick={closeCreateModal}>
           <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
             <h2>

@@ -1804,6 +1804,10 @@ const LiveGame = () => {
 
   // Handle joining the game
   const handleJoinGame = async () => {
+    if (!currentUser) {
+      navigate('/login', { state: { message: "Please log in to join live games." } });
+      return;
+    }
     try {
       await joinGame(parseInt(gameId));
     } catch (err) {
@@ -2198,7 +2202,33 @@ const LiveGame = () => {
 
   // Check if user can join this game (for join button in waiting banner)
   const isHost = gameState.hostId === currentUser?.id;
+  const isPlayer = !!gameState.players?.some((player) => player.id === currentUser?.id);
+  const canSpectate = gameState.allowSpectators !== false || isPlayer;
   const gameUrl = `${window.location.origin}/play/${gameId}`;
+
+  if (!canSpectate) {
+    return (
+      <div className={styles["live-game-container"]}>
+        <div className={styles["error-container"]}>
+          <h2>Spectating Disabled</h2>
+          <p>Spectators are not allowed for this game.</p>
+          <div className={styles["action-buttons"]}>
+            {!currentUser && (
+              <button
+                className={`${styles.btn} ${styles["btn-primary"]}`}
+                onClick={() => navigate('/login', { state: { message: "Please log in to play or spectate games where allowed." } })}
+              >
+                Login
+              </button>
+            )}
+            <Link to="/play" className={`${styles.btn} ${styles["btn-secondary"]}`}>
+              Back to Lobby
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Active, ready, waiting, or completed game - show the board
   const player1 = gameState.players?.find(p => p.position === 1);
@@ -2371,6 +2401,16 @@ const LiveGame = () => {
                         onClick={handleJoinGame}
                       >
                         Join Game
+                      </button>
+                    </>
+                  ) : !currentUser ? (
+                    <>
+                      <span><strong>{gameState.hostUsername || 'A player'}</strong> is hosting this game</span>
+                      <button
+                        className={`${styles.btn} ${styles["btn-primary"]}`}
+                        onClick={() => navigate('/login', { state: { message: "Please log in to join live games." } })}
+                      >
+                        Login to Join
                       </button>
                     </>
                   ) : (

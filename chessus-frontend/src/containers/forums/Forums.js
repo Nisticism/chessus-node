@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import styles from "./forums.module.scss";
 import StandardButton from "../../components/standardbutton/StandardButton";
@@ -28,11 +28,11 @@ const Forums = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
-  }
-
   function createNewPost() {
+    if (!currentUser) {
+      navigate('/login', { state: { message: "Please log in to create a forum post." } });
+      return;
+    }
     navigate("/forums/new");
   }
 

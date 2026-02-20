@@ -702,7 +702,7 @@ const AdminDashboard = () => {
   };
 
   if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+    return <Navigate to="/login" state={{ message: "Please log in with an admin account to access the admin dashboard." }} />;
   }
 
   const userRole = currentUser.role?.toLowerCase();

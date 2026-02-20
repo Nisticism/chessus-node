@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import styles from "./news.module.scss";
 import { news } from "../../actions/news";
@@ -18,11 +18,11 @@ const News = () => {
     }
   }, [firstRender, dispatch]);
 
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
-  }
-
   function createNewPost() {
+    if (!currentUser) {
+      navigate('/login', { state: { message: "Please log in as an admin to create news articles." } });
+      return;
+    }
     navigate("/news/new");
   }
 

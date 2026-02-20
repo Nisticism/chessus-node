@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { getPieces, deletePiece } from "../../actions/pieces";
 import Pagination from "../pagination/Pagination";
@@ -41,10 +41,6 @@ const PieceList = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
-  }
-
   const getFirstImage = (imageLocation) => {
     if (!imageLocation) return null;
     
@@ -71,17 +67,18 @@ const PieceList = () => {
   // Separate pieces into user's pieces and other pieces
   // Filter out any pieces without valid IDs
   const myPieces = allPieces.piecesList 
-    ? allPieces.piecesList.filter(piece => piece.id && piece.creator_id === currentUser.id)
+    ? allPieces.piecesList.filter(piece => piece.id && currentUser && piece.creator_id === currentUser.id)
     : [];
   
   const otherPieces = allPieces.piecesList 
-    ? allPieces.piecesList.filter(piece => piece.id && piece.creator_id !== currentUser.id)
+    ? allPieces.piecesList.filter(piece => piece.id && (!currentUser || piece.creator_id !== currentUser.id))
     : [];
 
   const pagination = allPieces.pagination;
   const totalCount = pagination?.total || 0;
 
   const canEditPiece = (piece) => {
+    if (!currentUser) return false;
     return piece.creator_id === currentUser.id || currentUser.role === "Admin";
   };
 
@@ -213,9 +210,18 @@ const PieceList = () => {
         <p className={styles["subtitle"]}>
           Browse and manage custom pieces for your games
         </p>
-        <Link to="/create/piece" className={styles["create-button"]}>
-          + Create New Piece
-        </Link>
+        {currentUser ? (
+          <Link to="/create/piece" className={styles["create-button"]}>
+            + Create New Piece
+          </Link>
+        ) : (
+          <button
+            className={styles["create-button"]}
+            onClick={() => navigate('/login', { state: { message: "Please log in to create a piece." } })}
+          >
+            + Create New Piece
+          </button>
+        )}
       </div>
 
       {/* My Pieces Section */}
@@ -248,7 +254,7 @@ const PieceList = () => {
           <div className={styles["pieces-grid"]}>
             {otherPieces.map(piece => (
               <React.Fragment key={piece.id}>
-                {renderPieceCard(piece, currentUser.role === "Admin")}
+                {renderPieceCard(piece, currentUser?.role === "Admin")}
               </React.Fragment>
             ))}
           </div>
@@ -273,9 +279,18 @@ const PieceList = () => {
           <div className={styles["empty-icon"]}>🧩</div>
           <h3>No Pieces Yet</h3>
           <p>Create your first custom piece to get started!</p>
-          <Link to="/create/piece" className={styles["create-button"]}>
-            Create a Piece
-          </Link>
+          {currentUser ? (
+            <Link to="/create/piece" className={styles["create-button"]}>
+              Create a Piece
+            </Link>
+          ) : (
+            <button
+              className={styles["create-button"]}
+              onClick={() => navigate('/login', { state: { message: "Please log in to create a piece." } })}
+            >
+              Create a Piece
+            </button>
+          )}
         </div>
       )}
 

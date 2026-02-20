@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./forum.module.scss";
 import { deleteComment, getForum, newComment, editComment, deleteForum } from "../../actions/forums";
@@ -37,10 +37,6 @@ const Forum = () => {
     }
   }, [firstRender]);
 
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
-  }
-
   const handleDelete = (e, id) => {
     e.preventDefault();
     // console.log(id);
@@ -62,6 +58,10 @@ const Forum = () => {
 
   const handleNewComment = (e) => {
     e.preventDefault();
+    if (!currentUser) {
+      navigate('/login', { state: { message: "Please log in to comment on forums." } });
+      return;
+    }
     let commentContent = document.getElementById("comment-field").value;
     const currentTime = getCurrentMySQLDateTime();
     console.log(commentContent);
@@ -134,7 +134,7 @@ const Forum = () => {
             
             <div className={styles["forum-title-container"]}>
               <div className={styles["forum-title"]}>{currentForum.title}</div>
-              { (currentForum.author_id === currentUser.id || currentUser.role === "Admin") &&
+              { currentUser && (currentForum.author_id === currentUser.id || currentUser.role === "Admin") &&
                 <div className={styles["post-icons-container"]}>
                   <div className={styles["forum-edit-button"]} onClick={(event) => handleEditPost(event, currentForum.id)}><FaEdit /></div>
                   <div className={styles["forum-delete-button"]} onClick={(event) => handleDeletePost(event, currentForum.id)}><FaTrash /></div>
@@ -155,7 +155,11 @@ const Forum = () => {
             )}
             <div className={styles["forum-content"]}>{currentForum.content}</div>
             <div className={styles["likes-container"]}>
-              <LikesModule isLiked={false} likeCount={currentForum.likes ? currentForum.likes.length : 0} userId={currentUser.id} forumId={currentForum.id}/>
+              {currentUser ? (
+                <LikesModule isLiked={false} likeCount={currentForum.likes ? currentForum.likes.length : 0} userId={currentUser.id} forumId={currentForum.id}/>
+              ) : (
+                <StandardButton buttonText={"Login to Like"} onClick={() => navigate('/login', { state: { message: "Please log in to like forum posts." } })} />
+              )}
             </div>
             <h2>Comments</h2>
             {
@@ -180,14 +184,14 @@ const Forum = () => {
                     </div>
                     <div className={styles["comment-buttons"]}>
                       <div className={styles["comment-edit-button"]}>
-                        { (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
+                        { currentUser && (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
                           <div>
                             <div onClick={(event) => handleEdit(event, comment.id + "edit", comment.id)}><FaEdit/></div>
                           </div>
                         : "" }
                       </div>
                       <div className={styles["comment-delete"]}>
-                        { (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
+                        { currentUser && (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
                           <div>
                             <div onClick={(event) => handleDelete(event, comment.id)}><FaTrash/></div>
                           </div>
@@ -207,10 +211,14 @@ const Forum = () => {
             }) : "No comments so far"
           }
           <div className={styles["new-comment"]}>
-            <textarea className={styles["comment-field"]} id="comment-field"></textarea>
+            <textarea className={styles["comment-field"]} id="comment-field" disabled={!currentUser}></textarea>
           </div>
           <div className={styles["submit-comment-button"]}>
-            <StandardButton buttonText={"Submit Comment"} onClick={handleNewComment}/>
+            {currentUser ? (
+              <StandardButton buttonText={"Submit Comment"} onClick={handleNewComment}/>
+            ) : (
+              <StandardButton buttonText={"Login to Comment"} onClick={() => navigate('/login', { state: { message: "Please log in to comment on forums." } })}/>
+            )}
           </div>
           </div>
            :

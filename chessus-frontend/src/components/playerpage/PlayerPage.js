@@ -78,7 +78,7 @@ const PlayerPage = (props) => {
   }
 
   useEffect(() => {
-    if (!firstRender && currentUser) {
+    if (!firstRender && username) {
       setLoading(true);
       setDisplayPictureUrl(null); // Clear display picture URL when loading new profile
       dispatch(clearPlayerPage()); // Clear previous player page data
@@ -171,8 +171,8 @@ const PlayerPage = (props) => {
     };
   }, [showAlert, alertType, navigate]);
 
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+  if (!routeUsername && !currentUser) {
+    return <Navigate to="/login" state={{ message: "Please log in to view your own profile." }} />;
   }
 
   const getPlayerPage = () => {

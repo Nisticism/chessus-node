@@ -131,7 +131,7 @@ const EditAccount = (props) => {
   }, [firstRender]);
 
   if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+    return <Navigate to="/login" state={{ message: "Please log in to edit your profile." }} />;
   }
 
   const id = currentUser.id;

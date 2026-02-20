@@ -9,7 +9,7 @@ const GameCreate = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
 
   if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+    return <Navigate to="/login" state={{ message: "Please log in to create or edit game types." }} />;
   }
 
   return (

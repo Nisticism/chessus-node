@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { getGames, deleteGame } from "../../actions/games";
 import Pagination from "../pagination/Pagination";
@@ -39,24 +39,21 @@ const GameList = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
-  }
-
   // Separate games into user's games and other games
   // Filter out any games without valid IDs
   const myGames = allGames.gamesList 
-    ? allGames.gamesList.filter(game => game.id && game.creator_id === currentUser.id)
+    ? allGames.gamesList.filter(game => game.id && currentUser && game.creator_id === currentUser.id)
     : [];
   
   const otherGames = allGames.gamesList 
-    ? allGames.gamesList.filter(game => game.id && game.creator_id !== currentUser.id)
+    ? allGames.gamesList.filter(game => game.id && (!currentUser || game.creator_id !== currentUser.id))
     : [];
 
   const pagination = allGames.pagination;
   const totalCount = pagination?.total || 0;
 
   const canEditGame = (game) => {
+    if (!currentUser) return false;
     return game.creator_id === currentUser.id || currentUser.role === "Admin";
   };
 
@@ -196,9 +193,18 @@ const GameList = () => {
         <p className={styles["subtitle"]}>
           Browse and manage custom game types
         </p>
-        <Link to="/create/game" className={styles["create-button"]}>
-          + Create New Game
-        </Link>
+        {currentUser ? (
+          <Link to="/create/game" className={styles["create-button"]}>
+            + Create New Game
+          </Link>
+        ) : (
+          <button
+            className={styles["create-button"]}
+            onClick={() => navigate('/login', { state: { message: "Please log in to create a game type." } })}
+          >
+            + Create New Game
+          </button>
+        )}
       </div>
 
       {/* My Games Section */}
@@ -225,7 +231,7 @@ const GameList = () => {
         
         {otherGames.length > 0 ? (
           <div className={styles["games-grid"]}>
-            {otherGames.map(game => renderGameCard(game, currentUser.role === "Admin"))}
+            {otherGames.map(game => renderGameCard(game, currentUser?.role === "Admin"))}
           </div>
         ) : myGames.length === 0 ? (
           <div className={styles["empty-section"]}>
@@ -248,9 +254,18 @@ const GameList = () => {
           <div className={styles["empty-icon"]}>🎲</div>
           <h3>No Games Yet</h3>
           <p>Create your first custom game type to get started!</p>
-          <Link to="/create/game" className={styles["create-button"]}>
-            Create a Game
-          </Link>
+          {currentUser ? (
+            <Link to="/create/game" className={styles["create-button"]}>
+              Create a Game
+            </Link>
+          ) : (
+            <button
+              className={styles["create-button"]}
+              onClick={() => navigate('/login', { state: { message: "Please log in to create a game type." } })}
+            >
+              Create a Game
+            </button>
+          )}
         </div>
       )}
 

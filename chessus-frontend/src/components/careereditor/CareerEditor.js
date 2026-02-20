@@ -100,7 +100,7 @@ const CareerEditor = () => {
 
   // Redirect non-owners
   if (!currentUser) {
-    return <Navigate to="/login" state={{ message: "Please log in to view this page" }} />;
+    return <Navigate to="/login" state={{ message: "Please log in to create or edit career posts." }} />;
   }
 
   if (!isOwner) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import axios from "axios";
 import { getAllPieces } from "../../actions/pieces";
@@ -31,13 +31,10 @@ const Pieces = () => {
     console.log(pieceImages);
   }
 
-  if (!currentUser) {
-    return <Navigate to="/login" />;
-  }
   return (
     <div className={styles["pieces-list-container"]}>
       <p>
-        <strong>Your Id:</strong> {currentUser.id}
+        <strong>Your Id:</strong> {currentUser?.id || "Guest"}
       </p>
       <h1 className={styles["pieces-found"]}>{pieces ? pieces.length : 0} pieces found</h1>
       <div className={styles["pieces-table"]}>
