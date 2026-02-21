@@ -949,7 +949,9 @@ const GameTypeView = () => {
   };
 
   const canEdit = () => {
-    return currentUser && game && (game.creator_id === currentUser.id || currentUser.role === "Admin");
+    if (!currentUser || !game) return false;
+    const role = (currentUser.role || "").toLowerCase();
+    return Number(game.creator_id) === Number(currentUser.id) || role === "admin" || role === "owner";
   };
 
   if (loading) {

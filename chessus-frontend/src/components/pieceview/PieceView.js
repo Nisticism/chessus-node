@@ -137,7 +137,9 @@ const PieceView = () => {
   };
 
   const canEdit = () => {
-    return currentUser && piece && (piece.creator_id === currentUser.id || currentUser.role === "Admin");
+    if (!currentUser || !piece) return false;
+    const role = (currentUser.role || "").toLowerCase();
+    return Number(piece.creator_id) === Number(currentUser.id) || role === "admin" || role === "owner";
   };
 
   // Parse piece images for the board preview - must be before early returns

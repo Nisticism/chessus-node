@@ -4127,6 +4127,26 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
     }
   }
 
+  // Step-by-step movement
+  const stepValueRaw = piece.step_movement_value ?? piece.step_by_step_movement_value;
+  const stepValue = Number(stepValueRaw);
+  if (!Number.isNaN(stepValue) && stepValue !== 0) {
+    const maxSteps = Math.abs(stepValue);
+    const noDiagonal = stepValue < 0;
+
+    if (noDiagonal) {
+      const manhattanDistance = Math.abs(dx) + Math.abs(dy);
+      if (manhattanDistance > 0 && manhattanDistance <= maxSteps) {
+        return true;
+      }
+    } else {
+      const chebyshevDistance = Math.max(Math.abs(dx), Math.abs(dy));
+      if (chebyshevDistance > 0 && chebyshevDistance <= maxSteps) {
+        return true;
+      }
+    }
+  }
+
   // Check special scenario moves (e.g., pawn's 2-square first move)
   if (piece.special_scenario_moves) {
     try {

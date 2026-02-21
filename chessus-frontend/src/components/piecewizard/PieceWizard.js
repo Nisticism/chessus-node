@@ -179,7 +179,9 @@ const PieceWizard = ({ editPieceId = null }) => {
           const piece = await getPieceById(editPieceId);
           
           // Check if user has permission to edit
-          if (piece.creator_id !== currentUser?.id && currentUser?.role !== "Admin") {
+          const role = (currentUser?.role || "").toLowerCase();
+          const isPrivileged = role === "admin" || role === "owner";
+          if (Number(piece.creator_id) !== Number(currentUser?.id) && !isPrivileged) {
             navigate("/create/pieces");
             return;
           }

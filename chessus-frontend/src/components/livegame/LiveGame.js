@@ -5,7 +5,11 @@ import { useSocket } from "../../contexts/SocketContext";
 import styles from "./livegame.module.scss";
 import soundManager from "../../utils/soundEffects";
 import PromotionModal from "./PromotionModal";
-import { canRangedAttackTo } from "../../helpers/pieceMovementUtils";
+import {
+  canPieceMoveTo as canPieceMoveToUtil,
+  canCaptureOnMoveTo as canCaptureOnMoveToUtil,
+  canRangedAttackTo
+} from "../../helpers/pieceMovementUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -640,6 +644,11 @@ const LiveGame = () => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
+    const utilResult = canPieceMoveToUtil(fromY, fromX, toY, toX, pieceData, playerPosition);
+    if (utilResult.allowed) {
+      return true;
+    }
+
     // For player 2, flip the perspective (so "up" is towards player 1 and "left" is towards player 1's left)
     const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
     const colDiff = playerPosition === 2 ? (fromX - toX) : (toX - fromX);
@@ -678,8 +687,8 @@ const LiveGame = () => {
 
     // Check ratio movement (L-shape like knight)
     const ratioStyle = pieceData.ratio_movement_style;
-    const ratio1 = pieceData.ratio_movement_1 || 0;
-    const ratio2 = pieceData.ratio_movement_2 || 0;
+    const ratio1 = pieceData.ratio_movement_1 || pieceData.ratio_one_movement || 0;
+    const ratio2 = pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0;
     
     if ((ratioStyle || (ratio1 > 0 && ratio2 > 0)) && ratio1 > 0 && ratio2 > 0) {
       if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
@@ -689,8 +698,8 @@ const LiveGame = () => {
     }
 
     // Check step-by-step movement
-    const stepStyle = pieceData.step_movement_style;
-    const stepValue = pieceData.step_movement_value;
+    const stepStyle = pieceData.step_movement_style || pieceData.step_by_step_movement_style;
+    const stepValue = pieceData.step_movement_value || pieceData.step_by_step_movement_value;
     if (stepStyle || stepValue) {
       const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
       const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
@@ -749,6 +758,11 @@ const LiveGame = () => {
   const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition) => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
+
+    const utilCaptureResult = canCaptureOnMoveToUtil(fromY, fromX, toY, toX, pieceData, playerPosition);
+    if (utilCaptureResult.allowed) {
+      return true;
+    }
 
     // For player 2, flip the perspective (mirror both row and column)
     const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
