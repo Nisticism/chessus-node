@@ -24,6 +24,8 @@ import Community from "./containers/community/Community";
 import CommunityHub from "./containers/communityhub/CommunityHub";
 import Leaderboard from "./components/leaderboard/Leaderboard";
 import Play from "./containers/play/Play";
+import Tournaments from "./containers/tournaments/Tournaments";
+import TournamentDetails from "./containers/tournaments/TournamentDetails";
 import LiveGame from "./components/livegame/LiveGame";
 import MatchView from "./components/matchview/MatchView";
 import Sandbox from "./containers/sandbox/Sandbox";
@@ -119,6 +121,8 @@ function App() {
             <Route exact path="/media/streams" element={<Streams />} />
             <Route exact path="/create" element={<CreateHub />} />
             <Route exact path="/play" element={<Play />} />
+            <Route exact path="/play/tournaments" element={<Tournaments />} />
+            <Route exact path="/play/tournaments/:tournamentId" element={<TournamentDetails />} />
             <Route exact path="/play/:gameId" element={<LiveGame />} />
             <Route exact path="/sandbox" element={<Sandbox />} />
             <Route exact path="/match/:gameId" element={<MatchView />} />

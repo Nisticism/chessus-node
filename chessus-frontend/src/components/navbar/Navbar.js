@@ -53,6 +53,9 @@ const Menu = ({ currentUser, logOut }) => {
         <Link as="div" className="inner-menu-item" to="/play">
           Browse open games
         </Link>
+        <Link as="div" className="inner-menu-item" to="/play/tournaments">
+          Tournaments
+        </Link>
         <Link as="div" className="inner-menu-item" to="/sandbox">
           Sandbox
         </Link>

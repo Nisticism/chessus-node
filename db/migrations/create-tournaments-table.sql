@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS tournaments (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  format VARCHAR(40) NOT NULL,
+  game_type_id INT UNSIGNED NOT NULL,
+  time_control INT UNSIGNED NOT NULL,
+  increment_seconds INT UNSIGNED NOT NULL DEFAULT 0,
+  min_players INT UNSIGNED NOT NULL,
+  max_players INT UNSIGNED NOT NULL,
+  is_private TINYINT(1) NOT NULL DEFAULT 0,
+  start_datetime DATETIME NOT NULL,
+  number_of_rounds INT UNSIGNED NOT NULL,
+  expected_length_minutes INT UNSIGNED NOT NULL,
+  status ENUM('open', 'full', 'started', 'completed', 'cancelled') DEFAULT 'open',
+  created_by_id INT UNSIGNED NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (game_type_id) REFERENCES game_types(id),
+  FOREIGN KEY (created_by_id) REFERENCES users(id),
+  INDEX idx_tournaments_game_type_id (game_type_id),
+  INDEX idx_tournaments_created_by_id (created_by_id),
+  INDEX idx_tournaments_status (status),
+  INDEX idx_tournaments_start_datetime (start_datetime)
+);

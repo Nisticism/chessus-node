@@ -206,7 +206,7 @@ const pieceUpload = multer({
   storage: pieceStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: function (req, file, cb) {
-    const allowedTypes = /jpeg|jpg|png|gif/;
+    const allowedTypes = /jpeg|jpg|png|gif|webp|svg/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
     
@@ -279,6 +279,626 @@ app.get("/api/api", (req, res) => {
 app.get("/api/", (req, res) => {
   res.json({ message: "Home page!" });
 })
+
+const TOURNAMENT_FORMATS = new Set(["single_elimination", "double_elimination", "pool_play"]);
+const TERMINAL_TOURNAMENT_STATUSES = new Set(["started", "completed", "cancelled"]);
+
+const parsePositiveInt = (value, fallback = null) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  const normalized = Math.floor(parsed);
+  return normalized > 0 ? normalized : fallback;
+};
+
+const parseBooleanValue = (value) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value === 1;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1" || normalized === "yes") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0" || normalized === "no") {
+      return false;
+    }
+  }
+
+  return null;
+};
+
+const normalizeStartDateTime = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 19).replace("T", " ");
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const noTimezone = trimmed.replace("T", " ");
+    if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/.test(noTimezone)) {
+      return noTimezone;
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/.test(noTimezone)) {
+      return `${noTimezone}:00`;
+    }
+
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 19).replace("T", " ");
+    }
+  }
+
+  return null;
+};
+
+const calculateTournamentRounds = ({ format, maxPlayers }) => {
+  const normalizedPlayers = Math.max(2, parsePositiveInt(maxPlayers, 2));
+  const eliminationRounds = Math.max(1, Math.ceil(Math.log2(normalizedPlayers)));
+
+  if (format === "double_elimination") {
+    return (eliminationRounds * 2) - 1;
+  }
+
+  if (format === "pool_play") {
+    return eliminationRounds + 1;
+  }
+
+  return eliminationRounds;
+};
+
+const calculateExpectedLengthMinutes = ({ format, maxPlayers, timeControl, incrementSeconds }) => {
+  const rounds = calculateTournamentRounds({ format, maxPlayers });
+  const baseMinutes = Math.max(1, parsePositiveInt(timeControl, 10));
+  const increment = Math.max(0, Number(incrementSeconds) || 0);
+  const averageMovesPerPlayer = 40;
+  const incrementMinutes = (increment * averageMovesPerPlayer) / 60;
+  const betweenRoundBufferMinutes = 5;
+  const matchLengthMinutes = Math.max(1, Math.ceil(baseMinutes + incrementMinutes + betweenRoundBufferMinutes));
+
+  return rounds * matchLengthMinutes;
+};
+
+const mapTournamentRow = (row, participants = []) => ({
+  id: String(row.id),
+  format: row.format,
+  gameTypeId: Number(row.game_type_id),
+  gameTypeName: row.game_type_name,
+  timeControl: Number(row.time_control),
+  increment: Number(row.increment_seconds),
+  minPlayers: Number(row.min_players),
+  maxPlayers: Number(row.max_players),
+  isPrivate: Boolean(row.is_private),
+  startDateTime: row.start_datetime,
+  numberOfRounds: Number(row.number_of_rounds),
+  expectedLengthMinutes: Number(row.expected_length_minutes),
+  status: row.status,
+  createdById: Number(row.created_by_id),
+  createdByUsername: row.created_by_username,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  participants
+});
+
+const getParticipantsByTournamentIds = async (tournamentIds) => {
+  if (!Array.isArray(tournamentIds) || tournamentIds.length === 0) {
+    return new Map();
+  }
+
+  const [participantRows] = await db_pool.query(
+    `SELECT tp.tournament_id, u.id AS user_id, u.username
+     FROM tournament_participants tp
+     INNER JOIN users u ON u.id = tp.user_id
+     WHERE tp.tournament_id IN (?)
+     ORDER BY tp.joined_at ASC`,
+    [tournamentIds]
+  );
+
+  const byTournamentId = new Map();
+  participantRows.forEach((row) => {
+    const key = String(row.tournament_id);
+    if (!byTournamentId.has(key)) {
+      byTournamentId.set(key, []);
+    }
+
+    byTournamentId.get(key).push({
+      id: Number(row.user_id),
+      username: row.username
+    });
+  });
+
+  return byTournamentId;
+};
+
+const getTournamentByIdForResponse = async (tournamentId, requesterId = null) => {
+  const [rows] = await db_pool.query(
+    `SELECT
+      t.id,
+      t.format,
+      t.game_type_id,
+      t.time_control,
+      t.increment_seconds,
+      t.min_players,
+      t.max_players,
+      t.is_private,
+      t.start_datetime,
+      t.number_of_rounds,
+      t.expected_length_minutes,
+      t.status,
+      t.created_by_id,
+      t.created_at,
+      t.updated_at,
+      gt.game_name AS game_type_name,
+      creator.username AS created_by_username,
+      COUNT(tp.user_id) AS participant_count,
+      EXISTS(
+        SELECT 1
+        FROM tournament_participants tp2
+        WHERE tp2.tournament_id = t.id AND tp2.user_id = ?
+      ) AS requester_is_participant
+    FROM tournaments t
+    INNER JOIN game_types gt ON gt.id = t.game_type_id
+    INNER JOIN users creator ON creator.id = t.created_by_id
+    LEFT JOIN tournament_participants tp ON tp.tournament_id = t.id
+    WHERE t.id = ?
+    GROUP BY t.id`,
+    [requesterId || 0, tournamentId]
+  );
+
+  if (!rows.length) {
+    return null;
+  }
+
+  const participantsById = await getParticipantsByTournamentIds([rows[0].id]);
+  const tournament = mapTournamentRow(rows[0], participantsById.get(String(rows[0].id)) || []);
+  tournament.requesterIsParticipant = Boolean(rows[0].requester_is_participant);
+  return tournament;
+};
+
+app.get("/api/tournaments", optionalAuthenticate, async (req, res) => {
+  try {
+    const requesterId = req.user?.id ? Number(req.user.id) : null;
+    const requesterRole = req.user?.role?.toLowerCase() || "";
+
+    const [rows] = await db_pool.query(
+      `SELECT
+        t.id,
+        t.format,
+        t.game_type_id,
+        t.time_control,
+        t.increment_seconds,
+        t.min_players,
+        t.max_players,
+        t.is_private,
+        t.start_datetime,
+        t.number_of_rounds,
+        t.expected_length_minutes,
+        t.status,
+        t.created_by_id,
+        t.created_at,
+        t.updated_at,
+        gt.game_name AS game_type_name,
+        creator.username AS created_by_username,
+        COUNT(tp.user_id) AS participant_count
+      FROM tournaments t
+      INNER JOIN game_types gt ON gt.id = t.game_type_id
+      INNER JOIN users creator ON creator.id = t.created_by_id
+      LEFT JOIN tournament_participants tp ON tp.tournament_id = t.id
+      WHERE t.is_private = 0
+        OR (
+          ? IS NOT NULL AND (
+            t.created_by_id = ?
+            OR EXISTS (
+              SELECT 1
+              FROM tournament_participants tp2
+              WHERE tp2.tournament_id = t.id AND tp2.user_id = ?
+            )
+            OR ? IN ('admin', 'owner')
+          )
+        )
+      GROUP BY t.id
+      ORDER BY t.created_at DESC`,
+      [requesterId, requesterId, requesterId, requesterRole]
+    );
+
+    const tournamentIds = rows.map((row) => row.id);
+    const participantsByTournamentId = await getParticipantsByTournamentIds(tournamentIds);
+    const tournaments = rows.map((row) => mapTournamentRow(row, participantsByTournamentId.get(String(row.id)) || []));
+
+    res.status(200).json({ tournaments });
+  } catch (err) {
+    console.error("Error in /api/tournaments:", err);
+    res.status(500).send({ message: "Failed to load tournaments", err: err.message });
+  }
+});
+
+app.get("/api/tournaments/:tournamentId", optionalAuthenticate, async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const requesterId = req.user?.id ? Number(req.user.id) : null;
+    const requesterRole = req.user?.role?.toLowerCase() || "";
+    const tournament = await getTournamentByIdForResponse(tournamentId, requesterId);
+
+    if (!tournament) {
+      return res.status(404).send({ message: "Tournament not found" });
+    }
+
+    const canViewPrivate = requesterRole === "admin"
+      || requesterRole === "owner"
+      || (requesterId && tournament.createdById === requesterId)
+      || tournament.requesterIsParticipant;
+
+    if (tournament.isPrivate && !canViewPrivate) {
+      return res.status(403).send({ message: "This private tournament is not visible to your account" });
+    }
+
+    delete tournament.requesterIsParticipant;
+    return res.status(200).json({ tournament });
+  } catch (err) {
+    console.error("Error in /api/tournaments/:tournamentId:", err);
+    return res.status(500).send({ message: "Failed to load tournament", err: err.message });
+  }
+});
+
+app.post("/api/tournaments", authenticateToken, async (req, res) => {
+  const {
+    format,
+    gameTypeId,
+    timeControl,
+    increment,
+    minPlayers,
+    maxPlayers,
+    isPrivate,
+    startDateTime
+  } = req.body;
+
+  const normalizedFormat = String(format || "").trim();
+  const normalizedGameTypeId = parsePositiveInt(gameTypeId);
+  const normalizedTimeControl = parsePositiveInt(timeControl);
+  const normalizedIncrement = Math.max(0, Number(increment) || 0);
+  const normalizedMinPlayers = Math.max(2, parsePositiveInt(minPlayers, 2));
+  const normalizedMaxPlayers = Math.max(2, parsePositiveInt(maxPlayers, 8));
+  const normalizedPrivate = parseBooleanValue(isPrivate);
+  const normalizedStartDateTime = normalizeStartDateTime(startDateTime);
+
+  if (!TOURNAMENT_FORMATS.has(normalizedFormat)) {
+    return res.status(400).send({ message: "Invalid tournament format" });
+  }
+
+  if (!normalizedGameTypeId) {
+    return res.status(400).send({ message: "A valid game type is required" });
+  }
+
+  if (!normalizedTimeControl) {
+    return res.status(400).send({ message: "A valid time control is required" });
+  }
+
+  if (!normalizedStartDateTime) {
+    return res.status(400).send({ message: "A valid start date and time is required" });
+  }
+
+  if (normalizedMinPlayers > normalizedMaxPlayers) {
+    return res.status(400).send({ message: "Minimum players cannot exceed maximum players" });
+  }
+
+  const numberOfRounds = calculateTournamentRounds({
+    format: normalizedFormat,
+    maxPlayers: normalizedMaxPlayers
+  });
+
+  const expectedLengthMinutes = calculateExpectedLengthMinutes({
+    format: normalizedFormat,
+    maxPlayers: normalizedMaxPlayers,
+    timeControl: normalizedTimeControl,
+    incrementSeconds: normalizedIncrement
+  });
+
+  const connection = await db_pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [insertResult] = await connection.query(
+      `INSERT INTO tournaments (
+        format,
+        game_type_id,
+        time_control,
+        increment_seconds,
+        min_players,
+        max_players,
+        is_private,
+        start_datetime,
+        number_of_rounds,
+        expected_length_minutes,
+        status,
+        created_by_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
+      [
+        normalizedFormat,
+        normalizedGameTypeId,
+        normalizedTimeControl,
+        normalizedIncrement,
+        normalizedMinPlayers,
+        normalizedMaxPlayers,
+        normalizedPrivate ? 1 : 0,
+        normalizedStartDateTime,
+        numberOfRounds,
+        expectedLengthMinutes,
+        Number(req.user.id)
+      ]
+    );
+
+    await connection.query(
+      "INSERT INTO tournament_participants (tournament_id, user_id) VALUES (?, ?)",
+      [insertResult.insertId, Number(req.user.id)]
+    );
+
+    await connection.commit();
+    const tournament = await getTournamentByIdForResponse(insertResult.insertId, Number(req.user.id));
+    if (tournament) {
+      delete tournament.requesterIsParticipant;
+    }
+    return res.status(201).json({ tournament });
+  } catch (err) {
+    await connection.rollback();
+    console.error("Error in POST /api/tournaments:", err);
+    return res.status(500).send({ message: "Failed to create tournament", err: err.message });
+  } finally {
+    connection.release();
+  }
+});
+
+app.post("/api/tournaments/:tournamentId/join", authenticateToken, async (req, res) => {
+  const { tournamentId } = req.params;
+  const requesterId = Number(req.user.id);
+  const connection = await db_pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [tournamentRows] = await connection.query(
+      "SELECT id, max_players, status FROM tournaments WHERE id = ? FOR UPDATE",
+      [tournamentId]
+    );
+
+    if (!tournamentRows.length) {
+      await connection.rollback();
+      return res.status(404).send({ message: "Tournament not found" });
+    }
+
+    const tournament = tournamentRows[0];
+
+    const [existingRows] = await connection.query(
+      "SELECT id FROM tournament_participants WHERE tournament_id = ? AND user_id = ? LIMIT 1",
+      [tournamentId, requesterId]
+    );
+
+    if (existingRows.length) {
+      await connection.commit();
+      const existingTournament = await getTournamentByIdForResponse(tournamentId, requesterId);
+      if (existingTournament) {
+        delete existingTournament.requesterIsParticipant;
+      }
+      return res.status(200).json({ tournament: existingTournament });
+    }
+
+    const [participantCountRows] = await connection.query(
+      "SELECT COUNT(*) AS participant_count FROM tournament_participants WHERE tournament_id = ?",
+      [tournamentId]
+    );
+    const participantCount = Number(participantCountRows[0].participant_count || 0);
+
+    if (participantCount >= Number(tournament.max_players)) {
+      await connection.rollback();
+      return res.status(400).send({ message: "Tournament is already full" });
+    }
+
+    await connection.query(
+      "INSERT INTO tournament_participants (tournament_id, user_id) VALUES (?, ?)",
+      [tournamentId, requesterId]
+    );
+
+    const updatedCount = participantCount + 1;
+    if (updatedCount >= Number(tournament.max_players) && tournament.status === "open") {
+      await connection.query(
+        "UPDATE tournaments SET status = 'full' WHERE id = ?",
+        [tournamentId]
+      );
+    }
+
+    await connection.commit();
+    const updatedTournament = await getTournamentByIdForResponse(tournamentId, requesterId);
+    if (updatedTournament) {
+      delete updatedTournament.requesterIsParticipant;
+    }
+    return res.status(200).json({ tournament: updatedTournament });
+  } catch (err) {
+    await connection.rollback();
+    console.error("Error in POST /api/tournaments/:tournamentId/join:", err);
+    return res.status(500).send({ message: "Failed to join tournament", err: err.message });
+  } finally {
+    connection.release();
+  }
+});
+
+app.put("/api/tournaments/:tournamentId", authenticateToken, async (req, res) => {
+  const { tournamentId } = req.params;
+  const requesterId = Number(req.user.id);
+  const requesterRole = req.user?.role?.toLowerCase() || "";
+  const connection = await db_pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [currentRows] = await connection.query(
+      `SELECT
+        id,
+        format,
+        game_type_id,
+        time_control,
+        increment_seconds,
+        min_players,
+        max_players,
+        is_private,
+        start_datetime,
+        status,
+        created_by_id
+      FROM tournaments
+      WHERE id = ?
+      FOR UPDATE`,
+      [tournamentId]
+    );
+
+    if (!currentRows.length) {
+      await connection.rollback();
+      return res.status(404).send({ message: "Tournament not found" });
+    }
+
+    const currentTournament = currentRows[0];
+    const isOwner = Number(currentTournament.created_by_id) === requesterId;
+    const isAdmin = requesterRole === "admin" || requesterRole === "owner";
+
+    if (!isOwner && !isAdmin) {
+      await connection.rollback();
+      return res.status(403).send({ message: "Only the host can edit this tournament" });
+    }
+
+    const nextFormat = req.body.format !== undefined ? String(req.body.format).trim() : currentTournament.format;
+    const nextGameTypeId = req.body.gameTypeId !== undefined
+      ? parsePositiveInt(req.body.gameTypeId)
+      : Number(currentTournament.game_type_id);
+    const nextTimeControl = req.body.timeControl !== undefined
+      ? parsePositiveInt(req.body.timeControl)
+      : Number(currentTournament.time_control);
+    const nextIncrement = req.body.increment !== undefined
+      ? Math.max(0, Number(req.body.increment) || 0)
+      : Number(currentTournament.increment_seconds);
+    const nextMinPlayers = req.body.minPlayers !== undefined
+      ? Math.max(2, parsePositiveInt(req.body.minPlayers, 2))
+      : Number(currentTournament.min_players);
+    const nextMaxPlayers = req.body.maxPlayers !== undefined
+      ? Math.max(2, parsePositiveInt(req.body.maxPlayers, 8))
+      : Number(currentTournament.max_players);
+    const parsedPrivate = req.body.isPrivate !== undefined
+      ? parseBooleanValue(req.body.isPrivate)
+      : Boolean(currentTournament.is_private);
+    const nextIsPrivate = parsedPrivate === null ? Boolean(currentTournament.is_private) : parsedPrivate;
+    const nextStartDateTime = req.body.startDateTime !== undefined
+      ? normalizeStartDateTime(req.body.startDateTime)
+      : normalizeStartDateTime(currentTournament.start_datetime);
+
+    if (!TOURNAMENT_FORMATS.has(nextFormat)) {
+      await connection.rollback();
+      return res.status(400).send({ message: "Invalid tournament format" });
+    }
+
+    if (!nextGameTypeId) {
+      await connection.rollback();
+      return res.status(400).send({ message: "A valid game type is required" });
+    }
+
+    if (!nextTimeControl) {
+      await connection.rollback();
+      return res.status(400).send({ message: "A valid time control is required" });
+    }
+
+    if (!nextStartDateTime) {
+      await connection.rollback();
+      return res.status(400).send({ message: "A valid start date and time is required" });
+    }
+
+    if (nextMinPlayers > nextMaxPlayers) {
+      await connection.rollback();
+      return res.status(400).send({ message: "Minimum players cannot exceed maximum players" });
+    }
+
+    const [participantCountRows] = await connection.query(
+      "SELECT COUNT(*) AS participant_count FROM tournament_participants WHERE tournament_id = ?",
+      [tournamentId]
+    );
+    const participantCount = Number(participantCountRows[0].participant_count || 0);
+
+    if (nextMaxPlayers < participantCount) {
+      await connection.rollback();
+      return res.status(400).send({
+        message: "Maximum players cannot be less than the number of joined participants"
+      });
+    }
+
+    const numberOfRounds = calculateTournamentRounds({ format: nextFormat, maxPlayers: nextMaxPlayers });
+    const expectedLengthMinutes = calculateExpectedLengthMinutes({
+      format: nextFormat,
+      maxPlayers: nextMaxPlayers,
+      timeControl: nextTimeControl,
+      incrementSeconds: nextIncrement
+    });
+
+    let nextStatus = currentTournament.status;
+    if (req.body.status && ["open", "full", "started", "completed", "cancelled"].includes(req.body.status)) {
+      nextStatus = req.body.status;
+    } else if (!TERMINAL_TOURNAMENT_STATUSES.has(currentTournament.status)) {
+      nextStatus = participantCount >= nextMaxPlayers ? "full" : "open";
+    }
+
+    await connection.query(
+      `UPDATE tournaments
+       SET format = ?,
+           game_type_id = ?,
+           time_control = ?,
+           increment_seconds = ?,
+           min_players = ?,
+           max_players = ?,
+           is_private = ?,
+           start_datetime = ?,
+           number_of_rounds = ?,
+           expected_length_minutes = ?,
+           status = ?
+       WHERE id = ?`,
+      [
+        nextFormat,
+        nextGameTypeId,
+        nextTimeControl,
+        nextIncrement,
+        nextMinPlayers,
+        nextMaxPlayers,
+        nextIsPrivate ? 1 : 0,
+        nextStartDateTime,
+        numberOfRounds,
+        expectedLengthMinutes,
+        nextStatus,
+        tournamentId
+      ]
+    );
+
+    await connection.commit();
+    const updatedTournament = await getTournamentByIdForResponse(tournamentId, requesterId);
+    if (updatedTournament) {
+      delete updatedTournament.requesterIsParticipant;
+    }
+    return res.status(200).json({ tournament: updatedTournament });
+  } catch (err) {
+    await connection.rollback();
+    console.error("Error in PUT /api/tournaments/:tournamentId:", err);
+    return res.status(500).send({ message: "Failed to update tournament", err: err.message });
+  } finally {
+    connection.release();
+  }
+});
 
 app.get("/api/user", optionalAuthenticate, async (req, res) => {
   try {
@@ -2559,7 +3179,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req, res) => {
   try {
     const pieceData = req.body;
-    const imageFiles = req.files;
+    const imageFiles = Array.isArray(req.files) ? req.files : [];
 
     if (!imageFiles || imageFiles.length === 0) {
       return res.status(400).send({ message: "At least one piece image is required" });
