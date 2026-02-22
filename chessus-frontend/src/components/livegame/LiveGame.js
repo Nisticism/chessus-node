@@ -698,20 +698,19 @@ const LiveGame = () => {
     }
 
     // Check step-by-step movement
-    const stepStyle = pieceData.step_movement_style || pieceData.step_by_step_movement_style;
-    const stepValue = pieceData.step_movement_value || pieceData.step_by_step_movement_value;
-    if (stepStyle || stepValue) {
-      const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      
-      if (stepStyle === 'manhattan' || stepStyle === 1) {
-        return checkMovement(stepValue, manhattanDistance);
-      } else if (stepStyle === 'chebyshev' || stepStyle === 2) {
-        return checkMovement(stepValue, chebyshevDistance);
-      } else {
-        // Default to chebyshev if value exists but style not specified
-        return checkMovement(stepValue, chebyshevDistance);
+    const rawStepValue = pieceData.step_by_step_movement_value ?? pieceData.step_movement_value;
+    const stepValue = Number(rawStepValue);
+    if (!Number.isNaN(stepValue) && stepValue !== 0) {
+      const maxSteps = Math.abs(stepValue);
+      const noDiagonal = stepValue < 0;
+
+      if (noDiagonal) {
+        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
+        return manhattanDistance > 0 && manhattanDistance <= maxSteps;
       }
+
+      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+      return chebyshevDistance > 0 && chebyshevDistance <= maxSteps;
     }
 
     // Check additional movements from special_scenario_moves
@@ -820,13 +819,20 @@ const LiveGame = () => {
       }
     }
 
-    // Check step-by-step capture
-    if (pieceData.step_capture_value) {
-      const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
+    // Check step-by-step capture - use sign-based diagonal exclusion
+    const rawStepCaptureValue = pieceData.step_capture_value ?? pieceData.step_by_step_capture;
+    const stepCaptureValue = Number(rawStepCaptureValue);
+    if (!Number.isNaN(stepCaptureValue) && stepCaptureValue !== 0) {
+      const maxSteps = Math.abs(stepCaptureValue);
+      const noDiagonal = stepCaptureValue < 0;
+
+      if (noDiagonal) {
+        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
+        return manhattanDistance > 0 && manhattanDistance <= maxSteps;
+      }
+
       const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      // Default to chebyshev if no style specified
-      return checkMovement(pieceData.step_capture_value, chebyshevDistance) || 
-             checkMovement(pieceData.step_capture_value, manhattanDistance);
+      return chebyshevDistance > 0 && chebyshevDistance <= maxSteps;
     }
 
     // Check additional captures from special_scenario_captures
@@ -995,6 +1001,94 @@ const LiveGame = () => {
     return checkBothLPaths(piece.x, piece.y, dx, dy, absDx, absDy, pieces, canHopOver);
   }, [checkBothLPaths]);
 
+  const getStepMovementConfig = useCallback((piece) => {
+    const stepValueRaw = piece?.step_by_step_movement_value ?? piece?.step_movement_value;
+    const stepValue = Number(stepValueRaw);
+    if (Number.isNaN(stepValue) || stepValue === 0) {
+      return null;
+    }
+
+    return {
+      maxSteps: Math.abs(stepValue),
+      noDiagonal: stepValue < 0
+    };
+  }, []);
+
+  const isStepByStepTarget = useCallback((piece, fromX, fromY, toX, toY) => {
+    const config = getStepMovementConfig(piece);
+    if (!config) {
+      return false;
+    }
+
+    const dx = Math.abs(toX - fromX);
+    const dy = Math.abs(toY - fromY);
+    if (dx === 0 && dy === 0) {
+      return false;
+    }
+
+    if (config.noDiagonal) {
+      return dx + dy <= config.maxSteps;
+    }
+
+    return Math.max(dx, dy) <= config.maxSteps;
+  }, [getStepMovementConfig]);
+
+  const canReachStepByStep = useCallback((piece, targetX, targetY, pieces, boardWidth, boardHeight, allowOccupiedTarget = false) => {
+    const config = getStepMovementConfig(piece);
+    if (!config) {
+      return false;
+    }
+
+    const occupied = new Set(
+      pieces
+        .filter(p => p.id !== piece.id)
+        .map(p => `${p.x},${p.y}`)
+    );
+
+    const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
+    const visited = new Set([`${piece.x},${piece.y}`]);
+    const directions = config.noDiagonal
+      ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current.steps >= config.maxSteps) {
+        continue;
+      }
+
+      for (const [dirX, dirY] of directions) {
+        const nextX = current.x + dirX;
+        const nextY = current.y + dirY;
+
+        if (nextX < 0 || nextY < 0 || nextX >= boardWidth || nextY >= boardHeight) {
+          continue;
+        }
+
+        const isTarget = nextX === targetX && nextY === targetY;
+        const nextKey = `${nextX},${nextY}`;
+        const hasPiece = occupied.has(nextKey);
+
+        if (hasPiece && !(allowOccupiedTarget && isTarget)) {
+          continue;
+        }
+
+        if (isTarget) {
+          return true;
+        }
+
+        if (visited.has(nextKey)) {
+          continue;
+        }
+
+        visited.add(nextKey);
+        queue.push({ x: nextX, y: nextY, steps: current.steps + 1 });
+      }
+    }
+
+    return false;
+  }, [getStepMovementConfig]);
+
   // Check if a specific piece is under attack by any enemy piece
   const isPieceUnderAttack = useCallback((targetPiece, pieces, boardWidth, boardHeight) => {
     const targetTeam = targetPiece.player_id || targetPiece.team;
@@ -1017,10 +1111,14 @@ const LiveGame = () => {
                                      ((Math.abs(targetPiece.x - enemyPiece.x) === enemyPiece.ratio_movement_1 && Math.abs(targetPiece.y - enemyPiece.y) === enemyPiece.ratio_movement_2) ||
                                       (Math.abs(targetPiece.x - enemyPiece.x) === enemyPiece.ratio_movement_2 && Math.abs(targetPiece.y - enemyPiece.y) === enemyPiece.ratio_movement_1));
         
+        const isStepMove = isStepByStepTarget(enemyPiece, enemyPiece.x, enemyPiece.y, targetPiece.x, targetPiece.y);
+
         let pathClear = false;
         if (isRatioMove || usesRatioForCapture) {
           // Use L-shape path checking for ratio movements
           pathClear = checkRatioPathClear(enemyPiece, targetPiece.x, targetPiece.y, pieces);
+        } else if (isStepMove) {
+          pathClear = canReachStepByStep(enemyPiece, targetPiece.x, targetPiece.y, pieces, boardWidth, boardHeight, true);
         } else {
           // Use standard path checking for other movements
           pathClear = isPathClear(enemyPiece.x, enemyPiece.y, targetPiece.x, targetPiece.y, pieces);
@@ -1032,7 +1130,7 @@ const LiveGame = () => {
       }
     }
     return false;
-  }, [canPieceCaptureTo, isPathClear, checkRatioPathClear]);
+  }, [canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep]);
 
   // Check if a player is in check (any piece with ends_game_on_checkmate is under attack)
   const checkForCheck = useCallback((pieces, playerPosition, boardWidth, boardHeight) => {
@@ -1116,10 +1214,14 @@ const LiveGame = () => {
                            ((Math.abs(toX - piece.x) === piece.ratio_movement_1 && Math.abs(toY - piece.y) === piece.ratio_movement_2) ||
                             (Math.abs(toX - piece.x) === piece.ratio_movement_2 && Math.abs(toY - piece.y) === piece.ratio_movement_1));
         
+        const isStepMove = isStepByStepTarget(piece, piece.x, piece.y, toX, toY);
+
         let pathClear = false;
         if (isRatioMove) {
           // Check L-shape paths with hopping abilities
           pathClear = checkRatioPathClear(piece, toX, toY, pieces);
+        } else if (isStepMove) {
+          pathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, isCapture);
         } else {
           pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces);
         }
@@ -1273,7 +1375,7 @@ const LiveGame = () => {
     }
     
     return moves;
-  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, checkRatioPathClear, gameState, currentPlayer, wouldMoveResolveCheck]);
+  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep, gameState, currentPlayer, wouldMoveResolveCheck]);
 
   // Handle square click
   const handleSquareClick = useCallback((x, y) => {
