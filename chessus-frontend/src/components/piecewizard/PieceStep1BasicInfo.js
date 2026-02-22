@@ -116,7 +116,13 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
     try {
       const response = await fetch(libraryImage.src);
       const blob = await response.blob();
-      const extension = blob.type ? blob.type.split('/').pop() : 'png';
+      // Extract extension from blob type, handling special cases like 'svg+xml'
+      let extension = 'png';
+      if (blob.type) {
+        const typePart = blob.type.split('/').pop();
+        // Handle svg+xml -> svg
+        extension = typePart.split('+')[0] || typePart;
+      }
       const safeName = libraryImage.name.replace(/[^a-zA-Z0-9]/g, '_');
       const file = new File([blob], `${safeName}.${extension}`, { type: blob.type || 'image/png' });
       
