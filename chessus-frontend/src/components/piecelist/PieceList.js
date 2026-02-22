@@ -128,7 +128,14 @@ const PieceList = () => {
                 alt={piece.piece_name} 
                 className={styles["piece-image"]}
                 onError={(e) => {
-                  e.target.style.display = 'none';
+                  const img = e.currentTarget;
+                  if (img.dataset.retry !== '1') {
+                    img.dataset.retry = '1';
+                    const separator = firstImage.includes('?') ? '&' : '?';
+                    img.src = `${firstImage}${separator}cb=${Date.now()}`;
+                    return;
+                  }
+                  img.style.display = 'none';
                 }}
               />
             ) : (
