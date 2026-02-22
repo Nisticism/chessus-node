@@ -198,7 +198,12 @@ const pieceStorage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'piece-' + uniqueSuffix + path.extname(file.originalname));
+    // Sanitize extension - handle MIME type suffixes like svg+xml -> svg
+    let ext = path.extname(file.originalname).toLowerCase();
+    if (ext.includes('+')) {
+      ext = '.' + ext.split('.').pop().split('+')[0];
+    }
+    cb(null, 'piece-' + uniqueSuffix + ext);
   }
 });
 
