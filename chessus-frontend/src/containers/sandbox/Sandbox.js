@@ -208,8 +208,8 @@ const Sandbox = () => {
       // Movement properties - map DB column names to what movement logic expects
       ratio_movement_1: dbPiece.ratio_movement_1 || dbPiece.ratio_one_movement,
       ratio_movement_2: dbPiece.ratio_movement_2 || dbPiece.ratio_two_movement,
-      step_movement_style: dbPiece.step_movement_style || dbPiece.step_by_step_movement_style,
-      step_movement_value: dbPiece.step_movement_value || dbPiece.step_by_step_movement_value,
+      step_movement_style: dbPiece.step_by_step_movement_style ?? dbPiece.step_movement_style,
+      step_movement_value: dbPiece.step_by_step_movement_value ?? dbPiece.step_movement_value,
       // Capture properties - map DB column names
       ratio_capture_1: dbPiece.ratio_capture_1 || dbPiece.ratio_one_capture,
       ratio_capture_2: dbPiece.ratio_capture_2 || dbPiece.ratio_two_capture,
@@ -416,8 +416,8 @@ const Sandbox = () => {
       ratio_movement_style: pieceData.ratio_movement_style,
       ratio_movement_1: pieceData.ratio_movement_1 || pieceData.ratio_one_movement,
       ratio_movement_2: pieceData.ratio_movement_2 || pieceData.ratio_two_movement,
-      step_movement_style: pieceData.step_movement_style || pieceData.step_by_step_movement_style,
-      step_movement_value: pieceData.step_movement_value || pieceData.step_by_step_movement_value,
+      step_movement_style: pieceData.step_by_step_movement_style ?? pieceData.step_movement_style,
+      step_movement_value: pieceData.step_by_step_movement_value ?? pieceData.step_movement_value,
       can_hop_over_allies: pieceData.can_hop_over_allies,
       can_hop_over_enemies: pieceData.can_hop_over_enemies,
       can_capture_enemy_on_move: pieceData.can_capture_enemy_on_move,
@@ -573,6 +573,95 @@ const Sandbox = () => {
     return false;
   };
 
+  const getStepMovementConfig = useCallback((pieceData) => {
+    const stepValueRaw = pieceData?.step_by_step_movement_value ?? pieceData?.step_movement_value;
+    const stepValue = Number(stepValueRaw);
+
+    if (Number.isNaN(stepValue) || stepValue === 0) {
+      return null;
+    }
+
+    return {
+      maxSteps: Math.abs(stepValue),
+      noDiagonal: stepValue < 0
+    };
+  }, []);
+
+  const isStepByStepTarget = useCallback((pieceData, fromX, fromY, toX, toY) => {
+    const config = getStepMovementConfig(pieceData);
+    if (!config) {
+      return false;
+    }
+
+    const dx = Math.abs(toX - fromX);
+    const dy = Math.abs(toY - fromY);
+    if (dx === 0 && dy === 0) {
+      return false;
+    }
+
+    if (config.noDiagonal) {
+      return dx + dy <= config.maxSteps;
+    }
+
+    return Math.max(dx, dy) <= config.maxSteps;
+  }, [getStepMovementConfig]);
+
+  const canReachStepByStep = useCallback((piece, targetX, targetY, pieces, boardWidth, boardHeight, allowOccupiedTarget = false) => {
+    const config = getStepMovementConfig(piece);
+    if (!config) {
+      return false;
+    }
+
+    const occupied = new Set(
+      pieces
+        .filter(p => p.id !== piece.id)
+        .map(p => `${p.x},${p.y}`)
+    );
+
+    const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
+    const visited = new Set([`${piece.x},${piece.y}`]);
+    const directions = config.noDiagonal
+      ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current.steps >= config.maxSteps) {
+        continue;
+      }
+
+      for (const [dirX, dirY] of directions) {
+        const nextX = current.x + dirX;
+        const nextY = current.y + dirY;
+
+        if (nextX < 0 || nextY < 0 || nextX >= boardWidth || nextY >= boardHeight) {
+          continue;
+        }
+
+        const isTarget = nextX === targetX && nextY === targetY;
+        const nextKey = `${nextX},${nextY}`;
+        const hasPiece = occupied.has(nextKey);
+
+        if (hasPiece && !(allowOccupiedTarget && isTarget)) {
+          continue;
+        }
+
+        if (isTarget) {
+          return true;
+        }
+
+        if (visited.has(nextKey)) {
+          continue;
+        }
+
+        visited.add(nextKey);
+        queue.push({ x: nextX, y: nextY, steps: current.steps + 1 });
+      }
+    }
+
+    return false;
+  }, [getStepMovementConfig]);
+
   // Check if a move is from a first-move-only additional movement option
   const checkIfFirstMoveOnlyMove = (pieceData, fromX, fromY, toX, toY, playerPosition) => {
     if (!pieceData.special_scenario_moves) return false;
@@ -710,20 +799,22 @@ const Sandbox = () => {
       }
     }
 
-    // Check step-by-step movement
-    const stepStyle = pieceData.step_movement_style || pieceData.step_by_step_movement_style;
-    const stepValue = pieceData.step_movement_value || pieceData.step_by_step_movement_value;
-    if (stepStyle || stepValue) {
-      const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      
-      if (stepStyle === 'manhattan' || stepStyle === 1) {
-        return checkMovement(stepValue, manhattanDistance);
-      } else if (stepStyle === 'chebyshev' || stepStyle === 2) {
-        return checkMovement(stepValue, chebyshevDistance);
-      } else {
-        return checkMovement(stepValue, chebyshevDistance);
+    // Check step-by-step movement - use sign-based diagonal exclusion
+    const rawStepValue = pieceData.step_by_step_movement_value ?? pieceData.step_movement_value;
+    const stepValue = Number(rawStepValue);
+    if (!Number.isNaN(stepValue) && stepValue !== 0) {
+      const maxSteps = Math.abs(stepValue);
+      const noDiagonal = stepValue < 0;
+
+      if (noDiagonal) {
+        // Only cardinal directions (manhattan distance)
+        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
+        return manhattanDistance > 0 && manhattanDistance <= maxSteps;
       }
+
+      // Allow diagonals (chebyshev distance)
+      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+      return chebyshevDistance > 0 && chebyshevDistance <= maxSteps;
     }
 
     // Check additional movements from special scenarios (e.g. pawn double-step)
@@ -820,13 +911,19 @@ const Sandbox = () => {
       }
     }
 
-    // Check step capture
-    if (pieceData.step_capture_value) {
-      const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      if (checkMovement(pieceData.step_capture_value, chebyshevDistance) || 
-             checkMovement(pieceData.step_capture_value, manhattanDistance)) {
-        return true;
+    // Check step capture - use sign-based diagonal exclusion
+    const rawStepCaptureValue = pieceData.step_capture_value ?? pieceData.step_by_step_capture;
+    const stepCaptureValue = Number(rawStepCaptureValue);
+    if (!Number.isNaN(stepCaptureValue) && stepCaptureValue !== 0) {
+      const maxSteps = Math.abs(stepCaptureValue);
+      const noDiagonal = stepCaptureValue < 0;
+
+      if (noDiagonal) {
+        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
+        if (manhattanDistance > 0 && manhattanDistance <= maxSteps) return true;
+      } else {
+        const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+        if (chebyshevDistance > 0 && chebyshevDistance <= maxSteps) return true;
       }
     }
 
@@ -925,7 +1022,16 @@ const Sandbox = () => {
           isValidMove = canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
         }
 
-        if (isValidMove && isPathClear(piece.x, piece.y, toX, toY, pieces, piece)) {
+        const isStepMove = isStepByStepTarget(piece, piece.x, piece.y, toX, toY);
+
+        let pathClear = false;
+        if (isStepMove) {
+          pathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, isCapture);
+        } else {
+          pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece);
+        }
+
+        if (isValidMove && pathClear) {
           const isFirstMoveOnly = isCapture 
             ? checkIfFirstMoveOnlyCapture(piece, piece.x, piece.y, toX, toY, pieceTeam)
             : checkIfFirstMoveOnlyMove(piece, piece.x, piece.y, toX, toY, pieceTeam);
@@ -960,7 +1066,7 @@ const Sandbox = () => {
     }
 
     return moves;
-  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear]);
+  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, isStepByStepTarget, canReachStepByStep]);
 
   // Handle square click - free repositioning (click piece, click destination)
   const handleSquareClick = useCallback((x, y) => {
