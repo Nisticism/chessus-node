@@ -3951,6 +3951,55 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
     }
   }
   
+  // Step-by-step capture - use sign-based diagonal exclusion
+  const stepCaptureValueRaw = piece.step_capture_value ?? (useMovementForCapture ? (piece.step_by_step_movement_value ?? piece.step_movement_value) : null);
+  const stepCaptureValue = Number(stepCaptureValueRaw);
+  if (!Number.isNaN(stepCaptureValue) && stepCaptureValue !== 0) {
+    const maxSteps = Math.abs(stepCaptureValue);
+    const noDiagonal = stepCaptureValue < 0;
+
+    const manhattanDistance = absDx + absDy;
+    const chebyshevDistance = Math.max(absDx, absDy);
+    const inRange = noDiagonal
+      ? (manhattanDistance > 0 && manhattanDistance <= maxSteps)
+      : (chebyshevDistance > 0 && chebyshevDistance <= maxSteps);
+
+    if (inRange) {
+      // Use BFS traversal to check if target is reachable
+      const occupied = new Set(
+        allPieces
+          .filter(p => p.id !== piece.id && !(p.x === targetX && p.y === targetY))
+          .map(p => `${p.x},${p.y}`)
+      );
+
+      const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
+      const visited = new Set([`${piece.x},${piece.y}`]);
+      const directions = noDiagonal
+        ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (current.steps >= maxSteps) continue;
+
+        for (const [dirX, dirY] of directions) {
+          const nextX = current.x + dirX;
+          const nextY = current.y + dirY;
+          const nextKey = `${nextX},${nextY}`;
+
+          if (nextX === targetX && nextY === targetY) {
+            return true;
+          }
+
+          if (occupied.has(nextKey) || visited.has(nextKey)) continue;
+
+          visited.add(nextKey);
+          queue.push({ x: nextX, y: nextY, steps: current.steps + 1 });
+        }
+      }
+    }
+  }
+  
   return false;
 }
 
@@ -3989,6 +4038,62 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
       y += stepY;
     }
     return true;
+  };
+
+  const canReachStepByStep = (fromX, fromY, toX, toY, maxSteps, noDiagonal) => {
+    if (maxSteps <= 0) return false;
+
+    const occupied = new Set(
+      allPieces
+        .filter(p => p.id !== piece.id)
+        .map(p => `${p.x},${p.y}`)
+    );
+
+    const queue = [{ x: fromX, y: fromY, steps: 0 }];
+    const visited = new Set([`${fromX},${fromY}`]);
+    const directions = noDiagonal
+      ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current.steps >= maxSteps) {
+        continue;
+      }
+
+      for (const [dirX, dirY] of directions) {
+        const nextX = current.x + dirX;
+        const nextY = current.y + dirY;
+        const nextKey = `${nextX},${nextY}`;
+
+        if (occupied.has(nextKey)) {
+          continue;
+        }
+
+        if (nextX === toX && nextY === toY) {
+          return true;
+        }
+
+        if (visited.has(nextKey)) {
+          continue;
+        }
+
+        if (noDiagonal) {
+          if (Math.abs(nextX - fromX) + Math.abs(nextY - fromY) > maxSteps) {
+            continue;
+          }
+        } else {
+          if (Math.max(Math.abs(nextX - fromX), Math.abs(nextY - fromY)) > maxSteps) {
+            continue;
+          }
+        }
+
+        visited.add(nextKey);
+        queue.push({ x: nextX, y: nextY, steps: current.steps + 1 });
+      }
+    }
+
+    return false;
   };
 
   // Check directional movement (straight lines)
@@ -4128,22 +4233,20 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   }
 
   // Step-by-step movement
-  const stepValueRaw = piece.step_movement_value ?? piece.step_by_step_movement_value;
+  const stepValueRaw = piece.step_by_step_movement_value ?? piece.step_movement_value;
   const stepValue = Number(stepValueRaw);
   if (!Number.isNaN(stepValue) && stepValue !== 0) {
     const maxSteps = Math.abs(stepValue);
     const noDiagonal = stepValue < 0;
 
-    if (noDiagonal) {
-      const manhattanDistance = Math.abs(dx) + Math.abs(dy);
-      if (manhattanDistance > 0 && manhattanDistance <= maxSteps) {
-        return true;
-      }
-    } else {
-      const chebyshevDistance = Math.max(Math.abs(dx), Math.abs(dy));
-      if (chebyshevDistance > 0 && chebyshevDistance <= maxSteps) {
-        return true;
-      }
+    const manhattanDistance = Math.abs(dx) + Math.abs(dy);
+    const chebyshevDistance = Math.max(Math.abs(dx), Math.abs(dy));
+    const inRange = noDiagonal
+      ? (manhattanDistance > 0 && manhattanDistance <= maxSteps)
+      : (chebyshevDistance > 0 && chebyshevDistance <= maxSteps);
+
+    if (inRange && canReachStepByStep(piece.x, piece.y, targetX, targetY, maxSteps, noDiagonal)) {
+      return true;
     }
   }
 
