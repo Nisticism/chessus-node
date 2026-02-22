@@ -3176,6 +3176,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 
 // ----------------------- Pieces Create ------------------------------
 
+const parseBooleanField = (value) => value === true || value === 'true' || value === 1 || value === '1';
+
 app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req, res) => {
   try {
     const pieceData = req.body;
@@ -3240,8 +3242,8 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       pieceData.can_castle === 'true',
       pieceData.can_promote === 'true',
       // Movement fields
-      pieceData.directional_movement_style === 'true',
-      pieceData.repeating_movement === 'true',
+      parseBooleanField(pieceData.directional_movement_style),
+      parseBooleanField(pieceData.repeating_movement),
       parseInt(pieceData.max_directional_movement_iterations) || null,
       parseInt(pieceData.min_directional_movement_iterations) || null,
       parseInt(pieceData.up_left_movement) || 0,
@@ -3270,16 +3272,16 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.down_movement_available_for) || null,
       parseInt(pieceData.down_left_movement_available_for) || null,
       parseInt(pieceData.left_movement_available_for) || null,
-      pieceData.ratio_movement_style === 'true',
+      parseBooleanField(pieceData.ratio_movement_style),
       parseInt(pieceData.ratio_one_movement) || null,
       parseInt(pieceData.ratio_two_movement) || null,
-      pieceData.repeating_ratio === 'true',
+      parseBooleanField(pieceData.repeating_ratio),
       parseInt(pieceData.max_ratio_iterations) || null,
       parseInt(pieceData.min_ratio_iterations) || null,
-      pieceData.step_by_step_movement_style === 'true',
+      parseBooleanField(pieceData.step_by_step_movement_style),
       parseInt(pieceData.step_by_step_movement_value) || null,
-      pieceData.can_hop_over_allies === 'true',
-      pieceData.can_hop_over_enemies === 'true',
+      parseBooleanField(pieceData.can_hop_over_allies),
+      parseBooleanField(pieceData.can_hop_over_enemies),
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
@@ -3596,8 +3598,8 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       pieceData.can_castle === 'true',
       pieceData.can_promote === 'true',
       // Movement fields
-      pieceData.directional_movement_style === 'true',
-      pieceData.repeating_movement === 'true',
+      parseBooleanField(pieceData.directional_movement_style),
+      parseBooleanField(pieceData.repeating_movement),
       parseInt(pieceData.max_directional_movement_iterations) || null,
       parseInt(pieceData.min_directional_movement_iterations) || null,
       parseInt(pieceData.up_left_movement) || 0,
@@ -3626,16 +3628,16 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.down_movement_available_for) || null,
       parseInt(pieceData.down_left_movement_available_for) || null,
       parseInt(pieceData.left_movement_available_for) || null,
-      pieceData.ratio_movement_style === 'true',
+      parseBooleanField(pieceData.ratio_movement_style),
       parseInt(pieceData.ratio_one_movement) || null,
       parseInt(pieceData.ratio_two_movement) || null,
-      pieceData.repeating_ratio === 'true',
+      parseBooleanField(pieceData.repeating_ratio),
       parseInt(pieceData.max_ratio_iterations) || null,
       parseInt(pieceData.min_ratio_iterations) || null,
-      pieceData.step_by_step_movement_style === 'true',
+      parseBooleanField(pieceData.step_by_step_movement_style),
       parseInt(pieceData.step_by_step_movement_value) || null,
-      pieceData.can_hop_over_allies === 'true',
-      pieceData.can_hop_over_enemies === 'true',
+      parseBooleanField(pieceData.can_hop_over_allies),
+      parseBooleanField(pieceData.can_hop_over_enemies),
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
