@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 
@@ -15,6 +15,37 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
     const numValue = value === "" ? null : parseInt(value);
     updatePieceData({ [field]: numValue });
   };
+
+  // Check if piece has no backward movement
+  // This includes directional movement, ratio movements, and step-by-step movements
+  const hasNoBackwardDirectionalMovement = 
+    (pieceData.down_movement || 0) === 0 &&
+    (pieceData.down_left_movement || 0) === 0 &&
+    (pieceData.down_right_movement || 0) === 0;
+
+  // Ratio movements (L-shapes like knights) can move backwards
+  const hasRatioMovement = 
+    pieceData.ratio_movement_style && 
+    ((pieceData.ratio_one_movement || 0) > 0 || (pieceData.ratio_two_movement || 0) > 0);
+
+  // Step-by-step movements can move in any direction (including backwards)
+  const hasStepByStepMovement = 
+    pieceData.step_by_step_movement_style && 
+    (pieceData.step_by_step_movement_value || 0) > 0;
+
+  // Piece can only en passant if it has no way to move backwards
+  const hasNoBackwardMovement = hasNoBackwardDirectionalMovement && !hasRatioMovement && !hasStepByStepMovement;
+
+  // En passant option should only show if piece has no backward movement
+  // (pawn-like pieces that can only move forward)
+  const canShowEnPassant = hasNoBackwardMovement;
+
+  // Auto-clear can_en_passant if conditions are no longer met
+  useEffect(() => {
+    if (!canShowEnPassant && pieceData.can_en_passant) {
+      updatePieceData({ can_en_passant: false });
+    }
+  }, [canShowEnPassant, pieceData.can_en_passant, updatePieceData]);
 
   return (
     <div className={styles["step-container"]}>
@@ -70,6 +101,22 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             Allows this piece to promote to another piece when it reaches specific squares. Promotion squares are defined in the game type settings.
           </p>
         </div>
+
+        {canShowEnPassant && (
+          <div className={styles["sub-field"]}>
+            <label className={styles["checkbox-label"]}>
+              <input
+                type="checkbox"
+                checked={pieceData.can_en_passant || false}
+                onChange={(e) => handleChange("can_en_passant", e.target.checked)}
+              />
+              <span>Can En Passant</span>
+            </label>
+            <p className={styles["field-hint"]}>
+              Allows this piece to capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn. En passant captures must be made immediately after the enemy's qualifying move.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Advanced Special Scenarios - Hidden for now */}

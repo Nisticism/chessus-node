@@ -585,6 +585,35 @@
   margin-bottom: 16px;
 }
 
+// Info message (for notifications like game deleted)
+.info-message {
+  background: #2a3a5a;
+  color: #88bbff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  
+  .dismiss-btn {
+    background: transparent;
+    border: none;
+    color: #88bbff;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
 // Modal
 .modal-overlay {
   position: fixed;

@@ -53,6 +53,12 @@
   text-align: center;
   position: relative;
   z-index: 1;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+
+  &:hover {
+    transform: scale(1.05);
+  }
 
   .step-circle {
     width: 40px;

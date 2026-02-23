@@ -331,6 +331,42 @@ const migrations = [
     column: 'castling_partner_right_key',
     sql: "ALTER TABLE game_type_pieces ADD COLUMN castling_partner_right_key VARCHAR(20) DEFAULT NULL",
     description: "Add castling_partner_right_key column to game_type_pieces for manual right partner"
+  },
+  {
+    table: 'pieces',
+    column: 'can_fire_over_allies',
+    sql: "ALTER TABLE pieces ADD COLUMN can_fire_over_allies TINYINT(1) DEFAULT 0",
+    description: "Add can_fire_over_allies column to pieces for ranged attack firing over allies"
+  },
+  {
+    table: 'pieces',
+    column: 'can_fire_over_enemies',
+    sql: "ALTER TABLE pieces ADD COLUMN can_fire_over_enemies TINYINT(1) DEFAULT 0",
+    description: "Add can_fire_over_enemies column to pieces for ranged attack firing over enemies"
+  },
+  {
+    table: 'pieces',
+    column: 'can_en_passant',
+    sql: "ALTER TABLE pieces ADD COLUMN can_en_passant TINYINT(1) DEFAULT 0",
+    description: "Add can_en_passant column to pieces for en passant capture ability"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'can_fire_over_allies',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN can_fire_over_allies TINYINT(1) DEFAULT NULL",
+    description: "Add can_fire_over_allies column to game_type_pieces junction for game-specific overrides"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'can_fire_over_enemies',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN can_fire_over_enemies TINYINT(1) DEFAULT NULL",
+    description: "Add can_fire_over_enemies column to game_type_pieces junction for game-specific overrides"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'can_en_passant',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN can_en_passant TINYINT(1) DEFAULT NULL",
+    description: "Add can_en_passant column to game_type_pieces junction for game-specific overrides"
   }
 ];
 
@@ -1389,7 +1425,10 @@ Join us in revolutionizing chess, one variant at a time.
         ['down_right_capture_available_for', 'INT UNSIGNED NULL'],
         ['down_capture_available_for', 'INT UNSIGNED NULL'],
         ['down_left_capture_available_for', 'INT UNSIGNED NULL'],
-        ['left_capture_available_for', 'INT UNSIGNED NULL']
+        ['left_capture_available_for', 'INT UNSIGNED NULL'],
+        ['can_fire_over_allies', 'TINYINT(1) DEFAULT 0'],
+        ['can_fire_over_enemies', 'TINYINT(1) DEFAULT 0'],
+        ['can_en_passant', 'TINYINT(1) DEFAULT 0']
       ];
       
       for (const [colName, colDef] of captureColumns) {

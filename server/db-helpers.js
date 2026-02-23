@@ -425,7 +425,10 @@ const getPieceById = async (pieceId) => {
       p.has_checkmate_rule,
       p.has_check_rule,
       p.has_lose_on_capture_rule,
-      p.can_castle
+      p.can_castle,
+      p.can_fire_over_allies,
+      p.can_fire_over_enemies,
+      p.can_en_passant
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id

@@ -65,6 +65,18 @@ const GameWizard = ({ editGameId }) => {
   });
 
   const totalSteps = 4;
+  
+  const stepLabels = [
+    { num: 1, label: 'Basic Info' },
+    { num: 2, label: 'Win Conditions' },
+    { num: 3, label: 'Board & Squares' },
+    { num: 4, label: 'Pieces' }
+  ];
+
+  const goToStep = (step) => {
+    setCurrentStep(step);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Load existing game data when in edit mode
   useEffect(() => {
@@ -246,16 +258,19 @@ const GameWizard = ({ editGameId }) => {
     <div className={styles["wizard-container"]}>
       <div className={styles["wizard-header"]}>
         <h1>{isEditMode ? 'Edit Game' : 'Create New Game'}</h1>
-        <div className={styles["step-indicator"]}>
-          Step {currentStep} of {totalSteps}
-        </div>
       </div>
 
       <div className={styles["progress-bar"]}>
-        <div 
-          className={styles["progress-fill"]} 
-          style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-        />
+        {stepLabels.map((step) => (
+          <div 
+            key={step.num}
+            className={`${styles["progress-step"]} ${currentStep === step.num ? styles.active : ''} ${currentStep > step.num ? styles.completed : ''}`}
+            onClick={() => goToStep(step.num)}
+          >
+            <span className={styles["step-circle"]}>{step.num}</span>
+            <span className={styles["step-label"]}>{step.label}</span>
+          </div>
+        ))}
       </div>
 
       <Divider />

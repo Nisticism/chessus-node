@@ -5,6 +5,9 @@
 
 const db_pool = require("../configs/db");
 
+// Store io instance for access from other modules
+let ioInstance = null;
+
 // Store active games in memory for quick access
 const activeGames = new Map();
 const gameTimers = new Map(); // Maps gameId to timer interval
@@ -440,6 +443,9 @@ function initializeSocket(server) {
     pingInterval: 25000
   });
 
+  // Store io instance for access from other modules
+  ioInstance = io;
+  
   // Global error handler for socket.io engine
   io.engine.on("connection_error", (err) => {
     console.error("Socket.io engine connection error:", {
@@ -710,7 +716,11 @@ function initializeSocket(server) {
               ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
               ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
               step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
-              max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack
+              max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+              can_fire_over_allies: fullPieceData.can_fire_over_allies,
+              can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
+              // En passant
+              can_en_passant: fullPieceData.can_en_passant
             };
           }
           return piece;
@@ -942,7 +952,11 @@ function initializeSocket(server) {
                   ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
                   ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
                   step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
-                  max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack
+                  max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+                  can_fire_over_allies: fullPieceData.can_fire_over_allies,
+                  can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
+                  // En passant
+                  can_en_passant: fullPieceData.can_en_passant
                 };
               }
               return piece;
@@ -973,6 +987,12 @@ function initializeSocket(server) {
                 const otherData = JSON.parse(game.other_data || '{}');
                 return otherData.startingMode || 'none';
               } catch { return 'none'; }
+            })(),
+            enPassantTarget: (() => {
+              try {
+                const otherData = JSON.parse(game.other_data || '{}');
+                return otherData.enPassantTarget || null;
+              } catch { return null; }
             })(),
             premove: null,
             isChallenge: !!game.is_challenge,
@@ -1252,7 +1272,8 @@ function initializeSocket(server) {
               player: nextPlayer.id,
               position: gameState.currentTurn,
               timestamp: Date.now(),
-              isPremove: true
+              isPremove: true,
+              ...(premove.move.isRangedAttack ? { isRangedAttack: true } : {})
             };
             gameState.moveHistory.push(premoveRecord);
 
@@ -1893,7 +1914,8 @@ function initializeSocket(server) {
                movesWithoutCapture: gameState.movesWithoutCapture,
                positionHistory: gameState.positionHistory,
                rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves
+               allowPremoves: gameState.allowPremoves,
+               enPassantTarget: gameState.enPassantTarget
              }), gameId]
           );
 
@@ -1909,7 +1931,8 @@ function initializeSocket(server) {
               inCheck: checkResult.inCheck,
               checkedPieces: checkResult.checkedPieces,
               allowPremoves: gameState.allowPremoves,
-              rated: gameState.rated
+              rated: gameState.rated,
+              enPassantTarget: gameState.enPassantTarget
             }
           });
 
@@ -2128,6 +2151,10 @@ function initializeSocket(server) {
           ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
           step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
           max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+          can_fire_over_allies: fullPieceData.can_fire_over_allies,
+          can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
+          // En passant
+          can_en_passant: fullPieceData.can_en_passant,
           // Reset move tracking for the new piece type
           moveCount: 0,
           hasMoved: false
@@ -2543,7 +2570,11 @@ function initializeSocket(server) {
                     ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
                     ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
                     step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
-                    max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack
+                    max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+                    can_fire_over_allies: fullPieceData.can_fire_over_allies,
+                    can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
+                    // En passant
+                    can_en_passant: fullPieceData.can_en_passant
                   };
                 }
                 return piece;
@@ -3231,6 +3262,13 @@ function validateAndApplyMove(gameState, move) {
     if (!canRanged) {
       return { valid: false, reason: "Piece cannot ranged attack that square" };
     }
+    
+    // Check if path is clear for ranged attack (unless piece can fire over)
+    const pathClear = isRangedPathClear(piece.x, piece.y, to.x, to.y, piece, pieces, pieceOwnerPosition);
+    if (!pathClear) {
+      return { valid: false, reason: "Ranged attack is blocked by another piece" };
+    }
+    
     capturedPiece = destPiece;
     
     // Remove the captured piece
@@ -3266,11 +3304,65 @@ function validateAndApplyMove(gameState, move) {
       return { valid: false, reason: "Piece cannot capture to that square" };
     }
   } else {
-    // No piece at destination - validate this is a legal non-capture move
-    // Use canPieceMoveToSquare which checks movement rules only (not capture rules)
-    const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces);
-    if (!canMove) {
-      return { valid: false, reason: "Piece cannot move to that square" };
+    // No piece at destination - check for en passant capture first
+    let isEnPassantCapture = false;
+    if (piece.can_en_passant && gameState.enPassantTarget) {
+      const ept = gameState.enPassantTarget;
+      console.log('[EN PASSANT DEBUG] Checking en passant opportunity:', {
+        pieceCanEnPassant: piece.can_en_passant,
+        moveTo: to,
+        captureSquare: ept.captureSquare,
+        victimPosition: ept.piecePosition,
+        piecePosition: { x: piece.x, y: piece.y }
+      });
+      // Check if this move is to the en passant capture square
+      if (to.x === ept.captureSquare.x && to.y === ept.captureSquare.y) {
+        console.log('[EN PASSANT DEBUG] Move is to capture square');
+        // Find the enemy piece that is vulnerable to en passant
+        const enPassantVictimIndex = pieces.findIndex(p => 
+          p.id === ept.pieceId && p.x === ept.piecePosition.x && p.y === ept.piecePosition.y
+        );
+        console.log('[EN PASSANT DEBUG] Victim index:', enPassantVictimIndex);
+        if (enPassantVictimIndex !== -1) {
+          const enPassantVictim = pieces[enPassantVictimIndex];
+          const victimOwner = enPassantVictim.team || enPassantVictim.player_id;
+          console.log('[EN PASSANT DEBUG] Victim found:', {
+            victimOwner,
+            pieceOwnerPosition,
+            piecePieceId: piece.piece_id,
+            victimPieceId: enPassantVictim.piece_id,
+            pieceY: piece.y,
+            victimY: enPassantVictim.y,
+            xDiff: Math.abs(piece.x - enPassantVictim.x)
+          });
+          // Must be enemy piece
+          if (victimOwner !== pieceOwnerPosition) {
+            // Must be same piece type (e.g., pawn can only en passant capture another pawn)
+            if (piece.piece_id === enPassantVictim.piece_id) {
+              // Validate the capturing piece is horizontally adjacent to the victim
+              if (piece.y === enPassantVictim.y && Math.abs(piece.x - enPassantVictim.x) === 1) {
+                // Validate that the piece can actually capture diagonally to the capture square
+                const canAttackDiagonal = canPieceAttackSquare(piece, to.x, to.y, pieces);
+                console.log('[EN PASSANT DEBUG] Can attack diagonal to capture square:', canAttackDiagonal);
+                if (canAttackDiagonal) {
+                  capturedPiece = enPassantVictim;
+                  isEnPassantCapture = true;
+                  console.log('[EN PASSANT DEBUG] En passant capture VALID!');
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    if (!isEnPassantCapture) {
+      // Validate this is a legal non-capture move
+      // Use canPieceMoveToSquare which checks movement rules only (not capture rules)
+      const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces);
+      if (!canMove) {
+        return { valid: false, reason: "Piece cannot move to that square" };
+      }
     }
   }
 
@@ -3290,7 +3382,16 @@ function validateAndApplyMove(gameState, move) {
   }
 
   // Now apply the move - remove captured piece if any
-  if (destinationPieceIndex !== -1) {
+  // Handle en passant capture (captured piece is at different position than destination)
+  let isEnPassantCapture = false;
+  if (capturedPiece && destinationPieceIndex === -1) {
+    // This is an en passant capture - find and remove the captured piece
+    const epCapturedIndex = pieces.findIndex(p => p.id === capturedPiece.id);
+    if (epCapturedIndex !== -1) {
+      pieces.splice(epCapturedIndex, 1);
+      isEnPassantCapture = true;
+    }
+  } else if (destinationPieceIndex !== -1) {
     pieces.splice(destinationPieceIndex, 1);
   }
 
@@ -3338,7 +3439,96 @@ function validateAndApplyMove(gameState, move) {
     promotionEligible = checkPromotionEligibility(movingPiece, to, gameState);
   }
 
-  return { valid: true, captured: capturedPiece, promotionEligible, movingPiece };
+  // Clear previous en passant target - it's only valid for one turn
+  gameState.enPassantTarget = null;
+  
+  // Check if this move creates a new en passant opportunity
+  // A piece becomes vulnerable to en passant if:
+  // 1. It moved using a first-move-only movement (moveCount was 0 before this move)
+  // 2. It has no backward movement (to be a valid en passant target)
+  // 3. The movement was significant (more than 1 square so opponent could have captured in between)
+  console.log('[EN PASSANT DEBUG] Checking if move creates en passant opportunity:', {
+    pieceName: movingPiece?.piece_name,
+    moveCount: movingPiece?.moveCount,
+    from,
+    to,
+    dy: to.y - from.y,
+    dx: to.x - from.x
+  });
+  if (movingPiece && movingPiece.moveCount === 1) {
+    const dy = to.y - from.y;
+    const dx = to.x - from.x;
+    
+    // Determine if this was a first-move-only directional move
+    // Check which direction was used and if it has available_for restriction
+    let wasFirstMoveOnly = false;
+    const pieceOwner = movingPiece.team || movingPiece.player_id;
+    const isPlayer2 = pieceOwner === 2;
+    const effectiveDy = isPlayer2 ? -dy : dy;
+    const effectiveDx = isPlayer2 ? -dx : dx;
+    
+    // Helper to check special_scenario_moves for first-move-only additional movements
+    const checkSpecialScenarioMoves = (direction, moveDistance) => {
+      if (!movingPiece.special_scenario_moves) return false;
+      let ssm = movingPiece.special_scenario_moves;
+      if (typeof ssm === 'string') {
+        try { ssm = JSON.parse(ssm); } catch (e) { return false; }
+      }
+      const additionalMovements = ssm?.additionalMovements?.[direction];
+      if (!additionalMovements || !Array.isArray(additionalMovements)) return false;
+      
+      // Check if any additional movement has availableForMoves = 1 and matches the move distance
+      return additionalMovements.some(m => m.availableForMoves === 1 && m.value >= moveDistance);
+    };
+    
+    // Check vertical first-move-only (like pawn double move)
+    if (dx === 0 && Math.abs(dy) > 1) {
+      const dirProp = effectiveDy < 0 ? 'up_movement_available_for' : 'down_movement_available_for';
+      const direction = effectiveDy < 0 ? 'up' : 'down';
+      if (movingPiece[dirProp] === 1 || checkSpecialScenarioMoves(direction, Math.abs(dy))) {
+        wasFirstMoveOnly = true;
+      }
+    }
+    // Check diagonal first-move-only
+    else if (Math.abs(dx) === Math.abs(dy) && Math.abs(dx) > 1) {
+      let dirProp = null;
+      let direction = null;
+      if (effectiveDx < 0 && effectiveDy < 0) { dirProp = 'up_left_movement_available_for'; direction = 'up_left'; }
+      else if (effectiveDx > 0 && effectiveDy < 0) { dirProp = 'up_right_movement_available_for'; direction = 'up_right'; }
+      else if (effectiveDx < 0 && effectiveDy > 0) { dirProp = 'down_left_movement_available_for'; direction = 'down_left'; }
+      else if (effectiveDx > 0 && effectiveDy > 0) { dirProp = 'down_right_movement_available_for'; direction = 'down_right'; }
+      if (dirProp && (movingPiece[dirProp] === 1 || checkSpecialScenarioMoves(direction, Math.abs(dx)))) {
+        wasFirstMoveOnly = true;
+      }
+    }
+    // Check horizontal first-move-only
+    else if (dy === 0 && Math.abs(dx) > 1) {
+      const dirProp = effectiveDx < 0 ? 'left_movement_available_for' : 'right_movement_available_for';
+      const direction = effectiveDx < 0 ? 'left' : 'right';
+      if (movingPiece[dirProp] === 1 || checkSpecialScenarioMoves(direction, Math.abs(dx))) {
+        wasFirstMoveOnly = true;
+      }
+    }
+    
+    console.log('[EN PASSANT DEBUG] wasFirstMoveOnly result:', wasFirstMoveOnly);
+    
+    if (wasFirstMoveOnly) {
+      // The en passant capture square is where the piece "passed through"
+      // For a standard 2-square forward move, it's one square behind
+      const captureSquareX = to.x;
+      const captureSquareY = from.y + Math.sign(dy); // One step in the direction of movement
+      
+      gameState.enPassantTarget = {
+        pieceId: movingPiece.id,
+        piecePosition: { x: to.x, y: to.y },
+        captureSquare: { x: captureSquareX, y: captureSquareY },
+        fromPosition: { x: from.x, y: from.y }
+      };
+      console.log('[EN PASSANT DEBUG] En passant target SET:', gameState.enPassantTarget);
+    }
+  }
+
+  return { valid: true, captured: capturedPiece, promotionEligible, movingPiece, isEnPassantCapture };
 }
 
 /**
@@ -3548,6 +3738,59 @@ function checkRangedMovement(value, distance, isExact) {
   if (value > 0) return distance <= value;
   if (value < 0) return distance === Math.abs(value);
   return false;
+}
+
+/**
+ * Check if the ranged attack path is blocked by other pieces
+ * Returns true if the path is clear, false if blocked
+ */
+function isRangedPathClear(fromX, fromY, toX, toY, piece, allPieces, pieceOwnerPosition) {
+  const canFireOverAllies = piece.can_fire_over_allies === 1 || piece.can_fire_over_allies === true;
+  const canFireOverEnemies = piece.can_fire_over_enemies === 1 || piece.can_fire_over_enemies === true;
+  
+  // If can fire over both, path is always clear
+  if (canFireOverAllies && canFireOverEnemies) return true;
+  
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  
+  // Only check path for directional attacks (not L-shape or step-by-step)
+  // L-shape attacks are like knight moves and don't have a straight path
+  if (absDx !== absDy && dx !== 0 && dy !== 0) {
+    // L-shaped attack - no path blocking (similar to knight movement)
+    return true;
+  }
+  
+  // Calculate step direction
+  const stepX = dx === 0 ? 0 : dx / absDx;
+  const stepY = dy === 0 ? 0 : dy / absDy;
+  
+  // Check each square along the path (excluding start and end)
+  let checkX = fromX + stepX;
+  let checkY = fromY + stepY;
+  
+  while (checkX !== toX || checkY !== toY) {
+    // Check if there's a piece at this position
+    const blockingPiece = allPieces.find(p => p.x === checkX && p.y === checkY);
+    if (blockingPiece) {
+      const blockingOwner = blockingPiece.team || blockingPiece.player_id;
+      const isAlly = blockingOwner === pieceOwnerPosition;
+      
+      if (isAlly && !canFireOverAllies) {
+        return false; // Blocked by ally
+      }
+      if (!isAlly && !canFireOverEnemies) {
+        return false; // Blocked by enemy
+      }
+    }
+    
+    checkX += stepX;
+    checkY += stepY;
+  }
+  
+  return true;
 }
 
 /**
@@ -5040,4 +5283,11 @@ function checkWinCondition(gameState, capturedPiece = null) {
   return { gameOver: false };
 }
 
-module.exports = { initializeSocket, activeGames, onlineUsers };
+/**
+ * Get the Socket.io instance for use in other modules
+ */
+function getIO() {
+  return ioInstance;
+}
+
+module.exports = { initializeSocket, activeGames, onlineUsers, getIO };

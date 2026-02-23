@@ -353,6 +353,7 @@ const PieceView = () => {
       // Convert special ability fields to booleans
       can_promote: !!piece.can_promote,
       can_castle: !!piece.can_castle,
+      can_en_passant: !!piece.can_en_passant,
       has_checkmate_rule: !!piece.has_checkmate_rule,
       has_check_rule: !!piece.has_check_rule,
       has_lose_on_capture_rule: !!piece.has_lose_on_capture_rule
@@ -446,7 +447,7 @@ const PieceView = () => {
           <h2>Movement & Attack Pattern</h2>
           <p className={styles["hint"]}>Hover over the board to see where this piece can move, capture, and ranged attack</p>
           <div className={styles["board-container"]}>
-            <PieceBoardPreview pieceData={pieceDataWithImages} showLegend={false} />
+            <PieceBoardPreview pieceData={pieceDataWithImages} showLegend={true} />
           </div>
         </div>
 
@@ -646,8 +647,14 @@ const PieceView = () => {
                 <span className={styles["special-name"]}>Lose Game if Captured</span>
               </div>
             )}
+            {pieceToDisplay.can_en_passant && (
+              <div className={styles["special-ability-card"]} title="Can capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn.">
+                <span className={styles["special-icon"]}>↗️</span>
+                <span className={styles["special-name"]}>Can En Passant</span>
+              </div>
+            )}
             {!pieceToDisplay.can_promote && !pieceToDisplay.can_castle && !pieceToDisplay.has_checkmate_rule && 
-             !pieceToDisplay.has_check_rule && !pieceToDisplay.has_lose_on_capture_rule && (
+             !pieceToDisplay.has_check_rule && !pieceToDisplay.has_lose_on_capture_rule && !pieceToDisplay.can_en_passant && (
               <div className={styles["no-abilities"]}>
                 <span className={styles["no-abilities-icon"]}>✨</span>
                 <span>No special abilities</span>

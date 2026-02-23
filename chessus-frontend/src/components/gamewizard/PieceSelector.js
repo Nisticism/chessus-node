@@ -29,6 +29,8 @@ const PieceSelector = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PIECES_PER_PAGE = 25;
   
   // Initialize selectedPlayerId with last used value from localStorage, or currentPlacement, or default to 1
   const getInitialPlayerId = () => {
@@ -51,6 +53,9 @@ const PieceSelector = ({
   const [leftCastlingPartnerKey, setLeftCastlingPartnerKey] = useState(currentPlacement?.castling_partner_left_key || null);
   const [rightCastlingPartnerKey, setRightCastlingPartnerKey] = useState(currentPlacement?.castling_partner_right_key || null);
   
+  // Fill row state
+  const [fillRow, setFillRow] = useState(false);
+  
   // Update selectedPlayerId when currentPlacement changes (e.g., when opening modal for different piece)
   useEffect(() => {
     if (currentPlacement?.player_id) {
@@ -68,22 +73,52 @@ const PieceSelector = ({
   }, []);
 
   useEffect(() => {
-    // Filter pieces based on search term
-    if (searchTerm.trim() === "") {
-      // When no search term, limit to first 10 pieces
-      setFilteredPieces(pieces.slice(0, 10));
-    } else {
+    // Filter pieces based on search term and pagination
+    let filtered = pieces;
+    
+    if (searchTerm.trim() !== "") {
       const term = searchTerm.toLowerCase();
-      const filtered = pieces.filter(piece => 
+      filtered = pieces.filter(piece => 
         (piece.piece_name && piece.piece_name.toLowerCase().includes(term)) ||
         (piece.id && piece.id.toString().includes(term)) ||
         (piece.piece_id && piece.piece_id.toString().includes(term)) ||
         (piece.piece_description && piece.piece_description.toLowerCase().includes(term))
       );
-      // When searching, show all matching results
-      setFilteredPieces(filtered);
     }
-  }, [searchTerm, pieces]);
+    
+    // Apply pagination
+    const startIndex = (currentPage - 1) * PIECES_PER_PAGE;
+    const endIndex = startIndex + PIECES_PER_PAGE;
+    setFilteredPieces(filtered.slice(startIndex, endIndex));
+  }, [searchTerm, pieces, currentPage]);
+
+  // Reset to page 1 when search term changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  // Calculate total pages
+  const getTotalPages = () => {
+    const filtered = searchTerm.trim() === "" 
+      ? pieces 
+      : pieces.filter(piece => 
+          (piece.piece_name && piece.piece_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (piece.id && piece.id.toString().includes(searchTerm)) ||
+          (piece.piece_id && piece.piece_id.toString().includes(searchTerm)) ||
+          (piece.piece_description && piece.piece_description.toLowerCase().includes(searchTerm.toLowerCase()))
+        );
+    return Math.ceil(filtered.length / PIECES_PER_PAGE);
+  };
+
+  const getTotalFilteredCount = () => {
+    if (searchTerm.trim() === "") return pieces.length;
+    return pieces.filter(piece => 
+      (piece.piece_name && piece.piece_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (piece.id && piece.id.toString().includes(searchTerm)) ||
+      (piece.piece_id && piece.piece_id.toString().includes(searchTerm)) ||
+      (piece.piece_description && piece.piece_description.toLowerCase().includes(searchTerm.toLowerCase()))
+    ).length;
+  };
 
   useEffect(() => {
     // When a piece is selected, load its available images
@@ -181,7 +216,10 @@ const PieceSelector = ({
       // Castling override data - if manual is enabled, default partners are disabled
       manual_castling_partners: manualCastlingPartners,
       castling_partner_left_key: manualCastlingPartners ? leftCastlingPartnerKey : null,
-      castling_partner_right_key: manualCastlingPartners ? rightCastlingPartnerKey : null
+      castling_partner_right_key: manualCastlingPartners ? rightCastlingPartnerKey : null,
+      // Fill row option
+      fillRow: fillRow,
+      fillRowData: fillRow ? { row: squarePosition?.row, boardWidth } : null
     });
   };
 
@@ -265,11 +303,50 @@ const PieceSelector = ({
         <div className={styles["piece-list-section"]}>
           {loading && <p key="loading">Loading pieces...</p>}
           {error && <p key="error" className={styles["error-text"]}>{error}</p>}
-          {!loading && !error && pieces.length > 10 && searchTerm.trim() === "" && (
-            <p key="hint" className={styles["piece-count-hint"]}>Showing 10 of {pieces.length} pieces. Use search to find more.</p>
+          {!loading && !error && getTotalFilteredCount() > PIECES_PER_PAGE && (
+            <p key="hint" className={styles["piece-count-hint"]}>
+              Showing {filteredPieces.length} of {getTotalFilteredCount()} pieces (Page {currentPage} of {getTotalPages()})
+            </p>
           )}
           {!loading && !error && filteredPieces.length === 0 && (
             <p key="no-pieces">No pieces found. Try a different search term.</p>
+          )}
+          
+          {/* Pagination Controls */}
+          {!loading && !error && getTotalPages() > 1 && (
+            <div key="pagination" className={styles["pagination-controls"]}>
+              <button 
+                className={styles["pagination-btn"]}
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+              >
+                ««
+              </button>
+              <button 
+                className={styles["pagination-btn"]}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                «
+              </button>
+              <span className={styles["pagination-info"]}>
+                Page {currentPage} of {getTotalPages()}
+              </span>
+              <button 
+                className={styles["pagination-btn"]}
+                onClick={() => setCurrentPage(p => Math.min(getTotalPages(), p + 1))}
+                disabled={currentPage === getTotalPages()}
+              >
+                »
+              </button>
+              <button 
+                className={styles["pagination-btn"]}
+                onClick={() => setCurrentPage(getTotalPages())}
+                disabled={currentPage === getTotalPages()}
+              >
+                »»
+              </button>
+            </div>
           )}
           {!loading && !error && filteredPieces.length > 0 && (
             <div key="piece-grid" className={styles["piece-grid"]}>
@@ -433,6 +510,23 @@ const PieceSelector = ({
             )}
           </div>
         )}
+
+        {/* Fill Row Toggle */}
+        <div 
+          className={`${styles["fill-row-toggle"]} ${fillRow ? styles.active : ''}`}
+          onClick={() => setFillRow(!fillRow)}
+        >
+          <div className={`${styles["fill-row-switch"]} ${fillRow ? styles.on : ''}`} />
+          <div className={styles["fill-row-content"]}>
+            <span className={styles["fill-row-label"]}>
+              <span className={styles["fill-row-icon"]}>↔</span>
+              Fill Entire Row
+            </span>
+            <span className={styles["fill-row-hint"]}>
+              Place this piece on all squares in row {squarePosition?.row}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className={styles["modal-footer"]}>

@@ -50,12 +50,25 @@ const Play = () => {
   const [challengedUsername, setChallengedUsername] = useState("");
   const [modalGameSearch, setModalGameSearch] = useState("");
   const [pendingChallenges, setPendingChallenges] = useState([]);
+  const [gameDeletedMessage, setGameDeletedMessage] = useState(null);
 
   // Pagination state
   const PAGE_SIZE = 16;
   const [friendsPage, setFriendsPage] = useState(1);
   const [openGamesPage, setOpenGamesPage] = useState(1);
   const [ongoingGamesPage, setOngoingGamesPage] = useState(1);
+
+  // Check for game deleted message on mount
+  useEffect(() => {
+    const message = sessionStorage.getItem('gameDeletedMessage');
+    if (message) {
+      setGameDeletedMessage(message);
+      sessionStorage.removeItem('gameDeletedMessage');
+      // Auto-dismiss after 8 seconds
+      const timer = setTimeout(() => setGameDeletedMessage(null), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const redirectToLogin = (message) => {
     navigate('/login', { state: { message } });
@@ -452,6 +465,19 @@ const Play = () => {
       {!currentUser && (
         <div className={styles["error-message"]}>
           Guest mode: you can browse open and ongoing matches, but you must log in to host, join, or challenge.
+        </div>
+      )}
+
+      {gameDeletedMessage && (
+        <div className={styles["info-message"]}>
+          {gameDeletedMessage}
+          <button 
+            className={styles["dismiss-btn"]} 
+            onClick={() => setGameDeletedMessage(null)}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
 

@@ -160,6 +160,10 @@ const PieceWizard = ({ editPieceId = null }) => {
     max_piece_captures_per_move: 1,
     max_piece_captures_per_ranged_attack: 1,
     
+    // Ranged attack firing over pieces (like hopping for movement)
+    can_fire_over_allies: false,
+    can_fire_over_enemies: false,
+    
     // Step 4: Special Rules
     special_scenario_moves: "",
     special_scenario_capture: "",
@@ -169,6 +173,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     min_turns_until_movement: 0,
     can_castle: false,
     can_promote: false,
+    can_en_passant: false,
   });
 
   // Load existing piece data when in edit mode
@@ -342,6 +347,10 @@ const PieceWizard = ({ editPieceId = null }) => {
             max_piece_captures_per_move: piece.max_piece_captures_per_move || 1,
             max_piece_captures_per_ranged_attack: piece.max_piece_captures_per_ranged_attack || 1,
             
+            // Ranged attack firing over pieces
+            can_fire_over_allies: !!piece.can_fire_over_allies,
+            can_fire_over_enemies: !!piece.can_fire_over_enemies,
+            
             // Detect if attacks like movement (compare capture pattern to movement pattern)
             // Check directional patterns match
             attacks_like_movement: piece.can_capture_enemy_on_move && 
@@ -366,6 +375,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             min_turns_until_movement: piece.min_turns_per_move || 0,
             can_castle: !!piece.can_castle,
             can_promote: !!piece.can_promote,
+            can_en_passant: !!piece.can_en_passant,
           });
           
           setIsEditMode(true);
@@ -488,6 +498,24 @@ const PieceWizard = ({ editPieceId = null }) => {
   ]);
 
   const totalSteps = 4;
+  
+  const stepLabels = [
+    { num: 1, label: 'Basic Info' },
+    { num: 2, label: 'Movement' },
+    { num: 3, label: 'Attack' },
+    { num: 4, label: 'Special' }
+  ];
+
+  const goToStep = (step) => {
+    // Validate Step 1 before leaving it
+    if (currentStep === 1 && step > 1) {
+      if (!pieceData.piece_name || pieceData.piece_name.trim().length < 2) {
+        alert('Please enter a piece name (at least 2 characters) before continuing.');
+        return;
+      }
+    }
+    setCurrentStep(step);
+  };
 
   const updatePieceData = (updates) => {
     setPieceData(prev => ({ ...prev, ...updates }));
@@ -610,16 +638,19 @@ const PieceWizard = ({ editPieceId = null }) => {
     <div className={styles["wizard-container"]}>
       <div className={styles["wizard-header"]}>
         <h1>{isEditMode ? "Edit Piece" : "Create New Piece"}</h1>
-        <div className={styles["step-indicator"]}>
-          Step {currentStep} of {totalSteps}
-        </div>
       </div>
 
       <div className={styles["progress-bar"]}>
-        <div 
-          className={styles["progress-fill"]} 
-          style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-        />
+        {stepLabels.map((step) => (
+          <div 
+            key={step.num}
+            className={`${styles["progress-step"]} ${currentStep === step.num ? styles.active : ''} ${currentStep > step.num ? styles.completed : ''}`}
+            onClick={() => goToStep(step.num)}
+          >
+            <span className={styles["step-circle"]}>{step.num}</span>
+            <span className={styles["step-label"]}>{step.label}</span>
+          </div>
+        ))}
       </div>
 
       <Divider />

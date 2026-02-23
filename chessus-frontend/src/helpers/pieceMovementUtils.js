@@ -603,3 +603,63 @@ export const getSquareHighlightStyle = (canMove, isMoveFirstOnly, canCapture, is
 
   return { style, icon };
 };
+
+/**
+ * Check if the ranged attack path is blocked by other pieces
+ * @param {number} fromX - Starting X (column)
+ * @param {number} fromY - Starting Y (row)
+ * @param {number} toX - Target X (column)
+ * @param {number} toY - Target Y (row)
+ * @param {Object} piece - The attacking piece
+ * @param {Array} allPieces - All pieces on the board
+ * @param {number} pieceOwnerPosition - Owner position (1 or 2)
+ * @returns {boolean} True if path is clear, false if blocked
+ */
+export const isRangedPathClear = (fromX, fromY, toX, toY, piece, allPieces, pieceOwnerPosition) => {
+  const canFireOverAllies = piece.can_fire_over_allies === 1 || piece.can_fire_over_allies === true;
+  const canFireOverEnemies = piece.can_fire_over_enemies === 1 || piece.can_fire_over_enemies === true;
+  
+  // If can fire over both, path is always clear
+  if (canFireOverAllies && canFireOverEnemies) return true;
+  
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  
+  // Only check path for directional attacks (not L-shape or step-by-step)
+  // L-shape attacks are like knight moves and don't have a straight path
+  if (absDx !== absDy && dx !== 0 && dy !== 0) {
+    // L-shaped attack - no path blocking (similar to knight movement)
+    return true;
+  }
+  
+  // Calculate step direction
+  const stepX = dx === 0 ? 0 : dx / absDx;
+  const stepY = dy === 0 ? 0 : dy / absDy;
+  
+  // Check each square along the path (excluding start and end)
+  let checkX = fromX + stepX;
+  let checkY = fromY + stepY;
+  
+  while (checkX !== toX || checkY !== toY) {
+    // Check if there's a piece at this position
+    const blockingPiece = allPieces.find(p => p.x === checkX && p.y === checkY);
+    if (blockingPiece) {
+      const blockingOwner = blockingPiece.team || blockingPiece.player_id || blockingPiece.player;
+      const isAlly = blockingOwner === pieceOwnerPosition;
+      
+      if (isAlly && !canFireOverAllies) {
+        return false; // Blocked by ally
+      }
+      if (!isAlly && !canFireOverEnemies) {
+        return false; // Blocked by enemy
+      }
+    }
+    
+    checkX += stepX;
+    checkY += stepY;
+  }
+  
+  return true;
+};

@@ -988,6 +988,30 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
               </label>
             </div>
 
+            {/* Firing Over Pieces */}
+            <div className={styles["sub-field"]}>
+              <h4>Line of Sight</h4>
+              <p className={styles["field-hint"]}>
+                By default, ranged attacks are blocked by other pieces. Enable these to allow firing over allies or enemies.
+              </p>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={pieceData.can_fire_over_allies}
+                  onChange={(e) => handleChange("can_fire_over_allies", e.target.checked)}
+                />
+                <span>Can fire over allied pieces</span>
+              </label>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={pieceData.can_fire_over_enemies}
+                  onChange={(e) => handleChange("can_fire_over_enemies", e.target.checked)}
+                />
+                <span>Can fire over enemy pieces</span>
+              </label>
+            </div>
+
             {/* Directional Ranged Attack */}
             <div className={styles["sub-field"]}>
               <h4>Directional Ranged Attack</h4>

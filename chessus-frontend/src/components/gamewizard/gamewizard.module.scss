@@ -29,20 +29,73 @@
   font-weight: 500;
 }
 
-// Progress Bar
+// Progress Bar (Step Navigation)
 .progress-bar {
-  width: 100%;
-  height: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  overflow: hidden;
-  margin: 20px 0;
+  display: flex;
+  justify-content: space-between;
+  margin: 20px 0 30px 0;
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 20px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: #e0e0e0;
+    z-index: 0;
+  }
 }
 
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #4a90e2, #63b3ed);
-  transition: width 0.3s ease;
+.progress-step {
+  flex: 1;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+
+  &:hover {
+    transform: scale(1.05);
+  }
+
+  .step-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #e0e0e0;
+    color: #666;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s ease;
+  }
+
+  .step-label {
+    display: block;
+    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
+    color: #666;
+  }
+
+  &.active .step-circle {
+    background-color: #4a90e2;
+    color: white;
+    transform: scale(1.1);
+  }
+
+  &.completed .step-circle {
+    background-color: #4caf50;
+    color: white;
+  }
+
+  &.active .step-label,
+  &.completed .step-label {
+    color: var(--light-gray, #e0e0e0);
+    font-weight: 600;
+  }
 }
 
 // Step Container
@@ -865,11 +918,49 @@
   font-style: italic;
 }
 
+// Pagination Controls
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.pagination-btn {
+  background: rgba(74, 144, 226, 0.2);
+  border: 1px solid rgba(74, 144, 226, 0.5);
+  color: var(--light-gray);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  font-weight: 600;
+
+  &:hover:not(:disabled) {
+    background: rgba(74, 144, 226, 0.4);
+    border-color: #4a90e2;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.pagination-info {
+  color: var(--light-gray);
+  font-size: 14px;
+  padding: 0 10px;
+}
+
 .piece-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 15px;
-  max-height: 250px;
+  max-height: 400px;
   overflow-y: auto;
   padding: 10px;
   
@@ -1339,4 +1430,87 @@
     min-width: 0;
     min-height: 0;
   }
+}
+
+// Fill Row Toggle - distinctive styling
+.fill-row-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 15px 0;
+  background: linear-gradient(135deg, rgba(74, 144, 226, 0.15) 0%, rgba(140, 82, 255, 0.15) 100%);
+  border: 2px solid rgba(74, 144, 226, 0.4);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  user-select: none;
+
+  &:hover {
+    background: linear-gradient(135deg, rgba(74, 144, 226, 0.25) 0%, rgba(140, 82, 255, 0.25) 100%);
+    border-color: rgba(74, 144, 226, 0.6);
+    transform: translateY(-1px);
+  }
+
+  &.active {
+    background: linear-gradient(135deg, rgba(74, 144, 226, 0.35) 0%, rgba(140, 82, 255, 0.35) 100%);
+    border-color: #4a90e2;
+    box-shadow: 0 0 15px rgba(74, 144, 226, 0.3);
+  }
+}
+
+.fill-row-switch {
+  position: relative;
+  width: 50px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    background: #fff;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+
+  &.on {
+    background: linear-gradient(135deg, #4a90e2 0%, #8c52ff 100%);
+
+    &::after {
+      left: 27px;
+    }
+  }
+}
+
+.fill-row-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fill-row-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--light-gray);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .fill-row-icon {
+    font-size: 18px;
+  }
+}
+
+.fill-row-hint {
+  font-size: 12px;
+  color: var(--text-light-gray);
+  opacity: 0.8;
 }

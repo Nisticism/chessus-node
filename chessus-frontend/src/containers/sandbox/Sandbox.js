@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { getGames, getGameById } from "../../actions/games";
 import PiecesService from "../../services/pieces.service";
 import PieceSelector from "../../components/gamewizard/PieceSelector";
-import { canRangedAttackTo } from "../../helpers/pieceMovementUtils";
+import { canRangedAttackTo, isRangedPathClear } from "../../helpers/pieceMovementUtils";
 import styles from "./sandbox.module.scss";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 
@@ -1053,6 +1053,10 @@ const Sandbox = () => {
           // Already in moves as a regular capture? Skip to avoid duplicates
           if (moves.some(m => m.x === toX && m.y === toY)) continue;
           if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
+            // Check if ranged path is clear (blocked by pieces unless can fire over)
+            if (!isRangedPathClear(piece.x, piece.y, toX, toY, piece, pieces, pieceTeam)) {
+              continue;
+            }
             moves.push({
               x: toX,
               y: toY,
@@ -1270,7 +1274,8 @@ const Sandbox = () => {
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
 
           if (targetPiece && targetTeam !== sourceTeam &&
-              canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam)) {
+              canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam) &&
+              isRangedPathClear(data.piece.x, data.piece.y, target.x, target.y, data.piece, pieces, sourceTeam)) {
             const updatedPieces = pieces.filter(p => p.id !== targetPiece.id);
             const nextTurn = activeSandbox.currentTurn === 1 ? 2 : 1;
             setSandboxes(prev => prev.map(s =>
@@ -1559,9 +1564,11 @@ const Sandbox = () => {
         const isRangedMove = !!rangedMove;
         const isRangedHover = !!hoveredRangedMove;
         // During ranged drag, highlight all valid ranged target squares (including empty)
+        const rangedSourceTeam = rangedAttackSource?.player_id || rangedAttackSource?.team;
         const isRangedDragTarget = rangedAttackSource && showHighlights
-          && !(piece && ((piece.player_id || piece.team) === (rangedAttackSource.player_id || rangedAttackSource.team)))
-          && canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, y, x, rangedAttackSource, rangedAttackSource.player_id || rangedAttackSource.team);
+          && !(piece && ((piece.player_id || piece.team) === rangedSourceTeam))
+          && canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, y, x, rangedAttackSource, rangedSourceTeam)
+          && isRangedPathClear(rangedAttackSource.x, rangedAttackSource.y, x, y, rangedAttackSource, activeSandbox?.pieces || [], rangedSourceTeam);
 
         squares.push(
           <div

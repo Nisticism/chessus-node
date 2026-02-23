@@ -223,25 +223,55 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
 
   const handlePieceSelected = useCallback((pieceData) => {
     if (selectedSquare) {
-      setPiecePlacements(prev => ({
-        ...prev,
-        [selectedSquare.key]: {
-          piece_id: pieceData.piece_id,
-          player_id: pieceData.player_id,
-          image_url: pieceData.image_url,
-          piece_name: pieceData.piece_name,
-          ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
-          ends_game_on_capture: pieceData.ends_game_on_capture || false,
-          // Castling override data
-          manual_castling_partners: pieceData.manual_castling_partners || false,
-          castling_partner_left_key: pieceData.castling_partner_left_key || null,
-          castling_partner_right_key: pieceData.castling_partner_right_key || null
-        }
-      }));
+      // Check if fill row is enabled
+      const { fillRow, fillRowData } = pieceData;
+      
+      if (fillRow && fillRowData) {
+        // Fill the entire row with this piece
+        const { row, boardWidth: filledBoardWidth } = fillRowData;
+        const effectiveBoardWidth = filledBoardWidth || gameData.board_width;
+        
+        setPiecePlacements(prev => {
+          const newPlacements = { ...prev };
+          for (let col = 0; col < effectiveBoardWidth; col++) {
+            const key = `${row},${col}`;
+            newPlacements[key] = {
+              piece_id: pieceData.piece_id,
+              player_id: pieceData.player_id,
+              image_url: pieceData.image_url,
+              piece_name: pieceData.piece_name,
+              ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
+              ends_game_on_capture: pieceData.ends_game_on_capture || false,
+              // Castling override data
+              manual_castling_partners: pieceData.manual_castling_partners || false,
+              castling_partner_left_key: pieceData.castling_partner_left_key || null,
+              castling_partner_right_key: pieceData.castling_partner_right_key || null
+            };
+          }
+          return newPlacements;
+        });
+      } else {
+        // Single square placement
+        setPiecePlacements(prev => ({
+          ...prev,
+          [selectedSquare.key]: {
+            piece_id: pieceData.piece_id,
+            player_id: pieceData.player_id,
+            image_url: pieceData.image_url,
+            piece_name: pieceData.piece_name,
+            ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
+            ends_game_on_capture: pieceData.ends_game_on_capture || false,
+            // Castling override data
+            manual_castling_partners: pieceData.manual_castling_partners || false,
+            castling_partner_left_key: pieceData.castling_partner_left_key || null,
+            castling_partner_right_key: pieceData.castling_partner_right_key || null
+          }
+        }));
+      }
     }
     setShowPieceSelector(false);
     setSelectedSquare(null);
-  }, [selectedSquare]);
+  }, [selectedSquare, gameData.board_width]);
 
   const handleRemovePiece = useCallback(() => {
     if (selectedSquare) {
@@ -749,7 +779,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             </div>
             <div className={styles["legend-item"]}>
               <div className={styles["legend-square"]} style={{ border: '2px solid #E91E63', width: '14px', height: '14px' }}></div>
-              <span>1st Atk</span>
+              <span>1st Attack</span>
             </div>
             <div className={styles["legend-item"]}>
               <div className={styles["legend-square"]} style={{ border: '2px solid #f44336', width: '14px', height: '14px' }}></div>
@@ -761,7 +791,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             </div>
             <div className={styles["legend-item"]} style={{ gap: '3px' }}>
               <span style={{ fontSize: '0.9rem' }}>⚔️</span>
-              <span>Cap</span>
+              <span>Capture</span>
             </div>
             {Array.from({ length: gameData.player_count || 2 }, (_, i) => i + 1).map(playerId => (
               <div key={playerId} className={styles["legend-item"]}>

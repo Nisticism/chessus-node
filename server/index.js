@@ -78,7 +78,7 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const { sendWelcomeEmail, sendDonationEmail, sendContactEmail } = require("./email-service");
 
 // Socket.io game handler
-const { initializeSocket, onlineUsers } = require("./game-socket");
+const { initializeSocket, onlineUsers, getIO } = require("./game-socket");
 
 //  Express
 
@@ -2300,6 +2300,16 @@ app.delete("/api/admin/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(403).send({ message: "Access denied. Admin or owner role required." });
     }
 
+    // Notify all players in the game before deleting
+    const io = getIO();
+    if (io) {
+      io.to(`game:${gameId}`).emit('gameDeleted', {
+        gameId,
+        message: 'This game has been deleted by an administrator.',
+        deletedBy: req.user.username
+      });
+    }
+
     // Delete game and associated data
     await db_pool.query("DELETE FROM players WHERE game_id = ?", [gameId]);
     await db_pool.query("DELETE FROM games WHERE id = ?", [gameId]);
@@ -3228,8 +3238,9 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         ratio_one_attack_range, ratio_two_attack_range, repeating_ratio_ranged_attack, max_ratio_ranged_attack_iterations, min_ratio_ranged_attack_iterations,
         step_by_step_attack_style, step_by_step_attack_value,
         max_piece_captures_per_move, max_piece_captures_per_ranged_attack,
-        special_scenario_captures
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        special_scenario_captures,
+        can_fire_over_allies, can_fire_over_enemies, can_en_passant
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceValues = [
@@ -3373,7 +3384,12 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.step_by_step_attack_value) || null,
       parseInt(pieceData.max_piece_captures_per_move) || 1,
       hasRangedAttack ? (parseInt(pieceData.max_piece_captures_per_ranged_attack) || 1) : null,
-      pieceData.special_scenario_captures || null
+      pieceData.special_scenario_captures || null,
+      // Ranged firing over pieces
+      parseBooleanField(pieceData.can_fire_over_allies),
+      parseBooleanField(pieceData.can_fire_over_enemies),
+      // En passant
+      parseBooleanField(pieceData.can_en_passant)
     ];
 
     const [result] = await db_pool.query(pieceSql, pieceValues);
@@ -3586,7 +3602,10 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         step_by_step_attack_value = ?,
         max_piece_captures_per_move = ?,
         max_piece_captures_per_ranged_attack = ?,
-        special_scenario_captures = ?
+        special_scenario_captures = ?,
+        can_fire_over_allies = ?,
+        can_fire_over_enemies = ?,
+        can_en_passant = ?
       WHERE id = ?
     `;
 
@@ -3730,6 +3749,11 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.max_piece_captures_per_move) || 1,
       hasRangedAttack ? (parseInt(pieceData.max_piece_captures_per_ranged_attack) || 1) : null,
       pieceData.special_scenario_captures || null,
+      // Ranged firing over pieces
+      parseBooleanField(pieceData.can_fire_over_allies),
+      parseBooleanField(pieceData.can_fire_over_enemies),
+      // En passant
+      parseBooleanField(pieceData.can_en_passant),
       pieceId
     ];
 

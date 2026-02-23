@@ -474,6 +474,15 @@ const LiveGame = () => {
       }
     });
 
+    // Game deleted by admin
+    const unsubscribeGameDeleted = onGameEvent("gameDeleted", ({ gameId: deletedGameId, message }) => {
+      if (parseInt(deletedGameId) === parseInt(gameId)) {
+        // Store message to show after redirect
+        sessionStorage.setItem('gameDeletedMessage', message || 'This game has been deleted by an administrator.');
+        navigate('/play');
+      }
+    });
+
     return () => {
       unsubscribeMove();
       unsubscribeCheck();
@@ -490,8 +499,9 @@ const LiveGame = () => {
       unsubscribePiecePromoted();
       unsubscribeDrawOffered();
       unsubscribeDrawDeclined();
+      unsubscribeGameDeleted();
     };
-  }, [gameId, onGameEvent]);
+  }, [gameId, onGameEvent, navigate]);
 
   // Get current player info
   const currentPlayer = useMemo(() => {
@@ -1180,7 +1190,8 @@ const LiveGame = () => {
   }, [checkForCheck]);
 
   // Calculate valid moves for a piece using actual piece movement data
-  const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight, skipCheckFilter = false) => {
+  // forPremove: when true, includes potential capture squares even when empty (for premove highlighting)
+  const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false) => {
     const moves = [];
     const pieceTeam = piece.player_id || piece.team;
 
@@ -1199,6 +1210,7 @@ const LiveGame = () => {
 
         // Check if move is valid based on piece movement rules
         let isValidMove = false;
+        let isPotentialCapture = false; // For premoves: empty square that could be a capture
         
         if (isCapture) {
           // Check capture rules
@@ -1206,6 +1218,16 @@ const LiveGame = () => {
         } else {
           // Check movement rules
           isValidMove = canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+          
+          // For premoves: also check if this empty square is a valid capture square
+          // (e.g., pawn diagonal attack - piece might move there by opponent's turn)
+          if (forPremove && !isValidMove) {
+            const canCaptureThere = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+            if (canCaptureThere) {
+              isValidMove = true;
+              isPotentialCapture = true;
+            }
+          }
         }
 
         // If move is valid, check if path is clear
@@ -1228,7 +1250,7 @@ const LiveGame = () => {
         
         if (isValidMove && pathClear) {
           // Check if this move requires a certain number of first moves
-          const firstMovesRequired = isCapture 
+          const firstMovesRequired = (isCapture || isPotentialCapture)
             ? checkIfFirstMoveOnlyCapture(piece, piece.x, piece.y, toX, toY, pieceTeam)
             : checkIfFirstMoveOnlyMove(piece, piece.x, piece.y, toX, toY, pieceTeam);
           
@@ -1243,8 +1265,9 @@ const LiveGame = () => {
           moves.push({
             x: toX,
             y: toY,
-            isCapture,
-            isFirstMoveOnly: firstMovesRequired > 0
+            isCapture: isCapture || isPotentialCapture, // Show capture styling for potential captures too
+            isFirstMoveOnly: firstMovesRequired > 0,
+            isPotentialCapture // For premoves: true if this is a capture-only square currently empty
           });
         }
       }
@@ -1339,6 +1362,54 @@ const LiveGame = () => {
       }
     }
     
+    // Check for en passant capture
+    console.log('[EN PASSANT FE] Checking en passant:', {
+      pieceCanEnPassant: piece.can_en_passant,
+      hasEnPassantTarget: !!gameState?.enPassantTarget,
+      enPassantTarget: gameState?.enPassantTarget
+    });
+    if (piece.can_en_passant && gameState?.enPassantTarget) {
+      const ept = gameState.enPassantTarget;
+      // Check if capturing piece is horizontally adjacent to the vulnerable piece
+      const vulnerablePiece = pieces.find(p => 
+        p.id === ept.pieceId && p.x === ept.piecePosition.x && p.y === ept.piecePosition.y
+      );
+      console.log('[EN PASSANT FE] Vulnerable piece found:', vulnerablePiece);
+      if (vulnerablePiece) {
+        const vulnerableTeam = vulnerablePiece.player_id || vulnerablePiece.team;
+        console.log('[EN PASSANT FE] Check conditions:', {
+          vulnerableTeam,
+          pieceTeam,
+          piecePieceId: piece.piece_id,
+          vulnerablePieceId: vulnerablePiece.piece_id,
+          pieceY: piece.y,
+          vulnerableY: vulnerablePiece.y,
+          xDiff: Math.abs(piece.x - vulnerablePiece.x)
+        });
+        // Must be enemy piece
+        if (vulnerableTeam !== pieceTeam) {
+          // Must be same piece type (e.g., pawn can only en passant capture another pawn)
+          if (piece.piece_id === vulnerablePiece.piece_id) {
+            // Check if current piece is horizontally adjacent to the vulnerable piece
+            if (piece.y === vulnerablePiece.y && Math.abs(piece.x - vulnerablePiece.x) === 1) {
+              // Check if capture square isn't already in moves
+              const captureSquare = ept.captureSquare;
+              console.log('[EN PASSANT FE] Adding en passant move to:', captureSquare);
+              if (!moves.some(m => m.x === captureSquare.x && m.y === captureSquare.y)) {
+                moves.push({
+                  x: captureSquare.x,
+                  y: captureSquare.y,
+                  isCapture: true,
+                  isEnPassant: true,
+                  enPassantVictimId: vulnerablePiece.id
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+    
     // Check for ranged attack targets
     if (piece.can_capture_enemy_via_range) {
       for (let toY = 0; toY < boardHeight; toY++) {
@@ -1351,13 +1422,18 @@ const LiveGame = () => {
           // Already in moves as a regular capture? skip
           if (moves.some(m => m.x === toX && m.y === toY)) continue;
           if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
-            moves.push({
-              x: toX,
-              y: toY,
-              isCapture: !!targetPiece,
-              isFirstMoveOnly: false,
-              isRangedAttack: true
-            });
+            const hasTarget = !!targetPiece;
+            // For premoves, include empty ranged squares as potential targets
+            if (hasTarget || forPremove) {
+              moves.push({
+                x: toX,
+                y: toY,
+                isCapture: hasTarget,
+                isFirstMoveOnly: false,
+                isRangedAttack: true,
+                isPotentialRangedTarget: !hasTarget && forPremove
+              });
+            }
           }
         }
       }
@@ -1417,7 +1493,9 @@ const LiveGame = () => {
         clickedPiece, 
         pieces, 
         gameState.gameType?.board_width || 8, 
-        gameState.gameType?.board_height || 8
+        gameState.gameType?.board_height || 8,
+        false, // skipCheckFilter
+        canSelectForPremove // forPremove - include potential capture squares
       );
       setValidMoves(moves);
       return;
@@ -1537,7 +1615,9 @@ const LiveGame = () => {
       piece,
       pieces,
       gameState.gameType?.board_width || 8,
-      gameState.gameType?.board_height || 8
+      gameState.gameType?.board_height || 8,
+      false, // skipCheckFilter
+      canDragForPremove // forPremove - include potential capture squares for premoves
     );
     console.log('Drag valid moves:', moves.length);
     setDragValidMoves(moves);
@@ -1664,7 +1744,10 @@ const LiveGame = () => {
       isDrag: false, isOwnRangedPiece: !!(isOwnPiece && clickedPiece?.can_capture_enemy_via_range)
     };
 
-    if (isOwnPiece && clickedPiece?.can_capture_enemy_via_range && isMyTurn &&
+    // Activate right-click drag detection for own ranged pieces
+    // Works for both regular moves (isMyTurn) and premoves (!isMyTurn with allowPremoves)
+    const canPremoveRanged = !isMyTurn && gameState.allowPremoves !== false;
+    if (isOwnPiece && clickedPiece?.can_capture_enemy_via_range && (isMyTurn || canPremoveRanged) &&
         (gameState?.status === 'active' || gameState?.status === 'ready')) {
       setIsRightClickActive(true);
     }
@@ -1688,21 +1771,40 @@ const LiveGame = () => {
       return;
     }
 
-    // Right-click-twice: if a ranged piece was previously selected, execute ranged attack
-    if (rangedSelectedPiece && isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready')) {
+    // Right-click-twice: if a ranged piece was previously selected, execute ranged attack or premove
+    if (rangedSelectedPiece && (gameState?.status === 'active' || gameState?.status === 'ready')) {
       const pieces = parsePieces(gameState?.pieces || []);
       const targetPiece = pieces.find(p => p.x === x && p.y === y);
       const sourceTeam = rangedSelectedPiece.player_id || rangedSelectedPiece.team;
       const targetTeam = targetPiece?.player_id || targetPiece?.team;
+      
+      // Check if this is a valid ranged attack target (or potential target for premoves)
+      const isValidTarget = canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam);
+      const isEnemyTarget = targetPiece && targetTeam !== sourceTeam;
+      const canPremoveRanged = !isMyTurn && gameState.allowPremoves !== false;
 
-      if (targetPiece && targetTeam !== sourceTeam &&
-          canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam)) {
-        makeMove(parseInt(gameId), {
-          from: { x: rangedSelectedPiece.x, y: rangedSelectedPiece.y },
-          to: { x, y },
-          pieceId: rangedSelectedPiece.id,
-          isRangedAttack: true
-        });
+      if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
+        if (isMyTurn) {
+          // Execute ranged attack immediately
+          if (isEnemyTarget) {
+            makeMove(parseInt(gameId), {
+              from: { x: rangedSelectedPiece.x, y: rangedSelectedPiece.y },
+              to: { x, y },
+              pieceId: rangedSelectedPiece.id,
+              isRangedAttack: true
+            });
+          }
+        } else if (canPremoveRanged) {
+          // Set ranged premove
+          const premoveData = {
+            from: { x: rangedSelectedPiece.x, y: rangedSelectedPiece.y },
+            to: { x, y },
+            pieceId: rangedSelectedPiece.id,
+            isRangedAttack: true
+          };
+          setPremove(premoveData);
+          sendPremove(parseInt(gameId), premoveData);
+        }
       }
       setRangedSelectedPiece(null);
       rightClickDataRef.current = null;
@@ -1788,22 +1890,37 @@ const LiveGame = () => {
       if (!data) { cleanup(); return; }
 
       if (data.isDrag) {
-        // Drag mode — execute ranged attack
+        // Drag mode — execute ranged attack or set ranged premove
         const target = getTargetSquare(e.clientX, e.clientY);
         if (target && gameState?.pieces) {
           const pieces = parsePieces(gameState.pieces);
           const targetPiece = pieces.find(p => p.x === target.x && p.y === target.y);
           const sourceTeam = data.piece.player_id || data.piece.team;
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
+          const isValidTarget = canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
+          const isEnemyTarget = targetPiece && targetTeam !== sourceTeam;
+          const canPremoveRanged = !isMyTurn && gameState.allowPremoves !== false;
 
-          if (targetPiece && targetTeam !== sourceTeam &&
-              canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam)) {
-            makeMove(parseInt(gameId), {
-              from: { x: data.piece.x, y: data.piece.y },
-              to: { x: target.x, y: target.y },
-              pieceId: data.piece.id,
-              isRangedAttack: true
-            });
+          if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
+            if (isMyTurn && isEnemyTarget) {
+              // Execute ranged attack immediately
+              makeMove(parseInt(gameId), {
+                from: { x: data.piece.x, y: data.piece.y },
+                to: { x: target.x, y: target.y },
+                pieceId: data.piece.id,
+                isRangedAttack: true
+              });
+            } else if (canPremoveRanged) {
+              // Set ranged premove
+              const premoveData = {
+                from: { x: data.piece.x, y: data.piece.y },
+                to: { x: target.x, y: target.y },
+                pieceId: data.piece.id,
+                isRangedAttack: true
+              };
+              setPremove(premoveData);
+              sendPremove(parseInt(gameId), premoveData);
+            }
           }
         }
       } else {
@@ -1843,7 +1960,7 @@ const LiveGame = () => {
       window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
       window.removeEventListener('resize', handleResize);
     };
-  }, [isRightClickActive, gameState, currentPlayer, parsePieces, makeMove, gameId]);
+  }, [isRightClickActive, gameState, currentPlayer, parsePieces, makeMove, gameId, isMyTurn, sendPremove, setPremove]);
 
   // Handle resign
   const handleResign = () => {

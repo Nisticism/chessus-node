@@ -741,6 +741,25 @@ const GameTypeView = () => {
       });
     }
 
+    // En passant information
+    const enPassantPieces = Object.values(uniquePieces).filter(piece => {
+      const pieceData = pieceDataMap[piece.id] || piece;
+      return pieceData.can_en_passant;
+    });
+
+    if (enPassantPieces.length > 0) {
+      const enPassantDesc = enPassantPieces.map(piece => {
+        const pieceData = pieceDataMap[piece.id] || piece;
+        const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+        return `• **${pieceName}** can capture via en passant`;
+      }).join('\n');
+
+      rules.push({
+        title: "En Passant",
+        content: `En passant is a special capture where a piece captures an enemy piece of the same type that has just moved using a first-move-only ability.\n\n${enPassantDesc}\n\n**En Passant Rules:**\n• Enemy must have just used a first-move-only movement in the previous turn\n• The enemy must be the same piece type as the capturing piece (e.g., Pawn can only en passant another Pawn)\n• The capturing piece must be horizontally adjacent to the enemy\n• The capturing piece moves to the square the enemy "passed through"\n• The enemy piece is removed even though it's not on the destination square\n• En passant must be done immediately - it's not available on subsequent turns`
+      });
+    }
+
     // General gameplay rules
     rules.push({
       title: "General Rules",

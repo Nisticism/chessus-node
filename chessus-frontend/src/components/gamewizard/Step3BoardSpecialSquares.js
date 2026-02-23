@@ -263,59 +263,79 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     setDraggedSquare(null);
   }, []);
 
-  const handleSquareTypeSelected = (squareType) => {
+  const handleSquareTypeSelected = (squareType, options = {}) => {
     if (!selectedSquare) return;
 
-    const key = selectedSquare.key;
+    const { fillRow, row, boardWidth: optionsBoardWidth } = options;
+    const effectiveBoardWidth = optionsBoardWidth || gameData.board_width;
 
-    // Remove from all types first
-    setRangeSquares(prev => {
-      const newSquares = { ...prev };
-      delete newSquares[key];
-      return newSquares;
-    });
-    setPromotionSquares(prev => {
-      const newSquares = { ...prev };
-      delete newSquares[key];
-      return newSquares;
-    });
-    setCustomSquares(prev => {
-      const newSquares = { ...prev };
-      delete newSquares[key];
-      return newSquares;
-    });
-    setControlSquares(prev => {
-      const newSquares = { ...prev };
-      delete newSquares[key];
-      return newSquares;
+    // Generate all keys to update (single square or entire row)
+    const keysToUpdate = [];
+    if (fillRow && row !== undefined) {
+      for (let col = 0; col < effectiveBoardWidth; col++) {
+        keysToUpdate.push(`${row},${col}`);
+      }
+    } else {
+      keysToUpdate.push(selectedSquare.key);
+    }
+
+    // Remove from all types first for all keys
+    keysToUpdate.forEach(key => {
+      setRangeSquares(prev => {
+        const newSquares = { ...prev };
+        delete newSquares[key];
+        return newSquares;
+      });
+      setPromotionSquares(prev => {
+        const newSquares = { ...prev };
+        delete newSquares[key];
+        return newSquares;
+      });
+      setCustomSquares(prev => {
+        const newSquares = { ...prev };
+        delete newSquares[key];
+        return newSquares;
+      });
+      setControlSquares(prev => {
+        const newSquares = { ...prev };
+        delete newSquares[key];
+        return newSquares;
+      });
     });
 
-    // Add to selected type
+    // Add to selected type for all keys
     if (squareType === 'range') {
-      setRangeSquares(prev => ({
-        ...prev,
-        [key]: { type: 'range', rangeBonus: 1 }
-      }));
+      setRangeSquares(prev => {
+        const newSquares = { ...prev };
+        keysToUpdate.forEach(key => {
+          newSquares[key] = { type: 'range', rangeBonus: 1 };
+        });
+        return newSquares;
+      });
     } else if (squareType === 'promotion') {
-      setPromotionSquares(prev => ({
-        ...prev,
-        [key]: { type: 'promotion' }
-      }));
+      setPromotionSquares(prev => {
+        const newSquares = { ...prev };
+        keysToUpdate.forEach(key => {
+          newSquares[key] = { type: 'promotion' };
+        });
+        return newSquares;
+      });
     } else if (squareType === 'control') {
-      setControlSquares(prev => ({
-        ...prev,
-        [key]: { type: 'control' }
-      }));
+      setControlSquares(prev => {
+        const newSquares = { ...prev };
+        keysToUpdate.forEach(key => {
+          newSquares[key] = { type: 'control' };
+        });
+        return newSquares;
+      });
     } else if (squareType === 'custom') {
-      setCustomSquares(prev => ({
-        ...prev,
-        [key]: { type: 'custom', effect: 'custom' }
-      }));
-    } else if (squareType === 'custom') {
-      setCustomSquares(prev => ({
-        ...prev,
-        [key]: { type: 'custom', effect: 'custom' }
-      }));
+      setCustomSquares(prev => {
+        const newSquares = { ...prev };
+        keysToUpdate.forEach(key => {
+          newSquares[key] = { type: 'custom', effect: 'custom' };
+        });
+        return newSquares;
+      });
     }
 
     setShowSquareSelector(false);
@@ -548,6 +568,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           onCancel={handleCancelSelector}
           currentType={getSquareType(selectedSquare?.key)}
           squarePosition={selectedSquare}
+          boardWidth={gameData.board_width}
         />
       )}
     </div>

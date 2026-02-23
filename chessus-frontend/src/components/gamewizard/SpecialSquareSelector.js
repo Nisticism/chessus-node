@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import styles from "./gamewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 
@@ -7,14 +7,21 @@ const SpecialSquareSelector = ({
   onRemove, 
   onCancel, 
   currentType,
-  squarePosition 
+  squarePosition,
+  boardWidth = 8  // For fill row functionality
 }) => {
+  const [fillRow, setFillRow] = useState(false);
+  
   const squareTypes = [
     { id: 'range', name: 'Range Square', color: '#ff8c00', description: 'Increases attack/movement range of pieces' },
     { id: 'promotion', name: 'Promotion Square', color: '#4b0082', description: 'Allows piece promotion' },
     { id: 'control', name: 'Control Square', color: '#32CD32', description: 'Players must control to win (if enabled)' },
     { id: 'custom', name: 'Custom Square', color: '#ffd700', description: 'Custom effects (define later)' }
   ];
+
+  const handleSelect = (typeId) => {
+    onSelect(typeId, { fillRow, row: squarePosition?.row, boardWidth });
+  };
 
   return (
     <div className={styles["modal-overlay"]} onClick={onCancel}>
@@ -29,12 +36,29 @@ const SpecialSquareSelector = ({
             Select a square type to designate this square's special property:
           </p>
 
+          {/* Fill Row Toggle */}
+          <div 
+            className={`${styles["fill-row-toggle"]} ${fillRow ? styles.active : ''}`}
+            onClick={() => setFillRow(!fillRow)}
+          >
+            <div className={`${styles["fill-row-switch"]} ${fillRow ? styles.on : ''}`} />
+            <div className={styles["fill-row-content"]}>
+              <span className={styles["fill-row-label"]}>
+                <span className={styles["fill-row-icon"]}>↔</span>
+                Fill Entire Row
+              </span>
+              <span className={styles["fill-row-hint"]}>
+                Apply to all squares in row {squarePosition?.row}
+              </span>
+            </div>
+          </div>
+
           <div className={styles["square-type-grid"]}>
             {squareTypes.map(type => (
               <div
                 key={type.id}
                 className={`${styles["square-type-item"]} ${currentType === type.id ? styles["selected"] : ""}`}
-                onClick={() => onSelect(type.id)}
+                onClick={() => handleSelect(type.id)}
                 style={{ borderColor: type.color }}
               >
                 <div 
