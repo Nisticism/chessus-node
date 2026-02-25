@@ -130,6 +130,24 @@ const getCurrentUser = () => {
   return JSON.parse(localStorage.getItem("user"));
 };
 
+// Request password reset email
+const forgotPassword = async (email) => {
+  const response = await axios.post(API_URL + "forgot-password", { email });
+  return response.data;
+};
+
+// Verify reset token is valid
+const verifyResetToken = async (token) => {
+  const response = await axios.get(API_URL + `reset-password/${token}`);
+  return response.data;
+};
+
+// Reset password with token
+const resetPassword = async (token, password) => {
+  const response = await axios.post(API_URL + "reset-password", { token, password });
+  return response.data;
+};
+
 const AuthService = {
   register,
   edit,
@@ -138,6 +156,9 @@ const AuthService = {
   getCurrentUser,
   deleteUser,
   refreshAccessToken,
+  forgotPassword,
+  verifyResetToken,
+  resetPassword,
 }
 
 export default AuthService;

@@ -5,6 +5,8 @@ import Navbar from './components/navbar/Navbar';
 import Footer from './components/footer/Footer';
 import Home from './components/home/Home';
 import Login from "./components/signin/Login";
+import ForgotPassword from "./components/signin/ForgotPassword";
+import ResetPassword from "./components/signin/ResetPassword";
 import Register from "./components/register/Register";
 import PlayerPage from "./components/playerpage/PlayerPage";
 import Pieces from "./components/pieces/Pieces";
@@ -101,6 +103,8 @@ function App() {
             <Route path="/" element={<Home props={location}/>} />
             <Route path="/home" element={<Home />} />
             <Route exact path="/login" element={<Login />} />
+            <Route exact path="/forgot-password" element={<ForgotPassword />} />
+            <Route exact path="/reset-password/:token" element={<ResetPassword />} />
             <Route exact path="/register" element={<Register />} />
             <Route exact path="/profile" element={<PlayerPage />} />
             <Route exact path="/create/game" element={<GameCreate />} />

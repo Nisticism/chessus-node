@@ -9,7 +9,7 @@ const CommunityHub = () => {
     {
       title: "Players",
       description: "Browse all registered players and view their profiles",
-      icon: "⚔",
+      icon: "🧑‍🤝‍🧑",
       path: "/community/players",
     },
     {

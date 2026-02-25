@@ -38,7 +38,7 @@ const SocialMedia = () => {
     {
       name: "Twitch",
       handle: "Squarestrat",
-      icon: "📡",
+      icon: "🎬",
       url: "https://twitch.tv/squarestrat",
       description: "Watch live streams of tournaments, game design sessions, and more",
       stats: "1.8K Followers",

@@ -87,6 +87,9 @@ const Menu = ({ currentUser, logOut }) => {
         <Link as="div" className="inner-menu-item" to="/create/piece">
           Design a piece
         </Link>
+        <Link as="div" className="inner-menu-item" to="/create/games">
+          View games
+        </Link>
         <Link as="div" className="inner-menu-item" to="/create/pieces">
           View pieces
         </Link>

@@ -367,6 +367,18 @@ const migrations = [
     column: 'can_en_passant',
     sql: "ALTER TABLE game_type_pieces ADD COLUMN can_en_passant TINYINT(1) DEFAULT NULL",
     description: "Add can_en_passant column to game_type_pieces junction for game-specific overrides"
+  },
+  {
+    table: 'game_types',
+    column: 'control_squares_string',
+    sql: "ALTER TABLE game_types ADD COLUMN control_squares_string TEXT DEFAULT NULL",
+    description: "Add control_squares_string column to game_types for control square win condition configuration"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'can_control_squares',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN can_control_squares TINYINT(1) DEFAULT 0",
+    description: "Add can_control_squares column to game_type_pieces for pieces that can control squares"
   }
 ];
 
@@ -1702,6 +1714,33 @@ Join us in revolutionizing chess, one variant at a time.
     }
   } catch (err) {
     console.error('Error adding challenged_user_id column to games table:', err.message);
+  }
+
+  // Add password reset columns to users table
+  try {
+    const resetTokenCol = await columnExists('users', 'password_reset_token');
+    if (!resetTokenCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN password_reset_token VARCHAR(100) DEFAULT NULL`,
+        "Add password_reset_token column to users table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding password_reset_token column:', err.message);
+  }
+
+  try {
+    const resetExpiresCol = await columnExists('users', 'password_reset_expires');
+    if (!resetExpiresCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN password_reset_expires DATETIME DEFAULT NULL`,
+        "Add password_reset_expires column to users table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding password_reset_expires column:', err.message);
   }
   
   if (migrationsRun === 0) {

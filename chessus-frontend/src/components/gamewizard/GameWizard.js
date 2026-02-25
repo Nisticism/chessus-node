@@ -60,6 +60,7 @@ const GameWizard = ({ editGameId }) => {
     range_squares_string: "",
     promotion_squares_string: "",
     special_squares_string: "",
+    control_squares_string: "",
     randomized_starting_positions: "",
     other_game_data: "",
   });
@@ -123,6 +124,7 @@ const GameWizard = ({ editGameId }) => {
             range_squares_string: existingGame.range_squares_string || "",
             promotion_squares_string: existingGame.promotion_squares_string || "",
             special_squares_string: existingGame.special_squares_string || "",
+            control_squares_string: existingGame.control_squares_string || "",
             randomized_starting_positions: existingGame.randomized_starting_positions || "",
             other_game_data: existingGame.other_game_data || "",
           });

@@ -169,7 +169,7 @@ const Contact = () => {
           
           <div className={styles.contactMethods}>
             <div className={styles.contactMethod}>
-              <span className={styles.methodIcon}>📧</span>
+              <span className={styles.methodIcon}>✉</span>
               <div className={styles.methodInfo}>
                 <h3>Direct Email</h3>
                 <p>

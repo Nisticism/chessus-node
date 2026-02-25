@@ -40,6 +40,7 @@ const Play = () => {
   const [rated, setRated] = useState(true);
   const [allowPremoves, setAllowPremoves] = useState(true);
   const [startingMode, setStartingMode] = useState("none");
+  const [playerSide, setPlayerSide] = useState("random"); // "p1", "p2", or "random"
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState(null);
@@ -381,7 +382,8 @@ const Play = () => {
         showPieceHelpers,
         rated,
         allowPremoves,
-        startingMode
+        startingMode,
+        playerSide
       };
 
       // Add challenge data if challenging a friend
@@ -889,6 +891,37 @@ const Play = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Player Side Selection */}
+            <div className={styles["form-group"]}>
+              <label>Play As</label>
+              <div className={styles["player-side-buttons"]}>
+                <button
+                  type="button"
+                  className={`${styles["side-btn"]} ${playerSide === "p1" ? styles["side-btn-active"] : ""}`}
+                  onClick={() => setPlayerSide("p1")}
+                >
+                  Player 1
+                </button>
+                <button
+                  type="button"
+                  className={`${styles["side-btn"]} ${playerSide === "random" ? styles["side-btn-active"] : ""}`}
+                  onClick={() => setPlayerSide("random")}
+                >
+                  Random
+                </button>
+                <button
+                  type="button"
+                  className={`${styles["side-btn"]} ${playerSide === "p2" ? styles["side-btn-active"] : ""}`}
+                  onClick={() => setPlayerSide("p2")}
+                >
+                  Player 2
+                </button>
+              </div>
+              <div className={styles["input-hint"]}>
+                Choose which side you want to play, or let the system decide randomly
               </div>
             </div>
             

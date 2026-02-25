@@ -556,6 +556,8 @@ function initializeSocket(server) {
               // Checkmate/Capture flags from junction table
               ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
               ends_game_on_capture: !!piece.ends_game_on_capture,
+              // Control squares flag from junction table
+              can_control_squares: !!piece.can_control_squares,
               // Castling partner override data from junction table
               manual_castling_partners: !!piece.manual_castling_partners,
               castling_partner_left_key: piece.castling_partner_left_key || null,
@@ -761,6 +763,7 @@ function initializeSocket(server) {
           moveHistory: [],
           movesWithoutCapture: 0, // Track for draw by move limit
           positionHistory: {}, // Track position occurrences for N-fold repetition
+          controlSquareTracking: {}, // Track control square occupancy: { "row,col": { playerId, turnCount } }
           startTime: null,
           playerTimes: {},
           allowSpectators,
@@ -976,6 +979,7 @@ function initializeSocket(server) {
             pieces: pieces,
             currentTurn: 1,
             moveHistory: [],
+            controlSquareTracking: {}, // Track control square occupancy
             startTime: null,
             playerTimes: {},
             allowSpectators: game.allow_spectators !== 0,
@@ -1235,7 +1239,8 @@ function initializeSocket(server) {
               currentTurn: gameState.currentTurn,
               playerTimes: gameState.playerTimes,
               moveHistory: gameState.moveHistory,
-              pendingPromotion: true
+              pendingPromotion: true,
+              controlSquareTracking: gameState.controlSquareTracking
             }
           });
 
@@ -1307,6 +1312,53 @@ function initializeSocket(server) {
               }
             });
             
+            // Update control square tracking after premove
+            const premoveControlWinResult = updateControlSquareTracking(gameState);
+            if (premoveControlWinResult?.gameOver) {
+              // Stop the timer
+              stopGameTimer(gameId);
+              
+              gameState.status = 'completed';
+              gameState.winner = premoveControlWinResult.winner;
+              gameState.winReason = premoveControlWinResult.reason;
+
+              // Find loser
+              const loser = gameState.players.find(p => p.id !== premoveControlWinResult.winner);
+
+              // Update ELO ratings only if game is rated
+              let eloChanges = null;
+              if (gameState.rated !== false && premoveControlWinResult.winner && loser) {
+                eloChanges = await updateEloRatings(premoveControlWinResult.winner, loser.id);
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              await db_pool.query(
+                `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                 pieces = ?, other_data = ? WHERE id = ?`,
+                [endTime, premoveControlWinResult.winner, JSON.stringify(gameState.pieces), 
+                 JSON.stringify({ 
+                   moves: gameState.moveHistory, 
+                   winner: premoveControlWinResult.winner, 
+                   reason: premoveControlWinResult.reason, 
+                   eloChanges,
+                   rated: gameState.rated,
+                   allowPremoves: gameState.allowPremoves,
+                   controlSquareTracking: gameState.controlSquareTracking
+                 }),
+                 gameId]
+              );
+
+              io.to(`game-${gameId}`).emit("gameOver", {
+                gameId,
+                winner: premoveControlWinResult.winner,
+                reason: premoveControlWinResult.reason,
+                finalState: gameState,
+                eloChanges
+              });
+              
+              return; // Exit early since game is over
+            }
+
             // Check for win conditions after premove (use premove's captured piece)
             const premoveWinResult = checkWinCondition(gameState, premoveResult.captured);
             if (premoveWinResult.gameOver) {
@@ -1603,6 +1655,52 @@ function initializeSocket(server) {
               });
             }
           }
+        }
+
+        // Update control square tracking after the move
+        const controlWinResult = updateControlSquareTracking(gameState);
+        if (controlWinResult?.gameOver) {
+          // Stop the timer
+          stopGameTimer(gameId);
+          
+          gameState.status = 'completed';
+          gameState.winner = controlWinResult.winner;
+          gameState.winReason = controlWinResult.reason;
+
+          // Find loser
+          const loser = gameState.players.find(p => p.id !== controlWinResult.winner);
+
+          // Update ELO ratings only if game is rated
+          let eloChanges = null;
+          if (gameState.rated !== false && controlWinResult.winner && loser) {
+            eloChanges = await updateEloRatings(controlWinResult.winner, loser.id);
+          }
+
+          const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          await db_pool.query(
+            `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+             pieces = ?, other_data = ? WHERE id = ?`,
+            [endTime, controlWinResult.winner, JSON.stringify(gameState.pieces), 
+             JSON.stringify({ 
+               moves: gameState.moveHistory, 
+               winner: controlWinResult.winner, 
+               reason: controlWinResult.reason, 
+               eloChanges,
+               rated: gameState.rated,
+               allowPremoves: gameState.allowPremoves,
+               controlSquareTracking: gameState.controlSquareTracking
+             }),
+             gameId]
+          );
+
+          io.to(`game-${gameId}`).emit("gameOver", {
+            gameId,
+            winner: controlWinResult.winner,
+            reason: controlWinResult.reason,
+            finalState: gameState,
+            eloChanges
+          });
+          return; // Exit early since game is over
         }
 
         // Check for win conditions (pass captured piece for ends_game_on_capture check)
@@ -1913,6 +2011,7 @@ function initializeSocket(server) {
                inCheck: checkResult.inCheck,
                movesWithoutCapture: gameState.movesWithoutCapture,
                positionHistory: gameState.positionHistory,
+               controlSquareTracking: gameState.controlSquareTracking,
                rated: gameState.rated,
                allowPremoves: gameState.allowPremoves,
                enPassantTarget: gameState.enPassantTarget
@@ -1932,7 +2031,8 @@ function initializeSocket(server) {
               checkedPieces: checkResult.checkedPieces,
               allowPremoves: gameState.allowPremoves,
               rated: gameState.rated,
-              enPassantTarget: gameState.enPassantTarget
+              enPassantTarget: gameState.enPassantTarget,
+              controlSquareTracking: gameState.controlSquareTracking
             }
           });
 
@@ -2191,6 +2291,47 @@ function initializeSocket(server) {
         console.log(`Piece ${pieceId} promoted to ${promotedPiece.piece_name} in game ${gameId}`);
 
         // Now continue with the normal post-move flow that was paused
+        // Update control square tracking after promotion
+        const promotionControlWinResult = updateControlSquareTracking(gameState);
+        if (promotionControlWinResult?.gameOver) {
+          stopGameTimer(gameId);
+          gameState.status = 'completed';
+          gameState.winner = promotionControlWinResult.winner;
+          gameState.winReason = promotionControlWinResult.reason;
+
+          const loser = gameState.players.find(p => p.id !== promotionControlWinResult.winner);
+          let eloChanges = null;
+          if (gameState.rated !== false && promotionControlWinResult.winner && loser) {
+            eloChanges = await updateEloRatings(promotionControlWinResult.winner, loser.id);
+          }
+
+          const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          await db_pool.query(
+            `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+             pieces = ?, other_data = ? WHERE id = ?`,
+            [endTime, promotionControlWinResult.winner, JSON.stringify(gameState.pieces), 
+             JSON.stringify({ 
+               moves: gameState.moveHistory, 
+               winner: promotionControlWinResult.winner, 
+               reason: promotionControlWinResult.reason, 
+               eloChanges,
+               rated: gameState.rated,
+               allowPremoves: gameState.allowPremoves,
+               controlSquareTracking: gameState.controlSquareTracking
+             }),
+             gameId]
+          );
+
+          io.to(`game-${gameId}`).emit("gameOver", {
+            gameId,
+            winner: promotionControlWinResult.winner,
+            reason: promotionControlWinResult.reason,
+            finalState: gameState,
+            eloChanges
+          });
+          return;
+        }
+
         // Check for win conditions after promotion
         const winResult = checkWinCondition(gameState, pendingPromotion.capturedPiece);
         if (winResult.gameOver) {
@@ -2481,6 +2622,8 @@ function initializeSocket(server) {
                 id: `${piece.piece_id}_${piece.y}_${piece.x}`,
                 ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
                 ends_game_on_capture: !!piece.ends_game_on_capture,
+                // Control squares flag from junction table
+                can_control_squares: !!piece.can_control_squares,
                 // Castling partner override data from junction table
                 manual_castling_partners: !!piece.manual_castling_partners,
                 castling_partner_left_key: piece.castling_partner_left_key || null,
@@ -2641,6 +2784,7 @@ function initializeSocket(server) {
             moveHistory: moveHistory,
             movesWithoutCapture: otherData?.movesWithoutCapture || 0, // Load counter from DB
             positionHistory: otherData?.positionHistory || {}, // Load position history for repetition
+            controlSquareTracking: otherData?.controlSquareTracking || {}, // Track control square occupancy
             startTime: game.start_time,
             playerTimes: playerTimes,
             allowSpectators: game.allow_spectators !== 0,
@@ -5150,6 +5294,103 @@ function isCheckmate(gameState, playerPosition) {
   
   // If no legal moves exist, it's checkmate
   return legalMoves.length === 0;
+}
+
+/**
+ * Update control square tracking after a move
+ * Tracks which player (if any) has a piece with can_control_squares on each control square
+ * and how many consecutive full turns they have controlled it
+ * @param {Object} gameState - The current game state
+ * @returns {Object|null} - Win result if a control square win condition is met, null otherwise
+ */
+function updateControlSquareTracking(gameState) {
+  const { gameType, pieces, players } = gameState;
+  
+  if (!gameType?.control_squares_string) return null;
+  
+  let controlSquares;
+  try {
+    controlSquares = JSON.parse(gameType.control_squares_string);
+  } catch (e) {
+    console.error('Error parsing control_squares_string:', e);
+    return null;
+  }
+  
+  if (!controlSquares || Object.keys(controlSquares).length === 0) return null;
+  
+  // Ensure controlSquareTracking exists
+  if (!gameState.controlSquareTracking) {
+    gameState.controlSquareTracking = {};
+  }
+  
+  // Check each control square
+  for (const [squareKey, config] of Object.entries(controlSquares)) {
+    const [row, col] = squareKey.split(',').map(Number);
+    
+    // Find a piece on this square that can control squares
+    const controllingPiece = pieces.find(p => 
+      p.x === col && p.y === row && p.can_control_squares
+    );
+    
+    // Get the player ID controlling this square (if any)
+    let controllingPlayerId = null;
+    if (controllingPiece) {
+      controllingPlayerId = controllingPiece.team || 
+                           controllingPiece.player_id || 
+                           controllingPiece.player_number;
+    }
+    
+    const tracking = gameState.controlSquareTracking[squareKey];
+    
+    if (controllingPlayerId) {
+      if (tracking && tracking.playerId === controllingPlayerId) {
+        // Same player still controls - increment half-turn count
+        tracking.halfTurns = (tracking.halfTurns || 0) + 1;
+      } else {
+        // New player takes control (or first time)
+        gameState.controlSquareTracking[squareKey] = {
+          playerId: controllingPlayerId,
+          halfTurns: 1
+        };
+      }
+    } else {
+      // No one controlling - check consecutiveTurns setting
+      if (tracking && config.consecutiveTurns) {
+        // Lost control - reset if consecutive is required
+        delete gameState.controlSquareTracking[squareKey];
+      }
+      // If not consecutive, keep the tracking as-is (don't increment but don't reset)
+    }
+    
+    // Check if win condition is met
+    const currentTracking = gameState.controlSquareTracking[squareKey];
+    if (currentTracking) {
+      const turnsRequired = config.turnsRequired || 1;
+      // Convert turns to half-turns: turnsRequired full turns = turnsRequired * 2 half-turns
+      // But a full turn is complete after both players move, so we need turnsRequired * 2 half-turns
+      const halfTurnsRequired = turnsRequired * 2;
+      
+      console.log(`Control square ${squareKey}: player ${currentTracking.playerId} has ${currentTracking.halfTurns} half-turns, needs ${halfTurnsRequired}`);
+      
+      if (currentTracking.halfTurns >= halfTurnsRequired) {
+        // Find the winning player
+        const winner = players.find(p => 
+          p.position === currentTracking.playerId || 
+          p.id === currentTracking.playerId
+        );
+        
+        console.log(`Control square win! Player ${currentTracking.playerId} controlled ${squareKey} for ${turnsRequired} full turns`);
+        
+        return {
+          gameOver: true,
+          winner: winner?.id,
+          reason: 'control'
+        };
+      }
+    }
+  }
+  
+  return null;
 }
 
 /**

@@ -8,7 +8,7 @@ const CreateHub = () => {
       title: "Design a Game",
       description: "Create your own custom strategy game with unique rules, board layouts, and winning conditions. Define how pieces move, capture, and interact to craft entirely new game experiences.",
       link: "/create/game",
-      icon: "♛"
+      icon: "🎲"
     },
     {
       title: "Design a Piece",

@@ -75,7 +75,7 @@ const LOGIN_LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
 const MAX_LOGIN_ATTEMPTS = 5;
 
 // Email service
-const { sendWelcomeEmail, sendDonationEmail, sendContactEmail } = require("./email-service");
+const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail } = require("./email-service");
 
 // Socket.io game handler
 const { initializeSocket, onlineUsers, getIO } = require("./game-socket");
@@ -1679,7 +1679,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         squares_condition = ?, squares_count = ?, hill_condition = ?, hill_x = ?, hill_y = ?, hill_turns = ?,
         actions_per_turn = ?, board_width = ?, board_height = ?, player_count = ?,
         starting_piece_count = ?, range_squares_string = ?,
-        promotion_squares_string = ?, special_squares_string = ?,
+        promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
         randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?
       WHERE id = ?
     `;
@@ -1710,6 +1710,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.range_squares_string || null,
       gameData.promotion_squares_string || null,
       gameData.special_squares_string || null,
+      gameData.control_squares_string || null,
       gameData.randomized_starting_positions || null,
       gameData.other_game_data || null,
       gameData.optional_condition || null,
@@ -1761,7 +1762,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.ends_game_on_capture || false,
               piece.manual_castling_partners || false,
               piece.castling_partner_left_key || null,
-              piece.castling_partner_right_key || null
+              piece.castling_partner_right_key || null,
+              piece.can_control_squares || false
             );
           }
         }
@@ -1797,10 +1799,17 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(403).send({ message: "You can only delete your own games" });
     }
     
-    // Delete associated forum posts first
+    // Delete all related records first (in order of dependencies)
+    // Delete game instances/matches that use this game type
+    await db_pool.query("DELETE FROM games WHERE game_type_id = ?", [gameId]);
+    
+    // Delete tournaments that use this game type
+    await db_pool.query("DELETE FROM tournaments WHERE game_type_id = ?", [gameId]);
+    
+    // Delete associated forum posts
     await db_pool.query("DELETE FROM articles WHERE game_type_id = ?", [gameId]);
     
-    // Delete the game
+    // Delete the game type (game_type_pieces will cascade automatically)
     await db_pool.query("DELETE FROM game_types WHERE id = ?", [gameId]);
     
     res.json({ message: "Game deleted successfully" });
@@ -2133,6 +2142,115 @@ app.post("/api/logout", authenticateToken, async (req, res) => {
   } catch (err) {
     console.error("Error in /api/logout:", err);
     res.status(500).send({ message: "Logout failed", err: err.message });
+  }
+});
+
+// Request password reset
+app.post("/api/forgot-password", authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).send({ message: "Email is required" });
+    }
+
+    // Find user by email
+    const user = await dbHelpers.findUserByEmail(email);
+    
+    // Always return success to prevent email enumeration
+    if (!user) {
+      console.log(`Password reset requested for non-existent email: ${email}`);
+      return res.json({ message: "If an account with that email exists, a password reset link has been sent." });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date(Date.now() + 3600000); // 1 hour from now
+
+    // Store token in database
+    await db_pool.query(
+      "UPDATE users SET password_reset_token = ?, password_reset_expires = ? WHERE id = ?",
+      [resetToken, resetExpires, user.id]
+    );
+
+    // Send reset email
+    const emailResult = await sendPasswordResetEmail(email, user.username, resetToken);
+    
+    if (!emailResult.success) {
+      console.warn(`Failed to send password reset email to ${email}:`, emailResult.message || emailResult.error?.message);
+    }
+
+    res.json({ message: "If an account with that email exists, a password reset link has been sent." });
+  } catch (err) {
+    console.error("Error in /api/forgot-password:", err);
+    res.status(500).send({ message: "Failed to process password reset request" });
+  }
+});
+
+// Verify reset token (check if valid)
+app.get("/api/reset-password/:token", async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const [users] = await db_pool.query(
+      "SELECT id, username FROM users WHERE password_reset_token = ? AND password_reset_expires > NOW()",
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).send({ valid: false, message: "Invalid or expired reset token" });
+    }
+
+    res.json({ valid: true, username: users[0].username });
+  } catch (err) {
+    console.error("Error verifying reset token:", err);
+    res.status(500).send({ valid: false, message: "Failed to verify reset token" });
+  }
+});
+
+// Reset password with token
+app.post("/api/reset-password", authLimiter, async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).send({ message: "Token and password are required" });
+    }
+
+    // Security: Password validation
+    if (password.length < 8) {
+      return res.status(400).send({ message: "Password must be at least 8 characters long" });
+    }
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      return res.status(400).send({ message: "Password must contain at least one uppercase letter, one lowercase letter, and one number" });
+    }
+
+    // Find user with valid token
+    const [users] = await db_pool.query(
+      "SELECT id, username FROM users WHERE password_reset_token = ? AND password_reset_expires > NOW()",
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).send({ message: "Invalid or expired reset token" });
+    }
+
+    const user = users[0];
+
+    // Hash new password
+    const hashedPassword = bcrypt.hashSync(password, BCRYPT_ROUNDS);
+
+    // Update password and clear reset token
+    await db_pool.query(
+      "UPDATE users SET password = ?, password_reset_token = NULL, password_reset_expires = NULL WHERE id = ?",
+      [hashedPassword, user.id]
+    );
+
+    console.log(`Password reset successful for user: ${user.username}`);
+    res.json({ message: "Password has been reset successfully. You can now log in with your new password." });
+  } catch (err) {
+    console.error("Error in /api/reset-password:", err);
+    res.status(500).send({ message: "Failed to reset password" });
   }
 });
 
@@ -3063,10 +3181,10 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
         actions_per_turn, board_width, board_height, player_count,
         starting_piece_count, range_squares_string,
-        promotion_squares_string, special_squares_string,
+        promotion_squares_string, special_squares_string, control_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
         pieces_string
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -3096,6 +3214,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.range_squares_string || null,
       gameData.promotion_squares_string || null,
       gameData.special_squares_string || null,
+      gameData.control_squares_string || null,
       gameData.randomized_starting_positions || null,
       gameData.other_game_data || null,
       gameData.optional_condition || null,
@@ -3144,7 +3263,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.ends_game_on_capture || false,
               piece.manual_castling_partners || false,
               piece.castling_partner_left_key || null,
-              piece.castling_partner_right_key || null
+              piece.castling_partner_right_key || null,
+              piece.can_control_squares || false
             );
           }
         }

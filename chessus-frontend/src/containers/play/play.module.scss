@@ -715,6 +715,37 @@
   }
 }
 
+// Player side selection buttons
+.player-side-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  
+  .side-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border: 2px solid #444;
+    background: #2a2a2a;
+    color: #ccc;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    
+    &:hover {
+      border-color: #6c63ff;
+      color: #fff;
+    }
+    
+    &-active {
+      border-color: #6c63ff;
+      background: #6c63ff;
+      color: #fff;
+    }
+  }
+}
+
 // Radio group for starting position modes
 .radio-group {
   display: flex;

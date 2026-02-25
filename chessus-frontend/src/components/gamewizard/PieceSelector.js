@@ -20,6 +20,8 @@ const PieceSelector = ({
   squarePosition,
   mateCondition,
   captureCondition,
+  squaresCondition,  // Whether control squares win condition is enabled
+  requireSpecificPieceControl,  // Whether any control square requires specific pieces
   piecePlacements = {},  // All piece placements on the board
   boardWidth = 8,        // Board width for finding pieces on same row
   embedded = false  // New prop: if true, don't render modal wrapper
@@ -47,6 +49,7 @@ const PieceSelector = ({
   const [availableImages, setAvailableImages] = useState([]);
   const [endsGameOnCheckmate, setEndsGameOnCheckmate] = useState(currentPlacement?.ends_game_on_checkmate || false);
   const [endsGameOnCapture, setEndsGameOnCapture] = useState(currentPlacement?.ends_game_on_capture || false);
+  const [canControlSquares, setCanControlSquares] = useState(currentPlacement?.can_control_squares || false);
   
   // Castling partner override state
   const [manualCastlingPartners, setManualCastlingPartners] = useState(currentPlacement?.manual_castling_partners || false);
@@ -213,6 +216,7 @@ const PieceSelector = ({
       image_url: selectedImageUrl,
       ends_game_on_checkmate: endsGameOnCheckmate,
       ends_game_on_capture: endsGameOnCapture,
+      can_control_squares: canControlSquares,
       // Castling override data - if manual is enabled, default partners are disabled
       manual_castling_partners: manualCastlingPartners,
       castling_partner_left_key: manualCastlingPartners ? leftCastlingPartnerKey : null,
@@ -391,7 +395,7 @@ const PieceSelector = ({
         </div>
 
         {/* Win Condition Checkboxes */}
-        {selectedPieceId && (mateCondition || captureCondition) && (
+        {selectedPieceId && (mateCondition || captureCondition || (squaresCondition && requireSpecificPieceControl)) && (
           <div className={styles["win-condition-section"]}>
             <h3>End Game Conditions:</h3>
             <p className={styles["win-condition-note"]}>
@@ -416,6 +420,16 @@ const PieceSelector = ({
                     onChange={(e) => setEndsGameOnCapture(e.target.checked)}
                   />
                   <span>End game if this piece is captured</span>
+                </label>
+              )}
+              {squaresCondition && requireSpecificPieceControl && (
+                <label key="control" className={styles["checkbox-label"]}>
+                  <input
+                    type="checkbox"
+                    checked={canControlSquares}
+                    onChange={(e) => setCanControlSquares(e.target.checked)}
+                  />
+                  <span>Can control restricted control squares (only for squares marked "require specific piece")</span>
                 </label>
               )}
             </div>

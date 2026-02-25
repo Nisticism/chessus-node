@@ -43,10 +43,10 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
           </label>
           <NumberInput
             value={gameData.board_width}
-            onChange={(val) => handleChange("board_width", Math.max(1, Math.min(96, val)))}
-            options={{ min: 1, max: 96, className: styles["form-input-small"] }}
+            onChange={(val) => handleChange("board_width", Math.max(1, Math.min(48, val)))}
+            options={{ min: 1, max: 48, className: styles["form-input-small"] }}
           />
-          <p className={styles["field-hint"]}>1-96 squares</p>
+          <p className={styles["field-hint"]}>1-48 squares</p>
         </div>
 
         <div className={styles["form-group"]}>
@@ -55,10 +55,10 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
           </label>
           <NumberInput
             value={gameData.board_height}
-            onChange={(val) => handleChange("board_height", Math.max(1, Math.min(96, val)))}
-            options={{ min: 1, max: 96, className: styles["form-input-small"] }}
+            onChange={(val) => handleChange("board_height", Math.max(1, Math.min(48, val)))}
+            options={{ min: 1, max: 48, className: styles["form-input-small"] }}
           />
-          <p className={styles["field-hint"]}>1-96 squares</p>
+          <p className={styles["field-hint"]}>1-48 squares</p>
         </div>
       </div>
 

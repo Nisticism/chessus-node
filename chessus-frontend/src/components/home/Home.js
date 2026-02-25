@@ -377,7 +377,7 @@ const Home = () => {
           </Link>
 
           <Link to="/community/players" className={styles["feature-card"]}>
-            <div className={styles["feature-icon"]}>⚔</div>
+            <div className={styles["feature-icon"]}>🧑‍🤝‍🧑</div>
             <h3>Community</h3>
             <p>
               Connect with other strategists, view player profiles, check the leaderboard, 

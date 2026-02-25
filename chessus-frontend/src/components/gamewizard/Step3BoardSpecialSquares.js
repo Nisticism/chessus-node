@@ -12,7 +12,6 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showSquareSelector, setShowSquareSelector] = useState(false);
   const [draggedSquare, setDraggedSquare] = useState(null);
-  const initializedRef = useRef(false);
   const [isMobile, setIsMobile] = useState(false);
   const longPressTimeoutRef = useRef(null);
 
@@ -33,56 +32,72 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     updateGameData({ [field]: parseInt(value) });
   };
 
-  // Parse existing special squares ONLY on initial mount
-  useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+  // Track which data sources have been initialized to prevent re-initialization
+  const initializedRangeRef = useRef(false);
+  const initializedPromotionRef = useRef(false);
+  const initializedControlRef = useRef(false);
+  const initializedCustomRef = useRef(false);
 
+  // Parse existing special squares - initialize each type separately when data becomes available
+  useEffect(() => {
+    if (initializedRangeRef.current) return;
+    if (!gameData.range_squares_string || gameData.range_squares_string === '{}') return;
+    
+    initializedRangeRef.current = true;
     try {
-      if (gameData.range_squares_string) {
-        const parsed = JSON.parse(gameData.range_squares_string);
-        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          setRangeSquares(parsed);
-        }
+      const parsed = JSON.parse(gameData.range_squares_string);
+      if (typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+        setRangeSquares(parsed);
       }
     } catch (error) {
       console.error("Error parsing range_squares_string:", error);
     }
+  }, [gameData.range_squares_string]);
 
+  useEffect(() => {
+    if (initializedPromotionRef.current) return;
+    if (!gameData.promotion_squares_string || gameData.promotion_squares_string === '{}') return;
+    
+    initializedPromotionRef.current = true;
     try {
-      if (gameData.promotion_squares_string) {
-        const parsed = JSON.parse(gameData.promotion_squares_string);
-        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          setPromotionSquares(parsed);
-        }
+      const parsed = JSON.parse(gameData.promotion_squares_string);
+      if (typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+        setPromotionSquares(parsed);
       }
     } catch (error) {
       console.error("Error parsing promotion_squares_string:", error);
     }
+  }, [gameData.promotion_squares_string]);
 
+  useEffect(() => {
+    if (initializedControlRef.current) return;
+    if (!gameData.control_squares_string || gameData.control_squares_string === '{}') return;
+    
+    initializedControlRef.current = true;
     try {
-      if (gameData.special_squares_string) {
-        const parsed = JSON.parse(gameData.special_squares_string);
-        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          setCustomSquares(parsed);
-        }
-      }
-    } catch (error) {
-      console.error("Error parsing special_squares_string:", error);
-    }
-
-    try {
-      if (gameData.control_squares_string) {
-        const parsed = JSON.parse(gameData.control_squares_string);
-        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          setControlSquares(parsed);
-        }
+      const parsed = JSON.parse(gameData.control_squares_string);
+      if (typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+        setControlSquares(parsed);
       }
     } catch (error) {
       console.error("Error parsing control_squares_string:", error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gameData.control_squares_string]);
+
+  useEffect(() => {
+    if (initializedCustomRef.current) return;
+    if (!gameData.special_squares_string || gameData.special_squares_string === '{}') return;
+    
+    initializedCustomRef.current = true;
+    try {
+      const parsed = JSON.parse(gameData.special_squares_string);
+      if (typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+        setCustomSquares(parsed);
+      }
+    } catch (error) {
+      console.error("Error parsing special_squares_string:", error);
+    }
+  }, [gameData.special_squares_string]);
 
   // Update gameData whenever special squares change
   useEffect(() => {
@@ -321,10 +336,19 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         return newSquares;
       });
     } else if (squareType === 'control') {
+      const controlData = options.controlConfig || {
+        turnsRequired: 1,
+        consecutiveTurns: false,
+        requireSpecificPiece: false,
+        appliesToPlayer: 'both'
+      };
       setControlSquares(prev => {
         const newSquares = { ...prev };
         keysToUpdate.forEach(key => {
-          newSquares[key] = { type: 'control' };
+          newSquares[key] = { 
+            type: 'control',
+            ...controlData
+          };
         });
         return newSquares;
       });
@@ -428,7 +452,8 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
               >
                 {squareType === 'range' && 'R'}
                 {squareType === 'promotion' && 'P'}
-                {squareType === 'special' && 'S'}
+                {squareType === 'control' && 'C'}
+                {squareType === 'custom' && 'X'}
               </div>
             )}
           </div>
@@ -469,10 +494,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           </label>
           <NumberInput
             value={gameData.board_width}
-            onChange={(val) => handleChange("board_width", Math.max(1, Math.min(96, val)))}
-            options={{ min: 1, max: 96, className: styles["form-input-small"] }}
+            onChange={(val) => handleChange("board_width", Math.max(1, Math.min(48, val)))}
+            options={{ min: 1, max: 48, className: styles["form-input-small"] }}
           />
-          <p className={styles["field-hint"]}>1-96 squares</p>
+          <p className={styles["field-hint"]}>1-48 squares</p>
         </div>
 
         <div className={styles["form-group"]}>
@@ -481,10 +506,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           </label>
           <NumberInput
             value={gameData.board_height}
-            onChange={(val) => handleChange("board_height", Math.max(1, Math.min(96, val)))}
-            options={{ min: 1, max: 96, className: styles["form-input-small"] }}
+            onChange={(val) => handleChange("board_height", Math.max(1, Math.min(48, val)))}
+            options={{ min: 1, max: 48, className: styles["form-input-small"] }}
           />
-          <p className={styles["field-hint"]}>1-96 squares</p>
+          <p className={styles["field-hint"]}>1-48 squares</p>
         </div>
       </div>
 
@@ -527,6 +552,40 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         </div>
       </div>
 
+      {/* Control Squares General Settings */}
+      {gameData.squares_condition && counts.control > 0 && (
+        <div className={styles["control-settings-section"]}>
+          <h4 style={{ color: '#32CD32', marginBottom: '16px' }}>
+            🎯 Control Squares Win Settings
+          </h4>
+          <div className={styles["form-row"]}>
+            <div className={styles["form-group"]}>
+              <label className={styles["form-label"]}>
+                Squares Required to Win
+              </label>
+              <NumberInput
+                value={gameData.squares_count || 1}
+                onChange={(val) => handleChange("squares_count", Math.max(1, Math.min(counts.control, val)))}
+                options={{ min: 1, max: counts.control, className: styles["form-input-small"] }}
+              />
+              <p className={styles["field-hint"]}>
+                How many control squares must be controlled simultaneously to win (max: {counts.control})
+              </p>
+            </div>
+          </div>
+          <p className={styles["field-hint"]} style={{ marginTop: '8px' }}>
+            ℹ️ Click on individual control squares on the board to configure per-square settings (turns required, consecutive vs total, player applicability, specific piece requirements).
+          </p>
+        </div>
+      )}
+
+      {gameData.squares_condition && counts.control === 0 && (
+        <div className={styles["control-warning"]} style={{ marginBottom: '20px' }}>
+          ⚠️ Control Squares win condition is enabled but no control squares have been placed. 
+          Right-click on the board to add control squares.
+        </div>
+      )}
+
       <div className={styles["board-placement-preview"]}>
         <div
           className={styles["placement-board"]}
@@ -567,8 +626,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           onRemove={handleRemoveSquare}
           onCancel={handleCancelSelector}
           currentType={getSquareType(selectedSquare?.key)}
+          currentConfig={controlSquares[selectedSquare?.key]}
           squarePosition={selectedSquare}
           boardWidth={gameData.board_width}
+          squaresConditionEnabled={gameData.squares_condition === true}
         />
       )}
     </div>

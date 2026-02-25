@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS game_types (
     range_squares_string VARCHAR(1000),
     promotion_squares_string VARCHAR(1000),
     special_squares_string VARCHAR(1000),
+    control_squares_string TEXT,
     randomized_starting_positions TEXT,
     other_game_data MEDIUMTEXT,
     optional_condition INT,

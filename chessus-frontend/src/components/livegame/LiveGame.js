@@ -2248,11 +2248,10 @@ const LiveGame = () => {
               <span className={styles["ranged-icon"]}>💥</span>
             )}
             {/* Special square indicator */}
-            {specialSquareType && (
+            {specialSquareType && specialSquareType !== 'control' && (
               <div className={`${styles["special-square-indicator"]} ${styles[specialSquareType]}`}>
                 {specialSquareType === 'promotion' && 'P'}
                 {specialSquareType === 'range' && 'R'}
-                {specialSquareType === 'control' && 'C'}
                 {specialSquareType === 'special' && 'S'}
               </div>
             )}
@@ -2677,30 +2676,6 @@ const LiveGame = () => {
             
             <div className={styles["game-board-wrapper"]}>
               {renderBoard()}
-              
-              {/* Special Squares Legend */}
-              {hasSpecialSquares && (
-                <div className={styles["special-squares-legend"]}>
-                  {Object.keys(specialSquares.range).length > 0 && (
-                    <div className={styles["legend-item"]}>
-                      <div className={`${styles["legend-color"]} ${styles.range}`}></div>
-                      <span>Range</span>
-                    </div>
-                  )}
-                  {Object.keys(specialSquares.control).length > 0 && (
-                    <div className={styles["legend-item"]}>
-                      <div className={`${styles["legend-color"]} ${styles.control}`}></div>
-                      <span>Control</span>
-                    </div>
-                  )}
-                  {Object.keys(specialSquares.special).length > 0 && (
-                    <div className={styles["legend-item"]}>
-                      <div className={`${styles["legend-color"]} ${styles.special}`}></div>
-                      <span>Special</span>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
@@ -2817,6 +2792,74 @@ const LiveGame = () => {
           </div>
         </div>
       </div>
+
+      {/* Special Squares Legend Row - below board and clocks */}
+      {hasSpecialSquares && (
+        <div className={styles["layout-row-legend"]}>
+          <div className={styles["special-squares-legend"]}>
+            {Object.keys(specialSquares.range).length > 0 && (
+              <div className={styles["legend-item"]}>
+                <div className={`${styles["legend-color"]} ${styles.range}`}></div>
+                <span>Range</span>
+              </div>
+            )}
+            {Object.keys(specialSquares.control).length > 0 && (
+              <div className={styles["legend-item"]}>
+                <div className={`${styles["legend-color"]} ${styles.control}`}></div>
+                <span>Control</span>
+              </div>
+            )}
+            {Object.keys(specialSquares.special).length > 0 && (
+              <div className={styles["legend-item"]}>
+                <div className={`${styles["legend-color"]} ${styles.special}`}></div>
+                <span>Special</span>
+              </div>
+            )}
+          </div>
+          
+          {/* Control Square Progress Tracking */}
+          {Object.keys(specialSquares.control).length > 0 && gameState.controlSquareTracking && (
+            <div className={styles["control-square-progress"]}>
+              {Object.entries(specialSquares.control).map(([squareKey, config]) => {
+                const tracking = gameState.controlSquareTracking[squareKey];
+                const turnsRequired = config.turnsRequired || 1;
+                const halfTurnsRequired = turnsRequired * 2;
+                const [row, col] = squareKey.split(',').map(Number);
+                const squareLabel = `${String.fromCharCode(97 + col)}${row + 1}`;
+                
+                if (!tracking) return null;
+                
+                const controllingPlayer = gameState.players?.find(p => 
+                  p.position === tracking.playerId || p.id === tracking.playerId
+                );
+                const turnsControlled = Math.floor(tracking.halfTurns / 2);
+                const turnsRemaining = turnsRequired - turnsControlled;
+                const progressPercent = Math.min(100, (tracking.halfTurns / halfTurnsRequired) * 100);
+                
+                return (
+                  <div key={squareKey} className={styles["control-progress-item"]}>
+                    <div className={styles["control-progress-header"]}>
+                      <span className={styles["control-square-label"]}>{squareLabel}</span>
+                      <span className={styles["control-player-name"]}>
+                        {controllingPlayer?.username || `Player ${tracking.playerId}`}
+                      </span>
+                    </div>
+                    <div className={styles["control-progress-bar-container"]}>
+                      <div 
+                        className={styles["control-progress-bar"]}
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                      <span className={styles["control-progress-text"]}>
+                        {turnsRemaining > 0 ? `${turnsRemaining} turn${turnsRemaining !== 1 ? 's' : ''} to win` : 'Victory!'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Bottom Clock Row - Only visible on small screens */}
       <div className={styles["layout-row-bottom-clock"]}>

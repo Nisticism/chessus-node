@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import Form from "react-validation/build/form";
 import Input from "react-validation/build/input";
 import CheckButton from "react-validation/build/button";
@@ -113,6 +113,11 @@ const Login = (props) => {
               )}
               <span>Login</span>
             </button>
+          </div>
+          <div style={{ textAlign: 'center', marginTop: '10px', marginBottom: '10px' }}>
+            <Link to="/forgot-password" style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontSize: '14px' }}>
+              Forgot Password?
+            </Link>
           </div>
           {message && messageDisplay && (
             <div className={styles["form-group"]}>

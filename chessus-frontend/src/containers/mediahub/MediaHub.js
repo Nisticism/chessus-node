@@ -21,7 +21,7 @@ const MediaHub = () => {
     {
       title: "Social Media",
       description: "Follow us on social platforms and stay connected with our community",
-      icon: "📱",
+      icon: "🌐",
       path: "/media/social",
     },
     {

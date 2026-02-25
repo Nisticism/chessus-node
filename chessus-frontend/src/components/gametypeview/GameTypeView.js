@@ -711,6 +711,10 @@ const GameTypeView = () => {
       specialSquaresDesc.push(`**Promotion Squares** (marked with P): ${Object.keys(specialSquares.promotion).length} squares where pieces can be promoted to more powerful pieces.`);
     }
     
+    if (Object.keys(specialSquares.control).length > 0) {
+      specialSquaresDesc.push(`**Control Squares** (marked with C): ${Object.keys(specialSquares.control).length} squares that must be controlled to achieve the control squares win condition.`);
+    }
+    
     if (Object.keys(specialSquares.special).length > 0) {
       specialSquaresDesc.push(`**Special Squares** (marked with S): ${Object.keys(specialSquares.special).length} squares with custom effects.`);
     }

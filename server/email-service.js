@@ -324,6 +324,87 @@ const sendDonationEmail = async (email, username, amount) => {
   }
 };
 
+// Password reset email template
+const getPasswordResetEmailContent = (username, resetLink) => `
+  <h2 class="title">Reset Your Password 🔐</h2>
+  <p class="message">
+    Hi <strong>${username}</strong>,
+  </p>
+  <p class="message">
+    We received a request to reset your password for your Squarestrat account. If you didn't make this request, 
+    you can safely ignore this email.
+  </p>
+  
+  <div class="highlight-box">
+    <p class="highlight-text">⏰ This link expires in 1 hour</p>
+  </div>
+
+  <p class="message">
+    Click the button below to create a new password:
+  </p>
+
+  <div class="button-center">
+    <a href="${resetLink}" class="button" style="color: #ffffff; text-decoration: none;">Reset Password</a>
+  </div>
+
+  <div class="divider"></div>
+
+  <p class="message" style="font-size: 14px; color: #90a4ae;">
+    If the button doesn't work, copy and paste this link into your browser:<br>
+    <a href="${resetLink}" style="color: #64b5f6; word-break: break-all;">${resetLink}</a>
+  </p>
+
+  <p class="message" style="font-size: 14px; color: #90a4ae;">
+    If you didn't request a password reset, please ignore this email or contact us if you have concerns 
+    about your account security.
+  </p>
+`;
+
+// Send password reset email
+const sendPasswordResetEmail = async (email, username, resetToken) => {
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.log('ℹ️ AWS SES not configured. Skipping password reset email to:', email);
+    console.log('   To enable emails, add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to your .env file');
+    return { success: false, message: 'AWS SES not configured' };
+  }
+
+  if (!process.env.AWS_SES_FROM_EMAIL) {
+    console.warn('⚠️ AWS_SES_FROM_EMAIL not set, using default: noreply@squarestrat.com');
+  }
+
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  const resetLink = `${clientUrl}/reset-password/${resetToken}`;
+
+  try {
+    const params = {
+      Source: process.env.AWS_SES_FROM_EMAIL || 'noreply@squarestrat.com',
+      Destination: {
+        ToAddresses: [email],
+      },
+      Message: {
+        Subject: {
+          Data: 'Reset Your Squarestrat Password 🔐',
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Html: {
+            Data: getEmailTemplate(getPasswordResetEmailContent(username, resetLink)),
+            Charset: 'UTF-8',
+          },
+        },
+      },
+    };
+
+    const command = new SendEmailCommand(params);
+    await sesClient.send(command);
+    console.log(`✅ Password reset email sent to ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Error sending password reset email:', error.message);
+    return { success: false, error };
+  }
+};
+
 // Send contact form message
 const sendContactEmail = async (name, email, subject, message) => {
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
@@ -387,5 +468,6 @@ const sendContactEmail = async (name, email, subject, message) => {
 module.exports = {
   sendWelcomeEmail,
   sendDonationEmail,
+  sendPasswordResetEmail,
   sendContactEmail,
 };

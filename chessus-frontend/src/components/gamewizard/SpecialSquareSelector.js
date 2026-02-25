@@ -1,16 +1,40 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import styles from "./gamewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
+import NumberInput from "../common/NumberInput";
 
 const SpecialSquareSelector = ({ 
   onSelect, 
   onRemove, 
   onCancel, 
   currentType,
+  currentConfig,
   squarePosition,
-  boardWidth = 8  // For fill row functionality
+  boardWidth = 8,  // For fill row functionality
+  squaresConditionEnabled = false
 }) => {
   const [fillRow, setFillRow] = useState(false);
+  const [selectedType, setSelectedType] = useState(currentType || null);
+  
+  // Control square configuration state
+  const [controlConfig, setControlConfig] = useState({
+    turnsRequired: 1,
+    consecutiveTurns: false,
+    requireSpecificPiece: false,
+    appliesToPlayer: 'both' // 'p1', 'p2', or 'both'
+  });
+
+  // Initialize controlConfig from currentConfig if editing existing control square
+  useEffect(() => {
+    if (currentType === 'control' && currentConfig) {
+      setControlConfig({
+        turnsRequired: currentConfig.turnsRequired || 1,
+        consecutiveTurns: currentConfig.consecutiveTurns || false,
+        requireSpecificPiece: currentConfig.requireSpecificPiece || false,
+        appliesToPlayer: currentConfig.appliesToPlayer || 'both'
+      });
+    }
+  }, [currentType, currentConfig]);
   
   const squareTypes = [
     { id: 'range', name: 'Range Square', color: '#ff8c00', description: 'Increases attack/movement range of pieces' },
@@ -19,8 +43,32 @@ const SpecialSquareSelector = ({
     { id: 'custom', name: 'Custom Square', color: '#ffd700', description: 'Custom effects (define later)' }
   ];
 
-  const handleSelect = (typeId) => {
-    onSelect(typeId, { fillRow, row: squarePosition?.row, boardWidth });
+  const handleTypeClick = (typeId) => {
+    setSelectedType(typeId);
+  };
+
+  const handleConfirm = () => {
+    if (!selectedType) return;
+    
+    const options = { 
+      fillRow, 
+      row: squarePosition?.row, 
+      boardWidth 
+    };
+    
+    // Include control config if selecting control square
+    if (selectedType === 'control') {
+      options.controlConfig = controlConfig;
+    }
+    
+    onSelect(selectedType, options);
+  };
+
+  const handleControlConfigChange = (field, value) => {
+    setControlConfig(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
   return (
@@ -57,8 +105,8 @@ const SpecialSquareSelector = ({
             {squareTypes.map(type => (
               <div
                 key={type.id}
-                className={`${styles["square-type-item"]} ${currentType === type.id ? styles["selected"] : ""}`}
-                onClick={() => handleSelect(type.id)}
+                className={`${styles["square-type-item"]} ${selectedType === type.id ? styles["selected"] : ""}`}
+                onClick={() => handleTypeClick(type.id)}
                 style={{ borderColor: type.color }}
               >
                 <div 
@@ -78,6 +126,104 @@ const SpecialSquareSelector = ({
               </div>
             ))}
           </div>
+
+          {/* Control Square Configuration Panel */}
+          {selectedType === 'control' && (
+            <div className={styles["control-config-panel"]}>
+              <h4 style={{ marginBottom: '16px', color: 'var(--accent-green)' }}>
+                Control Square Settings
+              </h4>
+              
+              {!squaresConditionEnabled && (
+                <div className={styles["control-warning"]}>
+                  ⚠️ Control Squares win condition is not enabled in Step 2. 
+                  Enable it for these settings to take effect.
+                </div>
+              )}
+
+              {/* Turns Required */}
+              <div className={styles["control-config-row"]}>
+                <label className={styles["control-config-label"]}>
+                  Turns Required to Win
+                </label>
+                <NumberInput
+                  value={controlConfig.turnsRequired}
+                  onChange={(val) => handleControlConfigChange('turnsRequired', Math.max(1, val))}
+                  options={{ min: 1, max: 100, className: styles["control-number-input"] }}
+                />
+                <span className={styles["control-config-hint"]}>
+                  How many turns a piece must occupy this square
+                </span>
+              </div>
+
+              {/* Consecutive Turns */}
+              <div className={styles["control-config-row"]}>
+                <label className={styles["control-checkbox-label"]}>
+                  <input
+                    type="checkbox"
+                    checked={controlConfig.consecutiveTurns}
+                    onChange={(e) => handleControlConfigChange('consecutiveTurns', e.target.checked)}
+                  />
+                  <span>Require Consecutive Turns</span>
+                </label>
+                <span className={styles["control-config-hint"]}>
+                  {controlConfig.consecutiveTurns 
+                    ? "Turns must be uninterrupted - counter resets if piece leaves" 
+                    : "Total turns - counter persists even if piece leaves temporarily"}
+                </span>
+              </div>
+
+              {/* Player Applicability */}
+              <div className={styles["control-config-row"]}>
+                <label className={styles["control-config-label"]}>
+                  Applies To
+                </label>
+                <div className={styles["control-player-buttons"]}>
+                  <button
+                    type="button"
+                    className={`${styles["player-btn"]} ${controlConfig.appliesToPlayer === "p1" ? styles["player-btn-active"] : ""}`}
+                    onClick={() => handleControlConfigChange('appliesToPlayer', 'p1')}
+                  >
+                    Player 1 Only
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles["player-btn"]} ${controlConfig.appliesToPlayer === "both" ? styles["player-btn-active"] : ""}`}
+                    onClick={() => handleControlConfigChange('appliesToPlayer', 'both')}
+                  >
+                    Both Players
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles["player-btn"]} ${controlConfig.appliesToPlayer === "p2" ? styles["player-btn-active"] : ""}`}
+                    onClick={() => handleControlConfigChange('appliesToPlayer', 'p2')}
+                  >
+                    Player 2 Only
+                  </button>
+                </div>
+                <span className={styles["control-config-hint"]}>
+                  Which player(s) can use this square as a win condition
+                </span>
+              </div>
+
+              {/* Require Specific Piece */}
+              <div className={styles["control-config-row"]}>
+                <label className={styles["control-checkbox-label"]}>
+                  <input
+                    type="checkbox"
+                    checked={controlConfig.requireSpecificPiece}
+                    onChange={(e) => handleControlConfigChange('requireSpecificPiece', e.target.checked)}
+                  />
+                  <span>Require Specific Piece Type</span>
+                </label>
+                <span className={styles["control-config-hint"]}>
+                  {controlConfig.requireSpecificPiece 
+                    ? "Only pieces marked as 'Can Control Squares' in Step 4 can control this square" 
+                    : "Any piece can control this square"}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className={styles["modal-footer"]}>
@@ -91,6 +237,11 @@ const SpecialSquareSelector = ({
           <StandardButton 
             buttonText="Cancel" 
             onClick={onCancel}
+          />
+          <StandardButton 
+            buttonText="Apply" 
+            onClick={handleConfirm}
+            disabled={!selectedType}
           />
         </div>
       </div>

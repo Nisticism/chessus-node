@@ -28,7 +28,6 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [, setHoveredSquare] = useState(null);
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
   const [draggedPiecePosition, setDraggedPiecePosition] = useState(null);
-  const initializedRef = useRef(false);
   const [isMobile, setIsMobile] = useState(false);
   const longPressTimeoutRef = useRef(null);
   
@@ -115,6 +114,56 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     return true;
   }, [piecePlacements, gameData.board_height, gameData.player_count]);
   
+  // Check if any control square requires specific pieces
+  const requireSpecificPieceControl = useMemo(() => {
+    try {
+      if (!gameData.control_squares_string) return false;
+      const controlSquares = JSON.parse(gameData.control_squares_string);
+      return Object.values(controlSquares).some(config => config.requireSpecificPiece === true);
+    } catch (error) {
+      console.error("Error parsing control_squares_string:", error);
+      return false;
+    }
+  }, [gameData.control_squares_string]);
+
+  // Parse special squares from Step 3 for display
+  const specialSquaresData = useMemo(() => {
+    const result = { range: {}, promotion: {}, control: {}, custom: {} };
+    const parseSquares = (str, key) => {
+      if (!str || str === '{}') return;
+      try {
+        const parsed = JSON.parse(str);
+        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+          result[key] = parsed;
+        }
+      } catch (e) {
+        console.error(`Error parsing ${key}_squares_string:`, e);
+      }
+    };
+    parseSquares(gameData.range_squares_string, 'range');
+    parseSquares(gameData.promotion_squares_string, 'promotion');
+    parseSquares(gameData.control_squares_string, 'control');
+    parseSquares(gameData.special_squares_string, 'custom');
+    return result;
+  }, [gameData.range_squares_string, gameData.promotion_squares_string, gameData.control_squares_string, gameData.special_squares_string]);
+
+  // Helper to get special square type and color
+  const getSpecialSquareInfo = useCallback((key) => {
+    if (specialSquaresData.range[key]) return { type: 'range', color: '#ff8c00' }; // Orange
+    if (specialSquaresData.promotion[key]) return { type: 'promotion', color: '#4b0082' }; // Purple
+    if (specialSquaresData.control[key]) return { type: 'control', color: '#32CD32' }; // Green
+    if (specialSquaresData.custom[key]) return { type: 'custom', color: '#ffd700' }; // Gold
+    return null;
+  }, [specialSquaresData]);
+
+  // Check if any special squares exist
+  const hasSpecialSquares = useMemo(() => {
+    return Object.keys(specialSquaresData.range).length > 0 ||
+           Object.keys(specialSquaresData.promotion).length > 0 ||
+           Object.keys(specialSquaresData.control).length > 0 ||
+           Object.keys(specialSquaresData.custom).length > 0;
+  }, [specialSquaresData]);
+  
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
   const darkSquareColor = localStorage.getItem('boardDarkColor') || '#08234d';
@@ -147,41 +196,47 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     loadPieces();
   }, []);
 
-  // Parse existing piece placements ONLY on initial mount
-  useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+  // Track which data sources have been initialized
+  const initializedPiecesRef = useRef(false);
+  const initializedRandomRef = useRef(false);
 
+  // Parse existing piece placements when data becomes available
+  useEffect(() => {
+    if (initializedPiecesRef.current) return;
+    if (!gameData.pieces_string || gameData.pieces_string === '{}') return;
+    
+    initializedPiecesRef.current = true;
     try {
-      if (gameData.pieces_string) {
-        const parsed = JSON.parse(gameData.pieces_string);
-        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          setPiecePlacements(parsed);
-        }
+      const parsed = JSON.parse(gameData.pieces_string);
+      if (typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+        setPiecePlacements(parsed);
       }
     } catch (error) {
       console.error("Error parsing pieces_string:", error);
     }
+  }, [gameData.pieces_string]);
 
-    // Parse randomized_starting_positions to get allowed modes
+  // Parse randomized_starting_positions when data becomes available
+  useEffect(() => {
+    if (initializedRandomRef.current) return;
+    if (!gameData.randomized_starting_positions) return;
+    
+    initializedRandomRef.current = true;
     try {
-      if (gameData.randomized_starting_positions) {
-        const parsed = JSON.parse(gameData.randomized_starting_positions);
-        if (parsed && parsed.allowedModes && Array.isArray(parsed.allowedModes)) {
-          setAllowedStartingModes(parsed.allowedModes);
-        } else if (parsed && parsed.mode) {
-          // Legacy support: single mode means only that mode is allowed
-          setAllowedStartingModes([parsed.mode]);
-        } else if (parsed && parsed.enabled === true) {
-          // Legacy support: enabled: true means 'independent'
-          setAllowedStartingModes(['independent']);
-        }
+      const parsed = JSON.parse(gameData.randomized_starting_positions);
+      if (parsed && parsed.allowedModes && Array.isArray(parsed.allowedModes)) {
+        setAllowedStartingModes(parsed.allowedModes);
+      } else if (parsed && parsed.mode) {
+        // Legacy support: single mode means only that mode is allowed
+        setAllowedStartingModes([parsed.mode]);
+      } else if (parsed && parsed.enabled === true) {
+        // Legacy support: enabled: true means 'independent'
+        setAllowedStartingModes(['independent']);
       }
     } catch (error) {
       // If it's not JSON, keep all modes enabled (default)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gameData.randomized_starting_positions]);
 
   // Update gameData whenever piecePlacements changes
   useEffect(() => {
@@ -242,6 +297,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               piece_name: pieceData.piece_name,
               ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
               ends_game_on_capture: pieceData.ends_game_on_capture || false,
+              can_control_squares: pieceData.can_control_squares || false,
               // Castling override data
               manual_castling_partners: pieceData.manual_castling_partners || false,
               castling_partner_left_key: pieceData.castling_partner_left_key || null,
@@ -261,6 +317,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             piece_name: pieceData.piece_name,
             ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
             ends_game_on_capture: pieceData.ends_game_on_capture || false,
+            can_control_squares: pieceData.can_control_squares || false,
             // Castling override data
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
@@ -497,6 +554,12 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         
         // Merge highlight style
         squareStyle = { ...squareStyle, ...highlightStyle };
+
+        // Add special square border/indicator from Step 3
+        const specialInfo = getSpecialSquareInfo(key);
+        if (specialInfo) {
+          squareStyle.boxShadow = `inset 0 0 0 3px ${specialInfo.color}`;
+        }
         
         board.push(
           <div
@@ -621,7 +684,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     }
     
     return board;
-  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd]);
+  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, getSpecialSquareInfo]);
 
   const handleMirrorPieces = useCallback((sourcePlayerId, targetPlayerId) => {
     const boardHeight = gameData.board_height || 8;
@@ -807,6 +870,35 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                 <span>P{playerId}</span>
               </div>
             ))}
+            {/* Special squares legend (from Step 3) */}
+            {hasSpecialSquares && (
+              <>
+                {Object.keys(specialSquaresData.range).length > 0 && (
+                  <div className={styles["legend-item"]}>
+                    <div className={styles["legend-square"]} style={{ boxShadow: 'inset 0 0 0 2px #ff8c00', width: '14px', height: '14px' }}></div>
+                    <span>Range Sq</span>
+                  </div>
+                )}
+                {Object.keys(specialSquaresData.promotion).length > 0 && (
+                  <div className={styles["legend-item"]}>
+                    <div className={styles["legend-square"]} style={{ boxShadow: 'inset 0 0 0 2px #4b0082', width: '14px', height: '14px' }}></div>
+                    <span>Promo Sq</span>
+                  </div>
+                )}
+                {Object.keys(specialSquaresData.control).length > 0 && (
+                  <div className={styles["legend-item"]}>
+                    <div className={styles["legend-square"]} style={{ boxShadow: 'inset 0 0 0 2px #32CD32', width: '14px', height: '14px' }}></div>
+                    <span>Control Sq</span>
+                  </div>
+                )}
+                {Object.keys(specialSquaresData.custom).length > 0 && (
+                  <div className={styles["legend-item"]}>
+                    <div className={styles["legend-square"]} style={{ boxShadow: 'inset 0 0 0 2px #ffd700', width: '14px', height: '14px' }}></div>
+                    <span>Custom Sq</span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
         <div 
@@ -953,6 +1045,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           squarePosition={selectedSquare}
           mateCondition={gameData.mate_condition}
           captureCondition={gameData.capture_condition}
+          squaresCondition={gameData.squares_condition}
+          requireSpecificPieceControl={requireSpecificPieceControl}
           piecePlacements={piecePlacements}
           boardWidth={gameData.board_width}
         />
