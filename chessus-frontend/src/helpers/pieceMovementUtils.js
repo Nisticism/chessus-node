@@ -663,3 +663,65 @@ export const isRangedPathClear = (fromX, fromY, toX, toY, piece, allPieces, piec
   
   return true;
 };
+
+/**
+ * Convert a column index (0-based) to chess file notation.
+ * For columns 0-25: a-z
+ * For columns 26+: aa, ab, ac, ... az, ba, bb, etc.
+ * @param {number} col - 0-based column index
+ * @returns {string} File notation (a, b, c, ..., z, aa, ab, ...)
+ */
+export const colToFile = (col) => {
+  if (col < 0) return '';
+  if (col < 26) {
+    return String.fromCharCode(97 + col); // a-z
+  }
+  // For columns 26+, use multi-letter notation
+  const firstLetter = String.fromCharCode(97 + Math.floor(col / 26) - 1);
+  const secondLetter = String.fromCharCode(97 + (col % 26));
+  return firstLetter + secondLetter;
+};
+
+/**
+ * Convert a row index (0-based) to chess rank notation.
+ * @param {number} row - 0-based row index
+ * @returns {string} Rank notation (1, 2, 3, ...)
+ */
+export const rowToRank = (row) => {
+  return String(row + 1);
+};
+
+/**
+ * Convert coordinates to standard chess notation (e.g., "e4", "h8")
+ * @param {number} col - 0-based column index (x)
+ * @param {number} row - 0-based row index (y)
+ * @returns {string} Chess notation (e.g., "e4")
+ */
+export const toChessNotation = (col, row) => {
+  return colToFile(col) + rowToRank(row);
+};
+
+/**
+ * Format a move in standard chess notation
+ * @param {Object} move - Move object with from, to, captured, pieceName, etc.
+ * @param {boolean} includeFrom - Whether to include the source square
+ * @returns {string} Formatted move (e.g., "e2-e4", "Nxf3")
+ */
+export const formatMoveNotation = (move, includeFrom = true) => {
+  if (!move || !move.from || !move.to) return '';
+  
+  const fromSquare = toChessNotation(move.from.x, move.from.y);
+  const toSquare = toChessNotation(move.to.x, move.to.y);
+  const captureSymbol = move.captured ? 'x' : '-';
+  const rangedSymbol = move.isRangedAttack ? '→' : '';
+  
+  if (move.isRangedAttack) {
+    return `${fromSquare}→${toSquare}${move.captured ? '×' : ''}`;
+  }
+  
+  if (includeFrom) {
+    return `${fromSquare}${captureSymbol}${toSquare}`;
+  }
+  
+  return `${move.captured ? 'x' : ''}${toSquare}`;
+};

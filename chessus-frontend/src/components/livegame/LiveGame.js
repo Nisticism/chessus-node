@@ -8,7 +8,10 @@ import PromotionModal from "./PromotionModal";
 import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
-  canRangedAttackTo
+  canRangedAttackTo,
+  colToFile,
+  rowToRank,
+  formatMoveNotation
 } from "../../helpers/pieceMovementUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -2316,69 +2319,118 @@ const LiveGame = () => {
       }
     }
 
+    // Generate file labels (a, b, c, ... for columns)
+    const fileLabels = [];
+    for (let i = 0; i < boardWidth; i++) {
+      const fileIndex = shouldFlipBoard ? (boardWidth - 1 - i) : i;
+      fileLabels.push(
+        <div key={`file-${i}`} className={styles["file-label"]}>
+          {colToFile(fileIndex)}
+        </div>
+      );
+    }
+
+    // Generate rank labels (1, 2, 3, ... for rows)
+    const rankLabels = [];
+    for (let i = 0; i < boardHeight; i++) {
+      const rankIndex = shouldFlipBoard ? i : (boardHeight - 1 - i);
+      rankLabels.push(
+        <div key={`rank-${i}`} className={styles["rank-label"]}>
+          {rowToRank(rankIndex)}
+        </div>
+      );
+    }
+
+    const squareSize = windowWidth > 1200 ? 85 : smallScreenSquareSize;
+
     return (
-      <div 
-        ref={boardRef}
-        className={styles["game-board"]}
-        style={{
-          gridTemplateColumns: windowWidth > 1200 ? `repeat(${boardWidth}, 85px)` : `repeat(${boardWidth}, ${smallScreenSquareSize}px)`,
-          gridTemplateRows: windowWidth > 1200 ? `repeat(${boardHeight}, 85px)` : `repeat(${boardHeight}, ${smallScreenSquareSize}px)`,
-          position: 'relative',
-          width: 'fit-content',
-          aspectRatio: 'unset'
-        }}
-      >
-        {squares}
-        {rangedAttackSource && rangedMousePos && boardRef.current && (() => {
-          const boardRect = boardRef.current.getBoundingClientRect();
-          const squareWidth = boardRect.width / boardWidth;
-          const squareHeight = boardRect.height / boardHeight;
-          // Convert game coords to display coords (account for board flip)
-          const displayX = shouldFlipBoard ? (boardWidth - 1 - rangedAttackSource.x) : rangedAttackSource.x;
-          const displayY = shouldFlipBoard ? (boardHeight - 1 - rangedAttackSource.y) : rangedAttackSource.y;
-          const startX = (displayX + 0.5) * squareWidth;
-          const startY = (displayY + 0.5) * squareHeight;
-          const endX = rangedMousePos.x - boardRect.left;
-          const endY = rangedMousePos.y - boardRect.top;
-          return (
-            <svg
-              className={styles["ranged-arrow-overlay"]}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-                zIndex: 100
-              }}
-            >
-              <defs>
-                <marker
-                  id="ranged-arrowhead-live"
-                  markerWidth="10"
-                  markerHeight="7"
-                  refX="9"
-                  refY="3.5"
-                  orient="auto"
+      <div className={styles["board-with-coords"]}>
+        {/* Rank labels (numbers on the left) */}
+        <div 
+          className={styles["rank-labels"]}
+          style={{
+            gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`
+          }}
+        >
+          {rankLabels}
+        </div>
+        
+        {/* Board */}
+        <div className={styles["board-and-files"]}>
+          <div 
+            ref={boardRef}
+            className={styles["game-board"]}
+            style={{
+              gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
+              gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
+              position: 'relative',
+              width: 'fit-content',
+              aspectRatio: 'unset'
+            }}
+          >
+            {squares}
+            {rangedAttackSource && rangedMousePos && boardRef.current && (() => {
+              const boardRect = boardRef.current.getBoundingClientRect();
+              const squareWidth = boardRect.width / boardWidth;
+              const squareHeight = boardRect.height / boardHeight;
+              // Convert game coords to display coords (account for board flip)
+              const displayX = shouldFlipBoard ? (boardWidth - 1 - rangedAttackSource.x) : rangedAttackSource.x;
+              const displayY = shouldFlipBoard ? (boardHeight - 1 - rangedAttackSource.y) : rangedAttackSource.y;
+              const startX = (displayX + 0.5) * squareWidth;
+              const startY = (displayY + 0.5) * squareHeight;
+              const endX = rangedMousePos.x - boardRect.left;
+              const endY = rangedMousePos.y - boardRect.top;
+              return (
+                <svg
+                  className={styles["ranged-arrow-overlay"]}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    pointerEvents: 'none',
+                    zIndex: 100
+                  }}
                 >
-                  <polygon points="0 0, 10 3.5, 0 7" fill="#ff2222" />
-                </marker>
-              </defs>
-              <line
-                x1={startX}
-                y1={startY}
-                x2={endX}
-                y2={endY}
-                stroke="#ff2222"
-                strokeWidth="3"
-                strokeLinecap="round"
-                markerEnd="url(#ranged-arrowhead-live)"
-                opacity="0.9"
-              />
-            </svg>
-          );
-        })()}
+                  <defs>
+                    <marker
+                      id="ranged-arrowhead-live"
+                      markerWidth="10"
+                      markerHeight="7"
+                      refX="9"
+                      refY="3.5"
+                      orient="auto"
+                    >
+                      <polygon points="0 0, 10 3.5, 0 7" fill="#ff2222" />
+                    </marker>
+                  </defs>
+                  <line
+                    x1={startX}
+                    y1={startY}
+                    x2={endX}
+                    y2={endY}
+                    stroke="#ff2222"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    markerEnd="url(#ranged-arrowhead-live)"
+                    opacity="0.9"
+                  />
+                </svg>
+              );
+            })()}
+          </div>
+          
+          {/* File labels (letters at the bottom) */}
+          <div 
+            className={styles["file-labels"]}
+            style={{
+              gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`
+            }}
+          >
+            {fileLabels}
+          </div>
+        </div>
       </div>
     );
   };
@@ -2688,8 +2740,7 @@ const LiveGame = () => {
                   <div key={index} className={styles["move-row"]}>
                     <span className={styles["move-number"]}>{Math.floor(index / 2) + 1}.</span>
                     <span className={index % 2 === 0 ? styles["move-white"] : styles["move-black"]}>
-                      {`${String.fromCharCode(97 + move.from?.x)}${move.from?.y + 1} → ${String.fromCharCode(97 + move.to?.x)}${move.to?.y + 1}`}
-                      {move.captured && ' ×'}
+                      {formatMoveNotation(move)}
                     </span>
                   </div>
                 ))}
@@ -2977,8 +3028,7 @@ const LiveGame = () => {
               <div key={index} className={styles["move-row"]}>
                 <span className={styles["move-number"]}>{Math.floor(index / 2) + 1}.</span>
                 <span className={index % 2 === 0 ? styles["move-white"] : styles["move-black"]}>
-                  {`${String.fromCharCode(97 + move.from?.x)}${move.from?.y + 1} → ${String.fromCharCode(97 + move.to?.x)}${move.to?.y + 1}`}
-                  {move.captured && ' ×'}
+                  {formatMoveNotation(move)}
                 </span>
               </div>
             ))}
