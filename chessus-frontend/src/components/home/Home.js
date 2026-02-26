@@ -5,8 +5,10 @@ import styles from "./home.module.scss";
 import { getGames } from "../../actions/games";
 import { getPieces } from "../../actions/pieces";
 import { users } from "../../actions/users";
+import PlayablePreviewBoard from "./PlayablePreviewBoard";
+import API_URL from "../../global/global";
 
-// Import piece images for the interactive board
+// Import piece images for the static board fallback
 import { 
   WhitePawn, BlackPawn, 
   WhiteKnight, BlackKnight,
@@ -27,6 +29,11 @@ const Home = () => {
   const [selectedLayout, setSelectedLayout] = useState('chess');
   const [pieces, setPieces] = useState([]);
   const [draggedPiece, setDraggedPiece] = useState(null);
+  
+  // State for popular games from database
+  const [popularGames, setPopularGames] = useState([]);
+  const [popularGamesLoading, setPopularGamesLoading] = useState(true);
+  const [selectedGameIndex, setSelectedGameIndex] = useState(0);
   
   // Get user's board color preferences from user object, localStorage, or use defaults
   const lightSquareColor = currentUser?.light_square_color || localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -72,6 +79,28 @@ const Home = () => {
     
     fetchUserPreferences();
   }, [currentUser, dispatch]);
+
+  // Fetch popular games from database
+  useEffect(() => {
+    const fetchPopularGames = async () => {
+      try {
+        setPopularGamesLoading(true);
+        const response = await fetch(`${API_URL}games/popular?limit=3`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            setPopularGames(data);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching popular games:", error);
+      } finally {
+        setPopularGamesLoading(false);
+      }
+    };
+    
+    fetchPopularGames();
+  }, []);
 
   // Initialize pieces when layout changes
   useEffect(() => {
@@ -280,41 +309,75 @@ const Home = () => {
       <section className={styles["board-section"]}>
         <div className={styles["section-header"]}>
           <h2>Experience the Board</h2>
-          <p>Explore different piece configurations and game setups</p>
+          <p>
+            {popularGames.length > 0 
+              ? "Try out our most popular games - click a piece to select it, then click a valid square to move!"
+              : "Explore different piece configurations and game setups"}
+          </p>
         </div>
 
         <div className={styles["board-showcase"]}>
           <div className={styles["interactive-board-container"]}>
             <div className={styles["board-wrapper"]}>
-              <div 
-                className={styles["board-grid"]}
-                style={{
-                  gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
-                  gridTemplateRows: `repeat(${boardSize}, 1fr)`
-                }}
-              >
-                {renderBoard()}
-              </div>
-              <div className={styles["board-controls"]}>
-                <button 
-                  className={`${styles["control-button"]} ${selectedLayout === 'chess' ? styles.active : ''}`}
-                  onClick={() => setSelectedLayout('chess')}
-                >
-                  Classic Chess
-                </button>
-                <button 
-                  className={`${styles["control-button"]} ${selectedLayout === 'knights' ? styles.active : ''}`}
-                  onClick={() => setSelectedLayout('knights')}
-                >
-                  Knight Battle
-                </button>
-                <button 
-                  className={`${styles["control-button"]} ${selectedLayout === 'royals' ? styles.active : ''}`}
-                  onClick={() => setSelectedLayout('royals')}
-                >
-                  Royal Showdown
-                </button>
-              </div>
+              {popularGamesLoading ? (
+                <div className={styles["loading-board"]}>Loading games...</div>
+              ) : popularGames.length > 0 ? (
+                <>
+                  <PlayablePreviewBoard 
+                    gameData={popularGames[selectedGameIndex]}
+                    lightSquareColor={lightSquareColor}
+                    darkSquareColor={darkSquareColor}
+                  />
+                  <div className={styles["board-controls"]}>
+                    {popularGames.map((game, index) => (
+                      <button 
+                        key={game.id}
+                        className={`${styles["control-button"]} ${selectedGameIndex === index ? styles.active : ''}`}
+                        onClick={() => setSelectedGameIndex(index)}
+                      >
+                        {game.game_name || game.name || `Game ${index + 1}`}
+                      </button>
+                    ))}
+                  </div>
+                  {popularGames[selectedGameIndex]?.play_count > 0 && (
+                    <div className={styles["play-count-tag"]}>
+                      {popularGames[selectedGameIndex].play_count} {popularGames[selectedGameIndex].play_count === 1 ? 'game' : 'games'} played
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div 
+                    className={styles["board-grid"]}
+                    style={{
+                      gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
+                      gridTemplateRows: `repeat(${boardSize}, 1fr)`
+                    }}
+                  >
+                    {renderBoard()}
+                  </div>
+                  <div className={styles["board-controls"]}>
+                    <button 
+                      className={`${styles["control-button"]} ${selectedLayout === 'chess' ? styles.active : ''}`}
+                      onClick={() => setSelectedLayout('chess')}
+                    >
+                      Classic Chess
+                    </button>
+                    <button 
+                      className={`${styles["control-button"]} ${selectedLayout === 'knights' ? styles.active : ''}`}
+                      onClick={() => setSelectedLayout('knights')}
+                    >
+                      Knight Battle
+                    </button>
+                    <button 
+                      className={`${styles["control-button"]} ${selectedLayout === 'royals' ? styles.active : ''}`}
+                      onClick={() => setSelectedLayout('royals')}
+                    >
+                      Royal Showdown
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
