@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import axios from "axios";
 import styles from "./matchview.module.scss";
 import API_URL from "../../global/global";
+import { colToFile, rowToRank, formatMoveNotation } from "../../helpers/pieceMovementUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 
@@ -93,10 +94,10 @@ const MatchView = () => {
     const squares = [];
     const pieces = Array.isArray(match.pieces) ? match.pieces : [];
 
-    for (let y = boardHeight; y >= 1; y--) {
-      for (let x = 1; x <= boardWidth; x++) {
+    for (let y = boardHeight - 1; y >= 0; y--) {
+      for (let x = 0; x < boardWidth; x++) {
         const piece = pieces.find(p => p && p.x === x && p.y === y && !p.captured);
-        const isLight = (x + y) % 2 === 1;
+        const isLight = (x + y) % 2 === 0;
 
         squares.push(
           <div
@@ -124,17 +125,62 @@ const MatchView = () => {
       }
     }
 
+    // Generate file labels (a, b, c, ... for columns)
+    const fileLabels = [];
+    for (let i = 0; i < boardWidth; i++) {
+      fileLabels.push(
+        <div key={`file-${i}`} className={styles["file-label"]}>
+          {colToFile(i)}
+        </div>
+      );
+    }
+
+    // Generate rank labels (1, 2, 3, ... for rows)
+    const rankLabels = [];
+    for (let i = 0; i < boardHeight; i++) {
+      rankLabels.push(
+        <div key={`rank-${i}`} className={styles["rank-label"]}>
+          {rowToRank(boardHeight - 1 - i)}
+        </div>
+      );
+    }
+
     return (
-      <div 
-        className={styles["game-board"]}
-        style={{
-          gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
-          gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
-          width: 'fit-content',
-          aspectRatio: 'unset'
-        }}
-      >
-        {squares}
+      <div className={styles["board-with-coords"]}>
+        {/* Rank labels (numbers on the left) */}
+        <div 
+          className={styles["rank-labels"]}
+          style={{
+            gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`
+          }}
+        >
+          {rankLabels}
+        </div>
+        
+        {/* Board and file labels */}
+        <div className={styles["board-and-files"]}>
+          <div 
+            className={styles["game-board"]}
+            style={{
+              gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
+              gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
+              width: 'fit-content',
+              aspectRatio: 'unset'
+            }}
+          >
+            {squares}
+          </div>
+          
+          {/* File labels (letters at the bottom) */}
+          <div 
+            className={styles["file-labels"]}
+            style={{
+              gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`
+            }}
+          >
+            {fileLabels}
+          </div>
+        </div>
       </div>
     );
   };
@@ -310,9 +356,8 @@ const MatchView = () => {
             <h3>Move History</h3>
             <div className={styles["moves-list"]}>
               {match.moveHistory.map((move, index) => (
-                <span key={index} className={styles["move-item"]}>
-                  {index + 1}. {move.from?.x},{move.from?.y} → {move.to?.x},{move.to?.y}
-                  {move.captured && " ✕"}
+                <span key={index} className={`${styles["move-item"]} ${index % 2 === 0 ? styles["move-white"] : styles["move-black"]}`}>
+                  {Math.floor(index / 2) + 1}. {formatMoveNotation(move)}
                 </span>
               ))}
             </div>

@@ -77,6 +77,35 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
     return pieces.find(p => p.y === row && p.x === col);
   }, [pieces]);
 
+  // Check if the path is clear between two positions (for sliding pieces)
+  const isPathClear = useCallback((fromY, fromX, toY, toX) => {
+    const rowDiff = toY - fromY;
+    const colDiff = toX - fromX;
+    
+    // Knight-like (L-shape) moves don't need path checking
+    // L-shape: row and col diffs are both non-zero and not equal
+    if (rowDiff !== 0 && colDiff !== 0 && Math.abs(rowDiff) !== Math.abs(colDiff)) {
+      return true; // Jump movement, no path blocking
+    }
+    
+    const stepY = rowDiff === 0 ? 0 : (rowDiff > 0 ? 1 : -1);
+    const stepX = colDiff === 0 ? 0 : (colDiff > 0 ? 1 : -1);
+    
+    let y = fromY + stepY;
+    let x = fromX + stepX;
+    
+    // Check each square along the path (excluding destination)
+    while (y !== toY || x !== toX) {
+      if (pieces.some(p => p.y === y && p.x === x)) {
+        return false; // Path is blocked
+      }
+      y += stepY;
+      x += stepX;
+    }
+    
+    return true;
+  }, [pieces]);
+
   // Calculate valid moves for a piece
   const calculateValidMoves = useCallback((piece) => {
     const moves = [];
@@ -110,13 +139,16 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
         
         // Can move to empty square, or capture enemy piece
         if ((canMove && !targetPiece) || (canCapture && targetPiece)) {
-          moves.push({ row, col, isCapture: !!targetPiece });
+          // Check if path is clear (for sliding pieces)
+          if (isPathClear(piece.y, piece.x, row, col)) {
+            moves.push({ row, col, isCapture: !!targetPiece });
+          }
         }
       }
     }
     
     return moves;
-  }, [pieceDataMap, boardWidth, boardHeight, getPieceAt]);
+  }, [pieceDataMap, boardWidth, boardHeight, getPieceAt, isPathClear]);
 
   // Handle piece click
   const handlePieceClick = useCallback((e, piece) => {
