@@ -1581,6 +1581,80 @@ app.get("/api/pieces/:pieceId/games", async (req, res) => {
   }
 });
 
+// Get most popular game types based on number of games played
+// Prioritizes admin-featured games (featured_order column)
+app.get("/api/games/popular", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 3;
+    
+    // First, check for admin-featured games
+    const [featuredGames] = await db_pool.query(`
+      SELECT gt.*, COUNT(g.id) as play_count
+      FROM game_types gt
+      LEFT JOIN games g ON gt.id = g.game_type_id
+      WHERE gt.featured_order IS NOT NULL
+      GROUP BY gt.id
+      ORDER BY gt.featured_order ASC
+      LIMIT ?
+    `, [limit]);
+    
+    // If we have featured games, return those
+    if (featuredGames.length >= limit) {
+      for (const game of featuredGames) {
+        const pieces = await dbHelpers.getPiecesForGameType(game.id);
+        game.pieces = pieces;
+      }
+      return res.json(featuredGames);
+    }
+    
+    // If we have some featured games but not enough, fill with popular games
+    const featuredIds = featuredGames.map(g => g.id);
+    const remainingCount = limit - featuredGames.length;
+    
+    // Get popular games that aren't already featured
+    const [popularGames] = await db_pool.query(`
+      SELECT gt.*, COUNT(g.id) as play_count
+      FROM game_types gt
+      LEFT JOIN games g ON gt.id = g.game_type_id
+      ${featuredIds.length > 0 ? 'WHERE gt.id NOT IN (?)' : ''}
+      GROUP BY gt.id
+      ORDER BY play_count DESC, gt.id DESC
+      LIMIT ?
+    `, featuredIds.length > 0 ? [featuredIds, remainingCount] : [remainingCount]);
+    
+    // Combine featured + popular
+    const allGames = [...featuredGames, ...popularGames];
+    
+    // If still no games, fall back to most recent game types
+    if (allGames.length === 0) {
+      const [recentGames] = await db_pool.query(
+        `SELECT *, 0 as play_count FROM game_types ORDER BY id DESC LIMIT ?`,
+        [limit]
+      );
+      
+      for (const game of recentGames) {
+        const pieces = await dbHelpers.getPiecesForGameType(game.id);
+        game.pieces = pieces;
+      }
+      
+      return res.json(recentGames);
+    }
+    
+    // Load pieces for each game type
+    for (const game of allGames) {
+      if (!game.pieces) {
+        const pieces = await dbHelpers.getPiecesForGameType(game.id);
+        game.pieces = pieces;
+      }
+    }
+    
+    res.json(allGames);
+  } catch (err) {
+    console.error("Error in /api/games/popular:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
 app.get("/api/games", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -4208,6 +4282,67 @@ app.get("/api/admin/news/:newsId", authenticateAdmin, async (req, res) => {
   }
 });
 
+// Get all featured games (admin only)
+app.get("/api/admin/featured-games", authenticateAdmin, async (req, res) => {
+  try {
+    // Get all games with their featured status
+    const [allGames] = await db_pool.query(`
+      SELECT g.id, g.game_name, g.board_width, g.board_height, g.featured_order,
+             u.username as creator_name,
+             COUNT(DISTINCT gm.id) as play_count
+      FROM game_types g
+      LEFT JOIN users u ON g.creator_id = u.id
+      LEFT JOIN games gm ON g.id = gm.game_type_id
+      GROUP BY g.id
+      ORDER BY CASE WHEN g.featured_order IS NOT NULL THEN 0 ELSE 1 END,
+               g.featured_order ASC, play_count DESC
+      LIMIT 50
+    `);
+
+    // Get currently featured games
+    const featured = allGames.filter(g => g.featured_order !== null)
+                             .sort((a, b) => a.featured_order - b.featured_order);
+
+    res.json({
+      featured,
+      allGames
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/featured-games:", err);
+    res.status(500).send({ message: "Failed to fetch featured games", err: err.message });
+  }
+});
+
+// Update featured games (admin only)
+app.put("/api/admin/featured-games", authenticateAdmin, async (req, res) => {
+  try {
+    const { featuredGameIds } = req.body; // Array of game IDs in order [slot1, slot2, slot3]
+    
+    if (!Array.isArray(featuredGameIds)) {
+      return res.status(400).send({ message: "featuredGameIds must be an array" });
+    }
+
+    // Clear all existing featured_order values
+    await db_pool.query(`UPDATE game_types SET featured_order = NULL`);
+
+    // Set new featured games with their order
+    for (let i = 0; i < featuredGameIds.length; i++) {
+      const gameId = featuredGameIds[i];
+      if (gameId) {
+        await db_pool.query(
+          `UPDATE game_types SET featured_order = ? WHERE id = ?`,
+          [i + 1, gameId]
+        );
+      }
+    }
+
+    res.json({ message: "Featured games updated successfully" });
+  } catch (err) {
+    console.error("Error in /api/admin/featured-games (PUT):", err);
+    res.status(500).send({ message: "Failed to update featured games", err: err.message });
+  }
+});
+
 // Update any user field (admin only)
 app.put("/api/admin/users/:userId", authenticateAdmin, async (req, res) => {
   try {
@@ -4362,6 +4497,161 @@ app.put("/api/admin/news/:newsId", authenticateAdmin, async (req, res) => {
   } catch (err) {
     console.error("Error in /api/admin/news/:newsId (PUT):", err);
     res.status(500).send({ message: "Failed to update news", err: err.message });
+  }
+});
+
+// ----------------------- Streams Routes ------------------------------
+
+// Public: Get all streams (for the /media/streams page)
+app.get("/api/streams", async (req, res) => {
+  try {
+    const [streams] = await db_pool.query(
+      `SELECT id, title, streamer_name, description, stream_url, thumbnail_url, 
+       category, platform, is_live, is_featured, viewer_count, game_name,
+       scheduled_start, scheduled_end, created_at
+       FROM streams 
+       ORDER BY is_live DESC, is_featured DESC, created_at DESC`
+    );
+    res.json(streams);
+  } catch (err) {
+    console.error("Error in /api/streams:", err);
+    res.status(500).send({ message: "Failed to fetch streams", err: err.message });
+  }
+});
+
+// Admin: Get all streams with pagination
+app.get("/api/admin/streams", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const [streams] = await db_pool.query(
+      `SELECT s.*, u.username as created_by_name
+       FROM streams s
+       LEFT JOIN users u ON s.created_by = u.id
+       ORDER BY s.created_at DESC 
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM streams");
+
+    res.json({
+      data: streams,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/streams:", err);
+    res.status(500).send({ message: "Failed to fetch streams", err: err.message });
+  }
+});
+
+// Admin: Create a new stream
+app.post("/api/admin/streams", authenticateAdmin, async (req, res) => {
+  try {
+    const { 
+      title, streamer_name, description, stream_url, thumbnail_url,
+      category, platform, is_live, is_featured, viewer_count, game_name,
+      scheduled_start, scheduled_end
+    } = req.body;
+
+    if (!title || !streamer_name || !stream_url) {
+      return res.status(400).send({ message: "Title, streamer name, and stream URL are required" });
+    }
+
+    const [result] = await db_pool.query(
+      `INSERT INTO streams (title, streamer_name, description, stream_url, thumbnail_url,
+       category, platform, is_live, is_featured, viewer_count, game_name,
+       scheduled_start, scheduled_end, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        title, streamer_name, description || null, stream_url, thumbnail_url || null,
+        category || 'other', platform || 'other', is_live || false, is_featured || false,
+        viewer_count || 0, game_name || null, scheduled_start || null, scheduled_end || null,
+        req.user.id
+      ]
+    );
+
+    const [[newStream]] = await db_pool.query("SELECT * FROM streams WHERE id = ?", [result.insertId]);
+    res.status(201).json({ success: true, stream: newStream, message: "Stream created successfully" });
+  } catch (err) {
+    console.error("Error in /api/admin/streams (POST):", err);
+    res.status(500).send({ message: "Failed to create stream", err: err.message });
+  }
+});
+
+// Admin: Update a stream
+app.put("/api/admin/streams/:streamId", authenticateAdmin, async (req, res) => {
+  try {
+    const { streamId } = req.params;
+    const updates = req.body;
+    
+    const allowedFields = [
+      'title', 'streamer_name', 'description', 'stream_url', 'thumbnail_url',
+      'category', 'platform', 'is_live', 'is_featured', 'viewer_count', 'game_name',
+      'scheduled_start', 'scheduled_end'
+    ];
+    
+    const fields = Object.keys(updates).filter(key => allowedFields.includes(key));
+    if (fields.length === 0) {
+      return res.status(400).send({ message: "No valid fields to update" });
+    }
+
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    const values = fields.map(field => updates[field]);
+    values.push(streamId);
+
+    await db_pool.query(`UPDATE streams SET ${setClause} WHERE id = ?`, values);
+
+    const [[updatedStream]] = await db_pool.query("SELECT * FROM streams WHERE id = ?", [streamId]);
+    res.json({ success: true, stream: updatedStream, message: "Stream updated successfully" });
+  } catch (err) {
+    console.error("Error in /api/admin/streams/:streamId (PUT):", err);
+    res.status(500).send({ message: "Failed to update stream", err: err.message });
+  }
+});
+
+// Admin: Delete a stream
+app.delete("/api/admin/streams/:streamId", authenticateAdmin, async (req, res) => {
+  try {
+    const { streamId } = req.params;
+    
+    const [[stream]] = await db_pool.query("SELECT * FROM streams WHERE id = ?", [streamId]);
+    if (!stream) {
+      return res.status(404).send({ message: "Stream not found" });
+    }
+
+    await db_pool.query("DELETE FROM streams WHERE id = ?", [streamId]);
+    res.json({ success: true, message: "Stream deleted successfully" });
+  } catch (err) {
+    console.error("Error in /api/admin/streams/:streamId (DELETE):", err);
+    res.status(500).send({ message: "Failed to delete stream", err: err.message });
+  }
+});
+
+// Admin: Toggle stream live status
+app.post("/api/admin/streams/:streamId/toggle-live", authenticateAdmin, async (req, res) => {
+  try {
+    const { streamId } = req.params;
+    
+    const [[stream]] = await db_pool.query("SELECT is_live FROM streams WHERE id = ?", [streamId]);
+    if (!stream) {
+      return res.status(404).send({ message: "Stream not found" });
+    }
+
+    const newLiveStatus = !stream.is_live;
+    await db_pool.query("UPDATE streams SET is_live = ? WHERE id = ?", [newLiveStatus, streamId]);
+    
+    res.json({ success: true, is_live: newLiveStatus, message: `Stream is now ${newLiveStatus ? 'live' : 'offline'}` });
+  } catch (err) {
+    console.error("Error in /api/admin/streams/:streamId/toggle-live:", err);
+    res.status(500).send({ message: "Failed to toggle stream status", err: err.message });
   }
 });
 

@@ -29,6 +29,27 @@ const AdminDashboard = () => {
   const [banReason, setBanReason] = useState("");
   const [banExpiration, setBanExpiration] = useState("");
   const [isPermanentBan, setIsPermanentBan] = useState(true);
+  
+  // Featured games states
+  const [featuredGames, setFeaturedGames] = useState([null, null, null]); // 3 slots
+  const [availableGames, setAvailableGames] = useState([]);
+  const [featuredLoading, setFeaturedLoading] = useState(false);
+
+  // Stream creation states
+  const [showStreamModal, setShowStreamModal] = useState(false);
+  const [streamFormData, setStreamFormData] = useState({
+    title: '',
+    streamer_name: '',
+    description: '',
+    stream_url: '',
+    thumbnail_url: '',
+    category: 'other',
+    platform: 'other',
+    is_live: false,
+    is_featured: false,
+    viewer_count: 0,
+    game_name: ''
+  });
 
   // Auto-hide alert after 2 seconds
   useEffect(() => {
@@ -75,8 +96,71 @@ const AdminDashboard = () => {
   }, [pagination?.limit, navigate]);
 
   useEffect(() => {
-    fetchData(activeTab, 1);
+    if (activeTab === 'featured') {
+      fetchFeaturedGames();
+    } else {
+      fetchData(activeTab, 1);
+    }
   }, [activeTab, fetchData]);
+
+  const fetchFeaturedGames = async () => {
+    setFeaturedLoading(true);
+    try {
+      const response = await axios.get(
+        `${API_URL}admin/featured-games`,
+        { headers: authHeader() }
+      );
+      const { featured, allGames } = response.data;
+      
+      // Build the 3 slots array
+      const slots = [null, null, null];
+      featured.forEach(game => {
+        if (game.featured_order >= 1 && game.featured_order <= 3) {
+          slots[game.featured_order - 1] = game;
+        }
+      });
+      
+      setFeaturedGames(slots);
+      setAvailableGames(allGames);
+    } catch (error) {
+      console.error("Error fetching featured games:", error);
+      setAlertMessage("Failed to load featured games");
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setFeaturedLoading(false);
+    }
+  };
+
+  const handleFeaturedGameChange = (slotIndex, gameId) => {
+    const newFeatured = [...featuredGames];
+    if (gameId === '') {
+      newFeatured[slotIndex] = null;
+    } else {
+      const game = availableGames.find(g => g.id === parseInt(gameId));
+      newFeatured[slotIndex] = game || null;
+    }
+    setFeaturedGames(newFeatured);
+  };
+
+  const saveFeaturedGames = async () => {
+    try {
+      const featuredGameIds = featuredGames.map(g => g?.id || null);
+      await axios.put(
+        `${API_URL}admin/featured-games`,
+        { featuredGameIds },
+        { headers: authHeader() }
+      );
+      setAlertMessage("Featured games saved successfully");
+      setAlertType('success');
+      setShowAlert(true);
+    } catch (error) {
+      console.error("Error saving featured games:", error);
+      setAlertMessage("Failed to save featured games");
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -542,6 +626,357 @@ const AdminDashboard = () => {
     </div>
   );
 
+  const renderFeaturedTab = () => (
+    <div className={styles["featured-container"]}>
+      <h2 style={{ marginBottom: '20px', color: '#4a90e2' }}>Featured Games on Homepage</h2>
+      <p style={{ marginBottom: '30px', color: '#6b8ba8' }}>
+        Select up to 3 games to feature on the homepage. These games will be displayed in the "Experience the Board" section.
+        Leave a slot empty to fall back to popular games.
+      </p>
+      
+      <div className={styles["featured-slots"]}>
+        {[0, 1, 2].map(slotIndex => (
+          <div key={slotIndex} className={styles["featured-slot"]}>
+            <label>Slot {slotIndex + 1}</label>
+            <select
+              value={featuredGames[slotIndex]?.id || ''}
+              onChange={(e) => handleFeaturedGameChange(slotIndex, e.target.value)}
+              className={styles["featured-select"]}
+            >
+              <option value="">-- None (use popular) --</option>
+              {availableGames.map(game => (
+                <option 
+                  key={game.id} 
+                  value={game.id}
+                  disabled={featuredGames.some((fg, i) => i !== slotIndex && fg?.id === game.id)}
+                >
+                  {game.game_name} ({game.board_width}x{game.board_height}) - {game.play_count || 0} plays
+                </option>
+              ))}
+            </select>
+            {featuredGames[slotIndex] && (
+              <div className={styles["featured-preview"]}>
+                <strong>{featuredGames[slotIndex].game_name}</strong>
+                <span>by {featuredGames[slotIndex].creator_name || 'Unknown'}</span>
+                <span>{featuredGames[slotIndex].board_width}x{featuredGames[slotIndex].board_height} board</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: '30px' }}>
+        <StandardButton onClick={saveFeaturedGames} buttonText="Save Featured Games" />
+      </div>
+    </div>
+  );
+
+  const handleCreateStream = () => {
+    setStreamFormData({
+      title: '',
+      streamer_name: '',
+      description: '',
+      stream_url: '',
+      thumbnail_url: '',
+      category: 'other',
+      platform: 'other',
+      is_live: false,
+      is_featured: false,
+      viewer_count: 0,
+      game_name: ''
+    });
+    setShowStreamModal(true);
+  };
+
+  const handleStreamFormChange = (field, value) => {
+    setStreamFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveStream = async () => {
+    try {
+      if (!streamFormData.title || !streamFormData.streamer_name || !streamFormData.stream_url) {
+        setAlertMessage("Title, streamer name, and stream URL are required");
+        setAlertType('error');
+        setShowAlert(true);
+        return;
+      }
+
+      await axios.post(
+        `${API_URL}admin/streams`,
+        streamFormData,
+        { headers: authHeader() }
+      );
+
+      setAlertMessage("Stream created successfully");
+      setAlertType('success');
+      setShowAlert(true);
+      setShowStreamModal(false);
+      fetchData('streams', pagination.page);
+    } catch (error) {
+      console.error("Error creating stream:", error);
+      setAlertMessage("Failed to create stream: " + (error.response?.data?.message || error.message));
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const handleToggleLive = async (stream) => {
+    try {
+      await axios.post(
+        `${API_URL}admin/streams/${stream.id}/toggle-live`,
+        {},
+        { headers: authHeader() }
+      );
+
+      setAlertMessage(`Stream is now ${!stream.is_live ? 'live' : 'offline'}`);
+      setAlertType('success');
+      setShowAlert(true);
+      fetchData('streams', pagination.page);
+    } catch (error) {
+      console.error("Error toggling stream status:", error);
+      setAlertMessage("Failed to toggle stream status");
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const handleDeleteStream = async (stream) => {
+    if (!window.confirm(`Are you sure you want to delete the stream "${stream.title}"?`)) {
+      return;
+    }
+
+    try {
+      await axios.delete(
+        `${API_URL}admin/streams/${stream.id}`,
+        { headers: authHeader() }
+      );
+
+      setAlertMessage("Stream deleted successfully");
+      setAlertType('success');
+      setShowAlert(true);
+      fetchData('streams', pagination.page);
+    } catch (error) {
+      console.error("Error deleting stream:", error);
+      setAlertMessage("Failed to delete stream");
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const renderStreamsTab = () => (
+    <div className={styles["table-container"]}>
+      <div className={styles["table-header"]} style={{ marginBottom: '15px' }}>
+        <StandardButton onClick={handleCreateStream} buttonText="Add New Stream" />
+      </div>
+      <table className={styles["data-table"]}>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Streamer</th>
+            <th>Platform</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>Viewers</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {!data || data.length === 0 ? (
+            <tr>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+                {!data ? 'Loading...' : 'No streams found. Click "Add New Stream" to create one.'}
+              </td>
+            </tr>
+          ) : (
+            data.map(stream => (
+              <tr key={stream.id}>
+                <td>{stream.id}</td>
+                <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {stream.title}
+                </td>
+                <td>{stream.streamer_name}</td>
+                <td style={{ textTransform: 'capitalize' }}>{stream.platform}</td>
+                <td style={{ textTransform: 'capitalize' }}>{stream.category}</td>
+                <td>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '4px 10px',
+                    borderRadius: '12px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    background: stream.is_live ? '#22c55e' : '#64748b',
+                    color: '#fff'
+                  }}>
+                    {stream.is_live ? '● LIVE' : 'Offline'}
+                  </span>
+                </td>
+                <td>{stream.viewer_count || 0}</td>
+                <td>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button className={styles["edit-btn"]} onClick={() => handleEdit(stream)}>Edit</button>
+                    <button 
+                      className={styles["edit-btn"]} 
+                      style={{ background: stream.is_live ? '#64748b' : '#22c55e' }}
+                      onClick={() => handleToggleLive(stream)}
+                    >
+                      {stream.is_live ? 'Go Offline' : 'Go Live'}
+                    </button>
+                    <button 
+                      className={styles["ban-btn"]} 
+                      onClick={() => handleDeleteStream(stream)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderStreamModal = () => {
+    if (!showStreamModal) return null;
+
+    return (
+      <div className={styles["modal-overlay"]} onClick={() => setShowStreamModal(false)}>
+        <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+          <h2>Add New Stream</h2>
+          
+          <div className={styles["form-group"]}>
+            <label>Title <span style={{ color: 'red' }}>*</span></label>
+            <input
+              type="text"
+              value={streamFormData.title}
+              onChange={(e) => handleStreamFormChange('title', e.target.value)}
+              placeholder="Stream title..."
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+            />
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label>Streamer Name <span style={{ color: 'red' }}>*</span></label>
+            <input
+              type="text"
+              value={streamFormData.streamer_name}
+              onChange={(e) => handleStreamFormChange('streamer_name', e.target.value)}
+              placeholder="Streamer name..."
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+            />
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label>Stream URL <span style={{ color: 'red' }}>*</span></label>
+            <input
+              type="url"
+              value={streamFormData.stream_url}
+              onChange={(e) => handleStreamFormChange('stream_url', e.target.value)}
+              placeholder="https://twitch.tv/username or YouTube URL..."
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+            />
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label>Thumbnail URL</label>
+            <input
+              type="url"
+              value={streamFormData.thumbnail_url}
+              onChange={(e) => handleStreamFormChange('thumbnail_url', e.target.value)}
+              placeholder="https://example.com/thumbnail.jpg"
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+            <div className={styles["form-group"]}>
+              <label>Platform</label>
+              <select
+                value={streamFormData.platform}
+                onChange={(e) => handleStreamFormChange('platform', e.target.value)}
+                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+              >
+                <option value="twitch">Twitch</option>
+                <option value="youtube">YouTube</option>
+                <option value="kick">Kick</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div className={styles["form-group"]}>
+              <label>Category</label>
+              <select
+                value={streamFormData.category}
+                onChange={(e) => handleStreamFormChange('category', e.target.value)}
+                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+              >
+                <option value="tournament">Tournament</option>
+                <option value="tutorial">Tutorial</option>
+                <option value="casual">Casual</option>
+                <option value="community">Community</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label>Game Name</label>
+            <input
+              type="text"
+              value={streamFormData.game_name}
+              onChange={(e) => handleStreamFormChange('game_name', e.target.value)}
+              placeholder="Name of the game being played..."
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+            />
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label>Description</label>
+            <textarea
+              value={streamFormData.description}
+              onChange={(e) => handleStreamFormChange('description', e.target.value)}
+              placeholder="Stream description..."
+              rows="3"
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '20px', marginTop: '10px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                checked={streamFormData.is_live}
+                onChange={(e) => handleStreamFormChange('is_live', e.target.checked)}
+              />
+              Start as Live
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                checked={streamFormData.is_featured}
+                onChange={(e) => handleStreamFormChange('is_featured', e.target.checked)}
+              />
+              Featured
+            </label>
+          </div>
+
+          <div className={styles["modal-footer"]}>
+            <button className={styles["cancel-btn"]} onClick={() => setShowStreamModal(false)}>
+              Cancel
+            </button>
+            <button className={styles["save-btn"]} onClick={handleSaveStream}>
+              Add Stream
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderEditModal = () => {
     if (!showEditModal || !editingItem) return null;
 
@@ -585,6 +1020,20 @@ const AdminDashboard = () => {
           return [
             { key: 'title', label: 'Title', type: 'text' },
             { key: 'content', label: 'Content', type: 'textarea' },
+          ];
+        case 'streams':
+          return [
+            { key: 'title', label: 'Title', type: 'text' },
+            { key: 'streamer_name', label: 'Streamer Name', type: 'text' },
+            { key: 'stream_url', label: 'Stream URL', type: 'text' },
+            { key: 'thumbnail_url', label: 'Thumbnail URL', type: 'text' },
+            { key: 'platform', label: 'Platform', type: 'select', options: ['twitch', 'youtube', 'kick', 'other'] },
+            { key: 'category', label: 'Category', type: 'select', options: ['tournament', 'tutorial', 'casual', 'community', 'other'] },
+            { key: 'game_name', label: 'Game Name', type: 'text' },
+            { key: 'description', label: 'Description', type: 'textarea' },
+            { key: 'viewer_count', label: 'Viewer Count', type: 'number' },
+            { key: 'is_live', label: 'Live', type: 'checkbox' },
+            { key: 'is_featured', label: 'Featured', type: 'checkbox' },
           ];
         default:
           return [];
@@ -756,10 +1205,22 @@ const AdminDashboard = () => {
         >
           News
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "featured" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("featured")}
+        >
+          Featured
+        </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "streams" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("streams")}
+        >
+          Streams
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {loading ? (
+        {loading || (activeTab === 'featured' && featuredLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -768,13 +1229,17 @@ const AdminDashboard = () => {
             {activeTab === "games" && renderGamesTable()}
             {activeTab === "forums" && renderForumsTable()}
             {activeTab === "news" && renderNewsTable()}
-            {renderPagination()}
+            {activeTab === "featured" && renderFeaturedTab()}
+            {activeTab === "streams" && renderStreamsTab()}
+            {activeTab !== "featured" && activeTab !== "streams" && renderPagination()}
+            {activeTab === "streams" && renderPagination()}
           </>
         )}
       </div>
 
       {renderEditModal()}
       {renderBanModal()}
+      {renderStreamModal()}
     </div>
   );
 };

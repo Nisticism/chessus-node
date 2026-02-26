@@ -602,3 +602,73 @@
     max-width: 95%;
   }
 }
+
+// Featured games section
+.featured-container {
+  background: rgba(42, 77, 108, 0.2);
+  border-radius: 12px;
+  padding: 30px;
+  border: 1px solid #2a4d6c;
+}
+
+.featured-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.featured-slot {
+  background: rgba(10, 25, 41, 0.5);
+  border: 1px solid #2a4d6c;
+  border-radius: 8px;
+  padding: 20px;
+
+  label {
+    display: block;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #4a90e2;
+    margin-bottom: 10px;
+  }
+}
+
+.featured-select {
+  width: 100%;
+  padding: 12px 15px;
+  background: rgba(42, 77, 108, 0.3);
+  border: 1px solid #2a4d6c;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 1rem;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: #4a90e2;
+  }
+
+  option {
+    background: #1a2332;
+    color: #ffffff;
+  }
+}
+
+.featured-preview {
+  margin-top: 15px;
+  padding: 12px;
+  background: rgba(74, 144, 226, 0.1);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  strong {
+    color: #ffffff;
+    font-size: 1rem;
+  }
+
+  span {
+    color: #6b8ba8;
+    font-size: 0.9rem;
+  }
+}

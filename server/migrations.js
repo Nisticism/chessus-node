@@ -220,6 +220,33 @@ const tableMigrations = [
       FOREIGN KEY (piece_id) REFERENCES pieces(id) ON DELETE CASCADE
     )`,
     description: "Create piece_capture table"
+  },
+  {
+    table: 'streams',
+    sql: `CREATE TABLE IF NOT EXISTS streams (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      title VARCHAR(200) NOT NULL,
+      streamer_name VARCHAR(100) NOT NULL,
+      description TEXT,
+      stream_url VARCHAR(500) NOT NULL,
+      thumbnail_url VARCHAR(500),
+      category ENUM('tournament', 'tutorial', 'casual', 'community', 'other') DEFAULT 'other',
+      platform ENUM('twitch', 'youtube', 'kick', 'other') DEFAULT 'other',
+      is_live BOOLEAN DEFAULT FALSE,
+      is_featured BOOLEAN DEFAULT FALSE,
+      viewer_count INT DEFAULT 0,
+      game_name VARCHAR(100),
+      created_by INT UNSIGNED,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      scheduled_start DATETIME,
+      scheduled_end DATETIME,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_streams_is_live (is_live),
+      INDEX idx_streams_category (category),
+      INDEX idx_streams_featured (is_featured)
+    )`,
+    description: "Create streams table"
   }
 ];
 
@@ -1741,6 +1768,20 @@ Join us in revolutionizing chess, one variant at a time.
     }
   } catch (err) {
     console.error('Error adding password_reset_expires column:', err.message);
+  }
+
+  // Add featured_order column to game_types for admin-selected featured games on homepage
+  try {
+    const featuredOrderCol = await columnExists('game_types', 'featured_order');
+    if (!featuredOrderCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN featured_order INT DEFAULT NULL`,
+        "Add featured_order column to game_types table for homepage featured games"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding featured_order column:', err.message);
   }
   
   if (migrationsRun === 0) {
