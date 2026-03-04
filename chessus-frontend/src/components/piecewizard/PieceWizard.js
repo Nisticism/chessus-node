@@ -89,6 +89,8 @@ const PieceWizard = ({ editPieceId = null }) => {
     can_hop_over_enemies: false,
     
     // Step 3: Attack/Capture Configuration
+    can_hop_attack_over_allies: false,
+    can_hop_attack_over_enemies: false,
     can_capture_enemy_via_range: false,
     can_capture_ally_via_range: false,
     can_capture_enemy_on_move: true, // Default to true - most pieces attack how they move
@@ -174,6 +176,12 @@ const PieceWizard = ({ editPieceId = null }) => {
     can_castle: false,
     can_promote: false,
     can_en_passant: false,
+    // Checkers-style options
+    capture_on_hop: false,
+    chain_capture_enabled: false,
+    chain_hop_allies: false,
+    free_move_after_promotion: false,
+    promotion_pieces_ids: null,
   });
 
   // Load existing piece data when in edit mode
@@ -261,6 +269,8 @@ const PieceWizard = ({ editPieceId = null }) => {
             can_hop_over_enemies: !!piece.can_hop_over_enemies,
             
             // Attack/Capture fields
+            can_hop_attack_over_allies: !!piece.can_hop_attack_over_allies,
+            can_hop_attack_over_enemies: !!piece.can_hop_attack_over_enemies,
             can_capture_enemy_via_range: !!piece.can_capture_enemy_via_range,
             can_capture_ally_via_range: !!piece.can_capture_ally_via_range,
             can_capture_enemy_on_move: !!piece.can_capture_enemy_on_move,
@@ -376,6 +386,12 @@ const PieceWizard = ({ editPieceId = null }) => {
             can_castle: !!piece.can_castle,
             can_promote: !!piece.can_promote,
             can_en_passant: !!piece.can_en_passant,
+            // Checkers-style options
+            capture_on_hop: !!piece.capture_on_hop,
+            chain_capture_enabled: !!piece.chain_capture_enabled,
+            chain_hop_allies: !!piece.chain_hop_allies,
+            free_move_after_promotion: !!piece.free_move_after_promotion,
+            promotion_pieces_ids: piece.promotion_pieces_ids || null,
           });
           
           setIsEditMode(true);

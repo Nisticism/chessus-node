@@ -940,6 +940,75 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         )}
       </div>
 
+      {/* Attack Hopping */}
+      <div className={styles["condition-section"]}>
+        <h3>Attack Hopping</h3>
+        <p className={styles["field-hint"]} style={{ marginBottom: '1rem' }}>
+          Allow this piece to hop over other pieces when attacking (applies to capture-on-move attacks).
+          This is separate from movement hopping - enabling attack hopping allows the piece to jump over pieces to capture.
+        </p>
+        
+        {/* Show warning if neither ratio nor exact directional capture is enabled */}
+        {(() => {
+          const hasRatioCapture = pieceData.ratio_one_capture && pieceData.ratio_two_capture;
+          const hasExactDirectional = pieceData.can_capture_enemy_on_move && (
+            (pieceData.up_left_capture && pieceData.up_left_capture_exact) ||
+            (pieceData.up_capture && pieceData.up_capture_exact) ||
+            (pieceData.up_right_capture && pieceData.up_right_capture_exact) ||
+            (pieceData.left_capture && pieceData.left_capture_exact) ||
+            (pieceData.right_capture && pieceData.right_capture_exact) ||
+            (pieceData.down_left_capture && pieceData.down_left_capture_exact) ||
+            (pieceData.down_capture && pieceData.down_capture_exact) ||
+            (pieceData.down_right_capture && pieceData.down_right_capture_exact)
+          );
+          
+          const canHop = hasRatioCapture || hasExactDirectional;
+          
+          return !canHop ? (
+            <p className={styles["field-hint"]} style={{ marginBottom: '1rem', color: 'var(--accent-orange)' }}>
+              ⚠️ Attack hopping requires either ratio capture movement or at least one capture direction with "Exact" distance enabled.
+            </p>
+          ) : null;
+        })()}
+        
+        <label className={styles["checkbox-label"]}>
+          <input
+            type="checkbox"
+            checked={pieceData.can_hop_attack_over_allies}
+            onChange={(e) => handleChange("can_hop_attack_over_allies", e.target.checked)}
+            disabled={!(pieceData.ratio_one_capture && pieceData.ratio_two_capture) && !(pieceData.can_capture_enemy_on_move && (
+              (pieceData.up_left_capture && pieceData.up_left_capture_exact) ||
+              (pieceData.up_capture && pieceData.up_capture_exact) ||
+              (pieceData.up_right_capture && pieceData.up_right_capture_exact) ||
+              (pieceData.left_capture && pieceData.left_capture_exact) ||
+              (pieceData.right_capture && pieceData.right_capture_exact) ||
+              (pieceData.down_left_capture && pieceData.down_left_capture_exact) ||
+              (pieceData.down_capture && pieceData.down_capture_exact) ||
+              (pieceData.down_right_capture && pieceData.down_right_capture_exact)
+            ))}
+          />
+          <span>Can hop over allied pieces when attacking</span>
+        </label>
+        <label className={styles["checkbox-label"]}>
+          <input
+            type="checkbox"
+            checked={pieceData.can_hop_attack_over_enemies}
+            onChange={(e) => handleChange("can_hop_attack_over_enemies", e.target.checked)}
+            disabled={!(pieceData.ratio_one_capture && pieceData.ratio_two_capture) && !(pieceData.can_capture_enemy_on_move && (
+              (pieceData.up_left_capture && pieceData.up_left_capture_exact) ||
+              (pieceData.up_capture && pieceData.up_capture_exact) ||
+              (pieceData.up_right_capture && pieceData.up_right_capture_exact) ||
+              (pieceData.left_capture && pieceData.left_capture_exact) ||
+              (pieceData.right_capture && pieceData.right_capture_exact) ||
+              (pieceData.down_left_capture && pieceData.down_left_capture_exact) ||
+              (pieceData.down_capture && pieceData.down_capture_exact) ||
+              (pieceData.down_right_capture && pieceData.down_right_capture_exact)
+            ))}
+          />
+          <span>Can hop over enemy pieces when attacking</span>
+        </label>
+      </div>
+
       {/* Ranged Attack */}
       <div className={styles["condition-section"]}>
         <h3>Ranged Attack</h3>

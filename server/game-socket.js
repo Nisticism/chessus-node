@@ -675,6 +675,8 @@ function initializeSocket(server) {
               step_movement_value: fullPieceData.step_by_step_movement_value,
               can_hop_over_allies: fullPieceData.can_hop_over_allies,
               can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+              can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
+              can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               up_capture: fullPieceData.up_capture,
@@ -722,7 +724,13 @@ function initializeSocket(server) {
               can_fire_over_allies: fullPieceData.can_fire_over_allies,
               can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
               // En passant
-              can_en_passant: fullPieceData.can_en_passant
+              can_en_passant: fullPieceData.can_en_passant,
+              // Checkers-style options
+              capture_on_hop: fullPieceData.capture_on_hop,
+              chain_capture_enabled: fullPieceData.chain_capture_enabled,
+              chain_hop_allies: fullPieceData.chain_hop_allies,
+              free_move_after_promotion: fullPieceData.free_move_after_promotion,
+              promotion_pieces_ids: fullPieceData.promotion_pieces_ids
             };
           }
           return piece;
@@ -913,6 +921,8 @@ function initializeSocket(server) {
                   step_movement_value: fullPieceData.step_by_step_movement_value,
                   can_hop_over_allies: fullPieceData.can_hop_over_allies,
                   can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+                  can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
+                  can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
                   // Capture data
                   can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
                   up_capture: fullPieceData.up_capture,
@@ -959,7 +969,13 @@ function initializeSocket(server) {
                   can_fire_over_allies: fullPieceData.can_fire_over_allies,
                   can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
                   // En passant
-                  can_en_passant: fullPieceData.can_en_passant
+                  can_en_passant: fullPieceData.can_en_passant,
+                  // Checkers-style options
+                  capture_on_hop: fullPieceData.capture_on_hop,
+                  chain_capture_enabled: fullPieceData.chain_capture_enabled,
+                  chain_hop_allies: fullPieceData.chain_hop_allies,
+                  free_move_after_promotion: fullPieceData.free_move_after_promotion,
+                  promotion_pieces_ids: fullPieceData.promotion_pieces_ids
                 };
               }
               return piece;
@@ -1152,7 +1168,7 @@ function initializeSocket(server) {
         }
 
         // Validate move (basic validation - full validation handled by game rules)
-        const moveResult = validateAndApplyMove(gameState, move);
+        const moveResult = await validateAndApplyMove(gameState, move);
         
         if (!moveResult.valid) {
           console.log(`Move validation failed in game ${gameId}:`, {
@@ -1248,6 +1264,48 @@ function initializeSocket(server) {
           return; // Wait for promotion choice before continuing
         }
 
+        // Check if chain capture is available (piece can continue capturing)
+        if (moveResult.chainCaptureAvailable && moveResult.movingPiece) {
+          // Store that this piece can make additional captures (don't switch turns)
+          gameState.chainCapturePieceId = moveResult.movingPiece.id;
+          gameState.chainCapturePlayerId = userId;
+          
+          // Update database with chain capture state
+          await db_pool.query(
+            "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+            [JSON.stringify(gameState.pieces), 
+             JSON.stringify({ 
+               moves: gameState.moveHistory, 
+               rated: gameState.rated,
+               allowPremoves: gameState.allowPremoves,
+               chainCapturePieceId: gameState.chainCapturePieceId,
+               chainCapturePlayerId: gameState.chainCapturePlayerId
+             }), gameId]
+          );
+          
+          // Emit chain capture state to players
+          io.to(`game-${gameId}`).emit("chainCaptureRequired", {
+            gameId,
+            pieceId: gameState.chainCapturePieceId,
+            move: moveRecord,
+            gameState: {
+              pieces: gameState.pieces,
+              currentTurn: gameState.currentTurn,
+              playerTimes: gameState.playerTimes,
+              moveHistory: gameState.moveHistory,
+              chainCapturePieceId: gameState.chainCapturePieceId,
+              controlSquareTracking: gameState.controlSquareTracking
+            }
+          });
+          
+          console.log(`Chain capture available in game ${gameId} for piece ${gameState.chainCapturePieceId}`);
+          return; // Wait for chain capture or skip
+        }
+
+        // Clear any chain capture state after a non-chain-capture move
+        gameState.chainCapturePieceId = null;
+        gameState.chainCapturePlayerId = null;
+
         // Switch turns
         gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
 
@@ -1265,7 +1323,7 @@ function initializeSocket(server) {
           gameState.premove = null; // Clear premove
           
           // Validate that the premove is still valid after opponent's move
-          const premoveResult = validateAndApplyMove(gameState, premove.move);
+          const premoveResult = await validateAndApplyMove(gameState, premove.move);
           
           if (premoveResult.valid) {
             // Premove is valid, execute it
@@ -1882,6 +1940,64 @@ function initializeSocket(server) {
             }
           }
 
+          // Check for no-legal-moves condition (checkers-style: no legal moves = loss)
+          // This is separate from stalemate because it applies even without mate_condition
+          if (gameState.gameType?.no_moves_condition) {
+            const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
+            
+            if (legalMoves.length === 0) {
+              // No legal moves detected - current player loses
+              console.log('NO LEGAL MOVES DETECTED! Player loses (no_moves_condition)...');
+              stopGameTimer(gameId);
+              
+              gameState.status = 'completed';
+              const losingPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+              const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+              gameState.winner = winner?.id;
+              gameState.winReason = 'no_moves';
+
+              // Update ELO ratings (only if game is rated)
+              let eloChanges = null;
+              if (gameState.rated !== false && winner?.id && losingPlayer?.id) {
+                eloChanges = await updateEloRatings(winner.id, losingPlayer.id);
+                console.log('ELO updated for no_moves win:', eloChanges);
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              try {
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, winner?.id, JSON.stringify(gameState.pieces), 
+                   JSON.stringify({ 
+                     moves: gameState.moveHistory, 
+                     winner: winner?.id,
+                     reason: 'no_moves',
+                     eloChanges,
+                     rated: gameState.rated,
+                     allowPremoves: gameState.allowPremoves
+                   }),
+                   gameId]
+                );
+                console.log('Database updated for no_moves win');
+              } catch (dbError) {
+                console.error('Failed to update database:', dbError);
+              }
+
+              io.to(`game-${gameId}`).emit("gameOver", {
+                gameId,
+                winner: winner?.id,
+                reason: 'no_moves',
+                finalState: gameState,
+                eloChanges
+              });
+              console.log('gameOver event emitted for no_moves win in game-' + gameId);
+              
+              console.log(`NO LEGAL MOVES! Player ${losingPlayer?.username} loses in game ${gameId}`);
+              return; // Exit early since game is over
+            }
+          }
+
           // Track position for N-fold repetition detection
           const positionHash = getPositionHash(gameState.pieces, gameState.currentTurn);
           if (!gameState.positionHistory) {
@@ -2207,6 +2323,8 @@ function initializeSocket(server) {
           step_movement_value: fullPieceData.step_by_step_movement_value,
           can_hop_over_allies: fullPieceData.can_hop_over_allies,
           can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+          can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
+          can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
           // Capture data
           can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
           up_capture: fullPieceData.up_capture,
@@ -2255,6 +2373,12 @@ function initializeSocket(server) {
           can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
           // En passant
           can_en_passant: fullPieceData.can_en_passant,
+          // Checkers-style options
+          capture_on_hop: fullPieceData.capture_on_hop,
+          chain_capture_enabled: fullPieceData.chain_capture_enabled,
+          chain_hop_allies: fullPieceData.chain_hop_allies,
+          free_move_after_promotion: fullPieceData.free_move_after_promotion,
+          promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
           // Reset move tracking for the new piece type
           moveCount: 0,
           hasMoved: false
@@ -2266,8 +2390,17 @@ function initializeSocket(server) {
         // Clear pending promotion
         gameState.pendingPromotion = null;
 
-        // Switch turns after promotion
-        gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+        // Check if the promoted piece has free_move_after_promotion enabled
+        const hasFreeMoveAfterPromotion = fullPieceData.free_move_after_promotion === 1 || fullPieceData.free_move_after_promotion === true;
+        
+        if (hasFreeMoveAfterPromotion) {
+          // Store that this piece can take a free move (don't switch turns yet)
+          gameState.freeMovePieceId = promotedPiece.id;
+          gameState.freeMovePlayerId = userId;
+        } else {
+          // Switch turns after promotion (normal behavior)
+          gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+        }
 
         // Update database
         await db_pool.query(
@@ -2671,6 +2804,8 @@ function initializeSocket(server) {
                     step_movement_value: fullPieceData.step_by_step_movement_value,
                     can_hop_over_allies: fullPieceData.can_hop_over_allies,
                     can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+                    can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
+                    can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
                     up_capture: fullPieceData.up_capture,
@@ -2717,7 +2852,13 @@ function initializeSocket(server) {
                     can_fire_over_allies: fullPieceData.can_fire_over_allies,
                     can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
                     // En passant
-                    can_en_passant: fullPieceData.can_en_passant
+                    can_en_passant: fullPieceData.can_en_passant,
+                    // Checkers-style options
+                    capture_on_hop: fullPieceData.capture_on_hop,
+                    chain_capture_enabled: fullPieceData.chain_capture_enabled,
+                    chain_hop_allies: fullPieceData.chain_hop_allies,
+                    free_move_after_promotion: fullPieceData.free_move_after_promotion,
+                    promotion_pieces_ids: fullPieceData.promotion_pieces_ids
                   };
                 }
                 return piece;
@@ -3338,9 +3479,78 @@ function initializeCastlingPartners(gameState) {
 }
 
 /**
+ * Get all pieces that are hopped over during a move
+ * Used for capture_on_hop functionality (checkers-style captures)
+ */
+function getPiecesHoppedOver(fromX, fromY, toX, toY, movingPiece, allPieces) {
+  const pieceOwner = movingPiece.team || movingPiece.player_id;
+  const hoppedPieces = [];
+  
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  
+  // For diagonal movement (checkers-style)
+  if (absDx === absDy && absDx > 0) {
+    const stepX = dx > 0 ? 1 : -1;
+    const stepY = dy > 0 ? 1 : -1;
+    
+    let x = fromX + stepX;
+    let y = fromY + stepY;
+    
+    while (x !== toX || y !== toY) {
+      const pieceAtSquare = allPieces.find(p => p.x === x && p.y === y && p.id !== movingPiece.id);
+      if (pieceAtSquare) {
+        const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
+        // Only capture enemy pieces
+        if (pieceAtSquareOwner !== pieceOwner) {
+          hoppedPieces.push(pieceAtSquare);
+        }
+      }
+      x += stepX;
+      y += stepY;
+    }
+  }
+  // For straight line movement
+  else if (dx === 0 && dy !== 0) {
+    const stepY = dy > 0 ? 1 : -1;
+    let y = fromY + stepY;
+    
+    while (y !== toY) {
+      const pieceAtSquare = allPieces.find(p => p.x === fromX && p.y === y && p.id !== movingPiece.id);
+      if (pieceAtSquare) {
+        const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
+        if (pieceAtSquareOwner !== pieceOwner) {
+          hoppedPieces.push(pieceAtSquare);
+        }
+      }
+      y += stepY;
+    }
+  }
+  else if (dy === 0 && dx !== 0) {
+    const stepX = dx > 0 ? 1 : -1;
+    let x = fromX + stepX;
+    
+    while (x !== toX) {
+      const pieceAtSquare = allPieces.find(p => p.x === x && p.y === fromY && p.id !== movingPiece.id);
+      if (pieceAtSquare) {
+        const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
+        if (pieceAtSquareOwner !== pieceOwner) {
+          hoppedPieces.push(pieceAtSquare);
+        }
+      }
+      x += stepX;
+    }
+  }
+  
+  return hoppedPieces;
+}
+
+/**
  * Basic move validation - checks if move is legal based on piece rules
  */
-function validateAndApplyMove(gameState, move) {
+async function validateAndApplyMove(gameState, move) {
   const { from, to, pieceId } = move;
   const pieces = gameState.pieces;
   
@@ -3542,6 +3752,8 @@ function validateAndApplyMove(gameState, move) {
   // Update piece position
   const movingPiece = pieces.find(p => p.id === pieceId);
   let promotionEligible = null;
+  let hoppedCaptures = [];
+  let chainCaptureAvailable = false;
   
   if (movingPiece) {
     movingPiece.x = to.x;
@@ -3579,8 +3791,36 @@ function validateAndApplyMove(gameState, move) {
       }
     }
 
+    // Handle capture_on_hop (checkers-style captures) - capture all pieces hopped over
+    const hasCaptureOnHop = movingPiece.capture_on_hop === 1 || movingPiece.capture_on_hop === true;
+    if (hasCaptureOnHop) {
+      // Use the original from position to calculate hopped pieces
+      const hoppedPieces = getPiecesHoppedOver(from.x, from.y, to.x, to.y, movingPiece, pieces);
+      if (hoppedPieces.length > 0) {
+        console.log('[CAPTURE ON HOP] Capturing hopped pieces:', hoppedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })));
+        // Remove hopped pieces from the game
+        hoppedPieces.forEach(hoppedPiece => {
+          const hoppedIndex = pieces.findIndex(p => p.id === hoppedPiece.id);
+          if (hoppedIndex !== -1) {
+            pieces.splice(hoppedIndex, 1);
+            hoppedCaptures.push(hoppedPiece);
+          }
+        });
+      }
+    }
+
+    // Check for chain capture ability (can continue capturing after a capture)
+    const hasChainCapture = movingPiece.chain_capture_enabled === 1 || movingPiece.chain_capture_enabled === true;
+    const didCapture = capturedPiece !== null || hoppedCaptures.length > 0;
+    
+    if (hasChainCapture && didCapture) {
+      // Check if this piece can make another capture from its new position
+      // For now, mark that chain capture is available - the frontend will need to handle restricting to only this piece
+      chainCaptureAvailable = true;
+    }
+
     // Check for promotion eligibility
-    promotionEligible = checkPromotionEligibility(movingPiece, to, gameState);
+    promotionEligible = await checkPromotionEligibility(movingPiece, to, gameState);
   }
 
   // Clear previous en passant target - it's only valid for one turn
@@ -3672,7 +3912,7 @@ function validateAndApplyMove(gameState, move) {
     }
   }
 
-  return { valid: true, captured: capturedPiece, promotionEligible, movingPiece, isEnPassantCapture };
+  return { valid: true, captured: capturedPiece, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable };
 }
 
 /**
@@ -3698,7 +3938,7 @@ function getPositionHash(pieces, currentTurn) {
  * @param {Object} gameState - The current game state
  * @returns {Object|null} - Promotion info if eligible, null otherwise
  */
-function checkPromotionEligibility(piece, targetSquare, gameState) {
+async function checkPromotionEligibility(piece, targetSquare, gameState) {
   if (!piece || !piece.can_promote) return null;
   
   const gameType = gameState.gameType;
@@ -3724,7 +3964,7 @@ function checkPromotionEligibility(piece, targetSquare, gameState) {
   // Get eligible pieces for promotion (all starting piece types except:
   // - the piece being promoted
   // - any piece with has_checkmate_rule (can be checkmated)
-  const eligiblePieces = getPromotionOptions(gameState, piece);
+  const eligiblePieces = await getPromotionOptions(gameState, piece);
   
   if (eligiblePieces.length === 0) return null;
   
@@ -3741,16 +3981,68 @@ function checkPromotionEligibility(piece, targetSquare, gameState) {
  * @param {Object} promotingPiece - The piece being promoted
  * @returns {Array} - Array of piece objects that can be promoted to
  */
-function getPromotionOptions(gameState, promotingPiece) {
+async function getPromotionOptions(gameState, promotingPiece) {
   const pieces = gameState.pieces;
   const pieceOwner = promotingPiece.player_id || promotingPiece.team;
   
   console.log('getPromotionOptions called:', {
     promotingPieceId: promotingPiece.piece_id,
     promotingPieceName: promotingPiece.piece_name,
+    hasCustomPromotionPieces: !!promotingPiece.promotion_pieces_ids
   });
   
-  // Get all unique piece types that the player started with
+  // Check if this piece has custom promotion pieces defined
+  if (promotingPiece.promotion_pieces_ids) {
+    try {
+      const customPieceIds = JSON.parse(promotingPiece.promotion_pieces_ids);
+      if (Array.isArray(customPieceIds) && customPieceIds.length > 0) {
+        console.log('Using custom promotion pieces:', customPieceIds);
+        
+        // Load full piece data for the custom promotion pieces from database
+        const eligiblePieces = [];
+        for (const pieceId of customPieceIds) {
+          // First try to find the piece in the current game pieces
+          const existingPiece = pieces.find(p => parseInt(p.piece_id) === parseInt(pieceId));
+          if (existingPiece) {
+            eligiblePieces.push({
+              piece_id: existingPiece.piece_id,
+              piece_name: existingPiece.piece_name,
+              image_location: existingPiece.image_location,
+              image: existingPiece.image,
+              image_url: existingPiece.image_url
+            });
+          } else {
+            // Load from database if not in current game
+            try {
+              const [[pieceData]] = await db_pool.query(
+                `SELECT id as piece_id, piece_name, image_location FROM pieces WHERE id = ?`,
+                [pieceId]
+              );
+              if (pieceData) {
+                eligiblePieces.push({
+                  piece_id: pieceData.piece_id,
+                  piece_name: pieceData.piece_name,
+                  image_location: pieceData.image_location,
+                  image: null,
+                  image_url: null
+                });
+              }
+            } catch (dbErr) {
+              console.error(`Error loading piece ${pieceId} for promotion:`, dbErr);
+            }
+          }
+        }
+        
+        console.log(`Returning ${eligiblePieces.length} custom promotion pieces`);
+        return eligiblePieces;
+      }
+    } catch (parseErr) {
+      console.error('Error parsing promotion_pieces_ids:', parseErr);
+      // Fall through to default logic
+    }
+  }
+  
+  // Default logic: Get all unique piece types that the player started with
   const playerPieces = pieces.filter(p => {
     const owner = p.player_id || p.team;
     return owner === pieceOwner;
@@ -4182,8 +4474,13 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   const ratio2 = piece.ratio_capture_2 || (useMovementForCapture ? piece.ratio_movement_2 : 0) || 0;
   if (ratio1 > 0 && ratio2 > 0) {
     if ((absDx === ratio1 && absDy === ratio2) || (absDx === ratio2 && absDy === ratio1)) {
-      const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
-      const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+      // For attacks, check attack-specific hopping first, then fallback to movement hopping
+      // Also check chain_hop_allies which allows hopping over allies during chain capture sequences
+      const canHopAllies = (piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true) ||
+                           (piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true) ||
+                           (piece.chain_hop_allies === 1 || piece.chain_hop_allies === true);
+      const canHopEnemies = (piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true) ||
+                            (piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true);
       const pieceOwner = piece.team || piece.player_id;
       
       // Debug hopping values
@@ -4191,6 +4488,9 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
         pieceName: piece.name,
         can_hop_over_allies_raw: piece.can_hop_over_allies,
         can_hop_over_enemies_raw: piece.can_hop_over_enemies,
+        can_hop_attack_over_allies_raw: piece.can_hop_attack_over_allies,
+        can_hop_attack_over_enemies_raw: piece.can_hop_attack_over_enemies,
+        chain_hop_allies_raw: piece.chain_hop_allies,
         canHopAllies,
         canHopEnemies
       });
@@ -5497,7 +5797,7 @@ function checkWinCondition(gameState, capturedPiece = null) {
   // This provides a reasonable default so games without explicit win conditions can still end
   const hasAnyWinCondition = gameType.mate_condition || gameType.capture_condition || 
                               gameType.value_condition || gameType.squares_condition || 
-                              gameType.hill_condition;
+                              gameType.hill_condition || gameType.no_moves_condition;
   
   if (!hasAnyWinCondition) {
     for (const player of players) {

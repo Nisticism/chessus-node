@@ -748,6 +748,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         image_location: sourcePiece.image_location,
         ends_game_on_checkmate: sourcePiece.ends_game_on_checkmate || false,
         ends_game_on_capture: sourcePiece.ends_game_on_capture || false,
+        can_control_squares: sourcePiece.can_control_squares || false,
+        // Castling override data
         manual_castling_partners: sourcePiece.manual_castling_partners || false,
         castling_partner_left_key: sourcePiece.castling_partner_left_key || null,
         castling_partner_right_key: sourcePiece.castling_partner_right_key || null,

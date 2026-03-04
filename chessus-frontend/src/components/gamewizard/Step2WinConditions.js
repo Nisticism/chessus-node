@@ -80,7 +80,41 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         {gameData.capture_condition && (
           <div className={styles["sub-field"]}>
             <p className={styles["field-hint"]} style={{ marginTop: '10px' }}>
-              ℹ️ Specific pieces that end the game when captured will be configured in Step 4 (Piece Placement).
+              ℹ️ Specific pieces that end the game when captured will be configured in Step 4 (Piece Placement). If no specific pieces are marked, the game will end when all of a player's pieces are captured.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* No Legal Moves Condition (Checkers-style) */}
+      <div className={styles["condition-section"]}>
+        <h3>No Legal Moves Condition</h3>
+        <div className={styles["radio-group"]}>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="no_moves_condition"
+              value="true"
+              checked={gameData.no_moves_condition === true}
+              onChange={(e) => handleBooleanChange("no_moves_condition", e.target.value)}
+            />
+            <span>Player with no legal moves loses</span>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="no_moves_condition"
+              value="false"
+              checked={gameData.no_moves_condition === false}
+              onChange={(e) => handleBooleanChange("no_moves_condition", e.target.value)}
+            />
+            <span>Disable</span>
+          </label>
+        </div>
+        {gameData.no_moves_condition && (
+          <div className={styles["sub-field"]}>
+            <p className={styles["field-hint"]} style={{ marginTop: '10px' }}>
+              ℹ️ In games like Checkers, if a player has no legal moves, they lose. This is different from chess stalemate (which is a draw).
             </p>
           </div>
         )}

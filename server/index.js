@@ -3440,8 +3440,10 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         step_by_step_attack_style, step_by_step_attack_value,
         max_piece_captures_per_move, max_piece_captures_per_ranged_attack,
         special_scenario_captures,
-        can_fire_over_allies, can_fire_over_enemies, can_en_passant
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        can_fire_over_allies, can_fire_over_enemies, can_en_passant,
+        capture_on_hop, chain_capture_enabled, free_move_after_promotion, promotion_pieces_ids,
+        can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceValues = [
@@ -3590,7 +3592,17 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseBooleanField(pieceData.can_fire_over_allies),
       parseBooleanField(pieceData.can_fire_over_enemies),
       // En passant
-      parseBooleanField(pieceData.can_en_passant)
+      parseBooleanField(pieceData.can_en_passant),
+      // Checkers-style options
+      parseBooleanField(pieceData.capture_on_hop),
+      parseBooleanField(pieceData.chain_capture_enabled),
+      parseBooleanField(pieceData.free_move_after_promotion),
+      pieceData.promotion_pieces_ids || null,
+      // Attack-specific hopping
+      parseBooleanField(pieceData.can_hop_attack_over_allies),
+      parseBooleanField(pieceData.can_hop_attack_over_enemies),
+      // Chain hop allies
+      parseBooleanField(pieceData.chain_hop_allies)
     ];
 
     const [result] = await db_pool.query(pieceSql, pieceValues);
@@ -3806,7 +3818,14 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         special_scenario_captures = ?,
         can_fire_over_allies = ?,
         can_fire_over_enemies = ?,
-        can_en_passant = ?
+        can_en_passant = ?,
+        capture_on_hop = ?,
+        chain_capture_enabled = ?,
+        free_move_after_promotion = ?,
+        promotion_pieces_ids = ?,
+        can_hop_attack_over_allies = ?,
+        can_hop_attack_over_enemies = ?,
+        chain_hop_allies = ?
       WHERE id = ?
     `;
 
@@ -3955,6 +3974,16 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseBooleanField(pieceData.can_fire_over_enemies),
       // En passant
       parseBooleanField(pieceData.can_en_passant),
+      // Checkers-style options
+      parseBooleanField(pieceData.capture_on_hop),
+      parseBooleanField(pieceData.chain_capture_enabled),
+      parseBooleanField(pieceData.free_move_after_promotion),
+      pieceData.promotion_pieces_ids || null,
+      // Attack-specific hopping
+      parseBooleanField(pieceData.can_hop_attack_over_allies),
+      parseBooleanField(pieceData.can_hop_attack_over_enemies),
+      // Chain hop allies
+      parseBooleanField(pieceData.chain_hop_allies),
       pieceId
     ];
 

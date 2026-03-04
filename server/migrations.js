@@ -1783,6 +1783,118 @@ Join us in revolutionizing chess, one variant at a time.
   } catch (err) {
     console.error('Error adding featured_order column:', err.message);
   }
+
+  // Add no_moves_condition column to game_types for "no legal moves = loss" win condition (like checkers)
+  try {
+    const noMovesConditionCol = await columnExists('game_types', 'no_moves_condition');
+    if (!noMovesConditionCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN no_moves_condition BOOLEAN DEFAULT FALSE COMMENT 'If true, player with no legal moves loses (checkers-style). If false with mate_condition, no moves = stalemate (draw)'`,
+        "Add no_moves_condition column to game_types table for checkers-style win condition"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding no_moves_condition column:', err.message);
+  }
+
+  // Add promotion_pieces_ids column to pieces for customizing which pieces a piece can promote to
+  try {
+    const promotionPiecesCol = await columnExists('pieces', 'promotion_pieces_ids');
+    if (!promotionPiecesCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN promotion_pieces_ids TEXT DEFAULT NULL COMMENT 'JSON array of piece IDs this piece can promote to. If NULL, uses default promotion logic (all non-checkmate pieces)'`,
+        "Add promotion_pieces_ids column to pieces table for custom promotion options"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding promotion_pieces_ids column:', err.message);
+  }
+
+  // Add capture_on_hop column to pieces for checkers-style captures (capture all pieces hopped over)
+  try {
+    const captureOnHopCol = await columnExists('pieces', 'capture_on_hop');
+    if (!captureOnHopCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN capture_on_hop TINYINT(1) DEFAULT 0 COMMENT 'If true, this piece captures all enemy pieces it hops over during a move (like checkers)'`,
+        "Add capture_on_hop column to pieces table for checkers-style jump captures"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding capture_on_hop column:', err.message);
+  }
+
+  // Add chain_capture_enabled column to pieces for checkers-style multi-captures (can continue capturing after a capture)
+  try {
+    const chainCaptureCol = await columnExists('pieces', 'chain_capture_enabled');
+    if (!chainCaptureCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN chain_capture_enabled TINYINT(1) DEFAULT 0 COMMENT 'If true, this piece can make additional captures after capturing (like checkers multi-jump)'`,
+        "Add chain_capture_enabled column to pieces table for checkers-style chain captures"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding chain_capture_enabled column:', err.message);
+  }
+
+  // Add free_move_after_promotion column to pieces for allowing promoted piece one free move (like checkers king)
+  try {
+    const freeMoveCol = await columnExists('pieces', 'free_move_after_promotion');
+    if (!freeMoveCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN free_move_after_promotion TINYINT(1) DEFAULT 0 COMMENT 'If true, after promoting the piece can make one additional move (like checkers king promotion)'`,
+        "Add free_move_after_promotion column to pieces table for post-promotion free move"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding free_move_after_promotion column:', err.message);
+  }
+
+  // Add can_hop_attack_over_allies column to pieces for attack-specific hopping (separate from movement hopping)
+  try {
+    const hopAttackAlliesCol = await columnExists('pieces', 'can_hop_attack_over_allies');
+    if (!hopAttackAlliesCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN can_hop_attack_over_allies TINYINT(1) DEFAULT 0 COMMENT 'If true, this piece can hop over allied pieces when attacking (separate from movement hopping)'`,
+        "Add can_hop_attack_over_allies column to pieces table for attack-specific hopping"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding can_hop_attack_over_allies column:', err.message);
+  }
+
+  // Add can_hop_attack_over_enemies column to pieces for attack-specific hopping
+  try {
+    const hopAttackEnemiesCol = await columnExists('pieces', 'can_hop_attack_over_enemies');
+    if (!hopAttackEnemiesCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN can_hop_attack_over_enemies TINYINT(1) DEFAULT 0 COMMENT 'If true, this piece can hop over enemy pieces when attacking (for checkers-style captures)'`,
+        "Add can_hop_attack_over_enemies column to pieces table for attack-specific hopping"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding can_hop_attack_over_enemies column:', err.message);
+  }
+  
+  // Add chain_hop_allies column to pieces for allowing chain hops over allied pieces
+  try {
+    const chainHopAlliesCol = await columnExists('pieces', 'chain_hop_allies');
+    if (!chainHopAlliesCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN chain_hop_allies TINYINT(1) DEFAULT 0 COMMENT 'If true, this piece can chain hop over allied pieces during multi-jump sequences'`,
+        "Add chain_hop_allies column to pieces table for chain hopping over allies"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding chain_hop_allies column:', err.message);
+  }
   
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');

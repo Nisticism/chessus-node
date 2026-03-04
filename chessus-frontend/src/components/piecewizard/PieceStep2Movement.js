@@ -828,16 +828,16 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
         <h3>Hopping Ability</h3>
         {(() => {
           const hasRatioMovement = pieceData.ratio_movement_style;
-          const hasExactDirectional = pieceData.directional_movement_style && [
-            pieceData.up_left_movement,
-            pieceData.up_movement,
-            pieceData.up_right_movement,
-            pieceData.left_movement,
-            pieceData.right_movement,
-            pieceData.down_left_movement,
-            pieceData.down_movement,
-            pieceData.down_right_movement
-          ].some(val => val < 0);
+          const hasExactDirectional = pieceData.directional_movement_style && (
+            (pieceData.up_left_movement && pieceData.up_left_movement_exact) ||
+            (pieceData.up_movement && pieceData.up_movement_exact) ||
+            (pieceData.up_right_movement && pieceData.up_right_movement_exact) ||
+            (pieceData.left_movement && pieceData.left_movement_exact) ||
+            (pieceData.right_movement && pieceData.right_movement_exact) ||
+            (pieceData.down_left_movement && pieceData.down_left_movement_exact) ||
+            (pieceData.down_movement && pieceData.down_movement_exact) ||
+            (pieceData.down_right_movement && pieceData.down_right_movement_exact)
+          );
           
           const canHop = hasRatioMovement || hasExactDirectional;
           
@@ -852,16 +852,16 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             type="checkbox"
             checked={pieceData.can_hop_over_allies}
             onChange={(e) => handleChange("can_hop_over_allies", e.target.checked)}
-            disabled={!pieceData.ratio_movement_style && !(pieceData.directional_movement_style && [
-              pieceData.up_left_movement,
-              pieceData.up_movement,
-              pieceData.up_right_movement,
-              pieceData.left_movement,
-              pieceData.right_movement,
-              pieceData.down_left_movement,
-              pieceData.down_movement,
-              pieceData.down_right_movement
-            ].some(val => val < 0))}
+            disabled={!pieceData.ratio_movement_style && !(pieceData.directional_movement_style && (
+              (pieceData.up_left_movement && pieceData.up_left_movement_exact) ||
+              (pieceData.up_movement && pieceData.up_movement_exact) ||
+              (pieceData.up_right_movement && pieceData.up_right_movement_exact) ||
+              (pieceData.left_movement && pieceData.left_movement_exact) ||
+              (pieceData.right_movement && pieceData.right_movement_exact) ||
+              (pieceData.down_left_movement && pieceData.down_left_movement_exact) ||
+              (pieceData.down_movement && pieceData.down_movement_exact) ||
+              (pieceData.down_right_movement && pieceData.down_right_movement_exact)
+            ))}
           />
           <span>Can hop over allied pieces</span>
         </label>
@@ -870,16 +870,16 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             type="checkbox"
             checked={pieceData.can_hop_over_enemies}
             onChange={(e) => handleChange("can_hop_over_enemies", e.target.checked)}
-            disabled={!pieceData.ratio_movement_style && !(pieceData.directional_movement_style && [
-              pieceData.up_left_movement,
-              pieceData.up_movement,
-              pieceData.up_right_movement,
-              pieceData.left_movement,
-              pieceData.right_movement,
-              pieceData.down_left_movement,
-              pieceData.down_movement,
-              pieceData.down_right_movement
-            ].some(val => val < 0))}
+            disabled={!pieceData.ratio_movement_style && !(pieceData.directional_movement_style && (
+              (pieceData.up_left_movement && pieceData.up_left_movement_exact) ||
+              (pieceData.up_movement && pieceData.up_movement_exact) ||
+              (pieceData.up_right_movement && pieceData.up_right_movement_exact) ||
+              (pieceData.left_movement && pieceData.left_movement_exact) ||
+              (pieceData.right_movement && pieceData.right_movement_exact) ||
+              (pieceData.down_left_movement && pieceData.down_left_movement_exact) ||
+              (pieceData.down_movement && pieceData.down_movement_exact) ||
+              (pieceData.down_right_movement && pieceData.down_right_movement_exact)
+            ))}
           />
           <span>Can hop over enemy pieces</span>
         </label>
