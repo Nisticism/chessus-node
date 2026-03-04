@@ -99,7 +99,8 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
       // Clear if not customizing or no pieces selected
       updatePieceData({ promotion_pieces_ids: null });
     }
-  }, [selectedPromotionPieces, showPromotionSelector, updatePieceData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPromotionPieces, showPromotionSelector]);
 
   const handleChange = (field, value) => {
     updatePieceData({ [field]: value });
@@ -143,7 +144,8 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
     if (!canShowEnPassant && pieceData.can_en_passant) {
       updatePieceData({ can_en_passant: false });
     }
-  }, [canShowEnPassant, pieceData.can_en_passant, updatePieceData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canShowEnPassant, pieceData.can_en_passant]);
 
   return (
     <div className={styles["step-container"]}>
