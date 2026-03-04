@@ -355,6 +355,29 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDeleteUser = async (user) => {
+    if (!window.confirm(`Are you sure you want to permanently delete the account for "${user.username}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await axios.post(
+        `${API_URL}delete`,
+        { username: user.username, admin_id: currentUser.id },
+        { headers: authHeader() }
+      );
+
+      setAlertType("success");
+      setAlertMessage(`User "${user.username}" has been permanently deleted`);
+      setShowAlert(true);
+      fetchData(activeTab, pagination.page);
+    } catch (err) {
+      setAlertType("error");
+      setAlertMessage(err.response?.data?.message || "Failed to delete user");
+      setShowAlert(true);
+    }
+  };
+
   const renderUsersTable = () => (
     <div className={styles["table-container"]}>
       <table className={styles["data-table"]}>
@@ -446,6 +469,16 @@ const AdminDashboard = () => {
                         </button>
                       )}
                     </>
+                  )}
+
+                  {user.role !== 'owner' && (
+                    <button
+                      className={styles["delete-btn"]}
+                      onClick={() => handleDeleteUser(user)}
+                      title="Permanently delete this user"
+                    >
+                      Delete
+                    </button>
                   )}
                 </div>
               </td>

@@ -12,6 +12,7 @@ import BioSection from "../biosection/BioSection";
 import Divider from "../Divider/Divider";
 import DonorBadge from "../DonorBadge/DonorBadge";
 import MatchHistory from "../matchhistory/MatchHistory";
+import OngoingGames from "../ongoinggames/OngoingGames";
 import FriendsList from "../friendslist/FriendsList";
 import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests } from "../../actions/friends";
 import { useSocket } from "../../contexts/SocketContext";
@@ -184,9 +185,11 @@ const PlayerPage = (props) => {
     e.preventDefault();
     if (!currentUser) return;
     
+    const isAdminOrOwner = ['admin', 'owner'].includes(currentUser.role?.toLowerCase());
+    
     // Show confirmation dialog
     const confirmDelete = window.confirm(
-      currentUser.role === "Admin" && currentUser.username !== username
+      isAdminOrOwner && currentUser.username !== username
         ? `Are you sure you want to delete the account for ${username}? This action cannot be undone.`
         : "Are you sure you want to delete your account? This action cannot be undone."
     );
@@ -195,7 +198,7 @@ const PlayerPage = (props) => {
       return; // User cancelled
     }
 
-    if (currentUser.role !== "Admin") {
+    if (!isAdminOrOwner || currentUser.username === username) {
       // Regular user deleting their own account
       try {
         await dispatch(deleteUser(currentUser.username));
@@ -235,7 +238,8 @@ const PlayerPage = (props) => {
   const handleEdit = (e) => {
     e.preventDefault();
     if (!currentUser) return;
-    if (currentUser.role !== "Admin") {
+    const isAdminOrOwner = ['admin', 'owner'].includes(currentUser.role?.toLowerCase());
+    if (!isAdminOrOwner || currentUser.username === username) {
       navigate("/profile/edit");
     } else {
       navigate(`/profile/${username}/edit`);
@@ -695,6 +699,14 @@ const PlayerPage = (props) => {
                 <FriendsList 
                   userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
                   showOnlineOnly={false}
+                />
+              </div>
+
+              <div className={styles["info-card"]}>
+                <h2 className={styles["card-title"]}>Ongoing Games</h2>
+                <OngoingGames
+                  userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
+                  currentUserId={currentUser?.id}
                 />
               </div>
 
