@@ -517,7 +517,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -739,11 +739,12 @@ function initializeSocket(server) {
         const piecesData = JSON.stringify(piecesArray);
         
         const isChallenge = challengedUserId ? 1 : 0;
+        const effectiveTurnLength = isCorrespondence ? null : timeControl;
         
         const [result] = await db_pool.query(
-          `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id)
-           VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?)`,
-          [currentTime, timeControl, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId]
+          `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id, is_correspondence, correspondence_days)
+           VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?)`,
+          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
         );
 
         const gameId = result.insertId;
@@ -781,7 +782,9 @@ function initializeSocket(server) {
           startingMode,
           premove: null,
           isChallenge: !!challengedUserId,
-          challengedUserId
+          challengedUserId,
+          isCorrespondence: !!isCorrespondence,
+          correspondenceDays: correspondenceDays || null
         };
 
         activeGames.set(gameId.toString(), gameState);
@@ -3212,7 +3215,7 @@ async function getOngoingGames() {
   try {
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
-              g.allow_spectators, g.show_piece_helpers,
+              g.allow_spectators, g.show_piece_helpers, g.is_correspondence, g.correspondence_days,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
               GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids

@@ -1076,6 +1076,66 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
   }
 });
 
+// GET /api/users/:userId/ongoing-games - Active games a user is participating in (for profile page)
+app.get("/api/users/:userId/ongoing-games", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const [games] = await db_pool.query(`
+      SELECT
+        g.id,
+        g.created_at,
+        g.start_time,
+        g.status,
+        g.turn_length,
+        g.increment,
+        g.is_correspondence,
+        g.correspondence_days,
+        gt.game_name as game_type_name,
+        gt.board_width,
+        gt.board_height,
+        p1.user_id as player1_id,
+        u1.username as player1_username,
+        u1.elo as player1_elo,
+        p2.user_id as player2_id,
+        u2.username as player2_username,
+        u2.elo as player2_elo
+      FROM games g
+      LEFT JOIN game_types gt ON g.game_type_id = gt.id
+      LEFT JOIN players p1 ON g.id = p1.game_id AND p1.player_position = 1
+      LEFT JOIN users u1 ON p1.user_id = u1.id
+      LEFT JOIN players p2 ON g.id = p2.game_id AND p2.player_position = 2
+      LEFT JOIN users u2 ON p2.user_id = u2.id
+      WHERE g.status IN ('active', 'ready', 'waiting')
+        AND (p1.user_id = ? OR p2.user_id = ?)
+      ORDER BY g.start_time DESC, g.created_at DESC
+    `, [userId, userId]);
+
+    const formattedGames = games.map(game => ({
+      id: game.id,
+      createdAt: game.created_at,
+      startTime: game.start_time,
+      status: game.status,
+      gameTypeName: game.game_type_name,
+      boardWidth: game.board_width,
+      boardHeight: game.board_height,
+      timeControl: game.turn_length,
+      increment: game.increment,
+      isCorrespondence: !!game.is_correspondence,
+      correspondenceDays: game.correspondence_days,
+      players: [
+        { id: game.player1_id, username: game.player1_username, elo: game.player1_elo },
+        { id: game.player2_id, username: game.player2_username, elo: game.player2_elo }
+      ].filter(p => p.id)
+    }));
+
+    res.json({ games: formattedGames });
+  } catch (err) {
+    console.error("Error in /api/users/:userId/ongoing-games:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
 // ===== FRIENDS ENDPOINTS =====
 
 // Get user's friends list (only accepted friendships)

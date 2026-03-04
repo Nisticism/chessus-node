@@ -644,6 +644,38 @@
   }
 }
 
+// Game mode tabs inside modal (Live vs Correspondence)
+.game-mode-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #3a3a5a;
+}
+
+.game-mode-tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: #252542;
+  color: #9090c0;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+
+  &:hover:not(.game-mode-tab-active) {
+    background: #2e2e50;
+    color: #c0c0e0;
+  }
+}
+
+.game-mode-tab-active {
+  background: linear-gradient(135deg, #6e4ef2 0%, #4f3ac7 100%);
+  color: #fff;
+}
+
 .form-group {
   margin-bottom: 20px;
 

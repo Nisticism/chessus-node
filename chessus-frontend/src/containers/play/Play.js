@@ -46,6 +46,10 @@ const Play = () => {
   const [error, setError] = useState(null);
   const [deletingGameId, setDeletingGameId] = useState(null);
   
+  // Correspondence / game mode state
+  const [gameMode, setGameMode] = useState("live"); // "live" or "correspondence"
+  const [correspondenceDays, setCorrespondenceDays] = useState("1"); // days per move
+  
   // Challenge system state
   const [challengedUserId, setChallengedUserId] = useState(null);
   const [challengedUsername, setChallengedUsername] = useState("");
@@ -250,6 +254,8 @@ const Play = () => {
     setChallengedUserId(null);
     setChallengedUsername("");
     setModalGameSearch("");
+    setGameMode("live");
+    setCorrespondenceDays("1");
   };
 
   // Accept an incoming challenge
@@ -371,8 +377,9 @@ const Play = () => {
     setError(null);
     
     try {
-      const timeControlMinutes = timeControl === "0" ? null : parseInt(timeControl);
-      const incrementSeconds = parseInt(increment) || 0;
+      const isCorrespondence = gameMode === "correspondence";
+      const timeControlMinutes = isCorrespondence ? null : (timeControl === "0" ? null : parseInt(timeControl));
+      const incrementSeconds = isCorrespondence ? 0 : (parseInt(increment) || 0);
       
       const gameData = {
         gameTypeId: selectedGameType.id,
@@ -383,7 +390,9 @@ const Play = () => {
         rated,
         allowPremoves,
         startingMode,
-        playerSide
+        playerSide,
+        isCorrespondence,
+        correspondenceDays: isCorrespondence ? parseInt(correspondenceDays) : null
       };
 
       // Add challenge data if challenging a friend
@@ -847,6 +856,24 @@ const Play = () => {
               </div>
             )}
 
+            {/* Game Mode Tabs */}
+            <div className={styles["game-mode-tabs"]}>
+              <button
+                type="button"
+                className={`${styles["game-mode-tab"]} ${gameMode === "live" ? styles["game-mode-tab-active"] : ""}`}
+                onClick={() => setGameMode("live")}
+              >
+                ⚡ Live
+              </button>
+              <button
+                type="button"
+                className={`${styles["game-mode-tab"]} ${gameMode === "correspondence" ? styles["game-mode-tab-active"] : ""}`}
+                onClick={() => setGameMode("correspondence")}
+              >
+                📬 Correspondence
+              </button>
+            </div>
+
             {/* Game Type Search */}
             <div className={styles["form-group"]}>
               <label>Game Type</label>
@@ -925,39 +952,61 @@ const Play = () => {
               </div>
             </div>
             
-            <div className={styles["form-group"]}>
-              <label>Time Control (minutes per player)</label>
-              <select 
-                value={timeControl} 
-                onChange={(e) => setTimeControl(e.target.value)}
-              >
-                <option value="0">No time limit</option>
-                <option value="1">1 minute (Bullet)</option>
-                <option value="3">3 minutes (Blitz)</option>
-                <option value="5">5 minutes (Blitz)</option>
-                <option value="10">10 minutes (Rapid)</option>
-                <option value="15">15 minutes (Rapid)</option>
-                <option value="30">30 minutes (Classical)</option>
-                <option value="60">60 minutes (Classical)</option>
-              </select>
-            </div>
+            {gameMode === "live" ? (
+              <>
+                <div className={styles["form-group"]}>
+                  <label>Time Control (minutes per player)</label>
+                  <select 
+                    value={timeControl} 
+                    onChange={(e) => setTimeControl(e.target.value)}
+                  >
+                    <option value="0">No time limit</option>
+                    <option value="1">1 minute (Bullet)</option>
+                    <option value="3">3 minutes (Blitz)</option>
+                    <option value="5">5 minutes (Blitz)</option>
+                    <option value="10">10 minutes (Rapid)</option>
+                    <option value="15">15 minutes (Rapid)</option>
+                    <option value="30">30 minutes (Classical)</option>
+                    <option value="60">60 minutes (Classical)</option>
+                  </select>
+                </div>
 
-            {timeControl !== "0" && (
+                {timeControl !== "0" && (
+                  <div className={styles["form-group"]}>
+                    <label>Increment (seconds per move)</label>
+                    <select 
+                      value={increment} 
+                      onChange={(e) => setIncrement(e.target.value)}
+                    >
+                      <option value="0">No increment</option>
+                      <option value="1">+1 second</option>
+                      <option value="2">+2 seconds</option>
+                      <option value="3">+3 seconds</option>
+                      <option value="5">+5 seconds</option>
+                      <option value="10">+10 seconds</option>
+                    </select>
+                    <div className={styles["input-hint"]}>
+                      Time added to your clock after each move
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
               <div className={styles["form-group"]}>
-                <label>Increment (seconds per move)</label>
-                <select 
-                  value={increment} 
-                  onChange={(e) => setIncrement(e.target.value)}
+                <label>Time per Move</label>
+                <select
+                  value={correspondenceDays}
+                  onChange={(e) => setCorrespondenceDays(e.target.value)}
                 >
-                  <option value="0">No increment</option>
-                  <option value="1">+1 second</option>
-                  <option value="2">+2 seconds</option>
-                  <option value="3">+3 seconds</option>
-                  <option value="5">+5 seconds</option>
-                  <option value="10">+10 seconds</option>
+                  <option value="1">1 day per move</option>
+                  <option value="2">2 days per move</option>
+                  <option value="3">3 days per move</option>
+                  <option value="5">5 days per move</option>
+                  <option value="7">7 days per move (1 week)</option>
+                  <option value="14">14 days per move (2 weeks)</option>
                 </select>
                 <div className={styles["input-hint"]}>
-                  Time added to your clock after each move
+                  Each player has this many days to make their move. No live timer — play at your own pace.
                 </div>
               </div>
             )}
