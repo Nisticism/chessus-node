@@ -72,7 +72,7 @@ const BCRYPT_ROUNDS = 12;
 // Security: Track failed login attempts (in-memory, resets on server restart)
 const loginAttempts = new Map();
 const LOGIN_LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
-const MAX_LOGIN_ATTEMPTS = 5;
+const MAX_LOGIN_ATTEMPTS = 10; // Allow 10 failed attempts before lockout
 
 // Email service
 const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail } = require("./email-service");
@@ -85,6 +85,10 @@ const { initializeSocket, onlineUsers, getIO } = require("./game-socket");
 const PORT = process.env.PORT || 3001;
 
 const app = express();
+
+// Trust proxy for EC2/load balancer - set to 1 for single proxy hop
+// This makes req.ip use the first X-Forwarded-For value
+app.set('trust proxy', 1);
 
 // Some day I will set up a router to change this /api crap, but today is not that day.
 // const router = express.Router();
@@ -152,9 +156,9 @@ const authLimiter = rateLimit({
 });
 
 const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // 5 registrations per hour per IP
-  message: { message: "Too many accounts created, please try again later" },
+  windowMs: 30 * 60 * 1000, // 30 minutes
+  max: 10, // 10 registrations per 30 minutes per IP
+  message: { message: "Too many accounts created, please try again in 30 minutes" },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -2107,11 +2111,14 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
   }
 });
 
-app.post("/api/login", authLimiter, async (req, res) => {
+// Note: Using custom loginAttempts tracking instead of authLimiter
+// This only counts FAILED attempts, so successful logins aren't rate-limited
+app.post("/api/login", async (req, res) => {
   try {
     const { username, password } = req.body;
-    const clientIP = req.ip || req.connection.remoteAddress;
-    const lockoutKey = `${clientIP}:${username}`;
+    // Lock out per username only - prevents cross-user lockout issues
+    // while still protecting against brute force on specific accounts
+    const lockoutKey = username.toLowerCase();
 
     // Security: Check for account lockout
     const attempts = loginAttempts.get(lockoutKey);

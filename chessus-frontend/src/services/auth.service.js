@@ -62,13 +62,14 @@ const login = async (username, password) => {
       password,
     });
     
-    if (response && response.data) {
-      if (response.data.result.username) {
+    if (response && response.data && response.data.result) {
+      const result = response.data.result;
+      if (result && result.username) {
         // Store both access and refresh tokens
         const userData = {
-          ...response.data.result,
-          accessToken: response.data.result.accessToken,
-          refreshToken: response.data.result.refreshToken
+          ...result,
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken
         };
         localStorage.setItem("user", JSON.stringify(userData));
       }

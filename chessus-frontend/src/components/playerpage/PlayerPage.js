@@ -8,7 +8,6 @@ import { EDIT_SUCCESS } from "../../actions/types";
 import StandardButton from "../standardbutton/StandardButton";
 import axios from "axios";
 import API_URL from "../../global/global";
-import StandardTextBlock from "../StandardTextBlock/StandardTextBlock";
 import BioSection from "../biosection/BioSection";
 import Divider from "../Divider/Divider";
 import DonorBadge from "../DonorBadge/DonorBadge";
@@ -29,7 +28,7 @@ const PlayerPage = (props) => {
   const [loading, setLoading] = useState(true);
   // const [ messageDisplay, setMessageDisplay ] = useState(false);
   const dispatch = useDispatch();
-  const [firstRender, setFirstRender] = useState(false);
+  const [firstRender] = useState(false);
   // const [userInfo, setUserInfo] = useState(null);
   const [realUser, setRealUser] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
@@ -87,9 +86,11 @@ const PlayerPage = (props) => {
       checkIfRealUser(username);
       getPlayerPage();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstRender, username]);
 
   // Handle banner message from navigation state (e.g., after profile update)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (location.state?.showBanner) {
       setBannerMessage(location.state.bannerMessage || "Action completed successfully");
@@ -219,9 +220,9 @@ const PlayerPage = (props) => {
         setAlertType("success");
         setShowAlert(true);
         
-        // Wait 2 seconds to show message, then redirect to signup
+        // Wait 2 seconds to show message, then redirect to admin dashboard
         setTimeout(() => {
-          navigate('/register');
+          navigate('/admin/dashboard');
         }, 2000);
       } catch (error) {
         setAlertMessage("Failed to delete account");
@@ -350,11 +351,6 @@ const PlayerPage = (props) => {
       setShowBanner(true);
     }
   };
-
-  const handleLogInfo = (e) => {
-    e.preventDefault();
-    console.log(playerPageUser);
-  }
 
   const handleProfilePictureClick = () => {
     // Allow any user to view enlarged profile picture

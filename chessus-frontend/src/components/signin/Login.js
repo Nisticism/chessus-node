@@ -1,9 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
-import Form from "react-validation/build/form";
-import Input from "react-validation/build/input";
-import CheckButton from "react-validation/build/button";
 import { login } from "../../actions/auth";
 import { trackLogin } from "../../analytics/GoogleAnalytics";
 import styles from "./login.module.scss";
@@ -89,9 +86,11 @@ const Login = (props) => {
             <input
               type="text"
               className={styles["form-control"]}
+              id="username"
               name="username"
               value={username}
               onChange={onChangeUsername}
+              autoComplete="username"
               validations={[required]}
             />
           </div>
@@ -100,9 +99,11 @@ const Login = (props) => {
             <input
               type="password"
               className="form-control"
+              id="password"
               name="password"
               value={password}
               onChange={onChangePassword}
+              autoComplete="current-password"
               validations={[required]}
             />
           </div>

@@ -1,8 +1,5 @@
 import React, { useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import Form from "react-validation/build/form";
-import Input from "react-validation/build/input";
-import CheckButton from "react-validation/build/button";
 import { useNavigate } from "react-router-dom";
 import { isEmail } from "validator";
 import { register, login } from "../../actions/auth";
@@ -113,20 +110,24 @@ const Register = () => {
                 <input
                   type="text"
                   className="form-control"
+                  id="username"
                   name="username"
                   value={username}
                   onChange={onChangeUsername}
+                  autoComplete="username"
                   validations={[required, vusername]}
                 />
               </div>
               <div className="form-group">
                 <label htmlFor="email" className={styles["field-label"]}>Email</label>
                 <input
-                  type="text"
+                  type="email"
                   className="form-control"
+                  id="email"
                   name="email"
                   value={email}
                   onChange={onChangeEmail}
+                  autoComplete="email"
                   validations={[required, validEmail]}
                 />
               </div>
@@ -135,9 +136,11 @@ const Register = () => {
                 <input
                   type="password"
                   className="form-control"
+                  id="password"
                   name="password"
                   value={password}
                   onChange={onChangePassword}
+                  autoComplete="new-password"
                   validations={[required, vpassword]}
                 />
               </div>
