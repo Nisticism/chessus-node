@@ -1,15 +1,82 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
+import InfoTooltip from "./InfoTooltip";
 import NumberInput from "../common/NumberInput";
 import { pieceImageLibrary } from "../../assets/piece-images";
+
+// Compute average perceived brightness (0-255) of an image from its data URL
+const computeImageBrightness = (dataUrl) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const size = 64; // sample at small size for performance
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, size, size);
+      try {
+        const imageData = ctx.getImageData(0, 0, size, size);
+        const data = imageData.data;
+        let totalBrightness = 0;
+        let pixelCount = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3];
+          if (a < 30) continue; // skip mostly transparent pixels
+          // Perceived brightness formula (ITU BT.601)
+          totalBrightness += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          pixelCount++;
+        }
+        resolve(pixelCount > 0 ? totalBrightness / pixelCount : 128);
+      } catch {
+        resolve(128); // fallback if canvas is tainted
+      }
+    };
+    img.onerror = () => resolve(128);
+    img.src = dataUrl;
+  });
+};
 
 const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, existingImages = [], setExistingImages }) => {
   const [visibleImageCount, setVisibleImageCount] = useState(2);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [libraryTargetIndex, setLibraryTargetIndex] = useState(0);
   const [libraryFilter, setLibraryFilter] = useState('All');
+  const [libraryColorFilter, setLibraryColorFilter] = useState('All');
+  const [brightnessWarning, setBrightnessWarning] = useState('');
   const fileInputRefs = useRef([]);
+
+  // Check brightness whenever both P1 and P2 previews are set
+  const checkBrightness = useCallback(async () => {
+    const p1 = pieceData.piece_image_previews?.[0];
+    const p2 = pieceData.piece_image_previews?.[1];
+    if (!p1 || !p2) {
+      setBrightnessWarning('');
+      return;
+    }
+    try {
+      const [b1, b2] = await Promise.all([
+        computeImageBrightness(p1),
+        computeImageBrightness(p2)
+      ]);
+      if (b1 < b2 - 15) {
+        setBrightnessWarning(
+          `Player 1's image appears darker (brightness: ${Math.round(b1)}) than Player 2's (brightness: ${Math.round(b2)}). ` +
+          `Player 1 should typically use the lighter colored piece.`
+        );
+      } else {
+        setBrightnessWarning('');
+      }
+    } catch {
+      setBrightnessWarning('');
+    }
+  }, [pieceData.piece_image_previews]);
+
+  useEffect(() => {
+    checkBrightness();
+  }, [checkBrightness]);
 
   const handleChange = (field, value) => {
     updatePieceData({ [field]: value });
@@ -151,9 +218,12 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
   };
 
   const libraryCategories = ['All', ...new Set(pieceImageLibrary.map(img => img.category))];
-  const filteredLibraryImages = libraryFilter === 'All' 
-    ? pieceImageLibrary 
-    : pieceImageLibrary.filter(img => img.category === libraryFilter);
+  const libraryColorOptions = ['All', 'White', 'Black'];
+  const filteredLibraryImages = pieceImageLibrary.filter(img => {
+    const matchesCategory = libraryFilter === 'All' || img.category === libraryFilter;
+    const matchesColor = libraryColorFilter === 'All' || img.color === libraryColorFilter;
+    return matchesCategory && matchesColor;
+  });
 
   return (
     <div className={styles["step-container"]}>
@@ -216,18 +286,25 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
       </div>
 
       <div className={styles["image-upload-section"]}>
-        <h3>Piece Images <span className={styles["required"]}>*</span></h3>
-        <p className={styles["field-hint"]}>
-          Upload up to 8 images for this piece (e.g., different player colors). At least one image is required.
-        </p>
+        <h3>Piece Images <InfoTooltip text="Upload images for each player. Player 1 (light) and Player 2 (dark) are required. You can add more variant images for additional players. PNG, JPG, or SVG formats up to 5MB. SVG is recommended for multi-tile pieces as it scales without distortion." /> <span className={styles["required"]}>*</span></h3>
+        
+        {brightnessWarning && (
+          <div className={styles["brightness-warning"]}>
+            <span className={styles["warning-icon"]}>⚠️</span>
+            {brightnessWarning}
+          </div>
+        )}
         
         {[...Array(visibleImageCount)].map((_, index) => {
           const preview = pieceData.piece_image_previews?.[index];
-          const label = index === 0 ? "Player 1 Image" : index === 1 ? "Player 2 Image" : `Image ${index + 1}`;
+          const isRequired = index < 2;
+          const label = index === 0 ? "Player 1 Image (Light)" : index === 1 ? "Player 2 Image (Dark)" : `Image ${index + 1}`;
           
           return (
             <div key={index} className={styles["single-image-upload"]} style={{ marginTop: index === 0 ? '1.5rem' : '0' }}>
-              <label className={styles["image-label"]}>{label}</label>
+              <label className={styles["image-label"]}>
+                {label} {isRequired && <span className={styles["required"]}>*</span>}
+              </label>
               <input
                 type="file"
                 ref={el => fileInputRefs.current[index] = el}
@@ -323,28 +400,32 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
       <div className={styles["form-row"]}>
         <div className={styles["form-group"]}>
           <label className={styles["form-label"]}>
-            Piece Width (squares)
+            Piece Width (squares) <InfoTooltip text="How many squares wide this piece occupies on the board. Standard chess pieces are 1 square wide. Multi-tile pieces can be up to 4 squares wide. The piece's anchor point is the top-left square." />
           </label>
           <NumberInput
             value={pieceData.piece_width}
             onChange={(val) => handleChange("piece_width", val || 1)}
-            options={{ min: 1, max: 9, className: styles["form-input-small"] }}
+            options={{ min: 1, max: 4, className: styles["form-input-small"] }}
           />
-          <p className={styles["field-hint"]}>Usually 1</p>
         </div>
 
         <div className={styles["form-group"]}>
           <label className={styles["form-label"]}>
-            Piece Height (squares)
+            Piece Height (squares) <InfoTooltip text="How many squares tall this piece occupies on the board. Standard chess pieces are 1 square tall. Multi-tile pieces can be up to 4 squares tall. The piece's anchor point is the top-left square." />
           </label>
           <NumberInput
             value={pieceData.piece_height}
             onChange={(val) => handleChange("piece_height", val || 1)}
-            options={{ min: 1, max: 9, className: styles["form-input-small"] }}
+            options={{ min: 1, max: 4, className: styles["form-input-small"] }}
           />
-          <p className={styles["field-hint"]}>Usually 1</p>
         </div>
       </div>
+
+      {(pieceData.piece_width > 1 || pieceData.piece_height > 1) && (
+        <p className={styles["field-hint"]} style={{ color: 'var(--accent-orange)', marginBottom: '1rem' }}>
+          ⚠️ Multi-tile pieces ({pieceData.piece_width}×{pieceData.piece_height}) cannot hop over other pieces. Movement is calculated from the anchor (top-left square). The entire footprint must fit on the board and not overlap other pieces.
+        </p>
+      )}
 
       {/* Board Preview - Only show in edit mode */}
       {isEditMode && (
@@ -373,16 +454,32 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
             </div>
             
             <div className={styles["library-filter"]}>
-              {libraryCategories.map(category => (
-                <button
-                  key={category}
-                  type="button"
-                  className={`${styles["filter-btn"]} ${libraryFilter === category ? styles["active"] : ''}`}
-                  onClick={() => setLibraryFilter(category)}
-                >
-                  {category}
-                </button>
-              ))}
+              <div className={styles["filter-row"]}>
+                <span className={styles["filter-label"]}>Category:</span>
+                {libraryCategories.map(category => (
+                  <button
+                    key={category}
+                    type="button"
+                    className={`${styles["filter-btn"]} ${libraryFilter === category ? styles["active"] : ''}`}
+                    onClick={() => setLibraryFilter(category)}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+              <div className={styles["filter-row"]}>
+                <span className={styles["filter-label"]}>Color:</span>
+                {libraryColorOptions.map(color => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`${styles["filter-btn"]} ${libraryColorFilter === color ? styles["active"] : ''}`}
+                    onClick={() => setLibraryColorFilter(color)}
+                  >
+                    {color === 'White' ? <><span className={styles["color-circle"] + ' ' + styles["color-circle-white"]} /> White</> : color === 'Black' ? <><span className={styles["color-circle"] + ' ' + styles["color-circle-black"]} /> Black</> : color}
+                  </button>
+                ))}
+              </div>
             </div>
             
             <div className={styles["library-grid"]}>

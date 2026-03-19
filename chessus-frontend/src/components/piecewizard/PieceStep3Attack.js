@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
 import NumberInput from "../common/NumberInput";
+import InfoTooltip from "./InfoTooltip";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyle }) => {
@@ -334,7 +335,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
     <div className={styles["step-container"]}>
       <h2>Attack & Capture Configuration</h2>
       <p className={styles["step-description"]}>
-        Define how your piece captures and attacks. Pieces can capture by moving (like most chess pieces) or attack from range without moving (like a cannon). Values: 0 = cannot, positive = up to that many squares. Check "Exact" to require exactly that distance, or "Infinite" for unlimited range.
+        Define how your piece captures and attacks.
       </p>
 
       {/* Attack Like Movement Checkbox */}
@@ -345,16 +346,13 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
             checked={pieceData.attacks_like_movement || false}
             onChange={(e) => handleAttackLikeMovement(e.target.checked)}
           />
-          <span>Can attack how it moves (import movement settings)</span>
+          <span>Can attack how it moves <InfoTooltip text="Automatically copies all your movement settings (Step 2) to the capture settings below. The piece will be able to capture enemies on any square it can move to. Toggle this off to configure capture patterns separately from movement." /></span>
         </label>
-        <p className={styles["field-hint"]}>
-          Check this to automatically use the same pattern as movement for capturing on move
-        </p>
       </div>
 
       {/* Capture on Move */}
       <div className={styles["condition-section"]}>
-        <h3>Capture on Move</h3>
+        <h3>Capture on Move <InfoTooltip text="'Capture on Move' means the piece moves to the enemy's square to capture it (like most chess pieces). This is different from 'Can attack how it moves' above — that checkbox auto-imports your movement settings. This section lets you manually configure capture-specific directions, distances, and patterns independently of how the piece moves." /></h3>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
             <input
@@ -874,14 +872,14 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   checked={pieceData.first_move_only_capture}
                   onChange={(e) => handleChange("first_move_only_capture", e.target.checked)}
                 />
-                <span>First move only (piece loses capture ability after moving once)</span>
+                <span>First move only <InfoTooltip text="When enabled, this piece can only capture by moving during its first move. After its first move, it loses all capture-on-move abilities permanently. Useful for pieces with a special opening attack." /></span>
               </label>
             </div>
 
             {/* Ratio Capture (Knight-like) */}
             {!pieceData.attacks_like_movement && (
               <div className={styles["sub-field"]}>
-                <h4>Ratio Capture Movement (L-shape)</h4>
+                <h4>Ratio Capture Movement (L-shape) <InfoTooltip text="L-shaped capture like a knight. The piece jumps one distance in one direction, then a different distance perpendicularly to land on and capture an enemy. Leave both empty to disable. Example: 2 and 1 for standard knight capture." /></h4>
                 <div className={styles["form-row"]}>
                   <div className={styles["form-group"]}>
                     <label>Ratio One</label>
@@ -900,16 +898,13 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     />
                   </div>
                 </div>
-                <p className={styles["field-hint"]}>
-                  Leave empty to disable L-shaped capture (e.g., 2 and 1 for knight-like)
-                </p>
               </div>
             )}
 
             {/* Step-by-Step Capture */}
             {!pieceData.attacks_like_movement && (
               <div className={styles["sub-field"]}>
-                <h4>Step-by-Step Capture</h4>
+                <h4>Step-by-Step Capture <InfoTooltip text="A step budget for capturing. The piece moves one square at a time in any direction, changing direction each step, to reach and capture an enemy. The checkbox restricts steps to orthogonal directions only (no diagonal). Leave empty to disable." /></h4>
                 <label>Total Capture Steps</label>
                 <NumberInput
                   value={pieceData.step_by_step_capture ? Math.abs(pieceData.step_by_step_capture) : ""}
@@ -931,9 +926,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   />
                   <span>Exclude diagonal movement</span>
                 </label>
-                <p className={styles["field-hint"]}>
-                  Total squares piece can capture in any combination of directions (checked = orthogonal only)
-                </p>
               </div>
             )}
           </>
@@ -942,11 +934,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
 
       {/* Attack Hopping */}
       <div className={styles["condition-section"]}>
-        <h3>Attack Hopping</h3>
-        <p className={styles["field-hint"]} style={{ marginBottom: '1rem' }}>
-          Allow this piece to hop over other pieces when attacking (applies to capture-on-move attacks).
-          This is separate from movement hopping - enabling attack hopping allows the piece to jump over pieces to capture.
-        </p>
+        <h3>Attack Hopping <InfoTooltip text="Controls whether this piece can hop over other pieces when attacking (capture-on-move only). The piece jumps over an intervening piece to reach and capture the piece it lands on. This does NOT capture the pieces that are hopped over — for that, see 'Checkers-style Capture' below. Requires ratio capture or at least one capture direction with 'Exact' enabled." /></h3>
         
         {/* Show warning if neither ratio nor exact directional capture is enabled */}
         {(() => {
@@ -1009,12 +997,52 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         </label>
       </div>
 
+      {/* Checkers-style Capture Options */}
+      <div className={styles["condition-section"]}>
+        <h3>Checkers-style Capture <InfoTooltip text="These options control what happens when a piece hops over another piece. 'Capture on Hop' makes hopping over an enemy capture it (like checkers). 'Chain Capture' allows multiple jumps in one turn. These require enemy hopping to be enabled in either Movement Hopping (Step 2) or Attack Hopping above." /></h3>
+
+        {/* Capture on Hop - disabled when no enemy hopping enabled */}
+        <div style={{ marginBottom: '15px' }}>
+          <label className={styles["checkbox-label"]} style={(pieceData.can_hop_over_enemies || pieceData.can_hop_attack_over_enemies) ? {} : { opacity: 0.5 }}>
+            <input
+              type="checkbox"
+              checked={pieceData.capture_on_hop || false}
+              onChange={(e) => handleChange("capture_on_hop", e.target.checked)}
+              disabled={!(pieceData.can_hop_over_enemies || pieceData.can_hop_attack_over_enemies)}
+            />
+            <span>Capture on Hop <InfoTooltip text="When this piece hops over enemy pieces (jumps over them to land on an empty square beyond), it captures all enemy pieces it hops over. Essential for checkers-style gameplay. Requires 'Can hop over enemy pieces' (Step 2) or 'Can hop over enemy pieces when attacking' (above)." /></span>
+          </label>
+        </div>
+
+        <div style={{ marginBottom: '15px' }}>
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.chain_capture_enabled || false}
+              onChange={(e) => handleChange("chain_capture_enabled", e.target.checked)}
+            />
+            <span>Chain Capture (Multi-Jump) <InfoTooltip text="If this piece captures an enemy, it can make additional captures in the same turn (only this piece can move). Enables multi-jump sequences like in checkers." /></span>
+          </label>
+          
+          {/* Chain Hop Over Allies - only show when chain capture is enabled */}
+          {pieceData.chain_capture_enabled && (
+            <div style={{ marginLeft: '20px', marginTop: '10px' }}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={pieceData.chain_hop_allies || false}
+                  onChange={(e) => handleChange("chain_hop_allies", e.target.checked)}
+                />
+                <span>Chain Hop Over Allies <InfoTooltip text="During chain capture sequences, this piece can also hop over allied pieces (not capturing them). Useful for variants where jumping over your own pieces is allowed during multi-jump moves." /></span>
+              </label>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Ranged Attack */}
       <div className={styles["condition-section"]}>
-        <h3>Ranged Attack</h3>
-        <p className={styles["field-hint"]} style={{ marginBottom: '1.5rem' }}>
-          Ranged attacks allow the piece to attack without moving (piece stays in place but can capture distant enemies)
-        </p>
+        <h3>Ranged Attack <InfoTooltip text="Ranged attacks let the piece attack without moving — it stays in place but can capture distant enemies. Unlike 'Capture on Move,' the piece does not move to the target square. Configure the attack range, line of sight rules (whether it can fire over other pieces), and directional/ratio attack patterns." /></h3>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
             <input

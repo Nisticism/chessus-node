@@ -529,6 +529,13 @@ const PieceWizard = ({ editPieceId = null }) => {
         alert('Please enter a piece name (at least 2 characters) before continuing.');
         return;
       }
+      // Validate 2 required images
+      const hasP1 = pieceData.piece_image_previews?.[0] || (isEditMode && existingImages[0]);
+      const hasP2 = pieceData.piece_image_previews?.[1] || (isEditMode && existingImages[1]);
+      if (!hasP1 || !hasP2) {
+        alert('Please upload images for both Player 1 (light) and Player 2 (dark).');
+        return;
+      }
     }
     setCurrentStep(step);
   };
@@ -542,6 +549,13 @@ const PieceWizard = ({ editPieceId = null }) => {
     if (currentStep === 1) {
       if (!pieceData.piece_name || pieceData.piece_name.trim().length < 2) {
         alert('Please enter a piece name (at least 2 characters) before continuing.');
+        return;
+      }
+      // Validate 2 required images
+      const hasP1 = pieceData.piece_image_previews?.[0] || (isEditMode && existingImages[0]);
+      const hasP2 = pieceData.piece_image_previews?.[1] || (isEditMode && existingImages[1]);
+      if (!hasP1 || !hasP2) {
+        alert('Please upload images for both Player 1 (light) and Player 2 (dark).');
         return;
       }
     }
@@ -558,6 +572,14 @@ const PieceWizard = ({ editPieceId = null }) => {
   };
 
   const handleSubmit = async () => {
+    // Validate 2 required images before submitting
+    const hasP1 = pieceData.piece_image_previews?.[0] || (isEditMode && existingImages[0]);
+    const hasP2 = pieceData.piece_image_previews?.[1] || (isEditMode && existingImages[1]);
+    if (!hasP1 || !hasP2) {
+      alert('Please upload images for both Player 1 (light) and Player 2 (dark).');
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {

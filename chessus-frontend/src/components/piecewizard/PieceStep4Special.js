@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import styles from "./piecewizard.module.scss";
 import NumberInput from "../common/NumberInput";
+import InfoTooltip from "./InfoTooltip";
 import PiecesService from "../../services/pieces.service";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -106,10 +107,6 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
     updatePieceData({ [field]: value });
   };
 
-  const handleBooleanChange = (field, value) => {
-    updatePieceData({ [field]: value === "true" });
-  };
-
   const handleNumberChange = (field, value) => {
     const numValue = value === "" ? null : parseInt(value);
     updatePieceData({ [field]: numValue });
@@ -155,7 +152,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
       </p>
 
       {/* Movement Restrictions */}
-      <div className={styles["condition-section"]}>
+      <div className={`${styles["condition-section"]} ${styles["narrow-section"]}`}>
         <h3>Movement Restrictions</h3>
         <div className={styles["sub-field"]}>
           <label>Minimum Turns Before Move</label>
@@ -171,7 +168,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
       </div>
 
       {/* Special Scenarios */}
-      <div className={styles["condition-section"]}>
+      <div className={`${styles["condition-section"]} ${styles["narrow-section"]}`}>
         <h3>Special Abilities</h3>
         
         <div className={styles["sub-field"]}>
@@ -181,11 +178,8 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
               checked={pieceData.can_castle || false}
               onChange={(e) => handleChange("can_castle", e.target.checked)}
             />
-            <span>Can Castle</span>
+            <span>Can Castle <InfoTooltip text="Allows this piece to castle with a partner piece. The furthest allied piece to the left and right on the same row become castling partners. Move 2 squares left or right, and the partner moves to the opposite side. Both pieces must not have moved, and all squares between must be unoccupied. If this piece has check/checkmate rules, it cannot castle through enemy-controlled squares." /></span>
           </label>
-          <p className={styles["field-hint"]}>
-            Allows this piece to castle with its partner piece. At the start of the game, the furthest allied piece to the left and right on the same row become this piece's castling partners. To castle, move 2 squares left or right, and the corresponding partner will move to the opposite side. Both pieces must not have moved since the game started, and all squares between must be unoccupied. If this piece has check or checkmate rules, it cannot castle through enemy-controlled squares.
-          </p>
         </div>
 
         <div className={styles["sub-field"]}>
@@ -195,11 +189,8 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
               checked={pieceData.can_promote || false}
               onChange={(e) => handleChange("can_promote", e.target.checked)}
             />
-            <span>Can Promote</span>
+            <span>Can Promote <InfoTooltip text="Allows this piece to promote (transform into a different piece) when it reaches specific squares. Promotion squares are defined in the game type settings. By default it can promote to any starting piece, or you can select specific pieces below." /></span>
           </label>
-          <p className={styles["field-hint"]}>
-            Allows this piece to promote to another piece when it reaches specific squares. Promotion squares are defined in the game type settings.
-          </p>
         </div>
 
         {/* Promotion Pieces Selector - Only show when can_promote is enabled */}
@@ -332,88 +323,21 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
                 checked={pieceData.can_en_passant || false}
                 onChange={(e) => handleChange("can_en_passant", e.target.checked)}
               />
-              <span>Can En Passant</span>
+              <span>Can En Passant <InfoTooltip text="Allows this piece to capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn. The capture must be made immediately after the enemy's qualifying move. Only available for pieces with no backward movement (pawn-like pieces)." /></span>
             </label>
-            <p className={styles["field-hint"]}>
-              Allows this piece to capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn. En passant captures must be made immediately after the enemy's qualifying move.
-            </p>
           </div>
         )}
 
-        {/* Checkers-style Options */}
+        {/* Free Move After Promotion */}
         <div className={styles["sub-field"]} style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '15px' }}>
-          <h4 style={{ marginBottom: '10px', color: 'var(--button-border)' }}>Checkers-style Movement</h4>
-          <p className={styles["field-hint"]} style={{ marginBottom: '15px' }}>
-            These options enable checkers-like gameplay mechanics, such as jumping over and capturing enemies, multi-jump captures, and special promotion behaviors.
-          </p>
-
-          {/* Capture on Hop - show when movement hopping OR attack hopping is enabled */}
-          {(pieceData.can_hop_over_enemies || pieceData.can_hop_attack_over_enemies) ? (
-            <div style={{ marginBottom: '15px' }}>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.capture_on_hop || false}
-                  onChange={(e) => handleChange("capture_on_hop", e.target.checked)}
-                />
-                <span>Capture on Hop</span>
-              </label>
-              <p className={styles["field-hint"]}>
-                When this piece hops over enemy pieces (jumps over them to land on an empty square beyond), it captures all enemy pieces it hops over. This is essential for games like checkers where pieces must jump over enemies to capture them.
-              </p>
-            </div>
-          ) : (
-            <div style={{ marginBottom: '15px' }}>
-              <p className={styles["field-hint"]} style={{ color: 'var(--accent-orange)' }}>
-                ℹ️ <strong>Capture on Hop</strong> requires either "Can hop over enemy pieces" (Step 2: Movement) or "Can hop over enemy pieces when attacking" (Step 3: Attack/Capture) to be enabled.
-              </p>
-            </div>
-          )}
-
-          <div style={{ marginBottom: '15px' }}>
-            <label className={styles["checkbox-label"]}>
-              <input
-                type="checkbox"
-                checked={pieceData.chain_capture_enabled || false}
-                onChange={(e) => handleChange("chain_capture_enabled", e.target.checked)}
-              />
-              <span>Chain Capture (Multi-Jump)</span>
-            </label>
-            <p className={styles["field-hint"]}>
-              If this piece captures an enemy, it can make additional captures in the same turn (only this piece can move). This enables multi-jump sequences like in checkers, where a piece can capture multiple enemies in one turn by making successive jumps.
-            </p>
-            
-            {/* Chain Hop Over Allies - only show when chain capture is enabled */}
-            {pieceData.chain_capture_enabled && (
-              <div style={{ marginLeft: '20px', marginTop: '10px' }}>
-                <label className={styles["checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.chain_hop_allies || false}
-                    onChange={(e) => handleChange("chain_hop_allies", e.target.checked)}
-                  />
-                  <span>Chain Hop Over Allies</span>
-                </label>
-                <p className={styles["field-hint"]}>
-                  During chain capture sequences, this piece can also hop over allied pieces (not capturing them). Useful for variants where jumping over your own pieces is allowed during multi-jump moves.
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div style={{ marginBottom: '15px' }}>
-            <label className={styles["checkbox-label"]}>
-              <input
-                type="checkbox"
-                checked={pieceData.free_move_after_promotion || false}
-                onChange={(e) => handleChange("free_move_after_promotion", e.target.checked)}
-              />
-              <span>Free Move After Promotion</span>
-            </label>
-            <p className={styles["field-hint"]}>
-              After this piece promotes (transforms into a different piece), the newly promoted piece can immediately take one additional move. This is useful for checkers kings, which can continue moving or capturing after being promoted.
-            </p>
-          </div>
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.free_move_after_promotion || false}
+              onChange={(e) => handleChange("free_move_after_promotion", e.target.checked)}
+            />
+            <span>Free Move After Promotion <InfoTooltip text="After this piece promotes (transforms into a different piece), the newly promoted piece can immediately take one additional move. Useful for checkers kings, which can continue moving or capturing after being promoted." /></span>
+          </label>
         </div>
       </div>
 
@@ -463,16 +387,19 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             <strong>Dimensions:</strong> {pieceData.piece_width || "?"}x{pieceData.piece_height || "?"}
           </div>
           <div className={styles["summary-item"]}>
+            <span className={styles["summary-tooltip"]}>Per-direction movement with configurable distance, exact/infinite range, and first-move-only options.</span>
             <strong>Directional Movement:</strong>{" "}
             {pieceData.directional_movement_style ? "Enabled" : "Disabled"}
           </div>
           <div className={styles["summary-item"]}>
+            <span className={styles["summary-tooltip"]}>L-shaped movement like a knight. Moves one distance in one direction, then a different distance perpendicularly.</span>
             <strong>Ratio Movement:</strong>{" "}
             {pieceData.ratio_movement_style
               ? `${pieceData.ratio_one_movement || 0}-${pieceData.ratio_two_movement || 0}`
               : "Disabled"}
           </div>
           <div className={styles["summary-item"]}>
+            <span className={styles["summary-tooltip"]}>A step budget where the piece moves one square at a time in any direction, changing direction each step.</span>
             <strong>Step-by-Step:</strong>{" "}
             {pieceData.step_by_step_movement_style
               ? `${Math.abs(pieceData.step_by_step_movement_value || 0)} steps${
@@ -481,20 +408,54 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
               : "Disabled"}
           </div>
           <div className={styles["summary-item"]}>
+            <span className={styles["summary-tooltip"]}>The piece moves to the enemy's square to capture it, like most chess pieces.</span>
             <strong>Capture on Move:</strong>{" "}
             {pieceData.can_capture_enemy_on_move ? "Yes" : "No"}
           </div>
           <div className={styles["summary-item"]}>
+            <span className={styles["summary-tooltip"]}>The piece attacks without moving — stays in place but can capture distant enemies.</span>
             <strong>Ranged Attack:</strong>{" "}
             {pieceData.can_capture_enemy_via_range ? "Enabled" : "Disabled"}
           </div>
           <div className={styles["summary-item"]}>
-            <strong>Can Hop Allies:</strong>{" "}
-            {pieceData.can_hop_over_allies ? "Yes" : "No"}
+            <span className={styles["summary-tooltip"]}>Whether the piece can hop over other pieces during movement. Does not capture hopped-over pieces.</span>
+            <strong>Movement Hopping:</strong>{" "}
+            {pieceData.can_hop_over_allies && pieceData.can_hop_over_enemies
+              ? "Allies & Enemies"
+              : pieceData.can_hop_over_allies
+              ? "Allies only"
+              : pieceData.can_hop_over_enemies
+              ? "Enemies only"
+              : "No"}
           </div>
           <div className={styles["summary-item"]}>
-            <strong>Can Hop Enemies:</strong>{" "}
-            {pieceData.can_hop_over_enemies ? "Yes" : "No"}
+            <span className={styles["summary-tooltip"]}>Whether the piece can hop over other pieces when attacking to reach its capture target.</span>
+            <strong>Attack Hopping:</strong>{" "}
+            {pieceData.can_hop_attack_over_allies && pieceData.can_hop_attack_over_enemies
+              ? "Allies & Enemies"
+              : pieceData.can_hop_attack_over_allies
+              ? "Allies only"
+              : pieceData.can_hop_attack_over_enemies
+              ? "Enemies only"
+              : "No"}
+          </div>
+          <div className={styles["summary-item"]}>
+            <span className={styles["summary-tooltip"]}>Capture on Hop captures pieces that are hopped over. Chain Capture allows multiple jumps in one turn.</span>
+            <strong>Checkers Capture:</strong>{" "}
+            {pieceData.capture_on_hop ? "Capture on Hop" : ""}
+            {pieceData.capture_on_hop && pieceData.chain_capture_enabled ? " + " : ""}
+            {pieceData.chain_capture_enabled ? "Chain Capture" : ""}
+            {!pieceData.capture_on_hop && !pieceData.chain_capture_enabled ? "No" : ""}
+          </div>
+          <div className={styles["summary-item"]}>
+            <span className={styles["summary-tooltip"]}>Castling, promotion, en passant, and other special rules.</span>
+            <strong>Special Abilities:</strong>{" "}
+            {[
+              pieceData.can_castle && "Castle",
+              pieceData.can_promote && "Promote",
+              pieceData.can_en_passant && "En Passant",
+              pieceData.free_move_after_promotion && "Free Move After Promotion"
+            ].filter(Boolean).join(", ") || "None"}
           </div>
         </div>
 

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import styles from "./piecewizard.module.scss";
+import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 
 const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) => {
   const [isHovering, setIsHovering] = useState(false);
@@ -155,14 +156,27 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     
     maxRange = Math.max(maxRange, ratioMovement, ratioCapture, ratioAttack, stepMovement, stepCapture, stepAttack);
     
-    // Board size should be at least 2*maxRange + 1 (to fit piece in center)
-    // Minimum 9x9, maximum 15x15
-    const calculatedSize = Math.max(9, Math.min(15, (maxRange * 2) + 1));
-    return calculatedSize;
+    // Padding: at least 4 squares on every side of the piece, or enough for max range
+    const padding = Math.max(4, maxRange);
+    return padding;
   };
   
-  const boardSize = calculateBoardSize();
-  const centerPos = Math.floor(boardSize / 2);
+  // Multi-tile piece dimensions
+  const pw = pieceData.piece_width || 1;
+  const ph = pieceData.piece_height || 1;
+  
+  const boardPadding = calculateBoardSize();
+  // Board dimensions: padding on each side + piece size
+  const boardWidth = pw + (boardPadding * 2);
+  const boardHeight = ph + (boardPadding * 2);
+  // Anchor position: top-left of the piece footprint
+  const anchorRow = boardPadding;
+  const anchorCol = boardPadding;
+  
+  // Check if a square is occupied by the multi-tile piece
+  const isPieceSquare = (row, col) => {
+    return row >= anchorRow && row < anchorRow + ph && col >= anchorCol && col < anchorCol + pw;
+  };
   
   // Check if any movement exceeds the board (ignore 99 infinite movement)
   const exceedsBoard = useMemo(() => {
@@ -178,8 +192,8 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
       pieceData.down_left_attack_range, pieceData.down_attack_range, pieceData.down_right_attack_range
     ];
     
-    return movements.some(val => val !== 99 && val !== null && Math.abs(val) > 7);
-  }, [pieceData]);
+    return movements.some(val => val !== 99 && val !== null && Math.abs(val) > boardPadding);
+  }, [pieceData, boardPadding]);
 
   // Helper to check if a value allows movement at distance
   const checkMovement = (value, distance, isExact = false) => {
@@ -194,10 +208,13 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
   // Calculate which squares the piece can move to
   // Returns { allowed: boolean, isFirstMoveOnly: boolean }
   const canMoveTo = (row, col) => {
-    if (row === centerPos && col === centerPos) return { allowed: false, isFirstMoveOnly: false };
+    if (isPieceSquare(row, col)) return { allowed: false, isFirstMoveOnly: false };
     
-    const rowDiff = row - centerPos;
-    const colDiff = col - centerPos;
+    // Check movement from every occupied square of the multi-tile piece
+    const _checkMoveFrom = (srcRow, srcCol) => {
+    const rowDiff = row - srcRow;
+    const colDiff = col - srcCol;
+
     
     let directionalAllowed = false;
     let directionalDirection = null;
@@ -362,16 +379,28 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     }
 
     return { allowed: false, isFirstMoveOnly: false };
+    };
+
+    for (let srcRow = anchorRow; srcRow < anchorRow + ph; srcRow++) {
+      for (let srcCol = anchorCol; srcCol < anchorCol + pw; srcCol++) {
+        const result = _checkMoveFrom(srcRow, srcCol);
+        if (result.allowed) return result;
+      }
+    }
+    return { allowed: false, isFirstMoveOnly: false };
   };
 
   // Calculate which squares the piece can capture on move (by moving to them)
   // Returns { allowed: boolean, isFirstMoveOnly: boolean }
   const canCaptureOnMoveTo = (row, col) => {
-    if (row === centerPos && col === centerPos) return { allowed: false, isFirstMoveOnly: false };
+    if (isPieceSquare(row, col)) return { allowed: false, isFirstMoveOnly: false };
     if (!pieceData.can_capture_enemy_on_move) return { allowed: false, isFirstMoveOnly: false };
     
-    const rowDiff = row - centerPos;
-    const colDiff = col - centerPos;
+    // Check capture from every occupied square of the multi-tile piece
+    const _checkCaptureFrom = (srcRow, srcCol) => {
+    const rowDiff = row - srcRow;
+    const colDiff = col - srcCol;
+
     
     let directionalCaptureAllowed = false;
     let directionalDirection = null;
@@ -530,15 +559,27 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     }
     
     return { allowed: false, isFirstMoveOnly: false };
+    };
+
+    for (let srcRow = anchorRow; srcRow < anchorRow + ph; srcRow++) {
+      for (let srcCol = anchorCol; srcCol < anchorCol + pw; srcCol++) {
+        const result = _checkCaptureFrom(srcRow, srcCol);
+        if (result.allowed) return result;
+      }
+    }
+    return { allowed: false, isFirstMoveOnly: false };
   };
 
   // Calculate which squares the piece can attack via range (without moving)
   const canRangedAttackTo = (row, col) => {
-    if (row === centerPos && col === centerPos) return false;
+    if (isPieceSquare(row, col)) return false;
     if (!pieceData.can_capture_enemy_via_range) return false;
     
-    const rowDiff = row - centerPos;
-    const colDiff = col - centerPos;
+    // Check ranged attack from every occupied square of the multi-tile piece
+    const _checkRangedFrom = (srcRow, srcCol) => {
+    const rowDiff = row - srcRow;
+    const colDiff = col - srcCol;
+
     
     let directionalRangedAllowed = false;
     
@@ -611,21 +652,31 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     }
 
     return false;
+    };
+
+    for (let srcRow = anchorRow; srcRow < anchorRow + ph; srcRow++) {
+      for (let srcCol = anchorCol; srcCol < anchorCol + pw; srcCol++) {
+        if (_checkRangedFrom(srcRow, srcCol)) return true;
+      }
+    }
+    return false;
   };
 
   // Render the board
   const renderBoard = () => {
     const squares = [];
     
-    for (let row = 0; row < boardSize; row++) {
-      for (let col = 0; col < boardSize; col++) {
-        const isCenter = row === centerPos && col === centerPos;
+    for (let row = 0; row < boardHeight; row++) {
+      for (let col = 0; col < boardWidth; col++) {
+        const isAnchor = row === anchorRow && col === anchorCol;
+        const isExtension = !isAnchor && isPieceSquare(row, col);
+        const isCenter = isAnchor || isExtension;
         const isLight = (row + col) % 2 === 0;
         
         // Get movement and capture info with first-move-only status
-        const moveInfo = isHovering ? canMoveTo(row, col) : { allowed: false, isFirstMoveOnly: false };
-        const captureInfo = showAttack && isHovering ? canCaptureOnMoveTo(row, col) : { allowed: false, isFirstMoveOnly: false };
-        const canRangedAttack = showAttack && isHovering && canRangedAttackTo(row, col);
+        const moveInfo = isHovering && !isCenter ? canMoveTo(row, col) : { allowed: false, isFirstMoveOnly: false };
+        const captureInfo = showAttack && isHovering && !isCenter ? canCaptureOnMoveTo(row, col) : { allowed: false, isFirstMoveOnly: false };
+        const canRangedAttack = showAttack && isHovering && !isCenter && canRangedAttackTo(row, col);
         
         // Destructure for clearer code
         const canMove = moveInfo.allowed;
@@ -693,6 +744,10 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         const squareStyle = {
           backgroundColor: isLight ? lightSquareColor : darkSquareColor
         };
+        // Anchor square needs higher z-index so multi-tile image paints above extension squares
+        if (isAnchor && (pw > 1 || ph > 1)) {
+          squareStyle.zIndex = 10;
+        }
         
         // Add icon for ranged attack
         let icon = null;
@@ -704,12 +759,45 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
           }}>💥</span>;
         }
         
+        const isMultiTile = pw > 1 || ph > 1;
+        const isNonSquareMultiTile = isMultiTile && pw !== ph;
+        const imgSrc = pieceData.piece_image_previews?.[0];
+        
         squares.push(
           <div key={`${row}-${col}`} className={squareClass} style={squareStyle}>
-            {isCenter && pieceData.piece_image_previews?.[0] && (
-              <img src={pieceData.piece_image_previews[0]} alt="Piece" />
+            {isAnchor && imgSrc && (
+              isNonSquareMultiTile ? (
+                <div
+                  ref={(el) => applySvgStretchBackground(el, imgSrc)}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: `${pw * 100}%`,
+                    height: `${ph * 100}%`,
+                    zIndex: 5,
+                  }}
+                />
+              ) : isMultiTile ? (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: `${pw * 100}%`,
+                    height: `${ph * 100}%`,
+                    zIndex: 5,
+                    backgroundImage: `url(${imgSrc})`,
+                    backgroundSize: '100% 100%',
+                    backgroundPosition: 'center',
+                    backgroundRepeat: 'no-repeat',
+                  }}
+                />
+              ) : (
+                <img src={imgSrc} alt="Piece" />
+              )
             )}
-            {isCenter && !pieceData.piece_image_previews?.[0] && "?"}
+            {isAnchor && !imgSrc && "?"}
             {icon}
           </div>
         );
@@ -723,14 +811,14 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     <div className={styles["board-preview"]}>
       {exceedsBoard && (
         <div className={styles["board-warning"]}>
-          ⚠️ This piece can move beyond this {boardSize}x{boardSize} board when playing on larger boards
+          ⚠️ This piece can move beyond this {boardWidth}x{boardHeight} board when playing on larger boards
         </div>
       )}
       <div 
         className={styles["board-grid"]} 
         style={{
-          gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
-          gridTemplateRows: `repeat(${boardSize}, 1fr)`
+          gridTemplateColumns: `repeat(${boardWidth}, 1fr)`,
+          gridTemplateRows: `repeat(${boardHeight}, 1fr)`
         }}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
@@ -771,7 +859,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         </div>
       )}
       <div className={styles["board-info"]}>
-        Board size: {boardSize}x{boardSize} | Piece position: ({centerPos}, {centerPos})
+        Board size: {boardWidth}x{boardHeight} | Piece position: ({anchorCol}, {anchorRow})
       </div>
     </div>
   );

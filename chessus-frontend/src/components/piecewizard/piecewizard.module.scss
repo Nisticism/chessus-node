@@ -178,6 +178,61 @@
   font-style: italic;
 }
 
+// Info Tooltip
+.info-tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.info-tooltip-icon {
+  cursor: help;
+  font-size: 0.85em;
+  color: rgba(140, 170, 220, 0.7);
+  transition: color 0.15s ease;
+  user-select: none;
+  line-height: 1;
+  font-style: normal;
+  vertical-align: middle;
+  position: relative;
+  top: -0.08em;
+
+  &:hover {
+    color: rgba(160, 190, 240, 0.95);
+  }
+}
+
+.info-tooltip-bubble {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 320px;
+  padding: 10px 14px;
+  background: var(--bg-dark, #1a1a2e);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: var(--text-light-gray, #ccc);
+  font-size: 0.85rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.45;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  white-space: normal;
+}
+
+.info-tooltip-top {
+  bottom: calc(100% + 8px);
+}
+
+.info-tooltip-bottom {
+  top: calc(100% + 8px);
+}
+
 // Image Upload
 .image-upload-section {
   margin-bottom: 2rem;
@@ -376,6 +431,12 @@
     margin-bottom: 1rem;
     font-size: 1.2rem;
   }
+}
+
+.narrow-section {
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .sub-fields {
@@ -817,7 +878,6 @@
   width: 90%;
   max-width: 800px;
   margin: 0 auto;
-  aspect-ratio: 1;
   background: var(--board-bg, transparent);
   padding: 15px;
   box-sizing: border-box;
@@ -831,10 +891,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #999;
+  box-shadow: inset 0 0 0 1px #999;
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
+  overflow: visible;
   box-sizing: border-box;
 
   // Background colors will be set via inline styles based on user preferences
@@ -973,13 +1034,16 @@
   }
 
   &.center-piece {
-    border: 3px solid var(--link-text);
+    outline: 3px solid var(--link-text);
+    outline-offset: -3px;
     background-color: var(--forum-row-hover) !important;
+    position: relative;
+    overflow: visible;
 
     img {
-      max-width: 80%;
-      max-height: 80%;
-      object-fit: contain;
+      width: 80%;
+      height: 80%;
+      object-fit: fill;
     }
   }
 }
@@ -1019,6 +1083,18 @@
   background-color: rgba(255, 255, 255, 0.08);
   border-radius: 4px;
   border-left: 3px solid var(--link-text);
+  position: relative;
+  cursor: default;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+  }
+
+  &:hover .summary-tooltip {
+    opacity: 1;
+    visibility: visible;
+  }
 
   strong {
     display: block;
@@ -1026,6 +1102,30 @@
     color: var(--text-light-gray);
     font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   }
+}
+
+.summary-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 300px;
+  padding: 8px 12px;
+  background: var(--bg-dark, #1a1a2e);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: var(--text-light-gray, #ccc);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.4;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  transition: none;
 }
 
 .summary-image {
@@ -1436,10 +1536,43 @@
 
 .library-filter {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.filter-row {
+  display: flex;
+  gap: 0.5rem;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-label {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  min-width: 70px;
+}
+
+.brightness-warning {
+  background: rgba(241, 196, 15, 0.15);
+  border: 1px solid rgba(241, 196, 15, 0.4);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  color: #f1c40f;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.warning-icon {
+  flex-shrink: 0;
+  font-size: 1.1rem;
 }
 
 .filter-btn {
@@ -1451,6 +1584,9 @@
   font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   cursor: pointer;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   
   &:hover {
     background: rgba(255, 255, 255, 0.1);
@@ -1461,6 +1597,24 @@
     border-color: var(--button-primary-bg);
     color: var(--text-white);
   }
+}
+
+.color-circle {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.color-circle-white {
+  background: #fff;
+}
+
+.color-circle-black {
+  background: #1a1a1a;
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
 }
 
 .library-grid {
