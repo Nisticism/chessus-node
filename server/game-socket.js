@@ -833,6 +833,26 @@ function initializeSocket(server) {
               increment: increment || 0
             });
           }
+
+          // Create a persistent notification for the challenge
+          try {
+            const dbHelpers = require("./db-helpers");
+            const notification = await dbHelpers.createNotification({
+              user_id: challengedUserId,
+              sender_id: hostId,
+              type: 'challenge',
+              title: `${hostUsername} challenged you to a game!`,
+              content: `${gameType.game_name} - ${timeControl}s${increment ? ` +${increment}s` : ''}`,
+              related_id: gameId,
+              action_url: `/play/${gameId}`
+            });
+            if (challengedSocketId) {
+              io.to(challengedSocketId).emit('newNotification', { ...notification, sender_username: hostUsername });
+            }
+          } catch (notifErr) {
+            console.error('Error creating challenge notification:', notifErr.message);
+          }
+
           console.log(`Challenge game ${gameId} created by ${hostUsername} for user ${challengedUserId}`);
         } else {
           // Broadcast to all users that a new game is available
@@ -1227,14 +1247,18 @@ function initializeSocket(server) {
         }
 
         // Record the move
+        const movingPieceWidth = moveResult.movingPiece?.piece_width || 1;
+        const movingPieceHeight = moveResult.movingPiece?.piece_height || 1;
         const moveRecord = {
           from: move.from,
           to: move.to,
           pieceId: move.pieceId,
           captured: moveResult.captured,
+          ...(moveResult.allCaptured && moveResult.allCaptured.length > 1 ? { allCaptured: moveResult.allCaptured } : {}),
           player: userId,
           position: gameState.currentTurn,
           timestamp: Date.now(),
+          ...(movingPieceWidth > 1 || movingPieceHeight > 1 ? { piece_width: movingPieceWidth, piece_height: movingPieceHeight } : {}),
           ...(moveResult.isRangedAttack ? { isRangedAttack: true } : {})
         };
         gameState.moveHistory.push(moveRecord);
@@ -1259,7 +1283,8 @@ function initializeSocket(server) {
             pieceId: moveResult.promotionEligible.pieceId,
             options: moveResult.promotionEligible.options,
             userId: userId,
-            capturedPiece: moveResult.captured
+            capturedPiece: moveResult.captured,
+            allCapturedPieces: moveResult.allCaptured
           };
 
           // Update database with current state (before turn switch)
@@ -1373,15 +1398,19 @@ function initializeSocket(server) {
           
           if (premoveResult.valid) {
             // Premove is valid, execute it
+            const premovePw = premoveResult.movingPiece?.piece_width || 1;
+            const premovePh = premoveResult.movingPiece?.piece_height || 1;
             const premoveRecord = {
               from: premove.move.from,
               to: premove.move.to,
               pieceId: premove.move.pieceId,
               captured: premoveResult.captured,
+              ...(premoveResult.allCaptured && premoveResult.allCaptured.length > 1 ? { allCaptured: premoveResult.allCaptured } : {}),
               player: nextPlayer.id,
               position: gameState.currentTurn,
               timestamp: Date.now(),
               isPremove: true,
+              ...(premovePw > 1 || premovePh > 1 ? { piece_width: premovePw, piece_height: premovePh } : {}),
               ...(premove.move.isRangedAttack ? { isRangedAttack: true } : {})
             };
             gameState.moveHistory.push(premoveRecord);
@@ -1463,8 +1492,8 @@ function initializeSocket(server) {
               return; // Exit early since game is over
             }
 
-            // Check for win conditions after premove (use premove's captured piece)
-            const premoveWinResult = checkWinCondition(gameState, premoveResult.captured);
+            // Check for win conditions after premove (use premove's captured pieces)
+            const premoveWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
             if (premoveWinResult.gameOver) {
               // Stop the timer
               stopGameTimer(gameId);
@@ -1807,8 +1836,8 @@ function initializeSocket(server) {
           return; // Exit early since game is over
         }
 
-        // Check for win conditions (pass captured piece for ends_game_on_capture check)
-        const winResult = checkWinCondition(gameState, moveResult.captured);
+        // Check for win conditions (pass all captured pieces for ends_game_on_capture check)
+        const winResult = checkWinCondition(gameState, moveResult.allCaptured || moveResult.captured);
         if (winResult.gameOver) {
           // Stop the timer
           stopGameTimer(gameId);
@@ -2512,7 +2541,7 @@ function initializeSocket(server) {
         }
 
         // Check for win conditions after promotion
-        const winResult = checkWinCondition(gameState, pendingPromotion.capturedPiece);
+        const winResult = checkWinCondition(gameState, pendingPromotion.allCapturedPieces || pendingPromotion.capturedPiece);
         if (winResult.gameOver) {
           stopGameTimer(gameId);
           gameState.status = 'completed';
@@ -3421,14 +3450,37 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
   
   const originalPos = { x: simulatedPieces[pieceIndex].x, y: simulatedPieces[pieceIndex].y };
   
-  // Check if destination has an enemy piece (would be captured)
-  const capturedPieceIndex = simulatedPieces.findIndex(p => 
-    p.id !== pieceId && doesPieceOccupySquare(p, to.x, to.y)
-  );
+  // Check if destination footprint has enemy pieces (would be captured)
+  const pw = simulatedPieces[pieceIndex].piece_width || 1;
+  const ph = simulatedPieces[pieceIndex].piece_height || 1;
+  const pieceOwner = simulatedPieces[pieceIndex].team || simulatedPieces[pieceIndex].player_id;
+  const capturedIds = new Set();
+  if (pw > 1 || ph > 1) {
+    for (let fdy = 0; fdy < ph; fdy++) {
+      for (let fdx = 0; fdx < pw; fdx++) {
+        const idx = simulatedPieces.findIndex(p => {
+          if (p.id === pieceId || capturedIds.has(p.id)) return false;
+          if (!doesPieceOccupySquare(p, to.x + fdx, to.y + fdy)) return false;
+          const pOwner = p.team || p.player_id;
+          return pOwner !== pieceOwner;
+        });
+        if (idx !== -1) capturedIds.add(simulatedPieces[idx].id);
+      }
+    }
+  } else {
+    const capturedPieceIndex = simulatedPieces.findIndex(p => 
+      p.id !== pieceId && doesPieceOccupySquare(p, to.x, to.y)
+    );
+    if (capturedPieceIndex !== -1) capturedIds.add(simulatedPieces[capturedPieceIndex].id);
+  }
   
-  // Remove captured piece from simulation
-  if (capturedPieceIndex !== -1) {
-    simulatedPieces.splice(capturedPieceIndex, 1);
+  // Remove all captured pieces from simulation
+  if (capturedIds.size > 0) {
+    for (let i = simulatedPieces.length - 1; i >= 0; i--) {
+      if (capturedIds.has(simulatedPieces[i].id)) {
+        simulatedPieces.splice(i, 1);
+      }
+    }
   }
   
   // Update piece position in simulation
@@ -3667,17 +3719,55 @@ async function validateAndApplyMove(gameState, move) {
     if (!doesPieceFitOnBoard(to.x, to.y, pw, ph, boardWidth, boardHeight)) {
       return { valid: false, reason: "Piece does not fit on the board at that position" };
     }
-    // Check for footprint overlap with friendly pieces (excluding self)
-    if (!isDestinationClearServer(piece, to.x, to.y, pieces, null)) {
-      return { valid: false, reason: "Piece footprint overlaps with another piece" };
+  }
+
+  // Check if destination has enemy pieces (for capture validation)
+  // For multi-tile pieces, find ALL enemies in the destination footprint (they will all be captured)
+  let capturedPiece = null;
+  let destinationPieceIndex = -1;
+  let allCapturedPieces = [];
+  if (pw > 1 || ph > 1) {
+    const seenIds = new Set();
+    for (let fdy = 0; fdy < ph; fdy++) {
+      for (let fdx = 0; fdx < pw; fdx++) {
+        const idx = pieces.findIndex(p => {
+          if (p.id === pieceId || seenIds.has(p.id)) return false;
+          if (!doesPieceOccupySquare(p, to.x + fdx, to.y + fdy)) return false;
+          const pOwner = p.team || p.player_id;
+          return pOwner !== pieceOwnerPosition;
+        });
+        if (idx !== -1) {
+          seenIds.add(pieces[idx].id);
+          allCapturedPieces.push(pieces[idx]);
+          if (destinationPieceIndex === -1) destinationPieceIndex = idx;
+        }
+      }
+    }
+  } else {
+    destinationPieceIndex = pieces.findIndex(p => 
+      p.id !== pieceId && doesPieceOccupySquare(p, to.x, to.y)
+    );
+    if (destinationPieceIndex !== -1) {
+      allCapturedPieces = [pieces[destinationPieceIndex]];
     }
   }
 
-  // Check if destination has a piece (for capture validation only - don't modify yet)
-  let capturedPiece = null;
-  const destinationPieceIndex = pieces.findIndex(p => 
-    p.id !== pieceId && doesPieceOccupySquare(p, to.x, to.y)
-  );
+  // For multi-tile pieces, only friendly pieces should block the destination (enemies are captured)
+  if (pw > 1 || ph > 1) {
+    const capturedIds = new Set(allCapturedPieces.map(p => p.id));
+    for (let fdy = 0; fdy < ph; fdy++) {
+      for (let fdx = 0; fdx < pw; fdx++) {
+        const blocking = pieces.find(p => {
+          if (p.id === pieceId || capturedIds.has(p.id)) return false;
+          if (!doesPieceOccupySquare(p, to.x + fdx, to.y + fdy)) return false;
+          return true; // Any remaining piece (friendly) blocks
+        });
+        if (blocking) {
+          return { valid: false, reason: "Piece footprint overlaps with a friendly piece" };
+        }
+      }
+    }
+  }
   
   // Handle ranged attacks - piece stays in place, target is captured at range
   const isRangedAttack = move.isRangedAttack === true;
@@ -3816,18 +3906,24 @@ async function validateAndApplyMove(gameState, move) {
     }
   }
 
-  // Now apply the move - remove captured piece if any
+  // Now apply the move - remove captured piece(s) if any
   // Handle en passant capture (captured piece is at different position than destination)
   let isEnPassantCapture = false;
-  if (capturedPiece && destinationPieceIndex === -1) {
+  if (capturedPiece && allCapturedPieces.length === 0) {
     // This is an en passant capture - find and remove the captured piece
     const epCapturedIndex = pieces.findIndex(p => p.id === capturedPiece.id);
     if (epCapturedIndex !== -1) {
       pieces.splice(epCapturedIndex, 1);
       isEnPassantCapture = true;
     }
-  } else if (destinationPieceIndex !== -1) {
-    pieces.splice(destinationPieceIndex, 1);
+  } else if (allCapturedPieces.length > 0) {
+    // Remove all captured pieces (multi-tile pieces capture everything in their footprint)
+    const capturedIds = new Set(allCapturedPieces.map(p => p.id));
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      if (capturedIds.has(pieces[i].id)) {
+        pieces.splice(i, 1);
+      }
+    }
   }
 
   // Update piece position
@@ -3993,7 +4089,7 @@ async function validateAndApplyMove(gameState, move) {
     }
   }
 
-  return { valid: true, captured: capturedPiece, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable };
+  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable };
 }
 
 /**
@@ -4265,8 +4361,23 @@ function isPieceUnderAttack(gameState, targetPiece) {
       const sx = targetPiece.x + dx;
       const sy = targetPiece.y + dy;
       for (const enemyPiece of enemyPieces) {
-        if (canPieceAttackSquare(enemyPiece, sx, sy, pieces)) {
-          return true;
+        const ew = enemyPiece.piece_width || 1;
+        const eh = enemyPiece.piece_height || 1;
+        if (ew > 1 || eh > 1) {
+          // Multi-tile attacker: check if any anchor destination puts (sx, sy) in footprint
+          let canAttack = false;
+          for (let edy = 0; edy < eh && !canAttack; edy++) {
+            for (let edx = 0; edx < ew && !canAttack; edx++) {
+              if (canPieceAttackSquare(enemyPiece, sx - edx, sy - edy, pieces)) {
+                canAttack = true;
+              }
+            }
+          }
+          if (canAttack) return true;
+        } else {
+          if (canPieceAttackSquare(enemyPiece, sx, sy, pieces)) {
+            return true;
+          }
         }
       }
     }
@@ -5862,32 +5973,40 @@ function updateControlSquareTracking(gameState) {
 /**
  * Check if a win condition has been met
  */
-function checkWinCondition(gameState, capturedPiece = null) {
+function checkWinCondition(gameState, capturedPieceOrArray = null) {
   const { gameType, pieces, players } = gameState;
   
   if (!gameType) return { gameOver: false };
 
-  // FIRST: Check if captured piece had ends_game_on_capture flag
-  if (capturedPiece && capturedPiece.ends_game_on_capture) {
-    // The player who owned the captured piece loses
-    const loserPosition = capturedPiece.team || capturedPiece.player_id;
-    const winner = players.find(p => p.position !== loserPosition);
-    return {
-      gameOver: true,
-      winner: winner?.id,
-      reason: 'capture'
-    };
+  // Normalize to array for multi-tile multi-capture support
+  const capturedPieces = Array.isArray(capturedPieceOrArray)
+    ? capturedPieceOrArray
+    : (capturedPieceOrArray ? [capturedPieceOrArray] : []);
+
+  // FIRST: Check if any captured piece had ends_game_on_capture flag
+  for (const capturedPiece of capturedPieces) {
+    if (capturedPiece.ends_game_on_capture) {
+      const loserPosition = capturedPiece.team || capturedPiece.player_id;
+      const winner = players.find(p => p.position !== loserPosition);
+      return {
+        gameOver: true,
+        winner: winner?.id,
+        reason: 'capture'
+      };
+    }
   }
 
-  // Check if captured piece had ends_game_on_checkmate flag (instant loss when captured)
-  if (capturedPiece && capturedPiece.ends_game_on_checkmate) {
-    const loserPosition = capturedPiece.team || capturedPiece.player_id;
-    const winner = players.find(p => p.position !== loserPosition);
-    return {
-      gameOver: true,
-      winner: winner?.id,
-      reason: 'checkmate'
-    };
+  // Check if any captured piece had ends_game_on_checkmate flag (instant loss when captured)
+  for (const capturedPiece of capturedPieces) {
+    if (capturedPiece.ends_game_on_checkmate) {
+      const loserPosition = capturedPiece.team || capturedPiece.player_id;
+      const winner = players.find(p => p.position !== loserPosition);
+      return {
+        gameOver: true,
+        winner: winner?.id,
+        reason: 'checkmate'
+      };
+    }
   }
 
   // Check mate condition (specific piece type captured - legacy support)
@@ -5997,4 +6116,4 @@ function getIO() {
   return ioInstance;
 }
 
-module.exports = { initializeSocket, activeGames, onlineUsers, getIO };
+module.exports = { initializeSocket, activeGames, onlineUsers, userSockets, getIO };

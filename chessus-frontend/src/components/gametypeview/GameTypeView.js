@@ -804,21 +804,28 @@ const GameTypeView = () => {
           if (pieceData) {
             const hpw = pieceData.piece_width || 1;
             const hph = pieceData.piece_height || 1;
-            for (let dr = 0; dr < hph && !moveInfo.allowed; dr++) {
-              for (let dc = 0; dc < hpw && !moveInfo.allowed; dc++) {
-                const info = getMoveInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
-                if (info.allowed) moveInfo = info;
+
+            // Skip highlighting for squares within the hovered piece's own footprint
+            const isWithinPieceFootprint = row >= hoveredPiecePosition.row && row < hoveredPiecePosition.row + hph &&
+              col >= hoveredPiecePosition.col && col < hoveredPiecePosition.col + hpw;
+
+            if (!isWithinPieceFootprint) {
+              for (let dr = 0; dr < hph && !moveInfo.allowed; dr++) {
+                for (let dc = 0; dc < hpw && !moveInfo.allowed; dc++) {
+                  const info = getMoveInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+                  if (info.allowed) moveInfo = info;
+                }
               }
-            }
-            for (let dr = 0; dr < hph && !captureInfo.allowed; dr++) {
-              for (let dc = 0; dc < hpw && !captureInfo.allowed; dc++) {
-                const info = getCaptureInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
-                if (info.allowed) captureInfo = info;
+              for (let dr = 0; dr < hph && !captureInfo.allowed; dr++) {
+                for (let dc = 0; dc < hpw && !captureInfo.allowed; dc++) {
+                  const info = getCaptureInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+                  if (info.allowed) captureInfo = info;
+                }
               }
-            }
-            for (let dr = 0; dr < hph && !canRanged; dr++) {
-              for (let dc = 0; dc < hpw && !canRanged; dc++) {
-                canRanged = canRangedAttackTo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+              for (let dr = 0; dr < hph && !canRanged; dr++) {
+                for (let dc = 0; dc < hpw && !canRanged; dc++) {
+                  canRanged = canRangedAttackTo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+                }
               }
             }
           }

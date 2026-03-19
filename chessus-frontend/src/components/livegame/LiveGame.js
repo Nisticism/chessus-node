@@ -139,6 +139,7 @@ const LiveGame = () => {
   const [drawOfferSent, setDrawOfferSent] = useState(false); // Track if current user sent a draw offer
   const [showCapturedPieces, setShowCapturedPieces] = useState(true); // Show/hide captured pieces section
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
+  const [windowHeight, setWindowHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 1080);
 
   // Ranged attack state
   const [rangedAttackSource, setRangedAttackSource] = useState(null);
@@ -149,10 +150,11 @@ const LiveGame = () => {
   const [isRightClickActive, setIsRightClickActive] = useState(false);
   const [rangedSelectedPiece, setRangedSelectedPiece] = useState(null); // for right-click-twice mode
 
-  // Track window width for responsive board sizing
+  // Track window size for responsive board sizing
   useEffect(() => {
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
+      setWindowHeight(window.innerHeight);
     };
 
     window.addEventListener('resize', handleResize);
@@ -1131,35 +1133,46 @@ const LiveGame = () => {
       const enemyTeam = enemyPiece.player_id || enemyPiece.team;
       if (enemyTeam === targetTeam) continue; // Skip friendly pieces
       
+      const ew = enemyPiece.piece_width || 1;
+      const eh = enemyPiece.piece_height || 1;
+      
       // For multi-tile target, check each occupied square
       for (let dy = 0; dy < th; dy++) {
         for (let dx = 0; dx < tw; dx++) {
           const sx = targetPiece.x + dx;
           const sy = targetPiece.y + dy;
           
-          if (canPieceCaptureTo(enemyPiece.x, enemyPiece.y, sx, sy, enemyPiece, enemyTeam)) {
-            const isRatioMove = enemyPiece.ratio_capture_1 > 0 && enemyPiece.ratio_capture_2 > 0 &&
-                               ((Math.abs(sx - enemyPiece.x) === enemyPiece.ratio_capture_1 && Math.abs(sy - enemyPiece.y) === enemyPiece.ratio_capture_2) ||
-                                (Math.abs(sx - enemyPiece.x) === enemyPiece.ratio_capture_2 && Math.abs(sy - enemyPiece.y) === enemyPiece.ratio_capture_1));
-            
-            const usesRatioForCapture = !isRatioMove && enemyPiece.attacks_like_movement && 
-                                         enemyPiece.ratio_movement_1 > 0 && enemyPiece.ratio_movement_2 > 0 &&
-                                         ((Math.abs(sx - enemyPiece.x) === enemyPiece.ratio_movement_1 && Math.abs(sy - enemyPiece.y) === enemyPiece.ratio_movement_2) ||
-                                          (Math.abs(sx - enemyPiece.x) === enemyPiece.ratio_movement_2 && Math.abs(sy - enemyPiece.y) === enemyPiece.ratio_movement_1));
-            
-            const isStepMove = isStepByStepTarget(enemyPiece, enemyPiece.x, enemyPiece.y, sx, sy);
+          // For multi-tile attackers, check all anchor destinations that put (sx, sy) in footprint
+          for (let edy = 0; edy < eh; edy++) {
+            for (let edx = 0; edx < ew; edx++) {
+              const adx = sx - edx; // potential anchor destination x
+              const ady = sy - edy; // potential anchor destination y
+              
+              if (canPieceCaptureTo(enemyPiece.x, enemyPiece.y, adx, ady, enemyPiece, enemyTeam)) {
+                const isRatioMove = enemyPiece.ratio_capture_1 > 0 && enemyPiece.ratio_capture_2 > 0 &&
+                                   ((Math.abs(adx - enemyPiece.x) === enemyPiece.ratio_capture_1 && Math.abs(ady - enemyPiece.y) === enemyPiece.ratio_capture_2) ||
+                                    (Math.abs(adx - enemyPiece.x) === enemyPiece.ratio_capture_2 && Math.abs(ady - enemyPiece.y) === enemyPiece.ratio_capture_1));
+                
+                const usesRatioForCapture = !isRatioMove && enemyPiece.attacks_like_movement && 
+                                             enemyPiece.ratio_movement_1 > 0 && enemyPiece.ratio_movement_2 > 0 &&
+                                             ((Math.abs(adx - enemyPiece.x) === enemyPiece.ratio_movement_1 && Math.abs(ady - enemyPiece.y) === enemyPiece.ratio_movement_2) ||
+                                              (Math.abs(adx - enemyPiece.x) === enemyPiece.ratio_movement_2 && Math.abs(ady - enemyPiece.y) === enemyPiece.ratio_movement_1));
+                
+                const isStepMove = isStepByStepTarget(enemyPiece, enemyPiece.x, enemyPiece.y, adx, ady);
 
-            let pathClear = false;
-            if (isRatioMove || usesRatioForCapture) {
-              pathClear = checkRatioPathClear(enemyPiece, sx, sy, pieces);
-            } else if (isStepMove) {
-              pathClear = canReachStepByStep(enemyPiece, sx, sy, pieces, boardWidth, boardHeight, true);
-            } else {
-              pathClear = isPathClear(enemyPiece.x, enemyPiece.y, sx, sy, pieces, enemyPiece, true);
-            }
-            
-            if (pathClear) {
-              return true;
+                let pathClear = false;
+                if (isRatioMove || usesRatioForCapture) {
+                  pathClear = checkRatioPathClear(enemyPiece, adx, ady, pieces);
+                } else if (isStepMove) {
+                  pathClear = canReachStepByStep(enemyPiece, adx, ady, pieces, boardWidth, boardHeight, true);
+                } else {
+                  pathClear = isPathClear(enemyPiece.x, enemyPiece.y, adx, ady, pieces, enemyPiece, true);
+                }
+                
+                if (pathClear) {
+                  return true;
+                }
+              }
             }
           }
         }
@@ -1198,10 +1211,36 @@ const LiveGame = () => {
     // Create a simulated pieces array
     const simulatedPieces = pieces.map(p => ({ ...p }));
     
-    // Find and remove any captured piece at the destination (multi-tile aware)
-    const capturedIndex = simulatedPieces.findIndex(p => p.id !== piece.id && doesPieceOccupySquare(p, toX, toY));
-    if (capturedIndex !== -1) {
-      simulatedPieces.splice(capturedIndex, 1);
+    // Find and remove ALL enemy pieces in the destination footprint (multi-tile captures all)
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
+    const pieceOwner = piece.player_id || piece.team;
+    const capturedIds = new Set();
+    if (pw > 1 || ph > 1) {
+      for (let fdy = 0; fdy < ph; fdy++) {
+        for (let fdx = 0; fdx < pw; fdx++) {
+          const found = simulatedPieces.find(p => {
+            if (p.id === piece.id || capturedIds.has(p.id)) return false;
+            if (!doesPieceOccupySquare(p, toX + fdx, toY + fdy)) return false;
+            const pOwner = p.player_id || p.team;
+            return pOwner !== pieceOwner;
+          });
+          if (found) capturedIds.add(found.id);
+        }
+      }
+    } else {
+      const found = simulatedPieces.find(p => p.id !== piece.id && doesPieceOccupySquare(p, toX, toY));
+      if (found) {
+        const fOwner = found.player_id || found.team;
+        if (fOwner !== pieceOwner) capturedIds.add(found.id);
+      }
+    }
+    if (capturedIds.size > 0) {
+      for (let i = simulatedPieces.length - 1; i >= 0; i--) {
+        if (capturedIds.has(simulatedPieces[i].id)) {
+          simulatedPieces.splice(i, 1);
+        }
+      }
     }
     
     // Update the moving piece's position
@@ -1234,31 +1273,25 @@ const LiveGame = () => {
         // For multi-tile pieces, scan entire destination footprint for enemies
         let occupyingPiece = null;
         if (pw > 1 || ph > 1) {
-          for (let dy = 0; dy < ph && !occupyingPiece; dy++) {
-            for (let dx = 0; dx < pw && !occupyingPiece; dx++) {
+          // Find any enemy in the destination footprint (multi-tile captures all enemies in path)
+          for (let dy = 0; dy < ph; dy++) {
+            for (let dx = 0; dx < pw; dx++) {
               const found = pieces.find(p =>
                 p.id !== piece.id && doesPieceOccupySquare(p, toX + dx, toY + dy)
               );
               if (found) {
                 const foundTeam = found.player_id || found.team;
-                if (foundTeam !== pieceTeam) {
-                  occupyingPiece = found;
+                if (foundTeam !== pieceTeam && !occupyingPiece) {
+                  occupyingPiece = found; // Track first enemy for capture flag
                 }
               }
             }
           }
-          // Check destination is clear of friendlies
-          if (!occupyingPiece) {
-            if (!isDestinationClear(piece, toX, toY, pieces.filter(p => {
-              const pTeam = p.player_id || p.team;
-              return pTeam === pieceTeam && p.id !== piece.id;
-            }), null)) continue;
-          } else {
-            if (!isDestinationClear(piece, toX, toY, pieces.filter(p => {
-              const pTeam = p.player_id || p.team;
-              return pTeam === pieceTeam && p.id !== piece.id && p.id !== occupyingPiece.id;
-            }), null)) continue;
-          }
+          // Only friendly pieces should block the destination (enemies are captured)
+          if (!isDestinationClear(piece, toX, toY, pieces.filter(p => {
+            const pTeam = p.player_id || p.team;
+            return pTeam === pieceTeam && p.id !== piece.id;
+          }), null)) continue;
         } else {
           occupyingPiece = findPieceAtSquare(pieces, toX, toY);
           const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
@@ -1643,6 +1676,22 @@ const LiveGame = () => {
           );
         }
       }
+      // Multi-tile enemy fallback: clicking on a multi-tile enemy piece routes
+      // to its anchor square due to DOM structure. Find any capture move whose
+      // destination footprint overlaps the clicked enemy piece.
+      if (!move && clickedPiece && !isOwnPiece) {
+        const spw = selectedPiece.piece_width || 1;
+        const sph = selectedPiece.piece_height || 1;
+        move = validMoves.find(m => {
+          if (!m.isCapture) return false;
+          for (let dy = 0; dy < sph; dy++) {
+            for (let dx = 0; dx < spw; dx++) {
+              if (doesPieceOccupySquare(clickedPiece, m.x + dx, m.y + dy)) return true;
+            }
+          }
+          return false;
+        });
+      }
       if (move) {
         // Ranged zone squares (no enemy piece) are display-only, not executable
         if (move.isRangedAttack && !move.isCapture) {
@@ -1695,12 +1744,28 @@ const LiveGame = () => {
           );
         }
       }
+      // Multi-tile enemy fallback for premoves
+      if (!move && clickedPiece && !isOwnPiece) {
+        const spw = selectedPiece.piece_width || 1;
+        const sph = selectedPiece.piece_height || 1;
+        move = validMoves.find(m => {
+          if (!m.isCapture) return false;
+          for (let dy = 0; dy < sph; dy++) {
+            for (let dx = 0; dx < spw; dx++) {
+              if (doesPieceOccupySquare(clickedPiece, m.x + dx, m.y + dy)) return true;
+            }
+          }
+          return false;
+        });
+      }
       if (move) {
         console.log('Setting premove!', { from: { x: selectedPiece.x, y: selectedPiece.y }, to: { x: move.x, y: move.y } });
         const premoveData = {
           from: { x: selectedPiece.x, y: selectedPiece.y },
           to: { x: move.x, y: move.y },
-          pieceId: selectedPiece.id
+          pieceId: selectedPiece.id,
+          pieceWidth: selectedPiece.piece_width || 1,
+          pieceHeight: selectedPiece.piece_height || 1
         };
         setPremove(premoveData); // Set local state
         sendPremove(parseInt(gameId), premoveData); // Send to server
@@ -1803,6 +1868,16 @@ const LiveGame = () => {
       return;
     }
 
+    // Don't move if dropping within the piece's own current footprint
+    const selfW = draggedPiece.piece_width || 1;
+    const selfH = draggedPiece.piece_height || 1;
+    if (targetX >= draggedPiece.x && targetX < draggedPiece.x + selfW &&
+        targetY >= draggedPiece.y && targetY < draggedPiece.y + selfH) {
+      setDraggedPiece(null);
+      setDragValidMoves([]);
+      return;
+    }
+
     // Check if target is a valid move (exact match or multi-tile footprint overlap)
     let validMove = dragValidMoves.find(m => m.x === targetX && m.y === targetY);
     if (!validMove && draggedPiece) {
@@ -1812,6 +1887,25 @@ const LiveGame = () => {
         validMove = dragValidMoves.find(m => !m.isRangedAttack &&
           targetX >= m.x && targetX < m.x + dpw && targetY >= m.y && targetY < m.y + dph
         );
+      }
+    }
+    // Multi-tile enemy fallback: dropping on a multi-tile enemy may route to its
+    // anchor square. Find any capture move whose footprint overlaps the target square.
+    if (!validMove && draggedPiece) {
+      const pieces = parsePieces(gameState?.pieces);
+      const targetPiece = findPieceAtSquare(pieces, targetX, targetY);
+      if (targetPiece && targetPiece.id !== draggedPiece.id) {
+        const dpw = draggedPiece.piece_width || 1;
+        const dph = draggedPiece.piece_height || 1;
+        validMove = dragValidMoves.find(m => {
+          if (!m.isCapture) return false;
+          for (let dy = 0; dy < dph; dy++) {
+            for (let dx = 0; dx < dpw; dx++) {
+              if (doesPieceOccupySquare(targetPiece, m.x + dx, m.y + dy)) return true;
+            }
+          }
+          return false;
+        });
       }
     }
     console.log('Valid move found:', validMove);
@@ -1879,7 +1973,9 @@ const LiveGame = () => {
         const premoveData = {
           from: { x: draggedPiece.x, y: draggedPiece.y },
           to: { x: validMove.x, y: validMove.y },
-          pieceId: draggedPiece.id
+          pieceId: draggedPiece.id,
+          pieceWidth: draggedPiece.piece_width || 1,
+          pieceHeight: draggedPiece.piece_height || 1
         };
         setPremove(premoveData);
         sendPremove(parseInt(gameId), premoveData);
@@ -1964,7 +2060,9 @@ const LiveGame = () => {
             from: { x: rangedSelectedPiece.x, y: rangedSelectedPiece.y },
             to: { x, y },
             pieceId: rangedSelectedPiece.id,
-            isRangedAttack: true
+            isRangedAttack: true,
+            pieceWidth: rangedSelectedPiece.piece_width || 1,
+            pieceHeight: rangedSelectedPiece.piece_height || 1
           };
           setPremove(premoveData);
           sendPremove(parseInt(gameId), premoveData);
@@ -2080,7 +2178,9 @@ const LiveGame = () => {
                 from: { x: data.piece.x, y: data.piece.y },
                 to: { x: target.x, y: target.y },
                 pieceId: data.piece.id,
-                isRangedAttack: true
+                isRangedAttack: true,
+                pieceWidth: data.piece.piece_width || 1,
+                pieceHeight: data.piece.piece_height || 1
               };
               setPremove(premoveData);
               sendPremove(parseInt(gameId), premoveData);
@@ -2249,14 +2349,16 @@ const LiveGame = () => {
     
     gameState.moveHistory.forEach(move => {
       if (move.captured) {
+        // Use allCaptured array for multi-captures, otherwise single captured piece
+        const captures = move.allCaptured && move.allCaptured.length > 1
+          ? move.allCaptured
+          : [move.captured];
         // The capturing player is indicated by move.position (1 or 2)
-        // The captured piece belongs to the opponent
+        // The captured pieces belong to the opponent
         if (move.position === 1) {
-          // Player 1 captured this piece (so it was player 2's piece)
-          result.player1.push(move.captured);
+          result.player1.push(...captures);
         } else {
-          // Player 2 captured this piece (so it was player 1's piece)
-          result.player2.push(move.captured);
+          result.player2.push(...captures);
         }
       }
     });
@@ -2281,8 +2383,6 @@ const LiveGame = () => {
 
     const boardWidth = gameState.gameType?.board_width || 8;
     const boardHeight = gameState.gameType?.board_height || 8;
-    // Calculate square size to keep squares square on smaller screens
-    const smallScreenSquareSize = Math.min(50, Math.min(window.innerWidth * 0.9, 480) / Math.max(boardWidth, boardHeight));
     const pieces = parsePieces(gameState.pieces);
     const lastMove = gameState.moveHistory?.slice(-1)[0];
     const showHelpers = gameState.showPieceHelpers;
@@ -2339,10 +2439,17 @@ const LiveGame = () => {
           gameX >= m.x && gameX < m.x + spw && gameY >= m.y && gameY < m.y + sph
         ) : null;
         const rangedMove = validMoves.find(m => m.x === gameX && m.y === gameY && m.isRangedAttack);
-        const isLastMove = lastMove && (
-          (lastMove.from?.x === gameX && lastMove.from?.y === gameY) ||
-          (lastMove.to?.x === gameX && lastMove.to?.y === gameY)
-        );
+        const isLastMove = (() => {
+          if (!lastMove) return false;
+          const lmpw = lastMove.piece_width || 1;
+          const lmph = lastMove.piece_height || 1;
+          // Check if this square is within the footprint at the from or to location
+          const inFrom = lastMove.from && gameX >= lastMove.from.x && gameX < lastMove.from.x + lmpw
+            && gameY >= lastMove.from.y && gameY < lastMove.from.y + lmph;
+          const inTo = lastMove.to && gameX >= lastMove.to.x && gameX < lastMove.to.x + lmpw
+            && gameY >= lastMove.to.y && gameY < lastMove.to.y + lmph;
+          return inFrom || inTo;
+        })();
         
         // Check if this piece can move (only shown when it's your turn)
         const canMove = piece && movablePieceIds.has(piece.id);
@@ -2362,9 +2469,13 @@ const LiveGame = () => {
         // Check if this piece is in check
         const isInCheck = piece && inCheck && checkedPieces.some(cp => cp.id === piece.id);
 
-        // Check if this square is part of a premove
-        const isPremoveFrom = premove && premove.from.x === gameX && premove.from.y === gameY;
-        const isPremoveTo = premove && premove.to.x === gameX && premove.to.y === gameY;
+        // Check if this square is part of a premove (multi-tile aware)
+        const pmPw = premove?.pieceWidth || 1;
+        const pmPh = premove?.pieceHeight || 1;
+        const isPremoveFrom = premove && gameX >= premove.from.x && gameX < premove.from.x + pmPw
+          && gameY >= premove.from.y && gameY < premove.from.y + pmPh;
+        const isPremoveTo = premove && gameX >= premove.to.x && gameX < premove.to.x + pmPw
+          && gameY >= premove.to.y && gameY < premove.to.y + pmPh;
 
         // Check for special square type
         const specialSquareType = getSpecialSquareType(gameY, gameX);
@@ -2472,8 +2583,11 @@ const LiveGame = () => {
                 height: `${ph * 100}%`,
                 zIndex: 5,
                 position: 'absolute',
-                top: 0,
-                left: 0
+                // When the board is flipped, the anchor (top-left in game coords) is displayed
+                // at the bottom-right of the piece's visual area, so we need to grow up-left
+                ...(shouldFlipBoard
+                  ? { bottom: 0, right: 0 }
+                  : { top: 0, left: 0 })
               } : {};
               
               return (
@@ -2543,7 +2657,26 @@ const LiveGame = () => {
       );
     }
 
-    const squareSize = windowWidth > 1200 ? 85 : smallScreenSquareSize;
+    // Calculate square size dynamically so the board always fits on screen
+    let squareSize;
+    if (windowWidth > 1200) {
+      // 3-column layout: sidebars (~280px each), gaps (24px each), container padding (40px), coord labels (~24px)
+      const containerWidth = Math.min(windowWidth, 1800);
+      const sidebarWidth = containerWidth <= 1400 ? 240 : 280;
+      const availableWidth = containerWidth - sidebarWidth * 2 - 24 * 2 - 40 - 24;
+      // Leave room for header (~120px), padding, and some breathing room
+      const availableHeight = windowHeight - 180;
+      const maxByWidth = Math.floor(availableWidth / boardWidth);
+      const maxByHeight = Math.floor(availableHeight / boardHeight);
+      squareSize = Math.max(20, Math.min(120, maxByWidth, maxByHeight));
+    } else {
+      // Single-column layout: board is centered, use most of viewport width
+      const availableWidth = windowWidth - 24 - 32 - 24; // viewport minus coord labels, wrapper padding, margin
+      const availableHeight = windowHeight - 200;
+      const maxByWidth = Math.floor(availableWidth / boardWidth);
+      const maxByHeight = Math.floor(availableHeight / boardHeight);
+      squareSize = Math.max(16, Math.min(65, maxByWidth, maxByHeight));
+    }
 
     return (
       <div className={styles["board-with-coords"]}>

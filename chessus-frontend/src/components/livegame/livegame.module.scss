@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   padding: 20px;
-  max-width: 1400px;
+  max-width: 1800px;
   margin: 0 auto;
   min-height: calc(100vh - 80px);
 }
@@ -579,8 +579,8 @@
 
   @media (max-width: 1200px) {
     margin: 0 auto;
-    width: 100%;
-    max-width: min(calc(100vw - 24px), 700px);
+    width: fit-content;
+    max-width: calc(100vw - 24px);
   }
 }
 
@@ -678,11 +678,6 @@
   border: 2px solid #3a3a5c;
   border-radius: 4px;
   overflow: hidden;
-
-  @media (max-width: 1200px) {
-    width: 100%;
-    aspect-ratio: 1;
-  }
 }
 
 .board-square {
@@ -692,10 +687,6 @@
   position: relative;
   cursor: pointer;
   transition: all 0.15s ease;
-
-  @media (max-width: 1200px) {
-    aspect-ratio: 1;
-  }
 
   &.light {
     background: #cad5e8;
