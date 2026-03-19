@@ -5,13 +5,18 @@ import { useSocket } from "../../contexts/SocketContext";
 import styles from "./livegame.module.scss";
 import soundManager from "../../utils/soundEffects";
 import PromotionModal from "./PromotionModal";
+import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
   canRangedAttackTo,
   colToFile,
   rowToRank,
-  formatMoveNotation
+  formatMoveNotation,
+  findPieceAtSquare,
+  doesPieceOccupySquare,
+  doesPieceFitOnBoard,
+  isDestinationClear
 } from "../../helpers/pieceMovementUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -138,7 +143,7 @@ const LiveGame = () => {
   // Ranged attack state
   const [rangedAttackSource, setRangedAttackSource] = useState(null);
   const [rangedMousePos, setRangedMousePos] = useState(null);
-  const [rangedTargetSquare, setRangedTargetSquare] = useState(null);
+  const [, setRangedTargetSquare] = useState(null);
   const boardRef = useRef(null);
   const rightClickDataRef = useRef(null);
   const [isRightClickActive, setIsRightClickActive] = useState(false);
@@ -504,7 +509,7 @@ const LiveGame = () => {
       unsubscribeDrawDeclined();
       unsubscribeGameDeleted();
     };
-  }, [gameId, onGameEvent, navigate]);
+  }, [gameId, onGameEvent, navigate, currentUser?.id]);
 
   // Get current player info
   const currentPlayer = useMemo(() => {
@@ -886,7 +891,14 @@ const LiveGame = () => {
   }, [canPieceMoveTo]);
 
   // Check if path is clear for sliding pieces (no pieces in between)
-  const isPathClear = useCallback((fromX, fromY, toX, toY, pieces) => {
+  const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false) => {
+    // Check if piece can hop - combine movement + attack hop abilities when capturing
+    const canHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true
+      || (isCapture && (pieceData?.can_hop_attack_over_allies === 1 || pieceData?.can_hop_attack_over_allies === true));
+    const canHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true
+      || (isCapture && (pieceData?.can_hop_attack_over_enemies === 1 || pieceData?.can_hop_attack_over_enemies === true));
+    const pieceTeam = pieceData?.player_id || pieceData?.team;
+
     const dx = Math.sign(toX - fromX);
     const dy = Math.sign(toY - fromY);
     
@@ -894,10 +906,6 @@ const LiveGame = () => {
     const xDiff = Math.abs(toX - fromX);
     const yDiff = Math.abs(toY - fromY);
     if (xDiff !== yDiff && xDiff !== 0 && yDiff !== 0) {
-      // L-shape move - need to check hopping abilities
-      // This is handled separately in calculateValidMoves for ratio movements
-      // For now, return true and let the server validate
-      // TODO: Implement proper L-shape path checking with hopping abilities
       return true;
     }
 
@@ -905,8 +913,13 @@ const LiveGame = () => {
     let y = fromY + dy;
 
     while (x !== toX || y !== toY) {
-      if (pieces.some(p => p.x === x && p.y === y)) {
-        return false;
+      const blockingPiece = findPieceAtSquare(pieces, x, y);
+      if (blockingPiece) {
+        const blockingTeam = blockingPiece.player_id || blockingPiece.team;
+        const isAlly = blockingTeam === pieceTeam;
+        
+        if (isAlly && !canHopAllies) return false;
+        if (!isAlly && !canHopEnemies) return false;
       }
       x += dx;
       y += dy;
@@ -929,7 +942,7 @@ const LiveGame = () => {
       const checkX = fromX + (stepX * i);
       const checkY = fromY;
       if (checkX !== targetX || checkY !== targetY) {
-        const obstruction = pieces.find(p => p.x === checkX && p.y === checkY);
+        const obstruction = findPieceAtSquare(pieces, checkX, checkY);
         if (obstruction && !canHopOver(obstruction)) {
           path1Clear = false;
           break;
@@ -942,7 +955,7 @@ const LiveGame = () => {
         const checkX = fromX + (stepX * absDx);
         const checkY = fromY + (stepY * i);
         if (checkX !== targetX || checkY !== targetY) {
-          const obstruction = pieces.find(p => p.x === checkX && p.y === checkY);
+          const obstruction = findPieceAtSquare(pieces, checkX, checkY);
           if (obstruction && !canHopOver(obstruction)) {
             path1Clear = false;
             break;
@@ -958,7 +971,7 @@ const LiveGame = () => {
       const checkX = fromX;
       const checkY = fromY + (stepY * i);
       if (checkX !== targetX || checkY !== targetY) {
-        const obstruction = pieces.find(p => p.x === checkX && p.y === checkY);
+        const obstruction = findPieceAtSquare(pieces, checkX, checkY);
         if (obstruction && !canHopOver(obstruction)) {
           path2Clear = false;
           break;
@@ -971,7 +984,7 @@ const LiveGame = () => {
         const checkX = fromX + (stepX * i);
         const checkY = fromY + (stepY * absDy);
         if (checkX !== targetX || checkY !== targetY) {
-          const obstruction = pieces.find(p => p.x === checkX && p.y === checkY);
+          const obstruction = findPieceAtSquare(pieces, checkX, checkY);
           if (obstruction && !canHopOver(obstruction)) {
             path2Clear = false;
             break;
@@ -1052,11 +1065,16 @@ const LiveGame = () => {
       return false;
     }
 
-    const occupied = new Set(
-      pieces
-        .filter(p => p.id !== piece.id)
-        .map(p => `${p.x},${p.y}`)
-    );
+    const occupied = new Set();
+    pieces.filter(p => p.id !== piece.id).forEach(p => {
+      const pw = p.piece_width || 1;
+      const ph = p.piece_height || 1;
+      for (let dy = 0; dy < ph; dy++) {
+        for (let dx = 0; dx < pw; dx++) {
+          occupied.add(`${p.x + dx},${p.y + dy}`);
+        }
+      }
+    });
 
     const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
     const visited = new Set([`${piece.x},${piece.y}`]);
@@ -1105,40 +1123,45 @@ const LiveGame = () => {
   // Check if a specific piece is under attack by any enemy piece
   const isPieceUnderAttack = useCallback((targetPiece, pieces, boardWidth, boardHeight) => {
     const targetTeam = targetPiece.player_id || targetPiece.team;
+    const tw = targetPiece.piece_width || 1;
+    const th = targetPiece.piece_height || 1;
     
-    // Check all enemy pieces
+    // Check all enemy pieces against ALL occupied squares of the target
     for (const enemyPiece of pieces) {
       const enemyTeam = enemyPiece.player_id || enemyPiece.team;
       if (enemyTeam === targetTeam) continue; // Skip friendly pieces
       
-      // Check if enemy can capture the target piece
-      if (canPieceCaptureTo(enemyPiece.x, enemyPiece.y, targetPiece.x, targetPiece.y, enemyPiece, enemyTeam)) {
-        // Check if path is clear - handle ratio movement (L-shape) specially
-        const isRatioMove = enemyPiece.ratio_capture_1 > 0 && enemyPiece.ratio_capture_2 > 0 &&
-                           ((Math.abs(targetPiece.x - enemyPiece.x) === enemyPiece.ratio_capture_1 && Math.abs(targetPiece.y - enemyPiece.y) === enemyPiece.ratio_capture_2) ||
-                            (Math.abs(targetPiece.x - enemyPiece.x) === enemyPiece.ratio_capture_2 && Math.abs(targetPiece.y - enemyPiece.y) === enemyPiece.ratio_capture_1));
-        
-        // If no ratio capture, check if attacks like movement uses ratio movement
-        const usesRatioForCapture = !isRatioMove && enemyPiece.attacks_like_movement && 
-                                     enemyPiece.ratio_movement_1 > 0 && enemyPiece.ratio_movement_2 > 0 &&
-                                     ((Math.abs(targetPiece.x - enemyPiece.x) === enemyPiece.ratio_movement_1 && Math.abs(targetPiece.y - enemyPiece.y) === enemyPiece.ratio_movement_2) ||
-                                      (Math.abs(targetPiece.x - enemyPiece.x) === enemyPiece.ratio_movement_2 && Math.abs(targetPiece.y - enemyPiece.y) === enemyPiece.ratio_movement_1));
-        
-        const isStepMove = isStepByStepTarget(enemyPiece, enemyPiece.x, enemyPiece.y, targetPiece.x, targetPiece.y);
+      // For multi-tile target, check each occupied square
+      for (let dy = 0; dy < th; dy++) {
+        for (let dx = 0; dx < tw; dx++) {
+          const sx = targetPiece.x + dx;
+          const sy = targetPiece.y + dy;
+          
+          if (canPieceCaptureTo(enemyPiece.x, enemyPiece.y, sx, sy, enemyPiece, enemyTeam)) {
+            const isRatioMove = enemyPiece.ratio_capture_1 > 0 && enemyPiece.ratio_capture_2 > 0 &&
+                               ((Math.abs(sx - enemyPiece.x) === enemyPiece.ratio_capture_1 && Math.abs(sy - enemyPiece.y) === enemyPiece.ratio_capture_2) ||
+                                (Math.abs(sx - enemyPiece.x) === enemyPiece.ratio_capture_2 && Math.abs(sy - enemyPiece.y) === enemyPiece.ratio_capture_1));
+            
+            const usesRatioForCapture = !isRatioMove && enemyPiece.attacks_like_movement && 
+                                         enemyPiece.ratio_movement_1 > 0 && enemyPiece.ratio_movement_2 > 0 &&
+                                         ((Math.abs(sx - enemyPiece.x) === enemyPiece.ratio_movement_1 && Math.abs(sy - enemyPiece.y) === enemyPiece.ratio_movement_2) ||
+                                          (Math.abs(sx - enemyPiece.x) === enemyPiece.ratio_movement_2 && Math.abs(sy - enemyPiece.y) === enemyPiece.ratio_movement_1));
+            
+            const isStepMove = isStepByStepTarget(enemyPiece, enemyPiece.x, enemyPiece.y, sx, sy);
 
-        let pathClear = false;
-        if (isRatioMove || usesRatioForCapture) {
-          // Use L-shape path checking for ratio movements
-          pathClear = checkRatioPathClear(enemyPiece, targetPiece.x, targetPiece.y, pieces);
-        } else if (isStepMove) {
-          pathClear = canReachStepByStep(enemyPiece, targetPiece.x, targetPiece.y, pieces, boardWidth, boardHeight, true);
-        } else {
-          // Use standard path checking for other movements
-          pathClear = isPathClear(enemyPiece.x, enemyPiece.y, targetPiece.x, targetPiece.y, pieces);
-        }
-        
-        if (pathClear) {
-          return true;
+            let pathClear = false;
+            if (isRatioMove || usesRatioForCapture) {
+              pathClear = checkRatioPathClear(enemyPiece, sx, sy, pieces);
+            } else if (isStepMove) {
+              pathClear = canReachStepByStep(enemyPiece, sx, sy, pieces, boardWidth, boardHeight, true);
+            } else {
+              pathClear = isPathClear(enemyPiece.x, enemyPiece.y, sx, sy, pieces, enemyPiece, true);
+            }
+            
+            if (pathClear) {
+              return true;
+            }
+          }
         }
       }
     }
@@ -1175,8 +1198,8 @@ const LiveGame = () => {
     // Create a simulated pieces array
     const simulatedPieces = pieces.map(p => ({ ...p }));
     
-    // Find and remove any captured piece at the destination
-    const capturedIndex = simulatedPieces.findIndex(p => p.x === toX && p.y === toY && p.id !== piece.id);
+    // Find and remove any captured piece at the destination (multi-tile aware)
+    const capturedIndex = simulatedPieces.findIndex(p => p.id !== piece.id && doesPieceOccupySquare(p, toX, toY));
     if (capturedIndex !== -1) {
       simulatedPieces.splice(capturedIndex, 1);
     }
@@ -1197,19 +1220,56 @@ const LiveGame = () => {
   const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false) => {
     const moves = [];
     const pieceTeam = piece.player_id || piece.team;
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
 
     for (let toY = 0; toY < boardHeight; toY++) {
       for (let toX = 0; toX < boardWidth; toX++) {
         // Skip current position
         if (toX === piece.x && toY === piece.y) continue;
 
-        const occupyingPiece = pieces.find(p => p.x === toX && p.y === toY);
-        const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
+        // For multi-tile pieces, check the piece would fit on the board
+        if (!doesPieceFitOnBoard(toX, toY, pw, ph, boardWidth, boardHeight)) continue;
 
-        // Skip squares with friendly pieces
-        if (occupyingPiece && occupyingTeam === pieceTeam) continue;
+        // For multi-tile pieces, scan entire destination footprint for enemies
+        let occupyingPiece = null;
+        if (pw > 1 || ph > 1) {
+          for (let dy = 0; dy < ph && !occupyingPiece; dy++) {
+            for (let dx = 0; dx < pw && !occupyingPiece; dx++) {
+              const found = pieces.find(p =>
+                p.id !== piece.id && doesPieceOccupySquare(p, toX + dx, toY + dy)
+              );
+              if (found) {
+                const foundTeam = found.player_id || found.team;
+                if (foundTeam !== pieceTeam) {
+                  occupyingPiece = found;
+                }
+              }
+            }
+          }
+          // Check destination is clear of friendlies
+          if (!occupyingPiece) {
+            if (!isDestinationClear(piece, toX, toY, pieces.filter(p => {
+              const pTeam = p.player_id || p.team;
+              return pTeam === pieceTeam && p.id !== piece.id;
+            }), null)) continue;
+          } else {
+            if (!isDestinationClear(piece, toX, toY, pieces.filter(p => {
+              const pTeam = p.player_id || p.team;
+              return pTeam === pieceTeam && p.id !== piece.id && p.id !== occupyingPiece.id;
+            }), null)) continue;
+          }
+        } else {
+          occupyingPiece = findPieceAtSquare(pieces, toX, toY);
+          const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
 
-        const isCapture = !!occupyingPiece;
+          // Skip if a friendly piece occupies the target
+          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingTeam === pieceTeam) continue;
+          // Skip moves to squares within the piece's own footprint
+          if (occupyingPiece && occupyingPiece.id === piece.id) continue;
+        }
+
+        const isCapture = !!(occupyingPiece && occupyingPiece.id !== piece.id);
 
         // Check if move is valid based on piece movement rules
         let isValidMove = false;
@@ -1248,12 +1308,55 @@ const LiveGame = () => {
         } else if (isStepMove) {
           pathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, isCapture);
         } else {
-          pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces);
+          pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture);
+        }
+
+        // Hop capture: piece has capture_on_hop, destination is empty, enemies are in the path
+        let isHopCapture = false;
+        let hopCapturedPieceIds = [];
+        if (!isCapture && piece.capture_on_hop && !isStepMove && !isRatioMove) {
+          const canHopAttackEnemies = piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
+          const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+          if (canHopAttackEnemies || canHopEnemies) {
+            let hopMoveValid = isValidMove;
+            if (!hopMoveValid) {
+              hopMoveValid = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+            }
+            if (hopMoveValid) {
+              const hopPathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, true);
+              if (hopPathClear) {
+                const hdx = Math.sign(toX - piece.x);
+                const hdy = Math.sign(toY - piece.y);
+                const hxDiff = Math.abs(toX - piece.x);
+                const hyDiff = Math.abs(toY - piece.y);
+                if (hxDiff === hyDiff || hxDiff === 0 || hyDiff === 0) {
+                  let cx = piece.x + hdx;
+                  let cy = piece.y + hdy;
+                  while (cx !== toX || cy !== toY) {
+                    const hopPiece = findPieceAtSquare(pieces, cx, cy);
+                    if (hopPiece && hopPiece.id !== piece.id) {
+                      const hopTeam = hopPiece.player_id || hopPiece.team;
+                      if (hopTeam !== pieceTeam) {
+                        hopCapturedPieceIds.push(hopPiece.id);
+                      }
+                    }
+                    cx += hdx;
+                    cy += hdy;
+                  }
+                }
+                if (hopCapturedPieceIds.length > 0) {
+                  isHopCapture = true;
+                  isValidMove = true;
+                  pathClear = true;
+                }
+              }
+            }
+          }
         }
         
         if (isValidMove && pathClear) {
           // Check if this move requires a certain number of first moves
-          const firstMovesRequired = (isCapture || isPotentialCapture)
+          const firstMovesRequired = (isCapture || isPotentialCapture || isHopCapture)
             ? checkIfFirstMoveOnlyCapture(piece, piece.x, piece.y, toX, toY, pieceTeam)
             : checkIfFirstMoveOnlyMove(piece, piece.x, piece.y, toX, toY, pieceTeam);
           
@@ -1268,9 +1371,11 @@ const LiveGame = () => {
           moves.push({
             x: toX,
             y: toY,
-            isCapture: isCapture || isPotentialCapture, // Show capture styling for potential captures too
+            isCapture: isCapture || isPotentialCapture || isHopCapture,
+            isHopCapture,
+            hopCapturedPieceIds,
             isFirstMoveOnly: firstMovesRequired > 0,
-            isPotentialCapture // For premoves: true if this is a capture-only square currently empty
+            isPotentialCapture
           });
         }
       }
@@ -1292,7 +1397,7 @@ const LiveGame = () => {
           if (isCloseRange) {
             // Close-range castling: king hops over pieces, partner can be at target or adjacent
             // Target is valid if: empty, OR occupied by the partner itself (who will move)
-            const targetOccupiedByOther = pieces.some(p => p.x === targetX && p.y === targetY && p.id !== partner.id);
+            const targetOccupiedByOther = pieces.some(p => p.id !== partner.id && doesPieceOccupySquare(p, targetX, targetY));
             if (!targetOccupiedByOther) {
               moves.push({
                 x: targetX,
@@ -1305,7 +1410,7 @@ const LiveGame = () => {
             }
           } else {
             // Standard long-range castling: path must be clear
-            const targetOccupied = pieces.some(p => p.x === targetX && p.y === targetY);
+            const targetOccupied = !!findPieceAtSquare(pieces, targetX, targetY);
             const pathClear = isPathClear(piece.x, piece.y, targetX, targetY, pieces);
             if (!targetOccupied && pathClear) {
               moves.push({
@@ -1335,7 +1440,7 @@ const LiveGame = () => {
           if (isCloseRange) {
             // Close-range castling: king hops over pieces, partner can be at target or adjacent
             // Target is valid if: empty, OR occupied by the partner itself (who will move)
-            const targetOccupiedByOther = pieces.some(p => p.x === targetX && p.y === targetY && p.id !== partner.id);
+            const targetOccupiedByOther = pieces.some(p => p.id !== partner.id && doesPieceOccupySquare(p, targetX, targetY));
             if (!targetOccupiedByOther) {
               moves.push({
                 x: targetX,
@@ -1348,7 +1453,7 @@ const LiveGame = () => {
             }
           } else {
             // Standard long-range castling: path must be clear
-            const targetOccupied = pieces.some(p => p.x === targetX && p.y === targetY);
+            const targetOccupied = !!findPieceAtSquare(pieces, targetX, targetY);
             const pathClear = isPathClear(piece.x, piece.y, targetX, targetY, pieces);
             if (!targetOccupied && pathClear) {
               moves.push({
@@ -1418,7 +1523,7 @@ const LiveGame = () => {
       for (let toY = 0; toY < boardHeight; toY++) {
         for (let toX = 0; toX < boardWidth; toX++) {
           if (toX === piece.x && toY === piece.y) continue;
-          const targetPiece = pieces.find(p => p.x === toX && p.y === toY);
+          const targetPiece = findPieceAtSquare(pieces, toX, toY);
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           // Skip friendly pieces - show all other squares within range
           if (targetPiece && targetTeam === pieceTeam) continue;
@@ -1470,7 +1575,7 @@ const LiveGame = () => {
     }
 
     const pieces = parsePieces(gameState.pieces);
-    const clickedPiece = pieces.find(p => p.x === x && p.y === y);
+    const clickedPiece = findPieceAtSquare(pieces, x, y);
 
     // Check if clicking on own piece (or any piece when waiting/previewing)
     const isPreviewMode = gameState.status === 'waiting' || gameState.status === 'ready';
@@ -1480,10 +1585,28 @@ const LiveGame = () => {
     );
     
     // If clicking on opponent's piece, clear selection and return
+    // Unless a valid capture move overlaps with this enemy piece's footprint
     if (clickedPiece && !isOwnPiece && !isPreviewMode) {
-      setSelectedPiece(null);
-      setValidMoves([]);
-      return;
+      let hasCaptureForEnemy = false;
+      if (selectedPiece) {
+        const spw = selectedPiece.piece_width || 1;
+        const sph = selectedPiece.piece_height || 1;
+        hasCaptureForEnemy = validMoves.some(m => {
+          if (!m.isCapture) return false;
+          // Check if moving piece's footprint at destination overlaps clicked enemy
+          for (let dy = 0; dy < sph; dy++) {
+            for (let dx = 0; dx < spw; dx++) {
+              if (doesPieceOccupySquare(clickedPiece, m.x + dx, m.y + dy)) return true;
+            }
+          }
+          return false;
+        });
+      }
+      if (!hasCaptureForEnemy) {
+        setSelectedPiece(null);
+        setValidMoves([]);
+        return;
+      }
     }
 
     // In preview mode, allow selecting any piece to see its moves
@@ -1509,7 +1632,17 @@ const LiveGame = () => {
     const canPremove = selectedPiece && !isMyTurn && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false;
     
     if (canMakeMove) {
-      const move = validMoves.find(m => m.x === x && m.y === y);
+      // Find move: exact match first, then check multi-tile footprint overlap
+      let move = validMoves.find(m => m.x === x && m.y === y);
+      if (!move && selectedPiece) {
+        const spw = selectedPiece.piece_width || 1;
+        const sph = selectedPiece.piece_height || 1;
+        if (spw > 1 || sph > 1) {
+          move = validMoves.find(m => !m.isRangedAttack &&
+            x >= m.x && x < m.x + spw && y >= m.y && y < m.y + sph
+          );
+        }
+      }
       if (move) {
         // Ranged zone squares (no enemy piece) are display-only, not executable
         if (move.isRangedAttack && !move.isCapture) {
@@ -1520,12 +1653,12 @@ const LiveGame = () => {
         console.log('[MOVE ATTEMPT]', { 
           piece: selectedPiece.piece_name, 
           from: { x: selectedPiece.x, y: selectedPiece.y }, 
-          to: { x, y },
+          to: { x: move.x, y: move.y },
           move 
         });
         const moveData = {
           from: { x: selectedPiece.x, y: selectedPiece.y },
-          to: { x, y },
+          to: { x: move.x, y: move.y },
           pieceId: selectedPiece.id
         };
         // Include castling data if this is a castling move
@@ -1538,6 +1671,11 @@ const LiveGame = () => {
         if (move.isRangedAttack) {
           moveData.isRangedAttack = true;
         }
+        // Include hop capture data (checkers-style capture)
+        if (move.isHopCapture) {
+          moveData.isHopCapture = true;
+          moveData.hopCapturedPieceIds = move.hopCapturedPieceIds;
+        }
         makeMove(parseInt(gameId), moveData);
         setSelectedPiece(null);
         setValidMoves([]);
@@ -1547,12 +1685,21 @@ const LiveGame = () => {
         setValidMoves([]);
       }
     } else if (canPremove) {
-      const move = validMoves.find(m => m.x === x && m.y === y);
+      let move = validMoves.find(m => m.x === x && m.y === y);
+      if (!move && selectedPiece) {
+        const spw = selectedPiece.piece_width || 1;
+        const sph = selectedPiece.piece_height || 1;
+        if (spw > 1 || sph > 1) {
+          move = validMoves.find(m => !m.isRangedAttack &&
+            x >= m.x && x < m.x + spw && y >= m.y && y < m.y + sph
+          );
+        }
+      }
       if (move) {
-        console.log('Setting premove!', { from: { x: selectedPiece.x, y: selectedPiece.y }, to: { x, y } });
+        console.log('Setting premove!', { from: { x: selectedPiece.x, y: selectedPiece.y }, to: { x: move.x, y: move.y } });
         const premoveData = {
           from: { x: selectedPiece.x, y: selectedPiece.y },
-          to: { x, y },
+          to: { x: move.x, y: move.y },
           pieceId: selectedPiece.id
         };
         setPremove(premoveData); // Set local state
@@ -1656,8 +1803,17 @@ const LiveGame = () => {
       return;
     }
 
-    // Check if target is a valid move
-    const validMove = dragValidMoves.find(m => m.x === targetX && m.y === targetY);
+    // Check if target is a valid move (exact match or multi-tile footprint overlap)
+    let validMove = dragValidMoves.find(m => m.x === targetX && m.y === targetY);
+    if (!validMove && draggedPiece) {
+      const dpw = draggedPiece.piece_width || 1;
+      const dph = draggedPiece.piece_height || 1;
+      if (dpw > 1 || dph > 1) {
+        validMove = dragValidMoves.find(m => !m.isRangedAttack &&
+          targetX >= m.x && targetX < m.x + dpw && targetY >= m.y && targetY < m.y + dph
+        );
+      }
+    }
     console.log('Valid move found:', validMove);
     
     if (!validMove) {
@@ -1700,10 +1856,10 @@ const LiveGame = () => {
       const canMakePremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false;
       
       if (canMakeMove) {
-        console.log('Making move:', { from: { x: draggedPiece.x, y: draggedPiece.y }, to: { x: targetX, y: targetY } });
+        console.log('Making move:', { from: { x: draggedPiece.x, y: draggedPiece.y }, to: { x: validMove.x, y: validMove.y } });
         const moveData = {
           from: { x: draggedPiece.x, y: draggedPiece.y },
-          to: { x: targetX, y: targetY },
+          to: { x: validMove.x, y: validMove.y },
           pieceId: draggedPiece.id
         };
         // Include castling data if this is a castling move
@@ -1712,12 +1868,17 @@ const LiveGame = () => {
           moveData.castlingWith = validMove.castlingWith;
           moveData.castlingDirection = validMove.castlingDirection;
         }
+        // Include hop capture data (checkers-style capture)
+        if (validMove.isHopCapture) {
+          moveData.isHopCapture = true;
+          moveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
+        }
         makeMove(parseInt(gameId), moveData);
       } else if (canMakePremove) {
-        console.log('Setting premove via drag:', { from: { x: draggedPiece.x, y: draggedPiece.y }, to: { x: targetX, y: targetY } });
+        console.log('Setting premove via drag:', { from: { x: draggedPiece.x, y: draggedPiece.y }, to: { x: validMove.x, y: validMove.y } });
         const premoveData = {
           from: { x: draggedPiece.x, y: draggedPiece.y },
-          to: { x: targetX, y: targetY },
+          to: { x: validMove.x, y: validMove.y },
           pieceId: draggedPiece.id
         };
         setPremove(premoveData);
@@ -1729,7 +1890,7 @@ const LiveGame = () => {
     setValidMoves([]);
     setDraggedPiece(null);
     setDragValidMoves([]);
-  }, [draggedPiece, dragValidMoves, isMyTurn, gameState, makeMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef]);
+  }, [draggedPiece, dragValidMoves, isMyTurn, gameState, makeMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
 
   // Handle right-click mousedown for ranged attack drag detection
   const handleSquareMouseDown = useCallback((e, x, y) => {
@@ -1754,7 +1915,7 @@ const LiveGame = () => {
         (gameState?.status === 'active' || gameState?.status === 'ready')) {
       setIsRightClickActive(true);
     }
-  }, [gameState, currentPlayer, isMyTurn, parsePieces]);
+  }, [gameState, currentPlayer, isMyTurn]);
 
   // Handle contextmenu on square
   const handleSquareContextMenu = useCallback((e, x, y) => {
@@ -1838,7 +1999,7 @@ const LiveGame = () => {
       setValidMoves([]);
     }
     rightClickDataRef.current = null;
-  }, [selectedPiece, validMoves, isMyTurn, gameState, makeMove, gameId, premove, sendClearPremove, currentPlayer, parsePieces, rangedSelectedPiece]);
+  }, [selectedPiece, validMoves, isMyTurn, gameState, makeMove, gameId, premove, sendClearPremove, currentPlayer, rangedSelectedPiece, sendPremove]);
 
   // Global listeners for ranged right-click drag detection
   useEffect(() => {
@@ -1963,7 +2124,7 @@ const LiveGame = () => {
       window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
       window.removeEventListener('resize', handleResize);
     };
-  }, [isRightClickActive, gameState, currentPlayer, parsePieces, makeMove, gameId, isMyTurn, sendPremove, setPremove]);
+  }, [isRightClickActive, gameState, currentPlayer, makeMove, gameId, isMyTurn, sendPremove, setPremove]);
 
   // Handle resign
   const handleResign = () => {
@@ -2163,10 +2324,20 @@ const LiveGame = () => {
         const { x: gameX, y: gameY } = toGameCoords(displayX, displayY, boardWidth, boardHeight);
         
         const isLight = (gameX + gameY) % 2 === 0;
-        const piece = pieces.find(p => p.x === gameX && p.y === gameY);
-        const isSelected = selectedPiece && selectedPiece.x === gameX && selectedPiece.y === gameY;
+        // Multi-tile aware: find piece whose footprint covers this square
+        const piece = findPieceAtSquare(pieces, gameX, gameY);
+        // Is this the anchor square (top-left) of the piece? Only render image here.
+        const isAnchor = piece && piece.x === gameX && piece.y === gameY;
+        const isSelected = selectedPiece && doesPieceOccupySquare(selectedPiece, gameX, gameY);
         // Find regular and ranged moves separately so both styles can overlap
-        const regularMove = validMoves.find(m => m.x === gameX && m.y === gameY && !m.isRangedAttack);
+        // Multi-tile aware: highlight all squares the piece would cover at each valid destination
+        // But don't highlight squares within the selected piece's current footprint
+        const spw = selectedPiece?.piece_width || 1;
+        const sph = selectedPiece?.piece_height || 1;
+        const inSelectedFootprint = selectedPiece && doesPieceOccupySquare(selectedPiece, gameX, gameY);
+        const regularMove = !inSelectedFootprint ? validMoves.find(m => !m.isRangedAttack &&
+          gameX >= m.x && gameX < m.x + spw && gameY >= m.y && gameY < m.y + sph
+        ) : null;
         const rangedMove = validMoves.find(m => m.x === gameX && m.y === gameY && m.isRangedAttack);
         const isLastMove = lastMove && (
           (lastMove.from?.x === gameX && lastMove.from?.y === gameY) ||
@@ -2177,8 +2348,12 @@ const LiveGame = () => {
         const canMove = piece && movablePieceIds.has(piece.id);
         
         // Check if this square shows a hovered piece's possible move (separate regular/ranged)
-        const hoveredRegularMove = showHelpers && hoveredPiece && !selectedPiece 
-          ? hoveredMoves.find(m => m.x === gameX && m.y === gameY && !m.isRangedAttack) 
+        const hpw = hoveredPiece?.piece_width || 1;
+        const hph = hoveredPiece?.piece_height || 1;
+        const inHoveredFootprint = hoveredPiece && doesPieceOccupySquare(hoveredPiece, gameX, gameY);
+        const hoveredRegularMove = showHelpers && hoveredPiece && !selectedPiece && !inHoveredFootprint
+          ? hoveredMoves.find(m => !m.isRangedAttack &&
+              gameX >= m.x && gameX < m.x + hpw && gameY >= m.y && gameY < m.y + hph)
           : null;
         const hoveredRangedMove = showHelpers && hoveredPiece && !selectedPiece 
           ? hoveredMoves.find(m => m.x === gameX && m.y === gameY && m.isRangedAttack) 
@@ -2244,7 +2419,8 @@ const LiveGame = () => {
               backgroundColor: isLight 
                 ? (currentUser?.light_square_color || '#cad5e8')
                 : (currentUser?.dark_square_color || '#08234d'),
-              position: 'relative'
+              position: 'relative',
+              ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {})
             }}
           >
             {((isRangedMove && rangedMove?.isCapture) || (isRangedHover && hoveredRangedMove?.isCapture) || ((isRangedDragTarget || isRangedSelectedTarget) && piece)) && (
@@ -2258,11 +2434,14 @@ const LiveGame = () => {
                 {specialSquareType === 'special' && 'S'}
               </div>
             )}
-            {piece && (() => {
+            {isAnchor && (() => {
               const pieceTeam = piece.player_id || piece.team;
               const isOwnPiece = currentPlayer && pieceTeam === currentPlayer.position;
               const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
               const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
+              
+              const pw = piece.piece_width || 1;
+              const ph = piece.piece_height || 1;
               
               // Get the image URL - always process through helper to ensure ASSET_URL prefix
               let imageUrl = null;
@@ -2285,9 +2464,22 @@ const LiveGame = () => {
                 });
               }
               
+              // Multi-tile pieces span across grid cells
+              const isMultiTile = pw > 1 || ph > 1;
+              const isNonSquareMultiTile = isMultiTile && pw !== ph;
+              const multiTileStyle = isMultiTile ? {
+                width: `${pw * 100}%`,
+                height: `${ph * 100}%`,
+                zIndex: 5,
+                position: 'absolute',
+                top: 0,
+                left: 0
+              } : {};
+              
               return (
                 <div 
                   className={styles.piece}
+                  style={multiTileStyle}
                   draggable={canDragForMove || canDragForPremove}
                   onDragStart={(e) => handleDragStart(e, piece)}
                   onDragEnd={handleDragEnd}
@@ -2295,18 +2487,28 @@ const LiveGame = () => {
                   onMouseLeave={() => (showHelpers || showMovableIndicators) && handlePieceHover(null)}
                 >
                 {imageUrl ? (
-                  <img 
-                    src={imageUrl} 
-                    alt={piece.piece_name || piece.name || 'piece'} 
-                    draggable={false}
-                    onError={(e) => {
-                      console.error('Failed to load piece image:', {
-                        src: imageUrl,
-                        piece_id: piece.piece_id,
-                        piece_name: piece.piece_name
-                      });
-                    }}
-                  />
+                  isNonSquareMultiTile ? (
+                    <div
+                      ref={(el) => applySvgStretchBackground(el, imageUrl)}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                      }}
+                    />
+                  ) : (
+                    <img 
+                      src={imageUrl} 
+                      alt={piece.piece_name || piece.name || 'piece'} 
+                      draggable={false}
+                      onError={(e) => {
+                        console.error('Failed to load piece image:', {
+                          src: imageUrl,
+                          piece_id: piece.piece_id,
+                          piece_name: piece.piece_name
+                        });
+                      }}
+                    />
+                  )
                 ) : (
                   // Fallback to unicode chess pieces
                   <span>{getPieceSymbol(piece)}</span>
