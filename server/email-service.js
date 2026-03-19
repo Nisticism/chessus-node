@@ -465,9 +465,96 @@ const sendContactEmail = async (name, email, subject, message) => {
   }
 };
 
+// Notification summary email template
+const getNotificationSummaryContent = (username, summaryItems, totalCount) => {
+  const summaryRows = summaryItems.map(item => {
+    const labels = {
+      friend_request: '👥 Friend Requests',
+      challenge: '⚔️ Game Challenges',
+      comment: '💬 Comments on Your Posts',
+      game_thread: '🎮 Game Thread Activity',
+      system: '📢 System Notifications',
+    };
+    const label = labels[item.type] || `📌 ${item.type}`;
+    return `<tr><td style="padding: 10px 15px; color: #e0e0e0; border-bottom: 1px solid rgba(255,255,255,0.05);">${label}</td><td style="padding: 10px 15px; color: #64b5f6; font-weight: 600; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.05);">${item.count}</td></tr>`;
+  }).join('');
+
+  return `
+    <h2 class="title">Your Weekly Notification Summary 🔔</h2>
+    <p class="message">
+      Hi <strong>${username}</strong>,
+    </p>
+    <p class="message">
+      You received <strong>${totalCount} notifications</strong> this week! Here's a quick summary:
+    </p>
+
+    <div class="highlight-box">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr>
+            <th style="padding: 10px 15px; color: #90a4ae; text-align: left; border-bottom: 2px solid rgba(100,181,246,0.3);">Type</th>
+            <th style="padding: 10px 15px; color: #90a4ae; text-align: right; border-bottom: 2px solid rgba(100,181,246,0.3);">Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${summaryRows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="button-center">
+      <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/notifications" class="button" style="color: #ffffff; text-decoration: none;">View All Notifications</a>
+    </div>
+
+    <div class="divider"></div>
+
+    <p class="message" style="font-size: 14px; color: #90a4ae;">
+      Don't miss out on any activity — log in to respond to friend requests, game challenges, and community discussions!
+    </p>
+  `;
+};
+
+const sendNotificationSummaryEmail = async (email, username, summaryItems, totalCount) => {
+  try {
+    const htmlBody = getEmailTemplate(getNotificationSummaryContent(username, summaryItems, totalCount));
+
+    const params = {
+      Source: process.env.AWS_SES_FROM_EMAIL || 'noreply@squarestrat.com',
+      Destination: {
+        ToAddresses: [email],
+      },
+      Message: {
+        Subject: {
+          Data: `${username}, you have ${totalCount} new notifications this week!`,
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Text: {
+            Data: `Hi ${username}, you received ${totalCount} notifications this week. Log in to view them: ${process.env.CLIENT_URL || 'http://localhost:3000'}/notifications`,
+            Charset: 'UTF-8',
+          },
+          Html: {
+            Data: htmlBody,
+            Charset: 'UTF-8',
+          },
+        },
+      },
+    };
+
+    const command = new SendEmailCommand(params);
+    await sesClient.send(command);
+    console.log(`✅ Notification summary email sent to ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Error sending notification summary email:', error.message);
+    return { success: false, error };
+  }
+};
+
 module.exports = {
   sendWelcomeEmail,
   sendDonationEmail,
   sendPasswordResetEmail,
   sendContactEmail,
+  sendNotificationSummaryEmail,
 };

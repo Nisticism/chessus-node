@@ -521,6 +521,9 @@ const getGameById = async (gameId) => {
         }
       }
       
+      const pw = piece.piece_width || 1;
+      const ph = piece.piece_height || 1;
+
       piecesObj[key] = {
         piece_id: piece.piece_id,
         x: piece.x,
@@ -528,6 +531,8 @@ const getGameById = async (gameId) => {
         player_number: playerId,
         player_id: playerId,
         player: playerId,
+        piece_width: pw,
+        piece_height: ph,
         ends_game_on_checkmate: Boolean(piece.ends_game_on_checkmate),
         ends_game_on_capture: Boolean(piece.ends_game_on_capture),
         manual_castling_partners: Boolean(piece.manual_castling_partners),
@@ -538,6 +543,23 @@ const getGameById = async (gameId) => {
         image_url: imageUrl,
         image_location: piece.image_location
       };
+
+      // For multi-tile pieces, create extension square markers
+      if (pw > 1 || ph > 1) {
+        for (let dy = 0; dy < ph; dy++) {
+          for (let dx = 0; dx < pw; dx++) {
+            if (dx === 0 && dy === 0) continue; // skip anchor
+            const extKey = `${piece.y + dy},${piece.x + dx}`;
+            piecesObj[extKey] = {
+              _anchorKey: key,
+              piece_id: piece.piece_id,
+              player_id: playerId,
+              piece_name: piece.piece_name,
+              _occupied: true
+            };
+          }
+        }
+      }
     }
     game.pieces_string = JSON.stringify(piecesObj);
   }
@@ -794,6 +816,105 @@ const updateUserDonations = async (email, amount) => {
   return result;
 };
 
+// ----------------------- Notifications ---------------------------
+
+const createNotification = async ({ user_id, sender_id, type, title, content, related_id, action_url }) => {
+  const result = await query(
+    `INSERT INTO notifications (user_id, sender_id, type, title, content, related_id, action_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [user_id, sender_id || null, type, title, content || null, related_id || null, action_url || null]
+  );
+  return { id: result.insertId, user_id, sender_id, type, title, content, related_id, action_url, is_read: 0, is_actioned: 0 };
+};
+
+const getNotificationsByUserId = async (userId, page = 1, limit = 20) => {
+  const offset = (page - 1) * limit;
+  const notifications = await query(
+    `SELECT n.*, u.username as sender_username, u.profile_picture as sender_profile_picture
+     FROM notifications n
+     LEFT JOIN users u ON n.sender_id = u.id
+     WHERE n.user_id = ?
+     ORDER BY n.created_at DESC
+     LIMIT ? OFFSET ?`,
+    [userId, limit, offset]
+  );
+  return notifications;
+};
+
+const getUnreadNotificationCount = async (userId) => {
+  const result = await query(
+    "SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0",
+    [userId]
+  );
+  return result[0].count;
+};
+
+const markNotificationRead = async (notificationId, userId) => {
+  await query(
+    "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
+    [notificationId, userId]
+  );
+};
+
+const markAllNotificationsRead = async (userId) => {
+  await query(
+    "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+    [userId]
+  );
+};
+
+const markNotificationActioned = async (notificationId, userId) => {
+  await query(
+    "UPDATE notifications SET is_actioned = 1, is_read = 1 WHERE id = ? AND user_id = ?",
+    [notificationId, userId]
+  );
+};
+
+const deleteNotification = async (notificationId, userId) => {
+  await query(
+    "DELETE FROM notifications WHERE id = ? AND user_id = ?",
+    [notificationId, userId]
+  );
+};
+
+const getWeeklyNotificationCounts = async (weekStart) => {
+  const results = await query(
+    `SELECT n.user_id, u.username, u.email, COUNT(*) as notification_count
+     FROM notifications n
+     JOIN users u ON n.user_id = u.id
+     WHERE n.created_at >= ? AND u.email IS NOT NULL AND u.email != ''
+     GROUP BY n.user_id
+     HAVING notification_count > 10`,
+    [weekStart]
+  );
+  return results;
+};
+
+const getNotificationSummaryForUser = async (userId, weekStart) => {
+  const results = await query(
+    `SELECT type, COUNT(*) as count FROM notifications
+     WHERE user_id = ? AND created_at >= ?
+     GROUP BY type`,
+    [userId, weekStart]
+  );
+  return results;
+};
+
+const logNotificationEmail = async (userId, notificationCount, weekStart) => {
+  await query(
+    `INSERT INTO notification_email_log (user_id, notification_count, week_start) VALUES (?, ?, ?)`,
+    [userId, notificationCount, weekStart]
+  );
+};
+
+const hasEmailBeenSentForWeek = async (userId, weekStart) => {
+  const result = await query(
+    "SELECT COUNT(*) as count FROM notification_email_log WHERE user_id = ? AND week_start = ?",
+    [userId, weekStart]
+  );
+  return result[0].count > 0;
+};
+
 module.exports = {
   query,
   findUserByUsername,
@@ -826,4 +947,15 @@ module.exports = {
   deleteLike,
   getAllNews,
   updateUserDonations,
+  createNotification,
+  getNotificationsByUserId,
+  getUnreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
+  markNotificationActioned,
+  deleteNotification,
+  getWeeklyNotificationCounts,
+  getNotificationSummaryForUser,
+  logNotificationEmail,
+  hasEmailBeenSentForWeek,
 };

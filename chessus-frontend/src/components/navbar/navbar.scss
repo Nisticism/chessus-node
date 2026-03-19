@@ -119,11 +119,20 @@ p {
   margin-left: 1rem;
   display: none;
   position: relative;
+  align-items: center;
+  gap: 4px;
 }
 
 .navbar-menu svg {
   cursor: pointer;
 }
+
+// Bell icon inside navbar-menu — hidden on desktop (shown in user-info instead)
+.navbar-menu-bell {
+  display: none;
+}
+
+
 
 .navbar-menu-container {
   display: flex;
@@ -259,6 +268,10 @@ p {
   .navbar-menu {
     display: flex;
     margin-right: 10px;
+  }
+
+  .navbar-menu-bell {
+    display: flex;
   }
 
   // Hide user info from header (will be in menu)
@@ -415,6 +428,10 @@ p {
     margin-right: 10px;
   }
 
+  .navbar-menu-bell {
+    display: flex;
+  }
+
   .navbar-inner {
     display: flex;
     flex-direction: column;
@@ -555,4 +572,53 @@ p {
   .admin-link {
     color: #ffc107 !important;
   }
+}
+
+// Notification bell
+.notification-bell-item {
+  display: flex;
+  align-items: center;
+}
+
+.notification-bell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e0e0e0;
+  text-decoration: none;
+  padding: 6px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  cursor: pointer;
+
+  &:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.notification-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  background: #e85c5c;
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }

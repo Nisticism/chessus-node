@@ -75,7 +75,7 @@ const LOGIN_LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
 const MAX_LOGIN_ATTEMPTS = 10; // Allow 10 failed attempts before lockout
 
 // Email service
-const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail } = require("./email-service");
+const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail, sendNotificationSummaryEmail } = require("./email-service");
 
 // Socket.io game handler
 const { initializeSocket, onlineUsers, getIO } = require("./game-socket");
@@ -1206,13 +1206,33 @@ app.post("/api/users/:userId/friends", authenticateToken, async (req, res) => {
           "SELECT id, username, elo, profile_picture FROM users WHERE id = ?",
           [friendId]
         );
+
+        // Create notification for re-sent friend request
+        const senderUser = await dbHelpers.findUserById(parseInt(userId));
+        const notification = await dbHelpers.createNotification({
+          user_id: parseInt(friendId),
+          sender_id: parseInt(userId),
+          type: 'friend_request',
+          title: `${senderUser.username} sent you a friend request`,
+          content: 'You have a new friend request. Accept or decline from your notifications.',
+          related_id: existingRequest.id,
+          action_url: '/notifications'
+        });
+        const io = app.get('io');
+        if (io) {
+          const { userSockets } = require('./game-socket');
+          const targetSocketId = userSockets?.get(parseInt(friendId));
+          if (targetSocketId) {
+            io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: senderUser.username });
+          }
+        }
         
         return res.json({ message: "Friend request sent", friend: friend[0] });
       }
     }
     
     // Create a pending friend request (one-way only)
-    await db_pool.query(
+    const [insertResult] = await db_pool.query(
       "INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, 'pending')",
       [userId, friendId]
     );
@@ -1222,6 +1242,27 @@ app.post("/api/users/:userId/friends", authenticateToken, async (req, res) => {
       "SELECT id, username, elo, profile_picture FROM users WHERE id = ?",
       [friendId]
     );
+
+    // Create notification for the friend request recipient
+    const senderUser = await dbHelpers.findUserById(parseInt(userId));
+    const notification = await dbHelpers.createNotification({
+      user_id: parseInt(friendId),
+      sender_id: parseInt(userId),
+      type: 'friend_request',
+      title: `${senderUser.username} sent you a friend request`,
+      content: 'You have a new friend request. Accept or decline from your notifications.',
+      related_id: insertResult.insertId,
+      action_url: '/notifications'
+    });
+    // Real-time push via socket
+    const io = app.get('io');
+    if (io) {
+      const { userSockets } = require('./game-socket');
+      const targetSocketId = userSockets?.get(parseInt(friendId));
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: senderUser.username });
+      }
+    }
     
     res.json({ message: "Friend request sent", friend: friend[0] });
   } catch (err) {
@@ -1886,9 +1927,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
           });
         }
 
-        // Insert each piece
+        // Insert each piece (skip multi-tile extension squares, only save anchors)
         for (const piece of piecesToInsert) {
-          if (piece.piece_id) {
+          if (piece.piece_id && !piece._occupied && !piece._anchorKey) {
             const playerNum = Number(piece.player_id ?? piece.player_number ?? piece.player ?? 1);
             await dbHelpers.addPieceToGameType(
               gameId,
@@ -2775,6 +2816,36 @@ app.post("/api/forums/new", async (req, res) => {
     }
     
     const forum = await dbHelpers.createForum({ author_id, title, content, created_at, game_type_id });
+
+    // Notify game creator when a forum thread is created for their game
+    if (game_type_id) {
+      try {
+        const gameType = await dbHelpers.getGameById(game_type_id);
+        if (gameType && gameType.creator_id && gameType.creator_id !== parseInt(author_id)) {
+          const author = await dbHelpers.findUserById(parseInt(author_id));
+          const notification = await dbHelpers.createNotification({
+            user_id: gameType.creator_id,
+            sender_id: parseInt(author_id),
+            type: 'game_thread',
+            title: `New discussion thread about ${gameType.game_name}`,
+            content: title,
+            related_id: forum.insertId || forum.id,
+            action_url: `/forums/${forum.insertId || forum.id}`
+          });
+          const io = app.get('io');
+          if (io) {
+            const { userSockets } = require('./game-socket');
+            const targetSocketId = userSockets?.get(gameType.creator_id);
+            if (targetSocketId) {
+              io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author?.username });
+            }
+          }
+        }
+      } catch (notifErr) {
+        console.error('Error creating game thread notification:', notifErr.message);
+      }
+    }
+
     res.json({ result: forum });
   } catch (err) {
     console.error("Error in /api/forums/new:", err);
@@ -2962,6 +3033,32 @@ app.post("/api/comments/new", async (req, res) => {
       created_at,
       author_name
     });
+
+    // Notify the forum post author about the new comment
+    try {
+      const forum = await dbHelpers.findArticleById(forum_id);
+      if (forum && forum.author_id && forum.author_id !== parseInt(author_id)) {
+        const notification = await dbHelpers.createNotification({
+          user_id: forum.author_id,
+          sender_id: parseInt(author_id),
+          type: 'comment',
+          title: `${author_name} commented on your post`,
+          content: content ? content.substring(0, 200) : 'New comment on your post',
+          related_id: forum_id,
+          action_url: `/forums/${forum_id}`
+        });
+        const io = app.get('io');
+        if (io) {
+          const { userSockets } = require('./game-socket');
+          const targetSocketId = userSockets?.get(forum.author_id);
+          if (targetSocketId) {
+            io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author_name });
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.error('Error creating comment notification:', notifErr.message);
+    }
     
     res.json({ result: comment });
   } catch (err) {
@@ -3391,9 +3488,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
           });
         }
 
-        // Insert each piece
+        // Insert each piece (skip multi-tile extension squares, only save anchors)
         for (const piece of piecesToInsert) {
-          if (piece.piece_id) {
+          if (piece.piece_id && !piece._occupied && !piece._anchorKey) {
             await dbHelpers.addPieceToGameType(
               gameId,
               piece.piece_id,
@@ -4840,6 +4937,101 @@ app.post("/api/confirm-donation", async (req, res) => {
   }
 });
 
+// ----------------------- Notifications ---------------------------
+
+// Get notifications for a user (paginated)
+app.get("/api/users/:userId/notifications", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const notifications = await dbHelpers.getNotificationsByUserId(userId, page, Math.min(limit, 50));
+    const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
+    res.json({ notifications, unreadCount, page, limit });
+  } catch (err) {
+    console.error("Error fetching notifications:", err);
+    res.status(500).json({ error: "Failed to fetch notifications" });
+  }
+});
+
+// Get unread notification count
+app.get("/api/users/:userId/notifications/unread-count", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const count = await dbHelpers.getUnreadNotificationCount(userId);
+    res.json({ unreadCount: count });
+  } catch (err) {
+    console.error("Error fetching unread count:", err);
+    res.status(500).json({ error: "Failed to fetch unread count" });
+  }
+});
+
+// Mark a single notification as read
+app.put("/api/users/:userId/notifications/:notificationId/read", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    await dbHelpers.markNotificationRead(parseInt(req.params.notificationId), userId);
+    res.json({ message: "Notification marked as read" });
+  } catch (err) {
+    console.error("Error marking notification read:", err);
+    res.status(500).json({ error: "Failed to mark notification read" });
+  }
+});
+
+// Mark all notifications as read
+app.put("/api/users/:userId/notifications/read-all", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    await dbHelpers.markAllNotificationsRead(userId);
+    res.json({ message: "All notifications marked as read" });
+  } catch (err) {
+    console.error("Error marking all notifications read:", err);
+    res.status(500).json({ error: "Failed to mark all notifications read" });
+  }
+});
+
+// Mark a notification as actioned (e.g., accepted friend request)
+app.put("/api/users/:userId/notifications/:notificationId/action", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    await dbHelpers.markNotificationActioned(parseInt(req.params.notificationId), userId);
+    res.json({ message: "Notification actioned" });
+  } catch (err) {
+    console.error("Error actioning notification:", err);
+    res.status(500).json({ error: "Failed to action notification" });
+  }
+});
+
+// Delete a notification
+app.delete("/api/users/:userId/notifications/:notificationId", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    await dbHelpers.deleteNotification(parseInt(req.params.notificationId), userId);
+    res.json({ message: "Notification deleted" });
+  } catch (err) {
+    console.error("Error deleting notification:", err);
+    res.status(500).json({ error: "Failed to delete notification" });
+  }
+});
+
 // Contact form endpoint
 app.post("/api/contact", async (req, res) => {
   try {
@@ -4882,3 +5074,31 @@ server.listen(PORT, () => {
   console.log(`Server listening on ${PORT}`);
   console.log(`Socket.io ready for connections`);
 });
+
+// Weekly notification email digest - runs every hour, checks if users have >10 notifications this week
+const checkWeeklyNotificationDigest = async () => {
+  try {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - dayOfWeek);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+
+    const usersToNotify = await dbHelpers.getWeeklyNotificationCounts(weekStartStr);
+
+    for (const user of usersToNotify) {
+      const alreadySent = await dbHelpers.hasEmailBeenSentForWeek(user.user_id, weekStartStr);
+      if (alreadySent) continue;
+
+      const summary = await dbHelpers.getNotificationSummaryForUser(user.user_id, weekStartStr);
+      await sendNotificationSummaryEmail(user.email, user.username, summary, user.notification_count);
+      await dbHelpers.logNotificationEmail(user.user_id, user.notification_count, weekStartStr);
+    }
+  } catch (err) {
+    console.error('Error in weekly notification digest:', err.message);
+  }
+};
+
+// Check every hour
+setInterval(checkWeeklyNotificationDigest, 60 * 60 * 1000);

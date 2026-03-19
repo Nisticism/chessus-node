@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { RiMenu3Line, RiCloseLine } from 'react-icons/ri';
+import { IoNotificationsOutline } from 'react-icons/io5';
 import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
+import { getUnreadCount, receiveNewNotification } from "../../actions/notifications";
+import { useSocket } from "../../contexts/SocketContext";
 import logo from '../../assets/logo.svg';
 import './navbar.scss';
 
@@ -31,7 +34,7 @@ const UserMenu = ({ currentUser, logOut }) => (
   </div>
 );
 
-const Menu = ({ currentUser, logOut }) => {
+const Menu = ({ currentUser, logOut, unreadCount }) => {
   const [openSubmenu, setOpenSubmenu] = useState(null);
 
   const toggleSubmenu = (e, menuName) => {
@@ -194,7 +197,9 @@ const Navbar = () => {
   const navigate = useNavigate();
 
   const { user: currentUser } = useSelector((state) => state.authReducer);
+  const { unreadCount } = useSelector((state) => state.notifications);
   const dispatch = useDispatch();
+  const { socket } = useSocket();
 
   const logOut = () => {
     dispatch(removeUsers());
@@ -202,6 +207,36 @@ const Navbar = () => {
     navigate('/');
     setToggleMenu(false);
   };
+
+  // Fetch unread notification count on mount and when user changes
+  useEffect(() => {
+    if (currentUser) {
+      dispatch(getUnreadCount(currentUser.id));
+    }
+  }, [currentUser, dispatch]);
+
+  // Poll for unread count every 60 seconds
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => {
+      dispatch(getUnreadCount(currentUser.id));
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [currentUser, dispatch]);
+
+  // Listen for real-time notifications via socket
+  useEffect(() => {
+    if (!socket || !currentUser) return;
+
+    const handleNewNotification = (notification) => {
+      dispatch(receiveNewNotification(notification));
+    };
+
+    socket.on('newNotification', handleNewNotification);
+    return () => {
+      socket.off('newNotification', handleNewNotification);
+    };
+  }, [socket, currentUser, dispatch]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -232,11 +267,21 @@ const Navbar = () => {
               <span>SQUARESTRAT</span>
             </Link>
             <div className="navbar-links-container">
-              <Menu currentUser={currentUser} logOut={logOut} />
+              <Menu currentUser={currentUser} logOut={logOut} unreadCount={unreadCount} />
             </div>
           </div>
           {currentUser ? (
             <div className="user-info desktop-only">
+              <div className="nav-item notification-bell-item">
+                <Link to="/notifications" className="notification-bell" title="Notifications">
+                  <IoNotificationsOutline size={22} />
+                  {unreadCount > 0 && (
+                    <span className="notification-badge">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </Link>
+              </div>
               <div className="nav-item">
                 <Link to={"/profile/" + currentUser.username} className="nav-item-inner">
                   {currentUser.username}
@@ -271,6 +316,16 @@ const Navbar = () => {
           )}
         </div>
         <div className="navbar-menu" ref={menuRef}>
+          {currentUser && (
+            <Link to="/notifications" className="notification-bell navbar-menu-bell" title="Notifications">
+              <IoNotificationsOutline size={22} />
+              {unreadCount > 0 && (
+                <span className="notification-badge">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </Link>
+          )}
           { toggleMenu 
             ? <RiCloseLine color="fff" size={27} onClick={() => setToggleMenu(false)} />
             : <RiMenu3Line color="fff" size={27} onClick={() => setToggleMenu(true)} />
@@ -284,7 +339,7 @@ const Navbar = () => {
                 </div>
                 {/* Full Menu for mobile (≤750px) - all nav + user controls */}
                 <div className="mobile-menu-only">
-                  <Menu currentUser={currentUser} logOut={logOut} />
+                  <Menu currentUser={currentUser} logOut={logOut} unreadCount={unreadCount} />
                 </div>
               </div>
             </div>

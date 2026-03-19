@@ -51,6 +51,7 @@ import Donate from "./components/donate/Donate";
 import Contact from "./components/contact/Contact";
 import PrivacyPolicy from "./components/privacypolicy/PrivacyPolicy";
 import AdminDashboard from "./components/admindashboard/AdminDashboard";
+import NotificationsPage from "./components/notifications/NotificationsPage";
 import NotFound from './components/notfound/NotFound';
 
 import { SocketProvider } from "./contexts/SocketContext";
@@ -151,6 +152,7 @@ function App() {
             <Route exact path="/donate" element={<Donate />} />
             <Route exact path="/contact" element={<Contact />} />
             <Route exact path="/privacy" element={<PrivacyPolicy />} />
+            <Route exact path="/notifications" element={<NotificationsPage />} />
             <Route exact path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/*" element={<NotFound />} />
           </Routes>
