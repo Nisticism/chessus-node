@@ -111,9 +111,9 @@
   }
 
   h3 {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 600;
-    margin: 20px 0 10px;
+    margin: 0.5rem 0 0.5rem;
     color: var(--light-gray, #e0e0e0);
   }
 }
@@ -127,7 +127,7 @@
 
 // Form Groups
 .form-group {
-  margin-bottom: 25px;
+  margin-bottom: 1.25rem;
 }
 
 .form-row {
@@ -292,22 +292,25 @@
 .radio-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 15px;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .radio-label {
   display: flex;
   align-items: center;
-  font-size: 16px;
-  color: var(--light-gray, #e0e0e0);
   cursor: pointer;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.03);
+  transition: all 0.2s;
+  font-size: 0.95rem;
+  color: var(--light-gray, #e0e0e0);
 
   input[type="radio"],
   input[type="checkbox"] {
-    margin-right: 10px;
-    width: 20px;
-    height: 20px;
+    margin-right: 0.6rem;
     cursor: pointer;
   }
 
@@ -316,29 +319,38 @@
   }
 
   &:hover {
-    color: #4a90e2;
+    background-color: var(--forum-row-hover, rgba(255,255,255,0.05));
+    border-color: var(--link-text, #4a90e2);
+  }
+
+  input[type="radio"]:checked + span,
+  input[type="checkbox"]:checked + span {
+    font-weight: 600;
   }
 }
 
 // Condition Sections
 .condition-section {
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.2);
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 1rem 1.25rem;
+  background: rgba(0, 0, 0, 0.15);
   border-radius: 8px;
-  margin-bottom: 20px;
-  border-left: 4px solid #4a90e2;
+  margin-bottom: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .sub-field,
 .sub-fields {
-  margin-top: 15px;
-  padding-left: 20px;
+  margin-top: 0.75rem;
+  padding-left: 1rem;
 }
 
 .sub-fields {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 0.75rem;
 }
 
 // Slider
@@ -580,6 +592,10 @@
   &:hover {
     opacity: 0.8;
   }
+
+  &.extension-square:hover {
+    opacity: 1;
+  }
 }
 
 .piece-on-square {
@@ -610,6 +626,26 @@
 
   &:hover img {
     filter: brightness(1.15) drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
+  }
+}
+
+.piece-on-square-multitile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: grab;
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+  border-radius: 4px;
+
+  &:hover {
+    filter: brightness(1.15);
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+    z-index: 10;
+  }
+
+  &:active {
+    cursor: grabbing;
   }
 }
 
@@ -1047,6 +1083,9 @@
 }
 
 .win-condition-section {
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
   margin-top: 20px;
   padding: 15px;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1454,6 +1493,9 @@
   display: flex;
   flex-direction: column;
   gap: 15px;
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
   
   .checkbox-label {
     display: flex;

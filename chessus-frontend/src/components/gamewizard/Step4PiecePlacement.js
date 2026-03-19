@@ -10,6 +10,8 @@ import {
   getSquareHighlightStyle
 } from "../../helpers/pieceMovementUtils";
 
+import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
 const getImageUrl = (imagePath) => {
@@ -94,7 +96,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     // We need to verify both directions to ensure perfect symmetry
     for (let i = 0; i < player1Pieces.length; i++) {
       const p1 = player1Pieces[i];
-      const mirroredY = boardHeight - 1 - p1.y;
+      const ph = p1.piece_height || 1;
+      // For multi-tile: mirror the full footprint, not just the anchor
+      const mirroredY = boardHeight - p1.y - ph;
       
       // Find if there's a player 2 piece at the mirrored position with same piece type
       const p2 = player2Pieces.find(p => p.x === p1.x && p.y === mirroredY);
@@ -307,34 +311,109 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           return newPlacements;
         });
       } else {
-        // Single square placement
-        setPiecePlacements(prev => ({
-          ...prev,
-          [selectedSquare.key]: {
+        // Single or multi-tile placement
+        const pw = pieceData.piece_width || 1;
+        const ph = pieceData.piece_height || 1;
+        const boardW = gameData.board_width || 8;
+        const boardH = gameData.board_height || 8;
+        const anchorRow = selectedSquare.row;
+        const anchorCol = selectedSquare.col;
+
+        // Check if piece fits on board
+        if (anchorCol + pw > boardW || anchorRow + ph > boardH) {
+          alert(`This ${pw}×${ph} piece doesn't fit at this position. It would extend beyond the board.`);
+          setShowPieceSelector(false);
+          setSelectedSquare(null);
+          return;
+        }
+
+        setPiecePlacements(prev => {
+          const newPlacements = { ...prev };
+
+          // Remove any existing pieces that overlap the footprint
+          for (let dy = 0; dy < ph; dy++) {
+            for (let dx = 0; dx < pw; dx++) {
+              const occKey = `${anchorRow + dy},${anchorCol + dx}`;
+              if (dx === 0 && dy === 0) continue; // anchor handled separately
+              // Remove occupied-square markers from previous pieces
+              delete newPlacements[occKey];
+            }
+          }
+
+          // Place anchor with dimension info
+          newPlacements[selectedSquare.key] = {
             piece_id: pieceData.piece_id,
             player_id: pieceData.player_id,
             image_url: pieceData.image_url,
             piece_name: pieceData.piece_name,
+            piece_width: pw,
+            piece_height: ph,
             ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
             ends_game_on_capture: pieceData.ends_game_on_capture || false,
             can_control_squares: pieceData.can_control_squares || false,
-            // Castling override data
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
             castling_partner_right_key: pieceData.castling_partner_right_key || null
+          };
+
+          // For multi-tile pieces, mark the other occupied squares with a reference to the anchor
+          if (pw > 1 || ph > 1) {
+            for (let dy = 0; dy < ph; dy++) {
+              for (let dx = 0; dx < pw; dx++) {
+                if (dx === 0 && dy === 0) continue;
+                const occKey = `${anchorRow + dy},${anchorCol + dx}`;
+                newPlacements[occKey] = {
+                  _anchorKey: selectedSquare.key,
+                  piece_id: pieceData.piece_id,
+                  player_id: pieceData.player_id,
+                  piece_name: pieceData.piece_name,
+                  _occupied: true // marker for occupied extension squares
+                };
+              }
+            }
           }
-        }));
+
+          return newPlacements;
+        });
       }
     }
     setShowPieceSelector(false);
     setSelectedSquare(null);
-  }, [selectedSquare, gameData.board_width]);
+  }, [selectedSquare, gameData.board_width, gameData.board_height]);
 
   const handleRemovePiece = useCallback(() => {
     if (selectedSquare) {
       setPiecePlacements(prev => {
         const newPlacements = { ...prev };
-        delete newPlacements[selectedSquare.key];
+        const placement = newPlacements[selectedSquare.key];
+        
+        if (placement) {
+          if (placement._anchorKey) {
+            // This is an extension square — find and remove the anchor and all its extensions
+            const anchorPlacement = newPlacements[placement._anchorKey];
+            if (anchorPlacement) {
+              const pw = anchorPlacement.piece_width || 1;
+              const ph = anchorPlacement.piece_height || 1;
+              const [aRow, aCol] = placement._anchorKey.split(',').map(Number);
+              for (let dy = 0; dy < ph; dy++) {
+                for (let dx = 0; dx < pw; dx++) {
+                  delete newPlacements[`${aRow + dy},${aCol + dx}`];
+                }
+              }
+            }
+          } else {
+            // This is an anchor square — remove it and all extension squares
+            const pw = placement.piece_width || 1;
+            const ph = placement.piece_height || 1;
+            const [aRow, aCol] = selectedSquare.key.split(',').map(Number);
+            for (let dy = 0; dy < ph; dy++) {
+              for (let dx = 0; dx < pw; dx++) {
+                delete newPlacements[`${aRow + dy},${aCol + dx}`];
+              }
+            }
+          }
+        }
+        
         return newPlacements;
       });
     }
@@ -399,20 +478,84 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       return;
     }
 
-    // Allow placement anywhere - validation is just for visual feedback
+    const pw = draggedPiece.data.piece_width || 1;
+    const ph = draggedPiece.data.piece_height || 1;
+    const boardW = gameData.board_width || 8;
+    const boardH = gameData.board_height || 8;
+
+    // Check if multi-tile piece fits at target
+    if (targetRow + ph > boardH || targetCol + pw > boardW) {
+      alert('Piece does not fit on the board at this position.');
+      setDraggedPiece(null);
+      setDraggedPiecePosition(null);
+      setHoveredSquare(null);
+      return;
+    }
+
     setPiecePlacements(prev => {
       const newPlacements = { ...prev };
-      // Remove from source
-      delete newPlacements[sourceKey];
-      // Add to target (overwrite if exists)
-      newPlacements[targetKey] = draggedPiece.data;
+      // Remove source anchor + all its extensions
+      const [srcRow, srcCol] = sourceKey.split(',').map(Number);
+      for (let dr = 0; dr < ph; dr++) {
+        for (let dc = 0; dc < pw; dc++) {
+          delete newPlacements[`${srcRow + dr},${srcCol + dc}`];
+        }
+      }
+      // Check if any existing piece occupies target footprint and remove it
+      for (let dr = 0; dr < ph; dr++) {
+        for (let dc = 0; dc < pw; dc++) {
+          const checkKey = `${targetRow + dr},${targetCol + dc}`;
+          const existing = newPlacements[checkKey];
+          if (existing) {
+            // If it's an extension, find and remove its anchor + all extensions
+            if (existing._occupied && existing._anchorKey) {
+              const anchorData = newPlacements[existing._anchorKey];
+              if (anchorData) {
+                const aw = anchorData.piece_width || 1;
+                const ah = anchorData.piece_height || 1;
+                const [ar, ac] = existing._anchorKey.split(',').map(Number);
+                for (let r2 = 0; r2 < ah; r2++) {
+                  for (let c2 = 0; c2 < aw; c2++) {
+                    delete newPlacements[`${ar + r2},${ac + c2}`];
+                  }
+                }
+              }
+            } else {
+              // It's an anchor — remove it and its extensions
+              const ew = existing.piece_width || 1;
+              const eh = existing.piece_height || 1;
+              const [er, ec] = checkKey.split(',').map(Number);
+              for (let r2 = 0; r2 < eh; r2++) {
+                for (let c2 = 0; c2 < ew; c2++) {
+                  delete newPlacements[`${er + r2},${ec + c2}`];
+                }
+              }
+            }
+          }
+        }
+      }
+      // Place anchor at target
+      newPlacements[targetKey] = { ...draggedPiece.data };
+      // Place extensions
+      for (let dr = 0; dr < ph; dr++) {
+        for (let dc = 0; dc < pw; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          newPlacements[`${targetRow + dr},${targetCol + dc}`] = {
+            _anchorKey: targetKey,
+            piece_id: draggedPiece.data.piece_id,
+            player_id: draggedPiece.data.player_id,
+            piece_name: draggedPiece.data.piece_name,
+            _occupied: true
+          };
+        }
+      }
       return newPlacements;
     });
 
     setDraggedPiece(null);
     setDraggedPiecePosition(null);
     setHoveredSquare(null);
-  }, [draggedPiece]);
+  }, [draggedPiece, gameData.board_width, gameData.board_height]);
 
   const handleDragEnd = useCallback((e) => {
     // Reset opacity
@@ -496,7 +639,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
 
   // Calculate board dimensions for legend width
   const boardDimensions = useMemo(() => {
-    const squareSize = Math.min(80, 600 / Math.max(gameData.board_width, gameData.board_height));
+    const squareSize = Math.min(80, 700 / Math.max(gameData.board_width, gameData.board_height));
     const boardWidth = squareSize * gameData.board_width;
     return { squareSize, boardWidth };
   }, [gameData.board_width, gameData.board_height]);
@@ -511,6 +654,27 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         const key = `${row},${col}`;
         const placement = piecePlacements[key];
         
+        // Check if this square is within the footprint of the hovered/dragged piece itself
+        let isWithinActivePieceFootprint = false;
+        if (draggedPiece && draggedPiecePosition) {
+          const dpw = draggedPiece.data.piece_width || 1;
+          const dph = draggedPiece.data.piece_height || 1;
+          if (row >= draggedPiecePosition.row && row < draggedPiecePosition.row + dph &&
+              col >= draggedPiecePosition.col && col < draggedPiecePosition.col + dpw) {
+            isWithinActivePieceFootprint = true;
+          }
+        } else if (hoveredPiecePosition && !draggedPiece) {
+          const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
+          if (pieceData) {
+            const hpw = pieceData.piece_width || 1;
+            const hph = pieceData.piece_height || 1;
+            if (row >= hoveredPiecePosition.row && row < hoveredPiecePosition.row + hph &&
+                col >= hoveredPiecePosition.col && col < hoveredPiecePosition.col + hpw) {
+              isWithinActivePieceFootprint = true;
+            }
+          }
+        }
+
         // Check if this square is valid for the hovered or dragged piece
         let moveInfo = { allowed: false, isFirstMoveOnly: false };
         let captureInfo = { allowed: false, isFirstMoveOnly: false };
@@ -520,18 +684,50 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         if (draggedPiece && draggedPiecePosition) {
           const pieceData = pieceDataMap[draggedPiece.data.piece_id];
           if (pieceData) {
-            moveInfo = getMoveInfo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
-            captureInfo = getCaptureInfo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
-            canRanged = canRangedAttackTo(draggedPiecePosition.row, draggedPiecePosition.col, row, col, pieceData, draggedPiece.data.player_id);
+            const dpw = draggedPiece.data.piece_width || 1;
+            const dph = draggedPiece.data.piece_height || 1;
+            for (let dr = 0; dr < dph && !moveInfo.allowed; dr++) {
+              for (let dc = 0; dc < dpw && !moveInfo.allowed; dc++) {
+                const info = getMoveInfo(draggedPiecePosition.row + dr, draggedPiecePosition.col + dc, row, col, pieceData, draggedPiece.data.player_id);
+                if (info.allowed) moveInfo = info;
+              }
+            }
+            for (let dr = 0; dr < dph && !captureInfo.allowed; dr++) {
+              for (let dc = 0; dc < dpw && !captureInfo.allowed; dc++) {
+                const info = getCaptureInfo(draggedPiecePosition.row + dr, draggedPiecePosition.col + dc, row, col, pieceData, draggedPiece.data.player_id);
+                if (info.allowed) captureInfo = info;
+              }
+            }
+            for (let dr = 0; dr < dph && !canRanged; dr++) {
+              for (let dc = 0; dc < dpw && !canRanged; dc++) {
+                canRanged = canRangedAttackTo(draggedPiecePosition.row + dr, draggedPiecePosition.col + dc, row, col, pieceData, draggedPiece.data.player_id);
+              }
+            }
           }
         }
         // Check for hovered piece (not dragging)
         else if (hoveredPiecePosition && !draggedPiece) {
           const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
           if (pieceData) {
-            moveInfo = getMoveInfo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
-            captureInfo = getCaptureInfo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
-            canRanged = canRangedAttackTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
+            const hpw = pieceData.piece_width || 1;
+            const hph = pieceData.piece_height || 1;
+            for (let dr = 0; dr < hph && !moveInfo.allowed; dr++) {
+              for (let dc = 0; dc < hpw && !moveInfo.allowed; dc++) {
+                const info = getMoveInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+                if (info.allowed) moveInfo = info;
+              }
+            }
+            for (let dr = 0; dr < hph && !captureInfo.allowed; dr++) {
+              for (let dc = 0; dc < hpw && !captureInfo.allowed; dc++) {
+                const info = getCaptureInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+                if (info.allowed) captureInfo = info;
+              }
+            }
+            for (let dr = 0; dr < hph && !canRanged; dr++) {
+              for (let dc = 0; dc < hpw && !canRanged; dc++) {
+                canRanged = canRangedAttackTo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+              }
+            }
           }
         }
         
@@ -552,8 +748,19 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           isLight
         );
         
-        // Merge highlight style
-        squareStyle = { ...squareStyle, ...highlightStyle };
+        // Merge highlight style (skip for squares within the active piece's own footprint)
+        if (!isWithinActivePieceFootprint) {
+          squareStyle = { ...squareStyle, ...highlightStyle };
+        }
+
+        // Anchor square needs higher z-index so multi-tile image paints above extension squares
+        if (placement && !placement._occupied) {
+          const spw = placement.piece_width || 1;
+          const sph = placement.piece_height || 1;
+          if (spw > 1 || sph > 1) {
+            squareStyle.zIndex = 10;
+          }
+        }
 
         // Add special square border/indicator from Step 3
         const specialInfo = getSpecialSquareInfo(key);
@@ -561,10 +768,12 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           squareStyle.boxShadow = `inset 0 0 0 3px ${specialInfo.color}`;
         }
         
+        const isExtensionSquare = placement && placement._occupied;
+        
         board.push(
           <div
             key={key}
-            className={styles["board-square"]}
+            className={`${styles["board-square"]}${isExtensionSquare ? ` ${styles["extension-square"]}` : ''}`}
             style={squareStyle}
             onContextMenu={(e) => handleSquareRightClick(e, row, col)}
             onTouchStart={(e) => handleTouchStart(e, row, col)}
@@ -573,13 +782,26 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             onDragOver={(e) => handleDragOver(e, row, col)}
             onDrop={(e) => handleDrop(e, row, col)}
             onMouseEnter={() => {
-              if (!placement) {
+              if (placement && placement._occupied && placement._anchorKey) {
+                // Extension square: trigger hover for the anchor piece
+                const [anchorRow, anchorCol] = placement._anchorKey.split(',').map(Number);
+                const anchorPlacement = piecePlacements[placement._anchorKey];
+                if (anchorPlacement) {
+                  const playerId = Number(anchorPlacement.player_id ?? anchorPlacement.player_number ?? anchorPlacement.player ?? 1);
+                  setHoveredPiecePosition({ row: anchorRow, col: anchorCol, pieceId: anchorPlacement.piece_id, playerId });
+                }
+              } else if (!placement) {
                 setHoveredSquare({ row, col });
+              }
+            }}
+            onMouseLeave={() => {
+              if (placement && placement._occupied) {
+                if (!draggedPiece) setHoveredPiecePosition(null);
               }
             }}
           >
             {/* Ranged attack icon */}
-            {highlightIcon && (
+            {highlightIcon && !isWithinActivePieceFootprint && (
               <span className={styles["ranged-icon"]} style={{
                 position: 'absolute',
                 top: '50%',
@@ -595,9 +817,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                 {highlightIcon}
               </span>
             )}
-            {placement && (
+            {placement && !placement._occupied && (() => {
+              const placePw = placement.piece_width || 1;
+              const placePh = placement.piece_height || 1;
+              const isMultiTile = placePw > 1 || placePh > 1;
+              return (
               <div 
-                className={styles["piece-on-square"]}
+                className={isMultiTile ? styles["piece-on-square-multitile"] : styles["piece-on-square"]}
                 draggable
                 onDragStart={(e) => handleDragStart(e, key)}
                 onDragEnd={handleDragEnd}
@@ -613,42 +839,57 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                   position: 'absolute',
                   top: 0,
                   left: 0,
-                  right: 0,
-                  bottom: 0,
+                  width: `${placePw * 100}%`,
+                  height: `${placePh * 100}%`,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  zIndex: 5
                 }}
               >
                 {getPlacementImageUrl(placement) ? (
-                  <img 
-                    src={getPlacementImageUrl(placement)} 
-                    alt={placement.piece_name}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'contain',
-                      pointerEvents: 'none'
-                    }}
-                    draggable={false}
-                  />
+                  (() => {
+                    const isPlaceNonSquare = isMultiTile && placePw !== placePh;
+                    return isPlaceNonSquare ? (
+                      <div
+                        ref={(el) => applySvgStretchBackground(el, getPlacementImageUrl(placement))}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          pointerEvents: 'none'
+                        }}
+                      />
+                    ) : (
+                      <img 
+                        src={getPlacementImageUrl(placement)} 
+                        alt={placement.piece_name}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'fill',
+                          pointerEvents: 'none'
+                        }}
+                        draggable={false}
+                      />
+                    );
+                  })()
                 ) : (
                   <span style={{ fontSize: `${squareSize * 0.3}px`, color: '#fff', pointerEvents: 'none' }}>
                     {placement.piece_name?.charAt(0) || '?'}
                   </span>
                 )}
                 {(() => {
-                  const playerId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
+                  const pId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
                   return (
                     <div className={styles["player-indicator"]} style={{
                       position: 'absolute',
                       bottom: '2px',
                       right: '2px',
-                      background: getPlayerColor(playerId),
+                      background: getPlayerColor(pId),
                       width: `${squareSize * 0.2}px`,
                       height: `${squareSize * 0.2}px`,
                       borderRadius: '50%',
-                      border: playerId === 1 ? '1px solid #666' : '1px solid #fff',
+                      border: pId === 1 ? '1px solid #666' : '1px solid #fff',
                       pointerEvents: 'none'
                     }} />
                   );
@@ -677,7 +918,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                   </div>
                 )}
               </div>
-            )}
+            );
+            })()}
           </div>
         );
       }
@@ -695,9 +937,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       return id !== undefined && id !== null ? Number(id) : undefined;
     };
 
-    // Get source player's pieces
+    // Get source player's anchor pieces only (skip extensions)
     const sourcePieces = Object.entries(piecePlacements).filter(
-      ([, piece]) => getPiecePlayerId(piece) === Number(sourcePlayerId)
+      ([, piece]) => getPiecePlayerId(piece) === Number(sourcePlayerId) && !piece._occupied
     );
 
     if (sourcePieces.length === 0) {
@@ -730,18 +972,34 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     let skipped = 0;
     sourcePieces.forEach(([key, sourcePiece]) => {
       const [row, col] = key.split(',').map(Number);
-      const mirroredRow = boardHeight - 1 - row;
+      const pw = sourcePiece.piece_width || 1;
+      const ph = sourcePiece.piece_height || 1;
+      // Mirror: the bottom edge of the source piece maps to the top edge on the target side
+      const mirroredRow = boardHeight - row - ph;
       const mirroredKey = `${mirroredRow},${col}`;
 
-      // Don't overwrite source player's own pieces at the mirrored position
-      if (newPlacements[mirroredKey] && getPiecePlayerId(newPlacements[mirroredKey]) === Number(sourcePlayerId)) {
+      // Check if mirrored piece fits on board
+      if (mirroredRow < 0 || mirroredRow + ph > boardHeight || col + pw > (gameData.board_width || 8)) {
         skipped++;
         return;
       }
 
-      // Copy the piece, keeping all fields but setting the correct player_id
-      // We need to explicitly set coordinates to avoid any stale x/y values from the source
-      // and remove image_url so the fallback logic uses image_location with the new player_id
+      // Check if any cell of the mirrored footprint overlaps source player's own pieces
+      let overlaps = false;
+      for (let dr = 0; dr < ph && !overlaps; dr++) {
+        for (let dc = 0; dc < pw && !overlaps; dc++) {
+          const checkKey = `${mirroredRow + dr},${col + dc}`;
+          if (newPlacements[checkKey] && getPiecePlayerId(newPlacements[checkKey]) === Number(sourcePlayerId)) {
+            overlaps = true;
+          }
+        }
+      }
+      if (overlaps) {
+        skipped++;
+        return;
+      }
+
+      // Copy the piece as anchor
       newPlacements[mirroredKey] = {
         piece_id: sourcePiece.piece_id,
         piece_name: sourcePiece.piece_name,
@@ -749,12 +1007,26 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         ends_game_on_checkmate: sourcePiece.ends_game_on_checkmate || false,
         ends_game_on_capture: sourcePiece.ends_game_on_capture || false,
         can_control_squares: sourcePiece.can_control_squares || false,
-        // Castling override data
         manual_castling_partners: sourcePiece.manual_castling_partners || false,
         castling_partner_left_key: sourcePiece.castling_partner_left_key || null,
         castling_partner_right_key: sourcePiece.castling_partner_right_key || null,
+        piece_width: pw,
+        piece_height: ph,
         player_id: targetPlayerId,
       };
+      // Place extension squares
+      for (let dr = 0; dr < ph; dr++) {
+        for (let dc = 0; dc < pw; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          newPlacements[`${mirroredRow + dr},${col + dc}`] = {
+            _anchorKey: mirroredKey,
+            piece_id: sourcePiece.piece_id,
+            player_id: targetPlayerId,
+            piece_name: sourcePiece.piece_name,
+            _occupied: true
+          };
+        }
+      }
     });
 
     setPiecePlacements(newPlacements);
@@ -762,11 +1034,12 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     if (skipped > 0) {
       alert(`${skipped} piece(s) could not be mirrored because they would overlap with Player ${sourcePlayerId}'s own pieces.`);
     }
-  }, [gameData.board_height, piecePlacements]);
+  }, [gameData.board_height, gameData.board_width, piecePlacements]);
 
   const getPieceCounts = () => {
     const counts = {};
     Object.values(piecePlacements).forEach(placement => {
+      if (placement._occupied) return; // Skip extension squares
       const playerId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
       const key = `Player ${playerId}`;
       counts[key] = (counts[key] || 0) + 1;
@@ -775,7 +1048,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   };
 
   const pieceCounts = getPieceCounts();
-  const totalPieces = Object.keys(piecePlacements).length;
+  const totalPieces = Object.values(piecePlacements).filter(p => !p._occupied).length;
 
   return (
     <div className={styles["step-container"]}>

@@ -2,6 +2,7 @@ import React from "react";
 import styles from "./gamewizard.module.scss";
 import GameBoard from "../gameboard/GameBoard";
 import NumberInput from "../common/NumberInput";
+import InfoTooltip from "../piecewizard/InfoTooltip";
 
 const Step3BoardPlayers = ({ gameData, updateGameData }) => {
   const handleChange = (field, value) => {
@@ -39,26 +40,24 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
       <div className={styles["form-row"]}>
         <div className={styles["form-group"]}>
           <label className={styles["form-label"]}>
-            Board Width <span className={styles["required"]}>*</span>
+            Board Width <InfoTooltip text="Number of columns on the game board. Standard chess is 8. Supports 1 to 48 squares wide." /> <span className={styles["required"]}>*</span>
           </label>
           <NumberInput
             value={gameData.board_width}
             onChange={(val) => handleChange("board_width", Math.max(1, Math.min(48, val)))}
             options={{ min: 1, max: 48, className: styles["form-input-small"] }}
           />
-          <p className={styles["field-hint"]}>1-48 squares</p>
         </div>
 
         <div className={styles["form-group"]}>
           <label className={styles["form-label"]}>
-            Board Height <span className={styles["required"]}>*</span>
+            Board Height <InfoTooltip text="Number of rows on the game board. Standard chess is 8. Supports 1 to 48 squares tall." /> <span className={styles["required"]}>*</span>
           </label>
           <NumberInput
             value={gameData.board_height}
             onChange={(val) => handleChange("board_height", Math.max(1, Math.min(48, val)))}
             options={{ min: 1, max: 48, className: styles["form-input-small"] }}
           />
-          <p className={styles["field-hint"]}>1-48 squares</p>
         </div>
       </div>
 
@@ -87,16 +86,13 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
       {/* Actions Per Turn */}
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
-          Actions Per Turn <span className={styles["required"]}>*</span>
+          Actions Per Turn <InfoTooltip text="How many moves or actions each player can make during a single turn. In standard chess this is 1. Increase for games where players can move multiple pieces per turn." /> <span className={styles["required"]}>*</span>
         </label>
         <NumberInput
           value={gameData.actions_per_turn}
           onChange={(val) => handleChange("actions_per_turn", Math.max(1, val))}
           options={{ min: 1, placeholder: "1", className: styles["form-input-small"] }}
         />
-        <p className={styles["field-hint"]}>
-          How many moves/actions each player can make per turn (typically 1)
-        </p>
       </div>
     </div>
   );

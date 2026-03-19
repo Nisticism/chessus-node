@@ -1,6 +1,7 @@
 import React from "react";
 import styles from "./gamewizard.module.scss";
 import NumberInput from "../common/NumberInput";
+import InfoTooltip from "../piecewizard/InfoTooltip";
 
 const Step2WinConditions = ({ gameData, updateGameData }) => {
   const handleChange = (field, value) => {
@@ -20,7 +21,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
 
       {/* Mate Condition */}
       <div className={styles["condition-section"]}>
-        <h3>Checkmate Condition</h3>
+        <h3>Checkmate Condition <InfoTooltip text="When enabled, the game ends when a designated piece (like a King) is put in checkmate — meaning it's attacked and has no legal escape. Specific checkmate-triggering pieces are configured in Step 4 (Piece Placement)." /></h3>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
             <input
@@ -45,16 +46,13 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
         {gameData.mate_condition && (
           <div className={styles["sub-field"]}>
-            <p className={styles["field-hint"]} style={{ marginTop: '10px' }}>
-              ℹ️ Specific pieces that end the game when checkmated will be configured in Step 4 (Piece Placement).
-            </p>
           </div>
         )}
       </div>
 
       {/* Capture Condition */}
       <div className={styles["condition-section"]}>
-        <h3>Capture Condition</h3>
+        <h3>Capture Condition <InfoTooltip text="When enabled, the game ends when a designated piece is captured. If no specific pieces are marked in Step 4, the game ends when all of a player's pieces are captured." /></h3>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
             <input
@@ -79,16 +77,13 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
         {gameData.capture_condition && (
           <div className={styles["sub-field"]}>
-            <p className={styles["field-hint"]} style={{ marginTop: '10px' }}>
-              ℹ️ Specific pieces that end the game when captured will be configured in Step 4 (Piece Placement). If no specific pieces are marked, the game will end when all of a player's pieces are captured.
-            </p>
           </div>
         )}
       </div>
 
       {/* No Legal Moves Condition (Checkers-style) */}
       <div className={styles["condition-section"]}>
-        <h3>No Legal Moves Condition</h3>
+        <h3>No Legal Moves Condition <InfoTooltip text="When enabled, a player who has no legal moves on their turn loses the game. Used in Checkers-style games. This is different from chess stalemate (which is a draw)." /></h3>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
             <input
@@ -113,9 +108,6 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
         {gameData.no_moves_condition && (
           <div className={styles["sub-field"]}>
-            <p className={styles["field-hint"]} style={{ marginTop: '10px' }}>
-              ℹ️ In games like Checkers, if a player has no legal moves, they lose. This is different from chess stalemate (which is a draw).
-            </p>
           </div>
         )}
       </div>
@@ -182,7 +174,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
 
       {/* Squares Condition */}
       <div className={styles["condition-section"]}>
-        <h3>Control Squares Condition</h3>
+        <h3>Control Squares Condition <InfoTooltip text="Win by controlling specific squares on the board. A player wins when their pieces occupy the designated control squares. The specific squares are configured in Step 3 (Board & Players)." /></h3>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
             <input
@@ -207,23 +199,17 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
         {gameData.squares_condition && (
           <div className={styles["sub-field"]}>
-            <p className={styles["field-hint"]} style={{ marginTop: '10px' }}>
-              ℹ️ Specific control squares will be configured in Step 3 (Board & Players).
-            </p>
           </div>
         )}
       </div>
 
       <div className={styles["form-group"]}>
-        <label className={styles["form-label"]}>Optional Condition ID (Advanced)</label>
+        <label className={styles["form-label"]}>Optional Condition ID <InfoTooltip text="Reference to a custom win condition defined externally. Leave empty unless you have a custom condition system set up." /></label>
         <NumberInput
           value={gameData.optional_condition || 0}
           onChange={(val) => handleChange("optional_condition", val || null)}
           options={{ min: 0, placeholder: "Leave empty if not applicable", className: styles["form-input-small"] }}
         />
-        <p className={styles["field-hint"]}>
-          Reference to a custom condition defined elsewhere (optional).
-        </p>
       </div>
 
       {/* Draw Conditions Section */}
@@ -235,11 +221,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
 
       {/* Move Limit Draw Rule (50-move rule) */}
       <div className={styles["condition-section"]}>
-        <h3>Move Limit Draw Rule</h3>
-        <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
-          Similar to chess's "50-move rule" - the game ends in a draw after X moves without any captures or promotable piece moves.
-          A "move" counts as one turn by each player (e.g., 50 moves = 50 turns by white + 50 turns by black).
-        </p>
+        <h3>Move Limit Draw Rule <InfoTooltip text="Similar to chess's 50-move rule. The game ends in a draw after a set number of moves without any captures or promotable piece advances. A 'move' counts as one turn by each player (e.g., 50 moves = 50 turns by white + 50 turns by black)." /></h3>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
             <input
@@ -271,7 +253,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
               options={{ min: 1, max: 500, placeholder: "50", className: styles["form-input-small"] }}
             />
             <p className={styles["field-hint"]}>
-              Standard chess uses 50 moves. Adjust based on your game's pace.
+              Standard chess uses 50. Adjust based on your game's pace.
             </p>
           </div>
         )}
@@ -279,11 +261,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
 
       {/* N-Fold Repetition Draw Rule */}
       <div className={styles["condition-section"]}>
-        <h3>Position Repetition Draw Rule</h3>
-        <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
-          Similar to chess's "3-fold repetition" - the game ends in a draw when the same board position occurs N times.
-          The position is considered the same when all pieces are on the same squares.
-        </p>
+        <h3>Position Repetition Draw Rule <InfoTooltip text="Similar to chess's 3-fold repetition rule. The game ends in a draw when the same board position occurs N times. The position is considered the same when all pieces are on the same squares." /></h3>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
             <input
@@ -315,7 +293,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
               options={{ min: 2, max: 9, placeholder: "3", className: styles["form-input-small"] }}
             />
             <p className={styles["field-hint"]}>
-              Standard chess uses 3-fold repetition. Set to 2 for faster draws, or higher for longer games.
+              Standard chess uses 3. Set to 2 for faster draws, or higher for longer games.
             </p>
           </div>
         )}

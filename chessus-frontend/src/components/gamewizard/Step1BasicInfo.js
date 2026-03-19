@@ -1,6 +1,7 @@
 import React from "react";
 import styles from "./gamewizard.module.scss";
 import NumberInput from "../common/NumberInput";
+import InfoTooltip from "../piecewizard/InfoTooltip";
 
 const Step1BasicInfo = ({ gameData, updateGameData }) => {
   const handleChange = (field, value) => {
@@ -79,16 +80,13 @@ const Step1BasicInfo = ({ gameData, updateGameData }) => {
 
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
-          Actions Per Turn
+          Actions Per Turn <InfoTooltip text="How many moves or actions each player can make during a single turn. In standard chess this is 1. Increase for games where players can move multiple pieces per turn." />
         </label>
         <NumberInput
           value={gameData.actions_per_turn || 1}
           onChange={(val) => handleChange("actions_per_turn", Math.max(1, val))}
           options={{ min: 1, placeholder: "1", className: styles["form-input-small"] }}
         />
-        <p className={styles["field-hint"]}>
-          Number of piece moves/actions each player can make per turn (default: 1).
-        </p>
       </div>
     </div>
   );
