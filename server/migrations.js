@@ -1896,6 +1896,32 @@ Join us in revolutionizing chess, one variant at a time.
     console.error('Error adding chain_hop_allies column:', err.message);
   }
   
+  // Add is_correspondence column to games table
+  try {
+    if (!(await columnExists('games', 'is_correspondence'))) {
+      await runMigration(
+        "ALTER TABLE games ADD COLUMN is_correspondence TINYINT(1) NOT NULL DEFAULT 0",
+        "Add is_correspondence column to games table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_correspondence column to games:', err.message);
+  }
+
+  // Add correspondence_days column to games table
+  try {
+    if (!(await columnExists('games', 'correspondence_days'))) {
+      await runMigration(
+        "ALTER TABLE games ADD COLUMN correspondence_days INT DEFAULT NULL",
+        "Add correspondence_days column to games table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding correspondence_days column to games:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

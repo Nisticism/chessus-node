@@ -221,8 +221,10 @@ function randomizeMirrored(pieces, players, gameType) {
   
   const sortedP2 = [...player2Pieces].sort((a, b) => {
     // Invert Y for sorting to match P1's order (bottom row of P2 = top row of P1)
-    const aInvertedY = boardHeight - 1 - a.y;
-    const bInvertedY = boardHeight - 1 - b.y;
+    const aph = a.piece_height || 1;
+    const bph = b.piece_height || 1;
+    const aInvertedY = boardHeight - a.y - aph;
+    const bInvertedY = boardHeight - b.y - bph;
     if (aInvertedY !== bInvertedY) return aInvertedY - bInvertedY;
     return a.x - b.x;
   });
@@ -248,7 +250,8 @@ function randomizeMirrored(pieces, players, gameType) {
   sortedP2.forEach((piece, index) => {
     // Mirror the shuffled position from player 1
     const p1Square = player1Squares[index];
-    const mirroredY = boardHeight - 1 - p1Square.y;
+    const p1Ph = sortedP1[index].piece_height || 1;
+    const mirroredY = boardHeight - p1Square.y - p1Ph;
     const mirroredX = p1Square.x;
     newPieces.push({ ...piece, x: mirroredX, y: mirroredY });
     console.log(`Player 2 - ${piece.piece_name}: (${piece.x},${piece.y}) -> (${mirroredX},${mirroredY}) [mirrored from (${p1Square.x},${p1Square.y})]`);
@@ -668,6 +671,14 @@ function initializeSocket(server) {
               up_right_movement: fullPieceData.up_right_movement,
               down_left_movement: fullPieceData.down_left_movement,
               down_right_movement: fullPieceData.down_right_movement,
+              up_movement_exact: fullPieceData.up_movement_exact,
+              down_movement_exact: fullPieceData.down_movement_exact,
+              left_movement_exact: fullPieceData.left_movement_exact,
+              right_movement_exact: fullPieceData.right_movement_exact,
+              up_left_movement_exact: fullPieceData.up_left_movement_exact,
+              up_right_movement_exact: fullPieceData.up_right_movement_exact,
+              down_left_movement_exact: fullPieceData.down_left_movement_exact,
+              down_right_movement_exact: fullPieceData.down_right_movement_exact,
               ratio_movement_style: fullPieceData.ratio_movement_style,
               ratio_movement_1: fullPieceData.ratio_one_movement,
               ratio_movement_2: fullPieceData.ratio_two_movement,
@@ -679,6 +690,7 @@ function initializeSocket(server) {
               can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
+              attacks_like_movement: fullPieceData.attacks_like_movement,
               up_capture: fullPieceData.up_capture,
               down_capture: fullPieceData.down_capture,
               left_capture: fullPieceData.left_capture,
@@ -687,6 +699,14 @@ function initializeSocket(server) {
               up_right_capture: fullPieceData.up_right_capture,
               down_left_capture: fullPieceData.down_left_capture,
               down_right_capture: fullPieceData.down_right_capture,
+              up_capture_exact: fullPieceData.up_capture_exact,
+              down_capture_exact: fullPieceData.down_capture_exact,
+              left_capture_exact: fullPieceData.left_capture_exact,
+              right_capture_exact: fullPieceData.right_capture_exact,
+              up_left_capture_exact: fullPieceData.up_left_capture_exact,
+              up_right_capture_exact: fullPieceData.up_right_capture_exact,
+              down_left_capture_exact: fullPieceData.down_left_capture_exact,
+              down_right_capture_exact: fullPieceData.down_right_capture_exact,
               ratio_capture_1: fullPieceData.ratio_one_capture,
               ratio_capture_2: fullPieceData.ratio_two_capture,
               step_capture_value: fullPieceData.step_by_step_capture,
@@ -730,7 +750,10 @@ function initializeSocket(server) {
               chain_capture_enabled: fullPieceData.chain_capture_enabled,
               chain_hop_allies: fullPieceData.chain_hop_allies,
               free_move_after_promotion: fullPieceData.free_move_after_promotion,
-              promotion_pieces_ids: fullPieceData.promotion_pieces_ids
+              promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
+              // Dimensions for multi-tile pieces
+              piece_width: fullPieceData.piece_width || 1,
+              piece_height: fullPieceData.piece_height || 1
             };
           }
           return piece;
@@ -917,6 +940,14 @@ function initializeSocket(server) {
                   up_right_movement: fullPieceData.up_right_movement,
                   down_left_movement: fullPieceData.down_left_movement,
                   down_right_movement: fullPieceData.down_right_movement,
+                  up_movement_exact: fullPieceData.up_movement_exact,
+                  down_movement_exact: fullPieceData.down_movement_exact,
+                  left_movement_exact: fullPieceData.left_movement_exact,
+                  right_movement_exact: fullPieceData.right_movement_exact,
+                  up_left_movement_exact: fullPieceData.up_left_movement_exact,
+                  up_right_movement_exact: fullPieceData.up_right_movement_exact,
+                  down_left_movement_exact: fullPieceData.down_left_movement_exact,
+                  down_right_movement_exact: fullPieceData.down_right_movement_exact,
                   ratio_movement_style: fullPieceData.ratio_movement_style,
                   ratio_movement_1: fullPieceData.ratio_one_movement,
                   ratio_movement_2: fullPieceData.ratio_two_movement,
@@ -928,6 +959,7 @@ function initializeSocket(server) {
                   can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
                   // Capture data
                   can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
+                  attacks_like_movement: fullPieceData.attacks_like_movement,
                   up_capture: fullPieceData.up_capture,
                   down_capture: fullPieceData.down_capture,
                   left_capture: fullPieceData.left_capture,
@@ -936,6 +968,14 @@ function initializeSocket(server) {
                   up_right_capture: fullPieceData.up_right_capture,
                   down_left_capture: fullPieceData.down_left_capture,
                   down_right_capture: fullPieceData.down_right_capture,
+                  up_capture_exact: fullPieceData.up_capture_exact,
+                  down_capture_exact: fullPieceData.down_capture_exact,
+                  left_capture_exact: fullPieceData.left_capture_exact,
+                  right_capture_exact: fullPieceData.right_capture_exact,
+                  up_left_capture_exact: fullPieceData.up_left_capture_exact,
+                  up_right_capture_exact: fullPieceData.up_right_capture_exact,
+                  down_left_capture_exact: fullPieceData.down_left_capture_exact,
+                  down_right_capture_exact: fullPieceData.down_right_capture_exact,
                   ratio_capture_1: fullPieceData.ratio_one_capture,
                   ratio_capture_2: fullPieceData.ratio_two_capture,
                   step_capture_value: fullPieceData.step_by_step_capture,
@@ -978,7 +1018,10 @@ function initializeSocket(server) {
                   chain_capture_enabled: fullPieceData.chain_capture_enabled,
                   chain_hop_allies: fullPieceData.chain_hop_allies,
                   free_move_after_promotion: fullPieceData.free_move_after_promotion,
-                  promotion_pieces_ids: fullPieceData.promotion_pieces_ids
+                  promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
+                  // Dimensions for multi-tile pieces
+                  piece_width: fullPieceData.piece_width || 1,
+                  piece_height: fullPieceData.piece_height || 1
                 };
               }
               return piece;
@@ -2800,6 +2843,14 @@ function initializeSocket(server) {
                     up_right_movement: fullPieceData.up_right_movement,
                     down_left_movement: fullPieceData.down_left_movement,
                     down_right_movement: fullPieceData.down_right_movement,
+                    up_movement_exact: fullPieceData.up_movement_exact,
+                    down_movement_exact: fullPieceData.down_movement_exact,
+                    left_movement_exact: fullPieceData.left_movement_exact,
+                    right_movement_exact: fullPieceData.right_movement_exact,
+                    up_left_movement_exact: fullPieceData.up_left_movement_exact,
+                    up_right_movement_exact: fullPieceData.up_right_movement_exact,
+                    down_left_movement_exact: fullPieceData.down_left_movement_exact,
+                    down_right_movement_exact: fullPieceData.down_right_movement_exact,
                     ratio_movement_style: fullPieceData.ratio_movement_style,
                     ratio_movement_1: fullPieceData.ratio_one_movement,
                     ratio_movement_2: fullPieceData.ratio_two_movement,
@@ -2811,6 +2862,7 @@ function initializeSocket(server) {
                     can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
+                    attacks_like_movement: fullPieceData.attacks_like_movement,
                     up_capture: fullPieceData.up_capture,
                     down_capture: fullPieceData.down_capture,
                     left_capture: fullPieceData.left_capture,
@@ -2819,6 +2871,14 @@ function initializeSocket(server) {
                     up_right_capture: fullPieceData.up_right_capture,
                     down_left_capture: fullPieceData.down_left_capture,
                     down_right_capture: fullPieceData.down_right_capture,
+                    up_capture_exact: fullPieceData.up_capture_exact,
+                    down_capture_exact: fullPieceData.down_capture_exact,
+                    left_capture_exact: fullPieceData.left_capture_exact,
+                    right_capture_exact: fullPieceData.right_capture_exact,
+                    up_left_capture_exact: fullPieceData.up_left_capture_exact,
+                    up_right_capture_exact: fullPieceData.up_right_capture_exact,
+                    down_left_capture_exact: fullPieceData.down_left_capture_exact,
+                    down_right_capture_exact: fullPieceData.down_right_capture_exact,
                     ratio_capture_1: fullPieceData.ratio_one_capture,
                     ratio_capture_2: fullPieceData.ratio_two_capture,
                     step_capture_value: fullPieceData.step_by_step_capture,
@@ -2861,7 +2921,10 @@ function initializeSocket(server) {
                     chain_capture_enabled: fullPieceData.chain_capture_enabled,
                     chain_hop_allies: fullPieceData.chain_hop_allies,
                     free_move_after_promotion: fullPieceData.free_move_after_promotion,
-                    promotion_pieces_ids: fullPieceData.promotion_pieces_ids
+                    promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
+                    // Dimensions for multi-tile pieces
+                    piece_width: fullPieceData.piece_width || 1,
+                    piece_height: fullPieceData.piece_height || 1
                   };
                 }
                 return piece;
@@ -3215,7 +3278,7 @@ async function getOngoingGames() {
   try {
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
-              g.allow_spectators, g.show_piece_helpers, g.is_correspondence, g.correspondence_days,
+              g.allow_spectators, g.show_piece_helpers,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
               GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids
@@ -3360,7 +3423,7 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
   
   // Check if destination has an enemy piece (would be captured)
   const capturedPieceIndex = simulatedPieces.findIndex(p => 
-    p.x === to.x && p.y === to.y && p.id !== pieceId
+    p.id !== pieceId && doesPieceOccupySquare(p, to.x, to.y)
   );
   
   // Remove captured piece from simulation
@@ -3417,7 +3480,7 @@ function initializeCastlingPartners(gameState) {
         if (piece.castling_partner_left_key) {
           // Parse the key "row,col" to find the piece
           const [row, col] = piece.castling_partner_left_key.split(',').map(Number);
-          const leftPartner = pieces.find(p => p.x === col && p.y === row);
+          const leftPartner = findPieceAtSquare(pieces, col, row);
           if (leftPartner) {
             piece.castling_partner_left_id = leftPartner.id;
           }
@@ -3427,7 +3490,7 @@ function initializeCastlingPartners(gameState) {
         if (piece.castling_partner_right_key) {
           // Parse the key "row,col" to find the piece
           const [row, col] = piece.castling_partner_right_key.split(',').map(Number);
-          const rightPartner = pieces.find(p => p.x === col && p.y === row);
+          const rightPartner = findPieceAtSquare(pieces, col, row);
           if (rightPartner) {
             piece.castling_partner_right_id = rightPartner.id;
           }
@@ -3448,7 +3511,7 @@ function initializeCastlingPartners(gameState) {
         // Find furthest allied piece to the left (scan entire row)
         let leftPartner = null;
         for (let x = piece.x - 1; x >= 0; x--) {
-          const foundPiece = pieces.find(p => p.x === x && p.y === piece.y);
+          const foundPiece = findPieceAtSquare(pieces, x, piece.y);
           if (foundPiece) {
             const foundOwner = foundPiece.team || foundPiece.player_id;
             if (foundOwner === pieceOwner) {
@@ -3460,7 +3523,7 @@ function initializeCastlingPartners(gameState) {
         // Find furthest allied piece to the right (scan entire row)
         let rightPartner = null;
         for (let x = piece.x + 1; x < boardWidth; x++) {
-          const foundPiece = pieces.find(p => p.x === x && p.y === piece.y);
+          const foundPiece = findPieceAtSquare(pieces, x, piece.y);
           if (foundPiece) {
             const foundOwner = foundPiece.team || foundPiece.player_id;
             if (foundOwner === pieceOwner) {
@@ -3503,8 +3566,8 @@ function getPiecesHoppedOver(fromX, fromY, toX, toY, movingPiece, allPieces) {
     let y = fromY + stepY;
     
     while (x !== toX || y !== toY) {
-      const pieceAtSquare = allPieces.find(p => p.x === x && p.y === y && p.id !== movingPiece.id);
-      if (pieceAtSquare) {
+      const pieceAtSquare = findPieceAtSquare(allPieces, x, y);
+      if (pieceAtSquare && pieceAtSquare.id !== movingPiece.id) {
         const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
         // Only capture enemy pieces
         if (pieceAtSquareOwner !== pieceOwner) {
@@ -3521,8 +3584,8 @@ function getPiecesHoppedOver(fromX, fromY, toX, toY, movingPiece, allPieces) {
     let y = fromY + stepY;
     
     while (y !== toY) {
-      const pieceAtSquare = allPieces.find(p => p.x === fromX && p.y === y && p.id !== movingPiece.id);
-      if (pieceAtSquare) {
+      const pieceAtSquare = findPieceAtSquare(allPieces, fromX, y);
+      if (pieceAtSquare && pieceAtSquare.id !== movingPiece.id) {
         const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
         if (pieceAtSquareOwner !== pieceOwner) {
           hoppedPieces.push(pieceAtSquare);
@@ -3536,8 +3599,8 @@ function getPiecesHoppedOver(fromX, fromY, toX, toY, movingPiece, allPieces) {
     let x = fromX + stepX;
     
     while (x !== toX) {
-      const pieceAtSquare = allPieces.find(p => p.x === x && p.y === fromY && p.id !== movingPiece.id);
-      if (pieceAtSquare) {
+      const pieceAtSquare = findPieceAtSquare(allPieces, x, fromY);
+      if (pieceAtSquare && pieceAtSquare.id !== movingPiece.id) {
         const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
         if (pieceAtSquareOwner !== pieceOwner) {
           hoppedPieces.push(pieceAtSquare);
@@ -3595,10 +3658,25 @@ async function validateAndApplyMove(gameState, move) {
     return { valid: false, reason: "Not your piece" };
   }
 
+  // Multi-tile board fit check
+  const pw = piece.piece_width || 1;
+  const ph = piece.piece_height || 1;
+  if (pw > 1 || ph > 1) {
+    const boardWidth = gameState.gameType?.board_width || 8;
+    const boardHeight = gameState.gameType?.board_height || 8;
+    if (!doesPieceFitOnBoard(to.x, to.y, pw, ph, boardWidth, boardHeight)) {
+      return { valid: false, reason: "Piece does not fit on the board at that position" };
+    }
+    // Check for footprint overlap with friendly pieces (excluding self)
+    if (!isDestinationClearServer(piece, to.x, to.y, pieces, null)) {
+      return { valid: false, reason: "Piece footprint overlaps with another piece" };
+    }
+  }
+
   // Check if destination has a piece (for capture validation only - don't modify yet)
   let capturedPiece = null;
   const destinationPieceIndex = pieces.findIndex(p => 
-    p.x === to.x && p.y === to.y && p.id !== pieceId
+    p.id !== pieceId && doesPieceOccupySquare(p, to.x, to.y)
   );
   
   // Handle ranged attacks - piece stays in place, target is captured at range
@@ -4114,6 +4192,55 @@ async function getPromotionOptions(gameState, promotingPiece) {
   return eligiblePieces;
 }
 
+// ========== Multi-tile piece helpers ==========
+
+/**
+ * Check if a piece occupies a specific square (multi-tile aware).
+ */
+function doesPieceOccupySquare(piece, sx, sy) {
+  const w = piece.piece_width || 1;
+  const h = piece.piece_height || 1;
+  return sx >= piece.x && sx < piece.x + w && sy >= piece.y && sy < piece.y + h;
+}
+
+/**
+ * Find the piece that occupies a given square (multi-tile aware).
+ */
+function findPieceAtSquare(pieces, sx, sy) {
+  return pieces.find(p => doesPieceOccupySquare(p, sx, sy));
+}
+
+/**
+ * Check if a multi-tile piece would fit on the board at a given anchor.
+ */
+function doesPieceFitOnBoard(anchorX, anchorY, pieceWidth, pieceHeight, boardWidth, boardHeight) {
+  return anchorX >= 0 && anchorY >= 0 &&
+         anchorX + pieceWidth <= boardWidth &&
+         anchorY + pieceHeight <= boardHeight;
+}
+
+/**
+ * Check if moving a piece to a destination would overlap other pieces.
+ * Returns true if the destination is clear.
+ */
+function isDestinationClearServer(movingPiece, toX, toY, allPieces, capturedPieceId) {
+  const w = movingPiece.piece_width || 1;
+  const h = movingPiece.piece_height || 1;
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      const sx = toX + dx;
+      const sy = toY + dy;
+      const blocking = allPieces.find(p =>
+        p.id !== movingPiece.id &&
+        p.id !== capturedPieceId &&
+        doesPieceOccupySquare(p, sx, sy)
+      );
+      if (blocking) return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Check if a specific piece can be attacked by any enemy piece
  * @param {Object} gameState - The current game state
@@ -4130,10 +4257,18 @@ function isPieceUnderAttack(gameState, targetPiece) {
     return pieceOwnerPosition !== targetOwnerPosition && p.id !== targetPiece.id;
   });
   
-  // Check if any enemy piece can attack the target
-  for (const enemyPiece of enemyPieces) {
-    if (canPieceAttackSquare(enemyPiece, targetPiece.x, targetPiece.y, pieces)) {
-      return true;
+  // For multi-tile pieces, check if any enemy can attack ANY occupied square
+  const tw = targetPiece.piece_width || 1;
+  const th = targetPiece.piece_height || 1;
+  for (let dy = 0; dy < th; dy++) {
+    for (let dx = 0; dx < tw; dx++) {
+      const sx = targetPiece.x + dx;
+      const sy = targetPiece.y + dy;
+      for (const enemyPiece of enemyPieces) {
+        if (canPieceAttackSquare(enemyPiece, sx, sy, pieces)) {
+          return true;
+        }
+      }
     }
   }
   
@@ -4212,8 +4347,8 @@ function isRangedPathClear(fromX, fromY, toX, toY, piece, allPieces, pieceOwnerP
   
   while (checkX !== toX || checkY !== toY) {
     // Check if there's a piece at this position
-    const blockingPiece = allPieces.find(p => p.x === checkX && p.y === checkY);
-    if (blockingPiece) {
+    const blockingPiece = findPieceAtSquare(allPieces, checkX, checkY);
+    if (blockingPiece && blockingPiece.id !== piece.id) {
       const blockingOwner = blockingPiece.team || blockingPiece.player_id;
       const isAlly = blockingOwner === pieceOwnerPosition;
       
@@ -4406,7 +4541,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
     let y = fromY + stepY;
     
     while (x !== toX || y !== toY) {
-      if (allPieces.some(p => p.x === x && p.y === y)) {
+      if (findPieceAtSquare(allPieces, x, y)) {
         return false; // Path blocked
       }
       x += stepX;
@@ -4518,7 +4653,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
           const checkX = piece.x + (stepX * i);
           const checkY = piece.y;
           if (checkX !== targetX || checkY !== targetY) {
-            if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+            if (findPieceAtSquare(allPieces, checkX, checkY)) {
               path1Clear = false;
               break;
             }
@@ -4530,7 +4665,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
             const checkX = piece.x + (stepX * absDx);
             const checkY = piece.y + (stepY * i);
             if (checkX !== targetX || checkY !== targetY) {
-              if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+              if (findPieceAtSquare(allPieces, checkX, checkY)) {
                 path1Clear = false;
                 break;
               }
@@ -4545,7 +4680,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
           const checkX = piece.x;
           const checkY = piece.y + (stepY * i);
           if (checkX !== targetX || checkY !== targetY) {
-            if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+            if (findPieceAtSquare(allPieces, checkX, checkY)) {
               path2Clear = false;
               break;
             }
@@ -4557,7 +4692,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
             const checkX = piece.x + (stepX * i);
             const checkY = piece.y + (stepY * absDy);
             if (checkX !== targetX || checkY !== targetY) {
-              if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+              if (findPieceAtSquare(allPieces, checkX, checkY)) {
                 path2Clear = false;
                 break;
               }
@@ -4586,7 +4721,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
         const checkX = piece.x + (stepX * i);
         const checkY = piece.y;
         if (checkX !== targetX || checkY !== targetY) {
-          const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+          const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
           if (obstruction && !canHopOver(obstruction)) {
             path1Clear = false;
             break;
@@ -4599,7 +4734,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
           const checkX = piece.x + (stepX * absDx);
           const checkY = piece.y + (stepY * i);
           if (checkX !== targetX || checkY !== targetY) {
-            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
             if (obstruction && !canHopOver(obstruction)) {
               path1Clear = false;
               break;
@@ -4615,7 +4750,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
         const checkX = piece.x;
         const checkY = piece.y + (stepY * i);
         if (checkX !== targetX || checkY !== targetY) {
-          const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+          const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
           if (obstruction && !canHopOver(obstruction)) {
             path2Clear = false;
             break;
@@ -4628,7 +4763,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
           const checkX = piece.x + (stepX * i);
           const checkY = piece.y + (stepY * absDy);
           if (checkX !== targetX || checkY !== targetY) {
-            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
             if (obstruction && !canHopOver(obstruction)) {
               path2Clear = false;
               break;
@@ -4656,11 +4791,18 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
 
     if (inRange) {
       // Use BFS traversal to check if target is reachable
-      const occupied = new Set(
-        allPieces
-          .filter(p => p.id !== piece.id && !(p.x === targetX && p.y === targetY))
-          .map(p => `${p.x},${p.y}`)
-      );
+      const occupied = new Set();
+      allPieces
+        .filter(p => p.id !== piece.id && !doesPieceOccupySquare(p, targetX, targetY))
+        .forEach(p => {
+          const pw = p.piece_width || 1;
+          const ph = p.piece_height || 1;
+          for (let dr = 0; dr < ph; dr++) {
+            for (let dc = 0; dc < pw; dc++) {
+              occupied.add(`${p.x + dc},${p.y + dr}`);
+            }
+          }
+        });
 
       const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
       const visited = new Set([`${piece.x},${piece.y}`]);
@@ -4721,7 +4863,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
     let y = fromY + stepY;
     
     while (x !== toX || y !== toY) {
-      if (allPieces.some(p => p.x === x && p.y === y)) {
+      if (findPieceAtSquare(allPieces, x, y)) {
         return false; // Path blocked
       }
       x += stepX;
@@ -4733,11 +4875,18 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   const canReachStepByStep = (fromX, fromY, toX, toY, maxSteps, noDiagonal) => {
     if (maxSteps <= 0) return false;
 
-    const occupied = new Set(
-      allPieces
-        .filter(p => p.id !== piece.id)
-        .map(p => `${p.x},${p.y}`)
-    );
+    const occupied = new Set();
+    allPieces
+      .filter(p => p.id !== piece.id)
+      .forEach(p => {
+        const pw = p.piece_width || 1;
+        const ph = p.piece_height || 1;
+        for (let dr = 0; dr < ph; dr++) {
+          for (let dc = 0; dc < pw; dc++) {
+            occupied.add(`${p.x + dc},${p.y + dr}`);
+          }
+        }
+      });
 
     const queue = [{ x: fromX, y: fromY, steps: 0 }];
     const visited = new Set([`${fromX},${fromY}`]);
@@ -4870,7 +5019,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
         const checkX = piece.x + (stepX * i);
         const checkY = piece.y;
         if (checkX !== targetX || checkY !== targetY) {
-          const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+          const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
           if (obstruction && !canHopOver(obstruction)) {
             path1Clear = false;
             break;
@@ -4882,7 +5031,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
           const checkX = piece.x + (stepX * absDx);
           const checkY = piece.y + (stepY * i);
           if (checkX !== targetX || checkY !== targetY) {
-            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
             if (obstruction && !canHopOver(obstruction)) {
               path1Clear = false;
               break;
@@ -4897,7 +5046,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
         const checkX = piece.x;
         const checkY = piece.y + (stepY * i);
         if (checkX !== targetX || checkY !== targetY) {
-          const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+          const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
           if (obstruction && !canHopOver(obstruction)) {
             path2Clear = false;
             break;
@@ -4909,7 +5058,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
           const checkX = piece.x + (stepX * i);
           const checkY = piece.y + (stepY * absDy);
           if (checkX !== targetX || checkY !== targetY) {
-            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
             if (obstruction && !canHopOver(obstruction)) {
               path2Clear = false;
               break;
@@ -4999,7 +5148,8 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
         if (isCloseRange) {
           // Close-range castling: king hops over pieces
           // Target is valid if: empty, OR occupied by the partner itself (who will move)
-          const targetOccupiedByOther = allPieces.some(p => p.x === targetX && p.y === targetY && p.id !== partnerId);
+          const occupant = findPieceAtSquare(allPieces, targetX, targetY);
+          const targetOccupiedByOther = occupant && occupant.id !== partnerId;
           if (!targetOccupiedByOther) {
             return true;
           }
@@ -5099,7 +5249,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
     let y = fromY + stepY;
     
     while (x !== toX || y !== toY) {
-      if (allPieces.some(p => p.x === x && p.y === y)) {
+      if (findPieceAtSquare(allPieces, x, y)) {
         return false;
       }
       x += stepX;
@@ -5131,7 +5281,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       // Check if path is clear up to this point
       if (!isPathClear(piece.x, piece.y, targetX, targetY)) break;
       
-      const targetPiece = allPieces.find(p => p.x === targetX && p.y === targetY);
+      const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
       if (targetPiece) {
         const pieceOwner = piece.team || piece.player_id;
         const targetOwner = targetPiece.team || targetPiece.player_id;
@@ -5252,7 +5402,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
           const checkX = piece.x + (primaryIsX ? primaryDir * i : 0);
           const checkY = piece.y + (primaryIsX ? 0 : secondaryDir * i);
           if (checkX !== targetX || checkY !== targetY) {
-            if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+            if (findPieceAtSquare(allPieces, checkX, checkY)) {
               path1Clear = false;
               break;
             }
@@ -5263,7 +5413,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
             const checkX = piece.x + (primaryIsX ? primaryDir * absRatio1 : tertiaryDir * i);
             const checkY = piece.y + (primaryIsX ? tertiaryDir * i : secondaryDir * absRatio1);
             if (checkX !== targetX || checkY !== targetY) {
-              if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+              if (findPieceAtSquare(allPieces, checkX, checkY)) {
                 path1Clear = false;
                 break;
               }
@@ -5277,7 +5427,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
           const checkX = piece.x + (primaryIsX ? 0 : tertiaryDir * i);
           const checkY = piece.y + (primaryIsX ? tertiaryDir * i : 0);
           if (checkX !== targetX || checkY !== targetY) {
-            if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+            if (findPieceAtSquare(allPieces, checkX, checkY)) {
               path2Clear = false;
               break;
             }
@@ -5288,7 +5438,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
             const checkX = piece.x + (primaryIsX ? primaryDir * i : tertiaryDir * absRatio2);
             const checkY = piece.y + (primaryIsX ? tertiaryDir * absRatio2 : secondaryDir * i);
             if (checkX !== targetX || checkY !== targetY) {
-              if (allPieces.some(p => p.x === checkX && p.y === checkY)) {
+              if (findPieceAtSquare(allPieces, checkX, checkY)) {
                 path2Clear = false;
                 break;
               }
@@ -5327,7 +5477,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
           const checkX = piece.x + (primaryIsX ? primaryDir * i : 0);
           const checkY = piece.y + (primaryIsX ? 0 : secondaryDir * i);
           if (checkX !== targetX || checkY !== targetY) {
-            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
             if (obstruction && !canHopOver(obstruction)) {
               path1Clear = false;
               break;
@@ -5339,7 +5489,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
             const checkX = piece.x + (primaryIsX ? primaryDir * absRatio1 : tertiaryDir * i);
             const checkY = piece.y + (primaryIsX ? tertiaryDir * i : secondaryDir * absRatio1);
             if (checkX !== targetX || checkY !== targetY) {
-              const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+              const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
               if (obstruction && !canHopOver(obstruction)) {
                 path1Clear = false;
                 break;
@@ -5354,7 +5504,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
           const checkX = piece.x + (primaryIsX ? 0 : tertiaryDir * i);
           const checkY = piece.y + (primaryIsX ? tertiaryDir * i : 0);
           if (checkX !== targetX || checkY !== targetY) {
-            const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+            const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
             if (obstruction && !canHopOver(obstruction)) {
               path2Clear = false;
               break;
@@ -5366,7 +5516,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
             const checkX = piece.x + (primaryIsX ? primaryDir * i : tertiaryDir * absRatio2);
             const checkY = piece.y + (primaryIsX ? tertiaryDir * absRatio2 : secondaryDir * i);
             if (checkX !== targetX || checkY !== targetY) {
-              const obstruction = allPieces.find(p => p.x === checkX && p.y === checkY);
+              const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
               if (obstruction && !canHopOver(obstruction)) {
                 path2Clear = false;
                 break;
@@ -5381,7 +5531,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         }
       }
       
-      const targetPiece = allPieces.find(p => p.x === targetX && p.y === targetY);
+      const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
       if (targetPiece) {
         const pieceOwner = piece.team || piece.player_id;
         const targetOwner = targetPiece.team || targetPiece.player_id;
@@ -5414,12 +5564,13 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         
         if (isCloseRange) {
           // Close-range castling: king hops, target can be partner's position or empty
-          const targetOccupiedByOther = allPieces.some(p => p.x === leftTarget.x && p.y === leftTarget.y && p.id !== rookPiece.id);
+          const occupant = findPieceAtSquare(allPieces, leftTarget.x, leftTarget.y);
+          const targetOccupiedByOther = occupant && occupant.id !== rookPiece.id;
           pathClear = !targetOccupiedByOther;
         } else {
           // Standard long-range castling: check if all squares between are unoccupied
           for (let x = piece.x - 1; x >= rookPiece.x + 1; x--) {
-            if (allPieces.some(p => p.x === x && p.y === piece.y)) {
+            if (findPieceAtSquare(allPieces, x, piece.y)) {
               pathClear = false;
               break;
             }
@@ -5466,12 +5617,13 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         
         if (isCloseRange) {
           // Close-range castling: king hops, target can be partner's position or empty
-          const targetOccupiedByOther = allPieces.some(p => p.x === rightTarget.x && p.y === rightTarget.y && p.id !== rookPiece.id);
+          const occupant = findPieceAtSquare(allPieces, rightTarget.x, rightTarget.y);
+          const targetOccupiedByOther = occupant && occupant.id !== rookPiece.id;
           pathClear = !targetOccupiedByOther;
         } else {
           // Standard long-range castling: check if all squares between are unoccupied
           for (let x = piece.x + 1; x <= rookPiece.x - 1; x++) {
-            if (allPieces.some(p => p.x === x && p.y === piece.y)) {
+            if (findPieceAtSquare(allPieces, x, piece.y)) {
               pathClear = false;
               break;
             }
@@ -5503,6 +5655,17 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         }
       }
     }
+  }
+  
+  // Filter out moves where multi-tile piece doesn't fit or overlaps friendly pieces
+  const pw = piece.piece_width || 1;
+  const ph = piece.piece_height || 1;
+  if (pw > 1 || ph > 1) {
+    return moves.filter(move => {
+      if (!doesPieceFitOnBoard(move.x, move.y, pw, ph, boardWidth, boardHeight)) return false;
+      if (!isDestinationClearServer(piece, move.x, move.y, allPieces, null)) return false;
+      return true;
+    });
   }
   
   return moves;

@@ -3459,8 +3459,8 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
     const pieceData = req.body;
     const imageFiles = Array.isArray(req.files) ? req.files : [];
 
-    if (!imageFiles || imageFiles.length === 0) {
-      return res.status(400).send({ message: "At least one piece image is required" });
+    if (!imageFiles || imageFiles.length < 2) {
+      return res.status(400).send({ message: "At least two piece images are required (Player 1 light and Player 2 dark)" });
     }
 
     const imagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
@@ -3744,6 +3744,11 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
     
     // Combine kept and new images (max 8 total)
     const allImagePaths = [...keptImagePaths, ...newImagePaths].slice(0, 8);
+    
+    if (allImagePaths.length < 2) {
+      return res.status(400).send({ message: "At least two piece images are required (Player 1 light and Player 2 dark)" });
+    }
+    
     imagesJSON = JSON.stringify(allImagePaths);
 
     const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
