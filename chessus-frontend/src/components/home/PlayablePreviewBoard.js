@@ -6,6 +6,8 @@ import {
   getSquareHighlightStyle
 } from "../../helpers/pieceMovementUtils";
 
+import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
 const getImageUrl = (imagePath) => {
@@ -72,9 +74,13 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
   const maxBoardDimension = Math.max(boardWidth, boardHeight);
   const squareSize = containerSize > 0 ? Math.floor(containerSize / maxBoardDimension) : 50;
 
-  // Get piece at position
+  // Get piece at position (multi-tile aware)
   const getPieceAt = useCallback((row, col) => {
-    return pieces.find(p => p.y === row && p.x === col);
+    return pieces.find(p => {
+      const pw = p.piece_width || 1;
+      const ph = p.piece_height || 1;
+      return col >= p.x && col < p.x + pw && row >= p.y && row < p.y + ph;
+    });
   }, [pieces]);
 
   // Check if the path is clear between two positions (for sliding pieces)
@@ -312,6 +318,7 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
       for (let col = 0; col < boardWidth; col++) {
         const isLight = (row + col) % 2 === 0;
         const piece = getPieceAt(row, col);
+        const isAnchor = piece && piece.x === col && piece.y === row;
         const isSelected = selectedPiece && piece && selectedPiece.id === piece.id;
         const isValidMove = isValidMoveSquare(row, col);
         const isCaptureMove = isCaptureMoveSquare(row, col);
@@ -339,22 +346,49 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
           <div
             key={`${row}-${col}`}
             className={`${styles["preview-square"]} ${isLight ? styles.light : styles.dark}`}
-            style={squareStyle}
+            style={{...squareStyle, ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {})}}
             onClick={() => handleSquareClick(row, col)}
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, row, col)}
           >
-            {piece && (
-              <img
-                src={getPieceImageUrl(piece)}
-                alt={piece.piece_name || 'piece'}
-                className={`${styles["preview-piece-image"]} ${draggingPiece?.id === piece.id ? styles.dragging : ''}`}
-                onClick={(e) => handlePieceClick(e, piece)}
-                draggable={true}
-                onDragStart={(e) => handleDragStart(e, piece)}
-                onDragEnd={handleDragEnd}
-              />
-            )}
+            {isAnchor && (() => {
+              const pw = piece.piece_width || 1;
+              const ph = piece.piece_height || 1;
+              const isMultiTile = pw > 1 || ph > 1;
+              const isNonSquareMultiTile = isMultiTile && pw !== ph;
+              const multiTileStyle = isMultiTile ? {
+                width: `${pw * 100}%`,
+                height: `${ph * 100}%`,
+                zIndex: 5,
+                position: 'absolute',
+                top: 0,
+                left: 0,
+              } : {};
+              return isNonSquareMultiTile ? (
+                <div
+                  ref={(el) => applySvgStretchBackground(el, getPieceImageUrl(piece))}
+                  className={`${styles["preview-piece-image"]} ${draggingPiece?.id === piece.id ? styles.dragging : ''}`}
+                  style={{
+                    ...multiTileStyle,
+                  }}
+                  onClick={(e) => handlePieceClick(e, piece)}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, piece)}
+                  onDragEnd={handleDragEnd}
+                />
+              ) : (
+                <img
+                  src={getPieceImageUrl(piece)}
+                  alt={piece.piece_name || 'piece'}
+                  className={`${styles["preview-piece-image"]} ${draggingPiece?.id === piece.id ? styles.dragging : ''}`}
+                  style={multiTileStyle}
+                  onClick={(e) => handlePieceClick(e, piece)}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, piece)}
+                  onDragEnd={handleDragEnd}
+                />
+              );
+            })()}
             {isValidMove && !piece && (
               <div className={styles["valid-move-indicator"]} />
             )}
