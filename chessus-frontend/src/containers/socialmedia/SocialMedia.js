@@ -4,20 +4,20 @@ import styles from "./socialmedia.module.scss";
 const SocialMedia = () => {
   const socialPlatforms = [
     {
-      name: "Twitter",
-      handle: "@Squarestrat",
-      icon: "🐦",
-      url: "https://twitter.com/squarestrat",
-      description: "Follow us for quick updates, game highlights, and community interaction",
-      stats: "2.5K Followers",
-    },
-    {
       name: "Discord",
       handle: "Squarestrat Community",
       icon: "💬",
-      url: "https://discord.gg/squarestrat",
-      description: "Join our active community for real-time chat, events, and support",
-      stats: "5.2K Members",
+      url: "https://discord.gg/sesgKDdt",
+      description: "Join our community for real-time chat, game discussion, and support",
+      buttonText: "Join",
+    },
+    {
+      name: "Instagram",
+      handle: "@squarestratdotcom",
+      icon: "📸",
+      url: "https://www.instagram.com/squarestratdotcom",
+      description: "Visual highlights, behind-the-scenes content, and community showcases",
+      buttonText: "Follow",
     },
     {
       name: "YouTube",
@@ -25,7 +25,7 @@ const SocialMedia = () => {
       icon: "▶️",
       url: "https://youtube.com/squarestrat",
       description: "Watch tutorials, gameplay videos, and tournament highlights",
-      stats: "8.7K Subscribers",
+      buttonText: "Subscribe",
     },
     {
       name: "Reddit",
@@ -33,23 +33,7 @@ const SocialMedia = () => {
       icon: "🤖",
       url: "https://reddit.com/r/squarestrat",
       description: "Discuss strategies, share creations, and participate in community polls",
-      stats: "3.1K Members",
-    },
-    {
-      name: "Twitch",
-      handle: "Squarestrat",
-      icon: "🎬",
-      url: "https://twitch.tv/squarestrat",
-      description: "Watch live streams of tournaments, game design sessions, and more",
-      stats: "1.8K Followers",
-    },
-    {
-      name: "Instagram",
-      handle: "@Squarestrat",
-      icon: "📸",
-      url: "https://instagram.com/squarestrat",
-      description: "Visual highlights, behind-the-scenes content, and community showcases",
-      stats: "4.3K Followers",
+      buttonText: "Join",
     },
   ];
 
@@ -82,8 +66,7 @@ const SocialMedia = () => {
             </div>
             <p className={styles["description"]}>{platform.description}</p>
             <div className={styles["platform-footer"]}>
-              <span className={styles["stats"]}>{platform.stats}</span>
-              <span className={styles["follow-button"]}>Follow →</span>
+              <span className={styles["follow-button"]}>{platform.buttonText} →</span>
             </div>
           </div>
         ))}
