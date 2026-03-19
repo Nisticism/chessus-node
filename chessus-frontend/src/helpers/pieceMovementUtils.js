@@ -4,6 +4,91 @@
  */
 
 /**
+ * Get all squares occupied by a piece, based on its anchor (top-left) and dimensions.
+ * A 1x1 piece returns just its anchor. A 2x3 piece returns 6 squares.
+ * @param {Object} piece - Piece with x, y, piece_width, piece_height
+ * @returns {Array<{x: number, y: number}>} All occupied squares
+ */
+export const getOccupiedSquares = (piece) => {
+  const w = piece.piece_width || 1;
+  const h = piece.piece_height || 1;
+  const squares = [];
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      squares.push({ x: piece.x + dx, y: piece.y + dy });
+    }
+  }
+  return squares;
+};
+
+/**
+ * Check if a piece occupies a specific square.
+ * @param {Object} piece - Piece with x, y, piece_width, piece_height
+ * @param {number} sx - Square X
+ * @param {number} sy - Square Y
+ * @returns {boolean}
+ */
+export const doesPieceOccupySquare = (piece, sx, sy) => {
+  const w = piece.piece_width || 1;
+  const h = piece.piece_height || 1;
+  return sx >= piece.x && sx < piece.x + w && sy >= piece.y && sy < piece.y + h;
+};
+
+/**
+ * Find the piece (if any) that occupies a given square, accounting for multi-tile pieces.
+ * @param {Array} pieces - Array of all pieces
+ * @param {number} sx - Square X
+ * @param {number} sy - Square Y
+ * @returns {Object|undefined} The piece occupying the square, or undefined
+ */
+export const findPieceAtSquare = (pieces, sx, sy) => {
+  return pieces.find(p => doesPieceOccupySquare(p, sx, sy));
+};
+
+/**
+ * Check if a multi-tile piece would fit on the board at a given anchor position.
+ * @param {number} anchorX - Anchor X (top-left)
+ * @param {number} anchorY - Anchor Y (top-left)
+ * @param {number} pieceWidth - Piece width in squares
+ * @param {number} pieceHeight - Piece height in squares
+ * @param {number} boardWidth - Board width
+ * @param {number} boardHeight - Board height
+ * @returns {boolean}
+ */
+export const doesPieceFitOnBoard = (anchorX, anchorY, pieceWidth, pieceHeight, boardWidth, boardHeight) => {
+  return anchorX >= 0 && anchorY >= 0 &&
+         anchorX + pieceWidth <= boardWidth &&
+         anchorY + pieceHeight <= boardHeight;
+};
+
+/**
+ * Check if moving a piece to a destination would overlap with any other piece.
+ * @param {Object} movingPiece - The piece being moved (with piece_width, piece_height)
+ * @param {number} toX - Destination anchor X
+ * @param {number} toY - Destination anchor Y
+ * @param {Array} allPieces - All pieces on the board
+ * @param {string|number} [capturedPieceId] - ID of piece being captured (excluded from collision)
+ * @returns {boolean} True if destination is clear (no overlaps)
+ */
+export const isDestinationClear = (movingPiece, toX, toY, allPieces, capturedPieceId = null) => {
+  const w = movingPiece.piece_width || 1;
+  const h = movingPiece.piece_height || 1;
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      const sx = toX + dx;
+      const sy = toY + dy;
+      const blocking = allPieces.find(p =>
+        p.id !== movingPiece.id &&
+        p.id !== capturedPieceId &&
+        doesPieceOccupySquare(p, sx, sy)
+      );
+      if (blocking) return false;
+    }
+  }
+  return true;
+};
+
+/**
  * Parse special_scenario_moves JSON to get additional movements
  * @param {Object|string} data - The special_scenario_moves data
  * @returns {Object} Parsed special scenario data
@@ -643,9 +728,9 @@ export const isRangedPathClear = (fromX, fromY, toX, toY, piece, allPieces, piec
   let checkY = fromY + stepY;
   
   while (checkX !== toX || checkY !== toY) {
-    // Check if there's a piece at this position
-    const blockingPiece = allPieces.find(p => p.x === checkX && p.y === checkY);
-    if (blockingPiece) {
+    // Check if there's a piece at this position (multi-tile aware)
+    const blockingPiece = findPieceAtSquare(allPieces, checkX, checkY);
+    if (blockingPiece && blockingPiece.id !== piece.id) {
       const blockingOwner = blockingPiece.team || blockingPiece.player_id || blockingPiece.player;
       const isAlly = blockingOwner === pieceOwnerPosition;
       

@@ -3,9 +3,11 @@ import { useSelector, useDispatch } from "react-redux";
 import { getGames, getGameById } from "../../actions/games";
 import PiecesService from "../../services/pieces.service";
 import PieceSelector from "../../components/gamewizard/PieceSelector";
-import { canRangedAttackTo, isRangedPathClear } from "../../helpers/pieceMovementUtils";
+import { canRangedAttackTo, isRangedPathClear, isDestinationClear, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
 import styles from "./sandbox.module.scss";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
+
+import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 const MAX_SANDBOXES = 4;
@@ -75,6 +77,7 @@ const Sandbox = () => {
   const [searchGameTerm, setSearchGameTerm] = useState("");
   const [searchPieceTerm, setSearchPieceTerm] = useState("");
   const [showHighlights, setShowHighlights] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
   
   // Initialize sidebarPlayerView from localStorage
   const getInitialSidebarPlayerView = () => {
@@ -98,7 +101,7 @@ const Sandbox = () => {
   // Ranged attack state
   const [rangedAttackSource, setRangedAttackSource] = useState(null); // piece being right-click-dragged
   const [rangedMousePos, setRangedMousePos] = useState(null); // current mouse position for arrow
-  const [rangedTargetSquare, setRangedTargetSquare] = useState(null); // square under cursor
+  const [, setRangedTargetSquare] = useState(null); // square under cursor
   const boardRef = useRef(null);
   const rightClickDataRef = useRef(null); // tracks right-click start for click-vs-drag detection
   const [isRightClickActive, setIsRightClickActive] = useState(false);
@@ -242,8 +245,6 @@ const Sandbox = () => {
     console.log('Piece layout raw:', pieceLayoutRaw);
     console.log('Available pieces in library:', fullPiecesList.length);
     
-    const boardHeight = freshGameData.board_height || gameType.board_height || 8;
-    
     let pieces = [];
     if (pieceLayoutRaw) {
       try {
@@ -362,7 +363,7 @@ const Sandbox = () => {
     };
     setSandboxes(prev => [...prev, newSandbox]);
     setActiveSandboxId(newSandbox.id);
-  }, [sandboxes.length, getFullPieceData, normalizePieceData, dispatch]);
+  }, [sandboxes.length, getFullPieceData, normalizePieceData, dispatch, fullPiecesList.length]);
 
   // Delete a sandbox and relabel remaining ones
   const deleteSandbox = useCallback((sandboxId) => {
@@ -386,6 +387,15 @@ const Sandbox = () => {
       return relabeled;
     });
   }, [activeSandboxId]);
+
+  // Multi-tile aware piece finder: finds a piece whose footprint covers (x, y)
+  const findPieceAt = useCallback((pieces, x, y) => {
+    return pieces.find(p => {
+      const pw = p.piece_width || 1;
+      const ph = p.piece_height || 1;
+      return x >= p.x && x < p.x + pw && y >= p.y && y < p.y + ph;
+    });
+  }, []);
 
   // Add a piece from library to the board
   const addPieceToBoard = useCallback((pieceData, x, y, playerId = null) => {
@@ -421,6 +431,25 @@ const Sandbox = () => {
       can_hop_over_allies: pieceData.can_hop_over_allies,
       can_hop_over_enemies: pieceData.can_hop_over_enemies,
       can_capture_enemy_on_move: pieceData.can_capture_enemy_on_move,
+      attacks_like_movement: pieceData.attacks_like_movement,
+      // Movement exact flags
+      up_movement_exact: pieceData.up_movement_exact,
+      down_movement_exact: pieceData.down_movement_exact,
+      left_movement_exact: pieceData.left_movement_exact,
+      right_movement_exact: pieceData.right_movement_exact,
+      up_left_movement_exact: pieceData.up_left_movement_exact,
+      up_right_movement_exact: pieceData.up_right_movement_exact,
+      down_left_movement_exact: pieceData.down_left_movement_exact,
+      down_right_movement_exact: pieceData.down_right_movement_exact,
+      // Capture exact flags
+      up_capture_exact: pieceData.up_capture_exact,
+      down_capture_exact: pieceData.down_capture_exact,
+      left_capture_exact: pieceData.left_capture_exact,
+      right_capture_exact: pieceData.right_capture_exact,
+      up_left_capture_exact: pieceData.up_left_capture_exact,
+      up_right_capture_exact: pieceData.up_right_capture_exact,
+      down_left_capture_exact: pieceData.down_left_capture_exact,
+      down_right_capture_exact: pieceData.down_right_capture_exact,
       up_capture: pieceData.up_capture,
       down_capture: pieceData.down_capture,
       left_capture: pieceData.left_capture,
@@ -461,14 +490,36 @@ const Sandbox = () => {
       ratio_two_attack_range: pieceData.ratio_two_attack_range,
       step_by_step_attack_range: pieceData.step_by_step_attack_range || pieceData.step_by_step_attack_value,
       max_piece_captures_per_ranged_attack: pieceData.max_piece_captures_per_ranged_attack,
+      // Multi-tile dimensions
+      piece_width: pieceData.piece_width || 1,
+      piece_height: pieceData.piece_height || 1,
+      // Checkers-style capture
+      capture_on_hop: pieceData.capture_on_hop,
+      chain_capture_enabled: pieceData.chain_capture_enabled,
+      chain_hop_over_allies: pieceData.chain_hop_over_allies,
+      // Attack hopping
+      can_hop_attack_over_allies: pieceData.can_hop_attack_over_allies,
+      can_hop_attack_over_enemies: pieceData.can_hop_attack_over_enemies,
+      // Special abilities
+      can_en_passant: pieceData.can_en_passant,
+      free_move_after_promotion: pieceData.free_move_after_promotion,
     };
 
-    setSandboxes(prev => prev.map(s => 
-      s.id === activeSandboxId 
-        ? { ...s, pieces: [...s.pieces.filter(p => !(p.x === x && p.y === y)), newPiece] }
-        : s
-    ));
-  }, [activeSandbox, activeSandboxId, sidebarPlayerView]);
+    setSandboxes(prev => prev.map(s => {
+      if (s.id !== activeSandboxId) return s;
+      // Multi-tile bounds check
+      const pw = newPiece.piece_width || 1;
+      const ph = newPiece.piece_height || 1;
+      const bw = s.gameType?.board_width || 8;
+      const bh = s.gameType?.board_height || 8;
+      if (x + pw > bw || y + ph > bh) return s;
+      const existingPiece = findPieceAt(s.pieces, x, y);
+      const filtered = existingPiece 
+        ? s.pieces.filter(p => p.id !== existingPiece.id) 
+        : s.pieces;
+      return { ...s, pieces: [...filtered, newPiece] };
+    }));
+  }, [activeSandbox, activeSandboxId, sidebarPlayerView, findPieceAt]);
 
   // Remove a piece from the board
   const removePieceFromBoard = useCallback((pieceId) => {
@@ -487,6 +538,7 @@ const Sandbox = () => {
   const handleMirrorPieces = useCallback((sourcePlayerId, targetPlayerId) => {
     if (!activeSandbox) return;
 
+    const boardWidth = activeSandbox.gameType.board_width || 8;
     const boardHeight = activeSandbox.gameType.board_height || 8;
     const pieces = activeSandbox.pieces || [];
 
@@ -510,21 +562,63 @@ const Sandbox = () => {
     // Remove all target player pieces
     let newPieces = pieces.filter(p => p.player_id !== targetPlayerId && p.team !== targetPlayerId);
 
-    // Build a set of source piece positions for conflict detection
-    const sourcePositions = new Set(sourcePieces.map(p => `${p.x},${p.y}`));
+    // Build a set of all squares occupied by source pieces for overlap detection
+    const sourceOccupiedSquares = new Set();
+    sourcePieces.forEach(p => {
+      const pw = p.piece_width || 1;
+      const ph = p.piece_height || 1;
+      for (let dy = 0; dy < ph; dy++) {
+        for (let dx = 0; dx < pw; dx++) {
+          sourceOccupiedSquares.add(`${p.x + dx},${p.y + dy}`);
+        }
+      }
+    });
 
     let skipped = 0;
     sourcePieces.forEach(p => {
-      const mirroredY = boardHeight - 1 - p.y;
-      const mirroredPosKey = `${p.x},${mirroredY}`;
+      const pw = p.piece_width || 1;
+      const ph = p.piece_height || 1;
+      // Mirror the piece so the entire footprint is reflected across the board center
+      // For a piece occupying rows p.y to p.y+ph-1, the mirrored anchor is boardHeight - p.y - ph
+      const mirroredY = boardHeight - p.y - ph;
 
-      // Don't overwrite source player's own pieces at the mirrored position
-      if (sourcePositions.has(mirroredPosKey)) {
+      // Bounds check: mirrored piece must fit on the board
+      if (mirroredY < 0 || mirroredY + ph > boardHeight || p.x + pw > boardWidth) {
         skipped++;
         return;
       }
 
-      newPieces = newPieces.filter(existing => !(existing.x === p.x && existing.y === mirroredY));
+      // Check if any square of the mirrored piece overlaps with source player's pieces
+      let overlaps = false;
+      for (let dy = 0; dy < ph && !overlaps; dy++) {
+        for (let dx = 0; dx < pw && !overlaps; dx++) {
+          if (sourceOccupiedSquares.has(`${p.x + dx},${mirroredY + dy}`)) {
+            overlaps = true;
+          }
+        }
+      }
+      if (overlaps) {
+        skipped++;
+        return;
+      }
+
+      // Remove any existing pieces at the mirrored location
+      newPieces = newPieces.filter(existing => {
+        const ew = existing.piece_width || 1;
+        const eh = existing.piece_height || 1;
+        // Check if any square of the mirrored piece overlaps with existing piece
+        for (let dy = 0; dy < ph; dy++) {
+          for (let dx = 0; dx < pw; dx++) {
+            const mx = p.x + dx;
+            const my = mirroredY + dy;
+            if (mx >= existing.x && mx < existing.x + ew &&
+                my >= existing.y && my < existing.y + eh) {
+              return false;
+            }
+          }
+        }
+        return true;
+      });
 
       newPieces.push({
         ...p,
@@ -532,6 +626,7 @@ const Sandbox = () => {
         y: mirroredY,
         team: targetPlayerId,
         player_id: targetPlayerId,
+        image_url: undefined,
       });
     });
 
@@ -542,7 +637,7 @@ const Sandbox = () => {
     ));
 
     if (skipped > 0) {
-      alert(`${skipped} piece(s) could not be mirrored because they would overlap with Player ${sourcePlayerId}'s own pieces.`);
+      alert(`${skipped} piece(s) could not be mirrored because they would overlap with Player ${sourcePlayerId}'s own pieces or exceed the board.`);
     }
   }, [activeSandbox, activeSandboxId]);
 
@@ -963,11 +1058,14 @@ const Sandbox = () => {
   }, [canPieceMoveTo]);
 
   // Check if path is clear
-  const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData) => {
-    // Check if piece can hop
-    const canHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true;
-    const canHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true;
+  const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false) => {
+    // Check if piece can hop - combine movement + attack hop abilities when capturing
+    const canHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true
+      || (isCapture && (pieceData?.can_hop_attack_over_allies === 1 || pieceData?.can_hop_attack_over_allies === true));
+    const canHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true
+      || (isCapture && (pieceData?.can_hop_attack_over_enemies === 1 || pieceData?.can_hop_attack_over_enemies === true));
     const pieceTeam = pieceData?.player_id || pieceData?.team;
+    const movingPieceId = pieceData?.id;
     
     const dx = Math.sign(toX - fromX);
     const dy = Math.sign(toY - fromY);
@@ -983,8 +1081,8 @@ const Sandbox = () => {
     let y = fromY + dy;
 
     while (x !== toX || y !== toY) {
-      const blockingPiece = pieces.find(p => p.x === x && p.y === y);
-      if (blockingPiece) {
+      const blockingPiece = findPieceAt(pieces, x, y);
+      if (blockingPiece && blockingPiece.id !== movingPieceId) {
         const blockingTeam = blockingPiece.player_id || blockingPiece.team;
         const isAlly = blockingTeam === pieceTeam;
         
@@ -996,24 +1094,63 @@ const Sandbox = () => {
     }
 
     return true;
-  }, []);
+  }, [findPieceAt]);
 
   // Calculate valid moves for a piece (includes ranged attacks)
   const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight) => {
     const moves = [];
     const pieceTeam = piece.player_id || piece.team;
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
 
     // Main loop: check normal moves and captures
     for (let toY = 0; toY < boardHeight; toY++) {
       for (let toX = 0; toX < boardWidth; toX++) {
         if (toX === piece.x && toY === piece.y) continue;
 
-        const occupyingPiece = pieces.find(p => p.x === toX && p.y === toY);
-        const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
+        // Multi-tile bounds check: piece must fit entirely on the board
+        if (toX + pw > boardWidth || toY + ph > boardHeight) continue;
 
-        if (occupyingPiece && occupyingTeam === pieceTeam) continue;
+        // For multi-tile pieces, find any enemy in the destination footprint
+        let occupyingPiece = null;
+        if (pw > 1 || ph > 1) {
+          for (let dy = 0; dy < ph && !occupyingPiece; dy++) {
+            for (let dx = 0; dx < pw && !occupyingPiece; dx++) {
+              const found = pieces.find(p =>
+                p.id !== piece.id && doesPieceOccupySquare(p, toX + dx, toY + dy)
+              );
+              if (found) {
+                const foundTeam = found.player_id || found.team;
+                if (foundTeam !== pieceTeam) {
+                  occupyingPiece = found;
+                }
+              }
+            }
+          }
+          // Check if any friendly piece (not ourselves) blocks the footprint
+          if (!occupyingPiece) {
+            const capturedId = null;
+            if (!isDestinationClear(piece, toX, toY, pieces.filter(p => {
+              const pTeam = p.player_id || p.team;
+              return pTeam === pieceTeam && p.id !== piece.id;
+            }), capturedId)) continue;
+          } else {
+            // Even with capture, check destination is clear of friendlies (excluding captured)
+            if (!isDestinationClear(piece, toX, toY, pieces.filter(p => {
+              const pTeam = p.player_id || p.team;
+              return pTeam === pieceTeam && p.id !== piece.id && p.id !== occupyingPiece.id;
+            }), null)) continue;
+          }
+        } else {
+          occupyingPiece = findPieceAt(pieces, toX, toY);
+          const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
+          // Skip if a friendly piece (not ourselves) occupies the target
+          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingTeam === pieceTeam) continue;
+          // Skip moves to squares within the piece's own footprint
+          if (occupyingPiece && occupyingPiece.id === piece.id) continue;
+        }
 
-        const isCapture = !!occupyingPiece;
+        const isCapture = !!(occupyingPiece && occupyingPiece.id !== piece.id);
         let isValidMove = false;
         
         if (isCapture) {
@@ -1028,15 +1165,61 @@ const Sandbox = () => {
         if (isStepMove) {
           pathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, isCapture);
         } else {
-          pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece);
+          pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture);
+        }
+
+        // Hop capture: piece has capture_on_hop, destination is empty, enemies are in the path
+        let isHopCapture = false;
+        let hopCapturedPieceIds = [];
+        if (!isCapture && piece.capture_on_hop && !isStepMove) {
+          const canHopAttackEnemies = piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
+          const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+          if (canHopAttackEnemies || canHopEnemies) {
+            // Check if move works as a capture direction (attack ranges)
+            let hopMoveValid = isValidMove;
+            if (!hopMoveValid) {
+              hopMoveValid = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+            }
+            if (hopMoveValid) {
+              // Check path with attack hop abilities for hopped enemies
+              const hopPathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, true);
+              if (hopPathClear) {
+                // Walk the path and collect hopped-over enemies
+                const dx = Math.sign(toX - piece.x);
+                const dy = Math.sign(toY - piece.y);
+                const xDiff = Math.abs(toX - piece.x);
+                const yDiff = Math.abs(toY - piece.y);
+                if (xDiff === yDiff || xDiff === 0 || yDiff === 0) {
+                  let cx = piece.x + dx;
+                  let cy = piece.y + dy;
+                  while (cx !== toX || cy !== toY) {
+                    const hopPiece = findPieceAt(pieces, cx, cy);
+                    if (hopPiece && hopPiece.id !== piece.id) {
+                      const hopTeam = hopPiece.player_id || hopPiece.team;
+                      if (hopTeam !== pieceTeam) {
+                        hopCapturedPieceIds.push(hopPiece.id);
+                      }
+                    }
+                    cx += dx;
+                    cy += dy;
+                  }
+                }
+                if (hopCapturedPieceIds.length > 0) {
+                  isHopCapture = true;
+                  isValidMove = true;
+                  pathClear = true;
+                }
+              }
+            }
+          }
         }
 
         if (isValidMove && pathClear) {
-          const isFirstMoveOnly = isCapture 
+          const isFirstMoveOnly = (isCapture || isHopCapture)
             ? checkIfFirstMoveOnlyCapture(piece, piece.x, piece.y, toX, toY, pieceTeam)
             : checkIfFirstMoveOnlyMove(piece, piece.x, piece.y, toX, toY, pieceTeam);
           
-          moves.push({ x: toX, y: toY, isCapture, isFirstMoveOnly, isRangedAttack: false });
+          moves.push({ x: toX, y: toY, isCapture: isCapture || isHopCapture, isHopCapture, hopCapturedPieceIds, isFirstMoveOnly, isRangedAttack: false });
         }
       }
     }
@@ -1046,7 +1229,7 @@ const Sandbox = () => {
       for (let toY = 0; toY < boardHeight; toY++) {
         for (let toX = 0; toX < boardWidth; toX++) {
           if (toX === piece.x && toY === piece.y) continue;
-          const targetPiece = pieces.find(p => p.x === toX && p.y === toY);
+          const targetPiece = findPieceAt(pieces, toX, toY);
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           // Skip friendly pieces - show all other squares within range
           if (targetPiece && targetTeam === pieceTeam) continue;
@@ -1070,34 +1253,63 @@ const Sandbox = () => {
     }
 
     return moves;
-  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, isStepByStepTarget, canReachStepByStep]);
+  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, isStepByStepTarget, canReachStepByStep, findPieceAt, checkIfFirstMoveOnlyMove, checkIfFirstMoveOnlyCapture]);
 
   // Handle square click - free repositioning (click piece, click destination)
   const handleSquareClick = useCallback((x, y) => {
     if (!activeSandbox) return;
 
     const pieces = activeSandbox.pieces;
-    const clickedPiece = pieces.find(p => p.x === x && p.y === y);
+    const clickedPiece = findPieceAt(pieces, x, y);
 
     if (selectedPiece) {
-      // If clicking the same piece, deselect
-      if (clickedPiece && clickedPiece.id === selectedPiece.id) {
+      // If clicking the anchor square of the same piece, deselect
+      if (clickedPiece && clickedPiece.id === selectedPiece.id &&
+          x === selectedPiece.x && y === selectedPiece.y) {
         setSelectedPiece(null);
         setValidMoves([]);
         return;
       }
 
-      // If clicking another piece of the same team, select it instead
+      // If clicking another piece of the same team (not an extension of selected piece), select it instead
       const selectedTeam = selectedPiece.team || selectedPiece.player_id;
-      if (clickedPiece && (clickedPiece.team === selectedTeam || clickedPiece.player_id === selectedTeam)) {
+      if (clickedPiece && clickedPiece.id !== selectedPiece.id &&
+          (clickedPiece.team === selectedTeam || clickedPiece.player_id === selectedTeam)) {
         setSelectedPiece(clickedPiece);
         setValidMoves([]);
         return;
       }
 
       // Free reposition: move piece to target (remove enemy if present)
-      const updatedPieces = pieces.filter(p => !(p.x === x && p.y === y));
-      const movedPieces = updatedPieces.map(p =>
+      // Multi-tile bounds check
+      const spw = selectedPiece.piece_width || 1;
+      const sph = selectedPiece.piece_height || 1;
+      const boardWidth = activeSandbox.gameType.board_width || 8;
+      const boardHeight = activeSandbox.gameType.board_height || 8;
+      // Snap to board edge if piece would extend off-board
+      if (x + spw > boardWidth) x = boardWidth - spw;
+      if (y + sph > boardHeight) y = boardHeight - sph;
+      if (x < 0) x = 0;
+      if (y < 0) y = 0;
+      // Block reposition if any other piece occupies the destination footprint
+      let blocked = false;
+      for (let dy = 0; dy < sph; dy++) {
+        for (let dx = 0; dx < spw; dx++) {
+          const found = findPieceAt(pieces, x + dx, y + dy);
+          if (found && found.id !== selectedPiece.id) {
+            blocked = true;
+            break;
+          }
+        }
+        if (blocked) break;
+      }
+      if (blocked) {
+        setSelectedPiece(null);
+        setValidMoves([]);
+        return;
+      }
+
+      const movedPieces = pieces.map(p =>
         p.id === selectedPiece.id ? { ...p, x, y } : p
       );
 
@@ -1122,10 +1334,13 @@ const Sandbox = () => {
       // No piece selected - select any piece for repositioning
       if (clickedPiece) {
         setSelectedPiece(clickedPiece);
-        setValidMoves([]); // No valid moves for free reposition
+        const boardWidth = activeSandbox.gameType.board_width || 8;
+        const boardHeight = activeSandbox.gameType.board_height || 8;
+        const moves = calculateValidMoves(clickedPiece, pieces, boardWidth, boardHeight);
+        setValidMoves(moves);
       }
     }
-  }, [activeSandbox, activeSandboxId, selectedPiece]);
+  }, [activeSandbox, activeSandboxId, selectedPiece, findPieceAt, calculateValidMoves]);
 
   // Handle Delete key to remove selected piece
   useEffect(() => {
@@ -1151,7 +1366,7 @@ const Sandbox = () => {
   const handleLongPress = useCallback((x, y) => {
     if (!activeSandbox) return;
 
-    const piece = activeSandbox.pieces.find(p => p.x === x && p.y === y);
+    const piece = findPieceAt(activeSandbox.pieces, x, y);
     if (!piece) {
       // Long press on empty square opens add-piece modal
       setRightClickPosition({ row: y, col: x });
@@ -1159,7 +1374,7 @@ const Sandbox = () => {
       setShowRightClickModal(true);
     }
     // If there's a piece, do nothing - use the Delete button instead
-  }, [activeSandbox]);
+  }, [activeSandbox, findPieceAt]);
 
   // Handle touch start for long press detection
   const handleTouchStart = useCallback((e, x, y) => {
@@ -1183,7 +1398,7 @@ const Sandbox = () => {
     if (e.button !== 2) return; // Only right-click
     if (!activeSandbox) return;
 
-    const piece = activeSandbox.pieces.find(p => p.x === x && p.y === y);
+    const piece = findPieceAt(activeSandbox.pieces, x, y);
     rightClickDataRef.current = {
       piece, x, y, time: Date.now(),
       clientX: e.clientX, clientY: e.clientY,
@@ -1194,7 +1409,7 @@ const Sandbox = () => {
       // For ranged pieces, activate global listeners to detect drag vs click
       setIsRightClickActive(true);
     }
-  }, [activeSandbox]);
+  }, [activeSandbox, findPieceAt]);
 
   // Handle contextmenu on square - only for adding pieces to empty squares
   const handleSquareContextMenu = useCallback((e, x, y) => {
@@ -1206,7 +1421,7 @@ const Sandbox = () => {
     if (data && data.piece?.can_capture_enemy_via_range) return;
 
     // Only open add-piece modal on empty squares (don't delete on right-click)
-    const piece = activeSandbox.pieces.find(p => p.x === x && p.y === y);
+    const piece = findPieceAt(activeSandbox.pieces, x, y);
     if (!piece) {
       setRightClickPosition({ row: y, col: x });
       setRightClickMode('piece');
@@ -1214,7 +1429,7 @@ const Sandbox = () => {
     }
     // If there's a piece, do nothing - use select + Delete key instead
     rightClickDataRef.current = null;
-  }, [activeSandbox]);
+  }, [activeSandbox, findPieceAt]);
 
   // Global listeners for ranged right-click drag detection
   useEffect(() => {
@@ -1269,7 +1484,7 @@ const Sandbox = () => {
         const target = getTargetSquare(e.clientX, e.clientY);
         if (target && activeSandbox) {
           const pieces = activeSandbox.pieces;
-          const targetPiece = pieces.find(p => p.x === target.x && p.y === target.y);
+          const targetPiece = findPieceAt(pieces, target.x, target.y);
           const sourceTeam = data.piece.player_id || data.piece.team;
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
 
@@ -1336,7 +1551,7 @@ const Sandbox = () => {
       window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
       window.removeEventListener('resize', handleResize);
     };
-  }, [isRightClickActive, activeSandbox, activeSandboxId, removePieceFromBoard]);
+  }, [isRightClickActive, activeSandbox, activeSandboxId, removePieceFromBoard, findPieceAt]);
 
   // Handle piece selection from modal
   const handlePieceSelect = useCallback((pieceData) => {
@@ -1378,12 +1593,34 @@ const Sandbox = () => {
   const handleBoardPieceDragStart = useCallback((e, piece) => {
     if (!activeSandbox) return;
     
+    // Calculate grab offset within the piece footprint for multi-tile pieces
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
+    let grabOffsetX = 0;
+    let grabOffsetY = 0;
+    if (pw > 1 || ph > 1) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const relX = e.clientX - rect.left;
+      const relY = e.clientY - rect.top;
+      const cellWidth = rect.width / pw;
+      const cellHeight = rect.height / ph;
+      grabOffsetX = Math.floor(relX / cellWidth);
+      grabOffsetY = Math.floor(relY / cellHeight);
+    }
+    
+    setTimeout(() => {
+    
+    setIsDragging(true);
+    }, 0);
+    
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('application/json', JSON.stringify({
       ...piece,
       fromBoard: true,
       originalX: piece.x,
-      originalY: piece.y
+      originalY: piece.y,
+      grabOffsetX,
+      grabOffsetY
     }));
     
     // Calculate valid moves so highlights show during drag
@@ -1420,21 +1657,57 @@ const Sandbox = () => {
         const pieceData = JSON.parse(data);
         
         if (pieceData.fromBoard) {
+          // Adjust drop coordinates for multi-tile grab offset
+          const anchorX = x - (pieceData.grabOffsetX || 0);
+          const anchorY = y - (pieceData.grabOffsetY || 0);
+          
           // Don't allow dropping on the same square
-          if (pieceData.originalX === x && pieceData.originalY === y) {
+          if (pieceData.originalX === anchorX && pieceData.originalY === anchorY) {
             setSelectedPiece(null);
             setValidMoves([]);
             return;
           }
           
           // Check if target is a valid move
-          const move = validMoves.find(m => m.x === x && m.y === y);
+          const move = validMoves.find(m => m.x === anchorX && m.y === anchorY);
           if (move) {
             // Execute game move with turn switch
             const pieces = activeSandbox.pieces;
-            const updatedPieces = pieces.filter(p => !(p.x === x && p.y === y));
+            const pw = pieceData.piece_width || 1;
+            const ph = pieceData.piece_height || 1;
+            
+            // Scan the entire destination footprint for the capture target
+            // (for multi-tile pieces the enemy may not be at the anchor)
+            let targetPiece = null;
+            if (move.isCapture && !move.isRangedAttack) {
+              const pieceTeam = pieceData.player_id || pieceData.team;
+              for (let dy = 0; dy < ph && !targetPiece; dy++) {
+                for (let dx = 0; dx < pw && !targetPiece; dx++) {
+                  const found = findPieceAt(pieces, anchorX + dx, anchorY + dy);
+                  if (found && found.id !== pieceData.id) {
+                    const foundTeam = found.player_id || found.team;
+                    if (foundTeam !== pieceTeam) {
+                      targetPiece = found;
+                    }
+                  }
+                }
+              }
+            }
+            
+            // For hop captures, remove all hopped-over enemies
+            let piecesToRemove = new Set();
+            if (move.isHopCapture && move.hopCapturedPieceIds) {
+              move.hopCapturedPieceIds.forEach(id => piecesToRemove.add(id));
+            }
+            if (targetPiece) {
+              piecesToRemove.add(targetPiece.id);
+            }
+            
+            const updatedPieces = piecesToRemove.size > 0
+              ? pieces.filter(p => !piecesToRemove.has(p.id))
+              : [...pieces];
             const movedPieces = updatedPieces.map(p =>
-              p.id === pieceData.id ? { ...p, x, y } : p
+              p.id === pieceData.id ? { ...p, x: anchorX, y: anchorY } : p
             );
 
             const currentTurn = activeSandbox.currentTurn;
@@ -1448,15 +1721,15 @@ const Sandbox = () => {
                     currentTurn: nextTurn,
                     moveHistory: [...s.moveHistory, {
                       from: { x: pieceData.originalX, y: pieceData.originalY },
-                      to: { x, y },
+                      to: { x: anchorX, y: anchorY },
                       piece: pieceData.piece_name
                     }]
                   }
                 : s
             ));
           }
-          // If not a valid move, do nothing (cancel the drag)
-          
+          // Clear selection state whether move succeeded or not
+          setIsDragging(false);
           setSelectedPiece(null);
           setValidMoves([]);
         } else {
@@ -1467,7 +1740,7 @@ const Sandbox = () => {
     } catch (err) {
       console.error('Failed to handle drop:', err);
     }
-  }, [activeSandbox, activeSandboxId, addPieceToBoard, validMoves]);
+  }, [activeSandbox, activeSandboxId, addPieceToBoard, validMoves, findPieceAt]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -1545,13 +1818,39 @@ const Sandbox = () => {
     for (let y = 0; y < boardHeight; y++) {
       for (let x = 0; x < boardWidth; x++) {
         const isLight = (x + y) % 2 === 0;
-        const piece = pieces.find(p => p.x === x && p.y === y);
-        const isSelected = selectedPiece && selectedPiece.x === x && selectedPiece.y === y;
+        // Multi-tile aware: find piece whose footprint covers this square
+        const piece = pieces.find(p => {
+          const pw = p.piece_width || 1;
+          const ph = p.piece_height || 1;
+          return x >= p.x && x < p.x + pw && y >= p.y && y < p.y + ph;
+        });
+        const isAnchor = piece && piece.x === x && piece.y === y;
+        const isSelected = selectedPiece && (
+          x >= selectedPiece.x && x < selectedPiece.x + (selectedPiece.piece_width || 1) &&
+          y >= selectedPiece.y && y < selectedPiece.y + (selectedPiece.piece_height || 1)
+        );
         // Find regular and ranged moves separately so both styles can overlap
-        const regularMove = showHighlights ? validMoves.find(m => m.x === x && m.y === y && !m.isRangedAttack) : null;
+        // Multi-tile aware: highlight all squares the piece would cover at each valid destination
+        // But don't highlight squares within the selected piece's current footprint
+        const spw = selectedPiece?.piece_width || 1;
+        const sph = selectedPiece?.piece_height || 1;
+        const inSelectedFootprint = selectedPiece && (
+          x >= selectedPiece.x && x < selectedPiece.x + spw &&
+          y >= selectedPiece.y && y < selectedPiece.y + sph
+        );
+        const regularMove = showHighlights && !inSelectedFootprint ? validMoves.find(m => !m.isRangedAttack &&
+          x >= m.x && x < m.x + spw && y >= m.y && y < m.y + sph
+        ) : null;
         const rangedMove = showHighlights ? validMoves.find(m => m.x === x && m.y === y && m.isRangedAttack) : null;
-        const hoveredRegularMove = showHighlights && hoveredPiece && !selectedPiece
-          ? hoveredMoves.find(m => m.x === x && m.y === y && !m.isRangedAttack)
+        const hpw = hoveredPiece?.piece_width || 1;
+        const hph = hoveredPiece?.piece_height || 1;
+        const inHoveredFootprint = hoveredPiece && (
+          x >= hoveredPiece.x && x < hoveredPiece.x + hpw &&
+          y >= hoveredPiece.y && y < hoveredPiece.y + hph
+        );
+        const hoveredRegularMove = showHighlights && hoveredPiece && !selectedPiece && !inHoveredFootprint
+          ? hoveredMoves.find(m => !m.isRangedAttack &&
+              x >= m.x && x < m.x + hpw && y >= m.y && y < m.y + hph)
           : null;
         const hoveredRangedMove = showHighlights && hoveredPiece && !selectedPiece
           ? hoveredMoves.find(m => m.x === x && m.y === y && m.isRangedAttack)
@@ -1603,31 +1902,60 @@ const Sandbox = () => {
                 ? SPECIAL_SQUARE_TYPES[specialSquareType]?.color
                 : isLight 
                   ? (currentUser?.light_square_color || '#cad5e8')
-                  : (currentUser?.dark_square_color || '#08234d')
+                  : (currentUser?.dark_square_color || '#08234d'),
+              ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {})
             }}
           >
             {((isRangedMove && rangedMove?.isCapture) || (isRangedHover && hoveredRangedMove?.isCapture) || (isRangedDragTarget && piece)) && (
               <span className={styles["ranged-icon"]}>💥</span>
             )}
-            {piece && (
+            {isAnchor && (() => {
+              const pw = piece.piece_width || 1;
+              const ph = piece.piece_height || 1;
+              const isMultiTile = pw > 1 || ph > 1;
+              const isNonSquareMultiTile = isMultiTile && pw !== ph;
+              const multiTileStyle = isMultiTile ? {
+                width: `${pw * 100}%`,
+                height: `${ph * 100}%`,
+                zIndex: 5,
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                ...(isDragging ? { pointerEvents: 'none' } : {})
+              } : {};
+              return (
               <div
                 className={`${styles.piece} ${styles.draggable}`}
+                style={multiTileStyle}
                 draggable={true}
                 onDragStart={(e) => handleBoardPieceDragStart(e, piece)}
                 onDragEnd={() => {
+                  setIsDragging(false);
                   setSelectedPiece(null);
                   setValidMoves([]);
                 }}
                 onMouseEnter={() => handlePieceHover(piece)}
                 onMouseLeave={() => handlePieceHover(null)}
               >
-                <img
-                  src={getBoardPieceImage(piece)}
-                  alt={piece.piece_name}
-                  draggable={false}
-                />
+                {isNonSquareMultiTile ? (
+                  <div
+                    ref={(el) => applySvgStretchBackground(el, getBoardPieceImage(piece))}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                    }}
+                    draggable={false}
+                  />
+                ) : (
+                  <img
+                    src={getBoardPieceImage(piece)}
+                    alt={piece.piece_name}
+                    draggable={false}
+                  />
+                )}
               </div>
-            )}
+              );
+            })()}
             {specialSquareType && !piece && (
               <div className={styles["special-square-indicator"]}>
                 {SPECIAL_SQUARE_TYPES[specialSquareType]?.name?.charAt(0)}
