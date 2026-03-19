@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { getPieceById, getGamesByPieceId } from "../../actions/pieces";
 import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
+import InfoTooltip from "../piecewizard/InfoTooltip";
 import styles from "./pieceview.module.scss";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -481,7 +482,7 @@ const PieceView = () => {
           <div className={styles["stat-card"]}>
             <span className={styles["stat-label"]}>
               Capture on Move
-              <span className={styles["info-icon"]} title="Can capture enemy pieces while moving (see Attack Details for specific squares)">ℹ️</span>
+              <InfoTooltip text="Can capture enemy pieces while moving (see Attack Details for specific squares)" />
             </span>
             <span className={styles["stat-value"]}>{pieceToDisplay.can_capture_enemy_on_move ? 'Yes' : 'No'}</span>
           </div>
@@ -648,9 +649,9 @@ const PieceView = () => {
               </div>
             )}
             {pieceToDisplay.can_en_passant && (
-              <div className={styles["special-ability-card"]} title="Can capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn.">
+              <div className={styles["special-ability-card"]}>
                 <span className={styles["special-icon"]}>↗️</span>
-                <span className={styles["special-name"]}>Can En Passant</span>
+                <span className={styles["special-name"]}>Can En Passant <InfoTooltip text="Can capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn." /></span>
               </div>
             )}
             {!pieceToDisplay.can_promote && !pieceToDisplay.can_castle && !pieceToDisplay.has_checkmate_rule && 

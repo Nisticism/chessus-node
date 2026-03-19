@@ -3,7 +3,7 @@ const API_URL = (process.env.REACT_APP_API_URL || "") + "/api/";
 
 // Piece Wizard UI Text Constants
 export const PIECE_WIZARD_TEXT = {
-  AVAILABLE_FOR_FIRST_MOVES: "Available for First Moves Only",
+  AVAILABLE_FOR_FIRST_MOVES: "First N moves only",
   MOVES_LABEL: "moves",
   EXACT_LABEL: "Exact",
   INFINITE_LABEL: "Infinite",

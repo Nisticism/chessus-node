@@ -11,6 +11,8 @@ import {
   getSquareHighlightStyle
 } from "../../helpers/pieceMovementUtils";
 
+import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
 const getImageUrl = (imagePath) => {
@@ -800,9 +802,25 @@ const GameTypeView = () => {
         if (hoveredPiecePosition) {
           const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
           if (pieceData) {
-            moveInfo = getMoveInfo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
-            captureInfo = getCaptureInfo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
-            canRanged = canRangedAttackTo(hoveredPiecePosition.row, hoveredPiecePosition.col, row, col, pieceData, hoveredPiecePosition.playerId);
+            const hpw = pieceData.piece_width || 1;
+            const hph = pieceData.piece_height || 1;
+            for (let dr = 0; dr < hph && !moveInfo.allowed; dr++) {
+              for (let dc = 0; dc < hpw && !moveInfo.allowed; dc++) {
+                const info = getMoveInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+                if (info.allowed) moveInfo = info;
+              }
+            }
+            for (let dr = 0; dr < hph && !captureInfo.allowed; dr++) {
+              for (let dc = 0; dc < hpw && !captureInfo.allowed; dc++) {
+                const info = getCaptureInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+                if (info.allowed) captureInfo = info;
+              }
+            }
+            for (let dr = 0; dr < hph && !canRanged; dr++) {
+              for (let dc = 0; dc < hpw && !canRanged; dc++) {
+                canRanged = canRangedAttackTo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+              }
+            }
           }
         }
 
@@ -834,7 +852,21 @@ const GameTypeView = () => {
           <div
             key={key}
             className={styles["board-square"]}
-            style={squareStyle}
+            style={{...squareStyle, ...(placement && !placement._occupied && ((placement.piece_width || 1) > 1 || (placement.piece_height || 1) > 1) ? { zIndex: 10 } : {})}}
+            onMouseEnter={() => {
+              if (placement && placement._occupied && placement._anchorKey) {
+                const [anchorRow, anchorCol] = placement._anchorKey.split(',').map(Number);
+                const anchorPlacement = piecePlacements[placement._anchorKey];
+                if (anchorPlacement) {
+                  setHoveredPiecePosition({ row: anchorRow, col: anchorCol, pieceId: anchorPlacement.piece_id, playerId: anchorPlacement.player_id });
+                }
+              }
+            }}
+            onMouseLeave={() => {
+              if (placement && placement._occupied) {
+                setHoveredPiecePosition(null);
+              }
+            }}
           >
             {/* Ranged attack icon */}
             {highlightIcon && (
@@ -877,7 +909,7 @@ const GameTypeView = () => {
                 {squareType === 'special' && 'S'}
               </div>
             )}
-            {placement && (
+            {placement && !placement._occupied && (
               <div
                 onMouseEnter={() => {
                   console.log('Hovering over piece at', row, col, 'pieceId:', placement.piece_id, 'playerId:', placement.player_id);
@@ -891,31 +923,46 @@ const GameTypeView = () => {
                   position: 'absolute',
                   top: 0,
                   left: 0,
-                  right: 0,
-                  bottom: 0,
+                  width: `${(placement.piece_width || 1) * 100}%`,
+                  height: `${(placement.piece_height || 1) * 100}%`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: 'default'
+                  cursor: 'default',
+                  zIndex: (placement.piece_width || 1) > 1 || (placement.piece_height || 1) > 1 ? 5 : 'auto'
                 }}
               >
                 {(() => {
                   const imageUrl = getPlacementImageUrl(placement);
+                  const gtPw = placement.piece_width || 1;
+                  const gtPh = placement.piece_height || 1;
+                  const isNonSquare = (gtPw > 1 || gtPh > 1) && gtPw !== gtPh;
                   return imageUrl ? (
-                    <img
-                      src={imageUrl}
-                      alt={placement.piece_name}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'contain',
-                        pointerEvents: 'none'
-                      }}
-                      onError={(e) => {
-                        console.error("Failed to load image:", imageUrl);
-                        e.target.style.display = 'none';
-                      }}
-                    />
+                    isNonSquare ? (
+                      <div
+                        ref={(el) => applySvgStretchBackground(el, imageUrl)}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          pointerEvents: 'none'
+                        }}
+                      />
+                    ) : (
+                      <img
+                        src={imageUrl}
+                        alt={placement.piece_name}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'fill',
+                          pointerEvents: 'none'
+                        }}
+                        onError={(e) => {
+                          console.error("Failed to load image:", imageUrl);
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    )
                   ) : (
                     <span style={{ fontSize: `${squareSize * 0.3}px`, color: '#fff', pointerEvents: 'none' }}>
                       {placement.piece_name?.charAt(0) || '?'}

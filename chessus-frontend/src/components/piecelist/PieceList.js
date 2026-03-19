@@ -15,8 +15,9 @@ const PieceList = () => {
   const [pieceToDelete, setPieceToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
-  const [alertMessage, setAlertMessage] = useState("");
-  const [alertType, setAlertType] = useState(""); // "success" or "error"
+  const [, setAlertMessage] = useState("");
+  const [, setAlertType] = useState(""); // "success" or "error"
+  const [displayColor, setDisplayColor] = useState("p1"); // "p1" (white/light), "p2" (black/dark), "both"
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -47,7 +48,8 @@ const PieceList = () => {
     try {
       const images = JSON.parse(imageLocation);
       if (Array.isArray(images) && images.length > 0) {
-        const imagePath = images[0];
+        const index = displayColor === 'p2' && images.length > 1 ? 1 : 0;
+        const imagePath = images[index];
         return imagePath.startsWith('http') ? imagePath : `${ASSET_URL}${imagePath}`;
       }
     } catch {
@@ -217,6 +219,7 @@ const PieceList = () => {
         <p className={styles["subtitle"]}>
           Browse and manage custom pieces for your games
         </p>
+        
         {currentUser ? (
           <Link to="/create/piece" className={styles["create-button"]}>
             + Create New Piece
@@ -229,6 +232,24 @@ const PieceList = () => {
             + Create New Piece
           </button>
         )}
+
+        <div className={styles["color-toggle"]}>
+          <span className={styles["toggle-label"]}>Show pieces as</span>
+          <div className={styles["toggle-group"]}>
+            <button
+              className={`${styles["toggle-btn"]} ${displayColor === 'p1' ? styles["active"] : ''}`}
+              onClick={() => setDisplayColor('p1')}
+            >
+              Light
+            </button>
+            <button
+              className={`${styles["toggle-btn"]} ${displayColor === 'p2' ? styles["active"] : ''}`}
+              onClick={() => setDisplayColor('p2')}
+            >
+              Dark
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* My Pieces Section */}

@@ -6,6 +6,8 @@ import styles from "./matchview.module.scss";
 import API_URL from "../../global/global";
 import { colToFile, rowToRank, formatMoveNotation } from "../../helpers/pieceMovementUtils";
 
+import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 
 const MatchView = () => {
@@ -96,30 +98,64 @@ const MatchView = () => {
 
     for (let y = boardHeight - 1; y >= 0; y--) {
       for (let x = 0; x < boardWidth; x++) {
-        const piece = pieces.find(p => p && p.x === x && p.y === y && !p.captured);
+        // Multi-tile aware: find piece whose footprint covers this square
+        const piece = pieces.find(p => {
+          if (!p || p.captured) return false;
+          const pw = p.piece_width || 1;
+          const ph = p.piece_height || 1;
+          return x >= p.x && x < p.x + pw && y >= p.y && y < p.y + ph;
+        });
+        const isAnchor = piece && piece.x === x && piece.y === y;
         const isLight = (x + y) % 2 === 0;
 
         squares.push(
           <div
             key={`${x}-${y}`}
             className={`${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}`}
+            style={isAnchor && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : undefined}
           >
-            {piece && (
-              <div className={`${styles["piece"]} ${piece.player_id === 1 || piece.team === 1 ? styles["player1"] : styles["player2"]}`}>
-                {(piece.image || piece.image_url) ? (
-                  <img 
-                    src={(piece.image || piece.image_url).startsWith('http') ? (piece.image || piece.image_url) : `${ASSET_URL}${piece.image || piece.image_url}`}
-                    alt={piece.piece_name || piece.name || "Piece"}
-                    className={styles["piece-image"]}
-                    draggable={false}
-                  />
+            {isAnchor && (() => {
+              const pw = piece.piece_width || 1;
+              const ph = piece.piece_height || 1;
+              const isMultiTile = pw > 1 || ph > 1;
+              const isNonSquareMultiTile = isMultiTile && pw !== ph;
+              const multiTileStyle = isMultiTile ? {
+                width: `${pw * 100}%`,
+                height: `${ph * 100}%`,
+                zIndex: 5,
+                position: 'absolute',
+                top: 0,
+                left: 0
+              } : {};
+              const pieceImageUrl = (piece.image || piece.image_url) ? 
+                ((piece.image || piece.image_url).startsWith('http') ? (piece.image || piece.image_url) : `${ASSET_URL}${piece.image || piece.image_url}`) : null;
+              return (
+              <div className={`${styles["piece"]} ${piece.player_id === 1 || piece.team === 1 ? styles["player1"] : styles["player2"]}`} style={multiTileStyle}>
+                {pieceImageUrl ? (
+                  isNonSquareMultiTile ? (
+                    <div
+                      ref={(el) => applySvgStretchBackground(el, pieceImageUrl)}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                      }}
+                    />
+                  ) : (
+                    <img 
+                      src={pieceImageUrl}
+                      alt={piece.piece_name || piece.name || "Piece"}
+                      className={styles["piece-image"]}
+                      draggable={false}
+                    />
+                  )
                 ) : (
                   <span className={styles["piece-symbol"]}>
                     {(piece.player_id === 1 || piece.team === 1) ? '♙' : '♟'}
                   </span>
                 )}
               </div>
-            )}
+              );
+            })()}
           </div>
         );
       }

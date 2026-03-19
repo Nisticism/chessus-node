@@ -104,6 +104,20 @@ const toTitleCase = (value) => value
   .trim()
   .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const detectColor = (fileName) => {
+  const lower = fileName.toLowerCase();
+  // Check prefix: white-xxx or black-xxx
+  if (lower.startsWith('white')) return 'White';
+  if (lower.startsWith('black')) return 'Black';
+  // 2-char SVG names: {piece}{color}.svg — last char before ext determines color
+  const stem = lower.replace(/\.[^.]+$/, '');
+  if (stem.length === 2) {
+    if (stem.endsWith('w')) return 'White';
+    if (stem.endsWith('b')) return 'Black';
+  }
+  return 'Other';
+};
+
 const imageLibraryContext = require.context('./pieces', true, /\.(png|jpe?g|svg|webp)$/i);
 
 export const pieceImageLibrary = imageLibraryContext
@@ -118,7 +132,8 @@ export const pieceImageLibrary = imageLibraryContext
     return {
       name: displayName,
       src: imageLibraryContext(key),
-      category: toTitleCase(folderName)
+      category: toTitleCase(folderName),
+      color: detectColor(fileName)
     };
   })
   .sort((left, right) => {
