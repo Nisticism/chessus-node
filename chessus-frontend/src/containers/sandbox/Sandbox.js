@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { getGames, getGameById } from "../../actions/games";
 import PiecesService from "../../services/pieces.service";
 import PieceSelector from "../../components/gamewizard/PieceSelector";
-import { canRangedAttackTo, isRangedPathClear, isDestinationClear, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
+import { canRangedAttackTo, isRangedPathClear, isDestinationClear, doesPieceOccupySquare, getSquareHighlightStyle, canHopCaptureToUtil } from "../../helpers/pieceMovementUtils";
 import styles from "./sandbox.module.scss";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 
@@ -50,8 +50,10 @@ const Sandbox = () => {
         // Fallback: try loading regular pieces
         try {
           const fallbackResponse = await PiecesService.getPieces();
-          console.log('Fallback: Loaded regular pieces:', fallbackResponse.data?.length);
-          setFullPiecesList(fallbackResponse.data || []);
+          const fallbackData = fallbackResponse.data;
+          const fallbackPieces = Array.isArray(fallbackData) ? fallbackData : (fallbackData?.pieces || []);
+          console.log('Fallback: Loaded regular pieces:', fallbackPieces.length);
+          setFullPiecesList(fallbackPieces);
         } catch (fallbackErr) {
           console.error('Fallback also failed:', fallbackErr);
           setFullPiecesList([]);
@@ -71,7 +73,7 @@ const Sandbox = () => {
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [validMoves, setValidMoves] = useState([]);
   const [hoveredPiece, setHoveredPiece] = useState(null);
-  const [hoveredMoves, setHoveredMoves] = useState([]);
+  const [hoveredHighlights, setHoveredHighlights] = useState({});
   const [showGameTypes, setShowGameTypes] = useState(true);
   const [showPieceLibrary, setShowPieceLibrary] = useState(true);
   const [searchGameTerm, setSearchGameTerm] = useState("");
@@ -85,6 +87,7 @@ const Sandbox = () => {
     return saved ? parseInt(saved) : 1;
   };
   const [sidebarPlayerView, setSidebarPlayerView] = useState(getInitialSidebarPlayerView());
+  const boardAnimationsEnabled = localStorage.getItem('boardAnimations') !== 'false';
   
   // Save sidebarPlayerView to localStorage whenever it changes
   useEffect(() => {
@@ -668,6 +671,14 @@ const Sandbox = () => {
     return false;
   };
 
+  // Resolve a directional value + separate exact flag into the signed convention for checkMovement.
+  // DB stores values as positive with a separate boolean _exact column.
+  const resolveExact = (value, exactFlag) => {
+    if (!value || value === 99) return value;
+    if (exactFlag === true || exactFlag === 1) return -Math.abs(value);
+    return value;
+  };
+
   const getStepMovementConfig = useCallback((pieceData) => {
     const stepValueRaw = pieceData?.step_by_step_movement_value ?? pieceData?.step_movement_value;
     const stepValue = Number(stepValueRaw);
@@ -844,7 +855,8 @@ const Sandbox = () => {
   };
 
   // Check if piece can move to a square
-  const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition) => {
+  // skipExactRatio: when true, skip exact directional and ratio checks (for hop-only validation)
+  const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false) => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
@@ -862,27 +874,28 @@ const Sandbox = () => {
       let directionalAllowed = false;
 
       if (rowDiff < 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.up_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_movement, pieceData.up_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.down_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_movement, pieceData.down_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff === 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_movement, pieceData.left_movement_exact), Math.abs(colDiff));
       } else if (rowDiff === 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_movement, pieceData.right_movement_exact), Math.abs(colDiff));
       } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_movement, pieceData.up_left_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_movement, pieceData.up_right_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_movement, pieceData.down_left_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_movement, pieceData.down_right_movement_exact), Math.abs(rowDiff));
       }
 
       if (directionalAllowed) return true;
     }
 
     // Check ratio movement (L-shape like knight)
+    if (!skipExactRatio) {
     const ratioStyle = pieceData.ratio_movement_style;
     const ratio1 = pieceData.ratio_movement_1 || pieceData.ratio_one_movement || 0;
     const ratio2 = pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0;
@@ -892,6 +905,7 @@ const Sandbox = () => {
           (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
         return true;
       }
+    }
     }
 
     // Check step-by-step movement - use sign-based diagonal exclusion
@@ -933,6 +947,7 @@ const Sandbox = () => {
         if (direction && additionalMovements[direction]) {
           const dist = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
           for (const opt of additionalMovements[direction]) {
+            if (skipExactRatio && opt.exact) continue;
             const value = opt.value || 0;
             if (opt.infinite && dist > 0) return true;
             if (opt.exact && dist === value) return true;
@@ -948,7 +963,8 @@ const Sandbox = () => {
   }, []);
 
   // Check if piece can capture on a square
-  const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition) => {
+  // skipExactRatio: when true, skip exact directional and ratio checks (for hop-only validation)
+  const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false) => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
@@ -964,7 +980,7 @@ const Sandbox = () => {
 
     // If piece can capture on move AND no separate capture fields, use movement logic
     if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
-      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition);
+      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
     }
 
     // Check directional capture
@@ -976,27 +992,28 @@ const Sandbox = () => {
       let directionalAllowed = false;
 
       if (rowDiff < 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.up_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_capture, pieceData.up_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.down_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_capture, pieceData.down_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff === 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_capture, pieceData.left_capture_exact), Math.abs(colDiff));
       } else if (rowDiff === 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_capture, pieceData.right_capture_exact), Math.abs(colDiff));
       } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_capture, pieceData.up_left_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_capture, pieceData.up_right_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_capture, pieceData.down_left_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_capture, pieceData.down_right_capture_exact), Math.abs(rowDiff));
       }
 
       if (directionalAllowed) return true;
     }
 
     // Check ratio capture
+    if (!skipExactRatio) {
     const ratio1 = pieceData.ratio_capture_1 || 0;
     const ratio2 = pieceData.ratio_capture_2 || 0;
     if (ratio1 > 0 && ratio2 > 0) {
@@ -1004,6 +1021,7 @@ const Sandbox = () => {
           (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
         return true;
       }
+    }
     }
 
     // Check step capture - use sign-based diagonal exclusion
@@ -1043,6 +1061,7 @@ const Sandbox = () => {
         if (direction && additionalCaptures[direction]) {
           const dist = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
           for (const opt of additionalCaptures[direction]) {
+            if (skipExactRatio && opt.exact) continue;
             const value = opt.value || 0;
             if (opt.infinite && dist > 0) return true;
             if (opt.exact && dist === value) return true;
@@ -1059,11 +1078,8 @@ const Sandbox = () => {
 
   // Check if path is clear
   const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false) => {
-    // Check if piece can hop - combine movement + attack hop abilities when capturing
-    const canHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true
-      || (isCapture && (pieceData?.can_hop_attack_over_allies === 1 || pieceData?.can_hop_attack_over_allies === true));
-    const canHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true
-      || (isCapture && (pieceData?.can_hop_attack_over_enemies === 1 || pieceData?.can_hop_attack_over_enemies === true));
+    const canHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true;
+    const canHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true;
     const pieceTeam = pieceData?.player_id || pieceData?.team;
     const movingPieceId = pieceData?.id;
     
@@ -1151,67 +1167,154 @@ const Sandbox = () => {
         }
 
         const isCapture = !!(occupyingPiece && occupyingPiece.id !== piece.id);
+        const isMultiTile = pw > 1 || ph > 1;
         let isValidMove = false;
         
-        if (isCapture) {
-          isValidMove = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+        // For multi-tile pieces, check movement/capture from all sub-squares
+        if (isMultiTile) {
+          for (let dy = 0; dy < ph && !isValidMove; dy++) {
+            for (let dx = 0; dx < pw && !isValidMove; dx++) {
+              if (isCapture) {
+                isValidMove = canPieceCaptureTo(piece.x + dx, piece.y + dy, toX + dx, toY + dy, piece, pieceTeam);
+              } else {
+                isValidMove = canPieceMoveTo(piece.x + dx, piece.y + dy, toX + dx, toY + dy, piece, pieceTeam);
+              }
+            }
+          }
         } else {
-          isValidMove = canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+          if (isCapture) {
+            isValidMove = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+          } else {
+            isValidMove = canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+          }
         }
 
-        const isStepMove = isStepByStepTarget(piece, piece.x, piece.y, toX, toY);
+        const isStepMove = isMultiTile
+          ? (() => {
+              for (let dy = 0; dy < ph; dy++) {
+                for (let dx = 0; dx < pw; dx++) {
+                  if (isStepByStepTarget(piece, piece.x + dx, piece.y + dy, toX + dx, toY + dy)) return true;
+                }
+              }
+              return false;
+            })()
+          : isStepByStepTarget(piece, piece.x, piece.y, toX, toY);
+
+        // Check if this is a ratio (L-shape) move
+        const ratio1 = piece.ratio_movement_1 || piece.ratio_one_movement || 0;
+        const ratio2 = piece.ratio_movement_2 || piece.ratio_two_movement || 0;
+        const isRatioMove = ratio1 > 0 && ratio2 > 0 &&
+          ((Math.abs(toX - piece.x) === ratio1 && Math.abs(toY - piece.y) === ratio2) ||
+           (Math.abs(toX - piece.x) === ratio2 && Math.abs(toY - piece.y) === ratio1));
 
         let pathClear = false;
         if (isStepMove) {
           pathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, isCapture);
+        } else if (isMultiTile) {
+          // For multi-tile, check path from ALL sub-squares to their destination sub-squares
+          pathClear = true;
+          for (let dy = 0; dy < ph && pathClear; dy++) {
+            for (let dx = 0; dx < pw && pathClear; dx++) {
+              if (!isPathClear(piece.x + dx, piece.y + dy, toX + dx, toY + dy, pieces, piece, isCapture)) {
+                pathClear = false;
+              }
+            }
+          }
         } else {
           pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture);
         }
 
-        // Hop capture: piece has capture_on_hop, destination is empty, enemies are in the path
+        // Hop capture: piece has capture_on_hop, destination is empty, enemies are in the path.
+        // capture_on_hop inherently means the piece hops over enemies to capture them (like checkers),
+        // so enemies in the path are always hoppable — no separate can_hop_over_enemies flag needed.
+        // The destination must be within the piece's normal movement/capture range.
         let isHopCapture = false;
         let hopCapturedPieceIds = [];
-        if (!isCapture && piece.capture_on_hop && !isStepMove) {
-          const canHopAttackEnemies = piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
-          const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
-          if (canHopAttackEnemies || canHopEnemies) {
-            // Check if move works as a capture direction (attack ranges)
-            let hopMoveValid = isValidMove;
-            if (!hopMoveValid) {
-              hopMoveValid = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
-            }
-            if (hopMoveValid) {
-              // Check path with attack hop abilities for hopped enemies
-              const hopPathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, true);
-              if (hopPathClear) {
-                // Walk the path and collect hopped-over enemies
-                const dx = Math.sign(toX - piece.x);
-                const dy = Math.sign(toY - piece.y);
-                const xDiff = Math.abs(toX - piece.x);
-                const yDiff = Math.abs(toY - piece.y);
-                if (xDiff === yDiff || xDiff === 0 || yDiff === 0) {
-                  let cx = piece.x + dx;
-                  let cy = piece.y + dy;
-                  while (cx !== toX || cy !== toY) {
-                    const hopPiece = findPieceAt(pieces, cx, cy);
-                    if (hopPiece && hopPiece.id !== piece.id) {
-                      const hopTeam = hopPiece.player_id || hopPiece.team;
-                      if (hopTeam !== pieceTeam) {
-                        hopCapturedPieceIds.push(hopPiece.id);
-                      }
+        if (!isCapture && piece.capture_on_hop && !isStepMove && !isRatioMove) {
+          // Hop capture only works if the destination is within the piece's actual movement/capture range.
+          // isValidMove already tells us if normal movement covers this square.
+          // If not, check if the capture range covers it (since destination is empty, normal capture
+          // wouldn't apply, but hop capture uses the same directional ranges).
+          let hopDirValid = isValidMove;
+          if (!hopDirValid) {
+            // Check if the piece's capture range covers this destination distance
+            hopDirValid = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+          }
+          if (hopDirValid) {
+            // Walk the path: enemies are capture targets (always hoppable for capture_on_hop),
+            // allies block unless the piece has ally-hop ability.
+            const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
+            const hopCapturedSet = new Set();
+            let hopBlocked = false;
+            const subSquareCount = isMultiTile ? pw * ph : 1;
+            for (let si = 0; si < subSquareCount && !hopBlocked; si++) {
+              const sdx = si % pw;
+              const sdy = Math.floor(si / pw);
+              const fx = piece.x + sdx;
+              const fy = piece.y + sdy;
+              const tx = toX + sdx;
+              const ty = toY + sdy;
+              const dx = Math.sign(tx - fx);
+              const dy = Math.sign(ty - fy);
+              const xDiff = Math.abs(tx - fx);
+              const yDiff = Math.abs(ty - fy);
+              if (xDiff === yDiff || xDiff === 0 || yDiff === 0) {
+                let cx = fx + dx;
+                let cy = fy + dy;
+                while ((cx !== tx || cy !== ty) && !hopBlocked) {
+                  const hopPiece = findPieceAt(pieces, cx, cy);
+                  if (hopPiece && hopPiece.id !== piece.id) {
+                    const hopTeam = hopPiece.player_id || hopPiece.team;
+                    if (hopTeam !== pieceTeam) {
+                      hopCapturedSet.add(hopPiece.id);
+                    } else if (!canHopAllies) {
+                      hopBlocked = true;
                     }
-                    cx += dx;
-                    cy += dy;
                   }
-                }
-                if (hopCapturedPieceIds.length > 0) {
-                  isHopCapture = true;
-                  isValidMove = true;
-                  pathClear = true;
+                  cx += dx;
+                  cy += dy;
                 }
               }
             }
+            if (!hopBlocked && hopCapturedSet.size > 0) {
+              hopCapturedPieceIds = [...hopCapturedSet];
+              isHopCapture = true;
+              isValidMove = true;
+              pathClear = true;
+            }
           }
+        }
+
+        // Hop-only restriction: if exact_ratio_hop_only is set and no hop occurred,
+        // re-validate excluding exact directional and ratio abilities.
+        // If the move only works via exact/ratio, reject it (nothing was hopped over).
+        if (piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && !isStepMove && !isRatioMove) {
+          const stillValid = isCapture
+            ? canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true)
+            : canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true);
+          if (!stillValid) {
+            // Move relies on exact/ratio — only allow if something was hopped in the path
+            let hasHop = false;
+            const hdx = Math.sign(toX - piece.x);
+            const hdy = Math.sign(toY - piece.y);
+            const hxDiff = Math.abs(toX - piece.x);
+            const hyDiff = Math.abs(toY - piece.y);
+            if (hxDiff === hyDiff || hxDiff === 0 || hyDiff === 0) {
+              let hx = piece.x + hdx;
+              let hy = piece.y + hdy;
+              while (hx !== toX || hy !== toY) {
+                const hp = findPieceAt(pieces, hx, hy);
+                if (hp && hp.id !== piece.id) { hasHop = true; break; }
+                hx += hdx;
+                hy += hdy;
+              }
+            }
+            if (!hasHop) isValidMove = false;
+          }
+        }
+        // For ratio moves with hop-only: always require a hop
+        if (piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && isRatioMove) {
+          isValidMove = false;
         }
 
         if (isValidMove && pathClear) {
@@ -1235,7 +1338,14 @@ const Sandbox = () => {
           if (targetPiece && targetTeam === pieceTeam) continue;
           // Already in moves as a regular capture? Skip to avoid duplicates
           if (moves.some(m => m.x === toX && m.y === toY)) continue;
-          if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
+          // For multi-tile, check ranged from any sub-square
+          let canRanged = false;
+          for (let dr = 0; dr < ph && !canRanged; dr++) {
+            for (let dc = 0; dc < pw && !canRanged; dc++) {
+              canRanged = canRangedAttackTo(piece.y + dr, piece.x + dc, toY, toX, piece, pieceTeam);
+            }
+          }
+          if (canRanged) {
             // Check if ranged path is clear (blocked by pieces unless can fire over)
             if (!isRangedPathClear(piece.x, piece.y, toX, toY, piece, pieces, pieceTeam)) {
               continue;
@@ -1280,12 +1390,89 @@ const Sandbox = () => {
         return;
       }
 
-      // Free reposition: move piece to target (remove enemy if present)
-      // Multi-tile bounds check
+      // Check if the click target is a valid game move (including hop captures)
       const spw = selectedPiece.piece_width || 1;
       const sph = selectedPiece.piece_height || 1;
       const boardWidth = activeSandbox.gameType.board_width || 8;
       const boardHeight = activeSandbox.gameType.board_height || 8;
+      let move = validMoves.find(m => m.x === x && m.y === y);
+      // Multi-tile: when exact anchor match fails, find the valid move whose footprint covers the clicked square
+      if (!move && (spw > 1 || sph > 1)) {
+        const candidates = validMoves.filter(m => !m.isRangedAttack &&
+          x >= m.x && x < m.x + spw && y >= m.y && y < m.y + sph);
+        if (candidates.length === 1) {
+          move = candidates[0];
+        } else if (candidates.length > 1) {
+          move = candidates.reduce((best, m) => {
+            const d = Math.abs(m.x - selectedPiece.x) + Math.abs(m.y - selectedPiece.y);
+            const bd = Math.abs(best.x - selectedPiece.x) + Math.abs(best.y - selectedPiece.y);
+            return d < bd ? m : best;
+          });
+        }
+      }
+      if (move) {
+        // Execute game move with hop capture support
+        // Use the move's anchor position, which may differ from click position for multi-tile pieces
+        const targetX = move.x;
+        const targetY = move.y;
+        let piecesToRemove = new Set();
+        if (move.isHopCapture && move.hopCapturedPieceIds) {
+          move.hopCapturedPieceIds.forEach(id => piecesToRemove.add(id));
+        }
+        if (move.isCapture && !move.isRangedAttack && !move.isHopCapture) {
+          const pieceTeam = selectedPiece.player_id || selectedPiece.team;
+          for (let dy = 0; dy < sph; dy++) {
+            for (let dx = 0; dx < spw; dx++) {
+              const found = findPieceAt(pieces, targetX + dx, targetY + dy);
+              if (found && found.id !== selectedPiece.id) {
+                const foundTeam = found.player_id || found.team;
+                if (foundTeam !== pieceTeam) {
+                  piecesToRemove.add(found.id);
+                }
+              }
+            }
+          }
+        }
+        if (move.isRangedAttack && move.isCapture) {
+          const target = findPieceAt(pieces, targetX, targetY);
+          if (target) piecesToRemove.add(target.id);
+        }
+
+        const updatedPieces = piecesToRemove.size > 0
+          ? pieces.filter(p => !piecesToRemove.has(p.id))
+          : [...pieces];
+        const movedPieces = move.isRangedAttack
+          ? updatedPieces
+          : updatedPieces.map(p =>
+              p.id === selectedPiece.id ? { ...p, x: targetX, y: targetY } : p
+            );
+
+        const currentTurn = activeSandbox.currentTurn;
+        const nextTurn = currentTurn === 1 ? 2 : 1;
+
+        setSandboxes(prev => prev.map(s =>
+          s.id === activeSandboxId
+            ? {
+                ...s,
+                pieces: movedPieces,
+                currentTurn: nextTurn,
+                moveHistory: [...s.moveHistory, {
+                  from: { x: selectedPiece.x, y: selectedPiece.y },
+                  to: { x: targetX, y: targetY },
+                  piece: selectedPiece.piece_name,
+                  piece_width: spw,
+                  piece_height: sph
+                }]
+              }
+            : s
+        ));
+
+        setSelectedPiece(null);
+        setValidMoves([]);
+        return;
+      }
+
+      // Free reposition: move piece to target (fallback when no valid game move)
       // Snap to board edge if piece would extend off-board
       if (x + spw > boardWidth) x = boardWidth - spw;
       if (y + sph > boardHeight) y = boardHeight - sph;
@@ -1322,6 +1509,8 @@ const Sandbox = () => {
                 from: { x: selectedPiece.x, y: selectedPiece.y },
                 to: { x, y },
                 piece: selectedPiece.piece_name,
+                piece_width: selectedPiece.piece_width || 1,
+                piece_height: selectedPiece.piece_height || 1,
                 repositioned: true
               }]
             }
@@ -1340,7 +1529,7 @@ const Sandbox = () => {
         setValidMoves(moves);
       }
     }
-  }, [activeSandbox, activeSandboxId, selectedPiece, findPieceAt, calculateValidMoves]);
+  }, [activeSandbox, activeSandboxId, selectedPiece, validMoves, findPieceAt, calculateValidMoves]);
 
   // Handle Delete key to remove selected piece
   useEffect(() => {
@@ -1571,23 +1760,61 @@ const Sandbox = () => {
     setRightClickPosition(null);
   }, [rightClickPosition, setSpecialSquare]);
 
-  // Handle piece hover
+  // Handle piece hover - compute independent per-square move/capture/ranged like GameTypeView
   const handlePieceHover = useCallback((piece) => {
     if (!activeSandbox || !piece || !showHighlights) {
       setHoveredPiece(null);
-      setHoveredMoves([]);
+      setHoveredHighlights({});
       return;
     }
 
-    const moves = calculateValidMoves(
-      piece,
-      activeSandbox.pieces,
-      activeSandbox.gameType.board_width,
-      activeSandbox.gameType.board_height
-    );
+    const boardWidth = activeSandbox.gameType.board_width || 8;
+    const boardHeight = activeSandbox.gameType.board_height || 8;
+    const hpw = piece.piece_width || 1;
+    const hph = piece.piece_height || 1;
+    const hTeam = piece.player_id || piece.team;
+    const highlights = {};
+
+    for (let ty = 0; ty < boardHeight; ty++) {
+      for (let tx = 0; tx < boardWidth; tx++) {
+        // Skip squares within the piece's own footprint
+        if (tx >= piece.x && tx < piece.x + hpw && ty >= piece.y && ty < piece.y + hph) continue;
+
+        let canMove = false, canCapture = false, canRanged = false, canHopCapture = false;
+        for (let dr = 0; dr < hph && !canMove; dr++) {
+          for (let dc = 0; dc < hpw && !canMove; dc++) {
+            if (canPieceMoveTo(piece.x + dc, piece.y + dr, tx, ty, piece, hTeam)) canMove = true;
+          }
+        }
+        for (let dr = 0; dr < hph && !canCapture; dr++) {
+          for (let dc = 0; dc < hpw && !canCapture; dc++) {
+            if (canPieceCaptureTo(piece.x + dc, piece.y + dr, tx, ty, piece, hTeam)) canCapture = true;
+          }
+        }
+        if (piece.can_capture_enemy_via_range) {
+          for (let dr = 0; dr < hph && !canRanged; dr++) {
+            for (let dc = 0; dc < hpw && !canRanged; dc++) {
+              canRanged = canRangedAttackTo(piece.y + dr, piece.x + dc, ty, tx, piece, hTeam);
+            }
+          }
+        }
+        if (piece.capture_on_hop) {
+          for (let dr = 0; dr < hph && !canHopCapture; dr++) {
+            for (let dc = 0; dc < hpw && !canHopCapture; dc++) {
+              canHopCapture = canHopCaptureToUtil(piece.y + dr, piece.x + dc, ty, tx, piece, hTeam);
+            }
+          }
+        }
+
+        if (canMove || canCapture || canRanged || canHopCapture) {
+          highlights[`${tx},${ty}`] = { canMove, canCapture, canRanged, canHopCapture };
+        }
+      }
+    }
+
     setHoveredPiece(piece);
-    setHoveredMoves(moves);
-  }, [activeSandbox, calculateValidMoves, showHighlights]);
+    setHoveredHighlights(highlights);
+  }, [activeSandbox, canPieceMoveTo, canPieceCaptureTo, showHighlights]);
 
   // Handle drag start for pieces on the board (game movement with validation)
   const handleBoardPieceDragStart = useCallback((e, piece) => {
@@ -1658,8 +1885,8 @@ const Sandbox = () => {
         
         if (pieceData.fromBoard) {
           // Adjust drop coordinates for multi-tile grab offset
-          const anchorX = x - (pieceData.grabOffsetX || 0);
-          const anchorY = y - (pieceData.grabOffsetY || 0);
+          let anchorX = x - (pieceData.grabOffsetX || 0);
+          let anchorY = y - (pieceData.grabOffsetY || 0);
           
           // Don't allow dropping on the same square
           if (pieceData.originalX === anchorX && pieceData.originalY === anchorY) {
@@ -1669,12 +1896,30 @@ const Sandbox = () => {
           }
           
           // Check if target is a valid move
-          const move = validMoves.find(m => m.x === anchorX && m.y === anchorY);
+          const pw = pieceData.piece_width || 1;
+          const ph = pieceData.piece_height || 1;
+          let move = validMoves.find(m => m.x === anchorX && m.y === anchorY);
+          // Multi-tile: when exact anchor match fails, find the valid move whose footprint covers the drop square
+          if (!move && (pw > 1 || ph > 1)) {
+            const candidates = validMoves.filter(m => !m.isRangedAttack &&
+              x >= m.x && x < m.x + pw && y >= m.y && y < m.y + ph);
+            if (candidates.length === 1) {
+              move = candidates[0];
+            } else if (candidates.length > 1) {
+              move = candidates.reduce((best, m) => {
+                const d = Math.abs(m.x - anchorX) + Math.abs(m.y - anchorY);
+                const bd = Math.abs(best.x - anchorX) + Math.abs(best.y - anchorY);
+                return d < bd ? m : best;
+              });
+            }
+            if (move) {
+              anchorX = move.x;
+              anchorY = move.y;
+            }
+          }
           if (move) {
             // Execute game move with turn switch
             const pieces = activeSandbox.pieces;
-            const pw = pieceData.piece_width || 1;
-            const ph = pieceData.piece_height || 1;
             
             // Scan the entire destination footprint for the capture target
             // (for multi-tile pieces the enemy may not be at the anchor)
@@ -1722,7 +1967,9 @@ const Sandbox = () => {
                     moveHistory: [...s.moveHistory, {
                       from: { x: pieceData.originalX, y: pieceData.originalY },
                       to: { x: anchorX, y: anchorY },
-                      piece: pieceData.piece_name
+                      piece: pieceData.piece_name,
+                      piece_width: pieceData.piece_width || 1,
+                      piece_height: pieceData.piece_height || 1
                     }]
                   }
                 : s
@@ -1842,32 +2089,57 @@ const Sandbox = () => {
           x >= m.x && x < m.x + spw && y >= m.y && y < m.y + sph
         ) : null;
         const rangedMove = showHighlights ? validMoves.find(m => m.x === x && m.y === y && m.isRangedAttack) : null;
-        const hpw = hoveredPiece?.piece_width || 1;
-        const hph = hoveredPiece?.piece_height || 1;
-        const inHoveredFootprint = hoveredPiece && (
-          x >= hoveredPiece.x && x < hoveredPiece.x + hpw &&
-          y >= hoveredPiece.y && y < hoveredPiece.y + hph
-        );
-        const hoveredRegularMove = showHighlights && hoveredPiece && !selectedPiece && !inHoveredFootprint
-          ? hoveredMoves.find(m => !m.isRangedAttack &&
-              x >= m.x && x < m.x + hpw && y >= m.y && y < m.y + hph)
-          : null;
-        const hoveredRangedMove = showHighlights && hoveredPiece && !selectedPiece
-          ? hoveredMoves.find(m => m.x === x && m.y === y && m.isRangedAttack)
-          : null;
-        const isLastMoveFrom = showHighlights && lastMove && lastMove.from.x === x && lastMove.from.y === y;
-        const isLastMoveTo = showHighlights && lastMove && lastMove.to.x === x && lastMove.to.y === y;
+
+        // Hover highlight: look up pre-computed per-square move/capture/ranged from hoveredHighlights
+        const hovHighlight = (!selectedPiece && hoveredPiece) ? hoveredHighlights[`${x},${y}`] : null;
+
+        const isLastMoveFrom = showHighlights && lastMove && (() => {
+          const lmpw = lastMove.piece_width || 1;
+          const lmph = lastMove.piece_height || 1;
+          return x >= lastMove.from.x && x < lastMove.from.x + lmpw
+            && y >= lastMove.from.y && y < lastMove.from.y + lmph;
+        })();
+        const isLastMoveTo = showHighlights && lastMove && (() => {
+          const lmpw = lastMove.piece_width || 1;
+          const lmph = lastMove.piece_height || 1;
+          return x >= lastMove.to.x && x < lastMove.to.x + lmpw
+            && y >= lastMove.to.y && y < lastMove.to.y + lmph;
+        })();
         const specialSquareType = specialSquares[`${x},${y}`];
 
         // Check ranged attack highlights
         const isRangedMove = !!rangedMove;
-        const isRangedHover = !!hoveredRangedMove;
         // During ranged drag, highlight all valid ranged target squares (including empty)
         const rangedSourceTeam = rangedAttackSource?.player_id || rangedAttackSource?.team;
         const isRangedDragTarget = rangedAttackSource && showHighlights
           && !(piece && ((piece.player_id || piece.team) === rangedSourceTeam))
           && canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, y, x, rangedAttackSource, rangedSourceTeam)
           && isRangedPathClear(rangedAttackSource.x, rangedAttackSource.y, x, y, rangedAttackSource, activeSandbox?.pieces || [], rangedSourceTeam);
+
+        // Compute overlay highlight style for selected/dragged piece (validMoves)
+        const selCanMove = !!(regularMove && !regularMove.isCapture);
+        const selMoveFirstOnly = selCanMove && !!regularMove.isFirstMoveOnly;
+        const selCanCapture = !!(regularMove && regularMove.isCapture);
+        const selCaptureFirstOnly = selCanCapture && !!regularMove.isFirstMoveOnly;
+        const selCanRanged = isRangedMove || isRangedDragTarget;
+        const { style: selHighlightStyle, icon: selHighlightIcon } = (selCanMove || selCanCapture || selCanRanged)
+          ? getSquareHighlightStyle(selCanMove, selMoveFirstOnly, selCanCapture, selCaptureFirstOnly, selCanRanged, isLight)
+          : { style: {}, icon: null };
+
+        // Compute overlay highlight style for hovered piece (independent per-square checks, like GameTypeView)
+        const hovCanMove = !!hovHighlight?.canMove;
+        const hovCanCapture = !!hovHighlight?.canCapture;
+        const hovCanRanged = !!hovHighlight?.canRanged;
+        const hovCanHopCapture = !!hovHighlight?.canHopCapture;
+        const { style: hovHighlightStyle, icon: hovHighlightIcon } = (hovCanMove || hovCanCapture || hovCanRanged)
+          ? getSquareHighlightStyle(hovCanMove, false, hovCanCapture, false, hovCanRanged, isLight)
+          : { style: {}, icon: null };
+
+        // Use selected piece highlights if active, otherwise use hovered piece highlights
+        // Hop capture green is additive — shown as a separate overlay on top of other highlights
+        const showHopCaptureOverlay = !selectedPiece && hovCanHopCapture;
+        const activeHighlightStyle = (selHighlightStyle.outline || selHighlightStyle.borderTop) ? selHighlightStyle : hovHighlightStyle;
+        const activeHighlightIcon = selHighlightIcon || hovHighlightIcon;
 
         squares.push(
           <div
@@ -1876,18 +2148,8 @@ const Sandbox = () => {
               ${styles["board-square"]}
               ${isLight ? styles.light : styles.dark}
               ${isSelected ? styles.selected : ''}
-              ${regularMove && !regularMove.isCapture && !regularMove.isFirstMoveOnly ? styles["valid-move"] : ''}
-              ${regularMove && !regularMove.isCapture && regularMove.isFirstMoveOnly ? styles["valid-move-first-only"] : ''}
-              ${regularMove && regularMove.isCapture && !regularMove.isFirstMoveOnly ? styles["valid-capture"] : ''}
-              ${regularMove && regularMove.isCapture && regularMove.isFirstMoveOnly ? styles["valid-capture-first-only"] : ''}
-              ${isRangedMove ? styles["ranged-attack"] : ''}
-              ${hoveredRegularMove && !hoveredRegularMove.isCapture && !hoveredRegularMove.isFirstMoveOnly ? styles["hover-move"] : ''}
-              ${hoveredRegularMove && !hoveredRegularMove.isCapture && hoveredRegularMove.isFirstMoveOnly ? styles["hover-move-first-only"] : ''}
-              ${hoveredRegularMove && hoveredRegularMove.isCapture && !hoveredRegularMove.isFirstMoveOnly ? styles["hover-capture"] : ''}
-              ${hoveredRegularMove && hoveredRegularMove.isCapture && hoveredRegularMove.isFirstMoveOnly ? styles["hover-capture-first-only"] : ''}
-              ${isRangedHover ? styles["hover-ranged"] : ''}
-              ${isRangedDragTarget ? styles["ranged-drag-target"] : ''}
-              ${isLastMoveFrom || isLastMoveTo ? styles["last-move"] : ''}
+              ${isLastMoveFrom ? styles["last-move-from"] : ''}
+              ${isLastMoveTo ? styles["last-move-to"] : ''}
             `}
             onClick={() => handleSquareClick(x, y)}
             onDragOver={handleDragOver}
@@ -1906,8 +2168,44 @@ const Sandbox = () => {
               ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {})
             }}
           >
-            {((isRangedMove && rangedMove?.isCapture) || (isRangedHover && hoveredRangedMove?.isCapture) || (isRangedDragTarget && piece)) && (
-              <span className={styles["ranged-icon"]}>💥</span>
+            {(activeHighlightStyle.outline || activeHighlightStyle.borderTop) && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: activeHighlightStyle.background,
+                outline: activeHighlightStyle.outline || 'none',
+                outlineOffset: activeHighlightStyle.outlineOffset || 0,
+                borderTop: activeHighlightStyle.borderTop || 'none',
+                borderLeft: activeHighlightStyle.borderLeft || 'none',
+                borderBottom: activeHighlightStyle.borderBottom || 'none',
+                borderRight: activeHighlightStyle.borderRight || 'none',
+                boxSizing: 'border-box',
+                zIndex: 8,
+                pointerEvents: 'none',
+                borderRadius: '2px',
+              }} />
+            )}
+            {activeHighlightIcon && (
+              <span className={styles["ranged-icon"]}>{activeHighlightIcon}</span>
+            )}
+            {showHopCaptureOverlay && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                outline: '3px solid rgba(76, 175, 80, 0.7)',
+                outlineOffset: '-3px',
+                boxShadow: 'inset 0 0 0 100px rgba(76, 175, 80, 0.2)',
+                boxSizing: 'border-box',
+                zIndex: 9,
+                pointerEvents: 'none',
+                borderRadius: '2px',
+              }} />
             )}
             {isAnchor && (() => {
               const pw = piece.piece_width || 1;
@@ -1919,6 +2217,7 @@ const Sandbox = () => {
                 height: `${ph * 100}%`,
                 zIndex: 5,
                 position: 'absolute',
+                overflow: 'hidden',
                 top: 0,
                 left: 0,
                 ...(isDragging ? { pointerEvents: 'none' } : {})
@@ -1937,6 +2236,12 @@ const Sandbox = () => {
                 onMouseEnter={() => handlePieceHover(piece)}
                 onMouseLeave={() => handlePieceHover(null)}
               >
+                {boardAnimationsEnabled && isMultiTile && (
+                  <>
+                    <div className={styles["multi-tile-smoke"]} />
+                    <div className={styles["multi-tile-electric"]} />
+                  </>
+                )}
                 {isNonSquareMultiTile ? (
                   <div
                     ref={(el) => applySvgStretchBackground(el, getBoardPieceImage(piece))}
@@ -2114,6 +2419,48 @@ const Sandbox = () => {
             </button>
           )}
         </div>
+        {showHighlights && (
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '12px',
+            justifyContent: 'center',
+            margin: '10px 0',
+            fontSize: '0.85rem',
+            color: '#ccc'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '18px', height: '18px', outline: '3px solid rgba(33, 150, 243, 0.55)', outlineOffset: '-3px', background: 'rgba(33, 150, 243, 0.1)', borderRadius: '3px' }}></div>
+              <span>Movement</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '18px', height: '18px', outline: '3px solid rgba(156, 39, 176, 0.55)', outlineOffset: '-3px', background: 'rgba(156, 39, 176, 0.1)', borderRadius: '3px' }}></div>
+              <span>First Move</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '18px', height: '18px', outline: '3px solid rgba(255, 152, 0, 0.55)', outlineOffset: '-3px', background: 'rgba(255, 152, 0, 0.1)', borderRadius: '3px' }}></div>
+              <span>Attack</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '18px', height: '18px', outline: '3px solid rgba(233, 30, 99, 0.55)', outlineOffset: '-3px', background: 'rgba(233, 30, 99, 0.1)', borderRadius: '3px' }}></div>
+              <span>First Attack</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '18px', height: '18px', borderTop: '3px solid rgba(33, 150, 243, 0.55)', borderLeft: '3px solid rgba(33, 150, 243, 0.55)', borderBottom: '3px solid rgba(255, 152, 0, 0.55)', borderRight: '3px solid rgba(255, 152, 0, 0.55)', boxSizing: 'border-box', background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1) 50%, rgba(255, 152, 0, 0.1) 50%)', borderRadius: '3px' }}></div>
+              <span>Move + Attack</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '18px', height: '18px', outline: '3px solid rgba(244, 67, 54, 0.55)', outlineOffset: '-3px', background: 'rgba(244, 67, 54, 0.1)', borderRadius: '3px' }}></div>
+              <span>Ranged 💥</span>
+            </div>
+            {activeSandbox?.pieces?.some(p => p.capture_on_hop) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <div style={{ width: '18px', height: '18px', outline: '3px solid rgba(76, 175, 80, 0.7)', outlineOffset: '-3px', background: 'rgba(76, 175, 80, 0.2)', borderRadius: '3px' }}></div>
+                <span>Capture on Hop</span>
+              </div>
+            )}
+          </div>
+        )}
         <div className={styles["board-instructions"]}>
           <div className={styles["instructions-row"]}>
             <span className={styles["instruction-item"]}>
