@@ -174,7 +174,8 @@ const GameWizard = ({ editGameId }) => {
       let pieceCount = 0;
       try {
         const pieces = JSON.parse(gameData.pieces_string || '{}');
-        pieceCount = Object.keys(pieces).length;
+        // Filter out multi-tile extension squares (only count anchor squares)
+        pieceCount = Object.values(pieces).filter(p => !p._occupied).length;
       } catch (e) {
         pieceCount = 0;
       }

@@ -307,9 +307,12 @@ const Play = () => {
     if (gameType?.pieces_string) {
       try {
         const pieces = JSON.parse(gameType.pieces_string);
-        // Count pieces for each player
-        const player1Count = pieces.filter(p => p.player_number === 1).length;
-        const player2Count = pieces.filter(p => p.player_number === 2).length;
+        // Handle both array and object formats, filter out multi-tile extension squares
+        const pieceArray = Array.isArray(pieces)
+          ? pieces.filter(p => !p._occupied)
+          : Object.values(pieces).filter(p => !p._occupied);
+        const player1Count = pieceArray.filter(p => (p.player_number || p.player_id || p.player) === 1).length;
+        const player2Count = pieceArray.filter(p => (p.player_number || p.player_id || p.player) === 2).length;
         if (player1Count > 0 || player2Count > 0) {
           return { player1: player1Count, player2: player2Count, equal: player1Count === player2Count };
         }

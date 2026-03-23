@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { getGameById } from "../../actions/games";
@@ -8,6 +8,7 @@ import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
   canRangedAttackTo as canRangedAttackToUtil,
+  canHopCaptureToUtil,
   getSquareHighlightStyle
 } from "../../helpers/pieceMovementUtils";
 
@@ -258,10 +259,29 @@ const GameTypeView = () => {
     control: {},
     special: {}
   });
+  const [boardContainerWidth, setBoardContainerWidth] = useState(0);
+  const boardContainerRef = useRef(null);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
   const darkSquareColor = localStorage.getItem('boardDarkColor') || '#08234d';
+  const boardAnimationsEnabled = localStorage.getItem('boardAnimations') !== 'false';
+
+  // Track board container width for responsive sizing
+  // Re-run when loading finishes so the ref is available in the DOM
+  useEffect(() => {
+    const el = boardContainerRef.current;
+    if (!el) return;
+    // Measure immediately so the board renders at the right size
+    setBoardContainerWidth(el.clientWidth - 40);
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setBoardContainerWidth(entry.contentRect.width - 40); // subtract padding
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loading]);
 
   useEffect(() => {
     const loadGame = async () => {
@@ -463,6 +483,9 @@ const GameTypeView = () => {
     const capturePieces = [];
 
     Object.values(piecePlacements).forEach(placement => {
+      // Skip extension squares for multi-tile pieces (only count anchor squares)
+      if (placement._occupied) return;
+
       const playerId = placement.player_id;
       if (!piecesByPlayer[playerId]) {
         piecesByPlayer[playerId] = [];
@@ -565,6 +588,27 @@ const GameTypeView = () => {
       });
     }
 
+    // Multi-tile piece explanations
+    const multiTilePieces = Object.values(uniquePieces).filter(piece => {
+      const pieceData = pieceDataMap[piece.id] || piece;
+      return (pieceData.piece_width || 1) > 1 || (pieceData.piece_height || 1) > 1;
+    });
+
+    if (multiTilePieces.length > 0) {
+      const multiTileDescs = multiTilePieces.map(piece => {
+        const pieceData = pieceDataMap[piece.id] || piece;
+        const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+        const pw = pieceData.piece_width || 1;
+        const ph = pieceData.piece_height || 1;
+        return `• **${pieceName}** (${pw}×${ph}): Occupies ${pw * ph} squares on the board. Movement and attack ranges are calculated from every square the piece occupies.`;
+      }).join('\n');
+
+      rules.push({
+        title: "Multi-Tile Pieces",
+        content: `Some pieces in this game are larger than a single square. Multi-tile pieces have special properties:\n\n${multiTileDescs}\n\n**Multi-tile piece rules:**\n• A multi-tile piece can move or attack from **any square it occupies** — the entire piece acts as one unit.\n• When attacking, a multi-tile piece can **capture multiple enemies at once** if they are all within its strike zone.\n• A multi-tile piece is captured if **any** of its occupied squares is targeted.\n• Multi-tile pieces cannot hop over other pieces.`
+      });
+    }
+
     // Win conditions
     const winConditions = [];
 
@@ -592,13 +636,14 @@ const GameTypeView = () => {
     if (game.capture_condition) {
       const capturePieceNames = [...new Set(capturePieces.map(p => p.piece_name || 'designated piece'))];
       
-      let captureDesc = "**Capture to Win**: A player wins by capturing their opponent's ";
+      let captureDesc;
       if (capturePieceNames.length > 0) {
-        captureDesc += capturePieceNames.join(' or ') + '.';
+        captureDesc = "**Capture to Win**: A player wins by capturing their opponent's " + capturePieceNames.join(' or ') + '.';
+        captureDesc += "\n\n⚠️ **Important**: Protect your " + capturePieceNames[0] + " from being captured!";
       } else {
-        captureDesc += "key piece.";
+        captureDesc = "**Capture to Win**: A player wins by capturing **all** of their opponent's pieces.";
+        captureDesc += "\n\n⚠️ **Important**: Protect your pieces — losing all of them means losing the game!";
       }
-      captureDesc += "\n\n⚠️ **Important**: Protect your " + (capturePieceNames[0] || "key piece") + " from being captured!";
       
       winConditions.push(captureDesc);
     }
@@ -766,6 +811,26 @@ const GameTypeView = () => {
       });
     }
 
+    // Capture on Hop rules (checkers-style)
+    const hopCapturePieces = Object.values(uniquePieces).filter(piece => {
+      const pieceData = pieceDataMap[piece.id] || piece;
+      return pieceData.capture_on_hop;
+    });
+
+    if (hopCapturePieces.length > 0) {
+      const hopDesc = hopCapturePieces.map(piece => {
+        const pieceData = pieceDataMap[piece.id] || piece;
+        const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+        const hasChain = pieceData.chain_capture_enabled;
+        return `• **${pieceName}** captures by hopping over enemies${hasChain ? ' (can chain multiple jumps)' : ''}`;
+      }).join('\n');
+
+      rules.push({
+        title: "Capture on Hop",
+        content: `Some pieces capture by hopping over enemy pieces, like in checkers. When a piece jumps over an enemy, the enemy is captured and removed from the board.\n\n${hopDesc}\n\n**Capture on Hop Rules:**\n• The piece must jump over an adjacent enemy to an empty square beyond\n• The hopped-over enemy piece is captured and removed\n${hopCapturePieces.some(p => (pieceDataMap[p.id] || p).chain_capture_enabled) ? '• **Chain Capture**: After capturing, the piece can continue jumping to capture more enemies in the same turn\n• Chain captures are optional — you can stop after any jump\n' : ''}`
+      });
+    }
+
     // General gameplay rules
     rules.push({
       title: "General Rules",
@@ -780,11 +845,17 @@ const GameTypeView = () => {
     return rules;
   }, [game, piecePlacements, pieceDataMap, specialSquares]);
 
+  // Compute square size responsively based on container width
+  const squareSize = useMemo(() => {
+    if (!game || boardContainerWidth === 0) return 0;
+    const availableWidth = Math.max(boardContainerWidth, 100);
+    return Math.min(60, availableWidth / game.board_width);
+  }, [game, boardContainerWidth]);
+
   const renderBoard = () => {
-    if (!game) return null;
+    if (!game || squareSize === 0) return null;
 
     const board = [];
-    const squareSize = Math.min(60, 720 / Math.max(game.board_width, game.board_height));
 
     for (let row = 0; row < game.board_height; row++) {
       for (let col = 0; col < game.board_width; col++) {
@@ -798,6 +869,7 @@ const GameTypeView = () => {
         let moveInfo = { allowed: false, isFirstMoveOnly: false };
         let captureInfo = { allowed: false, isFirstMoveOnly: false };
         let canRanged = false;
+        let canHopCapture = false;
         
         if (hoveredPiecePosition) {
           const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
@@ -827,6 +899,13 @@ const GameTypeView = () => {
                   canRanged = canRangedAttackTo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
                 }
               }
+              if (pieceData.capture_on_hop) {
+                for (let dr = 0; dr < hph && !canHopCapture; dr++) {
+                  for (let dc = 0; dc < hpw && !canHopCapture; dc++) {
+                    canHopCapture = canHopCaptureToUtil(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+                  }
+                }
+              }
             }
           }
         }
@@ -840,7 +919,7 @@ const GameTypeView = () => {
           boxSizing: 'border-box'
         };
 
-        // Get highlight style using the utility function
+        // Get highlight style — hop capture green is additive (separate overlay)
         const { style: highlightStyle, icon: highlightIcon } = getSquareHighlightStyle(
           moveInfo.allowed,
           moveInfo.isFirstMoveOnly,
@@ -850,11 +929,6 @@ const GameTypeView = () => {
           isLight
         );
         
-        // Merge highlight style (but keep special square border if no movement highlight)
-        if (highlightStyle.border) {
-          squareStyle = { ...squareStyle, ...highlightStyle };
-        }
-
         board.push(
           <div
             key={key}
@@ -875,6 +949,27 @@ const GameTypeView = () => {
               }
             }}
           >
+            {/* Highlight overlay — renders above pieces so square color shows through */}
+            {(highlightStyle.outline || highlightStyle.borderTop) && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: highlightStyle.background,
+                outline: highlightStyle.outline || 'none',
+                outlineOffset: highlightStyle.outlineOffset || 0,
+                borderTop: highlightStyle.borderTop || 'none',
+                borderLeft: highlightStyle.borderLeft || 'none',
+                borderBottom: highlightStyle.borderBottom || 'none',
+                borderRight: highlightStyle.borderRight || 'none',
+                boxSizing: 'border-box',
+                zIndex: 8,
+                pointerEvents: 'none',
+                borderRadius: '2px',
+              }} />
+            )}
             {/* Ranged attack icon */}
             {highlightIcon && (
               <span className={styles["ranged-icon"]} style={{
@@ -884,13 +979,31 @@ const GameTypeView = () => {
                 transform: 'translate(-50%, -50%)',
                 fontSize: `${squareSize * 0.4}px`,
                 pointerEvents: 'none',
-                zIndex: 5,
-                backgroundColor: isLight ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.6)',
+                zIndex: 10,
+                backgroundColor: isLight ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.3)',
                 borderRadius: '4px',
-                padding: '2px 4px'
+                padding: '2px 4px',
+                opacity: 0.7
               }}>
                 {highlightIcon}
               </span>
+            )}
+            {/* Hop capture overlay — additive green highlight */}
+            {canHopCapture && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                outline: '3px solid rgba(76, 175, 80, 0.7)',
+                outlineOffset: '-3px',
+                boxShadow: 'inset 0 0 0 100px rgba(76, 175, 80, 0.2)',
+                boxSizing: 'border-box',
+                zIndex: 9,
+                pointerEvents: 'none',
+                borderRadius: '2px',
+              }} />
             )}
             {squareType && !placement && (
               <div 
@@ -936,9 +1049,17 @@ const GameTypeView = () => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'default',
+                  overflow: 'hidden',
                   zIndex: (placement.piece_width || 1) > 1 || (placement.piece_height || 1) > 1 ? 5 : 'auto'
                 }}
               >
+                {/* Smoky aura for multi-tile pieces */}
+                {boardAnimationsEnabled && ((placement.piece_width || 1) > 1 || (placement.piece_height || 1) > 1) && (
+                  <>
+                    <div className={styles["multi-tile-smoke"]} />
+                    <div className={styles["multi-tile-electric"]} />
+                  </>
+                )}
                 {(() => {
                   const imageUrl = getPlacementImageUrl(placement);
                   const gtPw = placement.piece_width || 1;
@@ -1116,7 +1237,7 @@ const GameTypeView = () => {
           </div>
           <div className={styles["stat-card"]}>
             <span className={styles["stat-label"]}>Pieces</span>
-            <span className={styles["stat-value"]}>{Object.keys(piecePlacements).length}</span>
+            <span className={styles["stat-value"]}>{Object.values(piecePlacements).filter(p => !p._occupied).length}</span>
           </div>
         </div>
 
@@ -1132,27 +1253,37 @@ const GameTypeView = () => {
             color: '#ccc'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', border: '3px solid #2196F3', borderRadius: '3px' }}></div>
+              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(33, 150, 243, 0.55)', outlineOffset: '-3px', background: 'rgba(33, 150, 243, 0.1)', borderRadius: '3px' }}></div>
               <span>Movement</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', border: '3px solid #9C27B0', borderRadius: '3px' }}></div>
+              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(156, 39, 176, 0.55)', outlineOffset: '-3px', background: 'rgba(156, 39, 176, 0.1)', borderRadius: '3px' }}></div>
               <span>First Move</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', border: '3px solid #FF9800', borderRadius: '3px' }}></div>
+              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(255, 152, 0, 0.55)', outlineOffset: '-3px', background: 'rgba(255, 152, 0, 0.1)', borderRadius: '3px' }}></div>
               <span>Attack</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', border: '3px solid #E91E63', borderRadius: '3px' }}></div>
+              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(233, 30, 99, 0.55)', outlineOffset: '-3px', background: 'rgba(233, 30, 99, 0.1)', borderRadius: '3px' }}></div>
               <span>First Attack</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', border: '3px solid #f44336', borderRadius: '3px' }}></div>
+              <div style={{ width: '20px', height: '20px', borderTop: '3px solid rgba(33, 150, 243, 0.55)', borderLeft: '3px solid rgba(33, 150, 243, 0.55)', borderBottom: '3px solid rgba(255, 152, 0, 0.55)', borderRight: '3px solid rgba(255, 152, 0, 0.55)', boxSizing: 'border-box', background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1) 50%, rgba(255, 152, 0, 0.1) 50%)', borderRadius: '3px' }}></div>
+              <span>Move + Attack</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(244, 67, 54, 0.55)', outlineOffset: '-3px', background: 'rgba(244, 67, 54, 0.1)', borderRadius: '3px' }}></div>
               <span>Ranged 💥</span>
             </div>
-            {/* Special Squares Legend */}
-            {Object.keys(specialSquares.promotion).length > 0 && (
+            {/* Hop Capture Legend - show if any pieces have capture_on_hop */}
+            {(Object.values(pieceDataMap).some(p => p.capture_on_hop) || Object.values(piecePlacements).some(p => p.capture_on_hop)) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(76, 175, 80, 0.55)', outlineOffset: '-3px', background: 'rgba(76, 175, 80, 0.1)', borderRadius: '3px' }}></div>
+                <span>Capture on Hop</span>
+              </div>
+            )}
+            {/* Special Squares Legend */}            {Object.keys(specialSquares.promotion).length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <div style={{ width: '20px', height: '20px', border: '3px solid #4b0082', borderRadius: '3px', background: 'rgba(75, 0, 130, 0.3)' }}></div>
                 <span>Promotion</span>
@@ -1194,13 +1325,13 @@ const GameTypeView = () => {
           <p style={{ textAlign: 'center', fontSize: '0.85rem', color: '#888', marginBottom: '10px' }}>
             Hover over a piece to see where it can move and attack
           </p>
-          <div className={styles["board-container"]}>
+          <div className={styles["board-container"]} ref={boardContainerRef}>
             <div
               className={styles["board"]}
               style={{
                 display: 'grid',
-                gridTemplateRows: `repeat(${game.board_height}, ${Math.min(60, 720 / Math.max(game.board_width, game.board_height))}px)`,
-                gridTemplateColumns: `repeat(${game.board_width}, ${Math.min(60, 720 / Math.max(game.board_width, game.board_height))}px)`,
+                gridTemplateRows: `repeat(${game.board_height}, ${squareSize}px)`,
+                gridTemplateColumns: `repeat(${game.board_width}, ${squareSize}px)`,
                 border: '2px solid #ccc',
                 width: 'fit-content',
                 margin: '0 auto',

@@ -654,8 +654,21 @@ const PieceView = () => {
                 <span className={styles["special-name"]}>Can En Passant <InfoTooltip text="Can capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn." /></span>
               </div>
             )}
+            {pieceToDisplay.capture_on_hop && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>🔄</span>
+                <span className={styles["special-name"]}>Capture on Hop <InfoTooltip text="When this piece hops over an enemy piece during movement, it captures the hopped-over piece (like checkers)." /></span>
+              </div>
+            )}
+            {pieceToDisplay.chain_capture_enabled && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>⛓️</span>
+                <span className={styles["special-name"]}>Chain Capture <InfoTooltip text="After capturing, this piece can make additional captures in the same turn (multi-jump like checkers)." /></span>
+              </div>
+            )}
             {!pieceToDisplay.can_promote && !pieceToDisplay.can_castle && !pieceToDisplay.has_checkmate_rule && 
-             !pieceToDisplay.has_check_rule && !pieceToDisplay.has_lose_on_capture_rule && !pieceToDisplay.can_en_passant && (
+             !pieceToDisplay.has_check_rule && !pieceToDisplay.has_lose_on_capture_rule && !pieceToDisplay.can_en_passant &&
+             !pieceToDisplay.capture_on_hop && !pieceToDisplay.chain_capture_enabled && (
               <div className={styles["no-abilities"]}>
                 <span className={styles["no-abilities-icon"]}>✨</span>
                 <span>No special abilities</span>

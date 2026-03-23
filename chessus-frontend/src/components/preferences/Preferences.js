@@ -137,6 +137,9 @@ const Preferences = () => {
 
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [boardAnimations, setBoardAnimations] = useState(() => {
+    return localStorage.getItem('boardAnimations') !== 'false';
+  });
 
   // Fixed saturation for good-looking colors
   const SATURATION = 40;
@@ -170,6 +173,10 @@ const Preferences = () => {
     localStorage.setItem('boardLightColor', lightSquareColor);
     localStorage.setItem('boardDarkColor', darkSquareColor);
   }, [lightSquareColor, darkSquareColor]);
+
+  useEffect(() => {
+    localStorage.setItem('boardAnimations', boardAnimations ? 'true' : 'false');
+  }, [boardAnimations]);
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to manage your account preferences." }} />;
@@ -218,6 +225,7 @@ const Preferences = () => {
     setLightLightness(DEFAULT_LIGHT.l);
     setDarkHue(DEFAULT_DARK.h);
     setDarkLightness(DEFAULT_DARK.l);
+    setBoardAnimations(true);
   };
 
   const applyPreset = (presetKey) => {
@@ -419,6 +427,23 @@ const Preferences = () => {
                 Hex: <span style={{ color: darkSquareColor }}>{darkSquareColor}</span>
               </div>
             </div>
+          </div>
+
+          {/* Animations Section */}
+          <div className={styles["animations-section"]}>
+            <div className={styles["animations-label"]}>Animations</div>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Enable board animations</span>
+              <span className={styles["toggle-hint"]}>Shows visual effects on special pieces (e.g. smoky aura on multi-tile pieces)</span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={boardAnimations}
+                  onChange={(e) => setBoardAnimations(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
           </div>
 
           <div className={styles["action-buttons"]}>
