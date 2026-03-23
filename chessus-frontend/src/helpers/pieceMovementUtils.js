@@ -334,9 +334,11 @@ export const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, player
   
   if ((stepStyle || stepValue) && stepValue) {
     const maxSteps = Math.abs(stepValue);
-    const noDiagonal = stepValue < 0;
+    // Style 1 = Manhattan (orthogonal only), Style 2 = Chebyshev (includes diagonal)
+    // Negative stepValue is a legacy fallback for Manhattan
+    const useManhattan = Number(stepStyle) === 1 || stepValue < 0;
 
-    if (noDiagonal) {
+    if (useManhattan) {
       // Manhattan distance: orthogonal only
       const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
       if (manhattanDistance <= maxSteps) {
@@ -457,9 +459,10 @@ export const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, pl
   
   if ((stepCaptureStyle || stepCaptureValue) && stepCaptureValue) {
     const maxSteps = Math.abs(stepCaptureValue);
-    const noDiagonal = stepCaptureValue < 0;
+    // Style 1 = Manhattan (orthogonal only), Style 2 = Chebyshev (includes diagonal)
+    const useManhattan = Number(stepCaptureStyle) === 1 || stepCaptureValue < 0;
 
-    if (noDiagonal) {
+    if (useManhattan) {
       const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
       if (manhattanDistance <= maxSteps) {
         const isFirstMoveOnly = isStepCaptureFirstMoveOnly(pieceData);
@@ -557,6 +560,93 @@ export const canRangedAttackTo = (fromRow, fromCol, toRow, toCol, pieceData, pla
 };
 
 /**
+ * Check if a square is a hop-capture zone for a piece.
+ * A hop-capture zone is any square between the piece and its max movement/capture range in a direction.
+ * Enemies on these squares would be captured when the piece hops over them.
+ * @param {number} fromRow - Source row
+ * @param {number} fromCol - Source column
+ * @param {number} toRow - Target row
+ * @param {number} toCol - Target column
+ * @param {Object} pieceData - Piece data with movement/capture fields
+ * @param {number} playerPosition - Player position (1 or 2, for direction flipping)
+ * @returns {boolean}
+ */
+export const canHopCaptureToUtil = (fromRow, fromCol, toRow, toCol, pieceData, playerPosition) => {
+  if (!pieceData?.capture_on_hop) return false;
+  if (fromRow === toRow && fromCol === toCol) return false;
+
+  const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
+  const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
+
+  // Parse additional movements/captures from special scenarios
+  const specialMoves = parseSpecialScenarioMoves(
+    pieceData.special_scenario_moves || pieceData.special_scenario_movement
+  );
+  const specialCaptures = parseSpecialScenarioCaptures(
+    pieceData.special_scenario_captures || pieceData.special_scenario_capture
+  );
+  const additionalMovements = specialMoves?.additionalMovements || {};
+  const additionalCaptures = specialCaptures?.additionalCaptures || {};
+
+  const directions = [
+    { dr: -1, dc: -1, move: 'up_left_movement', cap: 'up_left_capture', name: 'up_left' },
+    { dr: -1, dc: 0, move: 'up_movement', cap: 'up_capture', name: 'up' },
+    { dr: -1, dc: 1, move: 'up_right_movement', cap: 'up_right_capture', name: 'up_right' },
+    { dr: 0, dc: 1, move: 'right_movement', cap: 'right_capture', name: 'right' },
+    { dr: 1, dc: 1, move: 'down_right_movement', cap: 'down_right_capture', name: 'down_right' },
+    { dr: 1, dc: 0, move: 'down_movement', cap: 'down_capture', name: 'down' },
+    { dr: 1, dc: -1, move: 'down_left_movement', cap: 'down_left_capture', name: 'down_left' },
+    { dr: 0, dc: -1, move: 'left_movement', cap: 'left_capture', name: 'left' },
+  ];
+
+  for (const dir of directions) {
+    const moveVal = Math.abs(pieceData[dir.move] || 0);
+    const capVal = Math.abs(pieceData[dir.cap] || 0);
+    let maxVal = Math.max(moveVal, capVal);
+
+    // Also consider additional movements/captures for this direction
+    const addMoves = additionalMovements[dir.name];
+    if (Array.isArray(addMoves)) {
+      for (const m of addMoves) {
+        const v = m.infinite ? 99 : (m.value || 0);
+        if (v > maxVal) maxVal = v;
+      }
+    }
+    const addCaps = additionalCaptures[dir.name];
+    if (Array.isArray(addCaps)) {
+      for (const c of addCaps) {
+        const v = c.infinite ? 99 : (c.value || 0);
+        if (v > maxVal) maxVal = v;
+      }
+    }
+
+    if (!maxVal) continue;
+
+    let isAlongDirection = false;
+    let distance = 0;
+
+    if (dir.dr === 0 && dir.dc !== 0) {
+      isAlongDirection = rowDiff === 0 && Math.sign(colDiff) === dir.dc;
+      distance = Math.abs(colDiff);
+    } else if (dir.dc === 0 && dir.dr !== 0) {
+      isAlongDirection = colDiff === 0 && Math.sign(rowDiff) === dir.dr;
+      distance = Math.abs(rowDiff);
+    } else {
+      isAlongDirection = Math.abs(rowDiff) === Math.abs(colDiff) &&
+        Math.sign(rowDiff) === dir.dr && Math.sign(colDiff) === dir.dc;
+      distance = Math.abs(rowDiff);
+    }
+
+    if (!isAlongDirection || distance < 1) continue;
+
+    const effectiveRange = maxVal === 99 ? 99 : maxVal;
+    if (distance >= 1 && distance < effectiveRange) return true;
+  }
+
+  return false;
+};
+
+/**
  * Get square highlight style based on movement/capture/ranged attack capabilities
  * @param {boolean} canMove - Whether the piece can move to this square
  * @param {boolean} isMoveFirstOnly - Whether the move is first-move-only
@@ -570,118 +660,78 @@ export const getSquareHighlightStyle = (canMove, isMoveFirstOnly, canCapture, is
   let style = {};
   let icon = null;
 
+  // Use outline instead of border so piece sizes aren't affected,
+  // and very translucent backgrounds so pieces behind remain clearly visible.
+  // For combined move+capture, use diagonal split gradient like the piece wizard.
+
+  // Color definitions (translucent)
+  const moveColor = isMoveFirstOnly ? 'rgba(156, 39, 176, 0.55)' : 'rgba(33, 150, 243, 0.55)';
+  const moveBg = isMoveFirstOnly ? 'rgba(156, 39, 176, 0.25)' : 'rgba(33, 150, 243, 0.25)';
+  const captureColor = isCaptureFirstOnly ? 'rgba(233, 30, 99, 0.55)' : 'rgba(255, 152, 0, 0.55)';
+  const captureBg = isCaptureFirstOnly ? 'rgba(233, 30, 99, 0.25)' : 'rgba(255, 152, 0, 0.25)';
+  const rangedColor = 'rgba(244, 67, 54, 0.55)';
+  const rangedBg = 'rgba(244, 67, 54, 0.25)';
+
   // Priority: Combined states > Single states
   if (canMove && canCapture && canRangedAttack) {
-    // All three
-    if (isMoveFirstOnly || isCaptureFirstOnly) {
-      style = {
-        border: '4px solid #9C27B0', // Purple for first-move-only combined
-        boxShadow: 'inset 0 0 0 3px #FF9800, inset 0 0 10px rgba(255, 152, 0, 0.3)',
-        zIndex: 10
-      };
-    } else {
-      style = {
-        border: '4px solid #2196F3',
-        boxShadow: 'inset 0 0 0 3px #FF9800, inset 0 0 10px rgba(255, 152, 0, 0.3)',
-        zIndex: 10
-      };
-    }
+    // All three — split move/capture gradient + ranged icon
+    style = {
+      borderTop: `3px solid ${moveColor}`,
+      borderLeft: `3px solid ${moveColor}`,
+      borderBottom: `3px solid ${captureColor}`,
+      borderRight: `3px solid ${captureColor}`,
+      background: `linear-gradient(135deg, ${moveBg} 0%, ${moveBg} 50%, ${captureBg} 50%, ${captureBg} 100%)`
+    };
     icon = '💥';
   } else if (canMove && canCapture) {
-    // Move and capture
-    if (isMoveFirstOnly && isCaptureFirstOnly) {
-      style = {
-        border: '4px solid #9C27B0',
-        boxShadow: 'inset 0 0 0 3px #E91E63, inset 0 0 10px rgba(233, 30, 99, 0.3)',
-        zIndex: 10
-      };
-    } else if (isMoveFirstOnly) {
-      style = {
-        border: '4px solid #9C27B0',
-        boxShadow: 'inset 0 0 0 3px #FF9800, inset 0 0 10px rgba(255, 152, 0, 0.3)',
-        zIndex: 10
-      };
-    } else if (isCaptureFirstOnly) {
-      style = {
-        border: '4px solid #2196F3',
-        boxShadow: 'inset 0 0 0 3px #E91E63, inset 0 0 10px rgba(233, 30, 99, 0.3)',
-        zIndex: 10
-      };
-    } else {
-      style = {
-        border: '4px solid #2196F3',
-        boxShadow: 'inset 0 0 0 3px #FF9800, inset 0 0 10px rgba(255, 152, 0, 0.3)',
-        zIndex: 10
-      };
-    }
+    // Move and capture — diagonal split gradient with split border
+    style = {
+      borderTop: `3px solid ${moveColor}`,
+      borderLeft: `3px solid ${moveColor}`,
+      borderBottom: `3px solid ${captureColor}`,
+      borderRight: `3px solid ${captureColor}`,
+      background: `linear-gradient(135deg, ${moveBg} 0%, ${moveBg} 50%, ${captureBg} 50%, ${captureBg} 100%)`
+    };
   } else if (canMove && canRangedAttack) {
-    // Move and ranged
-    if (isMoveFirstOnly) {
-      style = {
-        border: '4px solid #9C27B0',
-        boxShadow: 'inset 0 0 0 3px #f44336, inset 0 0 10px rgba(244, 67, 54, 0.3)',
-        zIndex: 10
-      };
-    } else {
-      style = {
-        border: '4px solid #2196F3',
-        boxShadow: 'inset 0 0 0 3px #f44336, inset 0 0 10px rgba(244, 67, 54, 0.3)',
-        zIndex: 10
-      };
-    }
+    // Move and ranged — split gradient + icon
+    style = {
+      borderTop: `3px solid ${moveColor}`,
+      borderLeft: `3px solid ${moveColor}`,
+      borderBottom: `3px solid ${rangedColor}`,
+      borderRight: `3px solid ${rangedColor}`,
+      background: `linear-gradient(135deg, ${moveBg} 0%, ${moveBg} 50%, ${rangedBg} 50%, ${rangedBg} 100%)`
+    };
     icon = '💥';
   } else if (canCapture && canRangedAttack) {
-    // Capture and ranged
-    if (isCaptureFirstOnly) {
-      style = {
-        border: '4px solid #E91E63',
-        boxShadow: 'inset 0 0 0 3px #f44336, inset 0 0 10px rgba(244, 67, 54, 0.3)',
-        zIndex: 10
-      };
-    } else {
-      style = {
-        border: '4px solid #FF9800',
-        boxShadow: 'inset 0 0 0 3px #f44336, inset 0 0 10px rgba(244, 67, 54, 0.3)',
-        zIndex: 10
-      };
-    }
+    // Capture and ranged — split gradient + icon
+    style = {
+      borderTop: `3px solid ${captureColor}`,
+      borderLeft: `3px solid ${captureColor}`,
+      borderBottom: `3px solid ${rangedColor}`,
+      borderRight: `3px solid ${rangedColor}`,
+      background: `linear-gradient(135deg, ${captureBg} 0%, ${captureBg} 50%, ${rangedBg} 50%, ${rangedBg} 100%)`
+    };
     icon = '💥';
   } else if (canMove) {
     // Movement only
-    if (isMoveFirstOnly) {
-      style = {
-        border: '5px solid #9C27B0',
-        boxShadow: 'inset 0 0 10px rgba(156, 39, 176, 0.3)',
-        zIndex: 10
-      };
-    } else {
-      style = {
-        border: '5px solid #2196F3',
-        boxShadow: 'inset 0 0 10px rgba(33, 150, 243, 0.3)',
-        zIndex: 10
-      };
-    }
+    style = {
+      outline: `3px solid ${moveColor}`,
+      outlineOffset: '-3px',
+      background: moveBg
+    };
   } else if (canCapture) {
     // Capture only
-    if (isCaptureFirstOnly) {
-      style = {
-        border: '3px solid #E91E63',
-        boxShadow: 'inset 0 0 10px rgba(233, 30, 99, 0.3)',
-        zIndex: 10
-      };
-    } else {
-      style = {
-        border: '3px solid #FF9800',
-        boxShadow: 'inset 0 0 10px rgba(255, 152, 0, 0.3)',
-        zIndex: 10
-      };
-    }
+    style = {
+      outline: `3px solid ${captureColor}`,
+      outlineOffset: '-3px',
+      background: captureBg
+    };
   } else if (canRangedAttack) {
     // Ranged attack only
     style = {
-      border: '3px solid #f44336',
-      boxShadow: 'inset 0 0 10px rgba(244, 67, 54, 0.3)',
-      zIndex: 10
+      outline: `3px solid ${rangedColor}`,
+      outlineOffset: '-3px',
+      background: rangedBg
     };
     icon = '💥';
   }
