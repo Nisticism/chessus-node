@@ -141,6 +141,8 @@ const LiveGame = () => {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
   const [windowHeight, setWindowHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 1080);
 
+  const boardAnimationsEnabled = typeof window !== 'undefined' && localStorage.getItem('boardAnimations') !== 'false';
+
   // Ranged attack state
   const [rangedAttackSource, setRangedAttackSource] = useState(null);
   const [rangedMousePos, setRangedMousePos] = useState(null);
@@ -550,6 +552,14 @@ const LiveGame = () => {
     return false;
   };
 
+  // Resolve a directional value + separate exact flag into the signed convention for checkMovement.
+  // DB stores values as positive with a separate boolean _exact column.
+  const resolveExact = (value, exactFlag) => {
+    if (!value || value === 99) return value;
+    if (exactFlag === true || exactFlag === 1) return -Math.abs(value);
+    return value;
+  };
+
   // Check if a move is from a first-move-only additional movement option
   const checkIfFirstMoveOnlyMove = (pieceData, fromX, fromY, toX, toY, playerPosition) => {
     if (!pieceData.special_scenario_moves) return 0;
@@ -660,13 +670,16 @@ const LiveGame = () => {
   };
 
   // Check if piece can move to a square (not capturing)
-  const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition) => {
+  // skipExactRatio: when true, skip exact directional and ratio checks (for hop-only validation)
+  const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false) => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
+    if (!skipExactRatio) {
     const utilResult = canPieceMoveToUtil(fromY, fromX, toY, toX, pieceData, playerPosition);
     if (utilResult.allowed) {
       return true;
+    }
     }
 
     // For player 2, flip the perspective (so "up" is towards player 1 and "left" is towards player 1's left)
@@ -685,27 +698,28 @@ const LiveGame = () => {
 
       // Check 8 directions
       if (rowDiff < 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.up_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_movement, pieceData.up_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.down_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_movement, pieceData.down_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff === 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_movement, pieceData.left_movement_exact), Math.abs(colDiff));
       } else if (rowDiff === 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_movement, pieceData.right_movement_exact), Math.abs(colDiff));
       } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_movement, pieceData.up_left_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_movement, pieceData.up_right_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_movement, pieceData.down_left_movement_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_movement, pieceData.down_right_movement_exact), Math.abs(rowDiff));
       }
 
       if (directionalAllowed) return true;
     }
 
     // Check ratio movement (L-shape like knight)
+    if (!skipExactRatio) {
     const ratioStyle = pieceData.ratio_movement_style;
     const ratio1 = pieceData.ratio_movement_1 || pieceData.ratio_one_movement || 0;
     const ratio2 = pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0;
@@ -715,6 +729,7 @@ const LiveGame = () => {
           (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
         return true;
       }
+    }
     }
 
     // Check step-by-step movement
@@ -756,6 +771,7 @@ const LiveGame = () => {
         
         if (direction && additionalMovements[direction]) {
           for (const movementOption of additionalMovements[direction]) {
+            if (skipExactRatio && movementOption.exact) continue;
             const value = movementOption.value || 0;
             const matches = (movementOption.infinite && distance > 0) ||
                            (movementOption.exact && distance === value) ||
@@ -774,13 +790,16 @@ const LiveGame = () => {
   }, []);
 
   // Check if piece can capture on a square
-  const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition) => {
+  // skipExactRatio: when true, skip exact directional and ratio checks (for hop-only validation)
+  const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false) => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
+    if (!skipExactRatio) {
     const utilCaptureResult = canCaptureOnMoveToUtil(fromY, fromX, toY, toX, pieceData, playerPosition);
     if (utilCaptureResult.allowed) {
       return true;
+    }
     }
 
     // For player 2, flip the perspective (mirror both row and column)
@@ -797,7 +816,7 @@ const LiveGame = () => {
 
     // If piece can capture on move AND no separate capture fields, use movement logic
     if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
-      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition);
+      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
     }
 
     // Check directional capture - check if any capture fields have values
@@ -809,27 +828,28 @@ const LiveGame = () => {
       let directionalAllowed = false;
 
       if (rowDiff < 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.up_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_capture, pieceData.up_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.down_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_capture, pieceData.down_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff === 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_capture, pieceData.left_capture_exact), Math.abs(colDiff));
       } else if (rowDiff === 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_capture, pieceData.right_capture_exact), Math.abs(colDiff));
       } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_capture, pieceData.up_left_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_capture, pieceData.up_right_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_capture, pieceData.down_left_capture_exact), Math.abs(rowDiff));
       } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_capture, pieceData.down_right_capture_exact), Math.abs(rowDiff));
       }
 
       if (directionalAllowed) return true;
     }
 
     // Check ratio capture (L-shape)
+    if (!skipExactRatio) {
     const ratio1 = pieceData.ratio_capture_1 || 0;
     const ratio2 = pieceData.ratio_capture_2 || 0;
     if (ratio1 > 0 && ratio2 > 0) {
@@ -837,6 +857,7 @@ const LiveGame = () => {
           (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
         return true;
       }
+    }
     }
 
     // Check step-by-step capture - use sign-based diagonal exclusion
@@ -878,6 +899,7 @@ const LiveGame = () => {
         
         if (direction && additionalCaptures[direction]) {
           for (const captureOption of additionalCaptures[direction]) {
+            if (skipExactRatio && captureOption.exact) continue;
             const value = captureOption.value || 0;
             if (captureOption.infinite && distance > 0) return true;
             if (captureOption.exact && distance === value) return true;
@@ -894,11 +916,8 @@ const LiveGame = () => {
 
   // Check if path is clear for sliding pieces (no pieces in between)
   const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false) => {
-    // Check if piece can hop - combine movement + attack hop abilities when capturing
-    const canHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true
-      || (isCapture && (pieceData?.can_hop_attack_over_allies === 1 || pieceData?.can_hop_attack_over_allies === true));
-    const canHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true
-      || (isCapture && (pieceData?.can_hop_attack_over_enemies === 1 || pieceData?.can_hop_attack_over_enemies === true));
+    const canHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true;
+    const canHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true;
     const pieceTeam = pieceData?.player_id || pieceData?.team;
 
     const dx = Math.sign(toX - fromX);
@@ -1344,47 +1363,86 @@ const LiveGame = () => {
           pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture);
         }
 
-        // Hop capture: piece has capture_on_hop, destination is empty, enemies are in the path
+        // Hop capture: piece has capture_on_hop, destination is empty, enemies are in the path.
+        // capture_on_hop inherently means the piece hops over enemies to capture them (like checkers),
+        // so enemies in the path are always hoppable — no separate can_hop_over_enemies flag needed.
+        // The destination must be within the piece's normal movement/capture range.
         let isHopCapture = false;
         let hopCapturedPieceIds = [];
         if (!isCapture && piece.capture_on_hop && !isStepMove && !isRatioMove) {
-          const canHopAttackEnemies = piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
-          const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
-          if (canHopAttackEnemies || canHopEnemies) {
-            let hopMoveValid = isValidMove;
-            if (!hopMoveValid) {
-              hopMoveValid = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
-            }
-            if (hopMoveValid) {
-              const hopPathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, true);
-              if (hopPathClear) {
-                const hdx = Math.sign(toX - piece.x);
-                const hdy = Math.sign(toY - piece.y);
-                const hxDiff = Math.abs(toX - piece.x);
-                const hyDiff = Math.abs(toY - piece.y);
-                if (hxDiff === hyDiff || hxDiff === 0 || hyDiff === 0) {
-                  let cx = piece.x + hdx;
-                  let cy = piece.y + hdy;
-                  while (cx !== toX || cy !== toY) {
-                    const hopPiece = findPieceAtSquare(pieces, cx, cy);
-                    if (hopPiece && hopPiece.id !== piece.id) {
-                      const hopTeam = hopPiece.player_id || hopPiece.team;
-                      if (hopTeam !== pieceTeam) {
-                        hopCapturedPieceIds.push(hopPiece.id);
-                      }
-                    }
-                    cx += hdx;
-                    cy += hdy;
+          // Hop capture only works if the destination is within the piece's actual movement/capture range.
+          // isValidMove already tells us if normal movement covers this square.
+          // If not, check if the capture range covers it.
+          let hopDirValid = isValidMove;
+          if (!hopDirValid) {
+            hopDirValid = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
+          }
+          if (hopDirValid) {
+            // Walk the path: enemies are capture targets (always hoppable for capture_on_hop),
+            // allies block unless the piece has ally-hop ability.
+            const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
+            const hopCapturedSet = new Set();
+            let hopBlocked = false;
+            const hdx = Math.sign(toX - piece.x);
+            const hdy = Math.sign(toY - piece.y);
+            const hxDiff = Math.abs(toX - piece.x);
+            const hyDiff = Math.abs(toY - piece.y);
+            if (hxDiff === hyDiff || hxDiff === 0 || hyDiff === 0) {
+              let cx = piece.x + hdx;
+              let cy = piece.y + hdy;
+              while ((cx !== toX || cy !== toY) && !hopBlocked) {
+                const hopPiece = findPieceAtSquare(pieces, cx, cy);
+                if (hopPiece && hopPiece.id !== piece.id) {
+                  const hopTeam = hopPiece.player_id || hopPiece.team;
+                  if (hopTeam !== pieceTeam) {
+                    hopCapturedSet.add(hopPiece.id);
+                  } else if (!canHopAllies) {
+                    hopBlocked = true;
                   }
                 }
-                if (hopCapturedPieceIds.length > 0) {
-                  isHopCapture = true;
-                  isValidMove = true;
-                  pathClear = true;
-                }
+                cx += hdx;
+                cy += hdy;
               }
             }
+            if (!hopBlocked && hopCapturedSet.size > 0) {
+              hopCapturedPieceIds = [...hopCapturedSet];
+              isHopCapture = true;
+              isValidMove = true;
+              pathClear = true;
+            }
           }
+        }
+
+        // Hop-only restriction: if exact_ratio_hop_only is set and no hop occurred,
+        // re-validate excluding exact directional and ratio abilities.
+        // If the move only works via exact/ratio, reject it (nothing was hopped over).
+        if (piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && !isStepMove && !isRatioMove) {
+          const stillValid = isCapture
+            ? canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true)
+            : canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true);
+          if (!stillValid) {
+            // Move relies on exact/ratio — only allow if something was hopped in the path
+            let hasHop = false;
+            const hdx2 = Math.sign(toX - piece.x);
+            const hdy2 = Math.sign(toY - piece.y);
+            const hxDiff = Math.abs(toX - piece.x);
+            const hyDiff = Math.abs(toY - piece.y);
+            if (hxDiff === hyDiff || hxDiff === 0 || hyDiff === 0) {
+              let hx2 = piece.x + hdx2;
+              let hy2 = piece.y + hdy2;
+              while (hx2 !== toX || hy2 !== toY) {
+                const hp = findPieceAtSquare(pieces, hx2, hy2);
+                if (hp && hp.id !== piece.id) { hasHop = true; break; }
+                hx2 += hdx2;
+                hy2 += hdy2;
+              }
+            }
+            if (!hasHop) isValidMove = false;
+          }
+        }
+        // For ratio moves with hop-only: always require a hop
+        if (piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && isRatioMove) {
+          isValidMove = false;
         }
         
         if (isValidMove && pathClear) {
@@ -2583,6 +2641,7 @@ const LiveGame = () => {
                 height: `${ph * 100}%`,
                 zIndex: 5,
                 position: 'absolute',
+                overflow: 'hidden',
                 // When the board is flipped, the anchor (top-left in game coords) is displayed
                 // at the bottom-right of the piece's visual area, so we need to grow up-left
                 ...(shouldFlipBoard
@@ -2600,6 +2659,12 @@ const LiveGame = () => {
                   onMouseEnter={() => (showHelpers || showMovableIndicators) && handlePieceHover(piece)}
                   onMouseLeave={() => (showHelpers || showMovableIndicators) && handlePieceHover(null)}
                 >
+                {boardAnimationsEnabled && isMultiTile && (
+                  <>
+                    <div className={styles["multi-tile-smoke"]} />
+                    <div className={styles["multi-tile-electric"]} />
+                  </>
+                )}
                 {imageUrl ? (
                   isNonSquareMultiTile ? (
                     <div
