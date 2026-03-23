@@ -1,4 +1,4 @@
-const db = require("../configs/db");
+﻿const db = require("../configs/db");
 
 /**
  * Database query wrapper (now using promise-based pool)
@@ -183,6 +183,7 @@ const getAllPiecesWithMovement = async () => {
       p.step_by_step_movement_value,
       p.can_hop_over_allies,
       p.can_hop_over_enemies,
+      p.exact_ratio_hop_only,
       p.min_turns_per_move,
       p.max_turns_per_move,
       p.available_for_moves,
@@ -223,6 +224,7 @@ const getAllPiecesWithMovement = async () => {
       p.left_capture_available_for,
       p.ratio_one_capture,
       p.ratio_two_capture,
+      p.repeating_capture,
       p.step_by_step_capture,
       -- Attack range values
       p.up_left_attack_range,
@@ -269,7 +271,13 @@ const getAllPiecesWithMovement = async () => {
       p.has_lose_on_capture_rule,
       p.can_castle,
       p.can_promote,
-      p.promotion_options
+      p.promotion_options,
+      p.capture_on_hop,
+      p.chain_capture_enabled,
+      p.free_move_after_promotion,
+      p.can_en_passant,
+      p.can_fire_over_allies,
+      p.can_fire_over_enemies
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id
@@ -341,6 +349,7 @@ const getPieceById = async (pieceId) => {
       p.step_by_step_movement_value,
       p.can_hop_over_allies,
       p.can_hop_over_enemies,
+      p.exact_ratio_hop_only,
       p.min_turns_per_move,
       p.max_turns_per_move,
       p.available_for_moves,
@@ -381,6 +390,7 @@ const getPieceById = async (pieceId) => {
       p.left_capture_available_for,
       p.ratio_one_capture,
       p.ratio_two_capture,
+      p.repeating_capture,
       p.step_by_step_capture,
       -- Attack range values
       p.up_left_attack_range,
@@ -428,7 +438,14 @@ const getPieceById = async (pieceId) => {
       p.can_castle,
       p.can_fire_over_allies,
       p.can_fire_over_enemies,
-      p.can_en_passant
+      p.can_en_passant,
+      p.capture_on_hop,
+      p.chain_capture_enabled,
+      p.chain_hop_allies,
+      p.can_hop_attack_over_allies,
+      p.can_hop_attack_over_enemies,
+      p.free_move_after_promotion,
+      p.promotion_pieces_ids
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     LEFT JOIN chessusnode.game_types gt ON p.game_type_id = gt.id
@@ -539,6 +556,8 @@ const getGameById = async (gameId) => {
         castling_partner_left_key: piece.castling_partner_left_key,
         castling_partner_right_key: piece.castling_partner_right_key,
         can_control_squares: Boolean(piece.can_control_squares),
+        capture_on_hop: Boolean(piece.capture_on_hop),
+        chain_capture_enabled: Boolean(piece.chain_capture_enabled),
         piece_name: piece.piece_name,
         image_url: imageUrl,
         image_location: piece.image_location

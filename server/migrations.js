@@ -406,6 +406,18 @@ const migrations = [
     column: 'can_control_squares',
     sql: "ALTER TABLE game_type_pieces ADD COLUMN can_control_squares TINYINT(1) DEFAULT 0",
     description: "Add can_control_squares column to game_type_pieces for pieces that can control squares"
+  },
+  {
+    table: 'pieces',
+    column: 'exact_ratio_hop_only',
+    sql: "ALTER TABLE pieces ADD COLUMN exact_ratio_hop_only TINYINT(1) DEFAULT 0",
+    description: "Add exact_ratio_hop_only column - when enabled, exact and ratio movement/attacks only work when hopping"
+  },
+  {
+    table: 'pieces',
+    column: 'repeating_capture',
+    sql: "ALTER TABLE pieces ADD COLUMN repeating_capture TINYINT(1) DEFAULT 0",
+    description: "Add repeating_capture column - when enabled with exact captures, the piece can repeat its exact capture distance infinitely"
   }
 ];
 

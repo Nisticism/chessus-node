@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 //  Constants
 
@@ -2051,13 +2051,13 @@ app.post("/api/register", registerLimiter, async (req, res) => {
     sendWelcomeEmail(email, username)
       .then(result => {
         if (result.success) {
-          console.log(`✅ Welcome email sent to ${email}`);
+          console.log(`âœ… Welcome email sent to ${email}`);
         } else {
-          console.log(`⚠️ Welcome email not sent: ${result.message}`);
+          console.log(`âš ï¸ Welcome email not sent: ${result.message}`);
         }
       })
       .catch(err => {
-        console.error('⚠️ Email sending failed:', err.message);
+        console.error('âš ï¸ Email sending failed:', err.message);
       });
     
     res.status(201).send(user);
@@ -3577,7 +3577,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         down_right_movement_available_for, down_movement_available_for, down_left_movement_available_for, left_movement_available_for,
         ratio_movement_style, ratio_one_movement, ratio_two_movement, repeating_ratio, max_ratio_iterations, min_ratio_iterations,
         step_by_step_movement_style, step_by_step_movement_value,
-        can_hop_over_allies, can_hop_over_enemies, min_turns_per_move, max_turns_per_move,
+        can_hop_over_allies, can_hop_over_enemies, exact_ratio_hop_only, min_turns_per_move, max_turns_per_move,
         first_move_only, available_for_moves, special_scenario_moves,
         can_capture_enemy_via_range, can_capture_ally_via_range, can_capture_enemy_on_move, can_capture_ally_on_range, can_attack_on_iteration,
         first_move_only_capture, available_for_captures,
@@ -3586,7 +3586,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         down_right_capture_exact, down_capture_exact, down_left_capture_exact, left_capture_exact,
         up_left_capture_available_for, up_capture_available_for, up_right_capture_available_for, right_capture_available_for,
         down_right_capture_available_for, down_capture_available_for, down_left_capture_available_for, left_capture_available_for,
-        ratio_one_capture, ratio_two_capture, step_by_step_capture,
+        ratio_one_capture, ratio_two_capture, repeating_capture, step_by_step_capture,
         up_left_attack_range, up_attack_range, up_right_attack_range, right_attack_range, down_right_attack_range, down_attack_range, down_left_attack_range, left_attack_range,
         up_left_attack_range_exact, up_attack_range_exact, up_right_attack_range_exact, right_attack_range_exact,
         down_right_attack_range_exact, down_attack_range_exact, down_left_attack_range_exact, left_attack_range_exact,
@@ -3600,7 +3600,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         can_fire_over_allies, can_fire_over_enemies, can_en_passant,
         capture_on_hop, chain_capture_enabled, free_move_after_promotion, promotion_pieces_ids,
         can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceValues = [
@@ -3658,6 +3658,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.step_by_step_movement_value) || null,
       parseBooleanField(pieceData.can_hop_over_allies),
       parseBooleanField(pieceData.can_hop_over_enemies),
+      parseBooleanField(pieceData.exact_ratio_hop_only),
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
@@ -3704,6 +3705,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.left_capture_available_for) || null,
       parseInt(pieceData.ratio_one_capture) || null,
       parseInt(pieceData.ratio_two_capture) || null,
+      parseBooleanField(pieceData.repeating_capture),
       parseInt(pieceData.step_by_step_capture) || null,
       // Attack range values
       parseInt(pieceData.up_left_attack_range) || 0,
@@ -3902,6 +3904,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         step_by_step_movement_value = ?,
         can_hop_over_allies = ?,
         can_hop_over_enemies = ?,
+        exact_ratio_hop_only = ?,
         min_turns_per_move = ?,
         max_turns_per_move = ?,
         first_move_only = ?,
@@ -3940,6 +3943,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         left_capture_available_for = ?,
         ratio_one_capture = ?,
         ratio_two_capture = ?,
+        repeating_capture = ?,
         step_by_step_capture = ?,
         up_left_attack_range = ?,
         up_attack_range = ?,
@@ -4044,6 +4048,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.step_by_step_movement_value) || null,
       parseBooleanField(pieceData.can_hop_over_allies),
       parseBooleanField(pieceData.can_hop_over_enemies),
+      parseBooleanField(pieceData.exact_ratio_hop_only),
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
@@ -4090,6 +4095,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.left_capture_available_for) || null,
       parseInt(pieceData.ratio_one_capture) || null,
       parseInt(pieceData.ratio_two_capture) || null,
+      parseBooleanField(pieceData.repeating_capture),
       parseInt(pieceData.step_by_step_capture) || null,
       // Attack range values
       parseInt(pieceData.up_left_attack_range) || 0,
@@ -4855,9 +4861,9 @@ app.post("/api/admin/streams/:streamId/toggle-live", authenticateAdmin, async (r
 
 //  -----------------------  Other/Port -------------------------
 
-// ═══════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  PAYMENT ENDPOINTS
-// ═══════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 // Create Stripe checkout session
 app.post("/api/create-stripe-checkout", async (req, res) => {
@@ -4910,9 +4916,9 @@ app.post("/api/confirm-donation", async (req, res) => {
     // Update user's total donations in database
     try {
       await dbHelpers.updateUserDonations(email, parseFloat(amount));
-      console.log(`✅ Updated total donations for ${email}: +$${amount}`);
+      console.log(`âœ… Updated total donations for ${email}: +$${amount}`);
     } catch (dbError) {
-      console.error('⚠️ Failed to update donation total:', dbError.message);
+      console.error('âš ï¸ Failed to update donation total:', dbError.message);
       // Continue anyway - email is more important than tracking
     }
 
@@ -4920,13 +4926,13 @@ app.post("/api/confirm-donation", async (req, res) => {
     sendDonationEmail(email, username, amount)
       .then(result => {
         if (result.success) {
-          console.log(`✅ Donation email sent to ${email}`);
+          console.log(`âœ… Donation email sent to ${email}`);
         } else {
-          console.log(`⚠️ Donation email not sent: ${result.message}`);
+          console.log(`âš ï¸ Donation email not sent: ${result.message}`);
         }
       })
       .catch(err => {
-        console.error('⚠️ Email sending failed:', err.message);
+        console.error('âš ï¸ Email sending failed:', err.message);
       });
     
     // Always return success - the donation was successful regardless of email
