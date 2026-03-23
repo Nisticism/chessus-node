@@ -67,6 +67,8 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         ratio_two_capture: pieceData.ratio_two_movement,
         // Copy step-by-step
         step_by_step_capture: pieceData.step_by_step_movement_value,
+        // Copy repeating movement setting
+        repeating_capture: pieceData.repeating_movement,
         // Copy additional movements to additional captures
         ...(convertedCaptures && { special_scenario_capture: convertedCaptures })
       });
@@ -319,14 +321,46 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         ratio_two_capture: pieceData.ratio_two_movement,
         // Copy step-by-step
         step_by_step_capture: pieceData.step_by_step_movement_value,
+        // Copy repeating movement setting
+        repeating_capture: pieceData.repeating_movement,
         // Copy additional movements to additional captures
         ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
         // Disable ranged by default when capturing on move
         can_capture_enemy_via_range: false
       });
     } else {
+      // Clear all carried-over capture styles so user starts with a blank slate
       updatePieceData({
-        attacks_like_movement: false
+        attacks_like_movement: false,
+        up_left_capture: 0,
+        up_capture: 0,
+        up_right_capture: 0,
+        left_capture: 0,
+        right_capture: 0,
+        down_left_capture: 0,
+        down_capture: 0,
+        down_right_capture: 0,
+        up_left_capture_exact: false,
+        up_capture_exact: false,
+        up_right_capture_exact: false,
+        left_capture_exact: false,
+        right_capture_exact: false,
+        down_left_capture_exact: false,
+        down_capture_exact: false,
+        down_right_capture_exact: false,
+        up_left_capture_available_for: null,
+        up_capture_available_for: null,
+        up_right_capture_available_for: null,
+        left_capture_available_for: null,
+        right_capture_available_for: null,
+        down_left_capture_available_for: null,
+        down_capture_available_for: null,
+        down_right_capture_available_for: null,
+        ratio_one_capture: null,
+        ratio_two_capture: null,
+        step_by_step_capture: null,
+        repeating_capture: false,
+        special_scenario_capture: null,
       });
     }
   };
@@ -864,17 +898,19 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
               </div>
             )}
 
-            {/* First Move Only Option for Captures */}
-            <div className={styles["sub-field"]}>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.first_move_only_capture}
-                  onChange={(e) => handleChange("first_move_only_capture", e.target.checked)}
-                />
-                <span>First move only <InfoTooltip text="When enabled, this piece can only capture by moving during its first move. After its first move, it loses all capture-on-move abilities permanently. Useful for pieces with a special opening attack." /></span>
-              </label>
-            </div>
+            {/* Repeating Exact Capture */}
+            {!pieceData.attacks_like_movement && (
+              <div className={styles["sub-field"]}>
+                <label className={styles["checkbox-label"]}>
+                  <input
+                    type="checkbox"
+                    checked={pieceData.repeating_capture || false}
+                    onChange={(e) => handleChange("repeating_capture", e.target.checked)}
+                  />
+                  <span>Repeating exact capture <InfoTooltip text="When enabled with exact captures, the piece can repeat its exact capture distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 capture could capture on squares 2, 4, 6, 8, etc." /></span>
+                </label>
+              </div>
+            )}
 
             {/* Ratio Capture (Knight-like) */}
             {!pieceData.attacks_like_movement && (
@@ -932,85 +968,20 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         )}
       </div>
 
-      {/* Attack Hopping */}
-      <div className={styles["condition-section"]}>
-        <h3>Attack Hopping <InfoTooltip text="Controls whether this piece can hop over other pieces when attacking (capture-on-move only). The piece jumps over an intervening piece to reach and capture the piece it lands on. This does NOT capture the pieces that are hopped over — for that, see 'Checkers-style Capture' below. Requires ratio capture or at least one capture direction with 'Exact' enabled." /></h3>
-        
-        {/* Show warning if neither ratio nor exact directional capture is enabled */}
-        {(() => {
-          const hasRatioCapture = pieceData.ratio_one_capture && pieceData.ratio_two_capture;
-          const hasExactDirectional = pieceData.can_capture_enemy_on_move && (
-            (pieceData.up_left_capture && pieceData.up_left_capture_exact) ||
-            (pieceData.up_capture && pieceData.up_capture_exact) ||
-            (pieceData.up_right_capture && pieceData.up_right_capture_exact) ||
-            (pieceData.left_capture && pieceData.left_capture_exact) ||
-            (pieceData.right_capture && pieceData.right_capture_exact) ||
-            (pieceData.down_left_capture && pieceData.down_left_capture_exact) ||
-            (pieceData.down_capture && pieceData.down_capture_exact) ||
-            (pieceData.down_right_capture && pieceData.down_right_capture_exact)
-          );
-          
-          const canHop = hasRatioCapture || hasExactDirectional;
-          
-          return !canHop ? (
-            <p className={styles["field-hint"]} style={{ marginBottom: '1rem', color: 'var(--accent-orange)' }}>
-              ⚠️ Attack hopping requires either ratio capture movement or at least one capture direction with "Exact" distance enabled.
-            </p>
-          ) : null;
-        })()}
-        
-        <label className={styles["checkbox-label"]}>
-          <input
-            type="checkbox"
-            checked={pieceData.can_hop_attack_over_allies}
-            onChange={(e) => handleChange("can_hop_attack_over_allies", e.target.checked)}
-            disabled={!(pieceData.ratio_one_capture && pieceData.ratio_two_capture) && !(pieceData.can_capture_enemy_on_move && (
-              (pieceData.up_left_capture && pieceData.up_left_capture_exact) ||
-              (pieceData.up_capture && pieceData.up_capture_exact) ||
-              (pieceData.up_right_capture && pieceData.up_right_capture_exact) ||
-              (pieceData.left_capture && pieceData.left_capture_exact) ||
-              (pieceData.right_capture && pieceData.right_capture_exact) ||
-              (pieceData.down_left_capture && pieceData.down_left_capture_exact) ||
-              (pieceData.down_capture && pieceData.down_capture_exact) ||
-              (pieceData.down_right_capture && pieceData.down_right_capture_exact)
-            ))}
-          />
-          <span>Can hop over allied pieces when attacking</span>
-        </label>
-        <label className={styles["checkbox-label"]}>
-          <input
-            type="checkbox"
-            checked={pieceData.can_hop_attack_over_enemies}
-            onChange={(e) => handleChange("can_hop_attack_over_enemies", e.target.checked)}
-            disabled={!(pieceData.ratio_one_capture && pieceData.ratio_two_capture) && !(pieceData.can_capture_enemy_on_move && (
-              (pieceData.up_left_capture && pieceData.up_left_capture_exact) ||
-              (pieceData.up_capture && pieceData.up_capture_exact) ||
-              (pieceData.up_right_capture && pieceData.up_right_capture_exact) ||
-              (pieceData.left_capture && pieceData.left_capture_exact) ||
-              (pieceData.right_capture && pieceData.right_capture_exact) ||
-              (pieceData.down_left_capture && pieceData.down_left_capture_exact) ||
-              (pieceData.down_capture && pieceData.down_capture_exact) ||
-              (pieceData.down_right_capture && pieceData.down_right_capture_exact)
-            ))}
-          />
-          <span>Can hop over enemy pieces when attacking</span>
-        </label>
-      </div>
-
       {/* Checkers-style Capture Options */}
       <div className={styles["condition-section"]}>
-        <h3>Checkers-style Capture <InfoTooltip text="These options control what happens when a piece hops over another piece. 'Capture on Hop' makes hopping over an enemy capture it (like checkers). 'Chain Capture' allows multiple jumps in one turn. These require enemy hopping to be enabled in either Movement Hopping (Step 2) or Attack Hopping above." /></h3>
+        <h3>Checkers-style Capture <InfoTooltip text="These options control what happens when a piece hops over another piece. 'Capture on Hop' makes hopping over an enemy capture it (like checkers). 'Chain Capture' allows multiple jumps in one turn. Requires 'Can hop over enemy pieces' to be enabled in Movement Hopping (Step 2)." /></h3>
 
-        {/* Capture on Hop - disabled when no enemy hopping enabled */}
+        {/* Capture on Hop - disabled when can_hop_over_enemies not enabled in Step 2 */}
         <div style={{ marginBottom: '15px' }}>
-          <label className={styles["checkbox-label"]} style={(pieceData.can_hop_over_enemies || pieceData.can_hop_attack_over_enemies) ? {} : { opacity: 0.5 }}>
+          <label className={styles["checkbox-label"]} style={pieceData.can_hop_over_enemies ? {} : { opacity: 0.5 }}>
             <input
               type="checkbox"
               checked={pieceData.capture_on_hop || false}
               onChange={(e) => handleChange("capture_on_hop", e.target.checked)}
-              disabled={!(pieceData.can_hop_over_enemies || pieceData.can_hop_attack_over_enemies)}
+              disabled={!pieceData.can_hop_over_enemies}
             />
-            <span>Capture on Hop <InfoTooltip text="When this piece hops over enemy pieces (jumps over them to land on an empty square beyond), it captures all enemy pieces it hops over. Essential for checkers-style gameplay. Requires 'Can hop over enemy pieces' (Step 2) or 'Can hop over enemy pieces when attacking' (above)." /></span>
+            <span>Capture on Hop <InfoTooltip text="When this piece hops over enemy pieces (jumps over them to land on an empty square beyond), it captures all enemy pieces it hops over. Essential for checkers-style gameplay. Requires 'Can hop over enemy pieces' in Movement Hopping (Step 2)." /></span>
           </label>
         </div>
 
@@ -1413,11 +1384,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
       {/* Live Preview */}
       <div className={styles["board-preview-section"]}>
         <h3>Attack Preview</h3>
-        <p className={styles["preview-legend"]}>
-          <span className={styles["legend-movement"]}>Blue = Movement</span>
-          <span className={styles["legend-capture"]}>Orange = Capture on Move</span>
-          <span className={styles["legend-ranged"]}>Red = Ranged Attack 💥</span>
-        </p>
         <PieceBoardPreview pieceData={pieceData} />
       </div>
     </div>

@@ -662,6 +662,85 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     return false;
   };
 
+  // Check if a square is along a movement path where capture-on-hop applies
+  // These are intermediate squares between the piece and movement destinations
+  const canHopCaptureTo = (row, col) => {
+    if (!pieceData.capture_on_hop) return false;
+    if (isPieceSquare(row, col)) return false;
+
+    // Parse additional movements/captures from special scenarios
+    const additionalMovements = parseSpecialScenarioMoves?.additionalMovements || {};
+    const additionalCaptures = parseSpecialScenarioCaptures?.additionalCaptures || {};
+
+    const directions = [
+      { dr: -1, dc: -1, move: 'up_left_movement', cap: 'up_left_capture', name: 'up_left' },
+      { dr: -1, dc: 0, move: 'up_movement', cap: 'up_capture', name: 'up' },
+      { dr: -1, dc: 1, move: 'up_right_movement', cap: 'up_right_capture', name: 'up_right' },
+      { dr: 0, dc: 1, move: 'right_movement', cap: 'right_capture', name: 'right' },
+      { dr: 1, dc: 1, move: 'down_right_movement', cap: 'down_right_capture', name: 'down_right' },
+      { dr: 1, dc: 0, move: 'down_movement', cap: 'down_capture', name: 'down' },
+      { dr: 1, dc: -1, move: 'down_left_movement', cap: 'down_left_capture', name: 'down_left' },
+      { dr: 0, dc: -1, move: 'left_movement', cap: 'left_capture', name: 'left' },
+    ];
+
+    for (let srcRow = anchorRow; srcRow < anchorRow + ph; srcRow++) {
+      for (let srcCol = anchorCol; srcCol < anchorCol + pw; srcCol++) {
+        for (const dir of directions) {
+          const moveVal = Math.abs(pieceData[dir.move] || 0);
+          const capVal = Math.abs(pieceData[dir.cap] || 0);
+          let maxVal = Math.max(moveVal, capVal);
+
+          // Also consider additional movements/captures for this direction
+          const addMoves = additionalMovements[dir.name];
+          if (Array.isArray(addMoves)) {
+            for (const m of addMoves) {
+              const v = m.infinite ? 99 : (m.value || 0);
+              if (v > maxVal) maxVal = v;
+            }
+          }
+          const addCaps = additionalCaptures[dir.name];
+          if (Array.isArray(addCaps)) {
+            for (const c of addCaps) {
+              const v = c.infinite ? 99 : (c.value || 0);
+              if (v > maxVal) maxVal = v;
+            }
+          }
+
+          if (!maxVal) continue;
+
+          const rowDiff = row - srcRow;
+          const colDiff = col - srcCol;
+
+          // Check this square is along this direction
+          let isAlongDirection = false;
+          let distance = 0;
+
+          if (dir.dr === 0 && dir.dc !== 0) {
+            // Horizontal
+            isAlongDirection = rowDiff === 0 && Math.sign(colDiff) === dir.dc;
+            distance = Math.abs(colDiff);
+          } else if (dir.dc === 0 && dir.dr !== 0) {
+            // Vertical
+            isAlongDirection = colDiff === 0 && Math.sign(rowDiff) === dir.dr;
+            distance = Math.abs(rowDiff);
+          } else {
+            // Diagonal
+            isAlongDirection = Math.abs(rowDiff) === Math.abs(colDiff) &&
+              Math.sign(rowDiff) === dir.dr && Math.sign(colDiff) === dir.dc;
+            distance = Math.abs(rowDiff);
+          }
+
+          if (!isAlongDirection || distance < 1) continue;
+
+          // Hop capture zone: squares between the piece and its max range
+          const effectiveRange = maxVal === 99 ? boardPadding : maxVal;
+          if (distance >= 1 && distance < effectiveRange) return true;
+        }
+      }
+    }
+    return false;
+  };
+
   // Render the board
   const renderBoard = () => {
     const squares = [];
@@ -677,6 +756,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         const moveInfo = isHovering && !isCenter ? canMoveTo(row, col) : { allowed: false, isFirstMoveOnly: false };
         const captureInfo = showAttack && isHovering && !isCenter ? canCaptureOnMoveTo(row, col) : { allowed: false, isFirstMoveOnly: false };
         const canRangedAttack = showAttack && isHovering && !isCenter && canRangedAttackTo(row, col);
+        const isHopCapture = showAttack && isHovering && !isCenter && canHopCaptureTo(row, col);
         
         // Destructure for clearer code
         const canMove = moveInfo.allowed;
@@ -738,6 +818,11 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         } else if (canRangedAttack) {
           // Ranged attack only
           squareClass += ` ${styles["can-ranged-attack"]}`;
+        }
+        
+        // Hop capture highlight (additive - shows on top of other highlights)
+        if (isHopCapture) {
+          squareClass += ` ${styles["can-hop-capture"]}`;
         }
         
         // Inline styles for user color preferences
@@ -853,6 +938,12 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
               <div className={styles["legend-item"]}>
                 <div className={`${styles["legend-square"]} ${styles["legend-ranged"]}`}></div>
                 <span>Ranged Attack 💥</span>
+              </div>
+            )}
+            {showAttack && pieceData.capture_on_hop && (
+              <div className={styles["legend-item"]}>
+                <div className={`${styles["legend-square"]} ${styles["legend-hop-capture"]}`}></div>
+                <span>Capture on Hop</span>
               </div>
             )}
           </div>

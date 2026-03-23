@@ -820,6 +820,12 @@
   .legend-ranged {
     background-color: rgba(244, 67, 54, 0.5);
   }
+
+  .legend-hop-capture {
+    outline: 3px solid rgba(76, 175, 80, 0.7);
+    outline-offset: -3px;
+    background-color: rgba(76, 175, 80, 0.2);
+  }
 }
 
 .preview-legend {
@@ -910,6 +916,13 @@
 
   &.can-ranged-attack {
     background-color: rgba(244, 67, 54, 0.5) !important; // Red for ranged attack
+  }
+
+  &.can-hop-capture {
+    outline: 3px solid rgba(76, 175, 80, 0.7) !important;
+    outline-offset: -3px !important;
+    // Use box-shadow as inner glow that doesn't conflict with background
+    box-shadow: inset 0 0 0 100px rgba(76, 175, 80, 0.2) !important;
   }
 
   &.can-move-and-capture {

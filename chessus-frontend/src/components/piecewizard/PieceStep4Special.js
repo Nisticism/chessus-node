@@ -46,7 +46,8 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
     setLoadingPieces(true);
     try {
       const response = await PiecesService.getPieces();
-      setAllPieces(response.data || []);
+      const data = response.data;
+      setAllPieces(Array.isArray(data) ? data : (data.pieces || []));
     } catch (error) {
       console.error('Error loading pieces:', error);
     } finally {
@@ -171,18 +172,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
       <div className={`${styles["condition-section"]} ${styles["narrow-section"]}`}>
         <h3>Special Abilities</h3>
         
-        <div className={styles["sub-field"]}>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.can_castle || false}
-              onChange={(e) => handleChange("can_castle", e.target.checked)}
-            />
-            <span>Can Castle <InfoTooltip text="Allows this piece to castle with a partner piece. The furthest allied piece to the left and right on the same row become castling partners. Move 2 squares left or right, and the partner moves to the opposite side. Both pieces must not have moved, and all squares between must be unoccupied. If this piece has check/checkmate rules, it cannot castle through enemy-controlled squares." /></span>
-          </label>
-        </div>
-
-        <div className={styles["sub-field"]}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '12px' }}>
           <label className={styles["checkbox-label"]}>
             <input
               type="checkbox"
@@ -315,8 +305,31 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
           </div>
         )}
 
-        {canShowEnPassant && (
-          <div className={styles["sub-field"]}>
+        {/* Free Move After Promotion - grouped with promotion */}
+        {pieceData.can_promote && (
+          <div style={{ paddingLeft: '12px', marginTop: '4px' }}>
+            <label className={styles["checkbox-label"]}>
+              <input
+                type="checkbox"
+                checked={pieceData.free_move_after_promotion || false}
+                onChange={(e) => handleChange("free_move_after_promotion", e.target.checked)}
+              />
+              <span>Free Move After Promotion <InfoTooltip text="After this piece promotes (transforms into a different piece), the newly promoted piece can immediately take one additional move. Useful for checkers kings, which can continue moving or capturing after being promoted." /></span>
+            </label>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '12px', marginTop: '8px' }}>
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.can_castle || false}
+              onChange={(e) => handleChange("can_castle", e.target.checked)}
+            />
+            <span>Can Castle <InfoTooltip text="Allows this piece to castle with a partner piece. The furthest allied piece to the left and right on the same row become castling partners. Move 2 squares left or right, and the partner moves to the opposite side. Both pieces must not have moved, and all squares between must be unoccupied. If this piece has check/checkmate rules, it cannot castle through enemy-controlled squares." /></span>
+          </label>
+
+          {canShowEnPassant && (
             <label className={styles["checkbox-label"]}>
               <input
                 type="checkbox"
@@ -325,19 +338,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
               />
               <span>Can En Passant <InfoTooltip text="Allows this piece to capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn. The capture must be made immediately after the enemy's qualifying move. Only available for pieces with no backward movement (pawn-like pieces)." /></span>
             </label>
-          </div>
-        )}
-
-        {/* Free Move After Promotion */}
-        <div className={styles["sub-field"]} style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '15px' }}>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.free_move_after_promotion || false}
-              onChange={(e) => handleChange("free_move_after_promotion", e.target.checked)}
-            />
-            <span>Free Move After Promotion <InfoTooltip text="After this piece promotes (transforms into a different piece), the newly promoted piece can immediately take one additional move. Useful for checkers kings, which can continue moving or capturing after being promoted." /></span>
-          </label>
+          )}
         </div>
       </div>
 

@@ -689,14 +689,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                 />
                 <span>Repeating exact movement <InfoTooltip text="When enabled with exact movements, the piece can repeat its exact distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 could land on squares 2, 4, 6, 8, etc." /></span>
               </label>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.first_move_only}
-                  onChange={(e) => handleChange("first_move_only", e.target.checked)}
-                />
-                <span>First move only (all directions) <InfoTooltip text="Global override that applies to ALL directional movements. When enabled, this piece loses all directional movement abilities after moving once. Useful for pieces like pawns that have a special first move." /></span>
-              </label>
             </div>
           </div>
         )}
@@ -818,51 +810,12 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
 
       {/* Hopping */}
       <div className={styles["condition-section"]}>
-        <h3>Hopping Ability <InfoTooltip text="Controls whether this piece can hop over other pieces during movement — it lands on the square beyond the piece it jumps over. This does NOT capture the hopped-over piece. For checkers-style 'capture on hop' (where hopping over an enemy captures it), see Step 3: Checkers-style Capture. Requires ratio movement or at least one direction with 'Exact' enabled." /></h3>
-        {(() => {
-          const isMultiTile = (pieceData.piece_width || 1) > 1 || (pieceData.piece_height || 1) > 1;
-          if (isMultiTile) {
-            return (
-              <p className={styles["field-hint"]} style={{ marginBottom: '1rem', color: 'var(--accent-orange)' }}>
-                ⚠️ Multi-tile pieces ({pieceData.piece_width || 1}×{pieceData.piece_height || 1}) cannot hop over other pieces.
-              </p>
-            );
-          }
-          const hasRatioMovement = pieceData.ratio_movement_style;
-          const hasExactDirectional = pieceData.directional_movement_style && (
-            (pieceData.up_left_movement && pieceData.up_left_movement_exact) ||
-            (pieceData.up_movement && pieceData.up_movement_exact) ||
-            (pieceData.up_right_movement && pieceData.up_right_movement_exact) ||
-            (pieceData.left_movement && pieceData.left_movement_exact) ||
-            (pieceData.right_movement && pieceData.right_movement_exact) ||
-            (pieceData.down_left_movement && pieceData.down_left_movement_exact) ||
-            (pieceData.down_movement && pieceData.down_movement_exact) ||
-            (pieceData.down_right_movement && pieceData.down_right_movement_exact)
-          );
-          
-          const canHop = hasRatioMovement || hasExactDirectional;
-          
-          return !canHop ? (
-            <p className={styles["field-hint"]} style={{ marginBottom: '1rem', color: 'var(--accent-orange)' }}>
-              ⚠️ Hopping requires either ratio movement or at least one direction with "Exact" movement enabled.
-            </p>
-          ) : null;
-        })()}
+        <h3>Hopping Ability <InfoTooltip text="Controls whether this piece can hop over other pieces during movement — it jumps over a piece in its path and lands on the square beyond. This does NOT capture the hopped-over piece by itself. For checkers-style 'capture on hop' (where hopping over an enemy captures it), see Step 3: Checkers-style Capture." /></h3>
         <label className={styles["checkbox-label"]}>
           <input
             type="checkbox"
             checked={pieceData.can_hop_over_allies}
             onChange={(e) => handleChange("can_hop_over_allies", e.target.checked)}
-            disabled={((pieceData.piece_width || 1) > 1 || (pieceData.piece_height || 1) > 1) || (!pieceData.ratio_movement_style && !(pieceData.directional_movement_style && (
-              (pieceData.up_left_movement && pieceData.up_left_movement_exact) ||
-              (pieceData.up_movement && pieceData.up_movement_exact) ||
-              (pieceData.up_right_movement && pieceData.up_right_movement_exact) ||
-              (pieceData.left_movement && pieceData.left_movement_exact) ||
-              (pieceData.right_movement && pieceData.right_movement_exact) ||
-              (pieceData.down_left_movement && pieceData.down_left_movement_exact) ||
-              (pieceData.down_movement && pieceData.down_movement_exact) ||
-              (pieceData.down_right_movement && pieceData.down_right_movement_exact)
-            )))}
           />
           <span>Can hop over allied pieces</span>
         </label>
@@ -871,19 +824,20 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             type="checkbox"
             checked={pieceData.can_hop_over_enemies}
             onChange={(e) => handleChange("can_hop_over_enemies", e.target.checked)}
-            disabled={((pieceData.piece_width || 1) > 1 || (pieceData.piece_height || 1) > 1) || (!pieceData.ratio_movement_style && !(pieceData.directional_movement_style && (
-              (pieceData.up_left_movement && pieceData.up_left_movement_exact) ||
-              (pieceData.up_movement && pieceData.up_movement_exact) ||
-              (pieceData.up_right_movement && pieceData.up_right_movement_exact) ||
-              (pieceData.left_movement && pieceData.left_movement_exact) ||
-              (pieceData.right_movement && pieceData.right_movement_exact) ||
-              (pieceData.down_left_movement && pieceData.down_left_movement_exact) ||
-              (pieceData.down_movement && pieceData.down_movement_exact) ||
-              (pieceData.down_right_movement && pieceData.down_right_movement_exact)
-            )))}
           />
           <span>Can hop over enemy pieces</span>
         </label>
+        {(pieceData.can_hop_over_allies || pieceData.can_hop_over_enemies) && (
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.exact_ratio_hop_only}
+              onChange={(e) => handleChange("exact_ratio_hop_only", e.target.checked)}
+            />
+            <span>Require hopping for exact and ratio movement/attacks</span>
+            <InfoTooltip text="When enabled, any movement or attack that uses exact distance or ratio (L-shape) patterns will only work when the piece is actually hopping over another piece in its path. Non-exact (up-to) and step-by-step movement still work normally. Essential for checkers-style pieces that should only jump at their full range when hopping." />
+          </label>
+        )}
       </div>
 
       {/* Live Preview */}

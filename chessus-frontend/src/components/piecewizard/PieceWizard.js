@@ -87,8 +87,10 @@ const PieceWizard = ({ editPieceId = null }) => {
     
     can_hop_over_allies: false,
     can_hop_over_enemies: false,
+    exact_ratio_hop_only: false,
     
     // Step 3: Attack/Capture Configuration
+    repeating_capture: false,
     can_hop_attack_over_allies: false,
     can_hop_attack_over_enemies: false,
     can_capture_enemy_via_range: false,
@@ -267,8 +269,10 @@ const PieceWizard = ({ editPieceId = null }) => {
             
             can_hop_over_allies: !!piece.can_hop_over_allies,
             can_hop_over_enemies: !!piece.can_hop_over_enemies,
+            exact_ratio_hop_only: !!piece.exact_ratio_hop_only,
             
             // Attack/Capture fields
+            repeating_capture: !!piece.repeating_capture,
             can_hop_attack_over_allies: !!piece.can_hop_attack_over_allies,
             can_hop_attack_over_enemies: !!piece.can_hop_attack_over_enemies,
             can_capture_enemy_via_range: !!piece.can_capture_enemy_via_range,
@@ -492,6 +496,8 @@ const PieceWizard = ({ editPieceId = null }) => {
           ratio_two_capture: prev.ratio_two_movement,
           // Copy step-by-step
           step_by_step_capture: prev.step_by_step_movement_value,
+          // Copy repeating movement setting
+          repeating_capture: prev.repeating_movement,
           // Copy additional movements to additional captures
           ...(convertedCaptures && { special_scenario_capture: convertedCaptures })
         };
@@ -509,6 +515,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     pieceData.ratio_one_movement,
     pieceData.ratio_two_movement,
     pieceData.step_by_step_movement_value,
+    pieceData.repeating_movement,
     pieceData.attacks_like_movement,
     isEditMode
   ]);
