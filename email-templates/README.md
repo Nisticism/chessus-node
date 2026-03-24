@@ -1,6 +1,6 @@
-# Email Templates
+﻿# Email Templates
 
-This folder contains standalone HTML previews of the email templates used by Squarestrat.
+This folder contains standalone HTML previews of the email templates used by GRIDGROVE.
 
 ## Files
 
@@ -25,7 +25,7 @@ You can use these files to test email rendering:
 To verify email quality with AWS SES:
 
 1. Go to [AWS SES Console](https://console.aws.amazon.com/ses/)
-2. Navigate to **Configuration** → **Email templates**
+2. Navigate to **Configuration** â†’ **Email templates**
 3. Click **Create template**
 4. Paste the HTML from these files
 5. Use the **Preview** feature to see how it renders
@@ -45,13 +45,13 @@ The actual emails sent by the application use variables that are replaced at run
 - `${username}` - User's name
 - `${amount}` - Donation amount
 - `${name}`, `${email}`, `${subject}`, `${message}` - Contact form data
-- `${process.env.CLIENT_URL}` - Site URL (squarestrat.com or localhost:3000)
+- `${process.env.CLIENT_URL}` - Site URL (GRIDGROVE.com or localhost:3000)
 
 The static HTML files in this folder show example data for preview purposes.
 
 ## Color Scheme
 
-Matches the Squarestrat brand:
+Matches the GRIDGROVE brand:
 - Primary Blue: `#1565c0`
 - Dark Blue: `#0d47a1`
 - Light Blue: `#64b5f6`
@@ -61,5 +61,5 @@ Matches the Squarestrat brand:
 
 - All templates use inline CSS for maximum email client compatibility
 - Responsive design with mobile breakpoints at 600px
-- Dark theme to match the Squarestrat website aesthetic
+- Dark theme to match the GRIDGROVE website aesthetic
 - Accessible with proper color contrast ratios

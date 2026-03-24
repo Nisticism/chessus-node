@@ -422,7 +422,7 @@ function initializeSocket(server) {
         const allowedOrigins = [
           'http://localhost:3000',
           'http://localhost:3001',
-          /^https?:\/\/(www\.)?squarestrat\.com$/,
+          /^https?:\/\/(www\.)?gridgrove\.gg$/,
         ];
         const isAllowed = allowedOrigins.some(pattern => {
           if (typeof pattern === 'string') {

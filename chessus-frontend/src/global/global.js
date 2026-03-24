@@ -1,4 +1,4 @@
-// const API_URL = "https://squarestrat.com/";
+// const API_URL = "https://gridgrove.gg/";
 const API_URL = (process.env.REACT_APP_API_URL || "") + "/api/";
 
 // Piece Wizard UI Text Constants

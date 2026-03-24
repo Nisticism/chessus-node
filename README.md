@@ -1,8 +1,8 @@
-# Squarestrat
+﻿# GRIDGROVE
 
 A full-stack chess variant platform that allows users to create custom chess games, share them with the community, and engage in forums.
 
-## 📋 Prerequisites
+## ðŸ“‹ Prerequisites
 
 Before you begin, ensure you have the following installed:
 
@@ -11,7 +11,7 @@ Before you begin, ensure you have the following installed:
 - **MySQL** v5.7 or higher
 - **Git** (for cloning the repository)
 
-## 🚀 Quick Start
+## ðŸš€ Quick Start
 
 ### 1. Clone the Repository
 ```bash
@@ -34,7 +34,7 @@ cd ..
 
 #### Create the Database
 ```sql
-CREATE DATABASE squarestratnode;
+CREATE DATABASE GRIDGROVEnode;
 ```
 
 #### Configure Database Connection
@@ -52,7 +52,7 @@ const db = mysql.createPool({
 #### Initialize Database Tables
 Run the SQL script located at `db/tables-seed.sql` in your MySQL client, or:
 ```bash
-mysql -u root -p squarestratnode < db/tables-seed.sql
+mysql -u root -p GRIDGROVEnode < db/tables-seed.sql
 ```
 
 ### 4. Start the Application
@@ -85,7 +85,7 @@ start.bat
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:3001
 
-## 📦 Available Commands
+## ðŸ“¦ Available Commands
 
 ### Root Directory Commands
 
@@ -110,32 +110,32 @@ cd chessus-frontend
 | `npm run build` | Create production build |
 | `npm test` | Run test suite |
 
-## 🗂️ Project Structure
+## ðŸ—‚ï¸ Project Structure
 
 ```
 chessus-node/
-├── server/              # Backend Express server
-│   ├── index.js        # Main server file with API routes
-│   └── db-helpers.js   # Database helper functions
-├── configs/            # Configuration files
-│   └── db.js          # MySQL database connection
-├── db/                # Database scripts
-│   └── tables-seed.sql # Database schema
-├── squarestrat-frontend/  # React frontend application
-│   ├── src/
-│   │   ├── actions/   # Redux actions
-│   │   ├── reducers/  # Redux reducers
-│   │   ├── services/  # API service layer
-│   │   ├── components/ # React components
-│   │   └── containers/ # Page containers
-│   └── public/
-├── start.sh           # Unix startup script
-├── start.bat          # Windows startup script
-├── cleanup.sh         # Kill processes on Unix
-└── cleanup.bat        # Kill processes on Windows
+â”œâ”€â”€ server/              # Backend Express server
+â”‚   â”œâ”€â”€ index.js        # Main server file with API routes
+â”‚   â””â”€â”€ db-helpers.js   # Database helper functions
+â”œâ”€â”€ configs/            # Configuration files
+â”‚   â””â”€â”€ db.js          # MySQL database connection
+â”œâ”€â”€ db/                # Database scripts
+â”‚   â””â”€â”€ tables-seed.sql # Database schema
+â”œâ”€â”€ GRIDGROVE-frontend/  # React frontend application
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â”œâ”€â”€ actions/   # Redux actions
+â”‚   â”‚   â”œâ”€â”€ reducers/  # Redux reducers
+â”‚   â”‚   â”œâ”€â”€ services/  # API service layer
+â”‚   â”‚   â”œâ”€â”€ components/ # React components
+â”‚   â”‚   â””â”€â”€ containers/ # Page containers
+â”‚   â””â”€â”€ public/
+â”œâ”€â”€ start.sh           # Unix startup script
+â”œâ”€â”€ start.bat          # Windows startup script
+â”œâ”€â”€ cleanup.sh         # Kill processes on Unix
+â””â”€â”€ cleanup.bat        # Kill processes on Windows
 ```
 
-## 🛠️ Development Workflow
+## ðŸ› ï¸ Development Workflow
 
 ### Hot Reloading
 - **Backend**: Uses `nodemon` to automatically restart on file changes
@@ -158,7 +158,7 @@ The backend provides RESTful API endpoints for:
 - News articles (`/news`)
 - Custom chess pieces and game types
 
-## 🔧 Troubleshooting
+## ðŸ”§ Troubleshooting
 
 ### Port Already in Use
 If you see "Port 3000/3001 already in use", kill existing processes:
@@ -197,13 +197,13 @@ lsof -ti:3001 | xargs kill -9
    ```
 
 2. Check credentials in `configs/db.js`
-3. Ensure database `squarestratnode` exists
+3. Ensure database `GRIDGROVEnode` exists
 
 ### Module Not Found
 ```bash
 # Reinstall dependencies
 npm install
-cd squarestrat-frontend && npm install
+cd GRIDGROVE-frontend && npm install
 ```
 
 ### MySQL Authentication Error
@@ -213,14 +213,14 @@ ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'password
 FLUSH PRIVILEGES;
 ```
 
-## 🎨 Frontend Styling
+## ðŸŽ¨ Frontend Styling
 
 The project uses:
 - **SCSS Modules** for component-scoped styling
 - **CSS Variables** in `src/index.css` for global theming
 - Centralized color system for easy customization
 
-To customize colors, edit CSS variables in `squarestrat-frontend/src/index.css`:
+To customize colors, edit CSS variables in `GRIDGROVE-frontend/src/index.css`:
 ```css
 :root {
   --button-primary-bg: rgb(75, 77, 124);
@@ -229,7 +229,7 @@ To customize colors, edit CSS variables in `squarestrat-frontend/src/index.css`:
 }
 ```
 
-## 🤝 Contributing
+## ðŸ¤ Contributing
 
 1. Create a feature branch: `git checkout -b feature/my-feature`
 2. Make your changes
@@ -237,6 +237,6 @@ To customize colors, edit CSS variables in `squarestrat-frontend/src/index.css`:
 4. Push: `git push origin feature/my-feature`
 5. Open a Pull Request
 
-## 📄 License
+## ðŸ“„ License
 
 ISC

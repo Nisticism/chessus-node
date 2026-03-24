@@ -1,7 +1,7 @@
-# Google Analytics Setup Guide
+﻿# Google Analytics Setup Guide
 
 ## Overview
-Google Analytics 4 (GA4) has been integrated into the Chessus/Squarestrat application to track user behavior, page views, and key events.
+Google Analytics 4 (GA4) has been integrated into the Chessus/GRIDGROVE application to track user behavior, page views, and key events.
 
 ## Setup Instructions
 
@@ -11,7 +11,7 @@ Google Analytics 4 (GA4) has been integrated into the Chessus/Squarestrat applic
 2. Click **Admin** (gear icon in bottom left)
 3. In the **Property** column, click **Create Property**
 4. Enter your property details:
-   - Property name: "Squarestrat" (or your preferred name)
+   - Property name: "GRIDGROVE" (or your preferred name)
    - Reporting time zone: Select your timezone
    - Currency: Select your currency
 5. Click **Next** and complete the business information
@@ -22,8 +22,8 @@ Google Analytics 4 (GA4) has been integrated into the Chessus/Squarestrat applic
 1. After creating the property, you'll be prompted to set up a data stream
 2. Select **Web** as the platform
 3. Enter your website details:
-   - Website URL: `https://squarestrat.com` (or your domain)
-   - Stream name: "Squarestrat Web"
+   - Website URL: `https://GRIDGROVE.com` (or your domain)
+   - Stream name: "GRIDGROVE Web"
 4. Click **Create stream**
 5. **Copy your Measurement ID** - it looks like `G-XXXXXXXXXX`
 
@@ -72,8 +72,8 @@ This will install `react-ga4` which has already been added to package.json.
 ## What's Being Tracked
 
 ### Automatic Tracking
-- ✅ **Page Views**: Every route change is automatically tracked
-- ✅ **Page Titles**: Captured with each page view
+- âœ… **Page Views**: Every route change is automatically tracked
+- âœ… **Page Titles**: Captured with each page view
 
 ### Event Tracking
 
@@ -184,7 +184,7 @@ Once data starts flowing, you can access various reports in GA4:
 ### Custom Reports
 You can create custom reports and explorations in GA4 to analyze:
 - User journeys through your app
-- Conversion funnels (registration → game creation → game play)
+- Conversion funnels (registration â†’ game creation â†’ game play)
 - Popular game types and pieces
 - Drop-off points in the creation wizards
 
@@ -209,12 +209,12 @@ You can create custom reports and explorations in GA4 to analyze:
 
 Before deploying to production:
 
-1. ✅ Update `.env.production` with your GA4 Measurement ID
-2. ✅ Test in production environment
-3. ✅ Verify tracking in GA4 Realtime view
-4. ✅ Set up custom alerts and reports
-5. ✅ Review and update privacy policy
-6. ✅ Implement cookie consent if required
+1. âœ… Update `.env.production` with your GA4 Measurement ID
+2. âœ… Test in production environment
+3. âœ… Verify tracking in GA4 Realtime view
+4. âœ… Set up custom alerts and reports
+5. âœ… Review and update privacy policy
+6. âœ… Implement cookie consent if required
 
 ## Additional Resources
 

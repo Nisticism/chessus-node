@@ -1,4 +1,4 @@
-# Email Setup Guide - AWS SES
+﻿# Email Setup Guide - AWS SES
 
 This guide will help you set up AWS Simple Email Service (SES) for sending transactional emails from your application.
 
@@ -14,10 +14,10 @@ This guide will help you set up AWS Simple Email Service (SES) for sending trans
 ### 1. Verify Your Email Address
 
 1. Go to [AWS SES Console](https://console.aws.amazon.com/ses/)
-2. Navigate to **Configuration** → **Verified identities**
+2. Navigate to **Configuration** â†’ **Verified identities**
 3. Click **Create identity**
 4. Select **Email address**
-5. Enter: `noreply@squarestrat.com`
+5. Enter: `noreply@GRIDGROVE.com`
 6. Click **Create identity**
 7. Check your email and click the verification link
 
@@ -29,7 +29,7 @@ By default, SES is in sandbox mode (can only send to verified emails).
 2. Click **Request production access**
 3. Fill out the form:
    - **Mail Type**: Transactional
-   - **Website URL**: https://squarestrat.com
+   - **Website URL**: https://GRIDGROVE.com
    - **Use case**: User registration, donation confirmations, contact form
    - **Compliance**: Explain you only send to users who register/donate
 4. Submit and wait for approval (usually 24 hours)
@@ -37,17 +37,17 @@ By default, SES is in sandbox mode (can only send to verified emails).
 ### 3. Create IAM User for SES
 
 1. Go to [IAM Console](https://console.aws.amazon.com/iam/)
-2. Click **Users** → **Create user**
-3. User name: `squarestrat-ses-user`
+2. Click **Users** â†’ **Create user**
+3. User name: `GRIDGROVE-ses-user`
 4. Click **Next**
 5. Select **Attach policies directly**
 6. Search and select: `AmazonSESFullAccess`
-7. Click **Next** → **Create user**
+7. Click **Next** â†’ **Create user**
 8. Click on the created user
 9. Go to **Security credentials** tab
 10. Click **Create access key**
 11. Select **Application running outside AWS**
-12. Click **Next** → **Create access key**
+12. Click **Next** â†’ **Create access key**
 13. **Copy the Access Key ID and Secret Access Key** (you won't see the secret again!)
 
 ### 4. Add to Environment Variables
@@ -59,7 +59,7 @@ Add these to your backend `.env` file:
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=AKIAXXXXXXXXXXXXXXXX
 AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-AWS_SES_FROM_EMAIL=noreply@squarestrat.com
+AWS_SES_FROM_EMAIL=noreply@GRIDGROVE.com
 ```
 
 ### 5. Install Dependencies
@@ -104,7 +104,7 @@ After approval, you can send to any email address.
 
 ### "Email address is not verified"
 
-- Make sure you verified `noreply@squarestrat.com` in SES
+- Make sure you verified `noreply@GRIDGROVE.com` in SES
 - Check the verification email (might be in spam)
 - Wait a few minutes after verification
 

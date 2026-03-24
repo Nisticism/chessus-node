@@ -1,6 +1,6 @@
-# Startup Scripts
+﻿# Startup Scripts
 
-This folder contains scripts to easily start the entire Squarestrat application stack.
+This folder contains scripts to easily start the entire GRIDGROVE application stack.
 
 ## Prerequisites
 
@@ -85,7 +85,7 @@ Press `Ctrl+C` in the terminal to stop all running services.
 ## Troubleshooting
 
 ### MySQL Won't Start
-- **Windows**: Start MySQL from Services (Win+R → `services.msc`) or MySQL Workbench
+- **Windows**: Start MySQL from Services (Win+R â†’ `services.msc`) or MySQL Workbench
 - **Mac**: `brew services start mysql`
 - **Linux**: `sudo service mysql start` or `sudo systemctl start mysql`
 
@@ -97,7 +97,7 @@ Press `Ctrl+C` in the terminal to stop all running services.
 ```bash
 # Reinstall all dependencies
 npm install
-cd squarestrat-frontend && npm install && cd ..
+cd GRIDGROVE-frontend && npm install && cd ..
 ```
 
 ## Environment Variables

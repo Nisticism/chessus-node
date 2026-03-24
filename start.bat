@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 REM Chessus Project Startup Script for Windows
 REM This script starts MySQL, the backend server, and the frontend React app
 
@@ -41,9 +41,9 @@ if not exist "node_modules\" (
     call npm install
 )
 
-if not exist "squarestrat-frontend\node_modules\" (
+if not exist "GRIDGROVE-frontend\node_modules\" (
     echo Installing frontend dependencies...
-    cd squarestrat-frontend
+    cd GRIDGROVE-frontend
     call npm install
     cd ..
 )

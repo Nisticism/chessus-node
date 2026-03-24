@@ -1,12 +1,12 @@
-# Payment Integration Setup Guide
+﻿# Payment Integration Setup Guide
 
 ## Overview
 The donation page now supports both **Stripe** and **PayPal** payment methods with a thank you page after successful donations.
 
 ## Current Status
-✅ **Frontend UI Complete** - Payment buttons and thank you page implemented  
-⚠️ **Demo Mode Active** - Currently redirects with success parameters for testing  
-🔧 **Backend Required** - Needs server-side implementation for production
+âœ… **Frontend UI Complete** - Payment buttons and thank you page implemented  
+âš ï¸ **Demo Mode Active** - Currently redirects with success parameters for testing  
+ðŸ”§ **Backend Required** - Needs server-side implementation for production
 
 ---
 
@@ -80,8 +80,8 @@ router.post('/create-stripe-checkout', async (req, res) => {
           price_data: {
             currency: 'usd',
             product_data: {
-              name: 'Squarestrat Donation',
-              description: 'Support Squarestrat development',
+              name: 'GRIDGROVE Donation',
+              description: 'Support GRIDGROVE development',
             },
             unit_amount: Math.round(amount * 100), // Convert to cents
           },
@@ -230,8 +230,8 @@ REACT_APP_PAYPAL_CLIENT_ID=YOUR_CLIENT_ID
 
 ### Production (.env.production)
 ```env
-REACT_APP_API_URL=https://squarestrat.com
-REACT_APP_ASSET_URL=https://squarestrat.com
+REACT_APP_API_URL=https://GRIDGROVE.com
+REACT_APP_ASSET_URL=https://GRIDGROVE.com
 REACT_APP_GA_MEASUREMENT_ID=G-N7K0X3Z0VN
 REACT_APP_STRIPE_PUBLIC_KEY=pk_live_YOUR_LIVE_KEY
 REACT_APP_PAYPAL_CLIENT_ID=YOUR_LIVE_CLIENT_ID
@@ -265,28 +265,28 @@ Use these test card numbers in Stripe's test mode:
 
 ## Security Best Practices
 
-1. ✅ **Never expose secret keys in frontend code**
-2. ✅ **Always validate amounts on the backend**
-3. ✅ **Use HTTPS in production**
-4. ✅ **Implement webhook signature verification**
-5. ✅ **Log all transactions**
-6. ✅ **Set up webhook endpoints in Stripe/PayPal dashboards**
-7. ✅ **Store donation records in your database**
-8. ✅ **Send confirmation emails to donors**
+1. âœ… **Never expose secret keys in frontend code**
+2. âœ… **Always validate amounts on the backend**
+3. âœ… **Use HTTPS in production**
+4. âœ… **Implement webhook signature verification**
+5. âœ… **Log all transactions**
+6. âœ… **Set up webhook endpoints in Stripe/PayPal dashboards**
+7. âœ… **Store donation records in your database**
+8. âœ… **Send confirmation emails to donors**
 
 ---
 
 ## Features Included
 
-✅ Amount selection (predefined + custom)  
-✅ Stripe payment button  
-✅ PayPal payment button  
-✅ Processing state indicator  
-✅ Thank you page after donation  
-✅ Return to donate or home buttons  
-✅ Google Analytics tracking  
-✅ Responsive design  
-✅ Security notice  
+âœ… Amount selection (predefined + custom)  
+âœ… Stripe payment button  
+âœ… PayPal payment button  
+âœ… Processing state indicator  
+âœ… Thank you page after donation  
+âœ… Return to donate or home buttons  
+âœ… Google Analytics tracking  
+âœ… Responsive design  
+âœ… Security notice  
 
 ---
 

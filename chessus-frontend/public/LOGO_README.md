@@ -1,6 +1,6 @@
-# Logo and Icon Generation
+﻿# Logo and Icon Generation
 
-The Squarestrat logo is an SVG file located at `logo.svg`.
+The GRIDGROVE logo is an SVG file located at `logo.svg`.
 
 ## Generating PNG Icons
 
@@ -19,7 +19,7 @@ To generate PNG versions of the logo for different sizes:
 
 The logo features:
 - Three overlapping squares in different rotations representing strategy and board games
-- Blue gradient colors (#4a90e2 to #357abd) from the Squarestrat brand palette
+- Blue gradient colors (#4a90e2 to #357abd) from the GRIDGROVE brand palette
 - A dark navy circle background (#08234d)
 - Small strategic dots suggesting game moves
 - Subtle rotation and opacity variations creating depth

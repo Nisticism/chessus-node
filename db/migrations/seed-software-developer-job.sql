@@ -1,4 +1,4 @@
--- Seed initial Software Developer job posting
+﻿-- Seed initial Software Developer job posting
 -- This will be inserted after the is_career column is added
 
 INSERT INTO articles (
@@ -18,13 +18,13 @@ INSERT INTO articles (
 
 **Location:** Remote
 
-**About SquareStrat**
+**About GridGrove**
 
-SquareStrat is revolutionizing the world of strategic board games by creating a platform where players can design, share, and play custom chess variants with unlimited possibilities. We\'re building more than just a chess platform—we\'re creating a complete game design ecosystem.
+GridGrove is revolutionizing the world of strategic board games by creating a platform where players can design, share, and play custom chess variants with unlimited possibilities. We\'re building more than just a chess platformâ€”we\'re creating a complete game design ecosystem.
 
 **The Role**
 
-We\'re looking for a passionate full-stack developer to join our team and help shape the future of SquareStrat. You\'ll work on both frontend and backend features, implement complex game logic, and help build tools that empower game designers and players worldwide.
+We\'re looking for a passionate full-stack developer to join our team and help shape the future of GridGrove. You\'ll work on both frontend and backend features, implement complex game logic, and help build tools that empower game designers and players worldwide.
 
 **Required Skills & Technologies**
 
@@ -69,7 +69,7 @@ Most importantly, you\'re excited about creating tools that empower creativity a
 
 **How to Apply**
 
-Send your resume, portfolio, and a brief note about why you\'re interested in SquareStrat to **fosterhans@gmail.com**
+Send your resume, portfolio, and a brief note about why you\'re interested in GridGrove to **fosterhans@gmail.com**
 
 Please include:
 - Your GitHub profile or code samples

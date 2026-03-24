@@ -11,10 +11,9 @@ export const clearPlayerPage = () => ({
   type: CLEAR_PLAYER_PAGE,
 });
 
-export const users = (page = 1, limit = 20) => async (dispatch) => {
+export const users = (page = 1, limit = 20, filters = {}) => async (dispatch) => {
   try {
-    const response = await UsersService.getUsers(page, limit);
-    console.log("users action");
+    const response = await UsersService.getUsers(page, limit, filters);
     dispatch({
       type: LIST_USERS,
       payload: response.data,

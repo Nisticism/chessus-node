@@ -105,7 +105,7 @@ const corsOptions = {
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
-      /^https?:\/\/(www\.)?squarestrat\.com$/,
+      /^https?:\/\/(www\.)?gridgrove\.gg$/,
     ];
     
     // Check if origin matches any allowed pattern
@@ -938,15 +938,40 @@ app.get("/api/users", async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
-    
-    // Get total count
-    const [countResult] = await db_pool.query("SELECT COUNT(*) as total FROM users");
+    const search = req.query.search || '';
+    const friendsOf = parseInt(req.query.friendsOf) || 0;
+
+    // Validate sort parameters
+    const allowedSortFields = ['username', 'elo', 'last_active_at', 'id'];
+    const sortBy = allowedSortFields.includes(req.query.sortBy) ? req.query.sortBy : 'id';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+    // Build WHERE clauses
+    const whereClauses = [];
+    const whereParams = [];
+
+    if (search) {
+      whereClauses.push('u.username LIKE ?');
+      whereParams.push(`%${search}%`);
+    }
+
+    // Friends filter: join with friends table
+    let joinClause = '';
+    if (friendsOf) {
+      joinClause = 'INNER JOIN friends f ON (f.friend_id = u.id AND f.user_id = ?)';
+      whereParams.unshift(friendsOf);
+    }
+
+    const whereSQL = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+
+    // Get total count with filters
+    const countQuery = `SELECT COUNT(*) as total FROM users u ${joinClause} ${whereSQL}`;
+    const [countResult] = await db_pool.query(countQuery, whereParams);
     const total = countResult[0].total;
     
     // Get paginated users - exclude personal information (email, first_name, last_name)
-    const [users] = await db_pool.query(
-      `SELECT id, username, role, profile_picture, elo, last_active_at FROM users ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
-    );
+    const dataQuery = `SELECT u.id, u.username, u.role, u.profile_picture, u.elo, u.last_active_at FROM users u ${joinClause} ${whereSQL} ORDER BY u.${sortBy} ${sortOrder} LIMIT ? OFFSET ?`;
+    const [users] = await db_pool.query(dataQuery, [...whereParams, limit, offset]);
     
     res.json({
       users,
@@ -4883,8 +4908,8 @@ app.post("/api/create-stripe-checkout", async (req, res) => {
           price_data: {
             currency: 'usd',
             product_data: {
-              name: 'Squarestrat Donation',
-              description: 'Support the development of Squarestrat',
+              name: 'GridGrove Donation',
+              description: 'Support the development of GridGrove',
             },
             unit_amount: Math.round(amount * 100), // Convert dollars to cents
           },

@@ -1,4 +1,4 @@
-# Piece Wizard Setup Instructions
+﻿# Piece Wizard Setup Instructions
 
 ## Overview
 The piece creation wizard has been implemented with a 4-step interface for creating custom chess pieces with image upload and interactive board preview.
@@ -126,18 +126,18 @@ When viewing the board preview:
 ## File Locations
 
 ### Frontend Components:
-- `squarestrat-frontend/src/components/piecewizard/PieceWizard.js`
-- `squarestrat-frontend/src/components/piecewizard/PieceStep1BasicInfo.js`
-- `squarestrat-frontend/src/components/piecewizard/PieceStep2Movement.js`
-- `squarestrat-frontend/src/components/piecewizard/PieceStep3Attack.js`
-- `squarestrat-frontend/src/components/piecewizard/PieceStep4Special.js`
-- `squarestrat-frontend/src/components/piecewizard/PieceBoardPreview.js`
-- `squarestrat-frontend/src/components/piecewizard/piecewizard.module.scss`
+- `GRIDGROVE-frontend/src/components/piecewizard/PieceWizard.js`
+- `GRIDGROVE-frontend/src/components/piecewizard/PieceStep1BasicInfo.js`
+- `GRIDGROVE-frontend/src/components/piecewizard/PieceStep2Movement.js`
+- `GRIDGROVE-frontend/src/components/piecewizard/PieceStep3Attack.js`
+- `GRIDGROVE-frontend/src/components/piecewizard/PieceStep4Special.js`
+- `GRIDGROVE-frontend/src/components/piecewizard/PieceBoardPreview.js`
+- `GRIDGROVE-frontend/src/components/piecewizard/piecewizard.module.scss`
 
 ### Frontend Services:
-- `squarestrat-frontend/src/actions/pieces.js`
-- `squarestrat-frontend/src/services/pieces.service.js`
-- `squarestrat-frontend/src/containers/piececreate/PieceCreate.js`
+- `GRIDGROVE-frontend/src/actions/pieces.js`
+- `GRIDGROVE-frontend/src/services/pieces.service.js`
+- `GRIDGROVE-frontend/src/containers/piececreate/PieceCreate.js`
 
 ### Backend:
 - `server/index.js` (POST `/api/pieces/create` endpoint)
