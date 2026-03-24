@@ -686,6 +686,7 @@ function initializeSocket(server) {
               step_movement_value: fullPieceData.step_by_step_movement_value,
               can_hop_over_allies: fullPieceData.can_hop_over_allies,
               can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+              exact_ratio_hop_only: fullPieceData.exact_ratio_hop_only,
               can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
               can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
               // Capture data

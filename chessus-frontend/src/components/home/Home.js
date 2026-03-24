@@ -270,17 +270,12 @@ const Home = () => {
           Welcome to <span className={styles.highlight}>GridGrove</span>
         </h1>
         <p className={styles["hero-tagline"]}>
-          Where Strategy Meets Creativity
+          Where Strategy Takes Root
         </p>
         <p className={styles["hero-description"]}>
-          GridGrove is a community-driven platform for creating, sharing, and playing 
-          custom strategy board games. Design your own pieces with unique movement patterns, 
-          craft game rules with custom win conditions, and challenge players worldwide. 
-          Build variations on classic games or invent something entirely new. Test your 
-          creations in sandbox mode, refine the rules, and share them with the community. 
-          Whether you're experimenting with different board sizes, asymmetric starting 
-          positions, or novel piece abilities, GridGrove gives you the tools to bring 
-          your ideas to life.
+          GridGrove is a community-driven platform for creating and playing custom grid-based strategy games.
+          Design unique pieces, define how they move, and build entirely new rule sets, from classic variations
+          to original creations. Test your ideas, refine them, and share them with players around the world.
         </p>
         <div className={styles["hero-buttons"]}>
           {currentUser ? (
@@ -308,7 +303,7 @@ const Home = () => {
       {/* Interactive Board Section */}
       <section className={styles["board-section"]}>
         <div className={styles["section-header"]}>
-          <h2>Experience the Board</h2>
+          <h2>Explore the Grove</h2>
           <p>
             {popularGames.length > 0 
               ? "Try out our most popular games - click a piece to select it, then click a valid square to move!"
@@ -410,7 +405,7 @@ const Home = () => {
       {/* Features Section */}
       <section className={styles["features-section"]}>
         <div className={styles["section-header"]}>
-          <h2>Explore GridGrove</h2>
+          <h2>Grow Your Strategy.  Share the Game.</h2>
           <p>Everything you need to create, share, and play</p>
         </div>
 

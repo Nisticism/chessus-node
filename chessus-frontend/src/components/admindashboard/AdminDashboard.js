@@ -663,7 +663,7 @@ const AdminDashboard = () => {
     <div className={styles["featured-container"]}>
       <h2 style={{ marginBottom: '20px', color: '#4a90e2' }}>Featured Games on Homepage</h2>
       <p style={{ marginBottom: '30px', color: '#6b8ba8' }}>
-        Select up to 3 games to feature on the homepage. These games will be displayed in the "Experience the Board" section.
+        Select up to 3 games to feature on the homepage. These games will be displayed in the "Explore the Grove" section.
         Leave a slot empty to fall back to popular games.
       </p>
       

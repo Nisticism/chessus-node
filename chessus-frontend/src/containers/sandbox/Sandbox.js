@@ -337,6 +337,7 @@ const Sandbox = () => {
             ratio_two_attack_range: normalizedPiece?.ratio_two_attack_range,
             step_by_step_attack_range: normalizedPiece?.step_by_step_attack_range || normalizedPiece?.step_by_step_attack_value,
             max_piece_captures_per_ranged_attack: normalizedPiece?.max_piece_captures_per_ranged_attack,
+            exact_ratio_hop_only: normalizedPiece?.exact_ratio_hop_only,
             id: `piece-${Date.now()}-${index}`,
             piece_id: pieceId,
             x: p.x ?? p.col ?? p.xLocation ?? 0,
@@ -433,6 +434,7 @@ const Sandbox = () => {
       step_movement_value: pieceData.step_by_step_movement_value ?? pieceData.step_movement_value,
       can_hop_over_allies: pieceData.can_hop_over_allies,
       can_hop_over_enemies: pieceData.can_hop_over_enemies,
+      exact_ratio_hop_only: pieceData.exact_ratio_hop_only,
       can_capture_enemy_on_move: pieceData.can_capture_enemy_on_move,
       attacks_like_movement: pieceData.attacks_like_movement,
       // Movement exact flags
