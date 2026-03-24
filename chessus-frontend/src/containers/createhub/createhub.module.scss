@@ -10,14 +10,14 @@
 
   h1 {
     font-size: 3rem;
-    color: #4a90e2;
+    color: var(--accent-primary);
     margin-bottom: 15px;
   }
 }
 
 .createhub-subtitle {
   font-size: 1.2rem;
-  color: #a0b8d0;
+  color: var(--text-muted);
   max-width: 600px;
   margin: 0 auto;
 }
@@ -30,8 +30,8 @@
 }
 
 .option-card {
-  background: linear-gradient(135deg, #0d2847 0%, #1a3d5c 100%);
-  border: 2px solid #2a4d6c;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-border);
   border-radius: 12px;
   padding: 30px;
   text-decoration: none;
@@ -42,11 +42,11 @@
 
   &:hover {
     transform: translateY(-5px);
-    border-color: #4a90e2;
-    box-shadow: 0 10px 30px rgba(74, 144, 226, 0.3);
+    border-color: var(--accent-primary);
+    box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.3);
     
     .option-link {
-      color: #5cb3e8;
+      color: var(--text-info);
       transform: translateX(5px);
     }
   }
@@ -65,14 +65,14 @@
 }
 
 .option-description {
-  color: #a0b8d0;
+  color: var(--text-muted);
   line-height: 1.6;
   flex-grow: 1;
   margin-bottom: 20px;
 }
 
 .option-link {
-  color: #4a90e2;
+  color: var(--accent-primary);
   font-weight: 600;
   font-size: 1.1rem;
   transition: all 0.3s ease;

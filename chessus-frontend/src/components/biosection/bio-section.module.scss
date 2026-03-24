@@ -1,6 +1,6 @@
 .bio-section {
-  background: linear-gradient(135deg, #0d2847 0%, #1a3d5c 100%);
-  border: 2px solid #2a4d6c;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-border);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 24px;
@@ -16,7 +16,7 @@
 .card-title {
   font-size: 1.3rem;
   font-weight: 600;
-  color: #4a90e2;
+  color: var(--accent-primary);
   margin: 0;
 }
 
@@ -35,7 +35,7 @@
 }
 
 .bio-content {
-  color: #a0b8d0;
+  color: var(--text-muted);
   line-height: 1.8;
   font-size: 1.05rem;
 }
@@ -47,12 +47,12 @@
 }
 
 .bio-empty {
-  color: #6b8ba8;
+  color: var(--text-dim);
   font-style: italic;
   text-align: center;
   padding: 30px;
-  background: rgba(42, 77, 108, 0.2);
-  border: 2px dashed #2a4d6c;
+  background: rgba(var(--panel-border-rgb), 0.2);
+  border: 2px dashed var(--panel-border);
   border-radius: 8px;
   font-size: 1rem;
 }
@@ -64,10 +64,10 @@
 }
 
 .bio-textarea {
-  background: rgba(13, 40, 71, 0.8);
-  border: 2px solid #2a4d6c;
+  background: rgba(var(--panel-bg-start-rgb), 0.8);
+  border: 2px solid var(--panel-border);
   border-radius: 8px;
-  color: #a0b8d0;
+  color: var(--text-muted);
   padding: 12px;
   font-family: inherit;
   font-size: 1rem;
@@ -75,13 +75,13 @@
   resize: vertical;
 
   &::placeholder {
-    color: #6b8ba8;
+    color: var(--text-dim);
   }
 
   &:focus {
     outline: none;
-    border-color: #4a90e2;
-    box-shadow: 0 0 8px rgba(74, 144, 226, 0.3);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.3);
   }
 }
 
@@ -103,12 +103,12 @@
 }
 
 .save-button {
-  background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
   color: #ffffff;
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
   }
 
   &:active {
@@ -117,12 +117,12 @@
 }
 
 .cancel-button {
-  background: rgba(42, 77, 108, 0.4);
-  color: #a0b8d0;
-  border: 1px solid #2a4d6c;
+  background: rgba(var(--panel-border-rgb), 0.4);
+  color: var(--text-muted);
+  border: 1px solid var(--panel-border);
 
   &:hover {
-    background: rgba(42, 77, 108, 0.6);
+    background: rgba(var(--panel-border-rgb), 0.6);
     color: #ffffff;
   }
 }

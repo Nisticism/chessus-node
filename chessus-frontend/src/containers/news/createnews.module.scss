@@ -10,7 +10,7 @@
   border-radius: 16px;
   padding: 40px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  border: 2px solid rgba(74, 144, 226, 0.2);
+  border: 2px solid rgba(var(--accent-rgb), 0.2);
   position: relative;
   overflow: hidden;
 
@@ -21,7 +21,7 @@
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #4a90e2 0%, #5cb3e8 100%);
+    background: linear-gradient(90deg, var(--accent-primary) 0%, var(--text-info) 100%);
   }
 }
 
@@ -39,7 +39,7 @@
 
 .page-subtitle {
   font-size: 1.1rem;
-  color: #a0b8d0;
+  color: var(--text-muted);
   margin: 0;
   line-height: 1.6;
 }
@@ -59,7 +59,7 @@
 .form-label {
   font-size: 1rem;
   font-weight: 600;
-  color: #5cb3e8;
+  color: var(--text-info);
   margin: 0;
 }
 
@@ -67,7 +67,7 @@
 .form-textarea {
   padding: 14px 18px;
   background: rgba(20, 24, 34, 0.6);
-  border: 2px solid rgba(74, 144, 226, 0.3);
+  border: 2px solid rgba(var(--accent-rgb), 0.3);
   border-radius: 10px;
   color: var(--text-white);
   font-size: 1rem;
@@ -77,13 +77,13 @@
 
   &:focus {
     outline: none;
-    border-color: #4a90e2;
+    border-color: var(--accent-primary);
     background: rgba(20, 24, 34, 0.8);
-    box-shadow: 0 0 0 4px rgba(74, 144, 226, 0.15);
+    box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.15);
   }
 
   &::placeholder {
-    color: rgba(160, 184, 208, 0.5);
+    color: rgba(var(--accent-highlight-rgb), 0.5);
   }
 }
 
@@ -94,7 +94,7 @@
 
 .textarea-hint {
   font-size: 0.9rem;
-  color: #a0b8d0;
+  color: var(--text-muted);
   font-style: italic;
   margin-top: -4px;
 }
@@ -109,8 +109,8 @@
 }
 
 .alert-success {
-  background: rgba(76, 175, 80, 0.15);
-  border: 2px solid rgba(76, 175, 80, 0.4);
+  background: rgba(var(--accent-rgb), 0.15);
+  border: 2px solid rgba(var(--accent-rgb), 0.4);
   color: #81c784;
 }
 
@@ -145,13 +145,13 @@
 }
 
 .submit-button {
-  background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
   color: white;
-  box-shadow: 0 4px 16px rgba(74, 144, 226, 0.3);
+  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.3);
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 6px 24px rgba(74, 144, 226, 0.4);
+    box-shadow: 0 6px 24px rgba(var(--accent-rgb), 0.4);
   }
 
   &:active:not(:disabled) {
@@ -161,12 +161,12 @@
 
 .cancel-button {
   background: transparent;
-  color: #a0b8d0;
-  border: 2px solid rgba(160, 184, 208, 0.3);
+  color: var(--text-muted);
+  border: 2px solid rgba(var(--accent-highlight-rgb), 0.3);
 
   &:hover {
-    background: rgba(160, 184, 208, 0.1);
-    border-color: rgba(160, 184, 208, 0.5);
+    background: rgba(var(--accent-highlight-rgb), 0.1);
+    border-color: rgba(var(--accent-highlight-rgb), 0.5);
     color: var(--text-white);
   }
 }

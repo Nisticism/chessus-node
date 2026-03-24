@@ -12,7 +12,7 @@
   height: 40px;
   padding: 8px 12px;
   border: 2px solid rgba(255, 255, 255, 0.1);
-  background: linear-gradient(135deg, rgba(42, 77, 108, 0.3), rgba(74, 144, 226, 0.2));
+  background: linear-gradient(135deg, rgba(var(--panel-border-rgb), 0.3), rgba(var(--accent-rgb), 0.2));
   color: #ffffff;
   border-radius: 6px;
   cursor: pointer;
@@ -22,10 +22,10 @@
   backdrop-filter: blur(10px);
 
   &:hover:not(:disabled) {
-    background: linear-gradient(135deg, rgba(74, 144, 226, 0.5), rgba(53, 122, 189, 0.4));
-    border-color: rgba(74, 144, 226, 0.5);
+    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.5), rgba(53, 122, 189, 0.4));
+    border-color: rgba(var(--accent-rgb), 0.5);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
   }
 
   &:active:not(:disabled) {
@@ -35,13 +35,13 @@
   &:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-    background: rgba(42, 77, 108, 0.2);
+    background: rgba(var(--panel-border-rgb), 0.2);
   }
 
   &.active {
-    background: linear-gradient(135deg, #4a90e2, #357abd);
-    border-color: #4a90e2;
-    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover));
+    border-color: var(--accent-primary);
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
     cursor: default;
   }
 }

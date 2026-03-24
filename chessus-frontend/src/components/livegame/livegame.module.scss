@@ -204,10 +204,10 @@
 }
 
 .move-history-header {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px 12px 0 0;
   padding: 16px;
-  border-bottom: 1px solid #2a2a4e;
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 
   h3 {
@@ -226,7 +226,7 @@
 }
 
 .move-history {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px;
   padding: 16px;
   display: flex;
@@ -242,7 +242,7 @@
 
 // Moves list - scrollable
 .moves-list {
-  background: #252542;
+  background: var(--border-subtle);
   border-radius: 8px;
   padding: 12px;
   overflow-y: auto;
@@ -257,16 +257,16 @@
   }
 
   &::-webkit-scrollbar-track {
-    background: #1a1a2e;
+    background: var(--bg-dark);
     border-radius: 4px;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #4ecdc4;
+    background: var(--color-teal);
     border-radius: 4px;
 
     &:hover {
-      background: #6edfd6;
+      background: var(--color-teal);
     }
   }
 }
@@ -279,7 +279,7 @@
   transition: background 0.2s;
 
   &:hover {
-    background: #1a1a2e;
+    background: var(--bg-dark);
   }
 }
 
@@ -305,7 +305,7 @@
 
 // Player clocks
 .player-clock {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 8px;
   padding: 10px 12px;
   border: 2px solid transparent;
@@ -317,7 +317,7 @@
   }
 
   &.current-turn {
-    border-color: #6c63ff;
+    border-color: var(--accent-secondary);
   }
 
   &.winner {
@@ -347,7 +347,7 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #3a3a5c;
+    background: var(--panel-border);
 
     &.active {
       background: #44ff44;
@@ -371,13 +371,13 @@
 }
 
 .player-card {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px;
   padding: 16px;
   border: 2px solid transparent;
 
   &.current-turn {
-    border-color: #6c63ff;
+    border-color: var(--accent-secondary);
   }
 
   &.winner {
@@ -402,7 +402,7 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #3a3a5c;
+    background: var(--panel-border);
 
     &.active {
       background: #44ff44;
@@ -417,12 +417,12 @@
     margin-bottom: 12px;
 
     &.you {
-      color: #6c63ff;
+      color: var(--accent-secondary);
     }
   }
 
   .player-time {
-    background: #252542;
+    background: var(--border-subtle);
     padding: 10px;
     border-radius: 8px;
     text-align: center;
@@ -464,7 +464,7 @@
 
 // Game settings
 .game-settings {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px;
   padding: 20px;
   max-width: 700px;
@@ -509,8 +509,8 @@
 
 // Waiting banner (shows above board when waiting for opponent)
 .waiting-banner {
-  background: linear-gradient(135deg, #1a1a2e, #252542);
-  border: 1px solid #4ecdc4;
+  background: linear-gradient(135deg, var(--bg-dark), var(--border-subtle));
+  border: 1px solid var(--color-teal);
   border-radius: 12px;
   padding: 16px 24px;
   margin-bottom: 16px;
@@ -537,17 +537,17 @@
     gap: 8px;
 
     input {
-      background: #0d0d1a;
-      border: 1px solid #3a3a5c;
+      background: var(--bg-deeper);
+      border: 1px solid var(--panel-border);
       border-radius: 6px;
       padding: 6px 12px;
-      color: #4ecdc4;
+      color: var(--color-teal);
       font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       width: 250px;
 
       &:focus {
         outline: none;
-        border-color: #4ecdc4;
+        border-color: var(--color-teal);
       }
     }
   }
@@ -563,14 +563,14 @@
 .waiting-spinner-small {
   width: 20px;
   height: 20px;
-  border: 2px solid #3a3a5c;
-  border-top-color: #4ecdc4;
+  border: 2px solid var(--panel-border);
+  border-top-color: var(--color-teal);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
 .game-board-wrapper {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px;
   padding: 16px;
   display: flex;
@@ -585,8 +585,8 @@
 }
 
 .game-settings {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border: 1px solid #2a2a4c;
+  background: linear-gradient(135deg, var(--bg-dark) 0%, var(--panel-bg-start) 100%);
+  border: 1px solid var(--border-subtle);
   border-radius: 10px;
   padding: 16px 20px;
   margin-top: 16px;
@@ -601,7 +601,7 @@
     align-items: center;
     font-size: 0.95rem;
     padding: 8px 0;
-    border-bottom: 1px solid #2a2a4c;
+    border-bottom: 1px solid var(--border-subtle);
     
     &:last-child {
       border-bottom: none;
@@ -609,14 +609,14 @@
     }
     
     .setting-label {
-      color: #a0a0c0;
+      color: var(--text-muted);
       font-weight: 500;
       letter-spacing: 0.3px;
       flex: 1;
     }
     
     .setting-value {
-      color: #4ecdc4;
+      color: var(--color-teal);
       font-weight: 600;
       text-align: right;
       min-width: 120px;
@@ -645,7 +645,7 @@
   justify-content: center;
   font-size: 12px;
   font-weight: 600;
-  color: #a0a0c0;
+  color: var(--text-muted);
   width: 16px;
   user-select: none;
 }
@@ -667,7 +667,7 @@
   justify-content: center;
   font-size: 12px;
   font-weight: 600;
-  color: #a0a0c0;
+  color: var(--text-muted);
   height: 16px;
   user-select: none;
 }
@@ -675,7 +675,7 @@
 .game-board {
   display: grid;
   gap: 0;
-  border: 2px solid #3a3a5c;
+  border: 2px solid var(--panel-border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -693,11 +693,11 @@
   }
 
   &.dark {
-    background: #08234d;
+    background: var(--nav-background);
   }
 
   &.selected {
-    box-shadow: inset 0 0 0 3px #6c63ff;
+    box-shadow: inset 0 0 0 3px var(--accent-secondary);
   }
 
   &.valid-move {
@@ -706,7 +706,7 @@
       position: absolute;
       width: 16px;
       height: 16px;
-      background: rgba(108, 99, 255, 0.4);
+      background: rgba(var(--accent-secondary-rgb), 0.4);
       border-radius: 50%;
       z-index: 2;
       pointer-events: none;
@@ -938,9 +938,9 @@
   z-index: 0;
   border-radius: 4px;
   background:
-    radial-gradient(circle at 50% 50%, rgba(180, 200, 255, 0.3) 0%, transparent 40%),
-    radial-gradient(circle at 20% 30%, rgba(150, 180, 255, 0.15) 0%, transparent 30%),
-    radial-gradient(circle at 80% 70%, rgba(150, 180, 255, 0.15) 0%, transparent 30%);
+    radial-gradient(circle at 50% 50%, rgba(var(--accent-highlight-rgb), 0.3) 0%, transparent 40%),
+    radial-gradient(circle at 20% 30%, rgba(var(--accent-highlight-rgb), 0.15) 0%, transparent 30%),
+    radial-gradient(circle at 80% 70%, rgba(var(--accent-highlight-rgb), 0.15) 0%, transparent 30%);
   animation: electricPulse 1.5s ease-in-out infinite;
   mix-blend-mode: screen;
 }
@@ -958,11 +958,11 @@
   left: 10%;
   width: 80%;
   height: 80%;
-  border: 1px solid rgba(160, 190, 255, 0.4);
+  border: 1px solid rgba(var(--accent-highlight-rgb), 0.4);
   animation: electricArc1 2s ease-in-out infinite;
   box-shadow:
-    inset 0 0 8px rgba(160, 190, 255, 0.2),
-    0 0 4px rgba(160, 190, 255, 0.15);
+    inset 0 0 8px rgba(var(--accent-highlight-rgb), 0.2),
+    0 0 4px rgba(var(--accent-highlight-rgb), 0.15);
 }
 
 .multi-tile-electric::after {
@@ -970,11 +970,11 @@
   left: 5%;
   width: 90%;
   height: 90%;
-  border: 1px solid rgba(180, 200, 255, 0.2);
+  border: 1px solid rgba(var(--accent-highlight-rgb), 0.2);
   animation: electricArc2 1.8s ease-in-out infinite 0.5s;
   box-shadow:
-    inset 0 0 12px rgba(180, 200, 255, 0.15),
-    0 0 6px rgba(180, 200, 255, 0.1);
+    inset 0 0 12px rgba(var(--accent-highlight-rgb), 0.15),
+    0 0 6px rgba(var(--accent-highlight-rgb), 0.1);
 }
 
 @keyframes smokeResonate {
@@ -1092,7 +1092,7 @@
 }
 
 .move-history {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px;
   padding: 16px;
   flex: 1;
@@ -1121,7 +1121,7 @@
     }
 
     &::-webkit-scrollbar-thumb {
-      background: #3a3a5c;
+      background: var(--panel-border);
       border-radius: 3px;
     }
   }
@@ -1129,7 +1129,7 @@
   .move-row {
     display: flex;
     padding: 4px 0;
-    border-bottom: 1px solid #252542;
+    border-bottom: 1px solid var(--border-subtle);
 
     .move-number {
       color: #666;
@@ -1144,7 +1144,7 @@
 }
 
 .game-options {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px;
   padding: 16px;
   display: flex;
@@ -1169,7 +1169,7 @@
     input[type="checkbox"] {
       width: 18px;
       height: 18px;
-      accent-color: #6c63ff;
+      accent-color: var(--accent-secondary);
       cursor: pointer;
     }
 
@@ -1186,7 +1186,7 @@
 .game-controls-inline {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid #2a2a4e;
+  border-top: 1px solid var(--border-subtle);
 
   h4 {
     color: #fff;
@@ -1206,7 +1206,7 @@
 }
 
 .game-controls {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px;
   padding: 16px;
 
@@ -1240,20 +1240,20 @@
 }
 
 .btn-primary {
-  background: #6c63ff;
+  background: var(--accent-secondary);
   color: #fff;
 
   &:hover:not(:disabled) {
-    background: #5a52d9;
+    background: var(--accent-secondary);
   }
 }
 
 .btn-secondary {
-  background: #3a3a5c;
+  background: var(--panel-border);
   color: #fff;
 
   &:hover:not(:disabled) {
-    background: #4a4a6c;
+    background: var(--panel-border);
   }
 }
 
@@ -1292,8 +1292,8 @@
   .loading-spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid #3a3a5c;
-    border-top-color: #6c63ff;
+    border: 3px solid var(--panel-border);
+    border-top-color: var(--accent-secondary);
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: 16px;
@@ -1305,7 +1305,7 @@
 }
 
 .error-container {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px;
   padding: 40px;
   text-align: center;
@@ -1336,7 +1336,7 @@
 }
 
 .game-over-modal {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 16px;
   padding: 32px;
   text-align: center;
@@ -1418,7 +1418,7 @@
 }
 
 .waiting-modal {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 16px;
   padding: 32px;
   text-align: center;
@@ -1433,8 +1433,8 @@
   .waiting-spinner {
     width: 50px;
     height: 50px;
-    border: 4px solid #3a3a5c;
-    border-top-color: #6c63ff;
+    border: 4px solid var(--panel-border);
+    border-top-color: var(--accent-secondary);
     border-radius: 50%;
     margin: 0 auto 24px;
     animation: spin 1s linear infinite;
@@ -1446,12 +1446,12 @@
   }
 
   .share-link {
-    background: #252542;
+    background: var(--border-subtle);
     padding: 12px;
     border-radius: 8px;
     margin-bottom: 24px;
     word-break: break-all;
-    color: #6c63ff;
+    color: var(--accent-secondary);
     font-family: monospace;
     font-size: 0.9rem;
   }
@@ -1459,7 +1459,7 @@
 
 // Turn indicator
 .turn-indicator {
-  background: #252542;
+  background: var(--border-subtle);
   padding: 12px 20px;
   border-radius: 8px;
   margin-top: 16px;
@@ -1723,8 +1723,8 @@
 }
 
 .promotion-modal {
-  background: linear-gradient(135deg, #1a2a4a 0%, #0d1a2d 100%);
-  border: 2px solid #3a5a8a;
+  background: linear-gradient(135deg, #1a2a4a 0%, var(--bg-deep) 100%);
+  border: 2px solid var(--panel-border);
   border-radius: 16px;
   padding: 24px;
   max-width: 400px;
@@ -1760,14 +1760,14 @@
   gap: 8px;
   padding: 12px;
   background: rgba(255, 255, 255, 0.05);
-  border: 2px solid #3a5a8a;
+  border: 2px solid var(--panel-border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
     background: rgba(255, 255, 255, 0.15);
-    border-color: #5a8aca;
+    border-color: var(--text-info);
     transform: translateY(-2px);
   }
 
@@ -2064,8 +2064,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: linear-gradient(135deg, #3a3a5c 0%, #2a2a4c 100%);
-  border: 2px solid #6c63ff;
+  background: linear-gradient(135deg, var(--panel-border) 0%, var(--border-subtle) 100%);
+  border: 2px solid var(--accent-secondary);
   border-radius: 8px;
   padding: 12px 16px;
   margin-bottom: 12px;
@@ -2097,13 +2097,13 @@
 .castling-info {
   margin-top: 12px;
   padding: 12px;
-  background: rgba(108, 99, 255, 0.1);
-  border: 1px solid rgba(108, 99, 255, 0.3);
+  background: rgba(var(--accent-secondary-rgb), 0.1);
+  border: 1px solid rgba(var(--accent-secondary-rgb), 0.3);
   border-radius: 8px;
 
   h4 {
     margin: 0 0 8px 0;
-    color: #a9a9ff;
+    color: var(--accent-highlight);
     font-size: 0.9rem;
     font-weight: 600;
   }
@@ -2151,7 +2151,7 @@
 
 // Captured Pieces Section
 .captured-pieces-section {
-  background: #1a1a2e;
+  background: var(--bg-dark);
   border-radius: 12px;
   overflow: hidden;
   width: 100%;
@@ -2163,13 +2163,13 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #252542;
+  background: var(--border-subtle);
   cursor: pointer;
   transition: background 0.2s;
   user-select: none;
 
   &:hover {
-    background: #2a2a4e;
+    background: var(--border-subtle);
   }
 }
 

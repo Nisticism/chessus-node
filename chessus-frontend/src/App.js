@@ -65,6 +65,12 @@ function App() {
   const dispatch = useDispatch();
   const location = useLocation();
 
+  // Apply saved theme on mount (default: grove)
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('siteTheme') || 'grove';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  }, []);
+
   // Initialize Google Analytics once on mount
   useEffect(() => {
     initGA();

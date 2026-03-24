@@ -1,5 +1,5 @@
 .standard-button {
-  background: linear-gradient(135deg, #2a5a8a 0%, #1e4a6f 100%);
+  background: linear-gradient(135deg, var(--border-medium) 0%, var(--panel-bg-end) 100%);
   color: #ffffff;
   font-weight: 600;
   font-size: 16px;
@@ -9,28 +9,28 @@
   min-width: 180px;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(42, 90, 138, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--panel-border-rgb), 0.2);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   
   &:hover {
-    background: linear-gradient(135deg, #357abd 0%, #2a5a8a 100%);
+    background: linear-gradient(135deg, var(--accent-primary-hover) 0%, var(--border-medium) 100%);
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(42, 90, 138, 0.3);
+    box-shadow: 0 6px 20px rgba(var(--panel-border-rgb), 0.3);
   }
   
   &:active {
     transform: translateY(0);
-    box-shadow: 0 2px 8px rgba(42, 90, 138, 0.2);
+    box-shadow: 0 2px 8px rgba(var(--panel-border-rgb), 0.2);
   }
   
   &:focus {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(42, 90, 138, 0.3);
+    box-shadow: 0 0 0 3px rgba(var(--panel-border-rgb), 0.3);
   }
   
   &:disabled {
-    background: linear-gradient(135deg, #2a4d6c 0%, #1a3d5c 100%);
+    background: linear-gradient(135deg, var(--panel-border) 0%, var(--panel-bg-end) 100%);
     cursor: not-allowed;
     opacity: 0.6;
     transform: none;

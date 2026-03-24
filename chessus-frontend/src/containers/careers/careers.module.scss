@@ -1,7 +1,7 @@
 .careersPage {
   min-height: calc(100vh - 200px);
   padding: 40px 20px;
-  background: rgba(8, 35, 77, 0.05);
+  background: rgba(var(--panel-bg-start-rgb), 0.05);
 
   .container {
     max-width: 900px;
@@ -44,7 +44,7 @@
   .noJobs {
     text-align: center;
     padding: 60px 20px;
-    background: rgba(8, 35, 77, 0.8);
+    background: rgba(var(--panel-bg-start-rgb), 0.8);
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 
@@ -68,7 +68,7 @@
   }
 
   .jobCard {
-    background: rgba(8, 35, 77, 0.8);
+    background: rgba(var(--panel-bg-start-rgb), 0.8);
     border-radius: 8px;
     padding: 30px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -133,10 +133,10 @@
       border-top: 1px solid rgba(255, 255, 255, 0.2);
 
       .editButton {
-        background-color: #4a90e2;
+        background-color: var(--accent-primary);
 
         &:hover {
-          background-color: #3a7bc8;
+          background-color: var(--accent-primary);
         }
       }
 

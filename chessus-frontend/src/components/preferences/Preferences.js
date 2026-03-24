@@ -141,6 +141,10 @@ const Preferences = () => {
     return localStorage.getItem('boardAnimations') !== 'false';
   });
 
+  const [siteTheme, setSiteTheme] = useState(() => {
+    return localStorage.getItem('siteTheme') || 'grove';
+  });
+
   // Fixed saturation for good-looking colors
   const SATURATION = 40;
 
@@ -218,6 +222,12 @@ const Preferences = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleThemeChange = (theme) => {
+    setSiteTheme(theme);
+    localStorage.setItem('siteTheme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
   };
 
   const handleReset = () => {
@@ -444,6 +454,39 @@ const Preferences = () => {
                 <span className={styles["toggle-slider"]} />
               </div>
             </label>
+          </div>
+        </section>
+
+        <Divider />
+
+        <section className={styles["preference-section"]}>
+          <h2>Site Theme</h2>
+          <p className={styles["section-description"]}>Choose the overall color scheme for the site</p>
+          <div className={styles["theme-selector"]}>
+            <button
+              className={`${styles["theme-option"]} ${siteTheme === 'grove' ? styles["theme-selected"] : ''}`}
+              onClick={() => handleThemeChange('grove')}
+            >
+              <div className={styles["theme-preview"]} style={{ background: 'linear-gradient(135deg, #1a3a2a 0%, #1c2a20 100%)' }}>
+                <div className={styles["theme-preview-accent"]} style={{ background: '#4caf50' }} />
+                <div className={styles["theme-preview-accent"]} style={{ background: '#66bb6a' }} />
+              </div>
+              <span className={styles["theme-name"]}>Grove</span>
+              <span className={styles["theme-desc"]}>Green tones — the default</span>
+              {siteTheme === 'grove' && <span className={styles["preset-check"]}>✓</span>}
+            </button>
+            <button
+              className={`${styles["theme-option"]} ${siteTheme === 'classic' ? styles["theme-selected"] : ''}`}
+              onClick={() => handleThemeChange('classic')}
+            >
+              <div className={styles["theme-preview"]} style={{ background: 'linear-gradient(135deg, #082c51 0%, #2a2e38 100%)' }}>
+                <div className={styles["theme-preview-accent"]} style={{ background: '#1565c0' }} />
+                <div className={styles["theme-preview-accent"]} style={{ background: '#64b5f6' }} />
+              </div>
+              <span className={styles["theme-name"]}>Classic</span>
+              <span className={styles["theme-desc"]}>Original blue theme</span>
+              {siteTheme === 'classic' && <span className={styles["preset-check"]}>✓</span>}
+            </button>
           </div>
 
           <div className={styles["action-buttons"]}>

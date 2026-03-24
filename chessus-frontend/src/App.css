@@ -6,7 +6,7 @@
 }
 
 .app-header {
-  background-color: #20242e;
+  background-color: var(--bg-card);
   min-height: 3vh;
   max-height: 10vh;
   color: white;

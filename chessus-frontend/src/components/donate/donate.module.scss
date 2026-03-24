@@ -10,7 +10,7 @@
   max-width: 800px;
   width: 100%;
   padding: 2rem;
-  background-color: rgba(8, 35, 77, 0.8);
+  background-color: rgba(var(--panel-bg-start-rgb), 0.8);
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
@@ -59,8 +59,8 @@
   padding: 1rem 2rem;
   font-size: 1.3rem;
   font-weight: 600;
-  border: 2px solid #4a90e2;
-  background-color: rgba(74, 144, 226, 0.1);
+  border: 2px solid var(--accent-primary);
+  background-color: rgba(var(--accent-rgb), 0.1);
   color: #fff;
   border-radius: 8px;
   cursor: pointer;
@@ -68,14 +68,14 @@
   min-width: 100px;
 
   &:hover {
-    background-color: rgba(74, 144, 226, 0.3);
+    background-color: rgba(var(--accent-rgb), 0.3);
     transform: translateY(-2px);
   }
 
   &.selected {
-    background-color: #4a90e2;
-    border-color: #357abd;
-    box-shadow: 0 0 15px rgba(74, 144, 226, 0.5);
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary-hover);
+    box-shadow: 0 0 15px rgba(var(--accent-rgb), 0.5);
   }
 
   &:disabled {
@@ -100,7 +100,7 @@
   display: inline-flex;
   align-items: center;
   background-color: rgba(255, 255, 255, 0.1);
-  border: 2px solid #4a90e2;
+  border: 2px solid var(--accent-primary);
   border-radius: 8px;
   padding: 0.5rem 1rem;
   max-width: 200px;
@@ -212,7 +212,7 @@
 
 .processingMessage {
   text-align: center;
-  color: #4a90e2;
+  color: var(--accent-primary);
   font-size: 1.1rem;
   margin-top: 1rem;
   animation: pulse 1.5s ease-in-out infinite;
@@ -233,7 +233,7 @@
 }
 
 .secureNote {
-  color: #4a90e2;
+  color: var(--accent-primary);
   font-size: 0.95rem;
   font-weight: 500;
   margin-bottom: 0.5rem;
@@ -285,7 +285,7 @@
 
 .thankYouAmount {
   font-size: 1.5rem;
-  color: #4a90e2;
+  color: var(--accent-primary);
   margin-bottom: 1.5rem;
   
   strong {
@@ -310,7 +310,7 @@
   margin-bottom: 2rem;
   
   strong {
-    color: #4a90e2;
+    color: var(--accent-primary);
   }
 }
 
@@ -337,7 +337,7 @@
     padding-left: 1rem;
     
     &::marker {
-      color: #4a90e2;
+      color: var(--accent-primary);
     }
   }
 }
@@ -345,7 +345,7 @@
 .thankYou {
   margin-top: 2rem;
   padding: 1.5rem;
-  background-color: rgba(74, 144, 226, 0.2);
+  background-color: rgba(var(--accent-rgb), 0.2);
   border-radius: 8px;
   text-align: center;
   
@@ -360,9 +360,9 @@
 .donorBadgesInfo {
   margin: 2rem 0;
   padding: 2rem;
-  background: rgba(21, 101, 192, 0.1);
+  background: rgba(var(--accent-muted-rgb), 0.1);
   border-radius: 12px;
-  border: 1px solid rgba(100, 181, 246, 0.3);
+  border: 1px solid rgba(var(--accent-highlight-rgb), 0.3);
 }
 
 .badgeDescription {
@@ -385,7 +385,7 @@
   align-items: center;
   gap: 1rem;
   padding: 1.5rem;
-  background: rgba(8, 35, 77, 0.6);
+  background: rgba(var(--panel-bg-start-rgb), 0.6);
   border-radius: 12px;
   min-width: 280px;
   transition: transform 0.2s ease;
@@ -406,7 +406,7 @@
   
   p {
     margin: 0;
-    color: #b0b0b0;
+    color: var(--text-muted);
     font-size: 0.95rem;
   }
 }

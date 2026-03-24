@@ -79,7 +79,205 @@ code {
 
   /* Accent colors */
   --accent-orange: rgb(237, 93, 45);
+
+  /* Theme-aware accent colors */
+  --accent-primary: #4a9e5a;
+  --accent-primary-hover: #3d8a4d;
+  --accent-highlight: #81c784;
+  --accent-bright: #66bb6a;
+  --accent-muted: #4caf50;
+
+  /* Panel/Card themed colors */
+  --panel-bg-start: #0d2817;
+  --panel-bg-end: #1a3d2c;
+  --panel-border: #2a6b4c;
+
+  /* Deep backgrounds (sandbox, dense UIs) */
+  --bg-deep: #0a1e12;
+  --bg-deeper: #081a0e;
+  --border-subtle: #1a3d2b;
+  --border-medium: #2a8b5d;
+  --border-bright: #3ab878;
+
+  /* Themed text colors */
+  --text-muted: #a0d0b8;
+  --text-dim: #6ba88b;
+  --text-info: #5cb3a8;
+  --text-info-hover: #7cf0c5;
+  --text-accent-light: #8ae8b4;
+  --text-bright: #e0f0e8;
+
+  /* RGB components for rgba() usage */
+  --accent-rgb: 74, 158, 90;
+  --accent-highlight-rgb: 129, 199, 132;
+  --accent-muted-rgb: 76, 175, 80;
+  --panel-bg-start-rgb: 13, 40, 23;
+  --panel-bg-end-rgb: 26, 61, 44;
+  --panel-border-rgb: 42, 107, 76;
+
+  /* Secondary accent (decorative) */
+  --accent-secondary: #4caf50;
+  --accent-secondary-rgb: 76, 175, 80;
+
+  /* Teal/highlight accent */
+  --color-teal: #2ecc71;
   
+}
+
+/* ======= GROVE THEME (Default) ======= */
+[data-theme="grove"], :root {
+  --nav-background: #2c302e;
+  --dark-blue-text: #1b4332;
+  --link-text: #4caf50;
+  --link-text-light: #81c784;
+  --scrollbar-color: #66bb6a;
+  --scrollbar-background: #2d5a3f;
+
+  --light-button: rgb(47, 100, 65);
+  --dark-button: rgb(36, 85, 55);
+
+  --forum-background: #1e3a2c;
+  --forum-border: #3a6b4a;
+  --forum-title-color: #5aa06a;
+  --forum-link-hover: #66bb6a;
+  --forum-row-hover: rgba(76, 175, 80, 0.15);
+
+  --button-primary-bg: rgb(56, 100, 68);
+  --button-primary-hover: rgb(45, 85, 55);
+  --button-border: rgb(102, 187, 106);
+  --button-border-alt: rgb(76, 160, 90);
+
+  --bg-dark: #222524;
+  --bg-card: #262a28;
+  background-color: #2a2d2b;
+
+  --board-bg: rgb(62, 94, 72);
+  --board-border: rgb(100, 147, 110);
+  --square-dark-border: rgb(46, 100, 62);
+  --square-light-border: rgb(76, 160, 96);
+
+  --nav-hover: rgb(46, 100, 62);
+  --nav-light-hover: rgb(102, 187, 106);
+  --nav-menu-bg: rgb(200, 230, 210);
+
+  --accent-primary: #4a9e5a;
+  --accent-primary-hover: #3d8a4d;
+  --accent-highlight: #81c784;
+  --accent-bright: #66bb6a;
+  --accent-muted: #4caf50;
+
+  /* Panel/Card themed colors */
+  --panel-bg-start: #0d2817;
+  --panel-bg-end: #1a3d2c;
+  --panel-border: #2a6b4c;
+
+  /* Deep backgrounds */
+  --bg-deep: #0a1e12;
+  --bg-deeper: #081a0e;
+  --border-subtle: #1a3d2b;
+  --border-medium: #2a8b5d;
+  --border-bright: #3ab878;
+
+  /* Themed text colors */
+  --text-muted: #a0d0b8;
+  --text-dim: #6ba88b;
+  --text-info: #5cb3a8;
+  --text-info-hover: #7cf0c5;
+  --text-accent-light: #8ae8b4;
+  --text-bright: #e0f0e8;
+
+  /* RGB components */
+  --accent-rgb: 74, 158, 90;
+  --accent-highlight-rgb: 129, 199, 132;
+  --accent-muted-rgb: 76, 175, 80;
+  --panel-bg-start-rgb: 13, 40, 23;
+  --panel-bg-end-rgb: 26, 61, 44;
+  --panel-border-rgb: 42, 107, 76;
+
+  /* Secondary accent */
+  --accent-secondary: #4caf50;
+  --accent-secondary-rgb: 76, 175, 80;
+
+  /* Teal accent */
+  --color-teal: #2ecc71;
+}
+
+/* ======= CLASSIC THEME (Original blue) ======= */
+[data-theme="classic"] {
+  --nav-background: #082c51;
+  --dark-blue-text: #09325a;
+  --link-text: #1163b5;
+  --link-text-light: #508fcd;
+  --scrollbar-color: #6cacd4;
+  --scrollbar-background: #285c94;
+
+  --light-button: rgb(47, 70, 119);
+  --dark-button: rgb(43, 56, 134);
+
+  --forum-background: #26374e;
+  --forum-border: #44618a;
+  --forum-title-color: #5a80aa;
+  --forum-link-hover: #5888be;
+  --forum-row-hover: rgba(100, 150, 255, 0.15);
+
+  --button-primary-bg: rgb(75, 77, 124);
+  --button-primary-hover: rgb(59, 61, 131);
+  --button-border: rgb(117, 124, 252);
+  --button-border-alt: rgb(81, 107, 192);
+
+  --bg-dark: #1e2129;
+  --bg-card: #20242e;
+  background-color: #2a2e38;
+
+  --board-bg: rgb(82, 94, 117);
+  --board-border: rgb(125, 147, 184);
+  --square-dark-border: rgb(49, 83, 141);
+  --square-light-border: rgb(77, 129, 212);
+
+  --nav-hover: rgb(51, 55, 147);
+  --nav-light-hover: rgb(117, 124, 252);
+  --nav-menu-bg: rgb(202, 213, 232);
+
+  --accent-primary: #4a90e2;
+  --accent-primary-hover: #357abd;
+  --accent-highlight: #64b5f6;
+  --accent-bright: #60a5fa;
+  --accent-muted: #1565c0;
+
+  /* Panel/Card themed colors */
+  --panel-bg-start: #0d2847;
+  --panel-bg-end: #1a3d5c;
+  --panel-border: #2a4d6c;
+
+  /* Deep backgrounds */
+  --bg-deep: #0a1628;
+  --bg-deeper: #081220;
+  --border-subtle: #1a2b3d;
+  --border-medium: #2a5b8d;
+  --border-bright: #3a7bb8;
+
+  /* Themed text colors */
+  --text-muted: #a0b8d0;
+  --text-dim: #6b8ba8;
+  --text-info: #5cb3e8;
+  --text-info-hover: #7cc5f0;
+  --text-accent-light: #8ab4e8;
+  --text-bright: #e0e8f0;
+
+  /* RGB components */
+  --accent-rgb: 74, 144, 226;
+  --accent-highlight-rgb: 100, 181, 246;
+  --accent-muted-rgb: 21, 101, 192;
+  --panel-bg-start-rgb: 13, 40, 71;
+  --panel-bg-end-rgb: 26, 61, 92;
+  --panel-border-rgb: 42, 77, 108;
+
+  /* Secondary accent */
+  --accent-secondary: #6c63ff;
+  --accent-secondary-rgb: 108, 99, 255;
+
+  /* Teal accent */
+  --color-teal: #4ecdc4;
 }
 
 /* Global mobile responsive utilities */

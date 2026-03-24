@@ -10,21 +10,21 @@
 
   h1 {
     font-size: 3.5rem;
-    color: #4a90e2;
+    color: var(--accent-primary);
     margin-bottom: 15px;
   }
 
   .subtitle {
     font-size: 1.3rem;
-    color: #8097ae;
+    color: var(--text-dim);
     margin-bottom: 20px;
   }
 
   .live-indicator {
     display: inline-flex;
     align-items: center;
-    background: linear-gradient(135deg, #0d2847 0%, #1a3d5c 100%);
-    border: 2px solid #2a4d6c;
+    background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+    border: 2px solid var(--panel-border);
     border-radius: 25px;
     padding: 10px 20px;
     font-size: 1rem;
@@ -62,11 +62,11 @@
 }
 
 .category-button {
-  background: linear-gradient(135deg, #0d2847 0%, #1a3d5c 100%);
-  border: 2px solid #2a4d6c;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-border);
   border-radius: 25px;
   padding: 12px 25px;
-  color: #a0b8d0;
+  color: var(--text-muted);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -80,14 +80,14 @@
   }
 
   &:hover {
-    border-color: #4a90e2;
+    border-color: var(--accent-primary);
     color: #ffffff;
     transform: translateY(-2px);
   }
 
   &.active {
-    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
-    border-color: #5cb3e8;
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+    border-color: var(--text-info);
     color: #ffffff;
   }
 }
@@ -100,8 +100,8 @@
 }
 
 .stream-card {
-  background: linear-gradient(135deg, #0d2847 0%, #1a3d5c 100%);
-  border: 2px solid #2a4d6c;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-border);
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
@@ -110,8 +110,8 @@
 
   &:hover {
     transform: translateY(-5px);
-    border-color: #4a90e2;
-    box-shadow: 0 10px 30px rgba(74, 144, 226, 0.3);
+    border-color: var(--accent-primary);
+    box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.3);
   }
 
   .live-badge {
@@ -143,7 +143,7 @@
     position: relative;
     width: 100%;
     padding-top: 56.25%; // 16:9 aspect ratio
-    background: linear-gradient(135deg, #1a3d5c 0%, #0d2847 100%);
+    background: linear-gradient(135deg, var(--panel-bg-end) 0%, var(--panel-bg-start) 100%);
 
     .thumbnail-placeholder {
       position: absolute;
@@ -182,14 +182,14 @@
     }
 
     .streamer-name {
-      color: #5cb3e8;
+      color: var(--text-info);
       font-size: 0.95rem;
       margin: 0 0 5px 0;
       font-weight: 500;
     }
 
     .game-name {
-      color: #8097ae;
+      color: var(--text-dim);
       font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       margin: 0;
     }
@@ -200,9 +200,9 @@
   grid-column: 1 / -1;
   text-align: center;
   padding: 80px 20px;
-  color: #8097ae;
-  background: linear-gradient(135deg, #0d2847 0%, #1a3d5c 100%);
-  border: 2px solid #2a4d6c;
+  color: var(--text-dim);
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-border);
   border-radius: 12px;
 
   .no-streams-icon {
@@ -212,7 +212,7 @@
 
   h3 {
     font-size: 1.8rem;
-    color: #4a90e2;
+    color: var(--accent-primary);
     margin-bottom: 15px;
   }
 
@@ -225,7 +225,7 @@
 
   .retry-btn {
     margin-top: 25px;
-    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
     border: none;
     border-radius: 25px;
     padding: 12px 30px;
@@ -237,7 +237,7 @@
 
     &:hover {
       transform: translateY(-2px);
-      box-shadow: 0 5px 15px rgba(74, 144, 226, 0.4);
+      box-shadow: 0 5px 15px rgba(var(--accent-rgb), 0.4);
     }
   }
 }
@@ -265,20 +265,20 @@
 }
 
 .streaming-info {
-  background: linear-gradient(135deg, #0d2847 0%, #1a3d5c 100%);
-  border: 2px solid #2a4d6c;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-border);
   border-radius: 12px;
   padding: 40px;
   text-align: center;
 
   h2 {
     font-size: 2rem;
-    color: #4a90e2;
+    color: var(--accent-primary);
     margin-bottom: 20px;
   }
 
   p {
-    color: #a0b8d0;
+    color: var(--text-muted);
     line-height: 1.8;
     font-size: 1.1rem;
     max-width: 800px;
@@ -289,13 +289,13 @@
     }
 
     a {
-      color: #5cb3e8;
+      color: var(--text-info);
       text-decoration: none;
       font-weight: 600;
       transition: color 0.2s ease;
 
       &:hover {
-        color: #4a90e2;
+        color: var(--accent-primary);
       }
     }
   }

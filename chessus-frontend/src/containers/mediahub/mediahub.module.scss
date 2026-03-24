@@ -10,13 +10,13 @@
 
   h1 {
     font-size: 3.5rem;
-    color: #4a90e2;
+    color: var(--accent-primary);
     margin-bottom: 15px;
   }
 
   .subtitle {
     font-size: 1.3rem;
-    color: #8097ae;
+    color: var(--text-dim);
   }
 }
 
@@ -28,8 +28,8 @@
 }
 
 .media-option-card {
-  background: linear-gradient(135deg, #0d2847 0%, #1a3d5c 100%);
-  border: 2px solid #2a4d6c;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-border);
   border-radius: 16px;
   padding: 35px;
   text-align: center;
@@ -42,11 +42,11 @@
 
   &:hover {
     transform: translateY(-8px);
-    border-color: #4a90e2;
-    box-shadow: 0 12px 35px rgba(74, 144, 226, 0.4);
+    border-color: var(--accent-primary);
+    box-shadow: 0 12px 35px rgba(var(--accent-rgb), 0.4);
 
     .explore-button {
-      background: linear-gradient(135deg, #5cb3e8 0%, #4a90e2 100%);
+      background: linear-gradient(135deg, var(--text-info) 0%, var(--accent-primary) 100%);
       transform: translateX(5px);
     }
   }
@@ -64,7 +64,7 @@
   }
 
   .option-description {
-    color: #a0b8d0;
+    color: var(--text-muted);
     line-height: 1.6;
     flex-grow: 1;
     margin-bottom: 25px;
@@ -72,7 +72,7 @@
   }
 
   .explore-button {
-    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
     color: #ffffff;
     padding: 12px 30px;
     border-radius: 25px;

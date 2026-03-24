@@ -16,9 +16,9 @@
   transition: all 0.2s ease;
 
   &:hover {
-    border-color: #4a90e2;
+    border-color: var(--accent-primary);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.1);
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.1);
   }
 }
 
@@ -51,10 +51,10 @@
   right: 2px;
   width: 12px;
   height: 12px;
-  background: #4caf50;
+  background: var(--accent-muted);
   border: 2px solid #1a1a1a;
   border-radius: 50%;
-  box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.6);
   animation: pulse 2s infinite;
 }
 
@@ -120,8 +120,8 @@
 
 .challenge-button {
   background: transparent;
-  border: 1px solid #4a90e2;
-  color: #4a90e2;
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -134,7 +134,7 @@
   flex-shrink: 0;
 
   &:hover {
-    background: #4a90e2;
+    background: var(--accent-primary);
     color: #fff;
     transform: scale(1.1);
   }
