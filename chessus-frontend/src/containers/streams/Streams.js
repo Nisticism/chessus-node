@@ -203,11 +203,11 @@ const Streams = () => {
       <div className={styles["streaming-info"]}>
         <h2>Want to Stream?</h2>
         <p>
-          If you're interested in streaming Squarestrat games, tournaments, or tutorials,
+          If you're interested in streaming GridGrove games, tournaments, or tutorials,
           contact us to get featured on this page! We love showcasing our community's content.
         </p>
         <p>
-          Email us at <a href="mailto:streams@squarestrat.com">streams@squarestrat.com</a>
+          Email us at <a href="mailto:streams@gridgrove.gg">streams@gridgrove.gg</a>
         </p>
       </div>
     </div>

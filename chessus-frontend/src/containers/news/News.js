@@ -111,7 +111,7 @@ const News = () => {
       : 
         <div className={styles["no-news"]}>
           <h2>No News Articles Yet</h2>
-          <p>Check back soon for updates about SquareStrat!</p>
+          <p>Check back soon for updates about GridGrove!</p>
         </div>
       }
     </div>

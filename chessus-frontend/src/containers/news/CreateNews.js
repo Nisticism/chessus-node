@@ -60,7 +60,7 @@ const CreateNews = () => {
       <div className={styles["create-news-card"]}>
         <div className={styles["card-header"]}>
           <h1 className={styles["page-title"]}>Create News Article</h1>
-          <p className={styles["page-subtitle"]}>Share important updates and announcements with the SquareStrat community</p>
+          <p className={styles["page-subtitle"]}>Share important updates and announcements with the GridGrove community</p>
         </div>
 
         <form ref={form} className={styles["news-form"]}>

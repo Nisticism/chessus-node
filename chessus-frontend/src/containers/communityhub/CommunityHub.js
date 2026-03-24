@@ -20,7 +20,7 @@ const CommunityHub = () => {
     },
     {
       title: "Donate",
-      description: "Support Squarestrat and help us grow the platform",
+      description: "Support GridGrove and help us grow the platform",
       icon: "💝",
       path: "/donate",
     },
@@ -55,7 +55,7 @@ const CommunityHub = () => {
       </div>
 
       <div className={styles["community-welcome"]}>
-        <h2>Welcome to the Squarestrat Community!</h2>
+        <h2>Welcome to the GridGrove Community!</h2>
         <p>
           Join thousands of players creating custom chess variants, competing in tournaments,
           and sharing strategies. Whether you're here to climb the leaderboard, showcase your

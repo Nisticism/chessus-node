@@ -267,19 +267,19 @@ const Home = () => {
       {/* Hero Section */}
       <section className={styles["hero-section"]}>
         <h1 className={styles["hero-title"]}>
-          Welcome to <span className={styles.highlight}>Squarestrat</span>
+          Welcome to <span className={styles.highlight}>GridGrove</span>
         </h1>
         <p className={styles["hero-tagline"]}>
           Where Strategy Meets Creativity
         </p>
         <p className={styles["hero-description"]}>
-          Squarestrat is a community-driven platform for creating, sharing, and playing 
+          GridGrove is a community-driven platform for creating, sharing, and playing 
           custom strategy board games. Design your own pieces with unique movement patterns, 
           craft game rules with custom win conditions, and challenge players worldwide. 
           Build variations on classic games or invent something entirely new. Test your 
           creations in sandbox mode, refine the rules, and share them with the community. 
           Whether you're experimenting with different board sizes, asymmetric starting 
-          positions, or novel piece abilities, Squarestrat gives you the tools to bring 
+          positions, or novel piece abilities, GridGrove gives you the tools to bring 
           your ideas to life.
         </p>
         <div className={styles["hero-buttons"]}>
@@ -410,7 +410,7 @@ const Home = () => {
       {/* Features Section */}
       <section className={styles["features-section"]}>
         <div className={styles["section-header"]}>
-          <h2>Explore Squarestrat</h2>
+          <h2>Explore GridGrove</h2>
           <p>Everything you need to create, share, and play</p>
         </div>
 
@@ -500,7 +500,7 @@ const Home = () => {
           </Link>
         ) : (
           <Link to="/register" className={styles["primary-button"]}>
-            ♟️ Join Squarestrat
+            ♟️ Join GridGrove
           </Link>
         )}
       </section>

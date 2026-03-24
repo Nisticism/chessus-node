@@ -8,7 +8,7 @@ const MediaHub = () => {
   const mediaOptions = [
     {
       title: "General Forums",
-      description: "Discuss strategies, share ideas, and connect with the Squarestrat community",
+      description: "Discuss strategies, share ideas, and connect with the GridGrove community",
       icon: "💬",
       path: "/forums",
     },
@@ -47,7 +47,7 @@ const MediaHub = () => {
       <div className={styles["media-hub-header"]}>
         <h1>Media Hub</h1>
         <p className={styles["subtitle"]}>
-          Connect, share, and stay informed with the Squarestrat community
+          Connect, share, and stay informed with the GridGrove community
         </p>
       </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { users } from "../../actions/users";
@@ -43,14 +43,60 @@ const getRoleBadge = (role) => {
   return null;
 };
 
+const sortOptions = [
+  { value: 'id', label: 'Newest Joined' },
+  { value: 'username', label: 'Alphabetical' },
+  { value: 'elo', label: 'Rating' },
+  { value: 'last_active_at', label: 'Last Active' },
+];
+
 const PlayerList = () => {
   const allUsers = useSelector((state) => state.users);
+  const currentUser = useSelector((state) => state.auth?.user);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState('id');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [friendsOnly, setFriendsOnly] = useState(false);
   const dispatch = useDispatch();
+  const searchTimeout = useRef(null);
+
+  const fetchUsers = useCallback(() => {
+    const filters = { sortBy, sortOrder };
+    if (search) filters.search = search;
+    if (friendsOnly && currentUser?.id) filters.friendsOf = currentUser.id;
+    dispatch(users(currentPage, 20, filters));
+  }, [currentPage, sortBy, sortOrder, search, friendsOnly, currentUser, dispatch]);
 
   useEffect(() => {
-    dispatch(users(currentPage, 20));
-  }, [currentPage, dispatch]);
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    setSearchInput(value);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => {
+      setSearch(value);
+      setCurrentPage(1);
+    }, 400);
+  };
+
+  const handleSortByChange = (e) => {
+    setSortBy(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleSortOrderToggle = () => {
+    setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    setCurrentPage(1);
+  };
+
+  const handleFriendsToggle = () => {
+    setFriendsOnly(prev => !prev);
+    setCurrentPage(1);
+  };
 
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
@@ -65,8 +111,57 @@ const PlayerList = () => {
       <div className={styles["list-header"]}>
         <h1>Players</h1>
         <div className={styles["item-count"]}>
-          {totalCount} registered players
+          {totalCount} {friendsOnly ? 'friends' : 'registered players'}
         </div>
+      </div>
+
+      <div className={styles["filter-bar"]}>
+        <div className={styles["filter-group"]}>
+          <label className={styles["filter-label"]}>Search</label>
+          <input
+            type="text"
+            className={styles["filter-input"]}
+            placeholder="Search by username..."
+            value={searchInput}
+            onChange={handleSearchChange}
+          />
+        </div>
+
+        <div className={styles["filter-group"]}>
+          <label className={styles["filter-label"]}>Sort By</label>
+          <select
+            className={styles["filter-select"]}
+            value={sortBy}
+            onChange={handleSortByChange}
+          >
+            {sortOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className={styles["filter-group"]}>
+          <label className={styles["filter-label"]}>Order</label>
+          <button
+            className={styles["filter-order-btn"]}
+            onClick={handleSortOrderToggle}
+            title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+          >
+            {sortOrder === 'asc' ? '↑ Ascending' : '↓ Descending'}
+          </button>
+        </div>
+
+        {currentUser && (
+          <div className={styles["filter-group"]}>
+            <label className={styles["filter-label"]}>Filter</label>
+            <button
+              className={`${styles["filter-toggle-btn"]} ${friendsOnly ? styles["active"] : ''}`}
+              onClick={handleFriendsToggle}
+            >
+              {friendsOnly ? '★ Friends Only' : '☆ All Players'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className={styles["items-grid"]}>

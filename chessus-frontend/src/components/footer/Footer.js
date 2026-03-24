@@ -49,7 +49,7 @@ const Footer = () => {
         </div>
 
         <div className={styles.footerSection}>
-          <h3 className={styles.footerHeading}>Squarestrat</h3>
+          <h3 className={styles.footerHeading}>GridGrove</h3>
           <p className={styles.footerDescription}>
             A community-driven platform for creating, sharing, and playing custom strategy board games.
           </p>
@@ -57,7 +57,7 @@ const Footer = () => {
       </div>
 
       <div className={styles.footerBottom}>
-        <p>&copy; {currentYear} Squarestrat. All rights reserved.</p>
+        <p>&copy; {currentYear} GridGrove. All rights reserved.</p>
       </div>
     </footer>
   );

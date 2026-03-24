@@ -29,7 +29,7 @@ const Community = () => {
         </div>
           {/* <img src={chest_wizard_game} alt="Chest Wizard Game" className={styles["home-game-image"]}/>
           <p>
-            Example of a game you can make with squarestrat
+            Example of a game you can make with gridgrove
           </p> */}
       </div>
     </div>

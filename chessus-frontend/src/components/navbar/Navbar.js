@@ -263,8 +263,8 @@ const Navbar = () => {
         <div className="navbar-links">
           <div className="nav-container">
             <Link to="/" className="main-logo">
-              <img src={logo} alt="Squarestrat" className="logo-icon" />
-              <span>SQUARESTRAT</span>
+              <img src={logo} alt="GridGrove" className="logo-icon" />
+              <span>GRIDGROVE</span>
             </Link>
             <div className="navbar-links-container">
               <Menu currentUser={currentUser} logOut={logOut} unreadCount={unreadCount} />

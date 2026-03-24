@@ -113,7 +113,7 @@ const Careers = () => {
     <div className={styles.careersPage}>
       <div className={styles.container}>
         <div className={styles.header}>
-          <h1>Careers at SquareStrat</h1>
+          <h1>Careers at GridGrove</h1>
           <p className={styles.subtitle}>
             Join us in building the future of strategic board games
           </p>

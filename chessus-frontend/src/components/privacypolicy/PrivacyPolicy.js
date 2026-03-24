@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import styles from "./privacypolicy.module.scss";
 
 const PrivacyPolicy = () => {
@@ -11,7 +11,7 @@ const PrivacyPolicy = () => {
         <section className={styles.section}>
           <h2>1. Information We Collect</h2>
           <p>
-            When you create an account on Squarestrat, we collect information you provide directly, including:
+            When you create an account on GridGrove, we collect information you provide directly, including:
           </p>
           <ul>
             <li>Username and email address</li>
@@ -25,7 +25,7 @@ const PrivacyPolicy = () => {
           <h2>2. How We Use Your Information</h2>
           <p>We use the information we collect to:</p>
           <ul>
-            <li>Provide and maintain the Squarestrat platform</li>
+            <li>Provide and maintain the GridGrove platform</li>
             <li>Enable you to create, share, and play custom board games</li>
             <li>Display your public profile and creations to other users</li>
             <li>Communicate with you about platform updates and features</li>
@@ -38,7 +38,7 @@ const PrivacyPolicy = () => {
           <p>
             Your username, public profile information, game creations, and forum posts are visible to other users. 
             We do not sell your personal information to third parties. We may share information when required by law 
-            or to protect the rights and safety of Squarestrat and its users.
+            or to protect the rights and safety of GridGrove and its users.
           </p>
         </section>
 
@@ -73,7 +73,7 @@ const PrivacyPolicy = () => {
         <section className={styles.section}>
           <h2>7. Children's Privacy</h2>
           <p>
-            Squarestrat is not intended for users under the age of 13. We do not knowingly collect personal 
+            GridGrove is not intended for users under the age of 13. We do not knowingly collect personal 
             information from children under 13. If you believe we have collected information from a child under 13, 
             please contact us immediately.
           </p>

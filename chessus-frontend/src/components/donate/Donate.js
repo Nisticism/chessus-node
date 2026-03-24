@@ -188,7 +188,7 @@ const Donate = () => {
         createOrder: (data, actions) => {
           return actions.order.create({
             purchase_units: [{
-              description: 'Squarestrat Donation',
+              description: 'GridGrove Donation',
               amount: {
                 currency_code: 'USD',
                 value: amount.toFixed(2)
@@ -225,7 +225,7 @@ const Donate = () => {
               Your donation of <strong>${donationAmount.toFixed(2)}</strong> has been received
             </p>
             <p className={styles.thankYouMessage}>
-              Your generosity helps keep Squarestrat running and enables us to continue 
+              Your generosity helps keep GridGrove running and enables us to continue 
               developing new features for the community. We truly appreciate your support!
             </p>
             {currentUser && (
@@ -252,13 +252,13 @@ const Donate = () => {
   return (
     <div className={styles.donateContainer}>
       <div className={styles.donateContent}>
-        <h1 className={styles.title}>Support Squarestrat</h1>
+        <h1 className={styles.title}>Support GridGrove</h1>
         
         <Divider />
 
         <div className={styles.description}>
           <p>
-            Squarestrat is a passion project dedicated to bringing creative chess variants 
+            GridGrove is a passion project dedicated to bringing creative chess variants 
             to players around the world. Your support helps us maintain servers, develop 
             new features, and keep the platform free for everyone.
           </p>
@@ -348,7 +348,7 @@ const Donate = () => {
         <div className={styles.donorBadgesInfo}>
           <h2 className={styles.sectionTitle}>Donor Recognition Badges</h2>
           <p className={styles.badgeDescription}>
-            Show your support for Squarestrat! Donors receive special badges displayed on their profiles:
+            Show your support for GridGrove! Donors receive special badges displayed on their profiles:
           </p>
           <div className={styles.badgeTiers}>
             <div className={styles.badgeTier}>
@@ -376,7 +376,7 @@ const Donate = () => {
         <div className={styles.alternativeSupport}>
             <h2 className={styles.sectionTitle}>Other Ways to Support</h2>
             <ul className={styles.supportList}>
-              <li>Share Squarestrat with your friends and chess communities</li>
+              <li>Share GridGrove with your friends and chess communities</li>
               <li>Create and share your own unique chess variants</li>
               <li>Provide feedback and suggestions for improvement</li>
               <li>Report bugs and help us make the platform better</li>
@@ -386,7 +386,7 @@ const Donate = () => {
 
         {currentUser && (
           <div className={styles.thankYou}>
-            <p>Thank you for being part of the Squarestrat community, {currentUser.username}! 🎉</p>
+            <p>Thank you for being part of the GridGrove community, {currentUser.username}! 🎉</p>
           </div>
         )}
       </div>

@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="bgGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d47a1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#08234d;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="leafGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#66bb6a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2e7d32;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="10" y="10" width="180" height="180" rx="24" fill="url(#bgGrad3)" />
+
+  <!-- Large stylized "G" as the main element -->
+  <path d="M 120 50 
+           A 52 52 0 1 0 120 150 
+           L 120 110 
+           L 95 110" 
+        fill="none" 
+        stroke="#64b5f6" 
+        stroke-width="14" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+        opacity="0.9"/>
+
+  <!-- Second G nested/overlapping, offset slightly -->
+  <path d="M 112 62 
+           A 40 40 0 1 0 112 138 
+           L 112 106 
+           L 92 106" 
+        fill="none" 
+        stroke="#90caf9" 
+        stroke-width="8" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+        opacity="0.5"/>
+
+  <!-- Vine/leaf growing from the top of the G -->
+  <path d="M108 50 Q100 35 90 28 Q85 32 88 40" 
+        fill="url(#leafGrad3)" opacity="0.9"/>
+  <path d="M108 50 Q115 32 125 26 Q130 32 126 40" 
+        fill="url(#leafGrad3)" opacity="0.85"/>
+  <path d="M108 48 Q108 36 102 24 Q106 22 110 28 Q112 34 108 48" 
+        fill="#43a047" opacity="0.8"/>
+
+  <!-- Small leaf accent at bottom-right of G -->
+  <path d="M120 145 Q130 138 140 142 Q136 148 126 148" 
+        fill="#4caf50" opacity="0.7"/>
+  <path d="M120 145 Q125 152 132 156 Q128 158 120 152" 
+        fill="#66bb6a" opacity="0.6"/>
+
+  <!-- Tiny sprout from the G's crossbar -->
+  <path d="M95 108 Q88 100 82 96 Q84 92 90 97" 
+        fill="#81c784" opacity="0.7"/>
+
+  <!-- Subtle grid dots pattern -->
+  <circle cx="40" cy="40" r="2" fill="#1565c0" opacity="0.3"/>
+  <circle cx="60" cy="40" r="2" fill="#1565c0" opacity="0.3"/>
+  <circle cx="40" cy="60" r="2" fill="#1565c0" opacity="0.3"/>
+  <circle cx="160" cy="160" r="2" fill="#1565c0" opacity="0.3"/>
+  <circle cx="160" cy="140" r="2" fill="#1565c0" opacity="0.3"/>
+  <circle cx="140" cy="160" r="2" fill="#1565c0" opacity="0.3"/>
+</svg>

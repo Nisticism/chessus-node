@@ -5,7 +5,7 @@ const SocialMedia = () => {
   const socialPlatforms = [
     {
       name: "Discord",
-      handle: "Squarestrat Community",
+      handle: "GridGrove Community",
       icon: "💬",
       url: "https://discord.gg/sesgKDdt",
       description: "Join our community for real-time chat, game discussion, and support",
@@ -13,25 +13,25 @@ const SocialMedia = () => {
     },
     {
       name: "Instagram",
-      handle: "@squarestratdotcom",
+      handle: "@gridgrovegg",
       icon: "📸",
-      url: "https://www.instagram.com/squarestratdotcom",
+      url: "https://www.instagram.com/gridgrovegg",
       description: "Visual highlights, behind-the-scenes content, and community showcases",
       buttonText: "Follow",
     },
     {
       name: "YouTube",
-      handle: "Squarestrat Official",
+      handle: "GridGrove Official",
       icon: "▶️",
-      url: "https://youtube.com/squarestrat",
+      url: "https://youtube.com/gridgrove",
       description: "Watch tutorials, gameplay videos, and tournament highlights",
       buttonText: "Subscribe",
     },
     {
       name: "Reddit",
-      handle: "r/Squarestrat",
+      handle: "r/GridGrove",
       icon: "🤖",
-      url: "https://reddit.com/r/squarestrat",
+      url: "https://reddit.com/r/gridgrove",
       description: "Discuss strategies, share creations, and participate in community polls",
       buttonText: "Join",
     },
@@ -76,7 +76,7 @@ const SocialMedia = () => {
         <h2>Stay Updated</h2>
         <p>
           Follow us on your favorite platforms to get the latest news, participate in events,
-          and connect with fellow Squarestrat enthusiasts. Share your custom games, pieces, and
+          and connect with fellow GridGrove enthusiasts. Share your custom games, pieces, and
           strategies with the community!
         </p>
       </div>

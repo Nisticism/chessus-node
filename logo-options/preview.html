@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GridGrove Logo Options</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 40px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a1929;
+      color: #fff;
+    }
+    h1 { text-align: center; margin-bottom: 10px; color: #64b5f6; }
+    .subtitle { text-align: center; color: #90a4ae; margin-bottom: 40px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .option {
+      background: #08234d;
+      border-radius: 16px;
+      padding: 30px;
+      text-align: center;
+      border: 2px solid #1565c0;
+      transition: border-color 0.3s;
+    }
+    .option:hover { border-color: #64b5f6; }
+    .option h2 { color: #64b5f6; margin: 0 0 8px; }
+    .option p { color: #90a4ae; font-size: 14px; margin: 0 0 20px; }
+    .logo-container {
+      background: #0a1929;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 15px;
+    }
+    .logo-container img { width: 180px; height: 180px; }
+    .sizes {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 20px;
+      margin-top: 15px;
+    }
+    .sizes div { text-align: center; }
+    .sizes img { border-radius: 6px; }
+    .sizes span { display: block; color: #607d8b; font-size: 11px; margin-top: 4px; }
+    .navbar-preview {
+      background: linear-gradient(135deg, #1565c0, #0d47a1);
+      border-radius: 8px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .navbar-preview img { width: 32px; height: 32px; }
+    .navbar-preview span { font-weight: 700; font-size: 16px; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+  <h1>GridGrove Logo Options</h1>
+  <p class="subtitle">Click to view full size. Each shown at full, 64px, and 32px to test scaling.</p>
+
+  <div class="grid">
+    <div class="option">
+      <h2>Option A: GG Twin Trees</h2>
+      <p>Two trees with "G" on each trunk, canopies merging above a subtle grid base. Emphasizes community and shared growth.</p>
+      <div class="logo-container">
+        <img src="option-a-gg-trees.svg" alt="Option A" />
+      </div>
+      <div class="sizes">
+        <div><img src="option-a-gg-trees.svg" width="64" height="64" /><span>64px</span></div>
+        <div><img src="option-a-gg-trees.svg" width="32" height="32" /><span>32px</span></div>
+      </div>
+      <div class="navbar-preview">
+        <img src="option-a-gg-trees.svg" />
+        <span>GRIDGROVE</span>
+      </div>
+    </div>
+
+    <div class="option">
+      <h2>Option B: Sprout from the Grid</h2>
+      <p>A tree/plant growing upward from a row of grid squares with GG embedded in the grid. Strategy literally growing from the board.</p>
+      <div class="logo-container">
+        <img src="option-b-sprout-grid.svg" alt="Option B" />
+      </div>
+      <div class="sizes">
+        <div><img src="option-b-sprout-grid.svg" width="64" height="64" /><span>64px</span></div>
+        <div><img src="option-b-sprout-grid.svg" width="32" height="32" /><span>32px</span></div>
+      </div>
+      <div class="navbar-preview">
+        <img src="option-b-sprout-grid.svg" />
+        <span>GRIDGROVE</span>
+      </div>
+    </div>
+
+    <div class="option">
+      <h2>Option C: Vine G</h2>
+      <p>Overlapping G letterforms with leaves/vines growing from them. Minimal and monogram-focused — the G itself is the grove.</p>
+      <div class="logo-container">
+        <img src="option-c-vine-g.svg" alt="Option C" />
+      </div>
+      <div class="sizes">
+        <div><img src="option-c-vine-g.svg" width="64" height="64" /><span>64px</span></div>
+        <div><img src="option-c-vine-g.svg" width="32" height="32" /><span>32px</span></div>
+      </div>
+      <div class="navbar-preview">
+        <img src="option-c-vine-g.svg" />
+        <span>GRIDGROVE</span>
+      </div>
+    </div>
+
+    <div class="option">
+      <h2>Option D: Leaf &amp; Chessboard</h2>
+      <p>Stylized leaves growing from a stem rooted in a chessboard grid, with GG on the board tiles. Most "chess + nature" fusion.</p>
+      <div class="logo-container">
+        <img src="option-d-leaf-chess.svg" alt="Option D" />
+      </div>
+      <div class="sizes">
+        <div><img src="option-d-leaf-chess.svg" width="64" height="64" /><span>64px</span></div>
+        <div><img src="option-d-leaf-chess.svg" width="32" height="32" /><span>32px</span></div>
+      </div>
+      <div class="navbar-preview">
+        <img src="option-d-leaf-chess.svg" />
+        <span>GRIDGROVE</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

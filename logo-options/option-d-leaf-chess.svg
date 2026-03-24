@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="bgGrad4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d47a1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#08234d;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="leafGrad4a" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2e7d32;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4caf50;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="leafGrad4b" x1="100%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#388e3c;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#66bb6a;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="10" y="10" width="180" height="180" rx="24" fill="url(#bgGrad4)" />
+
+  <!-- Chess board 3x3 at the bottom (the "grid" in GridGrove) -->
+  <rect x="40" y="125" width="24" height="24" fill="#1565c0" opacity="0.5" rx="2"/>
+  <rect x="64" y="125" width="24" height="24" fill="#0d47a1" opacity="0.5" rx="2"/>
+  <rect x="88" y="125" width="24" height="24" fill="#1565c0" opacity="0.5" rx="2"/>
+  <rect x="112" y="125" width="24" height="24" fill="#0d47a1" opacity="0.5" rx="2"/>
+  <rect x="136" y="125" width="24" height="24" fill="#1565c0" opacity="0.5" rx="2"/>
+  <rect x="40" y="149" width="24" height="24" fill="#0d47a1" opacity="0.4" rx="2"/>
+  <rect x="64" y="149" width="24" height="24" fill="#1565c0" opacity="0.4" rx="2"/>
+  <rect x="88" y="149" width="24" height="24" fill="#0d47a1" opacity="0.4" rx="2"/>
+  <rect x="112" y="149" width="24" height="24" fill="#1565c0" opacity="0.4" rx="2"/>
+  <rect x="136" y="149" width="24" height="24" fill="#0d47a1" opacity="0.4" rx="2"/>
+
+  <!-- Central stem growing from grid -->
+  <path d="M100 125 C100 105 100 95 100 70" stroke="#43a047" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Left leaf (large, stylized) -->
+  <path d="M100 88 C85 78 65 72 55 55 C68 58 82 68 100 88Z" fill="url(#leafGrad4a)" opacity="0.9"/>
+  <!-- Leaf vein -->
+  <path d="M100 88 C88 80 74 72 60 60" stroke="#2e7d32" stroke-width="1" fill="none" opacity="0.5"/>
+
+  <!-- Right leaf (large, stylized) -->
+  <path d="M100 80 C115 70 135 64 145 47 C132 50 118 60 100 80Z" fill="url(#leafGrad4b)" opacity="0.9"/>
+  <!-- Leaf vein -->
+  <path d="M100 80 C112 72 126 64 140 52" stroke="#2e7d32" stroke-width="1" fill="none" opacity="0.5"/>
+
+  <!-- Small top leaf bud -->
+  <path d="M100 70 C95 60 90 52 88 42 C94 46 98 56 100 70Z" fill="#66bb6a" opacity="0.8"/>
+  <path d="M100 70 C105 60 110 52 112 42 C106 46 102 56 100 70Z" fill="#4caf50" opacity="0.8"/>
+
+  <!-- Small accent leaf on the left -->
+  <path d="M100 100 C90 95 78 94 72 88 C80 90 90 94 100 100Z" fill="#81c784" opacity="0.6"/>
+
+  <!-- GG monogram centered on the grid -->
+  <text x="75" y="147" font-family="'Georgia', 'Times New Roman', serif" font-weight="700" font-size="18" fill="#ffffff" text-anchor="middle" letter-spacing="1" opacity="0.85">G</text>
+  <text x="125" y="147" font-family="'Georgia', 'Times New Roman', serif" font-weight="700" font-size="18" fill="#ffffff" text-anchor="middle" letter-spacing="1" opacity="0.85">G</text>
+</svg>

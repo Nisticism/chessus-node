@@ -1,39 +1,88 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
   <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#4a90e2;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#357abd;stop-opacity:1" />
+    <linearGradient id="bgGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d47a1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#08234d;stop-opacity:1" />
     </linearGradient>
-    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#5cb3e8;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#3a9bd9;stop-opacity:1" />
+    <linearGradient id="leafGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#66bb6a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2e7d32;stop-opacity:1" />
     </linearGradient>
-    <linearGradient id="grad3" x1="100%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#6bb8ec;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#4a9ce0;stop-opacity:1" />
+    <linearGradient id="leafGrad3b" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#81c784;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#43a047;stop-opacity:1" />
     </linearGradient>
   </defs>
-  
-  <!-- Large square (back) - larger and vertically centered -->
-  <rect x="28" y="30" width="135" height="135" 
-        fill="url(#grad1)" 
-        stroke="#0a1e3a" stroke-width="4.5" stroke-opacity="0.8"
-        transform="rotate(-8 95.5 97.5)"
-        rx="3"/>
-  
-  <!-- Medium square (middle) - larger and vertically centered -->
-  <rect x="53" y="45" width="120" height="120" 
-        fill="url(#grad2)" 
-        stroke="#0a1e3a" stroke-width="4.5" stroke-opacity="0.8"
-        transform="rotate(12 113 105)"
-        rx="3"
+
+  <!-- Background rounded square -->
+  <rect x="10" y="10" width="180" height="180" rx="24" fill="url(#bgGrad3)" />
+
+  <!-- Left G -->
+  <path d="M 82 52
+           A 48 48 0 1 0 82 148
+           L 82 108
+           L 58 108"
+        fill="none"
+        stroke="#64b5f6"
+        stroke-width="13"
+        stroke-linecap="round"
+        stroke-linejoin="round"
         opacity="0.9"/>
-  
-  <!-- Small square (front) - larger and vertically centered -->
-  <rect x="78" y="65" width="95" height="95" 
-        fill="url(#grad3)" 
-        stroke="#081729" stroke-width="4.5" stroke-opacity="0.8"
-        transform="rotate(-5 125.5 112.5)"
-        rx="2"
-        opacity="0.95"/>
+
+  <!-- Right G (same size, shifted right) -->
+  <path d="M 138 52
+           A 48 48 0 1 0 138 148
+           L 138 108
+           L 114 108"
+        fill="none"
+        stroke="#90caf9"
+        stroke-width="13"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        opacity="0.55"/>
+
+  <!-- === PLANTS === -->
+
+  <!-- Main vine from top of left G, arching up-left -->
+  <path d="M72 52 Q60 30 48 22" stroke="#43a047" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M48 22 Q42 28 46 34 Q52 28 48 22Z" fill="url(#leafGrad3)" opacity="0.9"/>
+  <!-- Second leaf on that vine -->
+  <path d="M62 38 Q54 34 50 28" stroke="#43a047" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <path d="M50 28 Q44 32 48 37 Q54 32 50 28Z" fill="#66bb6a" opacity="0.75"/>
+
+  <!-- Main vine from top of right G, arching up-right -->
+  <path d="M128 52 Q140 30 152 22" stroke="#388e3c" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M152 22 Q158 28 154 34 Q148 28 152 22Z" fill="url(#leafGrad3b)" opacity="0.9"/>
+  <!-- Second leaf on that vine -->
+  <path d="M138 38 Q146 34 150 28" stroke="#388e3c" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <path d="M150 28 Q156 32 152 37 Q146 32 150 28Z" fill="#81c784" opacity="0.75"/>
+
+  <!-- Central top sprout between the two Gs -->
+  <path d="M100 48 Q100 30 96 18" stroke="#4caf50" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M96 18 Q90 22 94 28 Q100 22 96 18Z" fill="#4caf50" opacity="0.85"/>
+  <path d="M100 48 Q100 32 106 20" stroke="#4caf50" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M106 20 Q112 24 108 30 Q102 24 106 20Z" fill="#66bb6a" opacity="0.85"/>
+
+  <!-- Leaf at left G's crossbar area -->
+  <path d="M56 106 Q46 98 40 92" stroke="#66bb6a" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M40 92 Q34 96 38 102 Q44 96 40 92Z" fill="#81c784" opacity="0.7"/>
+
+  <!-- Leaf at right G's crossbar area -->
+  <path d="M112 106 Q108 96 112 88" stroke="#66bb6a" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M112 88 Q106 90 108 96 Q114 92 112 88Z" fill="#a5d6a7" opacity="0.6"/>
+
+  <!-- Small sprout at bottom-left of left G -->
+  <path d="M38 140 Q30 134 26 126" stroke="#4caf50" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <path d="M26 126 Q22 130 26 134 Q30 130 26 126Z" fill="#66bb6a" opacity="0.65"/>
+
+  <!-- Small sprout at bottom-right of right G -->
+  <path d="M162 140 Q170 134 174 126" stroke="#4caf50" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <path d="M174 126 Q178 130 174 134 Q170 130 174 126Z" fill="#66bb6a" opacity="0.65"/>
+
+  <!-- Tiny accent dots (berries / buds) -->
+  <circle cx="44" cy="24" r="2.5" fill="#a5d6a7" opacity="0.7"/>
+  <circle cx="156" cy="24" r="2.5" fill="#a5d6a7" opacity="0.7"/>
+  <circle cx="100" cy="14" r="2" fill="#c8e6c9" opacity="0.6"/>
+  <circle cx="32" cy="96" r="2" fill="#a5d6a7" opacity="0.5"/>
+  <circle cx="170" cy="130" r="2" fill="#a5d6a7" opacity="0.5"/>
 </svg>

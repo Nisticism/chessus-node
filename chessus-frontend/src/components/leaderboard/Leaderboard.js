@@ -115,7 +115,7 @@ const Leaderboard = () => {
           when you lose, with the amount depending on the rating difference between you and your opponent.
         </p>
         <p>
-          Win games to climb the leaderboard and prove you're the best strategist in Squarestrat!
+          Win games to climb the leaderboard and prove you're the best strategist in GridGrove!
         </p>
       </div>
     </div>
