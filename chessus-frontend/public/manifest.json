@@ -3,11 +3,6 @@
   "name": "GridGrove - The place for strategy games involving squares",
   "icons": [
     {
-      "src": "logo.svg",
-      "type": "image/svg+xml",
-      "sizes": "any"
-    },
-    {
       "src": "favicon-32x32.png",
       "sizes": "32x32",
       "type": "image/png"
@@ -30,6 +25,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#08234d",
-  "background_color": "#08234d"
+  "theme_color": "#2c302e",
+  "background_color": "#2a2d2b"
 }

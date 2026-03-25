@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "concurrently": "^7.6.0",
-    "nodemon": "^2.0.19"
+    "nodemon": "^2.0.19",
+    "sharp": "^0.34.5"
   }
 }

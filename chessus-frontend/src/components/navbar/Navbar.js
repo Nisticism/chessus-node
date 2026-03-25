@@ -6,7 +6,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
 import { getUnreadCount, receiveNewNotification } from "../../actions/notifications";
 import { useSocket } from "../../contexts/SocketContext";
-import logo from '../../assets/logo.svg';
+import logo from '../../assets/logo.png';
 import './navbar.scss';
 
 // Simplified user menu for tablet range (751-1000px)
