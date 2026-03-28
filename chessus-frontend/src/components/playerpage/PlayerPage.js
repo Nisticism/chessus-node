@@ -77,6 +77,7 @@ const PlayerPage = (props) => {
     navigate("/");
   }
 
+  /* eslint-disable react-hooks/rules-of-hooks */
   useEffect(() => {
     if (!firstRender && username) {
       setLoading(true);
@@ -172,6 +173,7 @@ const PlayerPage = (props) => {
       clearTimeout(timer);
     };
   }, [showAlert, alertType, navigate]);
+  /* eslint-enable react-hooks/rules-of-hooks */
 
   if (!routeUsername && !currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to view your own profile." }} />;
@@ -524,7 +526,12 @@ const PlayerPage = (props) => {
                       currentUser && username === currentUser.username 
                         ? currentUser.total_donations 
                         : playerPageUser?.total_donations
-                    } 
+                    }
+                    hidden={
+                      currentUser && username === currentUser.username
+                        ? currentUser.hide_donation_badge
+                        : playerPageUser?.hide_donation_badge
+                    }
                   />
                 </div>
                 {/* Add Friend / Remove Friend button for other users */}

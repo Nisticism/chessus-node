@@ -211,6 +211,89 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, user]);
 
+  // Create an anonymous game (no account required)
+  const createAnonymousGame = useCallback((gameData) => {
+    return new Promise((resolve, reject) => {
+      if (!socket || !connected) {
+        reject(new Error('Not connected'));
+        return;
+      }
+
+      let timeoutId;
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        socket.off('gameCreated', handleGameCreated);
+        socket.off('error', handleError);
+      };
+
+      const handleGameCreated = ({ gameId, gameState, inviteCode }) => {
+        cleanup();
+        setCurrentGame(gameState);
+        resolve({ gameId, gameState, inviteCode });
+      };
+
+      const handleError = ({ message }) => {
+        cleanup();
+        reject(new Error(message));
+      };
+
+      socket.on('gameCreated', handleGameCreated);
+      socket.on('error', handleError);
+
+      socket.emit('createAnonymousGame', gameData);
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error('Game creation timed out'));
+      }, 10000);
+    });
+  }, [socket, connected]);
+
+  // Join a game by invite code (no account required)
+  const joinByInviteCode = useCallback((inviteCode, guestName) => {
+    return new Promise((resolve, reject) => {
+      if (!socket || !connected) {
+        reject(new Error('Not connected'));
+        return;
+      }
+
+      let timeoutId;
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        socket.off('playerJoined', handlePlayerJoined);
+        socket.off('error', handleError);
+      };
+
+      const handlePlayerJoined = ({ gameId, gameState, newPlayer }) => {
+        cleanup();
+        setCurrentGame(gameState);
+        resolve({ gameId, gameState, newPlayer });
+      };
+
+      const handleError = ({ message }) => {
+        cleanup();
+        reject(new Error(message));
+      };
+
+      socket.on('playerJoined', handlePlayerJoined);
+      socket.on('error', handleError);
+
+      socket.emit('joinByInviteCode', {
+        inviteCode,
+        guestName: guestName || 'Guest',
+        userId: user?.id || null,
+        username: user?.username || null
+      });
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error('Join game timed out'));
+      }, 10000);
+    });
+  }, [socket, connected, user]);
+
   // Get game state (for reconnection or spectating)
   const getGameState = useCallback((gameId) => {
     return new Promise((resolve, reject) => {
@@ -259,7 +342,7 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('makeMove', {
       gameId,
-      userId: user?.id,
+      userId: user?.id || `anon_${socket.id}`,
       move
     });
   }, [socket, connected, user]);
@@ -273,7 +356,7 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('resign', {
       gameId,
-      userId: user?.id
+      userId: user?.id || `anon_${socket.id}`
     });
   }, [socket, connected, user]);
 
@@ -322,7 +405,7 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('cancelGame', {
       gameId,
-      userId: user?.id
+      userId: user?.id || `anon_${socket.id}`
     });
     setCurrentGame(null);
   }, [socket, connected, user]);
@@ -346,7 +429,7 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('setPremove', {
       gameId,
-      userId: user?.id,
+      userId: user?.id || `anon_${socket.id}`,
       move
     });
   }, [socket, connected, user]);
@@ -360,7 +443,7 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('clearPremove', {
       gameId,
-      userId: user?.id
+      userId: user?.id || `anon_${socket.id}`
     });
   }, [socket, connected, user]);
 
@@ -373,7 +456,7 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('promotePiece', {
       gameId,
-      userId: user?.id,
+      userId: user?.id || `anon_${socket.id}`,
       pieceId,
       promoteToPieceId
     });
@@ -397,7 +480,9 @@ export const SocketProvider = ({ children }) => {
     fetchOpenGames,
     fetchOngoingGames,
     createGame,
+    createAnonymousGame,
     joinGame,
+    joinByInviteCode,
     getGameState,
     makeMove,
     resign,

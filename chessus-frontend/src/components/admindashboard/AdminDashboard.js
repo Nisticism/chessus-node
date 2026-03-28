@@ -98,10 +98,32 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (activeTab === 'featured') {
       fetchFeaturedGames();
+    } else if (activeTab === 'anonymous-games') {
+      fetchAnonymousGames(1);
     } else {
       fetchData(activeTab, 1);
     }
   }, [activeTab, fetchData]);
+
+  const fetchAnonymousGames = async (page = 1) => {
+    setLoading(true);
+    try {
+      const limit = pagination?.limit || 10;
+      const response = await axios.get(
+        `${API_URL}admin/anonymous-games?page=${page}&limit=${limit}`,
+        { headers: authHeader() }
+      );
+      setData(response.data.data);
+      setPagination(response.data.pagination);
+    } catch (error) {
+      console.error("Error fetching anonymous games:", error);
+      setAlertMessage("Failed to load anonymous games");
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchFeaturedGames = async () => {
     setFeaturedLoading(true);
@@ -168,7 +190,11 @@ const AdminDashboard = () => {
   };
 
   const handlePageChange = (newPage) => {
-    fetchData(activeTab, newPage);
+    if (activeTab === 'anonymous-games') {
+      fetchAnonymousGames(newPage);
+    } else {
+      fetchData(activeTab, newPage);
+    }
   };
 
   const handleEdit = (item) => {
@@ -568,6 +594,47 @@ const AdminDashboard = () => {
               <td>
                 <button className={styles["edit-btn"]} onClick={() => handleEdit(game)}>Edit</button>
               </td>
+            </tr>
+          ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderAnonymousGamesTable = () => (
+    <div className={styles["table-container"]}>
+      <table className={styles["data-table"]}>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Game Name</th>
+            <th>Status</th>
+            <th>Invite Code</th>
+            <th>Time Control</th>
+            <th>Created</th>
+            <th>Started</th>
+            <th>Ended</th>
+          </tr>
+        </thead>
+        <tbody>
+          {!data || data.length === 0 ? (
+            <tr>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+                {!data ? 'Loading...' : 'No anonymous games found'}
+              </td>
+            </tr>
+          ) : (
+            data.map(game => (
+            <tr key={game.id}>
+              <td>{game.id}</td>
+              <td>{game.game_name || 'Unnamed'}</td>
+              <td>{game.status}</td>
+              <td style={{ fontFamily: 'monospace', letterSpacing: '2px' }}>{game.invite_code}</td>
+              <td>{game.turn_length ? `${game.turn_length / 60}+${game.increment || 0}` : 'N/A'}</td>
+              <td>{game.created_at ? formatDateTime(game.created_at) : 'N/A'}</td>
+              <td>{game.start_time ? formatDateTime(game.start_time) : 'Not started'}</td>
+              <td>{game.end_time ? formatDateTime(game.end_time) : 'In progress'}</td>
             </tr>
           ))
           )}
@@ -1250,6 +1317,12 @@ const AdminDashboard = () => {
         >
           Streams
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "anonymous-games" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("anonymous-games")}
+        >
+          Anonymous Games
+        </button>
       </div>
 
       <div className={styles["content"]}>
@@ -1264,6 +1337,7 @@ const AdminDashboard = () => {
             {activeTab === "news" && renderNewsTable()}
             {activeTab === "featured" && renderFeaturedTab()}
             {activeTab === "streams" && renderStreamsTab()}
+            {activeTab === "anonymous-games" && renderAnonymousGamesTable()}
             {activeTab !== "featured" && activeTab !== "streams" && renderPagination()}
             {activeTab === "streams" && renderPagination()}
           </>

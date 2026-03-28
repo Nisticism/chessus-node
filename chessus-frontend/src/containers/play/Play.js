@@ -25,8 +25,10 @@ const Play = () => {
     ongoingGames,
     fetchOpenGames,
     fetchOngoingGames,
-    createGame, 
+    createGame,
+    createAnonymousGame,
     joinGame,
+    joinByInviteCode,
     onGameEvent 
   } = useSocket();
 
@@ -62,6 +64,16 @@ const Play = () => {
   const [friendsPage, setFriendsPage] = useState(1);
   const [openGamesPage, setOpenGamesPage] = useState(1);
   const [ongoingGamesPage, setOngoingGamesPage] = useState(1);
+
+  // Anonymous play state
+  const [inviteCodeInput, setInviteCodeInput] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [isCreatingAnonymous, setIsCreatingAnonymous] = useState(false);
+  const [isJoiningByCode, setIsJoiningByCode] = useState(false);
+  const [createdInviteCode, setCreatedInviteCode] = useState(null);
+  const [showAnonCreateModal, setShowAnonCreateModal] = useState(false);
+  const [anonTimeControl, setAnonTimeControl] = useState("10");
+  const [anonIncrement, setAnonIncrement] = useState("0");
 
   // Check for game deleted message on mount
   useEffect(() => {
@@ -434,6 +446,54 @@ const Play = () => {
     }
   };
 
+  // Handle creating an anonymous game
+  const handleCreateAnonymousGame = async () => {
+    if (!selectedGameType) {
+      setError("Please select a game type first");
+      return;
+    }
+    setIsCreatingAnonymous(true);
+    setError(null);
+
+    try {
+      const result = await createAnonymousGame({
+        gameTypeId: selectedGameType.id,
+        timeControl: anonTimeControl === "0" ? null : parseInt(anonTimeControl),
+        increment: parseInt(anonIncrement) || 0,
+        guestName: guestName || 'Guest',
+        allowPremoves: true,
+        startingMode: 'none'
+      });
+
+      setCreatedInviteCode(result.inviteCode);
+      setShowAnonCreateModal(false);
+      navigate(`/play/${result.gameId}`);
+    } catch (err) {
+      setError(err.message || "Failed to create anonymous game");
+    } finally {
+      setIsCreatingAnonymous(false);
+    }
+  };
+
+  // Handle joining by invite code
+  const handleJoinByInviteCode = async () => {
+    if (!inviteCodeInput.trim()) {
+      setError("Please enter an invite code");
+      return;
+    }
+    setIsJoiningByCode(true);
+    setError(null);
+
+    try {
+      const result = await joinByInviteCode(inviteCodeInput.trim(), guestName || 'Guest');
+      navigate(`/play/${result.gameId}`);
+    } catch (err) {
+      setError(err.message || "Failed to join game");
+    } finally {
+      setIsJoiningByCode(false);
+    }
+  };
+
   // Handle admin deleting a bugged game
   const handleDeleteGame = async (gameId) => {
     if (!window.confirm("Are you sure you want to delete this game? This action cannot be undone. Player ELO will not be affected.")) {
@@ -477,8 +537,52 @@ const Play = () => {
       )}
 
       {!currentUser && (
-        <div className={styles["error-message"]}>
-          Guest mode: you can browse open and ongoing matches, but you must log in to host, join, or challenge.
+        <div className={styles["anonymous-play-section"]}>
+          <div className={styles["anonymous-play-info"]}>
+            <h3>Play Without an Account</h3>
+            <p>You can play anonymously by creating a game and sharing the invite code, or by entering a code from a friend. Anonymous games are unrated, won't appear in open games, and won't be saved to any profile.</p>
+          </div>
+          <div className={styles["anonymous-play-actions"]}>
+            <div className={styles["anonymous-name-input"]}>
+              <label>Display Name (optional):</label>
+              <input
+                type="text"
+                placeholder="Guest"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                maxLength={20}
+              />
+            </div>
+            <div className={styles["anonymous-join-section"]}>
+              <input
+                type="text"
+                placeholder="Enter invite code"
+                value={inviteCodeInput}
+                onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
+                maxLength={6}
+                className={styles["invite-code-input"]}
+              />
+              <button
+                className={styles["join-code-button"]}
+                onClick={handleJoinByInviteCode}
+                disabled={isJoiningByCode || !inviteCodeInput.trim()}
+              >
+                {isJoiningByCode ? "Joining..." : "Join Game"}
+              </button>
+            </div>
+            <div className={styles["anonymous-create-section"]}>
+              <button
+                className={styles["create-anon-button"]}
+                onClick={() => setShowAnonCreateModal(true)}
+                disabled={!selectedGameType}
+              >
+                Create Anonymous Game
+              </button>
+              {!selectedGameType && (
+                <span className={styles["select-game-hint"]}>Select a game type first</span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1131,6 +1235,56 @@ const Play = () => {
                   : challengedUserId 
                     ? "Send Challenge" 
                     : "Create Match"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Anonymous Create Game Modal */}
+      {showAnonCreateModal && !currentUser && (
+        <div className={styles["modal-overlay"]} onClick={() => setShowAnonCreateModal(false)}>
+          <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
+            <h2>Create Anonymous Game: {selectedGameType?.game_name}</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '16px' }}>
+              This game will be unrated and only accessible via invite code.
+            </p>
+            <div className={styles["form-group"]}>
+              <label>Time Control (minutes per side):</label>
+              <select value={anonTimeControl} onChange={(e) => setAnonTimeControl(e.target.value)}>
+                <option value="0">No limit</option>
+                <option value="1">1 min</option>
+                <option value="3">3 min</option>
+                <option value="5">5 min</option>
+                <option value="10">10 min</option>
+                <option value="15">15 min</option>
+                <option value="30">30 min</option>
+              </select>
+            </div>
+            <div className={styles["form-group"]}>
+              <label>Increment (seconds per move):</label>
+              <select value={anonIncrement} onChange={(e) => setAnonIncrement(e.target.value)}>
+                <option value="0">None</option>
+                <option value="1">1s</option>
+                <option value="2">2s</option>
+                <option value="3">3s</option>
+                <option value="5">5s</option>
+                <option value="10">10s</option>
+              </select>
+            </div>
+            <div className={styles["modal-actions"]}>
+              <button
+                className={`${styles.btn} ${styles["btn-secondary"]}`}
+                onClick={() => setShowAnonCreateModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className={`${styles.btn} ${styles["btn-primary"]}`}
+                onClick={handleCreateAnonymousGame}
+                disabled={isCreatingAnonymous}
+              >
+                {isCreatingAnonymous ? "Creating..." : "Create & Get Invite Code"}
               </button>
             </div>
           </div>
