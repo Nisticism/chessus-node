@@ -68,6 +68,7 @@ const Sandbox = () => {
   // State for multiple sandboxes
   const [sandboxes, setSandboxes] = useState([]);
   const [activeSandboxId, setActiveSandboxId] = useState(null);
+  const sandboxesLoadedRef = useRef(false);
   
   // UI state
   const [selectedPiece, setSelectedPiece] = useState(null);
@@ -136,6 +137,90 @@ const Sandbox = () => {
         localStorage.removeItem('chessus-sandboxes');
       }
     }
+    sandboxesLoadedRef.current = true;
+  }, []);
+
+  // Handle pending piece from PieceView "Try in Sandbox" button
+  useEffect(() => {
+    if (!sandboxesLoadedRef.current) return;
+    const pendingRaw = localStorage.getItem('chessus-sandbox-pending-piece');
+    if (!pendingRaw) return;
+    localStorage.removeItem('chessus-sandbox-pending-piece');
+
+    const loadPendingPiece = async () => {
+      try {
+        const pending = JSON.parse(pendingRaw);
+        const response = await PiecesService.getPieceById(pending.pieceId);
+        const fullPiece = response.data;
+        if (!fullPiece) return;
+
+        // Parse piece images
+        let images = [];
+        if (fullPiece.image_location) {
+          try {
+            const parsed = JSON.parse(fullPiece.image_location);
+            if (Array.isArray(parsed)) {
+              images = parsed.map(img => img.startsWith('http') ? img : `${ASSET_URL}${img}`);
+            }
+          } catch {
+            const p = fullPiece.image_location;
+            images = [p.startsWith('http') ? p : `${ASSET_URL}${p.startsWith('/uploads/') ? p : `/uploads/pieces/${p}`}`];
+          }
+        }
+
+        const pieceForSandbox = {
+          ...fullPiece,
+          ratio_movement_1: fullPiece.ratio_movement_1 || fullPiece.ratio_one_movement,
+          ratio_movement_2: fullPiece.ratio_movement_2 || fullPiece.ratio_two_movement,
+          step_movement_style: fullPiece.step_by_step_movement_style ?? fullPiece.step_movement_style,
+          step_movement_value: fullPiece.step_by_step_movement_value ?? fullPiece.step_movement_value,
+          ratio_capture_1: fullPiece.ratio_capture_1 || fullPiece.ratio_one_capture,
+          ratio_capture_2: fullPiece.ratio_capture_2 || fullPiece.ratio_two_capture,
+          step_capture_value: fullPiece.step_capture_value || fullPiece.step_by_step_capture,
+          step_by_step_attack_range: fullPiece.step_by_step_attack_range || fullPiece.step_by_step_attack_value,
+          id: `piece-${Date.now()}-0`,
+          piece_id: fullPiece.piece_id,
+          x: pending.centerX,
+          y: pending.centerY,
+          team: 1,
+          player_id: 1,
+          piece_image_urls: images,
+          name: fullPiece.piece_name,
+        };
+
+        const newSandbox = {
+          id: Date.now(),
+          name: fullPiece.piece_name || 'Piece Preview',
+          gameType: { board_width: pending.boardWidth, board_height: pending.boardHeight, game_name: fullPiece.piece_name || 'Piece Preview' },
+          pieces: [pieceForSandbox],
+          specialSquares: {},
+          currentTurn: 1,
+          moveHistory: []
+        };
+
+        setSandboxes(prev => {
+          let updated = [...prev];
+          if (updated.length >= MAX_SANDBOXES) {
+            // Remove the first (least recent) sandbox
+            updated = updated.slice(1);
+            // Re-label any auto-named sandboxes
+            updated = updated.map((s, index) => {
+              if (s.name.match(/^Sandbox \d+$/)) {
+                return { ...s, name: `Sandbox ${index + 1}` };
+              }
+              return s;
+            });
+          }
+          return [...updated, newSandbox];
+        });
+        setActiveSandboxId(newSandbox.id);
+      } catch (e) {
+        console.error('Failed to load pending piece for sandbox:', e);
+      }
+    };
+
+    loadPendingPiece();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Save to localStorage whenever sandboxes change
@@ -338,6 +423,7 @@ const Sandbox = () => {
             step_by_step_attack_range: normalizedPiece?.step_by_step_attack_range || normalizedPiece?.step_by_step_attack_value,
             max_piece_captures_per_ranged_attack: normalizedPiece?.max_piece_captures_per_ranged_attack,
             exact_ratio_hop_only: normalizedPiece?.exact_ratio_hop_only,
+            directional_hop_disabled: normalizedPiece?.directional_hop_disabled,
             id: `piece-${Date.now()}-${index}`,
             piece_id: pieceId,
             x: p.x ?? p.col ?? p.xLocation ?? 0,
@@ -435,6 +521,7 @@ const Sandbox = () => {
       can_hop_over_allies: pieceData.can_hop_over_allies,
       can_hop_over_enemies: pieceData.can_hop_over_enemies,
       exact_ratio_hop_only: pieceData.exact_ratio_hop_only,
+      directional_hop_disabled: pieceData.directional_hop_disabled,
       can_capture_enemy_on_move: pieceData.can_capture_enemy_on_move,
       attacks_like_movement: pieceData.attacks_like_movement,
       // Movement exact flags
@@ -465,7 +552,14 @@ const Sandbox = () => {
       down_right_capture: pieceData.down_right_capture,
       ratio_capture_1: pieceData.ratio_capture_1,
       ratio_capture_2: pieceData.ratio_capture_2,
-      step_capture_value: pieceData.step_capture_value,
+      step_capture_value: pieceData.step_capture_value || pieceData.step_by_step_capture,
+      // Repeating movement/capture
+      repeating_movement: pieceData.repeating_movement,
+      repeating_capture: pieceData.repeating_capture,
+      repeating_ratio: pieceData.repeating_ratio,
+      repeating_ratio_capture: pieceData.repeating_ratio_capture,
+      max_ratio_iterations: pieceData.max_ratio_iterations,
+      max_ratio_capture_iterations: pieceData.max_ratio_capture_iterations,
       // Copy special scenario data (additional/first-move movements and captures)
       special_scenario_moves: pieceData.special_scenario_moves,
       special_scenario_captures: pieceData.special_scenario_captures,
@@ -495,6 +589,8 @@ const Sandbox = () => {
       ratio_two_attack_range: pieceData.ratio_two_attack_range,
       step_by_step_attack_range: pieceData.step_by_step_attack_range || pieceData.step_by_step_attack_value,
       max_piece_captures_per_ranged_attack: pieceData.max_piece_captures_per_ranged_attack,
+      can_fire_over_allies: pieceData.can_fire_over_allies,
+      can_fire_over_enemies: pieceData.can_fire_over_enemies,
       // Multi-tile dimensions
       piece_width: pieceData.piece_width || 1,
       piece_height: pieceData.piece_height || 1,
@@ -508,6 +604,8 @@ const Sandbox = () => {
       // Special abilities
       can_en_passant: pieceData.can_en_passant,
       free_move_after_promotion: pieceData.free_move_after_promotion,
+      can_capture_allies: pieceData.can_capture_allies,
+      cannot_be_captured: pieceData.cannot_be_captured,
     };
 
     setSandboxes(prev => prev.map(s => {
@@ -665,11 +763,16 @@ const Sandbox = () => {
   }, [activeSandbox, activeSandboxId]);
 
   // Check if a value allows movement at a distance
-  const checkMovement = (value, distance) => {
+  // repeating: when true and value is exact (negative), allows multiples of the exact value
+  const checkMovement = (value, distance, repeating = false) => {
     if (value === 99) return true;
     if (value === 0 || value === null || value === undefined) return false;
     if (value > 0) return distance <= value;
-    if (value < 0) return distance === Math.abs(value);
+    if (value < 0) {
+      const exact = Math.abs(value);
+      if (repeating) return distance > 0 && distance % exact === 0;
+      return distance === exact;
+    }
     return false;
   };
 
@@ -874,23 +977,24 @@ const Sandbox = () => {
     
     if (directionalStyle || hasDirectionalValues) {
       let directionalAllowed = false;
+      const rep = pieceData.repeating_movement;
 
       if (rowDiff < 0 && colDiff === 0) {
-        if (!(skipExactRatio && pieceData.up_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_movement, pieceData.up_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_movement, pieceData.up_movement_exact), Math.abs(rowDiff), rep && pieceData.up_movement_exact);
       } else if (rowDiff > 0 && colDiff === 0) {
-        if (!(skipExactRatio && pieceData.down_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_movement, pieceData.down_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_movement, pieceData.down_movement_exact), Math.abs(rowDiff), rep && pieceData.down_movement_exact);
       } else if (rowDiff === 0 && colDiff < 0) {
-        if (!(skipExactRatio && pieceData.left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_movement, pieceData.left_movement_exact), Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_movement, pieceData.left_movement_exact), Math.abs(colDiff), rep && pieceData.left_movement_exact);
       } else if (rowDiff === 0 && colDiff > 0) {
-        if (!(skipExactRatio && pieceData.right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_movement, pieceData.right_movement_exact), Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_movement, pieceData.right_movement_exact), Math.abs(colDiff), rep && pieceData.right_movement_exact);
       } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.up_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_movement, pieceData.up_left_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_movement, pieceData.up_left_movement_exact), Math.abs(rowDiff), rep && pieceData.up_left_movement_exact);
       } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.up_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_movement, pieceData.up_right_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_movement, pieceData.up_right_movement_exact), Math.abs(rowDiff), rep && pieceData.up_right_movement_exact);
       } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.down_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_movement, pieceData.down_left_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_movement, pieceData.down_left_movement_exact), Math.abs(rowDiff), rep && pieceData.down_left_movement_exact);
       } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.down_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_movement, pieceData.down_right_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_movement, pieceData.down_right_movement_exact), Math.abs(rowDiff), rep && pieceData.down_right_movement_exact);
       }
 
       if (directionalAllowed) return true;
@@ -903,9 +1007,21 @@ const Sandbox = () => {
     const ratio2 = pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0;
     
     if ((ratioStyle || (ratio1 > 0 && ratio2 > 0)) && ratio1 > 0 && ratio2 > 0) {
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
+      const absRow = Math.abs(rowDiff);
+      const absCol = Math.abs(colDiff);
+      if (pieceData.repeating_ratio) {
+        const maxK = pieceData.max_ratio_iterations === -1 ? Math.max(absRow, absCol) : (pieceData.max_ratio_iterations || 1);
+        for (let k = 1; k <= maxK; k++) {
+          if ((absRow === k * ratio1 && absCol === k * ratio2) ||
+              (absRow === k * ratio2 && absCol === k * ratio1)) {
+            return true;
+          }
+        }
+      } else {
+        if ((absRow === ratio1 && absCol === ratio2) ||
+            (absRow === ratio2 && absCol === ratio1)) {
+          return true;
+        }
       }
     }
     }
@@ -992,23 +1108,24 @@ const Sandbox = () => {
     
     if (hasDirectionalCapture) {
       let directionalAllowed = false;
+      const repC = pieceData.repeating_capture;
 
       if (rowDiff < 0 && colDiff === 0) {
-        if (!(skipExactRatio && pieceData.up_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_capture, pieceData.up_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_capture, pieceData.up_capture_exact), Math.abs(rowDiff), repC && pieceData.up_capture_exact);
       } else if (rowDiff > 0 && colDiff === 0) {
-        if (!(skipExactRatio && pieceData.down_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_capture, pieceData.down_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_capture, pieceData.down_capture_exact), Math.abs(rowDiff), repC && pieceData.down_capture_exact);
       } else if (rowDiff === 0 && colDiff < 0) {
-        if (!(skipExactRatio && pieceData.left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_capture, pieceData.left_capture_exact), Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_capture, pieceData.left_capture_exact), Math.abs(colDiff), repC && pieceData.left_capture_exact);
       } else if (rowDiff === 0 && colDiff > 0) {
-        if (!(skipExactRatio && pieceData.right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_capture, pieceData.right_capture_exact), Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_capture, pieceData.right_capture_exact), Math.abs(colDiff), repC && pieceData.right_capture_exact);
       } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.up_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_capture, pieceData.up_left_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_capture, pieceData.up_left_capture_exact), Math.abs(rowDiff), repC && pieceData.up_left_capture_exact);
       } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.up_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_capture, pieceData.up_right_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_capture, pieceData.up_right_capture_exact), Math.abs(rowDiff), repC && pieceData.up_right_capture_exact);
       } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.down_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_capture, pieceData.down_left_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_capture, pieceData.down_left_capture_exact), Math.abs(rowDiff), repC && pieceData.down_left_capture_exact);
       } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.down_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_capture, pieceData.down_right_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_capture, pieceData.down_right_capture_exact), Math.abs(rowDiff), repC && pieceData.down_right_capture_exact);
       }
 
       if (directionalAllowed) return true;
@@ -1019,9 +1136,21 @@ const Sandbox = () => {
     const ratio1 = pieceData.ratio_capture_1 || 0;
     const ratio2 = pieceData.ratio_capture_2 || 0;
     if (ratio1 > 0 && ratio2 > 0) {
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
+      const absRow = Math.abs(rowDiff);
+      const absCol = Math.abs(colDiff);
+      if (pieceData.repeating_ratio_capture) {
+        const maxK = pieceData.max_ratio_capture_iterations === -1 ? Math.max(absRow, absCol) : (pieceData.max_ratio_capture_iterations || 1);
+        for (let k = 1; k <= maxK; k++) {
+          if ((absRow === k * ratio1 && absCol === k * ratio2) ||
+              (absRow === k * ratio2 && absCol === k * ratio1)) {
+            return true;
+          }
+        }
+      } else {
+        if ((absRow === ratio1 && absCol === ratio2) ||
+            (absRow === ratio2 && absCol === ratio1)) {
+          return true;
+        }
       }
     }
     }
@@ -1075,13 +1204,18 @@ const Sandbox = () => {
       }
     }
 
+    // If piece can capture where it moves, also check movement as fallback
+    if (pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) {
+      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
+    }
+
     return false;
   }, [canPieceMoveTo]);
 
-  // Check if path is clear
   const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false) => {
-    const canHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true;
-    const canHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true;
+    const directionalHopDisabled = pieceData?.directional_hop_disabled === 1 || pieceData?.directional_hop_disabled === true;
+    const canHopAllies = !directionalHopDisabled && (pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true);
+    const canHopEnemies = !directionalHopDisabled && (pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true);
     const pieceTeam = pieceData?.player_id || pieceData?.team;
     const movingPieceId = pieceData?.id;
     
@@ -1129,22 +1263,26 @@ const Sandbox = () => {
         // Multi-tile bounds check: piece must fit entirely on the board
         if (toX + pw > boardWidth || toY + ph > boardHeight) continue;
 
-        // For multi-tile pieces, find any enemy in the destination footprint
+        // For multi-tile pieces, find any enemy (or ally if can_capture_allies) in the destination footprint
         let occupyingPiece = null;
+        let blockedByInvincible = false;
         if (pw > 1 || ph > 1) {
-          for (let dy = 0; dy < ph && !occupyingPiece; dy++) {
-            for (let dx = 0; dx < pw && !occupyingPiece; dx++) {
+          for (let dy = 0; dy < ph && !occupyingPiece && !blockedByInvincible; dy++) {
+            for (let dx = 0; dx < pw && !occupyingPiece && !blockedByInvincible; dx++) {
               const found = pieces.find(p =>
                 p.id !== piece.id && doesPieceOccupySquare(p, toX + dx, toY + dy)
               );
               if (found) {
                 const foundTeam = found.player_id || found.team;
-                if (foundTeam !== pieceTeam) {
+                if (found.cannot_be_captured) {
+                  blockedByInvincible = true;
+                } else if (foundTeam !== pieceTeam || piece.can_capture_allies) {
                   occupyingPiece = found;
                 }
               }
             }
           }
+          if (blockedByInvincible) continue;
           // Check if any friendly piece (not ourselves) blocks the footprint
           if (!occupyingPiece) {
             const capturedId = null;
@@ -1162,8 +1300,10 @@ const Sandbox = () => {
         } else {
           occupyingPiece = findPieceAt(pieces, toX, toY);
           const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
-          // Skip if a friendly piece (not ourselves) occupies the target
-          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingTeam === pieceTeam) continue;
+          // Skip if target piece cannot be captured
+          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingPiece.cannot_be_captured) continue;
+          // Skip if a friendly piece (not ourselves) occupies the target (unless can_capture_allies)
+          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingTeam === pieceTeam && !piece.can_capture_allies) continue;
           // Skip moves to squares within the piece's own footprint
           if (occupyingPiece && occupyingPiece.id === piece.id) continue;
         }
@@ -1205,9 +1345,42 @@ const Sandbox = () => {
         // Check if this is a ratio (L-shape) move
         const ratio1 = piece.ratio_movement_1 || piece.ratio_one_movement || 0;
         const ratio2 = piece.ratio_movement_2 || piece.ratio_two_movement || 0;
-        const isRatioMove = ratio1 > 0 && ratio2 > 0 &&
-          ((Math.abs(toX - piece.x) === ratio1 && Math.abs(toY - piece.y) === ratio2) ||
-           (Math.abs(toX - piece.x) === ratio2 && Math.abs(toY - piece.y) === ratio1));
+        const absRowDist = Math.abs(toY - piece.y);
+        const absColDist = Math.abs(toX - piece.x);
+        let isRatioMove = false;
+        if (ratio1 > 0 && ratio2 > 0) {
+          if ((absRowDist === ratio1 && absColDist === ratio2) ||
+              (absRowDist === ratio2 && absColDist === ratio1)) {
+            isRatioMove = true;
+          } else if (piece.repeating_ratio) {
+            const maxK = piece.max_ratio_iterations === -1 ? Math.max(absRowDist, absColDist) : (piece.max_ratio_iterations || 1);
+            for (let k = 2; k <= maxK; k++) {
+              if ((absRowDist === k * ratio1 && absColDist === k * ratio2) ||
+                  (absRowDist === k * ratio2 && absColDist === k * ratio1)) {
+                isRatioMove = true;
+                break;
+              }
+            }
+          }
+        }
+        // Also check ratio capture
+        const rc1 = piece.ratio_capture_1 || 0;
+        const rc2 = piece.ratio_capture_2 || 0;
+        if (!isRatioMove && rc1 > 0 && rc2 > 0 && isCapture) {
+          if ((absRowDist === rc1 && absColDist === rc2) ||
+              (absRowDist === rc2 && absColDist === rc1)) {
+            isRatioMove = true;
+          } else if (piece.repeating_ratio_capture) {
+            const maxK = piece.max_ratio_capture_iterations === -1 ? Math.max(absRowDist, absColDist) : (piece.max_ratio_capture_iterations || 1);
+            for (let k = 2; k <= maxK; k++) {
+              if ((absRowDist === k * rc1 && absColDist === k * rc2) ||
+                  (absRowDist === k * rc2 && absColDist === k * rc1)) {
+                isRatioMove = true;
+                break;
+              }
+            }
+          }
+        }
 
         let pathClear = false;
         if (isStepMove) {
@@ -1224,6 +1397,38 @@ const Sandbox = () => {
           }
         } else {
           pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture);
+        }
+
+        // For repeating ratio moves, check intermediate landing positions are clear
+        if (pathClear && isRatioMove) {
+          const rr1 = isCapture ? (rc1 || ratio1) : ratio1;
+          const rr2 = isCapture ? (rc2 || ratio2) : ratio2;
+          if (rr1 > 0 && rr2 > 0) {
+            // Determine which ratio orientation matches: (r1,r2) or (r2,r1)
+            let stepRow = 0, stepCol = 0;
+            const rowSign = Math.sign(toY - piece.y);
+            const colSign = Math.sign(toX - piece.x);
+            if (absRowDist > 0 && absColDist > 0) {
+              if (absRowDist % rr1 === 0 && absColDist % rr2 === 0 && absRowDist / rr1 === absColDist / rr2) {
+                stepRow = rr1 * rowSign; stepCol = rr2 * colSign;
+              } else if (absRowDist % rr2 === 0 && absColDist % rr1 === 0 && absRowDist / rr2 === absColDist / rr1) {
+                stepRow = rr2 * rowSign; stepCol = rr1 * colSign;
+              }
+            }
+            if (stepRow !== 0 || stepCol !== 0) {
+              let cx = piece.x + stepCol;
+              let cy = piece.y + stepRow;
+              while (cx !== toX || cy !== toY) {
+                const blocking = findPieceAt(pieces, cx, cy);
+                if (blocking && blocking.id !== piece.id) {
+                  pathClear = false;
+                  break;
+                }
+                cx += stepCol;
+                cy += stepRow;
+              }
+            }
+          }
         }
 
         // Hop capture: piece has capture_on_hop, destination is empty, enemies are in the path.
@@ -1338,6 +1543,8 @@ const Sandbox = () => {
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           // Skip friendly pieces - show all other squares within range
           if (targetPiece && targetTeam === pieceTeam) continue;
+          // Skip pieces that cannot be captured
+          if (targetPiece && targetPiece.cannot_be_captured) continue;
           // Already in moves as a regular capture? Skip to avoid duplicates
           if (moves.some(m => m.x === toX && m.y === toY)) continue;
           // For multi-tile, check ranged from any sub-square
@@ -1384,12 +1591,15 @@ const Sandbox = () => {
       }
 
       // If clicking another piece of the same team (not an extension of selected piece), select it instead
+      // Unless the selected piece can capture allies and the clicked ally is a valid capture target
       const selectedTeam = selectedPiece.team || selectedPiece.player_id;
       if (clickedPiece && clickedPiece.id !== selectedPiece.id &&
           (clickedPiece.team === selectedTeam || clickedPiece.player_id === selectedTeam)) {
-        setSelectedPiece(clickedPiece);
-        setValidMoves([]);
-        return;
+        if (!selectedPiece.can_capture_allies || !validMoves.some(m => m.isCapture && m.x === x && m.y === y)) {
+          setSelectedPiece(clickedPiece);
+          setValidMoves([]);
+          return;
+        }
       }
 
       // Check if the click target is a valid game move (including hop captures)
@@ -1428,7 +1638,7 @@ const Sandbox = () => {
               const found = findPieceAt(pieces, targetX + dx, targetY + dy);
               if (found && found.id !== selectedPiece.id) {
                 const foundTeam = found.player_id || found.team;
-                if (foundTeam !== pieceTeam) {
+                if (foundTeam !== pieceTeam || selectedPiece.can_capture_allies) {
                   piecesToRemove.add(found.id);
                 }
               }
@@ -1933,7 +2143,7 @@ const Sandbox = () => {
                   const found = findPieceAt(pieces, anchorX + dx, anchorY + dy);
                   if (found && found.id !== pieceData.id) {
                     const foundTeam = found.player_id || found.team;
-                    if (foundTeam !== pieceTeam) {
+                    if (foundTeam !== pieceTeam || pieceData.can_capture_allies) {
                       targetPiece = found;
                     }
                   }

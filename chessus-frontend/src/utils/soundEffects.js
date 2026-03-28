@@ -33,10 +33,18 @@ class SoundManager {
     if (!this.enabled || !this.sounds[soundName]) return;
 
     try {
+      const sound = this.sounds[soundName];
       // Stop any currently playing instance and reset
-      this.sounds[soundName].pause();
-      this.sounds[soundName].currentTime = 0;
-      this.sounds[soundName].play().catch(err => {
+      sound.pause();
+      sound.currentTime = 0;
+
+      // Stop playback after 1 second
+      const stopTimer = setTimeout(() => {
+        sound.pause();
+      }, 1000);
+
+      sound.play().catch(err => {
+        clearTimeout(stopTimer);
         // Ignore errors (e.g., user hasn't interacted with page yet)
         console.debug('Sound play prevented:', err.message);
       });

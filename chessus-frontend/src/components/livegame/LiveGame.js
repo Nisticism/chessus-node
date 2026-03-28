@@ -97,7 +97,8 @@ const LiveGame = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   
   const { 
-    connected, 
+    connected,
+    socket,
     getGameState,
     joinGame,
     makeMove,
@@ -124,6 +125,7 @@ const LiveGame = () => {
   const [hoveredMoves, setHoveredMoves] = useState([]);
   const [draggedPiece, setDraggedPiece] = useState(null);
   const [dragValidMoves, setDragValidMoves] = useState([]);
+  const dragGrabOffsetRef = useRef({ x: 0, y: 0 });
   const [inCheck, setInCheck] = useState(false);
   const [checkedPieces, setCheckedPieces] = useState([]);
   const [showMovableIndicators, setShowMovableIndicators] = useState(false);
@@ -517,9 +519,16 @@ const LiveGame = () => {
 
   // Get current player info
   const currentPlayer = useMemo(() => {
-    if (!gameState?.players || !currentUser) return null;
-    return gameState.players.find(p => p.id === currentUser.id);
-  }, [gameState?.players, currentUser]);
+    if (!gameState?.players) return null;
+    if (currentUser) {
+      return gameState.players.find(p => p.id === currentUser.id);
+    }
+    // Anonymous player: match by anon_ + socket id
+    if (socket?.id) {
+      return gameState.players.find(p => p.id === `anon_${socket.id}`);
+    }
+    return null;
+  }, [gameState?.players, currentUser, socket?.id]);
 
   // Check if it's the current user's turn
   const isMyTurn = useMemo(() => {
@@ -544,11 +553,15 @@ const LiveGame = () => {
   };
 
   // Helper function to check if a value allows movement at a distance
-  const checkMovement = (value, distance) => {
+  const checkMovement = (value, distance, repeating = false) => {
     if (value === 99) return true; // Infinite movement
     if (value === 0 || value === null || value === undefined) return false;
     if (value > 0) return distance <= value; // Up to X squares
-    if (value < 0) return distance === Math.abs(value); // Exact X squares
+    if (value < 0) {
+      const exact = Math.abs(value);
+      if (repeating) return distance > 0 && distance % exact === 0;
+      return distance === exact; // Exact X squares
+    }
     return false;
   };
 
@@ -695,24 +708,25 @@ const LiveGame = () => {
     
     if (directionalStyle || hasDirectionalValues) {
       let directionalAllowed = false;
+      const rep = pieceData.repeating_movement;
 
       // Check 8 directions
       if (rowDiff < 0 && colDiff === 0) {
-        if (!(skipExactRatio && pieceData.up_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_movement, pieceData.up_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_movement, pieceData.up_movement_exact), Math.abs(rowDiff), rep && pieceData.up_movement_exact);
       } else if (rowDiff > 0 && colDiff === 0) {
-        if (!(skipExactRatio && pieceData.down_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_movement, pieceData.down_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_movement, pieceData.down_movement_exact), Math.abs(rowDiff), rep && pieceData.down_movement_exact);
       } else if (rowDiff === 0 && colDiff < 0) {
-        if (!(skipExactRatio && pieceData.left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_movement, pieceData.left_movement_exact), Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_movement, pieceData.left_movement_exact), Math.abs(colDiff), rep && pieceData.left_movement_exact);
       } else if (rowDiff === 0 && colDiff > 0) {
-        if (!(skipExactRatio && pieceData.right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_movement, pieceData.right_movement_exact), Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_movement, pieceData.right_movement_exact), Math.abs(colDiff), rep && pieceData.right_movement_exact);
       } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.up_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_movement, pieceData.up_left_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_movement, pieceData.up_left_movement_exact), Math.abs(rowDiff), rep && pieceData.up_left_movement_exact);
       } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.up_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_movement, pieceData.up_right_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_movement, pieceData.up_right_movement_exact), Math.abs(rowDiff), rep && pieceData.up_right_movement_exact);
       } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.down_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_movement, pieceData.down_left_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_left_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_movement, pieceData.down_left_movement_exact), Math.abs(rowDiff), rep && pieceData.down_left_movement_exact);
       } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.down_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_movement, pieceData.down_right_movement_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_right_movement_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_movement, pieceData.down_right_movement_exact), Math.abs(rowDiff), rep && pieceData.down_right_movement_exact);
       }
 
       if (directionalAllowed) return true;
@@ -725,9 +739,21 @@ const LiveGame = () => {
     const ratio2 = pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0;
     
     if ((ratioStyle || (ratio1 > 0 && ratio2 > 0)) && ratio1 > 0 && ratio2 > 0) {
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
+      const absRow = Math.abs(rowDiff);
+      const absCol = Math.abs(colDiff);
+      if (pieceData.repeating_ratio) {
+        const maxK = pieceData.max_ratio_iterations === -1 ? Math.max(absRow, absCol) : (pieceData.max_ratio_iterations || 1);
+        for (let k = 1; k <= maxK; k++) {
+          if ((absRow === k * ratio1 && absCol === k * ratio2) ||
+              (absRow === k * ratio2 && absCol === k * ratio1)) {
+            return true;
+          }
+        }
+      } else {
+        if ((absRow === ratio1 && absCol === ratio2) ||
+            (absRow === ratio2 && absCol === ratio1)) {
+          return true;
+        }
       }
     }
     }
@@ -826,23 +852,24 @@ const LiveGame = () => {
     
     if (hasDirectionalCapture) {
       let directionalAllowed = false;
+      const repC = pieceData.repeating_capture;
 
       if (rowDiff < 0 && colDiff === 0) {
-        if (!(skipExactRatio && pieceData.up_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_capture, pieceData.up_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_capture, pieceData.up_capture_exact), Math.abs(rowDiff), repC && pieceData.up_capture_exact);
       } else if (rowDiff > 0 && colDiff === 0) {
-        if (!(skipExactRatio && pieceData.down_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_capture, pieceData.down_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_capture, pieceData.down_capture_exact), Math.abs(rowDiff), repC && pieceData.down_capture_exact);
       } else if (rowDiff === 0 && colDiff < 0) {
-        if (!(skipExactRatio && pieceData.left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_capture, pieceData.left_capture_exact), Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.left_capture, pieceData.left_capture_exact), Math.abs(colDiff), repC && pieceData.left_capture_exact);
       } else if (rowDiff === 0 && colDiff > 0) {
-        if (!(skipExactRatio && pieceData.right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_capture, pieceData.right_capture_exact), Math.abs(colDiff));
+        if (!(skipExactRatio && pieceData.right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.right_capture, pieceData.right_capture_exact), Math.abs(colDiff), repC && pieceData.right_capture_exact);
       } else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.up_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_capture, pieceData.up_left_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_left_capture, pieceData.up_left_capture_exact), Math.abs(rowDiff), repC && pieceData.up_left_capture_exact);
       } else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.up_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_capture, pieceData.up_right_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.up_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.up_right_capture, pieceData.up_right_capture_exact), Math.abs(rowDiff), repC && pieceData.up_right_capture_exact);
       } else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.down_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_capture, pieceData.down_left_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_left_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_left_capture, pieceData.down_left_capture_exact), Math.abs(rowDiff), repC && pieceData.down_left_capture_exact);
       } else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        if (!(skipExactRatio && pieceData.down_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_capture, pieceData.down_right_capture_exact), Math.abs(rowDiff));
+        if (!(skipExactRatio && pieceData.down_right_capture_exact)) directionalAllowed = checkMovement(resolveExact(pieceData.down_right_capture, pieceData.down_right_capture_exact), Math.abs(rowDiff), repC && pieceData.down_right_capture_exact);
       }
 
       if (directionalAllowed) return true;
@@ -853,9 +880,21 @@ const LiveGame = () => {
     const ratio1 = pieceData.ratio_capture_1 || 0;
     const ratio2 = pieceData.ratio_capture_2 || 0;
     if (ratio1 > 0 && ratio2 > 0) {
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        return true;
+      const absRow = Math.abs(rowDiff);
+      const absCol = Math.abs(colDiff);
+      if (pieceData.repeating_ratio_capture) {
+        const maxK = pieceData.max_ratio_capture_iterations === -1 ? Math.max(absRow, absCol) : (pieceData.max_ratio_capture_iterations || 1);
+        for (let k = 1; k <= maxK; k++) {
+          if ((absRow === k * ratio1 && absCol === k * ratio2) ||
+              (absRow === k * ratio2 && absCol === k * ratio1)) {
+            return true;
+          }
+        }
+      } else {
+        if ((absRow === ratio1 && absCol === ratio2) ||
+            (absRow === ratio2 && absCol === ratio1)) {
+          return true;
+        }
       }
     }
     }
@@ -911,13 +950,19 @@ const LiveGame = () => {
       }
     }
 
+    // If piece can capture where it moves, also check movement as fallback
+    if (pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) {
+      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
+    }
+
     return false;
   }, [canPieceMoveTo]);
 
   // Check if path is clear for sliding pieces (no pieces in between)
   const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false) => {
-    const canHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true;
-    const canHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true;
+    const directionalHopDisabled = pieceData?.directional_hop_disabled === 1 || pieceData?.directional_hop_disabled === true;
+    const canHopAllies = !directionalHopDisabled && (pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true);
+    const canHopEnemies = !directionalHopDisabled && (pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true);
     const pieceTeam = pieceData?.player_id || pieceData?.team;
 
     const dx = Math.sign(toX - fromX);
@@ -1143,6 +1188,7 @@ const LiveGame = () => {
 
   // Check if a specific piece is under attack by any enemy piece
   const isPieceUnderAttack = useCallback((targetPiece, pieces, boardWidth, boardHeight) => {
+    if (targetPiece.cannot_be_captured) return false;
     const targetTeam = targetPiece.player_id || targetPiece.team;
     const tw = targetPiece.piece_width || 1;
     const th = targetPiece.piece_height || 1;
@@ -1291,21 +1337,25 @@ const LiveGame = () => {
 
         // For multi-tile pieces, scan entire destination footprint for enemies
         let occupyingPiece = null;
+        let blockedByInvincible = false;
         if (pw > 1 || ph > 1) {
-          // Find any enemy in the destination footprint (multi-tile captures all enemies in path)
-          for (let dy = 0; dy < ph; dy++) {
-            for (let dx = 0; dx < pw; dx++) {
+          // Find any enemy (or ally if can_capture_allies) in the destination footprint
+          for (let dy = 0; dy < ph && !blockedByInvincible; dy++) {
+            for (let dx = 0; dx < pw && !blockedByInvincible; dx++) {
               const found = pieces.find(p =>
                 p.id !== piece.id && doesPieceOccupySquare(p, toX + dx, toY + dy)
               );
               if (found) {
                 const foundTeam = found.player_id || found.team;
-                if (foundTeam !== pieceTeam && !occupyingPiece) {
+                if (found.cannot_be_captured) {
+                  blockedByInvincible = true;
+                } else if ((foundTeam !== pieceTeam || piece.can_capture_allies) && !occupyingPiece) {
                   occupyingPiece = found; // Track first enemy for capture flag
                 }
               }
             }
           }
+          if (blockedByInvincible) continue;
           // Only friendly pieces should block the destination (enemies are captured)
           if (!isDestinationClear(piece, toX, toY, pieces.filter(p => {
             const pTeam = p.player_id || p.team;
@@ -1314,9 +1364,10 @@ const LiveGame = () => {
         } else {
           occupyingPiece = findPieceAtSquare(pieces, toX, toY);
           const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
-
-          // Skip if a friendly piece occupies the target
-          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingTeam === pieceTeam) continue;
+          // Skip if target piece cannot be captured
+          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingPiece.cannot_be_captured) continue;
+          // Skip if a friendly piece occupies the target (unless can_capture_allies)
+          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingTeam === pieceTeam && !piece.can_capture_allies) continue;
           // Skip moves to squares within the piece's own footprint
           if (occupyingPiece && occupyingPiece.id === piece.id) continue;
         }
@@ -1347,9 +1398,44 @@ const LiveGame = () => {
 
         // If move is valid, check if path is clear
         // For ratio movements (L-shape), use special path checking
-        const isRatioMove = piece.ratio_movement_1 > 0 && piece.ratio_movement_2 > 0 &&
-                           ((Math.abs(toX - piece.x) === piece.ratio_movement_1 && Math.abs(toY - piece.y) === piece.ratio_movement_2) ||
-                            (Math.abs(toX - piece.x) === piece.ratio_movement_2 && Math.abs(toY - piece.y) === piece.ratio_movement_1));
+        const ratio1m = piece.ratio_movement_1 || 0;
+        const ratio2m = piece.ratio_movement_2 || 0;
+        const absRowDist = Math.abs(toY - piece.y);
+        const absColDist = Math.abs(toX - piece.x);
+        let isRatioMove = false;
+        if (ratio1m > 0 && ratio2m > 0) {
+          if ((absColDist === ratio1m && absRowDist === ratio2m) ||
+              (absColDist === ratio2m && absRowDist === ratio1m)) {
+            isRatioMove = true;
+          } else if (piece.repeating_ratio) {
+            const maxK = piece.max_ratio_iterations === -1 ? Math.max(absRowDist, absColDist) : (piece.max_ratio_iterations || 1);
+            for (let k = 2; k <= maxK; k++) {
+              if ((absRowDist === k * ratio2m && absColDist === k * ratio1m) ||
+                  (absRowDist === k * ratio1m && absColDist === k * ratio2m)) {
+                isRatioMove = true;
+                break;
+              }
+            }
+          }
+        }
+        // Also check ratio capture
+        const rc1 = piece.ratio_capture_1 || 0;
+        const rc2 = piece.ratio_capture_2 || 0;
+        if (!isRatioMove && rc1 > 0 && rc2 > 0 && isCapture) {
+          if ((absRowDist === rc1 && absColDist === rc2) ||
+              (absRowDist === rc2 && absColDist === rc1)) {
+            isRatioMove = true;
+          } else if (piece.repeating_ratio_capture) {
+            const maxK = piece.max_ratio_capture_iterations === -1 ? Math.max(absRowDist, absColDist) : (piece.max_ratio_capture_iterations || 1);
+            for (let k = 2; k <= maxK; k++) {
+              if ((absRowDist === k * rc1 && absColDist === k * rc2) ||
+                  (absRowDist === k * rc2 && absColDist === k * rc1)) {
+                isRatioMove = true;
+                break;
+              }
+            }
+          }
+        }
         
         const isStepMove = isStepByStepTarget(piece, piece.x, piece.y, toX, toY);
 
@@ -1359,8 +1445,49 @@ const LiveGame = () => {
           pathClear = checkRatioPathClear(piece, toX, toY, pieces);
         } else if (isStepMove) {
           pathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, isCapture);
+        } else if (pw > 1 || ph > 1) {
+          // For multi-tile pieces, check path from ALL sub-squares to their destination sub-squares
+          pathClear = true;
+          for (let sdy = 0; sdy < ph && pathClear; sdy++) {
+            for (let sdx = 0; sdx < pw && pathClear; sdx++) {
+              if (!isPathClear(piece.x + sdx, piece.y + sdy, toX + sdx, toY + sdy, pieces, piece, isCapture)) {
+                pathClear = false;
+              }
+            }
+          }
         } else {
           pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture);
+        }
+
+        // For repeating ratio moves, check intermediate landing positions are clear
+        if (pathClear && isRatioMove) {
+          const rr1 = isCapture ? (rc1 || ratio1m) : ratio1m;
+          const rr2 = isCapture ? (rc2 || ratio2m) : ratio2m;
+          if (rr1 > 0 && rr2 > 0) {
+            let stepRow = 0, stepCol = 0;
+            const rowSign = Math.sign(toY - piece.y);
+            const colSign = Math.sign(toX - piece.x);
+            if (absRowDist > 0 && absColDist > 0) {
+              if (absRowDist % rr1 === 0 && absColDist % rr2 === 0 && absRowDist / rr1 === absColDist / rr2) {
+                stepRow = rr1 * rowSign; stepCol = rr2 * colSign;
+              } else if (absRowDist % rr2 === 0 && absColDist % rr1 === 0 && absRowDist / rr2 === absColDist / rr1) {
+                stepRow = rr2 * rowSign; stepCol = rr1 * colSign;
+              }
+            }
+            if (stepRow !== 0 || stepCol !== 0) {
+              let cx = piece.x + stepCol;
+              let cy = piece.y + stepRow;
+              while (cx !== toX || cy !== toY) {
+                const blocking = findPieceAtSquare(pieces, cx, cy);
+                if (blocking && blocking.id !== piece.id) {
+                  pathClear = false;
+                  break;
+                }
+                cx += stepCol;
+                cy += stepRow;
+              }
+            }
+          }
         }
 
         // Hop capture: piece has capture_on_hop, destination is empty, enemies are in the path.
@@ -1395,7 +1522,11 @@ const LiveGame = () => {
                 if (hopPiece && hopPiece.id !== piece.id) {
                   const hopTeam = hopPiece.player_id || hopPiece.team;
                   if (hopTeam !== pieceTeam) {
-                    hopCapturedSet.add(hopPiece.id);
+                    if (hopPiece.cannot_be_captured) {
+                      hopBlocked = true;
+                    } else {
+                      hopCapturedSet.add(hopPiece.id);
+                    }
                   } else if (!canHopAllies) {
                     hopBlocked = true;
                   }
@@ -1586,7 +1717,7 @@ const LiveGame = () => {
           xDiff: Math.abs(piece.x - vulnerablePiece.x)
         });
         // Must be enemy piece
-        if (vulnerableTeam !== pieceTeam) {
+        if (vulnerableTeam !== pieceTeam && !vulnerablePiece.cannot_be_captured) {
           // Must be same piece type (e.g., pawn can only en passant capture another pawn)
           if (piece.piece_id === vulnerablePiece.piece_id) {
             // Check if current piece is horizontally adjacent to the vulnerable piece
@@ -1618,6 +1749,8 @@ const LiveGame = () => {
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           // Skip friendly pieces - show all other squares within range
           if (targetPiece && targetTeam === pieceTeam) continue;
+          // Skip pieces that cannot be captured
+          if (targetPiece && targetPiece.cannot_be_captured) continue;
           // Already in moves as a regular capture? skip
           if (moves.some(m => m.x === toX && m.y === toY)) continue;
           if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
@@ -1704,7 +1837,11 @@ const LiveGame = () => {
     // In game mode, only allow selecting own pieces when it's your turn
     // OR allow selecting own pieces when it's opponent's turn for premoves
     const canSelectForPremove = !isMyTurn && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && isOwnPiece;
-    if (clickedPiece && (isPreviewMode || (isOwnPiece && isMyTurn) || canSelectForPremove)) {
+    // If selected piece can capture allies and there's a valid capture move to this ally, skip re-selection
+    const hasAllyCaptureMove = selectedPiece && isOwnPiece && clickedPiece && selectedPiece.can_capture_allies &&
+      clickedPiece.id !== selectedPiece.id &&
+      validMoves.some(m => m.isCapture && doesPieceOccupySquare(clickedPiece, m.x, m.y));
+    if (clickedPiece && !hasAllyCaptureMove && (isPreviewMode || (isOwnPiece && isMyTurn) || canSelectForPremove)) {
       setSelectedPiece(clickedPiece);
       const moves = calculateValidMoves(
         clickedPiece, 
@@ -1864,8 +2001,6 @@ const LiveGame = () => {
 
   // Drag and drop handlers
   const handleDragStart = useCallback((e, piece) => {
-    console.log('Drag start:', { piece: piece?.piece_name, isMyTurn, status: gameState?.status });
-    
     const pieceTeam = piece.player_id || piece.team;
     const isOwnPiece = currentPlayer && pieceTeam === currentPlayer.position;
     
@@ -1874,13 +2009,29 @@ const LiveGame = () => {
     const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
     
     if (!canDragForMove && !canDragForPremove) {
-      console.log('Drag prevented: not valid for move or premove');
       e.preventDefault();
       return;
     }
 
     setDraggedPiece(piece);
     setSelectedPiece(piece);
+    
+    // Calculate grab offset within the piece footprint for multi-tile pieces
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
+    if (pw > 1 || ph > 1) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const relX = e.clientX - rect.left;
+      const relY = e.clientY - rect.top;
+      const cellWidth = rect.width / pw;
+      const cellHeight = rect.height / ph;
+      dragGrabOffsetRef.current = {
+        x: Math.floor(relX / cellWidth),
+        y: Math.floor(relY / cellHeight)
+      };
+    } else {
+      dragGrabOffsetRef.current = { x: 0, y: 0 };
+    }
     
     // Calculate valid moves for the dragged piece
     const pieces = parsePieces(gameState.pieces);
@@ -1892,7 +2043,6 @@ const LiveGame = () => {
       false, // skipCheckFilter
       canDragForPremove // forPremove - include potential capture squares for premoves
     );
-    console.log('Drag valid moves:', moves.length);
     setDragValidMoves(moves);
     setValidMoves(moves);
     
@@ -1903,7 +2053,6 @@ const LiveGame = () => {
   }, [isMyTurn, gameState, currentPlayer, calculateValidMoves]);
 
   const handleDragEnd = useCallback((e) => {
-    console.log('Drag end');
     e.currentTarget.style.opacity = '1';
     setDraggedPiece(null);
     setDragValidMoves([]);
@@ -1919,31 +2068,33 @@ const LiveGame = () => {
     e.preventDefault();
     e.stopPropagation();
     
-    console.log('Drop:', { targetX, targetY, draggedPiece: draggedPiece?.piece_name, isMyTurn, status: gameState?.status });
-    
     if (!draggedPiece) {
-      console.log('Drop prevented: no dragged piece');
       return;
     }
+
+    // Adjust drop coordinates for multi-tile grab offset
+    const grabOffset = dragGrabOffsetRef.current;
+    const anchorX = targetX - (grabOffset.x || 0);
+    const anchorY = targetY - (grabOffset.y || 0);
 
     // Don't move if dropping within the piece's own current footprint
     const selfW = draggedPiece.piece_width || 1;
     const selfH = draggedPiece.piece_height || 1;
-    if (targetX >= draggedPiece.x && targetX < draggedPiece.x + selfW &&
-        targetY >= draggedPiece.y && targetY < draggedPiece.y + selfH) {
+    if (anchorX >= draggedPiece.x && anchorX < draggedPiece.x + selfW &&
+        anchorY >= draggedPiece.y && anchorY < draggedPiece.y + selfH) {
       setDraggedPiece(null);
       setDragValidMoves([]);
       return;
     }
 
     // Check if target is a valid move (exact match or multi-tile footprint overlap)
-    let validMove = dragValidMoves.find(m => m.x === targetX && m.y === targetY);
+    let validMove = dragValidMoves.find(m => m.x === anchorX && m.y === anchorY);
     if (!validMove && draggedPiece) {
       const dpw = draggedPiece.piece_width || 1;
       const dph = draggedPiece.piece_height || 1;
       if (dpw > 1 || dph > 1) {
         validMove = dragValidMoves.find(m => !m.isRangedAttack &&
-          targetX >= m.x && targetX < m.x + dpw && targetY >= m.y && targetY < m.y + dph
+          anchorX >= m.x && anchorX < m.x + dpw && anchorY >= m.y && anchorY < m.y + dph
         );
       }
     }
@@ -1951,7 +2102,7 @@ const LiveGame = () => {
     // anchor square. Find any capture move whose footprint overlaps the target square.
     if (!validMove && draggedPiece) {
       const pieces = parsePieces(gameState?.pieces);
-      const targetPiece = findPieceAtSquare(pieces, targetX, targetY);
+      const targetPiece = findPieceAtSquare(pieces, anchorX, anchorY);
       if (targetPiece && targetPiece.id !== draggedPiece.id) {
         const dpw = draggedPiece.piece_width || 1;
         const dph = draggedPiece.piece_height || 1;
@@ -1966,8 +2117,6 @@ const LiveGame = () => {
         });
       }
     }
-    console.log('Valid move found:', validMove);
-    
     if (!validMove) {
       // User tried to make a move that's not in the valid moves list
       // Check if it's because of check restrictions
@@ -1982,7 +2131,7 @@ const LiveGame = () => {
         );
         
         // Check if the attempted move would be valid without check restrictions
-        const moveWithoutCheckFilter = movesWithoutCheckFilter.find(m => m.x === targetX && m.y === targetY);
+        const moveWithoutCheckFilter = movesWithoutCheckFilter.find(m => m.x === anchorX && m.y === anchorY);
         
         if (moveWithoutCheckFilter) {
           // The move is mechanically valid but was filtered out by check validation
@@ -2008,7 +2157,6 @@ const LiveGame = () => {
       const canMakePremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false;
       
       if (canMakeMove) {
-        console.log('Making move:', { from: { x: draggedPiece.x, y: draggedPiece.y }, to: { x: validMove.x, y: validMove.y } });
         const moveData = {
           from: { x: draggedPiece.x, y: draggedPiece.y },
           to: { x: validMove.x, y: validMove.y },
@@ -2027,7 +2175,6 @@ const LiveGame = () => {
         }
         makeMove(parseInt(gameId), moveData);
       } else if (canMakePremove) {
-        console.log('Setting premove via drag:', { from: { x: draggedPiece.x, y: draggedPiece.y }, to: { x: validMove.x, y: validMove.y } });
         const premoveData = {
           from: { x: draggedPiece.x, y: draggedPiece.y },
           to: { x: validMove.x, y: validMove.y },
@@ -2098,7 +2245,7 @@ const LiveGame = () => {
       
       // Check if this is a valid ranged attack target (or potential target for premoves)
       const isValidTarget = canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam);
-      const isEnemyTarget = targetPiece && targetTeam !== sourceTeam;
+      const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured;
       const canPremoveRanged = !isMyTurn && gameState.allowPremoves !== false;
 
       if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
@@ -2218,7 +2365,7 @@ const LiveGame = () => {
           const sourceTeam = data.piece.player_id || data.piece.team;
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           const isValidTarget = canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
-          const isEnemyTarget = targetPiece && targetTeam !== sourceTeam;
+          const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured;
           const canPremoveRanged = !isMyTurn && gameState.allowPremoves !== false;
 
           if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
@@ -2544,10 +2691,12 @@ const LiveGame = () => {
         // During ranged drag, highlight all valid ranged target squares (including empty)
         const isRangedDragTarget = rangedAttackSource
           && !(piece && ((piece.player_id || piece.team) === (rangedAttackSource.player_id || rangedAttackSource.team)))
+          && !(piece?.cannot_be_captured)
           && canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, gameY, gameX, rangedAttackSource, rangedAttackSource.player_id || rangedAttackSource.team);
         // Right-click-twice mode: highlight all valid ranged squares (including empty)
         const isRangedSelectedTarget = !rangedAttackSource && rangedSelectedPiece
           && !(piece && ((piece.player_id || piece.team) === (rangedSelectedPiece.player_id || rangedSelectedPiece.team)))
+          && !(piece?.cannot_be_captured)
           && canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, gameY, gameX, rangedSelectedPiece, rangedSelectedPiece.player_id || rangedSelectedPiece.team);
         const isRangedSelectedSource = rangedSelectedPiece && rangedSelectedPiece.x === gameX && rangedSelectedPiece.y === gameY;
 
@@ -2885,7 +3034,7 @@ const LiveGame = () => {
   }
 
   // Check if user can join this game (for join button in waiting banner)
-  const isHost = gameState.hostId === currentUser?.id;
+  const isHost = gameState.hostId === currentUser?.id || (socket?.id && gameState.hostId === `anon_${socket.id}`);
   const isPlayer = !!gameState.players?.some((player) => player.id === currentUser?.id);
   const canSpectate = gameState.allowSpectators !== false || isPlayer;
   const gameUrl = `${window.location.origin}/play/${gameId}`;
@@ -3053,6 +3202,14 @@ const LiveGame = () => {
                     <>
                       <div className={styles["waiting-spinner-small"]}></div>
                       <span>Waiting for opponent to join...</span>
+                      {gameState.isAnonymous && gameState.inviteCode && (
+                        <div style={{ margin: '8px 0', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Share this invite code:</div>
+                          <div style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '4px', color: 'var(--accent-primary)', fontFamily: 'monospace' }}>
+                            {gameState.inviteCode}
+                          </div>
+                        </div>
+                      )}
                       <div className={styles["share-link-inline"]}>
                         <input 
                           type="text" 
