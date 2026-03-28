@@ -415,9 +415,39 @@ const migrations = [
   },
   {
     table: 'pieces',
+    column: 'directional_hop_disabled',
+    sql: "ALTER TABLE pieces ADD COLUMN directional_hop_disabled TINYINT(1) DEFAULT 0",
+    description: "Add directional_hop_disabled column - when enabled, hopping is disabled for directional (sliding) movements but still works for ratio (L-shape) movements"
+  },
+  {
+    table: 'pieces',
     column: 'repeating_capture',
     sql: "ALTER TABLE pieces ADD COLUMN repeating_capture TINYINT(1) DEFAULT 0",
     description: "Add repeating_capture column - when enabled with exact captures, the piece can repeat its exact capture distance infinitely"
+  },
+  {
+    table: 'pieces',
+    column: 'repeating_ratio_capture',
+    sql: "ALTER TABLE pieces ADD COLUMN repeating_ratio_capture TINYINT(1) DEFAULT 0",
+    description: "Add repeating_ratio_capture column - when enabled, ratio captures can repeat for multiple iterations"
+  },
+  {
+    table: 'pieces',
+    column: 'max_ratio_capture_iterations',
+    sql: "ALTER TABLE pieces ADD COLUMN max_ratio_capture_iterations INT DEFAULT NULL",
+    description: "Add max_ratio_capture_iterations column - max iterations for ratio capture (-1 for infinite)"
+  },
+  {
+    table: 'pieces',
+    column: 'can_capture_allies',
+    sql: "ALTER TABLE pieces ADD COLUMN can_capture_allies TINYINT(1) DEFAULT 0",
+    description: "Add can_capture_allies column - when enabled, the piece can capture allied pieces with any attack method"
+  },
+  {
+    table: 'pieces',
+    column: 'cannot_be_captured',
+    sql: "ALTER TABLE pieces ADD COLUMN cannot_be_captured TINYINT(1) DEFAULT 0",
+    description: "Add cannot_be_captured column - when enabled, the piece cannot be captured by any means (acts as a wall)"
   }
 ];
 
@@ -1984,6 +2014,61 @@ Join us in revolutionizing chess, one variant at a time.
     }
   } catch (err) {
     console.error('Error creating notification_email_log table:', err.message);
+  }
+
+  // Add hide_donation_badge column to users for anonymous donation preference
+  try {
+    const hideBadgeCol = await columnExists('users', 'hide_donation_badge');
+    if (!hideBadgeCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN hide_donation_badge TINYINT(1) DEFAULT 0 COMMENT 'If true, donation badge is hidden on profile'`,
+        "Add hide_donation_badge column to users table for anonymous donation preference"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding hide_donation_badge column:', err.message);
+  }
+
+  // Add google_id column to users for Google Sign-In
+  try {
+    const googleIdCol = await columnExists('users', 'google_id');
+    if (!googleIdCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN google_id VARCHAR(255) DEFAULT NULL COMMENT 'Google account ID for Google Sign-In'`,
+        "Add google_id column to users table for Google Sign-In"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding google_id column:', err.message);
+  }
+
+  // Add anonymous game support columns to games table
+  try {
+    const isAnonymousCol = await columnExists('games', 'is_anonymous');
+    if (!isAnonymousCol) {
+      await runMigration(
+        `ALTER TABLE games ADD COLUMN is_anonymous TINYINT(1) DEFAULT 0`,
+        "Add is_anonymous column to games table for anonymous play"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_anonymous column:', err.message);
+  }
+
+  try {
+    const inviteCodeCol = await columnExists('games', 'invite_code');
+    if (!inviteCodeCol) {
+      await runMigration(
+        `ALTER TABLE games ADD COLUMN invite_code VARCHAR(8) DEFAULT NULL`,
+        "Add invite_code column to games table for anonymous play"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding invite_code column:', err.message);
   }
 
   if (migrationsRun === 0) {

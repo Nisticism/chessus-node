@@ -486,6 +486,10 @@ function initializeSocket(server) {
           socket.username = username;
           console.log(`User ${username} (ID: ${userId}) authenticated on socket ${socket.id}`);
           
+          // Update last_active_at on socket connection
+          db_pool.query("UPDATE users SET last_active_at = NOW() WHERE id = ?", [userId])
+            .catch(err => console.error("Error updating last_active_at on socket auth:", err.message));
+          
           // Broadcast updated online users list
           io.emit("onlineUsers", Array.from(onlineUsers));
         }
@@ -682,11 +686,18 @@ function initializeSocket(server) {
               ratio_movement_style: fullPieceData.ratio_movement_style,
               ratio_movement_1: fullPieceData.ratio_one_movement,
               ratio_movement_2: fullPieceData.ratio_two_movement,
+              repeating_movement: fullPieceData.repeating_movement,
+              repeating_ratio: fullPieceData.repeating_ratio,
+              max_ratio_iterations: fullPieceData.max_ratio_iterations,
+              repeating_capture: fullPieceData.repeating_capture,
+              repeating_ratio_capture: fullPieceData.repeating_ratio_capture,
+              max_ratio_capture_iterations: fullPieceData.max_ratio_capture_iterations,
               step_movement_style: fullPieceData.step_by_step_movement_style,
               step_movement_value: fullPieceData.step_by_step_movement_value,
               can_hop_over_allies: fullPieceData.can_hop_over_allies,
               can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
               exact_ratio_hop_only: fullPieceData.exact_ratio_hop_only,
+              directional_hop_disabled: fullPieceData.directional_hop_disabled,
               can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
               can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
               // Capture data
@@ -716,7 +727,6 @@ function initializeSocket(server) {
               is_royal: fullPieceData.is_royal,
               can_promote: fullPieceData.can_promote,
               can_castle: fullPieceData.can_castle,
-              promotion_options: fullPieceData.promotion_options,
               has_checkmate_rule: fullPieceData.has_checkmate_rule,
               special_scenario_moves: fullPieceData.special_scenario_moves,
               special_scenario_captures: fullPieceData.special_scenario_captures,
@@ -754,7 +764,11 @@ function initializeSocket(server) {
               promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
               // Dimensions for multi-tile pieces
               piece_width: fullPieceData.piece_width || 1,
-              piece_height: fullPieceData.piece_height || 1
+              piece_height: fullPieceData.piece_height || 1,
+              // Can capture allies
+              can_capture_allies: fullPieceData.can_capture_allies,
+              // Cannot be captured
+              cannot_be_captured: fullPieceData.cannot_be_captured
             };
           }
           return piece;
@@ -877,6 +891,373 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error creating game:", error);
         socket.emit("error", { message: "Failed to create game" });
+      }
+    });
+
+    // Create an anonymous game (no account required)
+    socket.on("createAnonymousGame", async (data) => {
+      try {
+        const { gameTypeId, timeControl, increment, guestName, allowSpectators = false, showPieceHelpers = false, allowPremoves = true, startingMode = 'none' } = data;
+
+        // Generate a unique 6-character invite code
+        const generateInviteCode = () => {
+          const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude confusable chars (I,O,0,1)
+          let code = '';
+          for (let i = 0; i < 6; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+          }
+          return code;
+        };
+
+        let inviteCode = generateInviteCode();
+        // Ensure uniqueness
+        let attempts = 0;
+        while (attempts < 5) {
+          const [[existing]] = await db_pool.query(
+            "SELECT id FROM games WHERE invite_code = ? AND status IN ('waiting', 'ready', 'active')",
+            [inviteCode]
+          );
+          if (!existing) break;
+          inviteCode = generateInviteCode();
+          attempts++;
+        }
+
+        const displayName = (guestName || 'Guest').substring(0, 20);
+
+        // Get game type details
+        const [[gameType]] = await db_pool.query(
+          "SELECT * FROM game_types WHERE id = ?",
+          [gameTypeId]
+        );
+
+        if (!gameType) {
+          return socket.emit("error", { message: "Game type not found" });
+        }
+
+        // Get pieces for this game type from junction table
+        const [junctionPieces] = await db_pool.query(
+          `SELECT gtp.*, p.name as piece_name, p.image_url, p.piece_width, p.piece_height
+           FROM game_type_pieces gtp
+           JOIN pieces p ON gtp.piece_id = p.id
+           WHERE gtp.game_type_id = ?`,
+          [gameTypeId]
+        );
+
+        // Build pieces array (same logic as createGame)
+        const piecesArray = junctionPieces.map(jp => ({
+          id: `${jp.piece_id}_${jp.x}_${jp.y}`,
+          piece_id: jp.piece_id,
+          piece_name: jp.piece_name,
+          x: jp.x,
+          y: jp.y,
+          team: jp.player_owner,
+          player_id: jp.player_owner,
+          image_url: jp.image_url,
+          piece_width: jp.piece_width || 1,
+          piece_height: jp.piece_height || 1,
+          has_moved: false,
+          move_count: 0,
+          available_for_moves: jp.available_for_moves !== undefined ? jp.available_for_moves : 1,
+          available_for_captures: jp.available_for_captures !== undefined ? jp.available_for_captures : 1
+        }));
+
+        // Hydrate pieces with movement/capture data
+        const pieceIdsToLoad = new Set();
+        piecesArray.forEach(p => { if (p.piece_id) pieceIdsToLoad.add(p.piece_id); });
+        if (pieceIdsToLoad.size > 0) {
+          const [pieceRows] = await db_pool.query(
+            `SELECT * FROM pieces WHERE id IN (?)`,
+            [Array.from(pieceIdsToLoad)]
+          );
+          const pieceDataMap = {};
+          pieceRows.forEach(p => { pieceDataMap[p.id] = p; });
+          piecesArray.forEach(piece => {
+            const fullPieceData = pieceDataMap[piece.piece_id];
+            if (fullPieceData) {
+              Object.assign(piece, {
+                directional_movement_style: fullPieceData.directional_movement_style,
+                up_movement: fullPieceData.up_movement,
+                down_movement: fullPieceData.down_movement,
+                left_movement: fullPieceData.left_movement,
+                right_movement: fullPieceData.right_movement,
+                up_left_movement: fullPieceData.up_left_movement,
+                up_right_movement: fullPieceData.up_right_movement,
+                down_left_movement: fullPieceData.down_left_movement,
+                down_right_movement: fullPieceData.down_right_movement,
+                up_movement_exact: fullPieceData.up_movement_exact,
+                down_movement_exact: fullPieceData.down_movement_exact,
+                left_movement_exact: fullPieceData.left_movement_exact,
+                right_movement_exact: fullPieceData.right_movement_exact,
+                up_left_movement_exact: fullPieceData.up_left_movement_exact,
+                up_right_movement_exact: fullPieceData.up_right_movement_exact,
+                down_left_movement_exact: fullPieceData.down_left_movement_exact,
+                down_right_movement_exact: fullPieceData.down_right_movement_exact,
+                ratio_movement_style: fullPieceData.ratio_movement_style,
+                ratio_movement_1: fullPieceData.ratio_one_movement,
+                ratio_movement_2: fullPieceData.ratio_two_movement,
+                step_movement_style: fullPieceData.step_by_step_movement_style,
+                step_movement_value: fullPieceData.step_by_step_movement_value,
+                can_hop_over_allies: fullPieceData.can_hop_over_allies,
+                can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+                can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
+                can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
+                can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
+                attacks_like_movement: fullPieceData.attacks_like_movement,
+                up_capture: fullPieceData.up_capture,
+                down_capture: fullPieceData.down_capture,
+                left_capture: fullPieceData.left_capture,
+                right_capture: fullPieceData.right_capture,
+                up_left_capture: fullPieceData.up_left_capture,
+                up_right_capture: fullPieceData.up_right_capture,
+                down_left_capture: fullPieceData.down_left_capture,
+                down_right_capture: fullPieceData.down_right_capture,
+                up_capture_exact: fullPieceData.up_capture_exact,
+                down_capture_exact: fullPieceData.down_capture_exact,
+                left_capture_exact: fullPieceData.left_capture_exact,
+                right_capture_exact: fullPieceData.right_capture_exact,
+                up_left_capture_exact: fullPieceData.up_left_capture_exact,
+                up_right_capture_exact: fullPieceData.up_right_capture_exact,
+                down_left_capture_exact: fullPieceData.down_left_capture_exact,
+                down_right_capture_exact: fullPieceData.down_right_capture_exact,
+                ratio_capture_1: fullPieceData.ratio_one_capture,
+                ratio_capture_2: fullPieceData.ratio_two_capture,
+                step_capture_value: fullPieceData.step_by_step_capture,
+                piece_value: fullPieceData.piece_value,
+                is_royal: fullPieceData.is_royal,
+                can_promote: fullPieceData.can_promote,
+                promotion_options: fullPieceData.promotion_options,
+                has_checkmate_rule: fullPieceData.has_checkmate_rule,
+                special_scenario_moves: fullPieceData.special_scenario_moves,
+                special_scenario_captures: fullPieceData.special_scenario_captures,
+                can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
+                up_attack_range: fullPieceData.up_attack_range,
+                down_attack_range: fullPieceData.down_attack_range,
+                left_attack_range: fullPieceData.left_attack_range,
+                right_attack_range: fullPieceData.right_attack_range,
+                up_left_attack_range: fullPieceData.up_left_attack_range,
+                up_right_attack_range: fullPieceData.up_right_attack_range,
+                down_left_attack_range: fullPieceData.down_left_attack_range,
+                down_right_attack_range: fullPieceData.down_right_attack_range,
+                can_en_passant: fullPieceData.can_en_passant,
+                can_castle: fullPieceData.can_castle,
+                cannot_be_captured: fullPieceData.cannot_be_captured,
+                can_capture_allies: fullPieceData.can_capture_allies,
+                repeating_ratio: fullPieceData.repeating_ratio,
+                max_ratio_iterations: fullPieceData.max_ratio_iterations,
+                directional_hop_disabled: fullPieceData.directional_hop_disabled,
+                first_move_only_capture: fullPieceData.first_move_only_capture,
+                hop_capture: fullPieceData.hop_capture,
+                draw_move_limit: fullPieceData.draw_move_limit,
+              });
+            }
+          });
+        }
+
+        const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const piecesData = JSON.stringify(piecesArray);
+
+        const [result] = await db_pool.query(
+          `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_anonymous, invite_code)
+           VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', NULL, ?, ?, 1, ?)`,
+          [currentTime, timeControl || null, increment || 0, piecesData, JSON.stringify({ moves: [], rated: false, allowPremoves, startingMode }), gameTypeId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, inviteCode]
+        );
+
+        const gameId = result.insertId;
+
+        // Create player entry with no user_id
+        await db_pool.query(
+          `INSERT INTO players (created_at, player_position, time_remaining, game_id, user_id, game_type_id)
+           VALUES (?, ?, ?, ?, NULL, ?)`,
+          [currentTime, null, timeControl || null, gameId, gameTypeId]
+        );
+
+        // Use a temporary ID for the anonymous host
+        const tempHostId = `anon_${socket.id}`;
+
+        const gameState = {
+          id: gameId,
+          gameTypeId,
+          gameType: gameType,
+          timeControl: timeControl || null,
+          increment: increment || 0,
+          status: 'waiting',
+          hostId: tempHostId,
+          hostUsername: displayName,
+          players: [{ id: tempHostId, username: displayName, position: null }],
+          pieces: piecesArray,
+          currentTurn: 1,
+          moveHistory: [],
+          movesWithoutCapture: 0,
+          positionHistory: {},
+          controlSquareTracking: {},
+          startTime: null,
+          playerTimes: {},
+          allowSpectators,
+          showPieceHelpers,
+          rated: false,
+          allowPremoves,
+          startingMode,
+          premove: null,
+          isAnonymous: true,
+          inviteCode
+        };
+
+        activeGames.set(gameId.toString(), gameState);
+        socket.join(`game-${gameId}`);
+
+        // Map this socket to the temp ID for game communications
+        userSockets.set(tempHostId, socket.id);
+
+        socket.emit("gameCreated", { gameId, gameState, inviteCode });
+
+        console.log(`Anonymous game ${gameId} created by ${displayName} with invite code ${inviteCode}`);
+      } catch (error) {
+        console.error("Error creating anonymous game:", error);
+        socket.emit("error", { message: "Failed to create anonymous game" });
+      }
+    });
+
+    // Join a game by invite code (no account required)
+    socket.on("joinByInviteCode", async (data) => {
+      try {
+        const { inviteCode, guestName, userId, username } = data;
+        const displayName = username || (guestName || 'Guest').substring(0, 20);
+        const code = (inviteCode || '').toUpperCase().trim();
+
+        if (!code || code.length !== 6) {
+          return socket.emit("error", { message: "Invalid invite code" });
+        }
+
+        // Find game by invite code
+        let gameState = null;
+        let gameId = null;
+
+        // Search active games in memory first
+        for (const [id, gs] of activeGames) {
+          if (gs.inviteCode === code && gs.status === 'waiting') {
+            gameState = gs;
+            gameId = parseInt(id);
+            break;
+          }
+        }
+
+        // If not in memory, check database
+        if (!gameState) {
+          const [[game]] = await db_pool.query(
+            "SELECT * FROM games WHERE invite_code = ? AND status = 'waiting'",
+            [code]
+          );
+          if (!game) {
+            return socket.emit("error", { message: "No game found with that invite code, or the game has already started" });
+          }
+          gameId = game.id;
+        }
+
+        // Use the standard joinGame flow from here
+        const gameIdStr = gameId.toString();
+        if (!gameState) {
+          gameState = activeGames.get(gameIdStr);
+        }
+
+        if (!gameState) {
+          return socket.emit("error", { message: "Game not found" });
+        }
+
+        if (gameState.players.length >= 2) {
+          return socket.emit("error", { message: "Game is already full" });
+        }
+
+        // Determine player ID
+        const playerId = userId || `anon_${socket.id}`;
+        const playerUsername = displayName;
+
+        // Check not joining own game
+        if (gameState.players.some(p => p.id === playerId)) {
+          return socket.emit("error", { message: "You are already in this game" });
+        }
+
+        const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+        // Insert player record
+        await db_pool.query(
+          `INSERT INTO players (created_at, player_position, time_remaining, game_id, user_id, game_type_id)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [currentTime, null, gameState.timeControl, gameId, userId || null, gameState.gameTypeId]
+        );
+
+        // Assign positions randomly
+        const positions = [1, 2].sort(() => Math.random() - 0.5);
+        gameState.players[0].position = positions[0];
+        const newPlayer = { id: playerId, username: playerUsername, position: positions[1] };
+        gameState.players.push(newPlayer);
+
+        // Map socket
+        userSockets.set(playerId, socket.id);
+
+        // Initialize timers
+        if (gameState.timeControl) {
+          gameState.playerTimes = {};
+          gameState.players.forEach(p => {
+            gameState.playerTimes[p.id] = gameState.timeControl * 60;
+          });
+        }
+
+        // Apply randomized starting positions if needed
+        if (gameState.startingMode && gameState.startingMode !== 'none') {
+          // Same randomization logic as joinGame
+          const boardWidth = gameState.gameType?.board_width || 8;
+          const boardHeight = gameState.gameType?.board_height || 8;
+          if (gameState.startingMode === 'randomized' || gameState.startingMode === 'mirrored') {
+            const team1Pieces = gameState.pieces.filter(p => (p.team || p.player_id) === 1);
+            const team2Pieces = gameState.pieces.filter(p => (p.team || p.player_id) === 2);
+            const shufflePositions = (pieces) => {
+              const positions = pieces.map(p => ({ x: p.x, y: p.y }));
+              for (let i = positions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [positions[i], positions[j]] = [positions[j], positions[i]];
+              }
+              return pieces.map((p, i) => ({ ...p, x: positions[i].x, y: positions[i].y }));
+            };
+            const shuffledTeam1 = shufflePositions(team1Pieces);
+            let shuffledTeam2;
+            if (gameState.startingMode === 'mirrored') {
+              shuffledTeam2 = team2Pieces.map((p, i) => {
+                const mirrorP = shuffledTeam1[i];
+                if (mirrorP) {
+                  return { ...p, x: mirrorP.x, y: boardHeight - 1 - mirrorP.y };
+                }
+                return p;
+              });
+            } else {
+              shuffledTeam2 = shufflePositions(team2Pieces);
+            }
+            gameState.pieces = [...shuffledTeam1, ...shuffledTeam2];
+          }
+        }
+
+        gameState.status = 'ready';
+
+        // Update DB
+        await db_pool.query(
+          `UPDATE games SET status = 'ready', pieces = ? WHERE id = ?`,
+          [JSON.stringify(gameState.pieces), gameId]
+        );
+
+        socket.join(`game-${gameId}`);
+
+        io.to(`game-${gameId}`).emit("playerJoined", {
+          gameId,
+          gameState,
+          newPlayer
+        });
+
+        // Remove from open games (anonymous games aren't listed, but just in case)
+        io.emit("gameRemoved", { gameId });
+
+        console.log(`${playerUsername} joined anonymous game ${gameId} via invite code ${code}`);
+      } catch (error) {
+        console.error("Error joining by invite code:", error);
+        socket.emit("error", { message: "Failed to join game" });
       }
     });
 
@@ -3291,7 +3672,7 @@ async function getOpenLiveGames() {
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
        JOIN users u ON g.host_id = u.id
-       WHERE g.status = 'waiting' AND (g.is_challenge = 0 OR g.is_challenge IS NULL)
+       WHERE g.status = 'waiting' AND (g.is_challenge = 0 OR g.is_challenge IS NULL) AND (g.is_anonymous = 0 OR g.is_anonymous IS NULL)
        ORDER BY g.created_at DESC`
     );
     return games;
@@ -3316,7 +3697,7 @@ async function getOngoingGames() {
        JOIN game_types gt ON g.game_type_id = gt.id
        JOIN players p ON g.id = p.game_id
        JOIN users u ON p.user_id = u.id
-       WHERE g.status IN ('active', 'ready') AND (g.allow_spectators = 1 OR g.allow_spectators IS NULL)
+       WHERE g.status IN ('active', 'ready') AND (g.allow_spectators = 1 OR g.allow_spectators IS NULL) AND (g.is_anonymous = 0 OR g.is_anonymous IS NULL)
        GROUP BY g.id
        ORDER BY g.start_time DESC, g.created_at DESC`
     );
@@ -3788,6 +4169,11 @@ async function validateAndApplyMove(gameState, move) {
     if (!canRanged) {
       return { valid: false, reason: "Piece cannot ranged attack that square" };
     }
+
+    // Cannot capture pieces with cannot_be_captured flag
+    if (destPiece.cannot_be_captured) {
+      return { valid: false, reason: "That piece cannot be captured" };
+    }
     
     // Check if path is clear for ranged attack (unless piece can fire over)
     const pathClear = isRangedPathClear(piece.x, piece.y, to.x, to.y, piece, pieces, pieceOwnerPosition);
@@ -3817,8 +4203,12 @@ async function validateAndApplyMove(gameState, move) {
   if (destinationPieceIndex !== -1) {
     const destPiece = pieces[destinationPieceIndex];
     const destPieceOwnerPosition = destPiece.team || destPiece.player_id;
+    // Cannot capture pieces with cannot_be_captured flag
+    if (destPiece.cannot_be_captured) {
+      return { valid: false, reason: "That piece cannot be captured" };
+    }
     // Check if it's an enemy piece (different owner position)
-    if (destPieceOwnerPosition === pieceOwnerPosition) {
+    if (destPieceOwnerPosition === pieceOwnerPosition && !piece.can_capture_allies) {
       return { valid: false, reason: "Cannot capture your own piece" };
     }
     capturedPiece = destPiece;
@@ -4635,29 +5025,49 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   const useMovementForCapture = piece.attacks_like_movement || piece.can_capture_enemy_on_move;
   
   // Check directional capture/movement
-  const checkDirectional = (captureValue, moveValue) => {
+  const checkDirectional = (captureValue, moveValue, exactFlag, repeating) => {
     const value = captureValue !== undefined && captureValue !== null ? captureValue : 
                   (useMovementForCapture ? moveValue : null);
     if (!value) return false;
     if (value === 99) return true; // Infinite
-    if (value > 0) return true; // Can move up to value squares
-    if (value < 0) return absDx === Math.abs(value) || absDy === Math.abs(value); // Exact distance
+    if (value > 0) {
+      if (exactFlag) {
+        // Exact: distance must be exactly value (or multiple if repeating)
+        const dist = Math.max(absDx, absDy);
+        if (repeating) return dist > 0 && dist % value === 0;
+        return dist === value;
+      }
+      return true; // Sliding: up to value squares (caller checks distance)
+    }
+    if (value < 0) {
+      const exact = Math.abs(value);
+      const dist = Math.max(absDx, absDy);
+      if (repeating) return dist > 0 && dist % exact === 0;
+      return dist === exact;
+    }
     return false;
   };
   
   // Check if path is blocked (for sliding pieces)
+  // For multi-tile pieces, checks all sub-square parallel paths
   const isPathClear = (fromX, fromY, toX, toY) => {
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
     const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
     const stepY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
-    let x = fromX + stepX;
-    let y = fromY + stepY;
-    
-    while (x !== toX || y !== toY) {
-      if (findPieceAtSquare(allPieces, x, y)) {
-        return false; // Path blocked
+    for (let sdy = 0; sdy < ph; sdy++) {
+      for (let sdx = 0; sdx < pw; sdx++) {
+        let x = fromX + sdx + stepX;
+        let y = fromY + sdy + stepY;
+        while (x !== toX + sdx || y !== toY + sdy) {
+          const blocking = findPieceAtSquare(allPieces, x, y);
+          if (blocking && blocking.id !== piece.id) {
+            return false; // Path blocked
+          }
+          x += stepX;
+          y += stepY;
+        }
       }
-      x += stepX;
-      y += stepY;
     }
     return true;
   };
@@ -4667,9 +5077,11 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
     // Vertical movement - use effectiveDy for direction checking
     const captureVal = effectiveDy < 0 ? piece.up_capture : piece.down_capture;
     const moveVal = effectiveDy < 0 ? piece.up_movement : piece.down_movement;
-    if (checkDirectional(captureVal, moveVal)) {
+    const exactFlag = effectiveDy < 0 ? (piece.up_capture_exact || (useMovementForCapture && piece.up_movement_exact)) : (piece.down_capture_exact || (useMovementForCapture && piece.down_movement_exact));
+    const repC = piece.repeating_capture && exactFlag;
+    if (checkDirectional(captureVal, moveVal, exactFlag, repC)) {
       const maxDist = captureVal || (useMovementForCapture ? moveVal : 0);
-      if (maxDist === 99 || absDy <= Math.abs(maxDist)) {
+      if (maxDist === 99 || exactFlag || absDy <= Math.abs(maxDist)) {
         if (isPathClear(piece.x, piece.y, targetX, targetY)) {
           return true;
         }
@@ -4681,9 +5093,11 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
     // Horizontal movement
     const captureVal = dx < 0 ? piece.left_capture : piece.right_capture;
     const moveVal = dx < 0 ? piece.left_movement : piece.right_movement;
-    if (checkDirectional(captureVal, moveVal)) {
+    const exactFlag = dx < 0 ? (piece.left_capture_exact || (useMovementForCapture && piece.left_movement_exact)) : (piece.right_capture_exact || (useMovementForCapture && piece.right_movement_exact));
+    const repC = piece.repeating_capture && exactFlag;
+    if (checkDirectional(captureVal, moveVal, exactFlag, repC)) {
       const maxDist = captureVal || (useMovementForCapture ? moveVal : 0);
-      if (maxDist === 99 || absDx <= Math.abs(maxDist)) {
+      if (maxDist === 99 || exactFlag || absDx <= Math.abs(maxDist)) {
         if (isPathClear(piece.x, piece.y, targetX, targetY)) {
           return true;
         }
@@ -4693,25 +5107,30 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   
   // Diagonal movements (bishop-like)
   if (absDx === absDy && absDx > 0) {
-    let captureVal, moveVal;
+    let captureVal, moveVal, exactFlag;
     // Use effectiveDx and effectiveDy for direction checking
     if (effectiveDx < 0 && effectiveDy < 0) {
       captureVal = piece.up_left_capture;
       moveVal = piece.up_left_movement;
+      exactFlag = piece.up_left_capture_exact || (useMovementForCapture && piece.up_left_movement_exact);
     } else if (effectiveDx > 0 && effectiveDy < 0) {
       captureVal = piece.up_right_capture;
       moveVal = piece.up_right_movement;
+      exactFlag = piece.up_right_capture_exact || (useMovementForCapture && piece.up_right_movement_exact);
     } else if (effectiveDx < 0 && effectiveDy > 0) {
       captureVal = piece.down_left_capture;
       moveVal = piece.down_left_movement;
+      exactFlag = piece.down_left_capture_exact || (useMovementForCapture && piece.down_left_movement_exact);
     } else {
       captureVal = piece.down_right_capture;
       moveVal = piece.down_right_movement;
+      exactFlag = piece.down_right_capture_exact || (useMovementForCapture && piece.down_right_movement_exact);
     }
     
-    if (checkDirectional(captureVal, moveVal)) {
+    const repC = piece.repeating_capture && exactFlag;
+    if (checkDirectional(captureVal, moveVal, exactFlag, repC)) {
       const maxDist = captureVal || (useMovementForCapture ? moveVal : 0);
-      if (maxDist === 99 || absDx <= Math.abs(maxDist)) {
+      if (maxDist === 99 || exactFlag || absDx <= Math.abs(maxDist)) {
         if (isPathClear(piece.x, piece.y, targetX, targetY)) {
           return true;
         }
@@ -4723,7 +5142,22 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   const ratio1 = piece.ratio_capture_1 || (useMovementForCapture ? piece.ratio_movement_1 : 0) || 0;
   const ratio2 = piece.ratio_capture_2 || (useMovementForCapture ? piece.ratio_movement_2 : 0) || 0;
   if (ratio1 > 0 && ratio2 > 0) {
-    if ((absDx === ratio1 && absDy === ratio2) || (absDx === ratio2 && absDy === ratio1)) {
+    let isRatioMatch = (absDx === ratio1 && absDy === ratio2) || (absDx === ratio2 && absDy === ratio1);
+    if (!isRatioMatch) {
+      const repRatio = piece.repeating_ratio_capture || (useMovementForCapture && piece.repeating_ratio);
+      if (repRatio) {
+        const maxIter = piece.repeating_ratio_capture ? piece.max_ratio_capture_iterations : (useMovementForCapture ? piece.max_ratio_iterations : null);
+        const maxK = maxIter === -1 ? Math.max(absDx, absDy) : (maxIter || 1);
+        for (let k = 2; k <= maxK; k++) {
+          if ((absDx === k * ratio1 && absDy === k * ratio2) ||
+              (absDx === k * ratio2 && absDy === k * ratio1)) {
+            isRatioMatch = true;
+            break;
+          }
+        }
+      }
+    }
+    if (isRatioMatch) {
       // For attacks, check attack-specific hopping first, then fallback to movement hopping
       // Also check chain_hop_allies which allows hopping over allies during chain capture sequences
       const canHopAllies = (piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true) ||
@@ -4968,18 +5402,25 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   const effectiveDy = isPlayer2 ? -dy : dy;
   
   // Helper function to check if path is clear
+  // For multi-tile pieces, checks all sub-square parallel paths
   const isPathClear = (fromX, fromY, toX, toY) => {
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
     const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
     const stepY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
-    let x = fromX + stepX;
-    let y = fromY + stepY;
-    
-    while (x !== toX || y !== toY) {
-      if (findPieceAtSquare(allPieces, x, y)) {
-        return false; // Path blocked
+    for (let sdy = 0; sdy < ph; sdy++) {
+      for (let sdx = 0; sdx < pw; sdx++) {
+        let x = fromX + sdx + stepX;
+        let y = fromY + sdy + stepY;
+        while (x !== toX + sdx || y !== toY + sdy) {
+          const blocking = findPieceAtSquare(allPieces, x, y);
+          if (blocking && blocking.id !== piece.id) {
+            return false; // Path blocked
+          }
+          x += stepX;
+          y += stepY;
+        }
       }
-      x += stepX;
-      y += stepY;
     }
     return true;
   };
@@ -5051,9 +5492,11 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   if (dx === 0 && dy !== 0) {
     // Vertical movement
     const moveVal = effectiveDy < 0 ? piece.up_movement : piece.down_movement;
+    const exactFlag = effectiveDy < 0 ? piece.up_movement_exact : piece.down_movement_exact;
     if (moveVal) {
       const maxDist = Math.abs(moveVal);
-      if (moveVal === 99 || absDy <= maxDist) {
+      const repM = piece.repeating_movement && exactFlag;
+      if (moveVal === 99 || (exactFlag ? (repM ? (absDy > 0 && absDy % maxDist === 0) : absDy === maxDist) : absDy <= maxDist)) {
         if (isPathClear(piece.x, piece.y, targetX, targetY)) {
           return true;
         }
@@ -5064,9 +5507,11 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   if (dy === 0 && dx !== 0) {
     // Horizontal movement
     const moveVal = dx < 0 ? piece.left_movement : piece.right_movement;
+    const exactFlag = dx < 0 ? piece.left_movement_exact : piece.right_movement_exact;
     if (moveVal) {
       const maxDist = Math.abs(moveVal);
-      if (moveVal === 99 || absDx <= maxDist) {
+      const repM = piece.repeating_movement && exactFlag;
+      if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0) : absDx === maxDist) : absDx <= maxDist)) {
         if (isPathClear(piece.x, piece.y, targetX, targetY)) {
           return true;
         }
@@ -5076,20 +5521,25 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
 
   // Diagonal movement
   if (absDx === absDy && absDx > 0) {
-    let moveVal;
+    let moveVal, exactFlag;
     if (effectiveDy < 0 && effectiveDx < 0) {
       moveVal = piece.up_left_movement;
+      exactFlag = piece.up_left_movement_exact;
     } else if (effectiveDy < 0 && effectiveDx > 0) {
       moveVal = piece.up_right_movement;
+      exactFlag = piece.up_right_movement_exact;
     } else if (effectiveDy > 0 && effectiveDx < 0) {
       moveVal = piece.down_left_movement;
+      exactFlag = piece.down_left_movement_exact;
     } else {
       moveVal = piece.down_right_movement;
+      exactFlag = piece.down_right_movement_exact;
     }
     
     if (moveVal) {
       const maxDist = Math.abs(moveVal);
-      if (moveVal === 99 || absDx <= maxDist) {
+      const repM = piece.repeating_movement && exactFlag;
+      if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0) : absDx === maxDist) : absDx <= maxDist)) {
         if (isPathClear(piece.x, piece.y, targetX, targetY)) {
           return true;
         }
@@ -5101,7 +5551,18 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   const ratio1 = piece.ratio_movement_1 || 0;
   const ratio2 = piece.ratio_movement_2 || 0;
   if (ratio1 > 0 && ratio2 > 0) {
-    if ((absDx === ratio1 && absDy === ratio2) || (absDx === ratio2 && absDy === ratio1)) {
+    let isRatioMatch = (absDx === ratio1 && absDy === ratio2) || (absDx === ratio2 && absDy === ratio1);
+    if (!isRatioMatch && piece.repeating_ratio) {
+      const maxK = piece.max_ratio_iterations === -1 ? Math.max(absDx, absDy) : (piece.max_ratio_iterations || 1);
+      for (let k = 2; k <= maxK; k++) {
+        if ((absDx === k * ratio1 && absDy === k * ratio2) ||
+            (absDx === k * ratio2 && absDy === k * ratio1)) {
+          isRatioMatch = true;
+          break;
+        }
+      }
+    }
+    if (isRatioMatch) {
       const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
       const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
       const pieceOwner = piece.team || piece.player_id;
@@ -5354,24 +5815,31 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   const isPlayer2 = pieceOwner === 2;
   
   // Helper to check if path is clear
+  // For multi-tile pieces, checks all sub-square parallel paths
   const isPathClear = (fromX, fromY, toX, toY) => {
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
     const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
     const stepY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
-    let x = fromX + stepX;
-    let y = fromY + stepY;
-    
-    while (x !== toX || y !== toY) {
-      if (findPieceAtSquare(allPieces, x, y)) {
-        return false;
+    for (let sdy = 0; sdy < ph; sdy++) {
+      for (let sdx = 0; sdx < pw; sdx++) {
+        let x = fromX + sdx + stepX;
+        let y = fromY + sdy + stepY;
+        while (x !== toX + sdx || y !== toY + sdy) {
+          const blocking = findPieceAtSquare(allPieces, x, y);
+          if (blocking && blocking.id !== piece.id) {
+            return false;
+          }
+          x += stepX;
+          y += stepY;
+        }
       }
-      x += stepX;
-      y += stepY;
     }
     return true;
   };
   
   // Helper to check directional moves
-  const checkDirectionalMoves = (dx, dy, maxDist, directionName = null, isFirstMoveOnly = false) => {
+  const checkDirectionalMoves = (dx, dy, maxDist, directionName = null, isFirstMoveOnly = false, exactFlag = false, repeating = false) => {
     if (!maxDist || maxDist === 0) return;
     
     // Check global first_move_only restriction
@@ -5384,7 +5852,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
     }
     
     const limit = maxDist === 99 ? Math.max(boardWidth, boardHeight) : Math.abs(maxDist);
-    for (let dist = 1; dist <= limit; dist++) {
+    const exactDist = exactFlag ? Math.abs(maxDist) : 0;
+    const maxIter = (exactFlag && repeating) ? Math.max(boardWidth, boardHeight) : limit;
+    for (let dist = 1; dist <= maxIter; dist++) {
       const targetX = piece.x + (dx * dist);
       const targetY = piece.y + (dy * dist);
       
@@ -5398,41 +5868,53 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         const pieceOwner = piece.team || piece.player_id;
         const targetOwner = targetPiece.team || targetPiece.player_id;
         
-        // Can capture enemy pieces if can_capture_enemy_on_move is true and not restricted by first_move_only_capture
-        if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && !hasGlobalFirstMoveOnlyCaptureRestriction) {
-          moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+        // For exact moves, only allow landing on exact multiples
+        const isLandingSquare = exactFlag ? (repeating ? (dist % exactDist === 0) : (dist === exactDist)) : true;
+        
+        // Can capture enemy (or ally if can_capture_allies) on valid landing squares
+        if (isLandingSquare && !targetPiece.cannot_be_captured) {
+          if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && !hasGlobalFirstMoveOnlyCaptureRestriction) {
+            moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+          } else if (targetOwner === pieceOwner && piece.can_capture_allies) {
+            moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+          }
         }
         break; // Can't move past a piece
       } else {
-        moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+        // For exact moves, only add valid landing squares
+        const isLandingSquare = exactFlag ? (repeating ? (dist % exactDist === 0) : (dist === exactDist)) : true;
+        if (isLandingSquare) {
+          moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+        }
       }
     }
   };
   
   // Directional movements - flip up/down for Player 2
+  const repM = piece.repeating_movement;
   if (isPlayer2) {
     // For Player 2 (bottom of board), flip up/down directions
-    if (piece.up_movement) checkDirectionalMoves(0, 1, piece.up_movement, 'up_movement'); // up becomes increasing Y
-    if (piece.down_movement) checkDirectionalMoves(0, -1, piece.down_movement, 'down_movement'); // down becomes decreasing Y
+    if (piece.up_movement) checkDirectionalMoves(0, 1, piece.up_movement, 'up_movement', false, piece.up_movement_exact, repM && piece.up_movement_exact);
+    if (piece.down_movement) checkDirectionalMoves(0, -1, piece.down_movement, 'down_movement', false, piece.down_movement_exact, repM && piece.down_movement_exact);
   } else {
     // For Player 1 (top of board), use normal directions
-    if (piece.up_movement) checkDirectionalMoves(0, -1, piece.up_movement, 'up_movement'); // up is decreasing Y
-    if (piece.down_movement) checkDirectionalMoves(0, 1, piece.down_movement, 'down_movement'); // down is increasing Y
+    if (piece.up_movement) checkDirectionalMoves(0, -1, piece.up_movement, 'up_movement', false, piece.up_movement_exact, repM && piece.up_movement_exact);
+    if (piece.down_movement) checkDirectionalMoves(0, 1, piece.down_movement, 'down_movement', false, piece.down_movement_exact, repM && piece.down_movement_exact);
   }
-  if (piece.left_movement) checkDirectionalMoves(-1, 0, piece.left_movement, 'left_movement');
-  if (piece.right_movement) checkDirectionalMoves(1, 0, piece.right_movement, 'right_movement');
+  if (piece.left_movement) checkDirectionalMoves(-1, 0, piece.left_movement, 'left_movement', false, piece.left_movement_exact, repM && piece.left_movement_exact);
+  if (piece.right_movement) checkDirectionalMoves(1, 0, piece.right_movement, 'right_movement', false, piece.right_movement_exact, repM && piece.right_movement_exact);
   
   // Diagonal movements - flip vertical component for Player 2
   if (isPlayer2) {
-    if (piece.up_left_movement) checkDirectionalMoves(-1, 1, piece.up_left_movement, 'up_left_movement');
-    if (piece.up_right_movement) checkDirectionalMoves(1, 1, piece.up_right_movement, 'up_right_movement');
-    if (piece.down_left_movement) checkDirectionalMoves(-1, -1, piece.down_left_movement, 'down_left_movement');
-    if (piece.down_right_movement) checkDirectionalMoves(1, -1, piece.down_right_movement, 'down_right_movement');
+    if (piece.up_left_movement) checkDirectionalMoves(-1, 1, piece.up_left_movement, 'up_left_movement', false, piece.up_left_movement_exact, repM && piece.up_left_movement_exact);
+    if (piece.up_right_movement) checkDirectionalMoves(1, 1, piece.up_right_movement, 'up_right_movement', false, piece.up_right_movement_exact, repM && piece.up_right_movement_exact);
+    if (piece.down_left_movement) checkDirectionalMoves(-1, -1, piece.down_left_movement, 'down_left_movement', false, piece.down_left_movement_exact, repM && piece.down_left_movement_exact);
+    if (piece.down_right_movement) checkDirectionalMoves(1, -1, piece.down_right_movement, 'down_right_movement', false, piece.down_right_movement_exact, repM && piece.down_right_movement_exact);
   } else {
-    if (piece.up_left_movement) checkDirectionalMoves(-1, -1, piece.up_left_movement, 'up_left_movement');
-    if (piece.up_right_movement) checkDirectionalMoves(1, -1, piece.up_right_movement, 'up_right_movement');
-    if (piece.down_left_movement) checkDirectionalMoves(-1, 1, piece.down_left_movement, 'down_left_movement');
-    if (piece.down_right_movement) checkDirectionalMoves(1, 1, piece.down_right_movement, 'down_right_movement');
+    if (piece.up_left_movement) checkDirectionalMoves(-1, -1, piece.up_left_movement, 'up_left_movement', false, piece.up_left_movement_exact, repM && piece.up_left_movement_exact);
+    if (piece.up_right_movement) checkDirectionalMoves(1, -1, piece.up_right_movement, 'up_right_movement', false, piece.up_right_movement_exact, repM && piece.up_right_movement_exact);
+    if (piece.down_left_movement) checkDirectionalMoves(-1, 1, piece.down_left_movement, 'down_left_movement', false, piece.down_left_movement_exact, repM && piece.down_left_movement_exact);
+    if (piece.down_right_movement) checkDirectionalMoves(1, 1, piece.down_right_movement, 'down_right_movement', false, piece.down_right_movement_exact, repM && piece.down_right_movement_exact);
   }
   
   // Process additional movements from special_scenario_moves
@@ -5648,11 +6130,55 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         const pieceOwner = piece.team || piece.player_id;
         const targetOwner = targetPiece.team || targetPiece.player_id;
         
-        if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
-          moves.push({ x: targetX, y: targetY });
+        if (!targetPiece.cannot_be_captured) {
+          if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
+            moves.push({ x: targetX, y: targetY });
+          } else if (targetOwner === pieceOwner && piece.can_capture_allies) {
+            moves.push({ x: targetX, y: targetY });
+          }
         }
       } else {
         moves.push({ x: targetX, y: targetY });
+      }
+    }
+
+    // Repeating ratio: generate multiples of each L-jump direction
+    if (piece.repeating_ratio) {
+      const maxK = piece.max_ratio_iterations === -1 ? Math.max(boardWidth, boardHeight) : (piece.max_ratio_iterations || 1);
+      for (const [dx, dy] of ratioMoves) {
+        for (let k = 2; k <= maxK; k++) {
+          const targetX = piece.x + dx * k;
+          const targetY = piece.y + dy * k;
+          if (!isValidSquare(targetX, targetY)) break;
+
+          // Check intermediate landing positions are clear
+          let intermediatesClear = true;
+          for (let j = 1; j < k; j++) {
+            const intX = piece.x + dx * j;
+            const intY = piece.y + dy * j;
+            const blocking = findPieceAtSquare(allPieces, intX, intY);
+            if (blocking && blocking.id !== piece.id) {
+              intermediatesClear = false;
+              break;
+            }
+          }
+          if (!intermediatesClear) break;
+
+          const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
+          if (targetPiece) {
+            const targetOwner = targetPiece.team || targetPiece.player_id;
+            if (!targetPiece.cannot_be_captured) {
+              if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
+                moves.push({ x: targetX, y: targetY });
+              } else if (targetOwner === pieceOwner && piece.can_capture_allies) {
+                moves.push({ x: targetX, y: targetY });
+              }
+            }
+            break; // Can't move past a piece in the ratio line
+          } else {
+            moves.push({ x: targetX, y: targetY });
+          }
+        }
       }
     }
   }

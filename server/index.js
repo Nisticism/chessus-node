@@ -18,6 +18,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const { OAuth2Client } = require("google-auth-library");
 
 // JWT Secret Management - Generate stable secrets that persist across restarts
 const SECRETS_FILE = path.join(__dirname, '.jwt-secrets.json');
@@ -262,10 +263,13 @@ const profilePictureUpload = multer({
 //  -----------  Auto-create Tables and Run Migrations on Startup -----------------
 
 const { runMigrations } = require("./migrations");
+const { backfillGameTypePieces } = require("../scripts/backfill-game-type-pieces");
 
-// Run migrations to add any missing columns
-runMigrations().catch(err => {
-  console.error("Migration error:", err);
+// Run migrations to add any missing columns, then backfill game_type_pieces
+runMigrations().then(() => {
+  return backfillGameTypePieces();
+}).catch(err => {
+  console.error("Migration/backfill error:", err);
 });
 
 //  -----------  End Auto-create Tables -----------------
@@ -2335,6 +2339,132 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+// Google Sign-In
+app.post("/api/auth/google", async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).send({ auth: false, message: "Google credential is required" });
+    }
+
+    const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+    if (!googleClientId) {
+      return res.status(500).send({ auth: false, message: "Google Sign-In is not configured on the server" });
+    }
+
+    // Verify the Google ID token
+    const client = new OAuth2Client(googleClientId);
+    let ticket;
+    try {
+      ticket = await client.verifyIdToken({
+        idToken: credential,
+        audience: googleClientId,
+      });
+    } catch (verifyErr) {
+      return res.status(401).send({ auth: false, message: "Invalid Google token" });
+    }
+
+    const payload = ticket.getPayload();
+    const googleId = payload.sub;
+    const email = payload.email;
+    const name = payload.name || "";
+
+    if (!email) {
+      return res.status(400).send({ auth: false, message: "Google account must have an email address" });
+    }
+
+    // Check if a user with this google_id already exists
+    let user;
+    const [googleUsers] = await db_pool.query(
+      "SELECT * FROM chessusnode.users WHERE google_id = ?", [googleId]
+    );
+
+    if (googleUsers.length > 0) {
+      user = googleUsers[0];
+    } else {
+      // Check if a user with this email already exists (link accounts)
+      user = await dbHelpers.findUserByEmail(email);
+
+      if (user) {
+        // Link existing account to Google
+        await db_pool.query(
+          "UPDATE chessusnode.users SET google_id = ? WHERE id = ?",
+          [googleId, user.id]
+        );
+      } else {
+        // Create a new account
+        // Generate a unique username from the Google name or email
+        let baseUsername = (name || email.split("@")[0])
+          .replace(/[^a-zA-Z0-9_-]/g, "")
+          .substring(0, 16);
+        if (baseUsername.length < 3) baseUsername = "user";
+
+        let username = baseUsername;
+        let suffix = 1;
+        while (await dbHelpers.findUserByUsername(username)) {
+          username = `${baseUsername}${suffix}`;
+          suffix++;
+        }
+
+        // Create user with no password (Google-only auth)
+        const defaultLightColor = '#e3d4bf';
+        const defaultDarkColor = '#64472b';
+        await db_pool.query(
+          "INSERT INTO chessusnode.users (username, password, email, google_id, light_square_color, dark_square_color) VALUES (?,?,?,?,?,?)",
+          [username, "", email, googleId, defaultLightColor, defaultDarkColor]
+        );
+
+        user = await dbHelpers.findUserByEmail(email);
+
+        // Send welcome email (non-blocking)
+        sendWelcomeEmail(email, username).catch(err => {
+          console.error("Welcome email failed:", err.message);
+        });
+      }
+    }
+
+    // Check if user is banned
+    if (user.banned) {
+      if (user.ban_expires_at && new Date(user.ban_expires_at) < new Date()) {
+        await db_pool.query(
+          "UPDATE users SET banned = 0, ban_reason = NULL, banned_at = NULL, banned_by = NULL, ban_expires_at = NULL WHERE id = ?",
+          [user.id]
+        );
+      } else {
+        const banMessage = user.ban_expires_at
+          ? `Your account is temporarily banned until ${new Date(user.ban_expires_at).toLocaleString()}.`
+          : 'Your account has been permanently banned.';
+        return res.status(403).send({ auth: false, message: banMessage, banned: true });
+      }
+    }
+
+    // Generate tokens
+    const userPayload = { id: user.id, username: user.username, role: user.role };
+    const accessToken = generateAccessToken(userPayload);
+    const refreshToken = generateRefreshToken(userPayload);
+
+    await db_pool.query(
+      "UPDATE users SET refresh_token = ?, last_active_at = NOW() WHERE id = ?",
+      [refreshToken, user.id]
+    );
+
+    user.accessToken = accessToken;
+    user.refreshToken = refreshToken;
+    delete user.password;
+    delete user.refresh_token;
+    delete user.banned;
+    delete user.ban_reason;
+    delete user.banned_at;
+    delete user.banned_by;
+    delete user.ban_expires_at;
+
+    res.json({ auth: true, result: user });
+  } catch (err) {
+    console.error("Error in /api/auth/google:", err);
+    res.status(500).send({ auth: false, message: "Google Sign-In failed", err: err.message });
+  }
+});
+
 app.post("/api/logout", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -2731,19 +2861,39 @@ app.post("/api/admin/users/:userId/demote", authenticateToken, async (req, res) 
 
 app.post("/api/preferences/colors", async (req, res) => {
   try {
-    const { user_id, light_square_color, dark_square_color } = req.body;
+    const { user_id, light_square_color, dark_square_color, hide_donation_badge } = req.body;
     
     if (!user_id) {
       return res.status(400).send({ message: "User ID is required" });
     }
     
-    const sql = "UPDATE chessusnode.users SET light_square_color = ?, dark_square_color = ? WHERE id = ?";
-    await dbHelpers.query(sql, [light_square_color, dark_square_color, user_id]);
+    const fields = [];
+    const values = [];
+    
+    if (light_square_color !== undefined) {
+      fields.push("light_square_color = ?");
+      values.push(light_square_color);
+    }
+    if (dark_square_color !== undefined) {
+      fields.push("dark_square_color = ?");
+      values.push(dark_square_color);
+    }
+    if (hide_donation_badge !== undefined) {
+      fields.push("hide_donation_badge = ?");
+      values.push(hide_donation_badge ? 1 : 0);
+    }
+    
+    if (fields.length > 0) {
+      values.push(user_id);
+      const sql = `UPDATE chessusnode.users SET ${fields.join(", ")} WHERE id = ?`;
+      await dbHelpers.query(sql, values);
+    }
     
     res.json({ 
       message: "Preferences saved successfully",
       light_square_color,
-      dark_square_color
+      dark_square_color,
+      hide_donation_badge
     });
   } catch (err) {
     console.error("Error in /api/preferences/colors:", err);
@@ -3399,6 +3549,10 @@ app.post('/api/token', async (req, res) => {
       const userPayload = { id: dbUser.id, username: dbUser.username, role: dbUser.role };
       const accessToken = generateAccessToken(userPayload);
 
+      // Update last_active_at on token refresh (runs ~every 15 min for active users)
+      db_pool.query("UPDATE users SET last_active_at = NOW() WHERE id = ?", [dbUser.id])
+        .catch(err => console.error("Error updating last_active_at:", err.message));
+
       res.json({ accessToken });
     });
   } catch (err) {
@@ -3594,38 +3748,38 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       INSERT INTO pieces (
         piece_name, image_location, piece_width, piece_height, creator_id, piece_description,
         piece_category, has_checkmate_rule, has_check_rule, has_lose_on_capture_rule, can_castle, can_promote,
-        directional_movement_style, repeating_movement, max_directional_movement_iterations, min_directional_movement_iterations,
+        directional_movement_style, repeating_movement,
         up_left_movement, up_movement, up_right_movement, right_movement, down_right_movement, down_movement, down_left_movement, left_movement,
         up_left_movement_exact, up_movement_exact, up_right_movement_exact, right_movement_exact, 
         down_right_movement_exact, down_movement_exact, down_left_movement_exact, left_movement_exact,
         up_left_movement_available_for, up_movement_available_for, up_right_movement_available_for, right_movement_available_for,
         down_right_movement_available_for, down_movement_available_for, down_left_movement_available_for, left_movement_available_for,
-        ratio_movement_style, ratio_one_movement, ratio_two_movement, repeating_ratio, max_ratio_iterations, min_ratio_iterations,
+        ratio_movement_style, ratio_one_movement, ratio_two_movement, repeating_ratio, max_ratio_iterations,
         step_by_step_movement_style, step_by_step_movement_value,
-        can_hop_over_allies, can_hop_over_enemies, exact_ratio_hop_only, min_turns_per_move, max_turns_per_move,
+        can_hop_over_allies, can_hop_over_enemies, exact_ratio_hop_only, directional_hop_disabled, min_turns_per_move, max_turns_per_move,
         first_move_only, available_for_moves, special_scenario_moves,
-        can_capture_enemy_via_range, can_capture_ally_via_range, can_capture_enemy_on_move, can_capture_ally_on_range, can_attack_on_iteration,
+        can_capture_enemy_via_range, can_capture_enemy_on_move,
         first_move_only_capture, available_for_captures,
         up_left_capture, up_capture, up_right_capture, right_capture, down_right_capture, down_capture, down_left_capture, left_capture,
         up_left_capture_exact, up_capture_exact, up_right_capture_exact, right_capture_exact,
         down_right_capture_exact, down_capture_exact, down_left_capture_exact, left_capture_exact,
         up_left_capture_available_for, up_capture_available_for, up_right_capture_available_for, right_capture_available_for,
         down_right_capture_available_for, down_capture_available_for, down_left_capture_available_for, left_capture_available_for,
-        ratio_one_capture, ratio_two_capture, repeating_capture, step_by_step_capture,
+        ratio_one_capture, ratio_two_capture, repeating_capture, repeating_ratio_capture, max_ratio_capture_iterations, step_by_step_capture,
         up_left_attack_range, up_attack_range, up_right_attack_range, right_attack_range, down_right_attack_range, down_attack_range, down_left_attack_range, left_attack_range,
         up_left_attack_range_exact, up_attack_range_exact, up_right_attack_range_exact, right_attack_range_exact,
         down_right_attack_range_exact, down_attack_range_exact, down_left_attack_range_exact, left_attack_range_exact,
         up_left_attack_range_available_for, up_attack_range_available_for, up_right_attack_range_available_for, right_attack_range_available_for,
         down_right_attack_range_available_for, down_attack_range_available_for, down_left_attack_range_available_for, left_attack_range_available_for,
-        repeating_directional_ranged_attack, max_directional_ranged_attack_iterations, min_directional_ranged_attack_iterations,
-        ratio_one_attack_range, ratio_two_attack_range, repeating_ratio_ranged_attack, max_ratio_ranged_attack_iterations, min_ratio_ranged_attack_iterations,
+        ratio_one_attack_range, ratio_two_attack_range,
         step_by_step_attack_style, step_by_step_attack_value,
         max_piece_captures_per_move, max_piece_captures_per_ranged_attack,
         special_scenario_captures,
         can_fire_over_allies, can_fire_over_enemies, can_en_passant,
         capture_on_hop, chain_capture_enabled, free_move_after_promotion, promotion_pieces_ids,
-        can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies,
+        can_capture_allies, cannot_be_captured
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceValues = [
@@ -3645,8 +3799,6 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       // Movement fields
       parseBooleanField(pieceData.directional_movement_style),
       parseBooleanField(pieceData.repeating_movement),
-      parseInt(pieceData.max_directional_movement_iterations) || null,
-      parseInt(pieceData.min_directional_movement_iterations) || null,
       parseInt(pieceData.up_left_movement) || 0,
       parseInt(pieceData.up_movement) || 0,
       parseInt(pieceData.up_right_movement) || 0,
@@ -3678,12 +3830,12 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.ratio_two_movement) || null,
       parseBooleanField(pieceData.repeating_ratio),
       parseInt(pieceData.max_ratio_iterations) || null,
-      parseInt(pieceData.min_ratio_iterations) || null,
       parseBooleanField(pieceData.step_by_step_movement_style),
       parseInt(pieceData.step_by_step_movement_value) || null,
       parseBooleanField(pieceData.can_hop_over_allies),
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
+      parseBooleanField(pieceData.directional_hop_disabled),
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
@@ -3694,10 +3846,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         : (pieceData.special_scenario_moves || null),
       // Capture fields
       hasRangedAttack,
-      pieceData.can_capture_ally_via_range === 'true',
       pieceData.can_capture_enemy_on_move === 'true',
-      pieceData.can_capture_ally_on_range === 'true',
-      pieceData.can_attack_on_iteration === 'true',
       // Capture special scenario fields
       pieceData.first_move_only_capture === 'true',
       parseInt(pieceData.available_for_captures) || null,
@@ -3731,6 +3880,8 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.ratio_one_capture) || null,
       parseInt(pieceData.ratio_two_capture) || null,
       parseBooleanField(pieceData.repeating_capture),
+      parseBooleanField(pieceData.repeating_ratio_capture),
+      parseInt(pieceData.max_ratio_capture_iterations) || null,
       parseInt(pieceData.step_by_step_capture) || null,
       // Attack range values
       parseInt(pieceData.up_left_attack_range) || 0,
@@ -3759,14 +3910,8 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseInt(pieceData.down_attack_range_available_for) || null,
       parseInt(pieceData.down_left_attack_range_available_for) || null,
       parseInt(pieceData.left_attack_range_available_for) || null,
-      pieceData.repeating_directional_ranged_attack === 'true',
-      parseInt(pieceData.max_directional_ranged_attack_iterations) || null,
-      parseInt(pieceData.min_directional_ranged_attack_iterations) || null,
       parseInt(pieceData.ratio_one_attack_range) || null,
       parseInt(pieceData.ratio_two_attack_range) || null,
-      pieceData.repeating_ratio_ranged_attack === 'true',
-      parseInt(pieceData.max_ratio_ranged_attack_iterations) || null,
-      parseInt(pieceData.min_ratio_ranged_attack_iterations) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
       parseInt(pieceData.max_piece_captures_per_move) || 1,
@@ -3786,7 +3931,11 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       parseBooleanField(pieceData.can_hop_attack_over_allies),
       parseBooleanField(pieceData.can_hop_attack_over_enemies),
       // Chain hop allies
-      parseBooleanField(pieceData.chain_hop_allies)
+      parseBooleanField(pieceData.chain_hop_allies),
+      // Can capture allies
+      parseBooleanField(pieceData.can_capture_allies),
+      // Cannot be captured
+      parseBooleanField(pieceData.cannot_be_captured)
     ];
 
     const [result] = await db_pool.query(pieceSql, pieceValues);
@@ -3893,8 +4042,6 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         can_promote = ?,
         directional_movement_style = ?,
         repeating_movement = ?,
-        max_directional_movement_iterations = ?,
-        min_directional_movement_iterations = ?,
         up_left_movement = ?,
         up_movement = ?,
         up_right_movement = ?,
@@ -3924,22 +4071,19 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         ratio_two_movement = ?,
         repeating_ratio = ?,
         max_ratio_iterations = ?,
-        min_ratio_iterations = ?,
         step_by_step_movement_style = ?,
         step_by_step_movement_value = ?,
         can_hop_over_allies = ?,
         can_hop_over_enemies = ?,
         exact_ratio_hop_only = ?,
+        directional_hop_disabled = ?,
         min_turns_per_move = ?,
         max_turns_per_move = ?,
         first_move_only = ?,
         available_for_moves = ?,
         special_scenario_moves = ?,
         can_capture_enemy_via_range = ?,
-        can_capture_ally_via_range = ?,
         can_capture_enemy_on_move = ?,
-        can_capture_ally_on_range = ?,
-        can_attack_on_iteration = ?,
         first_move_only_capture = ?,
         available_for_captures = ?,
         up_left_capture = ?,
@@ -3969,6 +4113,8 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         ratio_one_capture = ?,
         ratio_two_capture = ?,
         repeating_capture = ?,
+        repeating_ratio_capture = ?,
+        max_ratio_capture_iterations = ?,
         step_by_step_capture = ?,
         up_left_attack_range = ?,
         up_attack_range = ?,
@@ -3994,14 +4140,8 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         down_attack_range_available_for = ?,
         down_left_attack_range_available_for = ?,
         left_attack_range_available_for = ?,
-        repeating_directional_ranged_attack = ?,
-        max_directional_ranged_attack_iterations = ?,
-        min_directional_ranged_attack_iterations = ?,
         ratio_one_attack_range = ?,
         ratio_two_attack_range = ?,
-        repeating_ratio_ranged_attack = ?,
-        max_ratio_ranged_attack_iterations = ?,
-        min_ratio_ranged_attack_iterations = ?,
         step_by_step_attack_style = ?,
         step_by_step_attack_value = ?,
         max_piece_captures_per_move = ?,
@@ -4016,7 +4156,9 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         promotion_pieces_ids = ?,
         can_hop_attack_over_allies = ?,
         can_hop_attack_over_enemies = ?,
-        chain_hop_allies = ?
+        chain_hop_allies = ?,
+        can_capture_allies = ?,
+        cannot_be_captured = ?
       WHERE id = ?
     `;
 
@@ -4035,8 +4177,6 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       // Movement fields
       parseBooleanField(pieceData.directional_movement_style),
       parseBooleanField(pieceData.repeating_movement),
-      parseInt(pieceData.max_directional_movement_iterations) || null,
-      parseInt(pieceData.min_directional_movement_iterations) || null,
       parseInt(pieceData.up_left_movement) || 0,
       parseInt(pieceData.up_movement) || 0,
       parseInt(pieceData.up_right_movement) || 0,
@@ -4068,12 +4208,12 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.ratio_two_movement) || null,
       parseBooleanField(pieceData.repeating_ratio),
       parseInt(pieceData.max_ratio_iterations) || null,
-      parseInt(pieceData.min_ratio_iterations) || null,
       parseBooleanField(pieceData.step_by_step_movement_style),
       parseInt(pieceData.step_by_step_movement_value) || null,
       parseBooleanField(pieceData.can_hop_over_allies),
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
+      parseBooleanField(pieceData.directional_hop_disabled),
       parseInt(pieceData.min_turns_per_move) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
@@ -4084,10 +4224,7 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         : (pieceData.special_scenario_moves || null),
       // Capture fields
       hasRangedAttack,
-      pieceData.can_capture_ally_via_range === 'true',
       pieceData.can_capture_enemy_on_move === 'true',
-      pieceData.can_capture_ally_on_range === 'true',
-      pieceData.can_attack_on_iteration === 'true',
       // Capture special scenario fields
       pieceData.first_move_only_capture === 'true',
       parseInt(pieceData.available_for_captures) || null,
@@ -4121,6 +4258,8 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.ratio_one_capture) || null,
       parseInt(pieceData.ratio_two_capture) || null,
       parseBooleanField(pieceData.repeating_capture),
+      parseBooleanField(pieceData.repeating_ratio_capture),
+      parseInt(pieceData.max_ratio_capture_iterations) || null,
       parseInt(pieceData.step_by_step_capture) || null,
       // Attack range values
       parseInt(pieceData.up_left_attack_range) || 0,
@@ -4149,14 +4288,8 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseInt(pieceData.down_attack_range_available_for) || null,
       parseInt(pieceData.down_left_attack_range_available_for) || null,
       parseInt(pieceData.left_attack_range_available_for) || null,
-      pieceData.repeating_directional_ranged_attack === 'true',
-      parseInt(pieceData.max_directional_ranged_attack_iterations) || null,
-      parseInt(pieceData.min_directional_ranged_attack_iterations) || null,
       parseInt(pieceData.ratio_one_attack_range) || null,
       parseInt(pieceData.ratio_two_attack_range) || null,
-      pieceData.repeating_ratio_ranged_attack === 'true',
-      parseInt(pieceData.max_ratio_ranged_attack_iterations) || null,
-      parseInt(pieceData.min_ratio_ranged_attack_iterations) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
       parseInt(pieceData.max_piece_captures_per_move) || 1,
@@ -4177,6 +4310,10 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseBooleanField(pieceData.can_hop_attack_over_enemies),
       // Chain hop allies
       parseBooleanField(pieceData.chain_hop_allies),
+      // Can capture allies
+      parseBooleanField(pieceData.can_capture_allies),
+      // Cannot be captured
+      parseBooleanField(pieceData.cannot_be_captured),
       pieceId
     ];
 
@@ -4413,6 +4550,43 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
   } catch (err) {
     console.error("Error in /api/admin/games:", err);
     res.status(500).send({ message: "Failed to fetch games", err: err.message });
+  }
+});
+
+// Get anonymous live games for admin tracking
+app.get("/api/admin/anonymous-games", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const [games] = await db_pool.query(
+      `SELECT g.id, g.created_at, g.start_time, g.end_time, g.status, g.invite_code,
+       g.turn_length, g.increment, gt.game_name, gt.board_width, gt.board_height
+       FROM games g
+       LEFT JOIN game_types gt ON g.game_type_id = gt.id
+       WHERE g.is_anonymous = 1
+       ORDER BY g.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query(
+      "SELECT COUNT(*) as total FROM games WHERE is_anonymous = 1"
+    );
+
+    res.json({
+      data: games,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/anonymous-games:", err);
+    res.status(500).send({ message: "Failed to fetch anonymous games", err: err.message });
   }
 });
 
