@@ -267,7 +267,7 @@ const Home = () => {
       {/* Banner */}
       <div className={styles["banner-wrapper"]}>
         <img
-          src="/grid_grove_banner.png"
+          src="/Grid_Grove_Banner.png"
           alt="GridGrove"
           className={styles["banner-image"]}
         />
