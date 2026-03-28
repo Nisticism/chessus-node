@@ -36,9 +36,12 @@ const PrivacyPolicy = () => {
         <section className={styles.section}>
           <h2>3. Information Sharing</h2>
           <p>
-            Your username, public profile information, game creations, and forum posts are visible to other users. 
-            We do not sell your personal information to third parties. We may share information when required by law 
-            or to protect the rights and safety of GridGrove and its users.
+            Your username, public profile information, game creations, and forum posts are visible to other users.
+          </p>
+          <p>
+            <strong>We will never sell your personal information.</strong> We do not sell, trade, or otherwise 
+            transfer your personal data to third parties for marketing or any other purpose. We may share 
+            information only when required by law or to protect the rights and safety of GridGrove and its users.
           </p>
         </section>
 

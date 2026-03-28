@@ -2,7 +2,8 @@ import React, { useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { isEmail } from "validator";
-import { register, login } from "../../actions/auth";
+import { register, login, googleLogin } from "../../actions/auth";
+import { GoogleLogin } from "@react-oauth/google";
 import { trackRegistration } from "../../analytics/GoogleAnalytics";
 import styles from "./register.module.scss";
 
@@ -94,6 +95,21 @@ const Register = () => {
     // }
   };
 
+  const handleGoogleSuccess = (credentialResponse) => {
+    dispatch(googleLogin(credentialResponse.credential))
+      .then((data) => {
+        trackRegistration('google');
+        navigate(`/profile/${data.result.username}`);
+      })
+      .catch(() => {
+        setMessageDisplay(true);
+      });
+  };
+
+  const handleGoogleError = () => {
+    setMessageDisplay(true);
+  };
+
   return (
     <div className={styles["container"]}>
       <div className={styles["wrapper"]}>
@@ -146,6 +162,21 @@ const Register = () => {
               </div>
               <div className="form-group">
                 <button className={styles["signup-button"]}>Sign Up</button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', margin: '10px 0' }}>
+                <hr style={{ flex: 1 }} />
+                <span style={{ padding: '0 10px', color: 'var(--text-muted)', fontSize: '14px' }}>or</span>
+                <hr style={{ flex: 1 }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={handleGoogleError}
+                  theme="filled_black"
+                  size="large"
+                  text="signup_with"
+                  width="320"
+                />
               </div>
             </div>
           )}

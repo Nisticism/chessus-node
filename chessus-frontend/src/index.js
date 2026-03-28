@@ -6,6 +6,7 @@ import { Provider } from 'react-redux';
 import store from './store';
 import reportWebVitals from './reportWebVitals';
 import { BrowserRouter } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import './services/axios-interceptor'; // Initialize axios interceptor
 
 const UI_CACHE_VERSION = process.env.REACT_APP_UI_CACHE_VERSION || '2026-02-20-1';
@@ -48,11 +49,13 @@ const clearAppCachesIfNeeded = async () => {
 const renderApp = () => {
   const root = ReactDOM.createRoot(document.getElementById('root'));
   root.render(
+    <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID}>
       <Provider store={store}>
         <BrowserRouter>
           <App />
         </BrowserRouter>
       </Provider>
+    </GoogleOAuthProvider>
   );
 };
 

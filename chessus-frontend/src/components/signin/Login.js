@@ -1,7 +1,8 @@
 import React, { useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
-import { login } from "../../actions/auth";
+import { login, googleLogin } from "../../actions/auth";
+import { GoogleLogin } from "@react-oauth/google";
 import { trackLogin } from "../../analytics/GoogleAnalytics";
 import styles from "./login.module.scss";
 
@@ -59,6 +60,23 @@ const Login = (props) => {
   const handleSignup = () => {
     navigate('/register')
   }
+
+  const handleGoogleSuccess = (credentialResponse) => {
+    setLoading(true);
+    dispatch(googleLogin(credentialResponse.credential))
+      .then((data) => {
+        trackLogin('google');
+        navigate(`/profile/${data.result.username}`);
+      })
+      .catch(() => {
+        setLoading(false);
+        setMessageDisplay(true);
+      });
+  };
+
+  const handleGoogleError = () => {
+    setMessageDisplay(true);
+  };
 
   if (isLoggedIn) {
     var path=`/profile/${username}`;
@@ -119,6 +137,21 @@ const Login = (props) => {
             <Link to="/forgot-password" style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontSize: '14px' }}>
               Forgot Password?
             </Link>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', margin: '10px 0' }}>
+            <hr style={{ flex: 1 }} />
+            <span style={{ padding: '0 10px', color: 'var(--text-muted)', fontSize: '14px' }}>or</span>
+            <hr style={{ flex: 1 }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              theme="filled_black"
+              size="large"
+              text="signin_with"
+              width="320"
+            />
           </div>
           {message && messageDisplay && (
             <div className={styles["form-group"]}>

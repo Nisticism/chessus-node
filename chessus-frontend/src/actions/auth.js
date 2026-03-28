@@ -129,6 +129,27 @@ export const login = (username, password) => async (dispatch) => {
   }
 };
 
+export const googleLogin = (credential) => async (dispatch) => {
+  try {
+    const data = await AuthService.googleLogin(credential);
+    dispatch({
+      type: LOGIN_SUCCESS,
+      payload: { user: data.result },
+    });
+    return Promise.resolve(data);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    dispatch({
+      type: LOGIN_FAIL,
+    });
+    dispatch({
+      type: SET_MESSAGE,
+      payload: message,
+    });
+    return Promise.reject();
+  }
+};
+
 export const logout = () => async (dispatch) => {
   await AuthService.logout();
   dispatch({

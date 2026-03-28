@@ -131,6 +131,29 @@ const getCurrentUser = () => {
   return JSON.parse(localStorage.getItem("user"));
 };
 
+const googleLogin = async (credential) => {
+  try {
+    const response = await axios.post(API_URL + "auth/google", {
+      credential,
+    });
+
+    if (response && response.data && response.data.result) {
+      const result = response.data.result;
+      if (result && result.username) {
+        const userData = {
+          ...result,
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken
+        };
+        localStorage.setItem("user", JSON.stringify(userData));
+      }
+      return response.data;
+    }
+  } catch (error) {
+    throw error;
+  }
+};
+
 // Request password reset email
 const forgotPassword = async (email) => {
   const response = await axios.post(API_URL + "forgot-password", { email });
@@ -153,6 +176,7 @@ const AuthService = {
   register,
   edit,
   login,
+  googleLogin,
   logout,
   getCurrentUser,
   deleteUser,
