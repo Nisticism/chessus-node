@@ -339,6 +339,24 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
               <span>Can En Passant <InfoTooltip text="Allows this piece to capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn. The capture must be made immediately after the enemy's qualifying move. Only available for pieces with no backward movement (pawn-like pieces)." /></span>
             </label>
           )}
+
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.can_capture_allies || false}
+              onChange={(e) => handleChange("can_capture_allies", e.target.checked)}
+            />
+            <span>Can Capture Allied Pieces <InfoTooltip text="When enabled, this piece can capture friendly pieces using any of its attack methods (directional, ratio, or ranged). Useful for sacrifice-based mechanics." /></span>
+          </label>
+
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.cannot_be_captured || false}
+              onChange={(e) => handleChange("cannot_be_captured", e.target.checked)}
+            />
+            <span>Cannot Be Captured <InfoTooltip text="When enabled, this piece cannot be captured by any means. It acts as an immovable wall that blocks other pieces. Useful for custom games like duck chess." /></span>
+          </label>
         </div>
       </div>
 

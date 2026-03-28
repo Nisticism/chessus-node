@@ -39,7 +39,7 @@ const News = () => {
         <h1 className={styles["news-page-title"]}>
           News
         </h1>
-        {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+        {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'owner') && (
           <button className={styles["create-news-button"]} onClick={createNewPost}>
             <span className={styles["button-icon"]}>+</span>
             Create News Article
@@ -92,7 +92,7 @@ const News = () => {
                     {newsItem.content}
                   </div>
                   
-                  {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                  {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'owner') && (
                     <div className={styles["article-actions"]}>
                       <button 
                         className={styles["edit-button"]}

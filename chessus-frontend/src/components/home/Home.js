@@ -264,14 +264,25 @@ const Home = () => {
 
   return (
     <div className={styles["home-container"]}>
+      {/* Banner */}
+      <div className={styles["banner-wrapper"]}>
+        <img
+          src="/grid_grove_banner.png"
+          alt="GridGrove"
+          className={styles["banner-image"]}
+        />
+        <div className={styles["banner-overlay"]}>
+          <h1 className={styles["hero-title"]}>
+            Welcome to <span className={styles.highlight}>GridGrove</span>
+          </h1>
+          <p className={styles["hero-tagline"]}>
+            Where Strategy Takes Root
+          </p>
+        </div>
+      </div>
+
       {/* Hero Section */}
       <section className={styles["hero-section"]}>
-        <h1 className={styles["hero-title"]}>
-          Welcome to <span className={styles.highlight}>GridGrove</span>
-        </h1>
-        <p className={styles["hero-tagline"]}>
-          Where Strategy Takes Root
-        </p>
         <p className={styles["hero-description"]}>
           GridGrove is a community-driven platform for creating and playing custom grid-based strategy games.
           Design unique pieces, define how they move, and build entirely new rule sets, from classic variations

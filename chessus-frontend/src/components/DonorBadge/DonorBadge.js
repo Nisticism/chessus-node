@@ -1,9 +1,9 @@
 import React from 'react';
 import styles from './DonorBadge.module.scss';
 
-const DonorBadge = ({ totalDonations }) => {
-  // Don't show badge if no donations
-  if (!totalDonations || totalDonations < 5) {
+const DonorBadge = ({ totalDonations, hidden }) => {
+  // Don't show badge if no donations or hidden by user
+  if (!totalDonations || totalDonations < 5 || hidden === 1 || hidden === true) {
     return null;
   }
 

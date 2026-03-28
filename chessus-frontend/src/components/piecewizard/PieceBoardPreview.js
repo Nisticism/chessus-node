@@ -196,13 +196,25 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
   }, [pieceData, boardPadding]);
 
   // Helper to check if a value allows movement at distance
-  const checkMovement = (value, distance, isExact = false) => {
-    if (value === 99) return true; // Infinite movement
-    if (value === 0 || value === null) return false;
-    if (isExact) {
-      return distance === value; // Exact distance
+  // Uses signed convention: positive = up-to, negative = exact, 99 = infinite
+  // When repeating=true and value is exact (negative), allows multiples of the exact distance
+  const checkMovement = (value, distance, repeating = false) => {
+    if (value === 99) return true;
+    if (value === 0 || value === null || value === undefined) return false;
+    if (value > 0) return distance <= value;
+    if (value < 0) {
+      const exact = Math.abs(value);
+      if (repeating) return distance > 0 && distance % exact === 0;
+      return distance === exact;
     }
-    return distance <= value; // Up to that distance
+    return false;
+  };
+
+  // Convert a directional value + separate exact flag into signed convention
+  const resolveExact = (value, exactFlag) => {
+    if (!value || value === 99) return value;
+    if (exactFlag === true || exactFlag === 1) return -Math.abs(value);
+    return value;
   };
 
   // Calculate which squares the piece can move to
@@ -221,44 +233,45 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     
     // Directional movement
     if (pieceData.directional_movement_style) {
+      const rep = pieceData.repeating_movement;
       // Up-left diagonal
       if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_left_movement, Math.abs(rowDiff), pieceData.up_left_movement_exact);
+        directionalAllowed = checkMovement(resolveExact(pieceData.up_left_movement, pieceData.up_left_movement_exact), Math.abs(rowDiff), rep && pieceData.up_left_movement_exact);
         directionalDirection = 'up_left';
       }
       // Up
       else if (rowDiff < 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.up_movement, Math.abs(rowDiff), pieceData.up_movement_exact);
+        directionalAllowed = checkMovement(resolveExact(pieceData.up_movement, pieceData.up_movement_exact), Math.abs(rowDiff), rep && pieceData.up_movement_exact);
         directionalDirection = 'up';
       }
       // Up-right diagonal
       else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.up_right_movement, Math.abs(rowDiff), pieceData.up_right_movement_exact);
+        directionalAllowed = checkMovement(resolveExact(pieceData.up_right_movement, pieceData.up_right_movement_exact), Math.abs(rowDiff), rep && pieceData.up_right_movement_exact);
         directionalDirection = 'up_right';
       }
       // Right
       else if (rowDiff === 0 && colDiff > 0) {
-        directionalAllowed = checkMovement(pieceData.right_movement, Math.abs(colDiff), pieceData.right_movement_exact);
+        directionalAllowed = checkMovement(resolveExact(pieceData.right_movement, pieceData.right_movement_exact), Math.abs(colDiff), rep && pieceData.right_movement_exact);
         directionalDirection = 'right';
       }
       // Down-right diagonal
       else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_right_movement, Math.abs(rowDiff), pieceData.down_right_movement_exact);
+        directionalAllowed = checkMovement(resolveExact(pieceData.down_right_movement, pieceData.down_right_movement_exact), Math.abs(rowDiff), rep && pieceData.down_right_movement_exact);
         directionalDirection = 'down_right';
       }
       // Down
       else if (rowDiff > 0 && colDiff === 0) {
-        directionalAllowed = checkMovement(pieceData.down_movement, Math.abs(rowDiff), pieceData.down_movement_exact);
+        directionalAllowed = checkMovement(resolveExact(pieceData.down_movement, pieceData.down_movement_exact), Math.abs(rowDiff), rep && pieceData.down_movement_exact);
         directionalDirection = 'down';
       }
       // Down-left diagonal
       else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-        directionalAllowed = checkMovement(pieceData.down_left_movement, Math.abs(rowDiff), pieceData.down_left_movement_exact);
+        directionalAllowed = checkMovement(resolveExact(pieceData.down_left_movement, pieceData.down_left_movement_exact), Math.abs(rowDiff), rep && pieceData.down_left_movement_exact);
         directionalDirection = 'down_left';
       }
       // Left
       else if (rowDiff === 0 && colDiff < 0) {
-        directionalAllowed = checkMovement(pieceData.left_movement, Math.abs(colDiff), pieceData.left_movement_exact);
+        directionalAllowed = checkMovement(resolveExact(pieceData.left_movement, pieceData.left_movement_exact), Math.abs(colDiff), rep && pieceData.left_movement_exact);
         directionalDirection = 'left';
       }
       
@@ -325,14 +338,13 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
           for (const move of additionalMoves) {
             // Get the value and exact flag
             let moveValue = move.value;
-            const isExact = move.exact;
             
             if (move.infinite) {
               moveValue = 99;
             }
             
             // Check if this additional movement allows reaching the target square
-            if (checkMovement(moveValue, distance, isExact)) {
+            if (checkMovement(resolveExact(moveValue, move.exact), distance)) {
               // Check if it's first-move-only
               const isFirstMoveOnly = move.availableForMoves ? true : false;
               return { allowed: true, isFirstMoveOnly };
@@ -346,11 +358,24 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     if (pieceData.ratio_movement_style && pieceData.ratio_one_movement && pieceData.ratio_two_movement) {
       const ratio1 = Math.abs(pieceData.ratio_one_movement);
       const ratio2 = Math.abs(pieceData.ratio_two_movement);
+      const absRow = Math.abs(rowDiff);
+      const absCol = Math.abs(colDiff);
       
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        const isFirstMoveOnly = isRatioMovementFirstMoveOnly();
-        return { allowed: true, isFirstMoveOnly };
+      if (pieceData.repeating_ratio) {
+        const maxK = pieceData.max_ratio_iterations === -1 ? Math.max(absRow, absCol) : (pieceData.max_ratio_iterations || 1);
+        for (let k = 1; k <= maxK; k++) {
+          if ((absRow === k * ratio1 && absCol === k * ratio2) ||
+              (absRow === k * ratio2 && absCol === k * ratio1)) {
+            const isFirstMoveOnly = isRatioMovementFirstMoveOnly();
+            return { allowed: true, isFirstMoveOnly };
+          }
+        }
+      } else {
+        if ((absRow === ratio1 && absCol === ratio2) ||
+            (absRow === ratio2 && absCol === ratio1)) {
+          const isFirstMoveOnly = isRatioMovementFirstMoveOnly();
+          return { allowed: true, isFirstMoveOnly };
+        }
       }
     }
 
@@ -404,45 +429,46 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     
     let directionalCaptureAllowed = false;
     let directionalDirection = null;
+    const repC = pieceData.repeating_capture;
     
     // Up-left diagonal
     if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.up_left_capture, Math.abs(rowDiff), pieceData.up_left_capture_exact);
+      directionalCaptureAllowed = checkMovement(resolveExact(pieceData.up_left_capture, pieceData.up_left_capture_exact), Math.abs(rowDiff), repC && pieceData.up_left_capture_exact);
       directionalDirection = 'up_left';
     }
     // Up
     else if (rowDiff < 0 && colDiff === 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.up_capture, Math.abs(rowDiff), pieceData.up_capture_exact);
+      directionalCaptureAllowed = checkMovement(resolveExact(pieceData.up_capture, pieceData.up_capture_exact), Math.abs(rowDiff), repC && pieceData.up_capture_exact);
       directionalDirection = 'up';
     }
     // Up-right diagonal
     else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.up_right_capture, Math.abs(rowDiff), pieceData.up_right_capture_exact);
+      directionalCaptureAllowed = checkMovement(resolveExact(pieceData.up_right_capture, pieceData.up_right_capture_exact), Math.abs(rowDiff), repC && pieceData.up_right_capture_exact);
       directionalDirection = 'up_right';
     }
     // Right
     else if (rowDiff === 0 && colDiff > 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.right_capture, Math.abs(colDiff), pieceData.right_capture_exact);
+      directionalCaptureAllowed = checkMovement(resolveExact(pieceData.right_capture, pieceData.right_capture_exact), Math.abs(colDiff), repC && pieceData.right_capture_exact);
       directionalDirection = 'right';
     }
     // Down-right diagonal
     else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.down_right_capture, Math.abs(rowDiff), pieceData.down_right_capture_exact);
+      directionalCaptureAllowed = checkMovement(resolveExact(pieceData.down_right_capture, pieceData.down_right_capture_exact), Math.abs(rowDiff), repC && pieceData.down_right_capture_exact);
       directionalDirection = 'down_right';
     }
     // Down
     else if (rowDiff > 0 && colDiff === 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.down_capture, Math.abs(rowDiff), pieceData.down_capture_exact);
+      directionalCaptureAllowed = checkMovement(resolveExact(pieceData.down_capture, pieceData.down_capture_exact), Math.abs(rowDiff), repC && pieceData.down_capture_exact);
       directionalDirection = 'down';
     }
     // Down-left diagonal
     else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalCaptureAllowed = checkMovement(pieceData.down_left_capture, Math.abs(rowDiff), pieceData.down_left_capture_exact);
+      directionalCaptureAllowed = checkMovement(resolveExact(pieceData.down_left_capture, pieceData.down_left_capture_exact), Math.abs(rowDiff), repC && pieceData.down_left_capture_exact);
       directionalDirection = 'down_left';
     }
     // Left
     else if (rowDiff === 0 && colDiff < 0) {
-      directionalCaptureAllowed = checkMovement(pieceData.left_capture, Math.abs(colDiff), pieceData.left_capture_exact);
+      directionalCaptureAllowed = checkMovement(resolveExact(pieceData.left_capture, pieceData.left_capture_exact), Math.abs(colDiff), repC && pieceData.left_capture_exact);
       directionalDirection = 'left';
     }
     
@@ -507,14 +533,13 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
           for (const capture of additionalCaptures) {
             // Get the value and exact flag
             let captureValue = capture.value;
-            const isExact = capture.exact;
             
             if (capture.infinite) {
               captureValue = 99;
             }
             
             // Check if this additional capture allows reaching the target square
-            if (checkMovement(captureValue, distance, isExact)) {
+            if (checkMovement(resolveExact(captureValue, capture.exact), distance)) {
               // Check if it's first-move-only
               const isFirstMoveOnly = capture.availableForMoves ? true : false;
               return { allowed: true, isFirstMoveOnly };
@@ -528,11 +553,24 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     if (pieceData.ratio_one_capture && pieceData.ratio_two_capture) {
       const ratio1 = Math.abs(pieceData.ratio_one_capture);
       const ratio2 = Math.abs(pieceData.ratio_two_capture);
+      const absRow = Math.abs(rowDiff);
+      const absCol = Math.abs(colDiff);
       
-      if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
-          (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
-        const isFirstMoveOnly = isRatioCaptureFirstMoveOnly();
-        return { allowed: true, isFirstMoveOnly };
+      if (pieceData.repeating_ratio_capture) {
+        const maxK = pieceData.max_ratio_capture_iterations === -1 ? Math.max(absRow, absCol) : (pieceData.max_ratio_capture_iterations || 1);
+        for (let k = 1; k <= maxK; k++) {
+          if ((absRow === k * ratio1 && absCol === k * ratio2) ||
+              (absRow === k * ratio2 && absCol === k * ratio1)) {
+            const isFirstMoveOnly = isRatioCaptureFirstMoveOnly();
+            return { allowed: true, isFirstMoveOnly };
+          }
+        }
+      } else {
+        if ((absRow === ratio1 && absCol === ratio2) ||
+            (absRow === ratio2 && absCol === ratio1)) {
+          const isFirstMoveOnly = isRatioCaptureFirstMoveOnly();
+          return { allowed: true, isFirstMoveOnly };
+        }
       }
     }
     
@@ -585,35 +623,35 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     
     // Up-left diagonal
     if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalRangedAllowed = checkMovement(pieceData.up_left_attack_range, Math.abs(rowDiff), pieceData.up_left_attack_range_exact);
+      directionalRangedAllowed = checkMovement(resolveExact(pieceData.up_left_attack_range, pieceData.up_left_attack_range_exact), Math.abs(rowDiff));
     }
     // Up
     else if (rowDiff < 0 && colDiff === 0) {
-      directionalRangedAllowed = checkMovement(pieceData.up_attack_range, Math.abs(rowDiff), pieceData.up_attack_range_exact);
+      directionalRangedAllowed = checkMovement(resolveExact(pieceData.up_attack_range, pieceData.up_attack_range_exact), Math.abs(rowDiff));
     }
     // Up-right diagonal
     else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalRangedAllowed = checkMovement(pieceData.up_right_attack_range, Math.abs(rowDiff), pieceData.up_right_attack_range_exact);
+      directionalRangedAllowed = checkMovement(resolveExact(pieceData.up_right_attack_range, pieceData.up_right_attack_range_exact), Math.abs(rowDiff));
     }
     // Right
     else if (rowDiff === 0 && colDiff > 0) {
-      directionalRangedAllowed = checkMovement(pieceData.right_attack_range, Math.abs(colDiff), pieceData.right_attack_range_exact);
+      directionalRangedAllowed = checkMovement(resolveExact(pieceData.right_attack_range, pieceData.right_attack_range_exact), Math.abs(colDiff));
     }
     // Down-right diagonal
     else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalRangedAllowed = checkMovement(pieceData.down_right_attack_range, Math.abs(rowDiff), pieceData.down_right_attack_range_exact);
+      directionalRangedAllowed = checkMovement(resolveExact(pieceData.down_right_attack_range, pieceData.down_right_attack_range_exact), Math.abs(rowDiff));
     }
     // Down
     else if (rowDiff > 0 && colDiff === 0) {
-      directionalRangedAllowed = checkMovement(pieceData.down_attack_range, Math.abs(rowDiff), pieceData.down_attack_range_exact);
+      directionalRangedAllowed = checkMovement(resolveExact(pieceData.down_attack_range, pieceData.down_attack_range_exact), Math.abs(rowDiff));
     }
     // Down-left diagonal
     else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
-      directionalRangedAllowed = checkMovement(pieceData.down_left_attack_range, Math.abs(rowDiff), pieceData.down_left_attack_range_exact);
+      directionalRangedAllowed = checkMovement(resolveExact(pieceData.down_left_attack_range, pieceData.down_left_attack_range_exact), Math.abs(rowDiff));
     }
     // Left
     else if (rowDiff === 0 && colDiff < 0) {
-      directionalRangedAllowed = checkMovement(pieceData.left_attack_range, Math.abs(colDiff), pieceData.left_attack_range_exact);
+      directionalRangedAllowed = checkMovement(resolveExact(pieceData.left_attack_range, pieceData.left_attack_range_exact), Math.abs(colDiff));
     }
     
     if (directionalRangedAllowed) {

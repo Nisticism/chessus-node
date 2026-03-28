@@ -822,9 +822,9 @@
   }
 
   .legend-hop-capture {
-    outline: 3px solid rgba(var(--accent-rgb), 0.7);
+    outline: 3px solid rgba(76, 175, 80, 0.7);
     outline-offset: -3px;
-    background-color: rgba(var(--accent-rgb), 0.2);
+    background-color: rgba(76, 175, 80, 0.2);
   }
 }
 
@@ -919,10 +919,10 @@
   }
 
   &.can-hop-capture {
-    outline: 3px solid rgba(var(--accent-rgb), 0.7) !important;
+    outline: 3px solid rgba(76, 175, 80, 0.7) !important;
     outline-offset: -3px !important;
     // Use box-shadow as inner glow that doesn't conflict with background
-    box-shadow: inset 0 0 0 100px rgba(var(--accent-rgb), 0.2) !important;
+    box-shadow: inset 0 0 0 100px rgba(76, 175, 80, 0.2) !important;
   }
 
   &.can-move-and-capture {

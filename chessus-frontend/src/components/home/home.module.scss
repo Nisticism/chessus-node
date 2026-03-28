@@ -1,38 +1,55 @@
 .home-container {
   max-width: 1400px;
   margin: 0 auto;
+  padding: 0 20px 20px;
+}
+
+// Banner
+.banner-wrapper {
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  margin-bottom: 0;
+  line-height: 0;
+  position: relative;
+}
+
+.banner-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
+.banner-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   padding: 20px;
+  line-height: normal;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.45) 0%, transparent 70%);
 }
 
 // Hero Section
 .hero-section {
   text-align: center;
-  padding: 60px 20px;
-  background: linear-gradient(135deg, rgba(var(--panel-bg-start-rgb), 0.9) 0%, rgba(var(--panel-bg-end-rgb), 0.9) 100%);
-  border-radius: 20px;
+  padding: 40px 20px;
   margin-bottom: 50px;
-  position: relative;
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: radial-gradient(circle at 20% 80%, rgba(var(--accent-rgb), 0.15) 0%, transparent 50%),
-                radial-gradient(circle at 80% 20%, rgba(var(--accent-highlight-rgb), 0.1) 0%, transparent 50%);
-    pointer-events: none;
-  }
 }
 
 .hero-title {
-  font-size: 3.5rem;
+  font-size: 4rem;
   color: #ffffff;
   margin: 0 0 10px 0;
   font-weight: 700;
   position: relative;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 0, 0, 0.5);
 
   .highlight {
     color: var(--accent-primary);
@@ -41,9 +58,10 @@
 
 .hero-tagline {
   font-size: 1.5rem;
-  color: var(--text-info);
-  margin: 0 0 25px 0;
+  color: #ffffff;
+  margin: 0;
   font-weight: 400;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 0, 0, 0.5);
 }
 
 .hero-description {

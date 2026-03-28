@@ -15,11 +15,34 @@ const Donate = () => {
   const [paymentMethod, setPaymentMethod] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPayPalLoaded, setIsPayPalLoaded] = useState(false);
+  const [donateAnonymously, setDonateAnonymously] = useState(false);
   
   const location = useLocation();
   const navigate = useNavigate();
 
   const predefinedAmounts = [5, 10, 25, 50, 100];
+
+  // Save anonymous donation preference if checked
+  const saveAnonymousPreference = async () => {
+    if (donateAnonymously && currentUser) {
+      try {
+        const API_URL = process.env.REACT_APP_API_URL;
+        await fetch(`${API_URL}/api/preferences/colors`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUser.id,
+            hide_donation_badge: true,
+          })
+        });
+        // Update localStorage
+        const updatedUser = { ...currentUser, hide_donation_badge: 1 };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      } catch (error) {
+        console.error('Failed to save anonymous preference:', error);
+      }
+    }
+  };
 
   // Check for success parameter in URL
   useEffect(() => {
@@ -149,6 +172,9 @@ const Donate = () => {
       
       const { url } = await response.json();
       
+      // Save anonymous preference before redirecting to Stripe
+      await saveAnonymousPreference();
+      
       // Redirect directly to Stripe Checkout URL
       window.location.href = url;
     } catch (error) {
@@ -199,6 +225,7 @@ const Donate = () => {
         onApprove: async (data, actions) => {
           const details = await actions.order.capture();
           console.log('PayPal payment successful:', details);
+          await saveAnonymousPreference();
           window.location.href = `/donate?success=true&amount=${amount}&method=paypal`;
         },
         onCancel: () => {
@@ -300,6 +327,17 @@ const Donate = () => {
 
             <div className={styles.paymentMethods}>
               <h3 className={styles.paymentMethodsTitle}>Select Payment Method</h3>
+
+              {currentUser && (
+                <label className={styles.anonymousOption}>
+                  <input
+                    type="checkbox"
+                    checked={donateAnonymously}
+                    onChange={(e) => setDonateAnonymously(e.target.checked)}
+                  />
+                  <span>Donate anonymously (hide my donor badge from my profile)</span>
+                </label>
+              )}
               
               <div className={styles.paymentButtons}>
                 <button
@@ -367,7 +405,8 @@ const Donate = () => {
             </div>
           </div>
           <p className={styles.badgeNote}>
-            Badges are automatically awarded based on your cumulative donation total and will be visible on your profile page to all users.
+            Badges are automatically awarded based on your cumulative donation total and will be visible on your profile page.
+            You can choose to donate anonymously above, or hide your badge at any time from your <a href="/preferences">preferences</a>.
           </p>
         </div>
 

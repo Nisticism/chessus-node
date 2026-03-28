@@ -323,6 +323,9 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         step_by_step_capture: pieceData.step_by_step_movement_value,
         // Copy repeating movement setting
         repeating_capture: pieceData.repeating_movement,
+        // Copy ratio repeating settings
+        repeating_ratio_capture: pieceData.repeating_ratio,
+        max_ratio_capture_iterations: pieceData.max_ratio_iterations,
         // Copy additional movements to additional captures
         ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
         // Disable ranged by default when capturing on move
@@ -916,24 +919,87 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
             {!pieceData.attacks_like_movement && (
               <div className={styles["sub-field"]}>
                 <h4>Ratio Capture Movement (L-shape) <InfoTooltip text="L-shaped capture like a knight. The piece jumps one distance in one direction, then a different distance perpendicularly to land on and capture an enemy. Leave both empty to disable. Example: 2 and 1 for standard knight capture." /></h4>
-                <div className={styles["form-row"]}>
-                  <div className={styles["form-group"]}>
-                    <label>Ratio One</label>
-                    <NumberInput
-                      value={pieceData.ratio_one_capture || ""}
-                      onChange={(val) => handleNumberChange("ratio_one_capture", val || "")}
-                      options={{ placeholder: "e.g., 2", className: styles["form-input-small"] }}
+                <div className={styles["radio-group"]}>
+                  <label className={styles["radio-label"]}>
+                    <input
+                      type="radio"
+                      name="ratio_capture_enabled"
+                      value="true"
+                      checked={!!(pieceData.ratio_one_capture || pieceData.ratio_two_capture)}
+                      onChange={() => {
+                        if (!pieceData.ratio_one_capture && !pieceData.ratio_two_capture) {
+                          updatePieceData({ ratio_one_capture: 2, ratio_two_capture: 1 });
+                        }
+                      }}
                     />
-                  </div>
-                  <div className={styles["form-group"]}>
-                    <label>Ratio Two</label>
-                    <NumberInput
-                      value={pieceData.ratio_two_capture || ""}
-                      onChange={(val) => handleNumberChange("ratio_two_capture", val || "")}
-                      options={{ placeholder: "e.g., 1", className: styles["form-input-small"] }}
+                    <span>Enable ratio capture</span>
+                  </label>
+                  <label className={styles["radio-label"]}>
+                    <input
+                      type="radio"
+                      name="ratio_capture_enabled"
+                      value="false"
+                      checked={!pieceData.ratio_one_capture && !pieceData.ratio_two_capture}
+                      onChange={() => {
+                        updatePieceData({ ratio_one_capture: null, ratio_two_capture: null, repeating_ratio_capture: false, max_ratio_capture_iterations: null });
+                      }}
                     />
-                  </div>
+                    <span>Disable ratio capture</span>
+                  </label>
                 </div>
+                {(pieceData.ratio_one_capture || pieceData.ratio_two_capture) ? (
+                  <>
+                    <div className={styles["form-row"]}>
+                      <div className={styles["form-group"]}>
+                        <label>Ratio One</label>
+                        <NumberInput
+                          value={pieceData.ratio_one_capture || ""}
+                          onChange={(val) => handleNumberChange("ratio_one_capture", val || "")}
+                          options={{ placeholder: "e.g., 2", className: styles["form-input-small"] }}
+                        />
+                      </div>
+                      <div className={styles["form-group"]}>
+                        <label>Ratio Two</label>
+                        <NumberInput
+                          value={pieceData.ratio_two_capture || ""}
+                          onChange={(val) => handleNumberChange("ratio_two_capture", val || "")}
+                          options={{ placeholder: "e.g., 1", className: styles["form-input-small"] }}
+                        />
+                      </div>
+                    </div>
+                    <label className={styles["checkbox-label"]}>
+                      <input
+                        type="checkbox"
+                        checked={pieceData.repeating_ratio_capture || false}
+                        onChange={(e) => handleChange("repeating_ratio_capture", e.target.checked)}
+                      />
+                      <span>Repeating ratio capture <InfoTooltip text="When enabled, the piece can repeat its L-shaped capture multiple times in the same direction in a single move." /></span>
+                    </label>
+                    {pieceData.repeating_ratio_capture && (
+                      <div className={styles["sub-option"]} style={{ marginLeft: '24px', marginTop: '8px' }}>
+                        <label className={styles["checkbox-label"]}>
+                          <input
+                            type="checkbox"
+                            checked={pieceData.max_ratio_capture_iterations === -1}
+                            onChange={(e) => handleChange("max_ratio_capture_iterations", e.target.checked ? -1 : 2)}
+                          />
+                          <span>Infinite <InfoTooltip text="Allow unlimited ratio capture iterations in a single move." /></span>
+                        </label>
+                        {pieceData.max_ratio_capture_iterations !== -1 && (
+                          <div style={{ marginTop: '8px' }}>
+                            <label>Max Iterations</label>
+                            <NumberInput
+                              value={pieceData.max_ratio_capture_iterations || 2}
+                              onChange={(val) => handleChange("max_ratio_capture_iterations", val)}
+                              min={2}
+                              max={50}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : null}
               </div>
             )}
 

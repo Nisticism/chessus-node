@@ -9,17 +9,15 @@
   margin-bottom: 50px;
 
   h1 {
-    font-size: 3rem;
+    font-size: 3.5rem;
     color: var(--accent-primary);
     margin-bottom: 15px;
   }
-}
 
-.createhub-subtitle {
-  font-size: 1.2rem;
-  color: var(--text-muted);
-  max-width: 600px;
-  margin: 0 auto;
+  .createhub-subtitle {
+    font-size: 1.3rem;
+    color: var(--text-dim);
+  }
 }
 
 .options-grid {

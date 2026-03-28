@@ -7,15 +7,15 @@ const SocialMedia = () => {
       name: "Discord",
       handle: "GridGrove Community",
       icon: "💬",
-      url: "https://discord.gg/sesgKDdt",
+      url: "https://discord.gg/jfUh5xtGMA",
       description: "Join our community for real-time chat, game discussion, and support",
       buttonText: "Join",
     },
     {
       name: "Instagram",
-      handle: "@gridgrovegg",
+      handle: "@gridgrove.gg",
       icon: "📸",
-      url: "https://www.instagram.com/gridgrovegg",
+      url: "https://www.instagram.com/gridgrove.gg",
       description: "Visual highlights, behind-the-scenes content, and community showcases",
       buttonText: "Follow",
     },
@@ -78,6 +78,11 @@ const SocialMedia = () => {
           Follow us on your favorite platforms to get the latest news, participate in events,
           and connect with fellow GridGrove enthusiasts. Share your custom games, pieces, and
           strategies with the community!
+        </p>
+        <p>
+          Looking for in-depth discussions? Visit our{" "}
+          <a href="/forums" className={styles["forums-link"]}>community forums</a>{" "}
+          to discuss strategies, share feedback, and connect with other players directly on GridGrove.
         </p>
       </div>
     </div>

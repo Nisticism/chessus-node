@@ -13,8 +13,16 @@
   flex-wrap: wrap;
 }
 
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .back-button,
-.edit-button {
+.edit-button,
+.sandbox-button {
   padding: 10px 20px;
   border: none;
   border-radius: 8px;
@@ -33,6 +41,15 @@
 }
 
 .edit-button {
+  background-color: var(--accent-primary);
+  color: white;
+
+  &:hover {
+    background-color: var(--accent-primary);
+  }
+}
+
+.sandbox-button {
   background-color: var(--accent-primary);
   color: white;
 

@@ -44,8 +44,6 @@ const PieceWizard = ({ editPieceId = null }) => {
     // Step 2: Movement Configuration
     directional_movement_style: false,
     repeating_movement: false,
-    max_directional_movement_iterations: null,
-    min_directional_movement_iterations: null,
     up_left_movement: 0,
     up_movement: 0,
     up_right_movement: 0,
@@ -80,7 +78,6 @@ const PieceWizard = ({ editPieceId = null }) => {
     ratio_two_movement: null,
     repeating_ratio: false,
     max_ratio_iterations: null,
-    min_ratio_iterations: null,
     
     step_by_step_movement_style: false,
     step_by_step_movement_value: null,
@@ -91,13 +88,12 @@ const PieceWizard = ({ editPieceId = null }) => {
     
     // Step 3: Attack/Capture Configuration
     repeating_capture: false,
+    repeating_ratio_capture: false,
+    max_ratio_capture_iterations: null,
     can_hop_attack_over_allies: false,
     can_hop_attack_over_enemies: false,
     can_capture_enemy_via_range: false,
-    can_capture_ally_via_range: false,
-    can_capture_enemy_on_move: true, // Default to true - most pieces attack how they move
-    can_capture_ally_on_range: false,
-    can_attack_on_iteration: false,
+    can_capture_enemy_on_move: true,
     
     up_left_attack_range: 0,
     up_attack_range: 0,
@@ -148,15 +144,8 @@ const PieceWizard = ({ editPieceId = null }) => {
     down_left_attack_range_available_for: null,
     left_attack_range_available_for: null,
     
-    repeating_directional_ranged_attack: false,
-    max_directional_ranged_attack_iterations: null,
-    min_directional_ranged_attack_iterations: null,
-    
     ratio_one_attack_range: null,
     ratio_two_attack_range: null,
-    repeating_ratio_ranged_attack: false,
-    max_ratio_ranged_attack_iterations: null,
-    min_ratio_ranged_attack_iterations: null,
     
     step_by_step_attack_style: false,
     step_by_step_attack_value: null,
@@ -184,6 +173,10 @@ const PieceWizard = ({ editPieceId = null }) => {
     chain_hop_allies: false,
     free_move_after_promotion: false,
     promotion_pieces_ids: null,
+    // Can capture allies
+    can_capture_allies: false,
+    // Cannot be captured
+    cannot_be_captured: false,
   });
 
   // Load existing piece data when in edit mode
@@ -396,6 +389,8 @@ const PieceWizard = ({ editPieceId = null }) => {
             chain_hop_allies: !!piece.chain_hop_allies,
             free_move_after_promotion: !!piece.free_move_after_promotion,
             promotion_pieces_ids: piece.promotion_pieces_ids || null,
+            can_capture_allies: !!piece.can_capture_allies,
+            cannot_be_captured: !!piece.cannot_be_captured,
           });
           
           setIsEditMode(true);

@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import { getPieceById, getGamesByPieceId } from "../../actions/pieces";
 import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import Pagination from "../pagination/Pagination";
 import styles from "./pieceview.module.scss";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -18,6 +19,8 @@ const PieceView = () => {
   const [imageBgColor, setImageBgColor] = useState('#6b6b6b'); // Default neutral gray
   const [gamesUsingPiece, setGamesUsingPiece] = useState([]);
   const [gamesLoading, setGamesLoading] = useState(true);
+  const [gamesPage, setGamesPage] = useState(1);
+  const GAMES_PER_PAGE = 10;
 
   useEffect(() => {
     const loadPiece = async () => {
@@ -383,20 +386,104 @@ const PieceView = () => {
   // Use displayPiece for rendering to prevent 0/1 from showing
   const pieceToDisplay = displayPiece || piece;
 
+  // Calculate the board size that PieceBoardPreview would use for this piece
+  const calculatePreviewBoardSize = () => {
+    if (!piece) return { boardWidth: 9, boardHeight: 9 };
+    let maxRange = 0;
+    const movements = [
+      piece.up_left_movement, piece.up_movement, piece.up_right_movement,
+      piece.left_movement, piece.right_movement,
+      piece.down_left_movement, piece.down_movement, piece.down_right_movement
+    ];
+    const captures = [
+      piece.up_left_capture, piece.up_capture, piece.up_right_capture,
+      piece.left_capture, piece.right_capture,
+      piece.down_left_capture, piece.down_capture, piece.down_right_capture
+    ];
+    const attacks = [
+      piece.up_left_attack_range, piece.up_attack_range, piece.up_right_attack_range,
+      piece.left_attack_range, piece.right_attack_range,
+      piece.down_left_attack_range, piece.down_attack_range, piece.down_right_attack_range
+    ];
+    const ratioMovement = Math.abs(piece.ratio_one_movement || 0) + Math.abs(piece.ratio_two_movement || 0);
+    const ratioCapture = Math.abs(piece.ratio_one_capture || 0) + Math.abs(piece.ratio_two_capture || 0);
+    const ratioAttack = Math.abs(piece.ratio_one_attack_range || 0) + Math.abs(piece.ratio_two_attack_range || 0);
+    const stepMovement = Math.abs(piece.step_by_step_movement_value || 0);
+    const stepCapture = Math.abs(piece.step_by_step_capture || 0);
+    const stepAttack = Math.abs(piece.step_by_step_attack_range || 0);
+    [...movements, ...captures, ...attacks].forEach(val => {
+      if (val !== 99 && val !== null && val !== undefined) {
+        const absVal = Math.abs(val);
+        if (!isNaN(absVal)) maxRange = Math.max(maxRange, absVal);
+      }
+    });
+    maxRange = Math.max(maxRange, ratioMovement, ratioCapture, ratioAttack, stepMovement, stepCapture, stepAttack);
+    const padding = Math.max(4, maxRange);
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
+    return { boardWidth: pw + padding * 2, boardHeight: ph + padding * 2 };
+  };
+
+  const handleTryInSandbox = () => {
+    const MAX_SANDBOXES = 4;
+    const existingSandboxes = (() => {
+      try {
+        const saved = localStorage.getItem('chessus-sandboxes');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) { /* ignore */ }
+      return [];
+    })();
+
+    if (existingSandboxes.length >= MAX_SANDBOXES) {
+      const confirmed = window.confirm(
+        `You already have ${MAX_SANDBOXES} sandbox boards open. Opening this piece in a new sandbox will close your least recent sandbox ("${existingSandboxes[0]?.name || 'Sandbox 1'}"). Continue?`
+      );
+      if (!confirmed) return;
+    }
+
+    const { boardWidth: bw, boardHeight: bh } = calculatePreviewBoardSize();
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
+    const centerX = Math.floor((bw - pw) / 2);
+    const centerY = Math.floor((bh - ph) / 2);
+
+    const pendingData = {
+      pieceId: piece.piece_id,
+      pieceName: piece.piece_name,
+      boardWidth: bw,
+      boardHeight: bh,
+      centerX,
+      centerY
+    };
+    localStorage.setItem('chessus-sandbox-pending-piece', JSON.stringify(pendingData));
+    navigate('/sandbox');
+  };
+
   return (
     <div className={styles["container"]}>
       <div className={styles["header"]}>
         <button onClick={() => navigate('/create/pieces')} className={styles["back-button"]}>
           ← Back to Pieces
         </button>
-        {canEdit() && (
+        <div className={styles["header-actions"]}>
           <button 
-            onClick={() => navigate(`/create/piece/edit/${pieceId}`)} 
-            className={styles["edit-button"]}
+            onClick={handleTryInSandbox} 
+            className={styles["sandbox-button"]}
           >
-            ✏️ Edit Piece
+            ⚔️ Try in Sandbox
           </button>
-        )}
+          {canEdit() && (
+            <button 
+              onClick={() => navigate(`/create/piece/edit/${pieceId}`)} 
+              className={styles["edit-button"]}
+            >
+              ✏️ Edit Piece
+            </button>
+          )}
+        </div>
       </div>
 
       <div className={styles["piece-info"]}>
@@ -678,26 +765,35 @@ const PieceView = () => {
         </div>
 
         <div className={styles["section"]}>
-          <h2>Used In Games</h2>
+          <h2>Used In Games ({gamesUsingPiece.length})</h2>
           {gamesLoading ? (
             <div className={styles["loading-games"]}>
               <span>Loading games...</span>
             </div>
           ) : gamesUsingPiece.length > 0 ? (
-            <div className={styles["games-grid"]}>
-              {gamesUsingPiece.map((game) => (
-                <Link 
-                  key={game.id} 
-                  to={`/games/${game.id}`} 
-                  className={styles["game-card"]}
-                >
-                  <div className={styles["game-name"]}>{game.game_name}</div>
-                  <div className={styles["game-creator"]}>
-                    by {game.creator_username || 'Unknown'}
-                  </div>
-                </Link>
-              ))}
-            </div>
+            <>
+              <div className={styles["games-grid"]}>
+                {gamesUsingPiece.slice((gamesPage - 1) * GAMES_PER_PAGE, gamesPage * GAMES_PER_PAGE).map((game) => (
+                  <Link 
+                    key={game.id} 
+                    to={`/games/${game.id}`} 
+                    className={styles["game-card"]}
+                  >
+                    <div className={styles["game-name"]}>{game.game_name}</div>
+                    <div className={styles["game-creator"]}>
+                      by {game.creator_username || 'Unknown'}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+              {gamesUsingPiece.length > GAMES_PER_PAGE && (
+                <Pagination
+                  currentPage={gamesPage}
+                  totalPages={Math.ceil(gamesUsingPiece.length / GAMES_PER_PAGE)}
+                  onPageChange={setGamesPage}
+                />
+              )}
+            </>
           ) : (
             <div className={styles["no-abilities"]}>
               <span className={styles["no-abilities-icon"]}>♟</span>

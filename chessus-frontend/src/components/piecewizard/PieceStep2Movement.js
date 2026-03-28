@@ -748,6 +748,29 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               />
               <span>Repeating ratio <InfoTooltip text="When enabled, the piece can repeat its L-shaped jump multiple times in the same direction in a single move (e.g., a 2-1 knight could land at 2-1, 4-2, 6-3, etc.)." /></span>
             </label>
+            {pieceData.repeating_ratio && (
+              <div className={styles["sub-option"]} style={{ marginLeft: '24px', marginTop: '8px' }}>
+                <label className={styles["checkbox-label"]}>
+                  <input
+                    type="checkbox"
+                    checked={pieceData.max_ratio_iterations === -1}
+                    onChange={(e) => handleChange("max_ratio_iterations", e.target.checked ? -1 : 2)}
+                  />
+                  <span>Infinite <InfoTooltip text="Allow unlimited ratio iterations in a single move." /></span>
+                </label>
+                {pieceData.max_ratio_iterations !== -1 && (
+                  <div style={{ marginTop: '8px' }}>
+                    <label>Max Iterations</label>
+                    <NumberInput
+                      value={pieceData.max_ratio_iterations || 2}
+                      onChange={(val) => handleChange("max_ratio_iterations", val)}
+                      min={2}
+                      max={50}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -836,6 +859,17 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             />
             <span>Require hopping for exact and ratio movement/attacks</span>
             <InfoTooltip text="When enabled, any movement or attack that uses exact distance or ratio (L-shape) patterns will only work when the piece is actually hopping over another piece in its path. Non-exact (up-to) and step-by-step movement still work normally. Essential for checkers-style pieces that should only jump at their full range when hopping." />
+          </label>
+        )}
+        {(pieceData.can_hop_over_allies || pieceData.can_hop_over_enemies) && (
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.directional_hop_disabled}
+              onChange={(e) => handleChange("directional_hop_disabled", e.target.checked)}
+            />
+            <span>Disable hopping for directional movement</span>
+            <InfoTooltip text="When enabled, hopping over pieces is disabled for directional (sliding) movements like rook or bishop movement. Hopping still works for ratio (L-shape) movements like a knight. Useful for hybrid pieces — e.g. a knight-bishop that can hop with its knight movement but not its bishop movement." />
           </label>
         )}
       </div>

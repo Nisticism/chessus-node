@@ -145,6 +145,10 @@ const Preferences = () => {
     return localStorage.getItem('siteTheme') || 'grove';
   });
 
+  const [hideDonationBadge, setHideDonationBadge] = useState(() => {
+    return currentUser?.hide_donation_badge === 1 || currentUser?.hide_donation_badge === true;
+  });
+
   // Fixed saturation for good-looking colors
   const SATURATION = 40;
 
@@ -196,6 +200,7 @@ const Preferences = () => {
           user_id: currentUser.id,
           light_square_color: lightSquareColor,
           dark_square_color: darkSquareColor,
+          hide_donation_badge: hideDonationBadge,
         },
         { headers: authHeader() }
       );
@@ -205,6 +210,7 @@ const Preferences = () => {
         ...currentUser,
         light_square_color: lightSquareColor,
         dark_square_color: darkSquareColor,
+        hide_donation_badge: hideDonationBadge ? 1 : 0,
       };
       localStorage.setItem("user", JSON.stringify(updatedUser));
       
@@ -505,11 +511,26 @@ const Preferences = () => {
           )}
         </section>
 
-        {/* Future sections can be added here */}
-        {/* <section className={styles["preference-section"]}>
-          <h2>Notification Settings</h2>
-          ...
-        </section> */}
+        <Divider />
+
+        <section className={styles["preference-section"]}>
+          <h2>Donation Badge</h2>
+          <p className={styles["section-description"]}>Control how your donor badge appears on your profile</p>
+          <div className={styles["animations-section"]}>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Hide donation badge</span>
+              <span className={styles["toggle-hint"]}>When enabled, your donor badge will not be displayed on your profile page</span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={hideDonationBadge}
+                  onChange={(e) => setHideDonationBadge(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+          </div>
+        </section>
       </div>
     </div>
   );
