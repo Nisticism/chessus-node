@@ -1,4 +1,4 @@
-﻿# Email Templates
+# Email Templates
 
 This folder contains standalone HTML previews of the email templates used by GRIDGROVE.
 
@@ -45,7 +45,7 @@ The actual emails sent by the application use variables that are replaced at run
 - `${username}` - User's name
 - `${amount}` - Donation amount
 - `${name}`, `${email}`, `${subject}`, `${message}` - Contact form data
-- `${process.env.CLIENT_URL}` - Site URL (GRIDGROVE.com or localhost:3000)
+- `${process.env.CLIENT_URL}` - Site URL (gridgrove.gg or localhost:3000)
 
 The static HTML files in this folder show example data for preview purposes.
 

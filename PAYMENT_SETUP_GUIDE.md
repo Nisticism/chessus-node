@@ -1,4 +1,4 @@
-﻿# Payment Integration Setup Guide
+# Payment Integration Setup Guide
 
 ## Overview
 The donation page now supports both **Stripe** and **PayPal** payment methods with a thank you page after successful donations.
@@ -230,8 +230,8 @@ REACT_APP_PAYPAL_CLIENT_ID=YOUR_CLIENT_ID
 
 ### Production (.env.production)
 ```env
-REACT_APP_API_URL=https://GRIDGROVE.com
-REACT_APP_ASSET_URL=https://GRIDGROVE.com
+REACT_APP_API_URL=https://gridgrove.gg
+REACT_APP_ASSET_URL=https://gridgrove.gg
 REACT_APP_GA_MEASUREMENT_ID=G-N7K0X3Z0VN
 REACT_APP_STRIPE_PUBLIC_KEY=pk_live_YOUR_LIVE_KEY
 REACT_APP_PAYPAL_CLIENT_ID=YOUR_LIVE_CLIENT_ID

@@ -1,4 +1,4 @@
-﻿# Email Setup Guide - AWS SES
+# Email Setup Guide - AWS SES
 
 This guide will help you set up AWS Simple Email Service (SES) for sending transactional emails from your application.
 
@@ -17,7 +17,7 @@ This guide will help you set up AWS Simple Email Service (SES) for sending trans
 2. Navigate to **Configuration** â†’ **Verified identities**
 3. Click **Create identity**
 4. Select **Email address**
-5. Enter: `noreply@GRIDGROVE.com`
+5. Enter: `noreply@gridgrove.gg`
 6. Click **Create identity**
 7. Check your email and click the verification link
 
@@ -29,7 +29,7 @@ By default, SES is in sandbox mode (can only send to verified emails).
 2. Click **Request production access**
 3. Fill out the form:
    - **Mail Type**: Transactional
-   - **Website URL**: https://GRIDGROVE.com
+   - **Website URL**: https://gridgrove.gg
    - **Use case**: User registration, donation confirmations, contact form
    - **Compliance**: Explain you only send to users who register/donate
 4. Submit and wait for approval (usually 24 hours)
@@ -59,7 +59,7 @@ Add these to your backend `.env` file:
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=AKIAXXXXXXXXXXXXXXXX
 AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-AWS_SES_FROM_EMAIL=noreply@GRIDGROVE.com
+AWS_SES_FROM_EMAIL=noreply@gridgrove.gg
 ```
 
 ### 5. Install Dependencies
@@ -104,7 +104,7 @@ After approval, you can send to any email address.
 
 ### "Email address is not verified"
 
-- Make sure you verified `noreply@GRIDGROVE.com` in SES
+- Make sure you verified `noreply@gridgrove.gg` in SES
 - Check the verification email (might be in spam)
 - Wait a few minutes after verification
 

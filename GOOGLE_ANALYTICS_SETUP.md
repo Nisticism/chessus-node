@@ -1,4 +1,4 @@
-﻿# Google Analytics Setup Guide
+# Google Analytics Setup Guide
 
 ## Overview
 Google Analytics 4 (GA4) has been integrated into the Chessus/GRIDGROVE application to track user behavior, page views, and key events.
@@ -22,7 +22,7 @@ Google Analytics 4 (GA4) has been integrated into the Chessus/GRIDGROVE applicat
 1. After creating the property, you'll be prompted to set up a data stream
 2. Select **Web** as the platform
 3. Enter your website details:
-   - Website URL: `https://GRIDGROVE.com` (or your domain)
+   - Website URL: `https://gridgrove.gg` (or your domain)
    - Stream name: "GRIDGROVE Web"
 4. Click **Create stream**
 5. **Copy your Measurement ID** - it looks like `G-XXXXXXXXXX`
