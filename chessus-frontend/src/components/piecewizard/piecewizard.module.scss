@@ -800,12 +800,12 @@
   }
 
   .legend-move {
-    background-color: rgba(var(--accent-rgb), 0.5);
+    background-color: rgba(33, 150, 243, 0.5);
   }
 
   .legend-move-first {
-    background-color: rgba(var(--accent-rgb), 0.25);
-    border: 3px dashed rgba(var(--accent-rgb), 0.9);
+    background-color: rgba(33, 150, 243, 0.25);
+    border: 3px dashed rgba(33, 150, 243, 0.9);
   }
 
   .legend-capture {
@@ -850,7 +850,7 @@
   }
 
   .legend-movement::before {
-    background-color: rgba(var(--accent-rgb), 0.5);
+    background-color: rgba(33, 150, 243, 0.5);
   }
 
   .legend-capture::before {
@@ -868,8 +868,8 @@
   .legend-both::before {
     background: linear-gradient(
       135deg,
-      rgba(var(--accent-rgb), 0.5) 0%,
-      rgba(var(--accent-rgb), 0.5) 50%,
+      rgba(33, 150, 243, 0.5) 0%,
+      rgba(33, 150, 243, 0.5) 50%,
       rgba(244, 67, 54, 0.5) 50%,
       rgba(244, 67, 54, 0.5) 100%
     );
@@ -907,7 +907,7 @@
   // Background colors will be set via inline styles based on user preferences
 
   &.can-move {
-    background-color: rgba(var(--accent-rgb), 0.5) !important;
+    background-color: rgba(33, 150, 243, 0.5) !important;
   }
 
   &.can-capture-move {
@@ -928,8 +928,8 @@
   &.can-move-and-capture {
     background: linear-gradient(
       135deg,
-      rgba(var(--accent-rgb), 0.6) 0%,
-      rgba(var(--accent-rgb), 0.6) 50%,
+      rgba(33, 150, 243, 0.6) 0%,
+      rgba(33, 150, 243, 0.6) 50%,
       rgba(255, 152, 0, 0.6) 50%,
       rgba(255, 152, 0, 0.6) 100%
     ) !important; // Blue + Orange
@@ -938,8 +938,8 @@
   &.can-move-and-ranged {
     background: linear-gradient(
       135deg,
-      rgba(var(--accent-rgb), 0.6) 0%,
-      rgba(var(--accent-rgb), 0.6) 50%,
+      rgba(33, 150, 243, 0.6) 0%,
+      rgba(33, 150, 243, 0.6) 50%,
       rgba(244, 67, 54, 0.6) 50%,
       rgba(244, 67, 54, 0.6) 100%
     ) !important; // Blue + Red
@@ -958,8 +958,8 @@
   &.can-all-three {
     background: linear-gradient(
       120deg,
-      rgba(var(--accent-rgb), 0.6) 0%,
-      rgba(var(--accent-rgb), 0.6) 33%,
+      rgba(33, 150, 243, 0.6) 0%,
+      rgba(33, 150, 243, 0.6) 33%,
       rgba(255, 152, 0, 0.6) 33%,
       rgba(255, 152, 0, 0.6) 66%,
       rgba(244, 67, 54, 0.6) 66%,
@@ -969,8 +969,8 @@
 
   // First-move-only styles (lighter colors with dotted borders)
   &.can-move-first-only {
-    background-color: rgba(var(--accent-rgb), 0.25) !important;
-    border: 3px dashed rgba(var(--accent-rgb), 0.9) !important;
+    background-color: rgba(33, 150, 243, 0.25) !important;
+    border: 3px dashed rgba(33, 150, 243, 0.9) !important;
   }
 
   &.can-capture-first-only {
@@ -981,30 +981,30 @@
   &.can-move-and-capture-first-only {
     background: linear-gradient(
       135deg,
-      rgba(var(--accent-rgb), 0.3) 0%,
-      rgba(var(--accent-rgb), 0.3) 50%,
+      rgba(33, 150, 243, 0.3) 0%,
+      rgba(33, 150, 243, 0.3) 50%,
       rgba(255, 152, 0, 0.3) 50%,
       rgba(255, 152, 0, 0.3) 100%
     ) !important;
-    border: 2px dotted rgba(var(--accent-rgb), 0.8) !important;
+    border: 2px dotted rgba(33, 150, 243, 0.8) !important;
   }
 
   &.can-move-first-capture-normal {
     background: linear-gradient(
       135deg,
-      rgba(var(--accent-rgb), 0.3) 0%,
-      rgba(var(--accent-rgb), 0.3) 50%,
+      rgba(33, 150, 243, 0.3) 0%,
+      rgba(33, 150, 243, 0.3) 50%,
       rgba(255, 152, 0, 0.6) 50%,
       rgba(255, 152, 0, 0.6) 100%
     ) !important;
-    border: 2px dotted rgba(var(--accent-rgb), 0.8) !important;
+    border: 2px dotted rgba(33, 150, 243, 0.8) !important;
   }
 
   &.can-move-normal-capture-first {
     background: linear-gradient(
       135deg,
-      rgba(var(--accent-rgb), 0.6) 0%,
-      rgba(var(--accent-rgb), 0.6) 50%,
+      rgba(33, 150, 243, 0.6) 0%,
+      rgba(33, 150, 243, 0.6) 50%,
       rgba(255, 152, 0, 0.3) 50%,
       rgba(255, 152, 0, 0.3) 100%
     ) !important;
@@ -1014,12 +1014,12 @@
   &.can-move-and-ranged-first-only {
     background: linear-gradient(
       135deg,
-      rgba(var(--accent-rgb), 0.3) 0%,
-      rgba(var(--accent-rgb), 0.3) 50%,
+      rgba(33, 150, 243, 0.3) 0%,
+      rgba(33, 150, 243, 0.3) 50%,
       rgba(244, 67, 54, 0.6) 50%,
       rgba(244, 67, 54, 0.6) 100%
     ) !important;
-    border: 2px dotted rgba(var(--accent-rgb), 0.8) !important;
+    border: 2px dotted rgba(33, 150, 243, 0.8) !important;
   }
 
   &.can-capture-and-ranged-first-only {
@@ -1036,14 +1036,14 @@
   &.can-all-three-first-only {
     background: linear-gradient(
       120deg,
-      rgba(var(--accent-rgb), 0.3) 0%,
-      rgba(var(--accent-rgb), 0.3) 33%,
+      rgba(33, 150, 243, 0.3) 0%,
+      rgba(33, 150, 243, 0.3) 33%,
       rgba(255, 152, 0, 0.3) 33%,
       rgba(255, 152, 0, 0.3) 66%,
       rgba(244, 67, 54, 0.6) 66%,
       rgba(244, 67, 54, 0.6) 100%
     ) !important;
-    border: 2px dotted rgba(var(--accent-rgb), 0.8) !important;
+    border: 2px dotted rgba(33, 150, 243, 0.8) !important;
   }
 
   &.center-piece {

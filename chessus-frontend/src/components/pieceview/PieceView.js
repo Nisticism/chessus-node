@@ -360,7 +360,11 @@ const PieceView = () => {
       can_en_passant: !!piece.can_en_passant,
       has_checkmate_rule: !!piece.has_checkmate_rule,
       has_check_rule: !!piece.has_check_rule,
-      has_lose_on_capture_rule: !!piece.has_lose_on_capture_rule
+      has_lose_on_capture_rule: !!piece.has_lose_on_capture_rule,
+      capture_on_hop: !!piece.capture_on_hop,
+      chain_capture_enabled: !!piece.chain_capture_enabled,
+      can_capture_allies: !!piece.can_capture_allies,
+      cannot_be_captured: !!piece.cannot_be_captured
     };
   }, [piece]);
 
@@ -753,9 +757,22 @@ const PieceView = () => {
                 <span className={styles["special-name"]}>Chain Capture <InfoTooltip text="After capturing, this piece can make additional captures in the same turn (multi-jump like checkers)." /></span>
               </div>
             )}
+            {pieceToDisplay.can_capture_allies && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>🤝</span>
+                <span className={styles["special-name"]}>Can Capture Allies <InfoTooltip text="This piece can capture friendly pieces on the same team." /></span>
+              </div>
+            )}
+            {pieceToDisplay.cannot_be_captured && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>🛡️</span>
+                <span className={styles["special-name"]}>Cannot Be Captured <InfoTooltip text="This piece is immune to capture by enemy pieces." /></span>
+              </div>
+            )}
             {!pieceToDisplay.can_promote && !pieceToDisplay.can_castle && !pieceToDisplay.has_checkmate_rule && 
              !pieceToDisplay.has_check_rule && !pieceToDisplay.has_lose_on_capture_rule && !pieceToDisplay.can_en_passant &&
-             !pieceToDisplay.capture_on_hop && !pieceToDisplay.chain_capture_enabled && (
+             !pieceToDisplay.capture_on_hop && !pieceToDisplay.chain_capture_enabled &&
+             !pieceToDisplay.can_capture_allies && !pieceToDisplay.cannot_be_captured && (
               <div className={styles["no-abilities"]}>
                 <span className={styles["no-abilities-icon"]}>✨</span>
                 <span>No special abilities</span>

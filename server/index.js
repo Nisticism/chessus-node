@@ -2393,8 +2393,8 @@ app.post("/api/auth/google", async (req, res) => {
         );
       } else {
         // Create a new account
-        // Generate a unique username from the Google name or email
-        let baseUsername = (name || email.split("@")[0])
+        // Generate a unique username from the email prefix
+        let baseUsername = email.split("@")[0]
           .replace(/[^a-zA-Z0-9_-]/g, "")
           .substring(0, 16);
         if (baseUsername.length < 3) baseUsername = "user";

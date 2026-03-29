@@ -169,14 +169,16 @@ const Register = () => {
                 <hr style={{ flex: 1 }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
-                <GoogleLogin
-                  onSuccess={handleGoogleSuccess}
-                  onError={handleGoogleError}
-                  theme="filled_black"
-                  size="large"
-                  text="signup_with"
-                  width="320"
-                />
+                <div style={{ border: '1px solid #ccc', borderRadius: '4px', overflow: 'hidden', display: 'inline-block' }}>
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={handleGoogleError}
+                    theme="filled_black"
+                    size="large"
+                    text="signup_with"
+                    width="320"
+                  />
+                </div>
               </div>
             </div>
           )}

@@ -32,16 +32,23 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
 
   // Measure container size
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
     const updateSize = () => {
-      if (containerRef.current) {
-        const width = containerRef.current.offsetWidth;
-        setContainerSize(width);
-      }
+      setContainerSize(el.offsetWidth);
     };
-    
+
     updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(updateSize);
+      ro.observe(el);
+      return () => ro.disconnect();
+    } else {
+      window.addEventListener('resize', updateSize);
+      return () => window.removeEventListener('resize', updateSize);
+    }
   }, []);
 
   // Initialize pieces from gameData
@@ -367,7 +374,7 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
               return isNonSquareMultiTile ? (
                 <div
                   ref={(el) => applySvgStretchBackground(el, getPieceImageUrl(piece))}
-                  className={`${styles["preview-piece-image"]} ${draggingPiece?.id === piece.id ? styles.dragging : ''}`}
+                  className={`${styles["preview-piece-image"]} ${isMultiTile ? styles["multi-tile"] : ''} ${draggingPiece?.id === piece.id ? styles.dragging : ''}`}
                   style={{
                     ...multiTileStyle,
                   }}
@@ -380,7 +387,7 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
                 <img
                   src={getPieceImageUrl(piece)}
                   alt={piece.piece_name || 'piece'}
-                  className={`${styles["preview-piece-image"]} ${draggingPiece?.id === piece.id ? styles.dragging : ''}`}
+                  className={`${styles["preview-piece-image"]} ${isMultiTile ? styles["multi-tile"] : ''} ${draggingPiece?.id === piece.id ? styles.dragging : ''}`}
                   style={multiTileStyle}
                   onClick={(e) => handlePieceClick(e, piece)}
                   draggable={true}

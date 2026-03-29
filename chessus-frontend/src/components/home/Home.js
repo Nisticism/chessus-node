@@ -401,7 +401,7 @@ const Home = () => {
                 </li>
                 <li>
                   <span className={styles["info-icon"]}>📐</span>
-                  <span>Create boards of any size from tiny 4×4 arenas to massive 96×96 battlefields</span>
+                  <span>Create boards of any size from tiny 4×4 arenas to massive 48×48 battlefields</span>
                 </li>
                 <li>
                   <span className={styles["info-icon"]}>⚔</span>
