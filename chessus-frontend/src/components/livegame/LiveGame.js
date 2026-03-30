@@ -1606,16 +1606,17 @@ const LiveGame = () => {
     
     // Check for castling moves
     if (piece.can_castle && !piece.hasMoved) {
-      // Check left castling (2 squares left)
+      const castleDist = piece.castling_distance || 2;
+      // Check left castling
       if (piece.castling_partner_left_id) {
         const partner = pieces.find(p => p.id === piece.castling_partner_left_id);
         if (partner && !partner.hasMoved) {
-          const targetX = piece.x - 2;
+          const targetX = piece.x - castleDist;
           const targetY = piece.y;
           const distanceToPartner = piece.x - partner.x;
           
-          // Check if this is close-range castling (partner within 2 squares)
-          const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+          // Check if this is close-range castling (partner within castleDist squares)
+          const isCloseRange = distanceToPartner > 0 && distanceToPartner <= castleDist;
           
           if (isCloseRange) {
             // Close-range castling: king hops over pieces, partner can be at target or adjacent
@@ -1649,16 +1650,16 @@ const LiveGame = () => {
         }
       }
       
-      // Check right castling (2 squares right)
+      // Check right castling
       if (piece.castling_partner_right_id) {
         const partner = pieces.find(p => p.id === piece.castling_partner_right_id);
         if (partner && !partner.hasMoved) {
-          const targetX = piece.x + 2;
+          const targetX = piece.x + castleDist;
           const targetY = piece.y;
           const distanceToPartner = partner.x - piece.x;
           
-          // Check if this is close-range castling (partner within 2 squares)
-          const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+          // Check if this is close-range castling (partner within castleDist squares)
+          const isCloseRange = distanceToPartner > 0 && distanceToPartner <= castleDist;
           
           if (isCloseRange) {
             // Close-range castling: king hops over pieces, partner can be at target or adjacent

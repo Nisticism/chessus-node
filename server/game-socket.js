@@ -519,6 +519,22 @@ function initializeSocket(server) {
       }
     });
 
+    // Get private/challenge games for the current user
+    socket.on("getPrivateGames", async () => {
+      try {
+        const userId = socket.userId;
+        if (!userId) {
+          socket.emit("privateGamesList", []);
+          return;
+        }
+        const privateGames = await getPrivateGames(userId);
+        socket.emit("privateGamesList", privateGames);
+      } catch (error) {
+        console.error("Error fetching private games:", error);
+        socket.emit("error", { message: "Failed to fetch private games" });
+      }
+    });
+
     // Get list of ongoing games (for spectating)
     socket.on("getOngoingGames", async () => {
       try {
@@ -577,7 +593,9 @@ function initializeSocket(server) {
               // Castling partner override data from junction table
               manual_castling_partners: !!piece.manual_castling_partners,
               castling_partner_left_key: piece.castling_partner_left_key || null,
-              castling_partner_right_key: piece.castling_partner_right_key || null
+              castling_partner_right_key: piece.castling_partner_right_key || null,
+              // Castling distance (how many squares the piece moves when castling)
+              castling_distance: piece.castling_distance ?? 2
             };
           });
           
@@ -3731,6 +3749,31 @@ async function getOpenLiveGames() {
 }
 
 /**
+ * Get private/challenge games for a specific user (both sent and received)
+ */
+async function getPrivateGames(userId) {
+  try {
+    const [games] = await db_pool.query(
+      `SELECT g.*, gt.game_name, gt.board_width, gt.board_height,
+              u.username as host_username,
+              cu.username as challenged_username
+       FROM games g
+       JOIN game_types gt ON g.game_type_id = gt.id
+       JOIN users u ON g.host_id = u.id
+       LEFT JOIN users cu ON g.challenged_user_id = cu.id
+       WHERE g.status = 'waiting' AND g.is_challenge = 1
+         AND (g.host_id = ? OR g.challenged_user_id = ?)
+       ORDER BY g.created_at DESC`,
+      [userId, userId]
+    );
+    return games;
+  } catch (error) {
+    console.error("Error getting private games:", error);
+    return [];
+  }
+}
+
+/**
  * Get list of ongoing games (active games that allow spectators)
  */
 async function getOngoingGames() {
@@ -4389,11 +4432,11 @@ async function validateAndApplyMove(gameState, move) {
         // Calculate the destination for the castling target piece
         // It should be placed on the opposite side of the castling piece
         if (move.castlingDirection === 'left') {
-          // Castling piece moved 2 squares left, target goes to right of it
+          // Castling piece moved left, target goes to right of it
           castlingTargetPiece.x = to.x + 1;
           castlingTargetPiece.y = to.y;
         } else {
-          // Castling piece moved 2 squares right, target goes to left of it
+          // Castling piece moved right, target goes to left of it
           castlingTargetPiece.x = to.x - 1;
           castlingTargetPiece.y = to.y;
         }
@@ -5751,7 +5794,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   }
 
   // Check for castling moves
-  if (piece.can_castle && !piece.hasMoved && dy === 0 && absDx === 2) {
+  if (piece.can_castle && !piece.hasMoved && dy === 0 && absDx === (piece.castling_distance || 2)) {
     const direction = dx < 0 ? 'left' : 'right';
     const partnerId = direction === 'left' 
       ? piece.castling_partner_left_id 
@@ -5763,8 +5806,8 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
         // Calculate distance to partner
         const distanceToPartner = Math.abs(partner.x - piece.x);
         
-        // Check if this is close-range castling (partner within 2 squares)
-        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+        // Check if this is close-range castling (partner within castling distance)
+        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= (piece.castling_distance || 2);
         
         if (isCloseRange) {
           // Close-range castling: king hops over pieces
@@ -6235,16 +6278,17 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   if (piece.can_castle && !piece.hasMoved) {
     const pieceOwner = piece.team || piece.player_id;
     const hasCheckRule = piece.has_checkmate_rule || piece.has_check_rule;
+    const castleDist = piece.castling_distance || 2;
     
-    // Try castling to the left (2 squares left)
-    const leftTarget = { x: piece.x - 2, y: piece.y };
+    // Try castling to the left (castleDist squares left)
+    const leftTarget = { x: piece.x - castleDist, y: piece.y };
     if (isValidSquare(leftTarget.x, leftTarget.y) && piece.castling_partner_left_id) {
       // Find the castling partner
       const rookPiece = allPieces.find(p => p.id === piece.castling_partner_left_id);
       
       if (rookPiece && !rookPiece.hasMoved) {
         const distanceToPartner = piece.x - rookPiece.x;
-        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= castleDist;
         
         let pathClear = true;
         
@@ -6263,9 +6307,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
           }
         }
         
-        // If piece has check rule, also check if any square in between is controlled by enemy
+        // If piece has check rule, also check if any square along the castling path is controlled by enemy
         if (pathClear && hasCheckRule) {
-          for (let x = piece.x; x >= piece.x - 2; x--) {
+          for (let x = piece.x; x >= piece.x - castleDist; x--) {
             // Check if this square is under attack
             const underAttack = allPieces.some(enemyPiece => {
               const enemyOwner = enemyPiece.team || enemyPiece.player_id;
@@ -6289,15 +6333,15 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       }
     }
     
-    // Try castling to the right (2 squares right)
-    const rightTarget = { x: piece.x + 2, y: piece.y };
+    // Try castling to the right (castleDist squares right)
+    const rightTarget = { x: piece.x + castleDist, y: piece.y };
     if (isValidSquare(rightTarget.x, rightTarget.y) && piece.castling_partner_right_id) {
       // Find the castling partner
       const rookPiece = allPieces.find(p => p.id === piece.castling_partner_right_id);
       
       if (rookPiece && !rookPiece.hasMoved) {
         const distanceToPartner = rookPiece.x - piece.x;
-        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= 2;
+        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= castleDist;
         
         let pathClear = true;
         
@@ -6316,9 +6360,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
           }
         }
         
-        // If piece has check rule, also check if any square in between is controlled by enemy
+        // If piece has check rule, also check if any square along the castling path is controlled by enemy
         if (pathClear && hasCheckRule) {
-          for (let x = piece.x; x <= piece.x + 2; x++) {
+          for (let x = piece.x; x <= piece.x + castleDist; x++) {
             // Check if this square is under attack
             const underAttack = allPieces.some(enemyPiece => {
               const enemyOwner = enemyPiece.team || enemyPiece.player_id;

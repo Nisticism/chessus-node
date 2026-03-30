@@ -326,7 +326,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
               checked={pieceData.can_castle || false}
               onChange={(e) => handleChange("can_castle", e.target.checked)}
             />
-            <span>Can Castle <InfoTooltip text="Allows this piece to castle with a partner piece. The furthest allied piece to the left and right on the same row become castling partners. Move 2 squares left or right, and the partner moves to the opposite side. Both pieces must not have moved, and all squares between must be unoccupied. If this piece has check/checkmate rules, it cannot castle through enemy-controlled squares." /></span>
+            <span>Can Castle <InfoTooltip text="Allows this piece to castle with a partner piece. The furthest allied piece to the left and right on the same row become castling partners. The castling distance (how many squares the piece moves) is configured per-placement in the game wizard. The partner moves to the opposite side. Both pieces must not have moved, and all squares between must be unoccupied. If this piece has check/checkmate rules, it cannot castle through enemy-controlled squares." /></span>
           </label>
 
           {canShowEnPassant && (

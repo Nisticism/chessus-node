@@ -316,7 +316,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               // Castling override data
               manual_castling_partners: pieceData.manual_castling_partners || false,
               castling_partner_left_key: pieceData.castling_partner_left_key || null,
-              castling_partner_right_key: pieceData.castling_partner_right_key || null
+              castling_partner_right_key: pieceData.castling_partner_right_key || null,
+              castling_distance: pieceData.castling_distance ?? 2
             };
           }
           return newPlacements;
@@ -364,7 +365,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             can_control_squares: pieceData.can_control_squares || false,
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
-            castling_partner_right_key: pieceData.castling_partner_right_key || null
+            castling_partner_right_key: pieceData.castling_partner_right_key || null,
+            castling_distance: pieceData.castling_distance ?? 2
           };
 
           // For multi-tile pieces, mark the other occupied squares with a reference to the anchor
@@ -1018,6 +1020,18 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         return;
       }
 
+      // Mirror castling partner keys to target side
+      let mirroredLeftKey = null;
+      let mirroredRightKey = null;
+      if (sourcePiece.castling_partner_left_key) {
+        const [pRow, pCol] = sourcePiece.castling_partner_left_key.split(',').map(Number);
+        mirroredLeftKey = `${boardHeight - pRow - 1},${pCol}`;
+      }
+      if (sourcePiece.castling_partner_right_key) {
+        const [pRow, pCol] = sourcePiece.castling_partner_right_key.split(',').map(Number);
+        mirroredRightKey = `${boardHeight - pRow - 1},${pCol}`;
+      }
+
       // Copy the piece as anchor
       newPlacements[mirroredKey] = {
         piece_id: sourcePiece.piece_id,
@@ -1027,8 +1041,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         ends_game_on_capture: sourcePiece.ends_game_on_capture || false,
         can_control_squares: sourcePiece.can_control_squares || false,
         manual_castling_partners: sourcePiece.manual_castling_partners || false,
-        castling_partner_left_key: sourcePiece.castling_partner_left_key || null,
-        castling_partner_right_key: sourcePiece.castling_partner_right_key || null,
+        castling_partner_left_key: mirroredLeftKey,
+        castling_partner_right_key: mirroredRightKey,
+        castling_distance: sourcePiece.castling_distance ?? 2,
         piece_width: pw,
         piece_height: ph,
         player_id: targetPlayerId,

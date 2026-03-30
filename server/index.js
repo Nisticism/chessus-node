@@ -1978,7 +1978,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.manual_castling_partners || false,
               piece.castling_partner_left_key || null,
               piece.castling_partner_right_key || null,
-              piece.can_control_squares || false
+              piece.can_control_squares || false,
+              piece.castling_distance ?? 2
             );
           }
         }
@@ -3754,7 +3755,8 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
               piece.manual_castling_partners || false,
               piece.castling_partner_left_key || null,
               piece.castling_partner_right_key || null,
-              piece.can_control_squares || false
+              piece.can_control_squares || false,
+              piece.castling_distance ?? 2
             );
           }
         }

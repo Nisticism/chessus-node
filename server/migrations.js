@@ -360,6 +360,12 @@ const migrations = [
     description: "Add castling_partner_right_key column to game_type_pieces for manual right partner"
   },
   {
+    table: 'game_type_pieces',
+    column: 'castling_distance',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN castling_distance INT DEFAULT 2",
+    description: "Add castling_distance column to game_type_pieces for configurable castling distance"
+  },
+  {
     table: 'pieces',
     column: 'can_fire_over_allies',
     sql: "ALTER TABLE pieces ADD COLUMN can_fire_over_allies TINYINT(1) DEFAULT 0",

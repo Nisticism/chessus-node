@@ -685,13 +685,27 @@ const GameTypeView = () => {
         const pieceData = pieceDataMap[piece.piece_id] || piece;
         const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
         const partners = castlingPartnerMap[piece.piece_id];
+        // Find castling distance from placements for this piece
+        const placementsForPiece = Object.values(piecePlacements).filter(p => p.piece_id === piece.piece_id && !p._occupied);
+        const dist = placementsForPiece.length > 0 ? (placementsForPiece[0].castling_distance ?? 2) : 2;
+        const distStr = dist !== 2 ? ` (moves ${dist} square${dist !== 1 ? 's' : ''})` : '';
         if (partners && partners.size > 0) {
-          return `• **${pieceName}** can castle with: ${[...partners].map(p => `**${p}**`).join(', ')}`;
+          return `• **${pieceName}**${distStr} can castle with: ${[...partners].map(p => `**${p}**`).join(', ')}`;
         }
-        return `• **${pieceName}** can castle with partner pieces`;
+        return `• **${pieceName}**${distStr} can castle with partner pieces`;
       }).join('\n');
 
-      specialRulesContent.push(`**Castling**\nCastling is a special move where a piece moves toward a partner piece, and the partner moves to the other side.\n\n${castlingDesc}\n\n**Castling Rules:**\n• Neither piece may have moved yet\n• The path must be clear (except for close-range castling)\n• The castling piece moves 2 squares toward its partner\n• The partner piece moves to the other side of the castling piece\n\n*Tip: Enable "Show castling info" during a game to see which pieces can castle with each other.*`);
+      // Determine the castling distance description
+      const allDistances = castlingPieces.map(piece => {
+        const placementsForPiece = Object.values(piecePlacements).filter(p => p.piece_id === piece.piece_id && !p._occupied);
+        return placementsForPiece.length > 0 ? (placementsForPiece[0].castling_distance ?? 2) : 2;
+      });
+      const uniqueDistances = [...new Set(allDistances)];
+      const distanceText = uniqueDistances.length === 1
+        ? `${uniqueDistances[0]} square${uniqueDistances[0] !== 1 ? 's' : ''}`
+        : 'a configured number of squares';
+
+      specialRulesContent.push(`**Castling**\nCastling is a special move where a piece moves toward a partner piece, and the partner moves to the other side.\n\n${castlingDesc}\n\n**Castling Rules:**\n• Neither piece may have moved yet\n• The path must be clear (except for close-range castling)\n• The castling piece moves ${distanceText} toward its partner\n• The partner piece moves to the other side of the castling piece\n\n*Tip: Enable "Show castling info" during a game to see which pieces can castle with each other.*`);
     }
 
     // En passant information

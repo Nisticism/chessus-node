@@ -55,6 +55,7 @@ const PieceSelector = ({
   const [manualCastlingPartners, setManualCastlingPartners] = useState(currentPlacement?.manual_castling_partners || false);
   const [leftCastlingPartnerKey, setLeftCastlingPartnerKey] = useState(currentPlacement?.castling_partner_left_key || null);
   const [rightCastlingPartnerKey, setRightCastlingPartnerKey] = useState(currentPlacement?.castling_partner_right_key || null);
+  const [castlingDistance, setCastlingDistance] = useState(currentPlacement?.castling_distance ?? 2);
   
   // Fill row state
   const [fillRow, setFillRow] = useState(false);
@@ -221,6 +222,7 @@ const PieceSelector = ({
       manual_castling_partners: manualCastlingPartners,
       castling_partner_left_key: manualCastlingPartners ? leftCastlingPartnerKey : null,
       castling_partner_right_key: manualCastlingPartners ? rightCastlingPartnerKey : null,
+      castling_distance: castlingDistance,
       // Fill row option
       fillRow: fillRow,
       fillRowData: fillRow ? { row: squarePosition?.row, boardWidth } : null
@@ -267,6 +269,43 @@ const PieceSelector = ({
     const piece = pieces.find(p => (p.id || p.piece_id) === selectedPieceId);
     return piece?.can_castle === 1 || piece?.can_castle === true;
   }, [selectedPieceId, pieces]);
+
+  // Calculate max castling distance based on closest castling partner piece
+  const maxCastlingDistance = React.useMemo(() => {
+    if (!squarePosition) return 20;
+    const currentCol = squarePosition.col;
+    const partnerDistances = [];
+
+    if (manualCastlingPartners) {
+      // Use manually selected partners
+      if (leftCastlingPartnerKey) {
+        const [, col] = leftCastlingPartnerKey.split(',').map(Number);
+        partnerDistances.push(Math.abs(currentCol - col));
+      }
+      if (rightCastlingPartnerKey) {
+        const [, col] = rightCastlingPartnerKey.split(',').map(Number);
+        partnerDistances.push(Math.abs(currentCol - col));
+      }
+    } else {
+      // Default: furthest piece on each side (matching game engine behavior)
+      if (leftPieces.length > 0) {
+        partnerDistances.push(Math.abs(currentCol - leftPieces[0].col));
+      }
+      if (rightPieces.length > 0) {
+        partnerDistances.push(Math.abs(currentCol - rightPieces[rightPieces.length - 1].col));
+      }
+    }
+
+    if (partnerDistances.length === 0) return 20;
+    return Math.min(...partnerDistances);
+  }, [squarePosition, manualCastlingPartners, leftCastlingPartnerKey, rightCastlingPartnerKey, leftPieces, rightPieces]);
+
+  // Clamp castling distance when max changes (e.g., partner pieces moved)
+  useEffect(() => {
+    if (castlingDistance > maxCastlingDistance) {
+      setCastlingDistance(maxCastlingDistance);
+    }
+  }, [maxCastlingDistance]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Content to render (shared between embedded and modal modes)
   const selectorContent = (
@@ -476,6 +515,30 @@ const PieceSelector = ({
               />
               <span>Manually set castling partners</span>
             </label>
+
+            <div className={styles["castling-distance-section"]}>
+              <label>Castling Distance (squares):</label>
+              <input
+                type="number"
+                min="1"
+                max={maxCastlingDistance}
+                value={castlingDistance}
+                onChange={(e) => setCastlingDistance(Math.max(1, Math.min(maxCastlingDistance, parseInt(e.target.value) || 2)))}
+                className={styles["castling-distance-input"]}
+              />
+              <span className={styles["castling-distance-hint"]}>
+                How many squares this piece moves toward its partner when castling (default: 2 for chess).
+                {maxCastlingDistance < 20 && (
+                  <> Max {maxCastlingDistance} — limited by the closest castling partner on the same row ({maxCastlingDistance} square{maxCastlingDistance !== 1 ? 's' : ''} away, excluding the partner's square).</>
+                )}
+              </span>
+              <div className={styles["castling-distance-tooltip"]}>
+                <span className={styles["tooltip-trigger"]}>ℹ️ Why is there a max?</span>
+                <div className={styles["tooltip-content"]}>
+                  The maximum castling distance is determined by the closest castling partner on the same row. The piece cannot move onto or past its partner. For standard chess, the king is 3 squares from the nearest rook, so the max is 3.
+                </div>
+              </div>
+            </div>
             
             {manualCastlingPartners && (
               <div className={styles["castling-partner-selectors"]}>
