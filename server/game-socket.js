@@ -621,7 +621,7 @@ function initializeSocket(server) {
           if (pieceRows.length > 0) {
             console.log('First piece data loaded from DB:', {
               id: pieceRows[0].id,
-              name: pieceRows[0].name,
+              name: pieceRows[0].piece_name,
               directional_movement_style: pieceRows[0].directional_movement_style,
               up_movement: pieceRows[0].up_movement,
               down_movement: pieceRows[0].down_movement,
@@ -1369,7 +1369,7 @@ function initializeSocket(server) {
             if (pieceRows.length > 0) {
               console.log('JOIN GAME - First piece from DB:', {
                 id: pieceRows[0].id,
-                name: pieceRows[0].name,
+                name: pieceRows[0].piece_name,
                 special_scenario_moves: pieceRows[0].special_scenario_moves,
                 special_scenario_captures: pieceRows[0].special_scenario_captures
               });
@@ -5217,7 +5217,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
       
       // Debug hopping values
       console.log('Ratio movement capture check:', {
-        pieceName: piece.name,
+        pieceName: piece.piece_name,
         can_hop_over_allies_raw: piece.can_hop_over_allies,
         can_hop_over_enemies_raw: piece.can_hop_over_enemies,
         can_hop_attack_over_allies_raw: piece.can_hop_attack_over_allies,
@@ -6013,7 +6013,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
     const pieceOwner = piece.team || piece.player_id;
     
     console.log('Ratio movement check:', {
-      pieceName: piece.name,
+      pieceName: piece.piece_name,
       can_hop_over_allies_raw: piece.can_hop_over_allies,
       can_hop_over_enemies_raw: piece.can_hop_over_enemies,
       canHopAllies,
@@ -6435,7 +6435,7 @@ function isCheckmate(gameState, playerPosition) {
   console.log('Checkmate check:', {
     playerPosition,
     inCheck: checkResult.inCheck,
-    checkedPieces: checkResult.checkedPieces.map(p => ({ id: p.id, name: p.name, x: p.x, y: p.y })),
+    checkedPieces: checkResult.checkedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })),
     legalMovesCount: legalMoves.length,
     legalMoves: legalMoves.slice(0, 5).map(m => ({ 
       pieceId: m.pieceId, 
