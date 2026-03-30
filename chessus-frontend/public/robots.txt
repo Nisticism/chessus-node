@@ -1,3 +1,8 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Disallow: /admin/
+Disallow: /profile/edit
+Disallow: /preferences
+Disallow: /notifications
+
+Sitemap: https://gridgrove.gg/sitemap.xml
