@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
 import { getGames } from "../../actions/games";
-import { getOnlineFriends, setOnlineUsers } from "../../actions/friends";
+import { getOnlineFriends, setOnlineUsers, getFriends } from "../../actions/friends";
 import authHeader from "../../services/auth-header";
 import axios from "../../services/axios-interceptor";
 import styles from "./play.module.scss";
@@ -23,8 +23,10 @@ const Play = () => {
     socket,
     openGames,
     ongoingGames,
+    privateGames,
     fetchOpenGames,
     fetchOngoingGames,
+    fetchPrivateGames,
     createGame,
     createAnonymousGame,
     joinGame,
@@ -59,11 +61,16 @@ const Play = () => {
   const [pendingChallenges, setPendingChallenges] = useState([]);
   const [gameDeletedMessage, setGameDeletedMessage] = useState(null);
 
+  // Friend search in modal
+  const [friendSearch, setFriendSearch] = useState("");
+  const [allFriends, setAllFriends] = useState([]);
+
   // Pagination state
   const PAGE_SIZE = 16;
   const [friendsPage, setFriendsPage] = useState(1);
   const [openGamesPage, setOpenGamesPage] = useState(1);
   const [ongoingGamesPage, setOngoingGamesPage] = useState(1);
+  const [privateGamesPage, setPrivateGamesPage] = useState(1);
 
   // Anonymous play state
   const [inviteCodeInput, setInviteCodeInput] = useState("");
@@ -98,7 +105,7 @@ const Play = () => {
 
   // Handle incoming challenge navigation from profile pages
   useEffect(() => {
-    if (location.state?.openChallengeFor && selectedGameType) {
+    if (location.state?.openChallengeFor) {
       const { id, username } = location.state.openChallengeFor;
       setChallengedUserId(id);
       setChallengedUsername(username);
@@ -106,7 +113,7 @@ const Play = () => {
       // Clear the navigation state to prevent re-opening modal
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.state, selectedGameType, navigate, location.pathname]);
+  }, [location.state, navigate, location.pathname]);
 
   // Select game type from URL parameter or last played game
   useEffect(() => {
@@ -166,8 +173,11 @@ const Play = () => {
     if (connected) {
       fetchOpenGames();
       fetchOngoingGames();
+      if (currentUser) {
+        fetchPrivateGames();
+      }
     }
-  }, [connected, fetchOpenGames, fetchOngoingGames]);
+  }, [connected, fetchOpenGames, fetchOngoingGames, fetchPrivateGames, currentUser]);
 
   // Fetch online friends when user is logged in
   useEffect(() => {
@@ -196,14 +206,16 @@ const Play = () => {
   // Listen for game events
   useEffect(() => {
     const unsubscribePlayerJoined = onGameEvent("playerJoined", ({ gameId, gameState }) => {
-      // Refresh both lists when someone joins a game
+      // Refresh all lists when someone joins a game
       fetchOpenGames();
       fetchOngoingGames();
+      if (currentUser) fetchPrivateGames();
     });
 
     const unsubscribeGameCancelled = onGameEvent("gameCancelled", ({ gameId }) => {
       // Refresh open games list when a game is cancelled
       fetchOpenGames();
+      if (currentUser) fetchPrivateGames();
     });
 
     const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId }) => {
@@ -248,6 +260,29 @@ const Play = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch all friends when modal opens (for friend search)
+  useEffect(() => {
+    const fetchFriends = async () => {
+      if (showCreateModal && currentUser) {
+        try {
+          const result = await dispatch(getFriends(currentUser.id));
+          setAllFriends(result || []);
+        } catch (err) {
+          console.error("Error fetching friends for modal:", err);
+        }
+      }
+    };
+    fetchFriends();
+  }, [showCreateModal, currentUser, dispatch]);
+
+  // Filtered friends for modal search
+  const modalFilteredFriends = useMemo(() => {
+    if (!friendSearch.trim()) return [];
+    return allFriends.filter(f =>
+      f.username?.toLowerCase().includes(friendSearch.toLowerCase())
+    );
+  }, [allFriends, friendSearch]);
+
   // Open create modal in challenge mode
   const openChallengeModal = (friendId, friendUsername) => {
     if (!currentUser) {
@@ -266,6 +301,7 @@ const Play = () => {
     setChallengedUserId(null);
     setChallengedUsername("");
     setModalGameSearch("");
+    setFriendSearch("");
     setGameMode("live");
     setCorrespondenceDays("1");
   };
@@ -367,12 +403,24 @@ const Play = () => {
     return ongoingGames.slice(start, start + PAGE_SIZE);
   }, [ongoingGames, ongoingGamesPage]);
 
+  const paginatedPrivateGames = useMemo(() => {
+    const start = (privateGamesPage - 1) * PAGE_SIZE;
+    return privateGames.slice(start, start + PAGE_SIZE);
+  }, [privateGames, privateGamesPage]);
+
   // Total pages for each section
   const totalFriendsPages = Math.ceil((onlineFriends?.length || 0) / PAGE_SIZE);
   const totalOpenGamesPages = Math.ceil(openGames.length / PAGE_SIZE);
   const totalOngoingGamesPages = Math.ceil(ongoingGames.length / PAGE_SIZE);
+  const totalPrivateGamesPages = Math.ceil(privateGames.length / PAGE_SIZE);
   // Format time control for display
-  const formatTimeControl = (minutes, inc) => {
+  const formatTimeControl = (game) => {
+    if (game.is_correspondence) {
+      const days = game.correspondence_days || 1;
+      return `📬 ${days} day${days !== 1 ? 's' : ''}/move`;
+    }
+    const minutes = game.turn_length || game.timeControl;
+    const inc = game.increment;
     if (!minutes || minutes === 0) return "No limit";
     if (inc && inc > 0) {
       return `${minutes} min + ${inc}s`;
@@ -511,6 +559,7 @@ const Play = () => {
       // Refresh game lists
       fetchOpenGames();
       fetchOngoingGames();
+      fetchPrivateGames();
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Failed to delete game");
     } finally {
@@ -737,6 +786,92 @@ const Play = () => {
             )}
           </div>
 
+          {/* Private Games Section */}
+          {currentUser && privateGames.length > 0 && (
+            <div className={styles["private-games-section"]}>
+              <h2>
+                Private Games
+                <span className={styles["match-count"]}>{privateGames.length}</span>
+              </h2>
+              <div className={styles["private-games-list"]}>
+                {paginatedPrivateGames.map((game) => {
+                  const isHost = game.host_id === currentUser.id;
+                  return (
+                    <div
+                      key={game.id}
+                      className={`${styles["open-match-card"]} ${styles["private-game"]}`}
+                    >
+                      <div className={styles["match-header"]}>
+                        <span className={styles["match-game-name"]}>
+                          {game.game_name}
+                        </span>
+                        <span className={styles["match-time-control"]}>
+                          {formatTimeControl(game)}
+                        </span>
+                      </div>
+                      <div className={styles["match-host"]}>
+                        {isHost ? (
+                          <span>⚔️ You challenged <strong>{game.challenged_username}</strong></span>
+                        ) : (
+                          <span>⚔️ <strong>{game.host_username}</strong> challenged you</span>
+                        )}
+                      </div>
+                      <div className={styles["match-actions"]}>
+                        {isHost ? (
+                          <button
+                            className={`${styles.btn} ${styles["btn-primary"]} ${styles["btn-small"]}`}
+                            onClick={() => navigate(`/play/${game.id}`)}
+                          >
+                            Return to Game
+                          </button>
+                        ) : (
+                          <button
+                            className={`${styles.btn} ${styles["btn-success"]} ${styles["btn-small"]}`}
+                            onClick={() => handleJoinGame(game.id)}
+                            disabled={isJoining}
+                          >
+                            {isJoining ? "Joining..." : "Accept Challenge"}
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
+                            onClick={() => handleDeleteGame(game.id)}
+                            disabled={deletingGameId === game.id}
+                            title="Delete bugged game (admin only)"
+                          >
+                            {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {totalPrivateGamesPages > 1 && (
+                <div className={styles["pagination"]}>
+                  <button
+                    disabled={privateGamesPage === 1}
+                    onClick={() => setPrivateGamesPage(p => p - 1)}
+                    className={styles["pagination-btn"]}
+                  >
+                    ← Prev
+                  </button>
+                  <span className={styles["pagination-info"]}>
+                    {privateGamesPage} / {totalPrivateGamesPages}
+                  </span>
+                  <button
+                    disabled={privateGamesPage >= totalPrivateGamesPages}
+                    onClick={() => setPrivateGamesPage(p => p + 1)}
+                    className={styles["pagination-btn"]}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Online Friends Section */}
           {currentUser && onlineFriends && onlineFriends.length > 0 && (
             <div className={styles["online-friends-section"]}>
@@ -805,7 +940,7 @@ const Play = () => {
                             {game.game_name || game.gameTypeName}
                           </span>
                           <span className={styles["match-time-control"]}>
-                            {formatTimeControl(game.turn_length || game.timeControl, game.increment)}
+                            {formatTimeControl(game)}
                           </span>
                         </div>
                         <div className={styles["match-host"]}>
@@ -898,7 +1033,7 @@ const Play = () => {
                           {game.game_name}
                         </span>
                         <span className={styles["match-time-control"]}>
-                          {formatTimeControl(game.turn_length, game.increment)}
+                          {formatTimeControl(game)}
                         </span>
                       </div>
                       <div className={styles["match-players"]}>
@@ -959,13 +1094,67 @@ const Play = () => {
             <h2>
               {challengedUserId 
                 ? `Challenge ${challengedUsername}` 
-                : `Create Match: ${selectedGameType?.game_name}`}
+                : selectedGameType
+                  ? `Create Match: ${selectedGameType.game_name}`
+                  : 'Create Match'}
             </h2>
             
             {/* Challenge indicator */}
             {challengedUserId && (
               <div className={styles["challenge-indicator"]}>
                 <span>⚔️ Private challenge - only {challengedUsername} can join</span>
+                <button
+                  className={styles["clear-challenge"]}
+                  onClick={() => {
+                    setChallengedUserId(null);
+                    setChallengedUsername("");
+                    setFriendSearch("");
+                  }}
+                  title="Remove challenge target"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Friend challenge search - show when no challenged user is selected */}
+            {!challengedUserId && (
+              <div className={styles["form-group"]}>
+                <label>Challenge a Friend (optional)</label>
+                <div className={styles["friend-search-wrapper"]}>
+                  <input
+                    type="text"
+                    placeholder="Search friends by username..."
+                    value={friendSearch}
+                    onChange={(e) => setFriendSearch(e.target.value)}
+                    className={styles["friend-search-input"]}
+                  />
+                  {friendSearch && modalFilteredFriends.length > 0 && (
+                    <div className={styles["friend-search-results"]}>
+                      {modalFilteredFriends.slice(0, 5).map((friend) => (
+                        <div
+                          key={friend.id}
+                          className={styles["friend-search-item"]}
+                          onClick={() => {
+                            setChallengedUserId(friend.id);
+                            setChallengedUsername(friend.username);
+                            setFriendSearch("");
+                          }}
+                        >
+                          <span className={styles["friend-name"]}>{friend.username}</span>
+                          <span className={styles["friend-elo"]}>ELO: {friend.elo || 1000}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {friendSearch && modalFilteredFriends.length === 0 && (
+                    <div className={styles["friend-search-results"]}>
+                      <div className={styles["friend-search-empty"]}>
+                        No friends match "{friendSearch}"
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

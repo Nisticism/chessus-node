@@ -19,6 +19,7 @@ export const SocketProvider = ({ children }) => {
   const [connected, setConnected] = useState(false);
   const [openGames, setOpenGames] = useState([]);
   const [ongoingGames, setOngoingGames] = useState([]);
+  const [privateGames, setPrivateGames] = useState([]);
   const [currentGame, setCurrentGame] = useState(null);
   const { user } = useSelector((state) => state.authReducer);
   const reconnectAttempts = useRef(0);
@@ -64,6 +65,10 @@ export const SocketProvider = ({ children }) => {
       setOngoingGames(games);
     });
 
+    newSocket.on('privateGamesList', (games) => {
+      setPrivateGames(games);
+    });
+
     newSocket.on('newOpenGame', (game) => {
       setOpenGames(prev => [game, ...prev]);
     });
@@ -75,6 +80,7 @@ export const SocketProvider = ({ children }) => {
     newSocket.on('gameStarted', ({ gameId }) => {
       // Move from open to ongoing
       setOpenGames(prev => prev.filter(g => g.id !== gameId && g.gameId !== gameId));
+      setPrivateGames(prev => prev.filter(g => g.id !== gameId && g.gameId !== gameId));
       // Refresh ongoing games list when a game starts
       newSocket.emit('getOngoingGames');
     });
@@ -109,6 +115,13 @@ export const SocketProvider = ({ children }) => {
   const fetchOpenGames = useCallback(() => {
     if (socket && connected) {
       socket.emit('getOpenGames');
+    }
+  }, [socket, connected]);
+
+  // Fetch private/challenge games for current user
+  const fetchPrivateGames = useCallback(() => {
+    if (socket && connected) {
+      socket.emit('getPrivateGames');
     }
   }, [socket, connected]);
 
@@ -475,10 +488,12 @@ export const SocketProvider = ({ children }) => {
     connected,
     openGames,
     ongoingGames,
+    privateGames,
     currentGame,
     setCurrentGame,
     fetchOpenGames,
     fetchOngoingGames,
+    fetchPrivateGames,
     createGame,
     createAnonymousGame,
     joinGame,
