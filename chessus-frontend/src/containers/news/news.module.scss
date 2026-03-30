@@ -147,6 +147,8 @@
   margin-top: 20px;
   padding-top: 15px;
   border-top: 1px solid var(--panel-border);
+  display: flex;
+  gap: 10px;
 }
 
 .edit-button {
@@ -164,6 +166,29 @@
 
   &:hover {
     background: var(--accent-primary);
+    color: #fff;
+  }
+
+  .button-icon {
+    font-size: 1rem;
+  }
+}
+
+.delete-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: transparent;
+  color: #dc3545;
+  border: 1px solid #dc3545;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #dc3545;
     color: #fff;
   }
 

@@ -2009,9 +2009,12 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(404).send({ message: "Game not found" });
     }
     
-    // Verify ownership
+    // Verify ownership or admin role
     if (existingGame.creator_id !== userId) {
-      return res.status(403).send({ message: "You can only delete your own games" });
+      const userRole = req.user.role?.toLowerCase();
+      if (userRole !== 'admin' && userRole !== 'owner') {
+        return res.status(403).send({ message: "You can only delete your own games" });
+      }
     }
     
     // Delete all related records first (in order of dependencies)
@@ -3194,16 +3197,34 @@ app.put("/api/forums/edit", async (req, res) => {
   }
 });
 
-app.post("/api/forums/delete", async (req, res) => {
+app.post("/api/forums/delete", authenticateToken, async (req, res) => {
   try {
-    console.log("in delete post route");
-    console.log(req.body);
     const id = req.body.id;
-    console.log(id);
-    
+    const userId = req.user.id;
+    const userRole = req.user.role?.toLowerCase();
+
+    // Check if forum exists
+    const [[forum]] = await db_pool.query("SELECT * FROM articles WHERE id = ?", [id]);
+    if (!forum) {
+      return res.status(404).send({ message: "Forum not found" });
+    }
+
+    // Verify ownership or admin role
+    if (forum.author_id !== userId && userRole !== 'admin' && userRole !== 'owner') {
+      return res.status(403).send({ message: "You don't have permission to delete this forum" });
+    }
+
+    // Check if this forum is associated with a game that still exists
+    let gameExists = false;
+    if (forum.game_type_id) {
+      const [[game]] = await db_pool.query("SELECT id, game_name FROM game_types WHERE id = ?", [forum.game_type_id]);
+      if (game) {
+        gameExists = true;
+      }
+    }
+
     await dbHelpers.deleteForum(id);
-    console.log("post deleted");
-    res.json({ message: "Post deleted" });
+    res.json({ message: "Post deleted", gameExists });
   } catch (err) {
     console.error("Error in /api/forums/delete:", err);
     res.status(500).send({ message: "Forum deletion failed", err: err.message });
@@ -3360,6 +3381,36 @@ app.get("/api/news", async (req, res) => {
   } catch (err) {
     console.error("Error in /api/news:", err);
     res.status(500).send({ err: err.message });
+  }
+});
+
+app.delete("/api/news/:newsId", authenticateToken, async (req, res) => {
+  try {
+    const { newsId } = req.params;
+    const userRole = req.user.role?.toLowerCase();
+
+    if (userRole !== 'admin' && userRole !== 'owner') {
+      return res.status(403).send({ message: "Access denied. Admin or owner role required." });
+    }
+
+    // Check if news article exists
+    const [[article]] = await db_pool.query(
+      "SELECT id FROM articles WHERE id = ? AND is_news = 1", 
+      [newsId]
+    );
+    if (!article) {
+      return res.status(404).send({ message: "News article not found" });
+    }
+
+    // Delete comments and likes first, then the article
+    await db_pool.query("DELETE FROM comments WHERE article_id = ?", [newsId]);
+    await db_pool.query("DELETE FROM likes WHERE article_id = ?", [newsId]);
+    await db_pool.query("DELETE FROM articles WHERE id = ?", [newsId]);
+
+    res.json({ message: "News article deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting news article:", err);
+    res.status(500).send({ message: "Failed to delete news article", err: err.message });
   }
 });
 

@@ -29,10 +29,19 @@ const editNews = async (title, content, last_updated_at, id) => {
   return response;
 };
 
+const deleteNews = async (id) => {
+  const response = await axios.delete(
+    API_URL + `news/${id}`,
+    { headers: authHeader() }
+  );
+  return response;
+};
+
 const NewsService = {
   getNews,
   newNews,
   editNews,
+  deleteNews,
 }
 
 export default NewsService;

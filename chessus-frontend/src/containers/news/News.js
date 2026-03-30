@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import styles from "./news.module.scss";
-import { news } from "../../actions/news";
+import { news, deleteNews } from "../../actions/news";
 const News = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allNews = useSelector((state) => state.news);
@@ -23,6 +23,13 @@ const News = () => {
       return;
     }
     navigate("/news/new");
+  }
+
+  async function handleDeleteNews(newsItem) {
+    if (!window.confirm(`Are you sure you want to delete "${newsItem.title}"? This action cannot be undone.`)) {
+      return;
+    }
+    dispatch(deleteNews(newsItem.id));
   }
 
 
@@ -98,6 +105,13 @@ const News = () => {
                       >
                         <span className={styles["button-icon"]}>✎</span>
                         Edit Article
+                      </button>
+                      <button 
+                        className={styles["delete-button"]}
+                        onClick={() => handleDeleteNews(newsItem)}
+                      >
+                        <span className={styles["button-icon"]}>🗑</span>
+                        Delete Article
                       </button>
                     </div>
                   )}

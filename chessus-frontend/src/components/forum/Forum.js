@@ -102,11 +102,14 @@ const Forum = () => {
 
   async function handleDeletePost(e, id){
     e.preventDefault();
-    if (window.confirm("Are you sure you want to delete this forum post?  It cannot be undone.")) {
+    let message = "Are you sure you want to delete this forum post? It cannot be undone.";
+    if (currentForum.game_type_id) {
+      message += `\n\nWarning: This forum is associated with the game "${currentForum.game_name || 'a game'}" which still exists.`;
+    }
+    if (window.confirm(message)) {
       dispatch(deleteForum(id));
       await new Promise(resolve => setTimeout(resolve, 100));
       navigate("/forums");
-      console.log("delete post clicked");
     }
   }
 
@@ -130,7 +133,7 @@ const Forum = () => {
             
             <div className={styles["forum-title-container"]}>
               <div className={styles["forum-title"]}>{currentForum.title}</div>
-              { currentUser && (currentForum.author_id === currentUser.id || currentUser.role === "Admin") &&
+              { currentUser && (currentForum.author_id === currentUser.id || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner") &&
                 <div className={styles["post-icons-container"]}>
                   <div className={styles["forum-edit-button"]} onClick={(event) => handleEditPost(event, currentForum.id)}><FaEdit /></div>
                   <div className={styles["forum-delete-button"]} onClick={(event) => handleDeletePost(event, currentForum.id)}><FaTrash /></div>
