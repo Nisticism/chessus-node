@@ -30,6 +30,12 @@ function isTokenExpiringSoon(token) {
 // This prevents silent auth failures on optionalAuthenticate endpoints
 axios.interceptors.request.use(
   async (config) => {
+    // Skip token refresh for auth endpoints to avoid infinite loops
+    const isAuthEndpoint = config.url?.includes('/token') || 
+                          config.url?.includes('/login') || 
+                          config.url?.includes('/register');
+    if (isAuthEndpoint) return config;
+
     const user = JSON.parse(localStorage.getItem('user'));
     if (user && user.accessToken && user.refreshToken && isTokenExpiringSoon(user.accessToken)) {
       try {
