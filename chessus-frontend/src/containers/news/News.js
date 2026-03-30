@@ -71,7 +71,7 @@ const News = () => {
                     </h2>
                     <div className={styles["article-meta"]}>
                       <span className={styles["article-date"]}>
-                        Posted {new Date(newsItem.date_published).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} by {' '}
+                        Posted {new Date(newsItem.date_published).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} by{' '}
                         <Link to={`/profile/${newsItem.author}`} className={styles["author-link"]}>{newsItem.author}</Link>
                       </span>
                       {newsItem.source_name && (
