@@ -22,7 +22,8 @@
 
 .back-button,
 .edit-button,
-.sandbox-button {
+.sandbox-button,
+.delete-button {
   padding: 10px 20px;
   border: none;
   border-radius: 8px;
@@ -55,6 +56,15 @@
 
   &:hover {
     background-color: var(--accent-primary);
+  }
+}
+
+.delete-button {
+  background-color: #dc3545;
+  color: white;
+
+  &:hover {
+    background-color: #c82333;
   }
 }
 

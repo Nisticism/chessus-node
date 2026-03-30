@@ -52,9 +52,11 @@ const GameList = () => {
   const pagination = allGames.pagination;
   const totalCount = pagination?.total || 0;
 
+  const isAdmin = currentUser && (currentUser.role?.toLowerCase() === 'admin' || currentUser.role?.toLowerCase() === 'owner');
+
   const canEditGame = (game) => {
     if (!currentUser) return false;
-    return game.creator_id === currentUser.id || currentUser.role === "Admin";
+    return game.creator_id === currentUser.id || isAdmin;
   };
 
   const handleEditGame = (gameId) => {
@@ -265,7 +267,7 @@ const GameList = () => {
         
         {otherGames.length > 0 ? (
           <div className={styles["games-grid"]}>
-            {otherGames.map(game => renderGameCard(game, currentUser?.role === "Admin"))}
+            {otherGames.map(game => renderGameCard(game, isAdmin))}
           </div>
         ) : myGames.length === 0 ? (
           <div className={styles["empty-section"]}>

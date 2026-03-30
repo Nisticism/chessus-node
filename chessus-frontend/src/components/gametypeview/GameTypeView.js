@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { getGameById } from "../../actions/games";
+import { getGameById, deleteGame } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import styles from "./gametypeview.module.scss";
 import {
@@ -1056,6 +1056,18 @@ const GameTypeView = () => {
     return Number(game.creator_id) === Number(currentUser.id) || role === "admin" || role === "owner";
   };
 
+  const handleDeleteGame = async () => {
+    if (!window.confirm(`Are you sure you want to delete "${game.game_name}"? This will also delete associated forums. This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await dispatch(deleteGame(gameId));
+      navigate('/create/games');
+    } catch (error) {
+      alert('Failed to delete game: ' + (error.response?.data?.message || error.message || error));
+    }
+  };
+
   if (loading) {
     return (
       <div className={styles["container"]}>
@@ -1089,12 +1101,20 @@ const GameTypeView = () => {
             ♟ Play this Game
           </button>
           {canEdit() && (
-            <button 
-              onClick={() => navigate(`/create/game/edit/${gameId}`)} 
-              className={styles["edit-button"]}
-            >
-              ✏️ Edit Game
-            </button>
+            <>
+              <button 
+                onClick={() => navigate(`/create/game/edit/${gameId}`)} 
+                className={styles["edit-button"]}
+              >
+                ✏️ Edit Game
+              </button>
+              <button 
+                onClick={handleDeleteGame} 
+                className={styles["delete-button"]}
+              >
+                🗑️ Delete Game
+              </button>
+            </>
           )}
         </div>
       </div>

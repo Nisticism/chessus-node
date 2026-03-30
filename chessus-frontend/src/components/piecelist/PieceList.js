@@ -79,9 +79,11 @@ const PieceList = () => {
   const pagination = allPieces.pagination;
   const totalCount = pagination?.total || 0;
 
+  const isAdmin = currentUser && (currentUser.role?.toLowerCase() === 'admin' || currentUser.role?.toLowerCase() === 'owner');
+
   const canEditPiece = (piece) => {
     if (!currentUser) return false;
-    return piece.creator_id === currentUser.id || currentUser.role === "Admin";
+    return piece.creator_id === currentUser.id || isAdmin;
   };
 
   const handleEditPiece = (pieceId) => {
@@ -344,7 +346,7 @@ const PieceList = () => {
           <div className={styles["pieces-grid"]}>
             {otherPieces.map(piece => (
               <React.Fragment key={piece.id}>
-                {renderPieceCard(piece, currentUser?.role === "Admin")}
+                {renderPieceCard(piece, isAdmin)}
               </React.Fragment>
             ))}
           </div>

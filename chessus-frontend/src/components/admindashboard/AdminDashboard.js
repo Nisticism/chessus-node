@@ -230,6 +230,78 @@ const AdminDashboard = () => {
     navigate('/news/new');
   };
 
+  const handleDeleteItem = async (item, type) => {
+    const name = type === 'pieces' ? item.piece_name : item.game_name;
+    if (!window.confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await axios.delete(
+        `${API_URL}${type}/${item.id}`,
+        { headers: authHeader() }
+      );
+
+      setAlertMessage(`${type === 'pieces' ? 'Piece' : 'Game'} "${name}" deleted successfully`);
+      setAlertType('success');
+      setShowAlert(true);
+      fetchData(activeTab, pagination.page);
+    } catch (error) {
+      console.error(`Error deleting ${type}:`, error);
+      setAlertMessage(`Failed to delete: ${error.response?.data?.message || error.message}`);
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const handleDeleteForum = async (forum) => {
+    let message = `Are you sure you want to delete the forum "${forum.title}"?`;
+    if (forum.game_name) {
+      message += `\n\nWarning: This forum is associated with the game "${forum.game_name}" which still exists.`;
+    }
+    message += '\n\nThis action cannot be undone.';
+    if (!window.confirm(message)) return;
+
+    try {
+      await axios.post(
+        `${API_URL}forums/delete`,
+        { id: forum.id },
+        { headers: authHeader() }
+      );
+      setAlertMessage(`Forum "${forum.title}" deleted successfully`);
+      setAlertType('success');
+      setShowAlert(true);
+      fetchData(activeTab, pagination.page);
+    } catch (error) {
+      console.error('Error deleting forum:', error);
+      setAlertMessage(`Failed to delete forum: ${error.response?.data?.message || error.message}`);
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const handleDeleteNews = async (newsItem) => {
+    if (!window.confirm(`Are you sure you want to delete the news article "${newsItem.title}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await axios.delete(
+        `${API_URL}news/${newsItem.id}`,
+        { headers: authHeader() }
+      );
+      setAlertMessage(`News article "${newsItem.title}" deleted successfully`);
+      setAlertType('success');
+      setShowAlert(true);
+      fetchData(activeTab, pagination.page);
+    } catch (error) {
+      console.error('Error deleting news:', error);
+      setAlertMessage(`Failed to delete news: ${error.response?.data?.message || error.message}`);
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
   const renderPagination = () => {
     if (!pagination || !pagination.totalPages) {
       return null;
@@ -551,7 +623,10 @@ const AdminDashboard = () => {
                 {piece.can_capture ? 'Yes' : 'No'}
               </td>
               <td>
-                <button className={styles["edit-btn"]} onClick={() => handleEdit(piece)}>Edit</button>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  <button className={styles["edit-btn"]} onClick={() => handleEdit(piece)}>Edit</button>
+                  <button className={styles["ban-btn"]} onClick={() => handleDeleteItem(piece, 'pieces')}>Delete</button>
+                </div>
               </td>
             </tr>
           ))
@@ -592,7 +667,10 @@ const AdminDashboard = () => {
               <td>{game.player_count || 2}</td>
               <td>{game.last_played_at ? formatDateTime(game.last_played_at) : 'Never'}</td>
               <td>
-                <button className={styles["edit-btn"]} onClick={() => handleEdit(game)}>Edit</button>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  <button className={styles["edit-btn"]} onClick={() => handleEdit(game)}>Edit</button>
+                  <button className={styles["ban-btn"]} onClick={() => handleDeleteItem(game, 'games')}>Delete</button>
+                </div>
               </td>
             </tr>
           ))
@@ -676,7 +754,10 @@ const AdminDashboard = () => {
               <td>{forum.public ? 'Yes' : 'No'}</td>
               <td>{formatDateTime(forum.created_at)}</td>
               <td>
-                <button className={styles["edit-btn"]} onClick={() => handleEdit(forum)}>Edit</button>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  <button className={styles["edit-btn"]} onClick={() => handleEdit(forum)}>Edit</button>
+                  <button className={styles["ban-btn"]} onClick={() => handleDeleteForum(forum)}>Delete</button>
+                </div>
               </td>
             </tr>
           ))
@@ -716,7 +797,10 @@ const AdminDashboard = () => {
               <td>{news.author_name ? <Link to={`/profile/${news.author_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{news.author_name}</Link> : 'N/A'}</td>
               <td>{formatDateTime(news.created_at)}</td>
               <td>
-                <button className={styles["edit-btn"]} onClick={() => handleEdit(news)}>Edit</button>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  <button className={styles["edit-btn"]} onClick={() => handleEdit(news)}>Edit</button>
+                  <button className={styles["ban-btn"]} onClick={() => handleDeleteNews(news)}>Delete</button>
+                </div>
               </td>
             </tr>
           ))

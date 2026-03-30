@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { getPieceById, getGamesByPieceId } from "../../actions/pieces";
+import { getPieceById, getGamesByPieceId, deletePiece } from "../../actions/pieces";
 import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import Pagination from "../pagination/Pagination";
@@ -144,6 +144,18 @@ const PieceView = () => {
     if (!currentUser || !piece) return false;
     const role = (currentUser.role || "").toLowerCase();
     return Number(piece.creator_id) === Number(currentUser.id) || role === "admin" || role === "owner";
+  };
+
+  const handleDeletePiece = async () => {
+    if (!window.confirm(`Are you sure you want to delete "${piece.piece_name}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deletePiece(pieceId);
+      navigate('/create/pieces');
+    } catch (error) {
+      alert('Failed to delete piece: ' + (error.message || error));
+    }
   };
 
   // Parse piece images for the board preview - must be before early returns
@@ -480,12 +492,20 @@ const PieceView = () => {
             ⚔️ Try in Sandbox
           </button>
           {canEdit() && (
-            <button 
-              onClick={() => navigate(`/create/piece/edit/${pieceId}`)} 
-              className={styles["edit-button"]}
-            >
-              ✏️ Edit Piece
-            </button>
+            <>
+              <button 
+                onClick={() => navigate(`/create/piece/edit/${pieceId}`)} 
+                className={styles["edit-button"]}
+              >
+                ✏️ Edit Piece
+              </button>
+              <button 
+                onClick={handleDeletePiece} 
+                className={styles["delete-button"]}
+              >
+                🗑️ Delete Piece
+              </button>
+            </>
           )}
         </div>
       </div>
