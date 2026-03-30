@@ -11,6 +11,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showSquareSelector, setShowSquareSelector] = useState(false);
   const [draggedSquare, setDraggedSquare] = useState(null);
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -137,6 +138,13 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       case 'custom': return '#ffd700'; // Gold
       default: return null;
     }
+  }, []);
+
+  // Track window width for responsive board sizing
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleSquareRightClick = useCallback((e, row, col) => {
@@ -579,8 +587,8 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           className={styles["placement-board"]}
           style={{
             display: 'grid',
-            gridTemplateRows: `repeat(${gameData.board_height}, ${Math.min(80, 600 / Math.max(gameData.board_width, gameData.board_height))}px)`,
-            gridTemplateColumns: `repeat(${gameData.board_width}, ${Math.min(80, 600 / Math.max(gameData.board_width, gameData.board_height))}px)`,
+            gridTemplateRows: `repeat(${gameData.board_height}, ${Math.min(80, Math.min(600, windowWidth - 60 - 32) / Math.max(gameData.board_width, gameData.board_height))}px)`,
+            gridTemplateColumns: `repeat(${gameData.board_width}, ${Math.min(80, Math.min(600, windowWidth - 60 - 32) / Math.max(gameData.board_width, gameData.board_height))}px)`,
             border: '1px solid var(--board-border, #333)',
             borderRadius: '5px',
             padding: '15px',

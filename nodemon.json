@@ -1,0 +1,5 @@
+{
+  "watch": ["server/"],
+  "ignore": ["chessus-frontend/", "uploads/", "node_modules/"],
+  "ext": "js,json"
+}

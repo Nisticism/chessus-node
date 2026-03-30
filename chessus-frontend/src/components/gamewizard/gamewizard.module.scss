@@ -488,11 +488,7 @@
   }
 
   .placement-board {
-    width: 100%;
-    max-width: min(100vw - 40px, 600px);
-    margin: 15px auto !important;
     padding: 10px !important;
-    min-width: unset;
   }
 
   .board-square {
@@ -548,7 +544,6 @@
 
   // Additional mobile adjustments for boards
   .placement-board {
-    max-width: calc(100vw - 30px) !important;
     padding: 5px !important;
   }
 
@@ -606,18 +601,17 @@
   justify-content: center;
   position: relative;
   cursor: grab;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
   border-radius: 4px;
 
   &:hover {
-    transform: scale(1.05);
+    filter: brightness(1.15);
     box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
     z-index: 10;
   }
 
   &:active {
     cursor: grabbing;
-    transform: scale(1.02);
   }
 
   img {
@@ -1559,14 +1553,17 @@
 }
 
 // Board styling for piece placement and special squares
+.board-placement-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  overflow: hidden;
+}
+
 .placement-board {
-  width: 90%;
-  max-width: 800px;
-  margin: 20px auto;
-  aspect-ratio: 1;
   background: var(--board-bg, transparent);
   box-sizing: border-box;
-  min-width: 280px;
   
   .board-square {
     aspect-ratio: 1;

@@ -63,7 +63,7 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
           Sandbox
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/games">
-          View Game Library
+          Game Library
         </Link>
       </div>
     </div>
@@ -82,16 +82,16 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
       </div>
       <div className={`inner-menu ${openSubmenu === 'create' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item" to="/create/game">
-          Design A Game
+          New Game
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/piece">
-          Design A Piece
+          New Piece
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/games">
-          View Game Library
+          Game Library
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/pieces">
-          View Piece Library
+          Piece Library
         </Link>
       </div>
     </div>
@@ -119,21 +119,33 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
         <Link as="div" className="inner-menu-item" to="/community/streams">
           Streams
         </Link>
+      </div>
+    </div>
+
+    <div className="nav-item">
+      <div className="nav-item-wrapper">
+        <Link as="div" className="nav-item-inner" to="/news">Info</Link>
+        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'info')} aria-label="Toggle Info submenu">
+          <span className={`chevron ${openSubmenu === 'info' ? 'open' : ''}`}>▼</span>
+        </button>
+      </div>
+      <div className={`inner-menu ${openSubmenu === 'info' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item" to="/news">
           News
         </Link>
+        <Link as="div" className="inner-menu-item" to="/faq">
+          FAQ
+        </Link>
         <Link as="div" className="inner-menu-item" to="/community/about">
           About Us
+        </Link>
+        <Link as="div" className="inner-menu-item" to="/contact">
+          Contact
         </Link>
         <Link as="div" className="inner-menu-item" to="/donate">
           Support GridGrove
         </Link>
       </div>
-    </div>
-
-    <div className="nav-item">
-      <Link as="div" className="nav-item-inner" to="/contact">Contact
-      </Link>
     </div>
 
     {/* <div className="nav-item">

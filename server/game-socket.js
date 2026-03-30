@@ -17,6 +17,15 @@ const onlineUsers = new Set(); // Set of online user IDs
 const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grace period)
 
 /**
+ * Sanitize winner_id for database writes.
+ * Anonymous player IDs are strings like "anon_xxx" which can't go into the INT winner_id column.
+ */
+function sanitizeWinnerId(id) {
+  if (typeof id === 'string' && id.startsWith('anon_')) return null;
+  return id;
+}
+
+/**
  * Helper function to parse image_location and get the correct image URL based on player
  */
 function getImageUrlForPlayer(imageLocation, playerNumber) {
@@ -934,124 +943,163 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Game type not found" });
         }
 
-        // Get pieces for this game type from junction table
+        // Get pieces for this game type from junction table (same as createGame)
         const [junctionPieces] = await db_pool.query(
-          `SELECT gtp.*, p.name as piece_name, p.image_url, p.piece_width, p.piece_height
+          `SELECT gtp.*, gtp.ends_game_on_checkmate, gtp.ends_game_on_capture, p.piece_name, p.image_location
            FROM game_type_pieces gtp
-           JOIN pieces p ON gtp.piece_id = p.id
+           INNER JOIN pieces p ON gtp.piece_id = p.id
            WHERE gtp.game_type_id = ?`,
           [gameTypeId]
         );
 
-        // Build pieces array (same logic as createGame)
-        const piecesArray = junctionPieces.map(jp => ({
-          id: `${jp.piece_id}_${jp.x}_${jp.y}`,
-          piece_id: jp.piece_id,
-          piece_name: jp.piece_name,
-          x: jp.x,
-          y: jp.y,
-          team: jp.player_owner,
-          player_id: jp.player_owner,
-          image_url: jp.image_url,
-          piece_width: jp.piece_width || 1,
-          piece_height: jp.piece_height || 1,
-          has_moved: false,
-          move_count: 0,
-          available_for_moves: jp.available_for_moves !== undefined ? jp.available_for_moves : 1,
-          available_for_captures: jp.available_for_captures !== undefined ? jp.available_for_captures : 1
+        let piecesArray = junctionPieces.map(piece => ({
+          ...piece,
+          id: `${piece.piece_id}_${piece.y}_${piece.x}`,
+          initial_x: piece.x,
+          initial_y: piece.y,
+          ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
+          ends_game_on_capture: !!piece.ends_game_on_capture,
+          can_control_squares: !!piece.can_control_squares,
+          manual_castling_partners: !!piece.manual_castling_partners,
+          castling_partner_left_key: piece.castling_partner_left_key || null,
+          castling_partner_right_key: piece.castling_partner_right_key || null
         }));
 
-        // Hydrate pieces with movement/capture data
         const pieceIdsToLoad = new Set();
-        piecesArray.forEach(p => { if (p.piece_id) pieceIdsToLoad.add(p.piece_id); });
+        junctionPieces.forEach(p => { if (p.piece_id) pieceIdsToLoad.add(p.piece_id); });
+
+        // Load full piece data
+        const pieceDataMap = {};
         if (pieceIdsToLoad.size > 0) {
           const [pieceRows] = await db_pool.query(
             `SELECT * FROM pieces WHERE id IN (?)`,
             [Array.from(pieceIdsToLoad)]
           );
-          const pieceDataMap = {};
           pieceRows.forEach(p => { pieceDataMap[p.id] = p; });
-          piecesArray.forEach(piece => {
-            const fullPieceData = pieceDataMap[piece.piece_id];
-            if (fullPieceData) {
-              Object.assign(piece, {
-                directional_movement_style: fullPieceData.directional_movement_style,
-                up_movement: fullPieceData.up_movement,
-                down_movement: fullPieceData.down_movement,
-                left_movement: fullPieceData.left_movement,
-                right_movement: fullPieceData.right_movement,
-                up_left_movement: fullPieceData.up_left_movement,
-                up_right_movement: fullPieceData.up_right_movement,
-                down_left_movement: fullPieceData.down_left_movement,
-                down_right_movement: fullPieceData.down_right_movement,
-                up_movement_exact: fullPieceData.up_movement_exact,
-                down_movement_exact: fullPieceData.down_movement_exact,
-                left_movement_exact: fullPieceData.left_movement_exact,
-                right_movement_exact: fullPieceData.right_movement_exact,
-                up_left_movement_exact: fullPieceData.up_left_movement_exact,
-                up_right_movement_exact: fullPieceData.up_right_movement_exact,
-                down_left_movement_exact: fullPieceData.down_left_movement_exact,
-                down_right_movement_exact: fullPieceData.down_right_movement_exact,
-                ratio_movement_style: fullPieceData.ratio_movement_style,
-                ratio_movement_1: fullPieceData.ratio_one_movement,
-                ratio_movement_2: fullPieceData.ratio_two_movement,
-                step_movement_style: fullPieceData.step_by_step_movement_style,
-                step_movement_value: fullPieceData.step_by_step_movement_value,
-                can_hop_over_allies: fullPieceData.can_hop_over_allies,
-                can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
-                can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
-                can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
-                can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
-                attacks_like_movement: fullPieceData.attacks_like_movement,
-                up_capture: fullPieceData.up_capture,
-                down_capture: fullPieceData.down_capture,
-                left_capture: fullPieceData.left_capture,
-                right_capture: fullPieceData.right_capture,
-                up_left_capture: fullPieceData.up_left_capture,
-                up_right_capture: fullPieceData.up_right_capture,
-                down_left_capture: fullPieceData.down_left_capture,
-                down_right_capture: fullPieceData.down_right_capture,
-                up_capture_exact: fullPieceData.up_capture_exact,
-                down_capture_exact: fullPieceData.down_capture_exact,
-                left_capture_exact: fullPieceData.left_capture_exact,
-                right_capture_exact: fullPieceData.right_capture_exact,
-                up_left_capture_exact: fullPieceData.up_left_capture_exact,
-                up_right_capture_exact: fullPieceData.up_right_capture_exact,
-                down_left_capture_exact: fullPieceData.down_left_capture_exact,
-                down_right_capture_exact: fullPieceData.down_right_capture_exact,
-                ratio_capture_1: fullPieceData.ratio_one_capture,
-                ratio_capture_2: fullPieceData.ratio_two_capture,
-                step_capture_value: fullPieceData.step_by_step_capture,
-                piece_value: fullPieceData.piece_value,
-                is_royal: fullPieceData.is_royal,
-                can_promote: fullPieceData.can_promote,
-                promotion_options: fullPieceData.promotion_options,
-                has_checkmate_rule: fullPieceData.has_checkmate_rule,
-                special_scenario_moves: fullPieceData.special_scenario_moves,
-                special_scenario_captures: fullPieceData.special_scenario_captures,
-                can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
-                up_attack_range: fullPieceData.up_attack_range,
-                down_attack_range: fullPieceData.down_attack_range,
-                left_attack_range: fullPieceData.left_attack_range,
-                right_attack_range: fullPieceData.right_attack_range,
-                up_left_attack_range: fullPieceData.up_left_attack_range,
-                up_right_attack_range: fullPieceData.up_right_attack_range,
-                down_left_attack_range: fullPieceData.down_left_attack_range,
-                down_right_attack_range: fullPieceData.down_right_attack_range,
-                can_en_passant: fullPieceData.can_en_passant,
-                can_castle: fullPieceData.can_castle,
-                cannot_be_captured: fullPieceData.cannot_be_captured,
-                can_capture_allies: fullPieceData.can_capture_allies,
-                repeating_ratio: fullPieceData.repeating_ratio,
-                max_ratio_iterations: fullPieceData.max_ratio_iterations,
-                directional_hop_disabled: fullPieceData.directional_hop_disabled,
-                first_move_only_capture: fullPieceData.first_move_only_capture,
-                hop_capture: fullPieceData.hop_capture,
-                draw_move_limit: fullPieceData.draw_move_limit,
-              });
-            }
-          });
         }
+
+        // Fix player_id assignment based on Y position
+        const boardHeight = gameType.board_height || 8;
+        piecesArray = piecesArray.map(piece => {
+          const inferredPlayerId = piece.y < (boardHeight / 2) ? 2 : 1;
+          return { ...piece, player_id: inferredPlayerId };
+        });
+
+        // Merge piece movement data (same as createGame)
+        piecesArray = piecesArray.map(piece => {
+          const fullPieceData = pieceDataMap[piece.piece_id];
+          if (fullPieceData) {
+            const imageLocation = piece.image_location || fullPieceData.image_location;
+            const imageUrl = getImageUrlForPlayer(imageLocation, piece.player_id);
+
+            return {
+              ...piece,
+              image_location: imageLocation,
+              image: imageUrl,
+              image_url: imageUrl,
+              piece_name: piece.piece_name || fullPieceData.piece_name,
+              directional_movement_style: fullPieceData.directional_movement_style,
+              up_movement: fullPieceData.up_movement,
+              down_movement: fullPieceData.down_movement,
+              left_movement: fullPieceData.left_movement,
+              right_movement: fullPieceData.right_movement,
+              up_left_movement: fullPieceData.up_left_movement,
+              up_right_movement: fullPieceData.up_right_movement,
+              down_left_movement: fullPieceData.down_left_movement,
+              down_right_movement: fullPieceData.down_right_movement,
+              up_movement_exact: fullPieceData.up_movement_exact,
+              down_movement_exact: fullPieceData.down_movement_exact,
+              left_movement_exact: fullPieceData.left_movement_exact,
+              right_movement_exact: fullPieceData.right_movement_exact,
+              up_left_movement_exact: fullPieceData.up_left_movement_exact,
+              up_right_movement_exact: fullPieceData.up_right_movement_exact,
+              down_left_movement_exact: fullPieceData.down_left_movement_exact,
+              down_right_movement_exact: fullPieceData.down_right_movement_exact,
+              ratio_movement_style: fullPieceData.ratio_movement_style,
+              ratio_movement_1: fullPieceData.ratio_one_movement,
+              ratio_movement_2: fullPieceData.ratio_two_movement,
+              repeating_movement: fullPieceData.repeating_movement,
+              repeating_ratio: fullPieceData.repeating_ratio,
+              max_ratio_iterations: fullPieceData.max_ratio_iterations,
+              repeating_capture: fullPieceData.repeating_capture,
+              repeating_ratio_capture: fullPieceData.repeating_ratio_capture,
+              max_ratio_capture_iterations: fullPieceData.max_ratio_capture_iterations,
+              step_movement_style: fullPieceData.step_by_step_movement_style,
+              step_movement_value: fullPieceData.step_by_step_movement_value,
+              can_hop_over_allies: fullPieceData.can_hop_over_allies,
+              can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+              exact_ratio_hop_only: fullPieceData.exact_ratio_hop_only,
+              directional_hop_disabled: fullPieceData.directional_hop_disabled,
+              can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
+              can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
+              can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
+              attacks_like_movement: fullPieceData.attacks_like_movement,
+              up_capture: fullPieceData.up_capture,
+              down_capture: fullPieceData.down_capture,
+              left_capture: fullPieceData.left_capture,
+              right_capture: fullPieceData.right_capture,
+              up_left_capture: fullPieceData.up_left_capture,
+              up_right_capture: fullPieceData.up_right_capture,
+              down_left_capture: fullPieceData.down_left_capture,
+              down_right_capture: fullPieceData.down_right_capture,
+              up_capture_exact: fullPieceData.up_capture_exact,
+              down_capture_exact: fullPieceData.down_capture_exact,
+              left_capture_exact: fullPieceData.left_capture_exact,
+              right_capture_exact: fullPieceData.right_capture_exact,
+              up_left_capture_exact: fullPieceData.up_left_capture_exact,
+              up_right_capture_exact: fullPieceData.up_right_capture_exact,
+              down_left_capture_exact: fullPieceData.down_left_capture_exact,
+              down_right_capture_exact: fullPieceData.down_right_capture_exact,
+              ratio_capture_1: fullPieceData.ratio_one_capture,
+              ratio_capture_2: fullPieceData.ratio_two_capture,
+              step_capture_value: fullPieceData.step_by_step_capture,
+              piece_value: fullPieceData.piece_value,
+              is_royal: fullPieceData.is_royal,
+              can_promote: fullPieceData.can_promote,
+              can_castle: fullPieceData.can_castle,
+              has_checkmate_rule: fullPieceData.has_checkmate_rule,
+              special_scenario_moves: fullPieceData.special_scenario_moves,
+              special_scenario_captures: fullPieceData.special_scenario_captures,
+              can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
+              up_attack_range: fullPieceData.up_attack_range,
+              down_attack_range: fullPieceData.down_attack_range,
+              left_attack_range: fullPieceData.left_attack_range,
+              right_attack_range: fullPieceData.right_attack_range,
+              up_left_attack_range: fullPieceData.up_left_attack_range,
+              up_right_attack_range: fullPieceData.up_right_attack_range,
+              down_left_attack_range: fullPieceData.down_left_attack_range,
+              down_right_attack_range: fullPieceData.down_right_attack_range,
+              up_attack_range_exact: fullPieceData.up_attack_range_exact,
+              down_attack_range_exact: fullPieceData.down_attack_range_exact,
+              left_attack_range_exact: fullPieceData.left_attack_range_exact,
+              right_attack_range_exact: fullPieceData.right_attack_range_exact,
+              up_left_attack_range_exact: fullPieceData.up_left_attack_range_exact,
+              up_right_attack_range_exact: fullPieceData.up_right_attack_range_exact,
+              down_left_attack_range_exact: fullPieceData.down_left_attack_range_exact,
+              down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
+              ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
+              ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+              step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
+              max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+              can_fire_over_allies: fullPieceData.can_fire_over_allies,
+              can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
+              can_en_passant: fullPieceData.can_en_passant,
+              capture_on_hop: fullPieceData.capture_on_hop,
+              chain_capture_enabled: fullPieceData.chain_capture_enabled,
+              chain_hop_allies: fullPieceData.chain_hop_allies,
+              free_move_after_promotion: fullPieceData.free_move_after_promotion,
+              promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
+              piece_width: fullPieceData.piece_width || 1,
+              piece_height: fullPieceData.piece_height || 1,
+              can_capture_allies: fullPieceData.can_capture_allies,
+              cannot_be_captured: fullPieceData.cannot_be_captured,
+              first_move_only_capture: fullPieceData.first_move_only_capture,
+              hop_capture: fullPieceData.hop_capture,
+              draw_move_limit: fullPieceData.draw_move_limit,
+            };
+          }
+          return piece;
+        });
 
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
         const piecesData = JSON.stringify(piecesArray);
@@ -1113,7 +1161,7 @@ function initializeSocket(server) {
         console.log(`Anonymous game ${gameId} created by ${displayName} with invite code ${inviteCode}`);
       } catch (error) {
         console.error("Error creating anonymous game:", error);
-        socket.emit("error", { message: "Failed to create anonymous game" });
+        socket.emit("error", { message: `Failed to create anonymous game: ${error.message}` });
       }
     });
 
@@ -1850,7 +1898,7 @@ function initializeSocket(server) {
               await db_pool.query(
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                  pieces = ?, other_data = ? WHERE id = ?`,
-                [endTime, premoveControlWinResult.winner, JSON.stringify(gameState.pieces), 
+                [endTime, sanitizeWinnerId(premoveControlWinResult.winner), JSON.stringify(gameState.pieces), 
                  JSON.stringify({ 
                    moves: gameState.moveHistory, 
                    winner: premoveControlWinResult.winner, 
@@ -1897,7 +1945,7 @@ function initializeSocket(server) {
               await db_pool.query(
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                  pieces = ?, other_data = ? WHERE id = ?`,
-                [endTime, premoveWinResult.winner, JSON.stringify(gameState.pieces), 
+                [endTime, sanitizeWinnerId(premoveWinResult.winner), JSON.stringify(gameState.pieces), 
                  JSON.stringify({ 
                    moves: gameState.moveHistory, 
                    winner: premoveWinResult.winner, 
@@ -1951,7 +1999,7 @@ function initializeSocket(server) {
                 await db_pool.query(
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                    pieces = ?, other_data = ? WHERE id = ?`,
-                  [endTime, winner?.id, JSON.stringify(gameState.pieces), 
+                  [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces), 
                    JSON.stringify({ 
                      moves: gameState.moveHistory, 
                      winner: winner?.id, 
@@ -2195,7 +2243,7 @@ function initializeSocket(server) {
           await db_pool.query(
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
              pieces = ?, other_data = ? WHERE id = ?`,
-            [endTime, controlWinResult.winner, JSON.stringify(gameState.pieces), 
+            [endTime, sanitizeWinnerId(controlWinResult.winner), JSON.stringify(gameState.pieces), 
              JSON.stringify({ 
                moves: gameState.moveHistory, 
                winner: controlWinResult.winner, 
@@ -2241,7 +2289,7 @@ function initializeSocket(server) {
           await db_pool.query(
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
              pieces = ?, other_data = ? WHERE id = ?`,
-            [endTime, winResult.winner, JSON.stringify(gameState.pieces), 
+            [endTime, sanitizeWinnerId(winResult.winner), JSON.stringify(gameState.pieces), 
              JSON.stringify({ 
                moves: gameState.moveHistory, 
                winner: winResult.winner, 
@@ -2304,7 +2352,7 @@ function initializeSocket(server) {
                 await db_pool.query(
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                    pieces = ?, other_data = ? WHERE id = ?`,
-                  [endTime, winner?.id, JSON.stringify(gameState.pieces), 
+                  [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces), 
                    JSON.stringify({ 
                      moves: gameState.moveHistory, 
                      winner: winner?.id, 
@@ -2425,7 +2473,7 @@ function initializeSocket(server) {
                 await db_pool.query(
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                    pieces = ?, other_data = ? WHERE id = ?`,
-                  [endTime, winner?.id, JSON.stringify(gameState.pieces), 
+                  [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces), 
                    JSON.stringify({ 
                      moves: gameState.moveHistory, 
                      winner: winner?.id,
@@ -2668,7 +2716,7 @@ function initializeSocket(server) {
         const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
         await db_pool.query(
           `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, other_data = ?, pieces = ? WHERE id = ?`,
-          [endTime, winner?.id, JSON.stringify({ 
+          [endTime, sanitizeWinnerId(winner?.id), JSON.stringify({ 
             moves: gameState.moveHistory, 
             winner: winner?.id, 
             reason: 'resignation', 
@@ -2899,7 +2947,7 @@ function initializeSocket(server) {
           await db_pool.query(
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
              pieces = ?, other_data = ? WHERE id = ?`,
-            [endTime, promotionControlWinResult.winner, JSON.stringify(gameState.pieces), 
+            [endTime, sanitizeWinnerId(promotionControlWinResult.winner), JSON.stringify(gameState.pieces), 
              JSON.stringify({ 
                moves: gameState.moveHistory, 
                winner: promotionControlWinResult.winner, 
@@ -2940,7 +2988,7 @@ function initializeSocket(server) {
           await db_pool.query(
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
              pieces = ?, other_data = ? WHERE id = ?`,
-            [endTime, winResult.winner, JSON.stringify(gameState.pieces), 
+            [endTime, sanitizeWinnerId(winResult.winner), JSON.stringify(gameState.pieces), 
              JSON.stringify({ 
                moves: gameState.moveHistory, 
                winner: winResult.winner, 
@@ -2987,7 +3035,7 @@ function initializeSocket(server) {
             await db_pool.query(
               `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                pieces = ?, other_data = ? WHERE id = ?`,
-              [endTime, winner?.id, JSON.stringify(gameState.pieces), 
+              [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces), 
                JSON.stringify({ 
                  moves: gameState.moveHistory, 
                  winner: winner?.id, 
@@ -3764,7 +3812,7 @@ function startGameTimer(io, gameId) {
         await db_pool.query(
           `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
            pieces = ?, other_data = ? WHERE id = ?`,
-          [endTime, winner?.id, JSON.stringify(currentGameState.pieces), 
+          [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(currentGameState.pieces), 
            JSON.stringify({ 
              moves: currentGameState.moveHistory, 
              winner: winner?.id, 

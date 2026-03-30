@@ -118,6 +118,61 @@ const PieceList = () => {
     }
   };
 
+  const getMovementSummary = (piece) => {
+    const parts = [];
+    const descRange = (v) => {
+      if (!v) return null;
+      if (v === 99) return 'infinite';
+      if (v < 0) return `exactly ${Math.abs(v)}`;
+      return `up to ${v}`;
+    };
+    // Directional
+    const dirs = [
+      { label: 'Up', v: piece.up_movement },
+      { label: 'Down', v: piece.down_movement },
+      { label: 'Left', v: piece.left_movement },
+      { label: 'Right', v: piece.right_movement },
+      { label: 'Diag UL', v: piece.up_left_movement },
+      { label: 'Diag UR', v: piece.up_right_movement },
+      { label: 'Diag DL', v: piece.down_left_movement },
+      { label: 'Diag DR', v: piece.down_right_movement },
+    ];
+    // Group same-value directions
+    const up = piece.up_movement, down = piece.down_movement;
+    const left = piece.left_movement, right = piece.right_movement;
+    const ul = piece.up_left_movement, ur = piece.up_right_movement;
+    const dl = piece.down_left_movement, dr = piece.down_right_movement;
+    if (up && down && up === down) {
+      parts.push(`Vertical ${descRange(up)}`);
+    } else {
+      if (up) parts.push(`Up ${descRange(up)}`);
+      if (down) parts.push(`Down ${descRange(down)}`);
+    }
+    if (left && right && left === right) {
+      parts.push(`Horizontal ${descRange(left)}`);
+    } else {
+      if (left) parts.push(`Left ${descRange(left)}`);
+      if (right) parts.push(`Right ${descRange(right)}`);
+    }
+    const allDiag = [ul, ur, dl, dr].filter(Boolean);
+    if (allDiag.length === 4 && allDiag.every(d => d === allDiag[0])) {
+      parts.push(`Diagonal ${descRange(allDiag[0])}`);
+    } else {
+      if (ul) parts.push(`Diag UL ${descRange(ul)}`);
+      if (ur) parts.push(`Diag UR ${descRange(ur)}`);
+      if (dl) parts.push(`Diag DL ${descRange(dl)}`);
+      if (dr) parts.push(`Diag DR ${descRange(dr)}`);
+    }
+    // Ratio (L-shape)
+    const r1 = piece.ratio_one_movement || piece.ratio_movement_1 || 0;
+    const r2 = piece.ratio_two_movement || piece.ratio_movement_2 || 0;
+    if (r1 > 0 && r2 > 0) parts.push(`L-shape ${r1}+${r2}`);
+    // Step
+    const stepVal = piece.step_by_step_movement_value || piece.step_movement_value || 0;
+    if (stepVal) parts.push(`Step ${descRange(stepVal)}`);
+    return parts.length > 0 ? parts : null;
+  };
+
   const renderPieceCard = (piece, showEditButton = false) => {
     const firstImage = getFirstImage(piece.image_location);
     return (
@@ -166,6 +221,17 @@ const PieceList = () => {
                   <span>{piece.game_type_name}</span>
                 </div>
               )}
+              <div className={styles["meta-item"]}>
+                <span className={styles["meta-label"]}>Movement:</span>
+                <span className={styles["movement-patterns"]}>
+                  {(() => {
+                    const patterns = getMovementSummary(piece);
+                    if (!patterns) return 'None';
+                    const text = patterns.join(', ');
+                    return text;
+                  })()}
+                </span>
+              </div>
             </div>
           </div>
         </Link>
@@ -326,7 +392,7 @@ const PieceList = () => {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className={styles["modal-overlay"]} onClick={() => setShowDeleteModal(false)}>
-          <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
+          <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Enter' && !isDeleting) handleConfirmDelete(); }}>
             <h3>Delete Piece</h3>
             <p>Are you sure you want to delete "{pieceToDelete?.piece_name}"?</p>
             <p className={styles["warning-text"]}>This action cannot be undone.</p>

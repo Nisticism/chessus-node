@@ -549,11 +549,11 @@
   }
 
   &.last-move-from {
-    background: rgba(140, 130, 200, 0.3) !important;
+    background: var(--last-move-from) !important;
   }
 
   &.last-move-to {
-    background: rgba(50, 190, 175, 0.35) !important;
+    background: var(--last-move-to) !important;
   }
 
   // Ranged attack highlights (selected piece) - uses ::before overlay so it stacks with move/capture styles
@@ -1128,19 +1128,6 @@
 
 // Responsive
 @media (max-width: 1200px) {
-  .sidebar {
-    &.left,
-    &.right {
-      width: 240px;
-    }
-  }
-
-  .piece-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 900px) {
   .sandbox-container {
     flex-direction: column;
     height: auto;
@@ -1150,12 +1137,70 @@
 
   .sidebar {
     width: 100% !important;
-    max-height: 400px;
-    min-height: 200px;
     border: none !important;
     border-bottom: 2px solid var(--border-subtle) !important;
-    padding: 12px;
-    overflow-y: auto;
+    overflow: hidden;
+
+    &.left,
+    &.right {
+      max-height: none;
+    }
+  }
+
+  .sidebar-header {
+    padding: 10px 12px;
+  }
+
+  .search-box {
+    padding: 8px 12px;
+  }
+
+  .item-list {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .list-item {
+    min-width: 200px;
+    max-width: 220px;
+    flex-shrink: 0;
+    margin-bottom: 0;
+  }
+
+  .player-toggle {
+    .toggle-label {
+      display: none;
+    }
+
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .piece-grid {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    grid-template-columns: unset;
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .piece-item {
+    min-width: 100px;
+    max-width: 120px;
+    flex-shrink: 0;
+  }
+
+  .main-area {
+    order: -1;
   }
 
   .instructions {
@@ -1172,7 +1217,7 @@
     max-height: none;
     padding: 10px;
   }
-  
+
   .instructions-row {
     flex-direction: column;
     align-items: center;
@@ -1191,6 +1236,22 @@
 
   .game-type-selector {
     width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .sandbox-container {
+    padding: 8px;
+  }
+
+  .list-item {
+    min-width: 170px;
+    max-width: 190px;
+  }
+
+  .piece-item {
+    min-width: 85px;
+    max-width: 100px;
   }
 }
 

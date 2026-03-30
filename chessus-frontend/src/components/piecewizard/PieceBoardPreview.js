@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from "react";
 import styles from "./piecewizard.module.scss";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import { getSquareHighlightStyle } from "../../helpers/pieceMovementUtils";
+import BoardLegend from "../common/BoardLegend";
+import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
 const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) => {
   const [isHovering, setIsHovering] = useState(false);
@@ -806,62 +809,12 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         
         if (isCenter) {
           squareClass += ` ${styles["center-piece"]}`;
-        } else if (canMove && canCaptureOnMove && canRangedAttack) {
-          // Can move, capture on move, AND ranged attack
-          // Use first-move-only styling if either move or capture is first-move-only
-          if (isMoveFirstOnly || isCaptureFirstOnly) {
-            squareClass += ` ${styles["can-all-three-first-only"]}`;
-          } else {
-            squareClass += ` ${styles["can-all-three"]}`;
-          }
-        } else if (canMove && canCaptureOnMove) {
-          // Can move and capture on move
-          if (isMoveFirstOnly && isCaptureFirstOnly) {
-            squareClass += ` ${styles["can-move-and-capture-first-only"]}`;
-          } else if (isMoveFirstOnly) {
-            squareClass += ` ${styles["can-move-first-capture-normal"]}`;
-          } else if (isCaptureFirstOnly) {
-            squareClass += ` ${styles["can-move-normal-capture-first"]}`;
-          } else {
-            squareClass += ` ${styles["can-move-and-capture"]}`;
-          }
-        } else if (canMove && canRangedAttack) {
-          // Can move and ranged attack
-          if (isMoveFirstOnly) {
-            squareClass += ` ${styles["can-move-and-ranged-first-only"]}`;
-          } else {
-            squareClass += ` ${styles["can-move-and-ranged"]}`;
-          }
-        } else if (canCaptureOnMove && canRangedAttack) {
-          // Can capture on move and ranged attack
-          if (isCaptureFirstOnly) {
-            squareClass += ` ${styles["can-capture-and-ranged-first-only"]}`;
-          } else {
-            squareClass += ` ${styles["can-capture-and-ranged"]}`;
-          }
-        } else if (canMove) {
-          // Movement only
-          if (isMoveFirstOnly) {
-            squareClass += ` ${styles["can-move-first-only"]}`;
-          } else {
-            squareClass += ` ${styles["can-move"]}`;
-          }
-        } else if (canCaptureOnMove) {
-          // Capture on move only
-          if (isCaptureFirstOnly) {
-            squareClass += ` ${styles["can-capture-first-only"]}`;
-          } else {
-            squareClass += ` ${styles["can-capture-move"]}`;
-          }
-        } else if (canRangedAttack) {
-          // Ranged attack only
-          squareClass += ` ${styles["can-ranged-attack"]}`;
         }
         
-        // Hop capture highlight (additive - shows on top of other highlights)
-        if (isHopCapture) {
-          squareClass += ` ${styles["can-hop-capture"]}`;
-        }
+        // Use shared highlight style utility
+        const { style: highlightStyle, icon: highlightIcon } = (!isCenter)
+          ? getSquareHighlightStyle(canMove, isMoveFirstOnly, canCaptureOnMove, isCaptureFirstOnly, canRangedAttack, isLight)
+          : { style: {}, icon: null };
         
         // Inline styles for user color preferences
         const squareStyle = {
@@ -872,22 +825,19 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
           squareStyle.zIndex = 10;
         }
         
-        // Add icon for ranged attack
-        let icon = null;
-        if (!isCenter && isHovering && canRangedAttack) {
-          icon = <span className={styles["ranged-icon"]} style={{ 
-            backgroundColor: isLight ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.6)',
-            borderRadius: '4px',
-            padding: '2px 4px'
-          }}>💥</span>;
-        }
-        
         const isMultiTile = pw > 1 || ph > 1;
         const isNonSquareMultiTile = isMultiTile && pw !== ph;
         const imgSrc = pieceData.piece_image_previews?.[0];
         
         squares.push(
           <div key={`${row}-${col}`} className={squareClass} style={squareStyle}>
+            <SquareHighlightOverlay
+              highlightStyle={highlightStyle}
+              highlightIcon={highlightIcon}
+              canHopCapture={isHopCapture}
+              squareSize={40}
+              isLight={isLight}
+            />
             {isAnchor && imgSrc && (
               isNonSquareMultiTile ? (
                 <div
@@ -921,7 +871,6 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
               )
             )}
             {isAnchor && !imgSrc && "?"}
-            {icon}
           </div>
         );
       }
@@ -949,43 +898,14 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         {renderBoard()}
       </div>
       {showLegend && (
-        <div className={styles["board-legend"]}>
-          <div className={styles["legend-title"]}>Legend (hover over piece to see):</div>
-          <div className={styles["legend-items"]}>
-            <div className={styles["legend-item"]}>
-              <div className={`${styles["legend-square"]} ${styles["legend-move"]}`}></div>
-              <span>Regular Movement</span>
-            </div>
-            <div className={styles["legend-item"]}>
-              <div className={`${styles["legend-square"]} ${styles["legend-move-first"]}`}></div>
-              <span>First Moves Movement</span>
-            </div>
-            {showAttack && (
-              <>
-                <div className={styles["legend-item"]}>
-                  <div className={`${styles["legend-square"]} ${styles["legend-capture"]}`}></div>
-                  <span>Capture on Move</span>
-                </div>
-                <div className={styles["legend-item"]}>
-                  <div className={`${styles["legend-square"]} ${styles["legend-capture-first"]}`}></div>
-                  <span>First Moves Capture</span>
-                </div>
-              </>
-            )}
-            {showAttack && (
-              <div className={styles["legend-item"]}>
-                <div className={`${styles["legend-square"]} ${styles["legend-ranged"]}`}></div>
-                <span>Ranged Attack 💥</span>
-              </div>
-            )}
-            {showAttack && (
-              <div className={styles["legend-item"]}>
-                <div className={`${styles["legend-square"]} ${styles["legend-hop-capture"]}`}></div>
-                <span>Capture on Hop</span>
-              </div>
-            )}
-          </div>
-        </div>
+        <BoardLegend
+          showAttack={showAttack}
+          showFirstAttack={showAttack}
+          showRanged={showAttack && !!pieceData.can_capture_enemy_via_range}
+          showHopCapture={showAttack && !!pieceData.capture_on_hop}
+          labelStyle="descriptive"
+          title="Legend (hover over piece to see):"
+        />
       )}
       <div className={styles["board-info"]}>
         Board size: {boardWidth}x{boardHeight} | Piece position: ({anchorCol}, {anchorRow})

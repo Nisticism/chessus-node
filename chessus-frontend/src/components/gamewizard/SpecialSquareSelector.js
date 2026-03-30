@@ -73,7 +73,7 @@ const SpecialSquareSelector = ({
 
   return (
     <div className={styles["modal-overlay"]} onClick={onCancel}>
-      <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
+      <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Enter' && selectedType) handleConfirm(); }}>
         <div className={styles["modal-header"]}>
           <h2>Special Square at ({squarePosition?.row}, {squarePosition?.col})</h2>
           <button className={styles["close-button"]} onClick={onCancel}>✕</button>

@@ -702,12 +702,14 @@ const PieceWizard = ({ editPieceId = null }) => {
 
       <div className={styles["wizard-navigation"]}>
         <div className={styles["nav-buttons"]}>
-          {currentStep > 1 && (
+          {currentStep > 1 ? (
             <StandardButton 
               buttonText="Previous" 
               onClick={prevStep}
               disabled={isSubmitting}
             />
+          ) : (
+            <div />
           )}
           
           {currentStep < totalSteps && (

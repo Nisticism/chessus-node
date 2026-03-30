@@ -73,6 +73,7 @@ const Play = () => {
   const [showAnonCreateModal, setShowAnonCreateModal] = useState(false);
   const [anonTimeControl, setAnonTimeControl] = useState("10");
   const [anonIncrement, setAnonIncrement] = useState("0");
+  const [anonWarning, setAnonWarning] = useState(null);
 
   // Check for game deleted message on mount
   useEffect(() => {
@@ -538,8 +539,12 @@ const Play = () => {
         <div className={styles["anonymous-play-section"]}>
           <div className={styles["anonymous-play-info"]}>
             <h3>Play Without an Account</h3>
-            <p>You can play anonymously by creating a game and sharing the invite code, or by entering a code from a friend. Anonymous games are unrated, won't appear in open games, and won't be saved to any profile.</p>
+            <p>You can play anonymously! To host a game, first select a game type from the Game Library in the sidebar, then click "Create Anonymous Game" to get an invite code you can share. To join a friend's game, enter their invite code below. Anonymous games are unrated, won't appear in open games, and won't be saved to any profile.</p>
+            <p className={styles["account-benefits"]}>Create a free account to unlock more features: customizable time controls, rated games, spectator settings, piece move helpers, premoves, correspondence play, and more.</p>
           </div>
+          {anonWarning && (
+            <div className={styles["anon-warning"]}>{anonWarning}</div>
+          )}
           <div className={styles["anonymous-play-actions"]}>
             <div className={styles["anonymous-name-input"]}>
               <label>Display Name (optional):</label>
@@ -571,14 +576,17 @@ const Play = () => {
             <div className={styles["anonymous-create-section"]}>
               <button
                 className={styles["create-anon-button"]}
-                onClick={() => setShowAnonCreateModal(true)}
-                disabled={!selectedGameType}
+                onClick={() => {
+                  if (!selectedGameType) {
+                    setAnonWarning("Please select a game type from the sidebar before creating a game.");
+                    return;
+                  }
+                  setAnonWarning(null);
+                  setShowAnonCreateModal(true);
+                }}
               >
                 Create Anonymous Game
               </button>
-              {!selectedGameType && (
-                <span className={styles["select-game-hint"]}>Select a game type first</span>
-              )}
             </div>
           </div>
         </div>

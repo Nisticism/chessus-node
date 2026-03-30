@@ -882,7 +882,7 @@
   border: 1px solid var(--board-border, #333);
   border-radius: 5px;
   width: 90%;
-  max-width: 800px;
+  max-width: min(800px, calc(100vw - 6rem));
   margin: 0 auto;
   background: var(--board-bg, transparent);
   padding: 15px;
@@ -1049,7 +1049,6 @@
   &.center-piece {
     outline: 3px solid var(--link-text);
     outline-offset: -3px;
-    background-color: var(--forum-row-hover) !important;
     position: relative;
     overflow: visible;
 

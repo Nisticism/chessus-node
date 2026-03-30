@@ -68,6 +68,26 @@
   margin: 0;
 }
 
+.footerLegal {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  padding: 16px 0;
+
+  a {
+    color: var(--text-gray);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: var(--button-border);
+    }
+  }
+}
+
 .footerBottom {
   max-width: 1200px;
   margin: 0 auto;

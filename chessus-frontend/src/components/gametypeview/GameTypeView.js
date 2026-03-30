@@ -13,6 +13,8 @@ import {
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import BoardLegend from "../common/BoardLegend";
+import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -899,62 +901,13 @@ const GameTypeView = () => {
               }
             }}
           >
-            {/* Highlight overlay — renders above pieces so square color shows through */}
-            {(highlightStyle.outline || highlightStyle.borderTop) && (
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: highlightStyle.background,
-                outline: highlightStyle.outline || 'none',
-                outlineOffset: highlightStyle.outlineOffset || 0,
-                borderTop: highlightStyle.borderTop || 'none',
-                borderLeft: highlightStyle.borderLeft || 'none',
-                borderBottom: highlightStyle.borderBottom || 'none',
-                borderRight: highlightStyle.borderRight || 'none',
-                boxSizing: 'border-box',
-                zIndex: 8,
-                pointerEvents: 'none',
-                borderRadius: '2px',
-              }} />
-            )}
-            {/* Ranged attack icon */}
-            {highlightIcon && (
-              <span className={styles["ranged-icon"]} style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                fontSize: `${squareSize * 0.4}px`,
-                pointerEvents: 'none',
-                zIndex: 10,
-                backgroundColor: isLight ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.3)',
-                borderRadius: '4px',
-                padding: '2px 4px',
-                opacity: 0.7
-              }}>
-                {highlightIcon}
-              </span>
-            )}
-            {/* Hop capture overlay — additive green highlight */}
-            {canHopCapture && (
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                outline: '3px solid rgba(76, 175, 80, 0.7)',
-                outlineOffset: '-3px',
-                boxShadow: 'inset 0 0 0 100px rgba(76, 175, 80, 0.2)',
-                boxSizing: 'border-box',
-                zIndex: 9,
-                pointerEvents: 'none',
-                borderRadius: '2px',
-              }} />
-            )}
+            <SquareHighlightOverlay
+              highlightStyle={highlightStyle}
+              highlightIcon={highlightIcon}
+              canHopCapture={canHopCapture}
+              squareSize={squareSize}
+              isLight={isLight}
+            />
             {squareType && !placement && (
               <div 
                 style={{
@@ -1151,6 +1104,7 @@ const GameTypeView = () => {
         {game.creator_username && (
           <p className={styles["creator"]}>
             Created by <Link to={`/profile/${game.creator_username}`}>{game.creator_username}</Link>
+            {game.created_at && ` on ${new Date(game.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`}
           </p>
         )}
         
@@ -1194,82 +1148,17 @@ const GameTypeView = () => {
 
         <div className={styles["section"]}>
           <h2>Board Setup</h2>
-          <div className={styles["board-legend"]} style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '15px',
-            justifyContent: 'center',
-            marginBottom: '15px',
-            fontSize: '0.9rem',
-            color: '#ccc'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(33, 150, 243, 0.55)', outlineOffset: '-3px', background: 'rgba(33, 150, 243, 0.1)', borderRadius: '3px' }}></div>
-              <span>Movement</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(156, 39, 176, 0.55)', outlineOffset: '-3px', background: 'rgba(156, 39, 176, 0.1)', borderRadius: '3px' }}></div>
-              <span>First Move</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(255, 152, 0, 0.55)', outlineOffset: '-3px', background: 'rgba(255, 152, 0, 0.1)', borderRadius: '3px' }}></div>
-              <span>Attack</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(233, 30, 99, 0.55)', outlineOffset: '-3px', background: 'rgba(233, 30, 99, 0.1)', borderRadius: '3px' }}></div>
-              <span>First Attack</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', borderTop: '3px solid rgba(33, 150, 243, 0.55)', borderLeft: '3px solid rgba(33, 150, 243, 0.55)', borderBottom: '3px solid rgba(255, 152, 0, 0.55)', borderRight: '3px solid rgba(255, 152, 0, 0.55)', boxSizing: 'border-box', background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1) 50%, rgba(255, 152, 0, 0.1) 50%)', borderRadius: '3px' }}></div>
-              <span>Move + Attack</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(244, 67, 54, 0.55)', outlineOffset: '-3px', background: 'rgba(244, 67, 54, 0.1)', borderRadius: '3px' }}></div>
-              <span>Ranged 💥</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(76, 175, 80, 0.55)', outlineOffset: '-3px', background: 'rgba(76, 175, 80, 0.1)', borderRadius: '3px' }}></div>
-              <span>Capture on Hop</span>
-            </div>
-            {/* Special Squares Legend */}            {Object.keys(specialSquares.promotion).length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <div style={{ width: '20px', height: '20px', border: '3px solid #4b0082', borderRadius: '3px', background: 'rgba(75, 0, 130, 0.3)' }}></div>
-                <span>Promotion</span>
-              </div>
-            )}
-            {Object.keys(specialSquares.range).length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <div style={{ width: '20px', height: '20px', border: '3px solid #ff8c00', borderRadius: '3px', background: 'rgba(255, 140, 0, 0.3)' }}></div>
-                <span>Range Boost</span>
-              </div>
-            )}
-            {Object.keys(specialSquares.control).length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <div style={{ width: '20px', height: '20px', border: '3px solid #32CD32', borderRadius: '3px', background: 'rgba(50, 205, 50, 0.3)' }}></div>
-                <span>Control</span>
-              </div>
-            )}
-            {Object.keys(specialSquares.special).length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <div style={{ width: '20px', height: '20px', border: '3px solid #ffd700', borderRadius: '3px', background: 'rgba(255, 215, 0, 0.3)' }}></div>
-                <span>Special</span>
-              </div>
-            )}
-            {/* Checkmate/Capture Piece Legend - show if any pieces have these properties */}
-            {Object.values(piecePlacements).some(p => p.ends_game_on_checkmate) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{ fontSize: '16px' }}>♔</span>
-                <span style={{ fontSize: '16px', color: 'white', WebkitTextStroke: '1px black' }}>♔</span>
-                <span>Checkmate Piece</span>
-              </div>
-            )}
-            {Object.values(piecePlacements).some(p => p.ends_game_on_capture) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{ fontSize: '16px' }}>⚔️</span>
-                <span>Capture-Loss Piece</span>
-              </div>
-            )}
-          </div>
+          <BoardLegend
+            showMoveAttack
+            showCheckmate={Object.values(piecePlacements).some(p => p.ends_game_on_checkmate)}
+            showCaptureLoss={Object.values(piecePlacements).some(p => p.ends_game_on_capture)}
+            specialSquares={{
+              promotion: Object.keys(specialSquares.promotion).length > 0,
+              range: Object.keys(specialSquares.range).length > 0,
+              control: Object.keys(specialSquares.control).length > 0,
+              special: Object.keys(specialSquares.special).length > 0,
+            }}
+          />
           <p style={{ textAlign: 'center', fontSize: '0.85rem', color: '#888', marginBottom: '10px' }}>
             Hover over a piece to see where it can move and attack
           </p>
@@ -1324,7 +1213,7 @@ const GameTypeView = () => {
                                 const text = part.slice(2, -2);
                                 const pieceId = pieceNameToId[text];
                                 if (pieceId) {
-                                  return <Link key={partIndex} to={`/pieces/${pieceId}`} className={styles["piece-link"]}><strong>{text}</strong></Link>;
+                                  return <Link key={partIndex} to={`/pieces/${pieceId}`} className={styles["piece-link-inline"]}><strong>{text}</strong></Link>;
                                 }
                                 return <strong key={partIndex}>{text}</strong>;
                               }

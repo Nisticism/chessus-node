@@ -101,6 +101,37 @@ const GameList = () => {
     return `${width}×${height}`;
   };
 
+  const getWinCondition = (game) => {
+    const conditions = [];
+    if (game.mate_condition) conditions.push("Checkmate");
+    if (game.capture_condition) conditions.push("Capture");
+    if (game.value_condition) conditions.push(game.value_title || "Points");
+    if (game.squares_condition) conditions.push("Territory");
+    if (game.hill_condition) conditions.push("King of the Hill");
+    return conditions.length > 0 ? conditions.join(", ") : "None";
+  };
+
+  const getPieceCount = (game) => {
+    if (game.pieces_string) {
+      try {
+        const pieces = JSON.parse(game.pieces_string);
+        const pieceArray = Array.isArray(pieces)
+          ? pieces.filter(p => !p._occupied)
+          : Object.values(pieces).filter(p => !p._occupied);
+        const p1 = pieceArray.filter(p => (p.player_number || p.player_id || p.player) === 1).length;
+        const p2 = pieceArray.filter(p => (p.player_number || p.player_id || p.player) === 2).length;
+        if (p1 > 0 || p2 > 0) {
+          return p1 === p2 ? `${p1} each` : `${p1} / ${p2}`;
+        }
+      } catch { /* fall through */ }
+    }
+    if (game.starting_piece_count) {
+      const per = Math.floor(game.starting_piece_count / 2);
+      return `${per} each`;
+    }
+    return "None";
+  };
+
   const renderGameCard = (game, showEditButton = false) => {
     return (
       <div key={game.id} className={styles["game-card"]}>
@@ -117,8 +148,23 @@ const GameList = () => {
           
           <div className={styles["game-content"]}>
             <p className={styles["game-description"]}>
-              {game.descript || 'No description available'}
+              {game.descript && game.descript.trim() ? game.descript : 'No description available'}
             </p>
+
+            <div className={styles["game-stats"]}>
+              <div className={styles["stat-item"]}>
+                <span className={styles["stat-icon"]}>⚔</span>
+                <span>{formatPlayerCount(game.player_count)}</span>
+              </div>
+              <div className={styles["stat-item"]}>
+                <span className={styles["stat-icon"]}>⚡</span>
+                <span>{game.actions_per_turn || 1} action{(game.actions_per_turn || 1) !== 1 ? 's' : ''}/turn</span>
+              </div>
+              <div className={styles["stat-item"]}>
+                <span className={styles["stat-icon"]}>♟</span>
+                <span>Pieces: {getPieceCount(game)}</span>
+              </div>
+            </div>
 
             <div className={styles["game-meta"]}>
               {game.creator_username && (
@@ -137,16 +183,9 @@ const GameList = () => {
                   </span>
                 </div>
               )}
-            </div>
-
-            <div className={styles["game-stats"]}>
-              <div className={styles["stat-item"]}>
-                <span className={styles["stat-icon"]}>⚔</span>
-                <span>{formatPlayerCount(game.player_count)}</span>
-              </div>
-              <div className={styles["stat-item"]}>
-                <span className={styles["stat-icon"]}>⚡</span>
-                <span>{game.actions_per_turn || 1} action{(game.actions_per_turn || 1) !== 1 ? 's' : ''}/turn</span>
+              <div className={styles["meta-item"]}>
+                <span className={styles["meta-label"]}>Win:</span>
+                <span>{getWinCondition(game)}</span>
               </div>
             </div>
           </div>
@@ -272,7 +311,7 @@ const GameList = () => {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className={styles["modal-overlay"]} onClick={() => setShowDeleteModal(false)}>
-          <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
+          <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Enter' && !isDeleting) handleConfirmDelete(); }}>
             <h3>Delete Game</h3>
             <p>Are you sure you want to delete "{gameToDelete?.game_name}"?</p>
             <p className={styles["warning-text"]}>This will also delete the associated forum. This action cannot be undone.</p>

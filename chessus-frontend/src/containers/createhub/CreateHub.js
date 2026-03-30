@@ -5,25 +5,25 @@ import styles from "./createhub.module.scss";
 const CreateHub = () => {
   const creationOptions = [
     {
-      title: "Design a Game",
+      title: "New Game",
       description: "Create your own custom strategy game with unique rules, board layouts, and winning conditions. Define how pieces move, capture, and interact to craft entirely new game experiences.",
       link: "/create/game",
       icon: "🎲"
     },
     {
-      title: "Design a Piece",
+      title: "New Piece",
       description: "Build custom chess pieces with your own movement patterns, capture rules, and special abilities. Upload custom graphics and define unique behaviors to use in your games.",
       link: "/create/piece",
       icon: "♟️"
     },
     {
-      title: "View Game Varients",
+      title: "Game Library",
       description: "Browse all custom games created by the GridGrove community. Discover new game types, see what others have built, and find inspiration for your own creations.",
       link: "/create/games",
       icon: "📋"
     },
     {
-      title: "View Pieces",
+      title: "Piece Library",
       description: "Explore the collection of custom pieces designed by the community. See piece images, movement patterns, and find pieces to use in your own game designs.",
       link: "/create/pieces",
       icon: "👁️"

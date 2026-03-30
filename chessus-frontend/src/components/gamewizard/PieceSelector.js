@@ -572,7 +572,7 @@ const PieceSelector = ({
   // Otherwise, wrap in modal
   return (
     <div className={styles["modal-overlay"]} onClick={onCancel}>
-      <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
+      <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Enter' && selectedPieceId) handleConfirm(); }}>
         <div className={styles["modal-header"]}>
           <h2>Select Piece for Square ({squarePosition?.row}, {squarePosition?.col})</h2>
           <button className={styles["close-button"]} onClick={onCancel}>✕</button>

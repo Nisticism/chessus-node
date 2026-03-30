@@ -327,6 +327,16 @@
   }
 }
 
+.piece-link-inline {
+  color: var(--accent-primary);
+  text-decoration: none;
+  transition: all 0.2s;
+  
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 .loading-rules {
   color: var(--text-light-gray);
   font-style: italic;

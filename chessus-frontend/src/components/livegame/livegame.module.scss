@@ -777,7 +777,7 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: rgba(255, 255, 0, 0.4);
+      background: var(--last-move-to);
       pointer-events: none;
       z-index: 0;
     }
@@ -1321,6 +1321,12 @@
   }
 }
 
+.action-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+}
+
 // Game over overlay
 .game-over-overlay {
   position: fixed;
@@ -1342,6 +1348,7 @@
   text-align: center;
   max-width: 400px;
   width: 90%;
+  position: relative;
 
   h2 {
     color: #fff;
@@ -1400,6 +1407,26 @@
     display: flex;
     justify-content: center;
     gap: 16px;
+  }
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 1.6rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+
+  &:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
   }
 }
 
@@ -1972,6 +1999,22 @@
   gap: 16px;
   width: 100%;
   max-width: 600px;
+
+  .control-progress-tooltip {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: #aaa;
+    cursor: help;
+  }
+
+  .control-progress-tooltip-icon {
+    font-size: 0.95rem;
+    color: #32CD32;
+  }
 
   .control-progress-item {
     flex: 1;

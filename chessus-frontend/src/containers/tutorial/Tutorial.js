@@ -5,7 +5,7 @@ import styles from "./tutorial.module.scss";
 const tutorialSteps = [
   {
     title: "Step 1: Create the Pieces",
-    content: `Before building your chess game, you need to create all six piece types. Go to **Create > Design a Piece** to open the Piece Wizard for each one.`,
+    content: `Before building your chess game, you need to create all six piece types. Go to **Create > New Piece** to open the Piece Wizard for each one.`,
     pieces: [
       {
         name: "Pawn",
@@ -66,12 +66,19 @@ const tutorialSteps = [
   },
   {
     title: "Step 2: Create the Game",
-    content: `Now go to **Create > Design a Game** to set up your chess board and rules.`,
+    content: `Now go to **Create > New Game** to set up your chess board and rules.`,
     substeps: [
+      {
+        heading: "Basic Info",
+        details: [
+          "In **Step 1** of the Game Wizard, set the **Game Name** (e.g. \"Classic Chess\") and optionally a **Description**",
+          "Set **Actions Per Turn** to 1 — each player moves one piece per turn in standard chess"
+        ]
+      },
       {
         heading: "Win Conditions",
         details: [
-          "In the **Win Conditions** section (Step 1 of the Game Wizard), enable **Checkmate** as the win condition",
+          "In the **Win Conditions** section (Step 2 of the Game Wizard), enable **Checkmate** as the win condition",
           "This means the game ends when a player's King is in check and has no legal move to escape"
         ]
       },
@@ -88,8 +95,6 @@ const tutorialSteps = [
         heading: "Board Setup",
         details: [
           "Set **Board Width** to 8 and **Board Height** to 8",
-          "Set **Player Count** to 2",
-          "Set **Actions Per Turn** to 1",
           "Open the **Special Squares** modal and mark the top row (row 8) and bottom row (row 1) as **Promotion Squares** — when a pawn reaches one of these squares, the player chooses a piece to promote to",
           "Tip: use the **Fill Row** option in the Special Squares modal to mark an entire row at once instead of clicking each square individually"
         ]
@@ -279,8 +284,8 @@ const Tutorial = () => {
           or create entirely new win conditions. The possibilities are endless.
         </p>
         <div className={styles["footer-links"]}>
-          <Link to="/create/piece" className={styles["footer-link"]}>Design a Piece</Link>
-          <Link to="/create/game" className={styles["footer-link"]}>Design a Game</Link>
+          <Link to="/create/piece" className={styles["footer-link"]}>New Piece</Link>
+          <Link to="/create/game" className={styles["footer-link"]}>New Game</Link>
           <Link to="/faq" className={styles["footer-link"]}>Back to FAQ</Link>
         </div>
       </div>

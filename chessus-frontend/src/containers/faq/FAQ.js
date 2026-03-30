@@ -8,7 +8,7 @@ const faqData = [
     questions: [
       {
         q: "How do I create a custom piece?",
-        a: "Navigate to Create > Design a Piece. You'll be taken to the Piece Wizard where you can define your piece's name, movement pattern, capture behavior, and appearance. Start by choosing a base movement type, then customize the range and direction of movement on the grid."
+        a: "Navigate to Create > New Piece. You'll be taken to the Piece Wizard where you can define your piece's name, movement pattern, capture behavior, and appearance. Start by choosing a base movement type, then customize the range and direction of movement on the grid."
       },
       {
         q: "What movement options are available for custom pieces?",
@@ -24,7 +24,7 @@ const faqData = [
       },
       {
         q: "Can I edit a piece after creating it?",
-        a: "Yes, you can edit your pieces at any time by going to Create > View Pieces, finding your piece, and clicking the edit button. Note that changes to a piece may affect games that use it."
+        a: "Yes, you can edit your pieces at any time by going to Create > Piece Library, finding your piece, and clicking the edit button. Note that changes to a piece may affect games that use it."
       }
     ]
   },
@@ -33,7 +33,7 @@ const faqData = [
     questions: [
       {
         q: "How do I create a custom game variant?",
-        a: "Go to Create > Design a Game. You'll set up the board size, choose which pieces to include, define their starting positions, and configure game rules like win conditions, castling, en passant, and draw rules."
+        a: "Go to Create > New Game. You'll set up the board size, choose which pieces to include, define their starting positions, and configure game rules like win conditions, castling, en passant, and draw rules."
       },
       {
         q: "What board sizes are supported?",

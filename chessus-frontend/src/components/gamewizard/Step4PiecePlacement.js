@@ -7,10 +7,13 @@ import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
   canRangedAttackTo as canRangedAttackToUtil,
+  canHopCaptureToUtil,
   getSquareHighlightStyle
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import BoardLegend from "../common/BoardLegend";
+import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -31,6 +34,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
   const [draggedPiecePosition, setDraggedPiecePosition] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const longPressTimeoutRef = useRef(null);
   
   // Check if the board setup is symmetric (for mirrored randomization)
@@ -175,6 +179,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   // Detect mobile
   useEffect(() => {
     setIsMobile(isMobileDevice());
+  }, []);
+
+  // Track window width for responsive board sizing
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Load all pieces for image fallback and movement data
@@ -639,10 +650,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
 
   // Calculate board dimensions for legend width
   const boardDimensions = useMemo(() => {
-    const squareSize = Math.min(80, 700 / Math.max(gameData.board_width, gameData.board_height));
+    const boardPadding = 10 * 2; // 10px each side
+    const boardBorder = 1 * 2;   // 1px each side
+    const maxBoardPx = Math.min(700, windowWidth - 60 - boardPadding - boardBorder);
+    const squareSize = Math.min(80, maxBoardPx / Math.max(gameData.board_width, gameData.board_height));
     const boardWidth = squareSize * gameData.board_width;
     return { squareSize, boardWidth };
-  }, [gameData.board_width, gameData.board_height]);
+  }, [gameData.board_width, gameData.board_height, windowWidth]);
 
   const renderBoard = useMemo(() => {
     const board = [];
@@ -679,6 +693,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         let moveInfo = { allowed: false, isFirstMoveOnly: false };
         let captureInfo = { allowed: false, isFirstMoveOnly: false };
         let canRanged = false;
+        let canHopCapture = false;
         
         // Check for dragged piece
         if (draggedPiece && draggedPiecePosition) {
@@ -701,6 +716,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             for (let dr = 0; dr < dph && !canRanged; dr++) {
               for (let dc = 0; dc < dpw && !canRanged; dc++) {
                 canRanged = canRangedAttackTo(draggedPiecePosition.row + dr, draggedPiecePosition.col + dc, row, col, pieceData, draggedPiece.data.player_id);
+              }
+            }
+            if (pieceData.capture_on_hop) {
+              for (let dr = 0; dr < dph && !canHopCapture; dr++) {
+                for (let dc = 0; dc < dpw && !canHopCapture; dc++) {
+                  canHopCapture = canHopCaptureToUtil(draggedPiecePosition.row + dr, draggedPiecePosition.col + dc, row, col, pieceData, draggedPiece.data.player_id);
+                }
               }
             }
           }
@@ -728,6 +750,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                 canRanged = canRangedAttackTo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
               }
             }
+            if (pieceData.capture_on_hop) {
+              for (let dr = 0; dr < hph && !canHopCapture; dr++) {
+                for (let dc = 0; dc < hpw && !canHopCapture; dc++) {
+                  canHopCapture = canHopCaptureToUtil(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, row, col, pieceData, hoveredPiecePosition.playerId);
+                }
+              }
+            }
           }
         }
         
@@ -748,10 +777,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           isLight
         );
         
-        // Merge highlight style (skip for squares within the active piece's own footprint)
-        if (!isWithinActivePieceFootprint) {
-          squareStyle = { ...squareStyle, ...highlightStyle };
-        }
+        // Highlight is rendered as a separate overlay via SquareHighlightOverlay
+        // (not merged into squareStyle, which would add borders that resize multi-tile pieces)
 
         // Anchor square needs higher z-index so multi-tile image paints above extension squares
         if (placement && !placement._occupied) {
@@ -800,22 +827,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               }
             }}
           >
-            {/* Ranged attack icon */}
-            {highlightIcon && !isWithinActivePieceFootprint && (
-              <span className={styles["ranged-icon"]} style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                fontSize: `${squareSize * 0.4}px`,
-                pointerEvents: 'none',
-                zIndex: 5,
-                backgroundColor: isLight ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.6)',
-                borderRadius: '4px',
-                padding: '2px 4px'
-              }}>
-                {highlightIcon}
-              </span>
+            {!isWithinActivePieceFootprint && (
+              <SquareHighlightOverlay
+                highlightStyle={highlightStyle}
+                highlightIcon={highlightIcon}
+                canHopCapture={canHopCapture}
+                squareSize={squareSize}
+                isLight={isLight}
+              />
             )}
             {placement && !placement._occupied && (() => {
               const placePw = placement.piece_width || 1;
@@ -1096,86 +1115,23 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       </div>
 
       <div className={styles["board-placement-preview"]}>
-        <div className={styles["preview-legend"]} style={{
-          width: `${boardDimensions.boardWidth}px`,
-          fontSize: '0.85rem',
-          marginBottom: '0.5rem',
-          margin: '0 auto 0.5rem'
-        }}>
-          <div className={styles["legend-row"]} style={{ flexWrap: 'wrap', gap: '6px 12px' }}>
-            <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '2px solid #2196F3', width: '14px', height: '14px' }}></div>
-              <span>Move</span>
-            </div>
-            <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '2px solid #9C27B0', width: '14px', height: '14px' }}></div>
-              <span>1st Move</span>
-            </div>
-            <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '2px solid #FF9800', width: '14px', height: '14px' }}></div>
-              <span>Attack</span>
-            </div>
-            <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '2px solid #E91E63', width: '14px', height: '14px' }}></div>
-              <span>1st Attack</span>
-            </div>
-            <div className={styles["legend-item"]}>
-              <div className={styles["legend-square"]} style={{ border: '2px solid #f44336', width: '14px', height: '14px' }}></div>
-              <span>Range</span>
-            </div>
-            <div className={styles["legend-item"]} style={{ gap: '3px' }}>
-              <span style={{ fontSize: '0.9rem' }}>♔</span>
-              <span>Mate</span>
-            </div>
-            <div className={styles["legend-item"]} style={{ gap: '3px' }}>
-              <span style={{ fontSize: '0.9rem' }}>⚔️</span>
-              <span>Capture</span>
-            </div>
-            {Array.from({ length: gameData.player_count || 2 }, (_, i) => i + 1).map(playerId => (
-              <div key={playerId} className={styles["legend-item"]}>
-                <div 
-                  className={styles["legend-player-dot"]} 
-                  style={{ 
-                    background: getPlayerColor(playerId),
-                    border: playerId === 1 ? '1px solid #666' : '1px solid #fff',
-                    width: '12px',
-                    height: '12px'
-                  }}
-                ></div>
-                <span>P{playerId}</span>
-              </div>
-            ))}
-            {/* Special squares legend (from Step 3) */}
-            {hasSpecialSquares && (
-              <>
-                {Object.keys(specialSquaresData.range).length > 0 && (
-                  <div className={styles["legend-item"]}>
-                    <div className={styles["legend-square"]} style={{ boxShadow: 'inset 0 0 0 2px #ff8c00', width: '14px', height: '14px' }}></div>
-                    <span>Range Sq</span>
-                  </div>
-                )}
-                {Object.keys(specialSquaresData.promotion).length > 0 && (
-                  <div className={styles["legend-item"]}>
-                    <div className={styles["legend-square"]} style={{ boxShadow: 'inset 0 0 0 2px #4b0082', width: '14px', height: '14px' }}></div>
-                    <span>Promo Sq</span>
-                  </div>
-                )}
-                {Object.keys(specialSquaresData.control).length > 0 && (
-                  <div className={styles["legend-item"]}>
-                    <div className={styles["legend-square"]} style={{ boxShadow: 'inset 0 0 0 2px #32CD32', width: '14px', height: '14px' }}></div>
-                    <span>Control Sq</span>
-                  </div>
-                )}
-                {Object.keys(specialSquaresData.custom).length > 0 && (
-                  <div className={styles["legend-item"]}>
-                    <div className={styles["legend-square"]} style={{ boxShadow: 'inset 0 0 0 2px #ffd700', width: '14px', height: '14px' }}></div>
-                    <span>Custom Sq</span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+        <BoardLegend
+          labelStyle="short"
+          showCheckmate
+          showCaptureLoss
+          players={Array.from({ length: gameData.player_count || 2 }, (_, i) => ({
+            id: i + 1,
+            color: getPlayerColor(i + 1),
+            border: (i + 1) === 1 ? '#666' : '#fff',
+          }))}
+          specialSquares={hasSpecialSquares ? {
+            range: Object.keys(specialSquaresData.range).length > 0,
+            promotion: Object.keys(specialSquaresData.promotion).length > 0,
+            control: Object.keys(specialSquaresData.control).length > 0,
+            custom: Object.keys(specialSquaresData.custom).length > 0,
+          } : null}
+          maxWidth={boardDimensions.boardWidth + 30}
+        />
         <div 
           className={styles["placement-board"]}
           style={{
@@ -1184,7 +1140,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             gridTemplateColumns: `repeat(${gameData.board_width}, ${boardDimensions.squareSize}px)`,
             border: '1px solid var(--board-border, #333)',
             borderRadius: '5px',
-            padding: '15px',
+            padding: '10px',
             gap: 0,
             overflow: 'hidden',
             width: 'fit-content',

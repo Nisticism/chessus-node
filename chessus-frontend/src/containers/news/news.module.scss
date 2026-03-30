@@ -109,6 +109,15 @@
   font-style: italic;
 }
 
+.author-link {
+  color: var(--accent-primary);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 .article-image {
   margin-bottom: 20px;
   border-radius: 8px;

@@ -6,6 +6,7 @@ import styles from "./livegame.module.scss";
 import soundManager from "../../utils/soundEffects";
 import PromotionModal from "./PromotionModal";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import BoardLegend from "../common/BoardLegend";
 import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
@@ -3035,16 +3036,25 @@ const LiveGame = () => {
 
   // Check if user can join this game (for join button in waiting banner)
   const isHost = gameState.hostId === currentUser?.id || (socket?.id && gameState.hostId === `anon_${socket.id}`);
-  const isPlayer = !!gameState.players?.some((player) => player.id === currentUser?.id);
-  const canSpectate = gameState.allowSpectators !== false || isPlayer;
+  const isPlayer = !!gameState.players?.some((player) => player.id === currentUser?.id || (socket?.id && player.id === `anon_${socket.id}`));
+  const canSpectate = gameState.allowSpectators !== false || isPlayer || gameState.status === 'waiting' || gameState.status === 'ready';
   const gameUrl = `${window.location.origin}/play/${gameId}`;
 
   if (!canSpectate) {
     return (
       <div className={styles["live-game-container"]}>
         <div className={styles["error-container"]}>
-          <h2>Spectating Disabled</h2>
-          <p>Spectators are not allowed for this game.</p>
+          {!currentUser ? (
+            <>
+              <h2>Login Required</h2>
+              <p>Please log in to play or spectate this game.</p>
+            </>
+          ) : (
+            <>
+              <h2>Spectating Disabled</h2>
+              <p>Spectators are not allowed for this game.</p>
+            </>
+          )}
           <div className={styles["action-buttons"]}>
             {!currentUser && (
               <button
@@ -3404,45 +3414,42 @@ const LiveGame = () => {
       {/* Special Squares Legend Row - below board and clocks */}
       {hasSpecialSquares && (
         <div className={styles["layout-row-legend"]}>
-          <div className={styles["special-squares-legend"]}>
-            {Object.keys(specialSquares.range).length > 0 && (
-              <div className={styles["legend-item"]}>
-                <div className={`${styles["legend-color"]} ${styles.range}`}></div>
-                <span>Range</span>
-              </div>
-            )}
-            {Object.keys(specialSquares.control).length > 0 && (
-              <div className={styles["legend-item"]}>
-                <div className={`${styles["legend-color"]} ${styles.control}`}></div>
-                <span>Control</span>
-              </div>
-            )}
-            {Object.keys(specialSquares.special).length > 0 && (
-              <div className={styles["legend-item"]}>
-                <div className={`${styles["legend-color"]} ${styles.special}`}></div>
-                <span>Special</span>
-              </div>
-            )}
-          </div>
+          <BoardLegend
+            showMove={false}
+            showFirstMove={false}
+            showAttack={false}
+            showFirstAttack={false}
+            showRanged={false}
+            showHopCapture={false}
+            specialSquares={{
+              range: Object.keys(specialSquares.range).length > 0,
+              control: Object.keys(specialSquares.control).length > 0,
+              special: Object.keys(specialSquares.special).length > 0,
+            }}
+          />
           
           {/* Control Square Progress Tracking */}
-          {Object.keys(specialSquares.control).length > 0 && gameState.controlSquareTracking && (
+          {Object.keys(specialSquares.control).length > 0 && (
             <div className={styles["control-square-progress"]}>
+              <div className={styles["control-progress-tooltip"]} title="Shows each player's progress toward winning by controlling special squares. A player must keep at least one piece on a control square for the required number of consecutive turns to win.">
+                <span className={styles["control-progress-tooltip-icon"]}>ⓘ</span>
+                <span>Control Square Progress</span>
+              </div>
               {(() => {
-                const byPlayer = gameState.controlSquareTracking.byPlayer || {};
-                const bySquare = gameState.controlSquareTracking.bySquare || {};
+                const byPlayer = gameState.controlSquareTracking?.byPlayer || {};
+                const bySquare = gameState.controlSquareTracking?.bySquare || {};
                 // Get turnsRequired from the first control square config
                 const firstConfig = Object.values(specialSquares.control)[0] || {};
                 const turnsRequired = firstConfig.turnsRequired || 1;
                 const halfTurnsRequired = turnsRequired * 2;
 
-                return Object.entries(byPlayer).map(([playerPosition, tracking]) => {
-                  const controllingPlayer = gameState.players?.find(p => 
-                    p.position === parseInt(playerPosition)
-                  );
-                  const turnsControlled = Math.floor(tracking.halfTurns / 2);
+                return (gameState.players || []).map((player) => {
+                  const playerPosition = player.position;
+                  const tracking = byPlayer[playerPosition];
+                  const halfTurns = tracking?.halfTurns || 0;
+                  const turnsControlled = Math.floor(halfTurns / 2);
                   const turnsRemaining = turnsRequired - turnsControlled;
-                  const progressPercent = Math.min(100, (tracking.halfTurns / halfTurnsRequired) * 100);
+                  const progressPercent = Math.min(100, (halfTurns / halfTurnsRequired) * 100);
                   
                   // Find which squares this player controls (for label)
                   const controlledSquares = Object.entries(bySquare)
@@ -3452,12 +3459,14 @@ const LiveGame = () => {
                       return `${String.fromCharCode(97 + col)}${row + 1}`;
                     });
 
+                  const isControlling = controlledSquares.length > 0;
+
                   return (
                     <div key={playerPosition} className={styles["control-progress-item"]}>
                       <div className={styles["control-progress-header"]}>
                         <span className={styles["control-square-label"]}>{controlledSquares.join(', ') || '—'}</span>
                         <span className={styles["control-player-name"]}>
-                          {controllingPlayer?.username || `Player ${playerPosition}`}
+                          {player.username || `Player ${playerPosition}`}
                         </span>
                       </div>
                       <div className={styles["control-progress-bar-container"]}>
@@ -3466,7 +3475,9 @@ const LiveGame = () => {
                           style={{ width: `${progressPercent}%` }}
                         />
                         <span className={styles["control-progress-text"]}>
-                          {turnsRemaining > 0 ? `${turnsRemaining} turn${turnsRemaining !== 1 ? 's' : ''} to win` : 'Victory!'}
+                          {isControlling
+                            ? (turnsRemaining > 0 ? `${turnsRemaining} turn${turnsRemaining !== 1 ? 's' : ''} to win` : 'Victory!')
+                            : '\u00A0'}
                         </span>
                       </div>
                     </div>
@@ -3745,6 +3756,7 @@ const LiveGame = () => {
       {showGameOver && gameOverData && (
         <div className={styles["game-over-overlay"]} onClick={() => setShowGameOver(false)}>
           <div className={styles["game-over-modal"]} onClick={(e) => e.stopPropagation()}>
+            <button className={styles["modal-close-btn"]} onClick={() => setShowGameOver(false)} aria-label="Close">&times;</button>
             <h2>Game Over</h2>
             <div className={`
               ${styles.result}

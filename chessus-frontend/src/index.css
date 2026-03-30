@@ -200,6 +200,10 @@ code {
 
   /* Teal accent */
   --color-teal: #2ecc71;
+
+  /* Last-move highlight colors */
+  --last-move-from: rgba(200, 170, 80, 0.3);
+  --last-move-to: rgba(80, 180, 140, 0.4);
 }
 
 /* ======= CLASSIC THEME (Original blue) ======= */
@@ -278,6 +282,10 @@ code {
 
   /* Teal accent */
   --color-teal: #4ecdc4;
+
+  /* Last-move highlight colors */
+  --last-move-from: rgba(140, 130, 200, 0.3);
+  --last-move-to: rgba(80, 150, 210, 0.35);
 }
 
 /* Global mobile responsive utilities */

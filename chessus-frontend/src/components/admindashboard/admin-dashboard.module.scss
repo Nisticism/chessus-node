@@ -79,7 +79,7 @@
     
     tr th {
       padding: 15px;
-      text-align: left;
+      text-align: center;
       font-weight: 700;
       font-size: 0.95rem;
       text-transform: uppercase;
@@ -100,6 +100,7 @@
 
       td {
         padding: 15px;
+        text-align: center;
         color: var(--text-muted);
         font-size: 0.95rem;
       }

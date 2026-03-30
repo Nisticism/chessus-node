@@ -2085,6 +2085,34 @@ Join us in revolutionizing chess, one variant at a time.
     console.error('Error adding show_display_name column:', err.message);
   }
 
+  // Add created_at column to pieces table
+  try {
+    const piecesCreatedAt = await columnExists('pieces', 'created_at');
+    if (!piecesCreatedAt) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP`,
+        "Add created_at column to pieces table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding created_at to pieces:', err.message);
+  }
+
+  // Add created_at column to game_types table
+  try {
+    const gameTypesCreatedAt = await columnExists('game_types', 'created_at');
+    if (!gameTypesCreatedAt) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP`,
+        "Add created_at column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding created_at to game_types:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('âœ“ All migrations up to date\n');
   } else {

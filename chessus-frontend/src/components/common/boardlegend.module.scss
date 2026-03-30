@@ -1,0 +1,104 @@
+/* Shared board legend styles — used across all board views */
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  margin: 0 auto 0.75rem;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.title {
+  font-size: 0.85em;
+  color: #999;
+  margin-bottom: 2px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  justify-content: center;
+  align-items: center;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+/* Swatches — colors match getSquareHighlightStyle() in pieceMovementUtils.js */
+
+.swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.move {
+  outline: 3px solid rgba(33, 150, 243, 0.55);
+  outline-offset: -3px;
+  background: rgba(33, 150, 243, 0.1);
+}
+
+.firstMove {
+  outline: 3px solid rgba(156, 39, 176, 0.55);
+  outline-offset: -3px;
+  background: rgba(156, 39, 176, 0.1);
+}
+
+.attack {
+  outline: 3px solid rgba(255, 152, 0, 0.55);
+  outline-offset: -3px;
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.firstAttack {
+  outline: 3px solid rgba(233, 30, 99, 0.55);
+  outline-offset: -3px;
+  background: rgba(233, 30, 99, 0.1);
+}
+
+.moveAttack {
+  border-top: 3px solid rgba(33, 150, 243, 0.55);
+  border-left: 3px solid rgba(33, 150, 243, 0.55);
+  border-bottom: 3px solid rgba(255, 152, 0, 0.55);
+  border-right: 3px solid rgba(255, 152, 0, 0.55);
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.1) 50%, rgba(255, 152, 0, 0.1) 50%);
+}
+
+.ranged {
+  outline: 3px solid rgba(244, 67, 54, 0.55);
+  outline-offset: -3px;
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.hopCapture {
+  outline: 3px solid rgba(76, 175, 80, 0.7);
+  outline-offset: -3px;
+  background: rgba(76, 175, 80, 0.2);
+}
+
+.iconSwatch {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  font-size: 0.95em;
+}
+
+.playerDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}

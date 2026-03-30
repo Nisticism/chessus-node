@@ -8,6 +8,7 @@ import styles from "./sandbox.module.scss";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import SquareHighlightOverlay from "../../components/common/SquareHighlightOverlay";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 const MAX_SANDBOXES = 4;
@@ -40,10 +41,6 @@ const Sandbox = () => {
       setPiecesLoading(true);
       try {
         const response = await PiecesService.getPiecesWithMovement();
-        console.log('Loaded pieces with movement:', response.data?.length, 'pieces');
-        if (response.data?.length > 0) {
-          console.log('Sample piece data:', response.data[0]);
-        }
         setFullPiecesList(response.data || []);
       } catch (err) {
         console.error('Failed to load pieces with movement:', err);
@@ -52,7 +49,6 @@ const Sandbox = () => {
           const fallbackResponse = await PiecesService.getPieces();
           const fallbackData = fallbackResponse.data;
           const fallbackPieces = Array.isArray(fallbackData) ? fallbackData : (fallbackData?.pieces || []);
-          console.log('Fallback: Loaded regular pieces:', fallbackPieces.length);
           setFullPiecesList(fallbackPieces);
         } catch (fallbackErr) {
           console.error('Fallback also failed:', fallbackErr);
@@ -100,6 +96,7 @@ const Sandbox = () => {
   const [rightClickPosition, setRightClickPosition] = useState(null);
   const [rightClickMode, setRightClickMode] = useState('piece'); // 'piece' or 'special'
   const [isMobile, setIsMobile] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const longPressTimeoutRef = useRef(null);
   
   // Ranged attack state
@@ -115,14 +112,19 @@ const Sandbox = () => {
     setIsMobile(isMobileDevice());
   }, []);
 
+  // Track window width for responsive board sizing
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Load from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('chessus-sandboxes');
-    console.log('Loading sandboxes from localStorage:', saved);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        console.log('Parsed sandboxes:', parsed, 'Length:', parsed?.length);
         if (Array.isArray(parsed)) {
           setSandboxes(parsed.slice(0, MAX_SANDBOXES));
           if (parsed.length > 0) {
@@ -317,27 +319,21 @@ const Sandbox = () => {
       return;
     }
     
-    console.log('Loading game type:', gameType.game_name);
-    
     // Fetch fresh game data from the server (includes junction table pieces)
     let freshGameData = gameType;
     try {
       freshGameData = await dispatch(getGameById(gameType.id));
-      console.log('Fetched fresh game data:', freshGameData);
     } catch (err) {
       console.warn('Failed to fetch fresh game data, using cached:', err);
     }
     
     // The field is called pieces_string in the database, not piece_layout
     const pieceLayoutRaw = freshGameData.pieces_string || freshGameData.piece_layout;
-    console.log('Piece layout raw:', pieceLayoutRaw);
-    console.log('Available pieces in library:', fullPiecesList.length);
     
     let pieces = [];
     if (pieceLayoutRaw) {
       try {
         const parsedLayout = JSON.parse(pieceLayoutRaw);
-        console.log('Parsed layout:', parsedLayout);
         
         // Convert to array format - handle both object {"row,col": {...}} and array [{...}] formats
         let layout;
@@ -357,23 +353,18 @@ const Sandbox = () => {
           layout = [];
         }
         
-        console.log('Converted layout to array:', layout);
-        
         // Enrich each piece with full movement data
         pieces = await Promise.all(layout.map(async (p, index) => {
           const pieceId = p.piece_id || p.id;
-          console.log(`Processing piece ${index}:`, { pieceId, raw: p });
           
           // Try to find in our cached full pieces first
           let fullPiece = getFullPieceData(pieceId);
-          console.log(`Found in cache for piece ${pieceId}:`, fullPiece ? 'yes' : 'no');
           
           // If not found, fetch it individually
           if (!fullPiece && pieceId) {
             try {
               const response = await PiecesService.getPieceById(pieceId);
               fullPiece = response.data;
-              console.log(`Fetched piece ${pieceId} from API:`, fullPiece);
             } catch (err) {
               console.error('Failed to fetch piece:', pieceId, err);
             }
@@ -432,15 +423,12 @@ const Sandbox = () => {
             player_id: playerId
           };
           
-          console.log(`Result piece ${index}:`, resultPiece);
           return resultPiece;
         }));
       } catch (e) {
         console.error('Failed to parse piece layout:', e);
       }
     }
-    
-    console.log('Final pieces array:', pieces);
     
     const newSandbox = {
       id: Date.now(),
@@ -1222,11 +1210,38 @@ const Sandbox = () => {
     const dx = Math.sign(toX - fromX);
     const dy = Math.sign(toY - fromY);
     
-    // L-shape or knight-like move - no path checking needed
+    // L-shape or knight-like move
     const xDiff = Math.abs(toX - fromX);
     const yDiff = Math.abs(toY - fromY);
     if (xDiff !== yDiff && xDiff !== 0 && yDiff !== 0) {
-      return true;
+      // If piece can hop over both allies and enemies, no path check needed
+      if (canHopAllies && canHopEnemies) return true;
+
+      // Non-hopping ratio piece: check both L-paths, valid if EITHER is clear
+      const signX = dx;
+      const signY = dy;
+      const checkLPath = (squares) => {
+        for (const [sx, sy] of squares) {
+          const bp = findPieceAt(pieces, sx, sy);
+          if (bp && bp.id !== movingPieceId) {
+            const bTeam = bp.player_id || bp.team;
+            const isAlly = bTeam === pieceTeam;
+            if (isAlly && !canHopAllies) return false;
+            if (!isAlly && !canHopEnemies) return false;
+          }
+        }
+        return true;
+      };
+      // Path 1: horizontal first, then vertical
+      const path1 = [];
+      for (let i = 1; i <= xDiff; i++) path1.push([fromX + signX * i, fromY]);
+      for (let j = 1; j < yDiff; j++) path1.push([toX, fromY + signY * j]);
+      // Path 2: vertical first, then horizontal
+      const path2 = [];
+      for (let j = 1; j <= yDiff; j++) path2.push([fromX, fromY + signY * j]);
+      for (let i = 1; i < xDiff; i++) path2.push([fromX + signX * i, toY]);
+
+      return checkLPath(path1) || checkLPath(path2);
     }
 
     let x = fromX + dx;
@@ -2267,7 +2282,8 @@ const Sandbox = () => {
     const boardWidth = activeSandbox.gameType.board_width || 8;
     const boardHeight = activeSandbox.gameType.board_height || 8;
     // Calculate square size to fit within max dimensions while keeping squares square
-    const maxBoardSize = 600;
+    // Account for layout: stacked (≤900px) vs sidebar (>900px), plus board border/padding
+    const maxBoardSize = Math.min(600, windowWidth <= 1200 ? windowWidth - 90 : windowWidth - 650);
     const squareSize = Math.min(60, maxBoardSize / Math.max(boardWidth, boardHeight));
     const pieces = activeSandbox.pieces;
     const specialSquares = activeSandbox.specialSquares || {};
@@ -2380,45 +2396,13 @@ const Sandbox = () => {
               ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {})
             }}
           >
-            {(activeHighlightStyle.outline || activeHighlightStyle.borderTop) && (
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: activeHighlightStyle.background,
-                outline: activeHighlightStyle.outline || 'none',
-                outlineOffset: activeHighlightStyle.outlineOffset || 0,
-                borderTop: activeHighlightStyle.borderTop || 'none',
-                borderLeft: activeHighlightStyle.borderLeft || 'none',
-                borderBottom: activeHighlightStyle.borderBottom || 'none',
-                borderRight: activeHighlightStyle.borderRight || 'none',
-                boxSizing: 'border-box',
-                zIndex: 8,
-                pointerEvents: 'none',
-                borderRadius: '2px',
-              }} />
-            )}
-            {activeHighlightIcon && (
-              <span className={styles["ranged-icon"]}>{activeHighlightIcon}</span>
-            )}
-            {showHopCaptureOverlay && (
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                outline: '3px solid rgba(76, 175, 80, 0.7)',
-                outlineOffset: '-3px',
-                boxShadow: 'inset 0 0 0 100px rgba(76, 175, 80, 0.2)',
-                boxSizing: 'border-box',
-                zIndex: 9,
-                pointerEvents: 'none',
-                borderRadius: '2px',
-              }} />
-            )}
+            <SquareHighlightOverlay
+              highlightStyle={activeHighlightStyle}
+              highlightIcon={activeHighlightIcon}
+              canHopCapture={showHopCaptureOverlay}
+              squareSize={squareSize}
+              isLight={isLight}
+            />
             {isAnchor && (() => {
               const pw = piece.piece_width || 1;
               const ph = piece.piece_height || 1;

@@ -424,7 +424,8 @@ const getPieceById = async (pieceId) => {
       p.free_move_after_promotion,
       p.promotion_pieces_ids,
       p.can_capture_allies,
-      p.cannot_be_captured
+      p.cannot_be_captured,
+      p.created_at
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     WHERE p.id = ?

@@ -631,7 +631,7 @@ const AdminDashboard = () => {
               <td>{game.game_name || 'Unnamed'}</td>
               <td>{game.status}</td>
               <td style={{ fontFamily: 'monospace', letterSpacing: '2px' }}>{game.invite_code}</td>
-              <td>{game.turn_length ? `${game.turn_length / 60}+${game.increment || 0}` : 'N/A'}</td>
+              <td>{game.turn_length ? `${game.turn_length}+${game.increment || 0}` : 'No limit'}</td>
               <td>{game.created_at ? formatDateTime(game.created_at) : 'N/A'}</td>
               <td>{game.start_time ? formatDateTime(game.start_time) : 'Not started'}</td>
               <td>{game.end_time ? formatDateTime(game.end_time) : 'In progress'}</td>

@@ -505,6 +505,9 @@ const PieceView = () => {
             {pieceToDisplay.creator_username && (
               <p className={styles["creator"]}>
                 Created by <Link to={`/profile/${pieceToDisplay.creator_username}`}>{pieceToDisplay.creator_username}</Link>
+                {pieceToDisplay.created_at && (
+                  <> on {new Date(pieceToDisplay.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</>
+                )}
               </p>
             )}
           </div>
