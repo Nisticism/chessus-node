@@ -113,6 +113,9 @@ const PlayerList = () => {
         <div className={styles["item-count"]}>
           {totalCount} {friendsOnly ? 'friends' : 'registered players'}
         </div>
+        <Link to="/community/leaderboard" style={{ color: 'var(--accent-primary)', fontSize: '1rem', textDecoration: 'none', marginTop: '5px' }}>
+          View Leaderboard →
+        </Link>
       </div>
 
       <div className={styles["filter-bar"]}>
@@ -188,6 +191,7 @@ const PlayerList = () => {
                     <img 
                       src={`${process.env.REACT_APP_ASSET_URL || ""}${user.profile_picture}`}
                       alt={user.username}
+                      loading="lazy"
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   ) : (

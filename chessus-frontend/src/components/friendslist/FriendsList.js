@@ -81,6 +81,7 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride, 
                     : DefaultAvatar
                 }
                 alt={friend.username}
+                loading="lazy"
                 className={styles["friend-avatar"]}
               />
               {isOnline(friend.id) && (

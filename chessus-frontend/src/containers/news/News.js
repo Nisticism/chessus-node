@@ -83,6 +83,7 @@ const News = () => {
                       <img 
                         src={newsItem.image_url} 
                         alt={newsItem.title}
+                        loading="lazy"
                         onClick={(event) => {handleImageClick(event, newsItem.url)}}
                       />
                     </div>

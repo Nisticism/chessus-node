@@ -158,6 +158,7 @@ const Streams = () => {
                   <img 
                     src={getImageUrl(stream.thumbnail_url)} 
                     alt={stream.title}
+                    loading="lazy"
                     className={styles["thumbnail-image"]}
                     onError={(e) => {
                       e.target.style.display = 'none';

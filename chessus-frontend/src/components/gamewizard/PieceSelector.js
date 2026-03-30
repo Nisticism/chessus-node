@@ -376,7 +376,7 @@ const PieceSelector = ({
                   >
                     <div className={styles["piece-thumbnail"]}>
                       {thumbnail ? (
-                        <img src={thumbnail} alt={piece.piece_name} />
+                        <img src={thumbnail} alt={piece.piece_name} loading="lazy" />
                       ) : (
                         <div className={styles["no-image"]}>
                           {piece.piece_name.charAt(0).toUpperCase()}
@@ -447,7 +447,7 @@ const PieceSelector = ({
                   className={`${styles["image-option"]} ${selectedImageUrl === imageUrl ? styles["selected"] : ""}`}
                   onClick={() => setSelectedImageUrl(imageUrl)}
                 >
-                  <img src={imageUrl} alt={`Option ${index + 1}`} />
+                  <img src={imageUrl} alt={`Option ${index + 1}`} loading="lazy" />
                 </div>
               ))}
             </div>
