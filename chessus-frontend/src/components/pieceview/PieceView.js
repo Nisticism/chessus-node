@@ -195,6 +195,8 @@ const PieceView = () => {
       can_capture_enemy_via_range: !!piece.can_capture_enemy_via_range,
       can_hop_over_allies: !!piece.can_hop_over_allies,
       can_hop_over_enemies: !!piece.can_hop_over_enemies,
+      exact_ratio_hop_only: !!piece.exact_ratio_hop_only,
+      directional_hop_disabled: !!piece.directional_hop_disabled,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -356,6 +358,8 @@ const PieceView = () => {
       can_capture_enemy_via_range: !!piece.can_capture_enemy_via_range,
       can_hop_over_allies: !!piece.can_hop_over_allies,
       can_hop_over_enemies: !!piece.can_hop_over_enemies,
+      exact_ratio_hop_only: !!piece.exact_ratio_hop_only,
+      directional_hop_disabled: !!piece.directional_hop_disabled,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -723,6 +727,18 @@ const PieceView = () => {
               <div className={styles["modifier-badge"]}>
                 <span className={styles["modifier-icon"]}>🦘</span>
                 Hop Over Enemies
+              </div>
+            )}
+            {pieceToDisplay.exact_ratio_hop_only && (
+              <div className={styles["modifier-badge"]}>
+                <span className={styles["modifier-icon"]}>⤵️</span>
+                Require Hopping for Exact/Ratio Movement
+              </div>
+            )}
+            {pieceToDisplay.directional_hop_disabled && (
+              <div className={styles["modifier-badge"]}>
+                <span className={styles["modifier-icon"]}>🚫</span>
+                Hopping Disabled for Directional Movement
               </div>
             )}
             {pieceToDisplay.min_turns_per_move != null && pieceToDisplay.min_turns_per_move > 0 && (
