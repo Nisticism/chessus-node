@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, Navigate, useParams } from "react-router-dom";
-import { isEmail } from "validator";
 import { edit } from "../../actions/auth";
 import styles from "./edit-account.module.scss";
 import NotFound from "../notfound/NotFound";
@@ -9,67 +8,6 @@ import axios from "axios";
 import API_URL from "../../global/global";
 import StandardButton from "../standardbutton/StandardButton";
 import BioSection from "../biosection/BioSection";
-// import { response } from "express";
-
-const required = (value) => {
-  if (!value) {
-    return (
-      <div className="alert alert-danger" role="alert">
-        This field is required!
-      </div>
-    );
-  }
-};
-
-const validEmail = (value) => {
-  if (!isEmail(value)) {
-    return (
-      <div className="alert alert-danger" role="alert">
-        This is not a valid email.
-      </div>
-    );
-  }
-};
-
-const vusername = (value) => {
-  if (value.length < 3 || value.length > 20) {
-    return (
-      <div className="alert alert-danger" role="alert">
-        The username must be between 3 and 20 characters.
-      </div>
-    );
-  }
-};
-
-const vFirstName = (value) => {
-  if (value.length < 1 || value.length > 20) {
-    return (
-      <div className="alert alert-danger" role="alert">
-        The first name must be between 1 and 20 characters.
-      </div>
-    )
-  }
-}
-
-const vLastName = (value) => {
-  if (value.length < 1 || value.length > 20) {
-    return (
-      <div className="alert alert-danger" role="alert">
-        The last name must be between 1 and 20 characters.
-      </div>
-    )
-  }
-}
-
-const vpassword = (value) => {
-  if (value.length < 6 || value.length > 40) {
-    return (
-      <div className="alert alert-danger" role="alert">
-        The password must be between 6 and 40 characters.
-      </div>
-    );
-  }
-};
 
 const EditAccount = (props) => {
 
@@ -86,18 +24,19 @@ const EditAccount = (props) => {
   const [firstName, setFirstName] = useState(currentUser && currentUser.first_name ? currentUser.first_name : "");
   const [lastName, setLastName] = useState(currentUser && currentUser.last_name ? currentUser.last_name : "");
   const [bio, setBio] = useState(currentUser && currentUser.bio ? currentUser.bio : "");
+  const [showDisplayName, setShowDisplayName] = useState(currentUser && currentUser.show_display_name ? true : false);
   const [profilePicture, setProfilePicture] = useState(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState(currentUser && currentUser.profile_picture ? currentUser.profile_picture : null);
   const [uploadingPicture, setUploadingPicture] = useState(false);
-  const [successful, setSuccessful] = useState(false);
+  const [successful] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
   const [bannerMessage, setBannerMessage] = useState("");
   const [bannerType, setBannerType] = useState("success"); // "success" or "error"
-  const { message: message } = useSelector((state) => state.message);
-  const { editSuccess: editSuccess } = useSelector((state) => state.authReducer);
+  const { message } = useSelector((state) => state.message);
+  const { editSuccess } = useSelector((state) => state.authReducer);
   const { username: usernameNav } = useSelector((state) => state.authReducer.user);
   const { username: playerPageNav } = useSelector((state) => state.authReducer.playerPage ? state.authReducer.playerPage : "");
   const dispatch = useDispatch();
@@ -231,6 +170,7 @@ const EditAccount = (props) => {
           setFirstName(res.data.result.first_name);
           setLastName(res.data.result.last_name);
           setBio((res.data.result.bio ? res.data.result.bio : ""));
+          setShowDisplayName(res.data.result.show_display_name ? true : false);
         }
       }
     })
@@ -263,7 +203,7 @@ const EditAccount = (props) => {
       console.log("old password: " + oldPassword + " new password: " + password);
       console.log("logged in password: " + currentUser.password);
     if (currentUser.role === "Admin") {
-    dispatch(edit(userInfo, username, password, email, firstName, lastName, bio, userInfo.id, currentUser.id))
+    dispatch(edit(userInfo, username, password, email, firstName, lastName, bio, userInfo.id, currentUser.id, null, showDisplayName))
       .then(() => {
         console.log("user updated by adimn from the editaccount.js page")
         // Navigate to the edited user's profile with success state
@@ -284,7 +224,7 @@ const EditAccount = (props) => {
     }
     else {
       console.log(id);
-      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id, oldPassword))
+      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id, oldPassword, null, showDisplayName))
         .then(() => {
           console.log("user updated from the editaccount.js page")
           // Clear password fields after successful update
@@ -394,11 +334,31 @@ const EditAccount = (props) => {
               />
 
               <div className={styles["form-card"]}>
+                <h2 className={styles["card-title"]}>Privacy Settings</h2>
+                <div className={styles["toggle-setting"]}>
+                  <label className={styles["toggle-label"]}>
+                    <span>Display name on profile</span>
+                    <p className={styles["toggle-description"]}>
+                      When enabled, your first and last name will be visible to other players on your profile page.
+                    </p>
+                  </label>
+                  <button
+                    type="button"
+                    className={`${styles["toggle-switch"]} ${showDisplayName ? styles["toggle-active"] : ""}`}
+                    onClick={() => setShowDisplayName(!showDisplayName)}
+                    aria-label="Toggle display name visibility"
+                  >
+                    <span className={styles["toggle-knob"]} />
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles["form-card"]}>
                 <h2 className={styles["card-title"]}>Profile Picture Upload</h2>
                 <div className={styles["picture-upload-container"]}>
                   <div className={styles["picture-preview"]}>
                     {profilePicturePreview ? (
-                      <img src={typeof profilePicturePreview === 'string' && profilePicturePreview.startsWith('/uploads') ? `${process.env.REACT_APP_ASSET_URL || ""}${profilePicturePreview}` : profilePicturePreview} alt="Profile preview" />
+                      <img src={typeof profilePicturePreview === 'string' && profilePicturePreview.startsWith('/uploads') ? `${process.env.REACT_APP_ASSET_URL || ""}${profilePicturePreview}` : profilePicturePreview} alt="Profile preview" loading="lazy" />
                     ) : (
                       <div style={{
                         width: '100%',

@@ -23,7 +23,7 @@ const updateUser = (updatedData) => {
   localStorage.setItem('user', JSON.stringify(user));
 }
 
-const edit = async (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword) => {
+const edit = async (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name) => {
   if (email === "") {
     email = null;
   }
@@ -47,6 +47,7 @@ const edit = async (current_user, username, password, email, first_name, last_na
     last_name,
     bio,
     id,
+    show_display_name,
   });
   
   if (response.data.result.username && (!admin_id || (response.data.result.id && response.data.result.id === admin_id))) {

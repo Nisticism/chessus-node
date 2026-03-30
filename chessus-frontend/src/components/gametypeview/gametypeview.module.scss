@@ -268,6 +268,13 @@
   text-align: left;
 }
 
+.rule-divider {
+  border: none;
+  border-top: 1px solid rgba(var(--accent-rgb), 0.2);
+  margin: 12px 0;
+  width: 100%;
+}
+
 .rule-line {
   color: var(--light-gray);
   line-height: 1.7;

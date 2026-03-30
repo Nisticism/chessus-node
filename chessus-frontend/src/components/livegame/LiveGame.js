@@ -3428,42 +3428,51 @@ const LiveGame = () => {
           {/* Control Square Progress Tracking */}
           {Object.keys(specialSquares.control).length > 0 && gameState.controlSquareTracking && (
             <div className={styles["control-square-progress"]}>
-              {Object.entries(specialSquares.control).map(([squareKey, config]) => {
-                const tracking = gameState.controlSquareTracking[squareKey];
-                const turnsRequired = config.turnsRequired || 1;
+              {(() => {
+                const byPlayer = gameState.controlSquareTracking.byPlayer || {};
+                const bySquare = gameState.controlSquareTracking.bySquare || {};
+                // Get turnsRequired from the first control square config
+                const firstConfig = Object.values(specialSquares.control)[0] || {};
+                const turnsRequired = firstConfig.turnsRequired || 1;
                 const halfTurnsRequired = turnsRequired * 2;
-                const [row, col] = squareKey.split(',').map(Number);
-                const squareLabel = `${String.fromCharCode(97 + col)}${row + 1}`;
-                
-                if (!tracking) return null;
-                
-                const controllingPlayer = gameState.players?.find(p => 
-                  p.position === tracking.playerId || p.id === tracking.playerId
-                );
-                const turnsControlled = Math.floor(tracking.halfTurns / 2);
-                const turnsRemaining = turnsRequired - turnsControlled;
-                const progressPercent = Math.min(100, (tracking.halfTurns / halfTurnsRequired) * 100);
-                
-                return (
-                  <div key={squareKey} className={styles["control-progress-item"]}>
-                    <div className={styles["control-progress-header"]}>
-                      <span className={styles["control-square-label"]}>{squareLabel}</span>
-                      <span className={styles["control-player-name"]}>
-                        {controllingPlayer?.username || `Player ${tracking.playerId}`}
-                      </span>
+
+                return Object.entries(byPlayer).map(([playerPosition, tracking]) => {
+                  const controllingPlayer = gameState.players?.find(p => 
+                    p.position === parseInt(playerPosition)
+                  );
+                  const turnsControlled = Math.floor(tracking.halfTurns / 2);
+                  const turnsRemaining = turnsRequired - turnsControlled;
+                  const progressPercent = Math.min(100, (tracking.halfTurns / halfTurnsRequired) * 100);
+                  
+                  // Find which squares this player controls (for label)
+                  const controlledSquares = Object.entries(bySquare)
+                    .filter(([, sq]) => parseInt(sq.playerId) === parseInt(playerPosition))
+                    .map(([key]) => {
+                      const [row, col] = key.split(',').map(Number);
+                      return `${String.fromCharCode(97 + col)}${row + 1}`;
+                    });
+
+                  return (
+                    <div key={playerPosition} className={styles["control-progress-item"]}>
+                      <div className={styles["control-progress-header"]}>
+                        <span className={styles["control-square-label"]}>{controlledSquares.join(', ') || '—'}</span>
+                        <span className={styles["control-player-name"]}>
+                          {controllingPlayer?.username || `Player ${playerPosition}`}
+                        </span>
+                      </div>
+                      <div className={styles["control-progress-bar-container"]}>
+                        <div 
+                          className={styles["control-progress-bar"]}
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                        <span className={styles["control-progress-text"]}>
+                          {turnsRemaining > 0 ? `${turnsRemaining} turn${turnsRemaining !== 1 ? 's' : ''} to win` : 'Victory!'}
+                        </span>
+                      </div>
                     </div>
-                    <div className={styles["control-progress-bar-container"]}>
-                      <div 
-                        className={styles["control-progress-bar"]}
-                        style={{ width: `${progressPercent}%` }}
-                      />
-                      <span className={styles["control-progress-text"]}>
-                        {turnsRemaining > 0 ? `${turnsRemaining} turn${turnsRemaining !== 1 ? 's' : ''} to win` : 'Victory!'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           )}
         </div>

@@ -59,7 +59,7 @@
 
 .table-header {
   display: grid;
-  grid-template-columns: 100px 1fr 1fr 150px;
+  grid-template-columns: 100px 1fr 150px;
   background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
   padding: 20px 25px;
   font-weight: 700;
@@ -72,7 +72,7 @@
 .table-body {
   .table-row {
     display: grid;
-    grid-template-columns: 100px 1fr 1fr 150px;
+    grid-template-columns: 100px 1fr 150px;
     padding: 20px 25px;
     border-bottom: 1px solid var(--panel-border);
     transition: all 0.2s ease;
@@ -156,11 +156,6 @@
   }
 }
 
-.col-name {
-  color: var(--text-muted);
-  font-size: 1rem;
-}
-
 .col-elo {
   text-align: right;
 
@@ -224,9 +219,6 @@
     font-size: 0.9rem;
   }
 
-  .col-name {
-    display: none;
-  }
 
   .rank-display {
     font-size: 1rem !important;

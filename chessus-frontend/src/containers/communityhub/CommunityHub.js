@@ -13,16 +13,46 @@ const CommunityHub = () => {
       path: "/community/players",
     },
     {
-      title: "Leaderboard",
-      description: "View the top players ranked by ELO rating",
-      icon: "🏆",
-      path: "/community/leaderboard",
+      title: "Forums",
+      description: "Browse all general and game-specific forum discussions in one place",
+      icon: "💬",
+      path: "/forums",
     },
     {
-      title: "Donate",
+      title: "Social Media",
+      description: "Follow us on social platforms and stay connected with our community",
+      icon: "🌐",
+      path: "/community/social",
+    },
+    {
+      title: "Streams",
+      description: "Watch live gameplay, tournaments, and community events",
+      icon: "📺",
+      path: "/community/streams",
+    },
+    {
+      title: "News",
+      description: "Stay updated with the latest announcements, features, and community highlights",
+      icon: "📰",
+      path: "/news",
+    },
+    {
+      title: "Support GridGrove",
       description: "Support GridGrove and help us grow the platform",
       icon: "💝",
       path: "/donate",
+    },
+    {
+      title: "FAQ",
+      description: "Find answers to common questions about creating pieces, games, and more",
+      icon: "❓",
+      path: "/faq",
+    },
+    {
+      title: "About Us",
+      description: "Learn about GridGrove, our team, and our mission",
+      icon: "ℹ️",
+      path: "/community/about",
     },
   ];
 

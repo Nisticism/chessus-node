@@ -2071,6 +2071,20 @@ Join us in revolutionizing chess, one variant at a time.
     console.error('Error adding invite_code column:', err.message);
   }
 
+  // Add show_display_name column to users table
+  try {
+    const showDisplayNameCol = await columnExists('users', 'show_display_name');
+    if (!showDisplayNameCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN show_display_name TINYINT(1) NOT NULL DEFAULT 0`,
+        "Add show_display_name column to users table for public name display preference"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding show_display_name column:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('âœ“ All migrations up to date\n');
   } else {

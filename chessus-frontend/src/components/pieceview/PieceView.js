@@ -526,6 +526,7 @@ const PieceView = () => {
                   <img 
                     src={imageUrl} 
                     alt={`${pieceToDisplay.piece_name} ${index + 1}`}
+                    loading="lazy"
                     className={styles["gallery-image"]}
                   />
                   {index === 0 && <span className={styles["default-badge"]}>Default</span>}
@@ -588,6 +589,16 @@ const PieceView = () => {
           <div className={styles["stat-card"]}>
             <span className={styles["stat-label"]}>Hop Over Enemies</span>
             <span className={styles["stat-value"]}>{pieceToDisplay.can_hop_over_enemies ? 'Yes' : 'No'}</span>
+          </div>
+          <div className={styles["stat-card"]}>
+            <span className={styles["stat-label"]}>
+              Exact Movement
+              <InfoTooltip text="When enabled, pieces must move exactly the specified number of squares, not any distance up to that number." />
+            </span>
+            <span className={styles["stat-value"]}>
+              {(piece.up_movement_exact || piece.down_movement_exact || piece.left_movement_exact || piece.right_movement_exact ||
+                piece.up_left_movement_exact || piece.up_right_movement_exact || piece.down_left_movement_exact || piece.down_right_movement_exact) ? 'Yes' : 'No'}
+            </span>
           </div>
         </div>
 
@@ -868,12 +879,23 @@ const PieceView = () => {
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>🔀</span>
                     Ratio Capture: {pieceToDisplay.ratio_one_capture || '?'}:{pieceToDisplay.ratio_two_capture || '?'}
+                    {piece.repeating_ratio_capture && (
+                      <span> (repeating{piece.max_ratio_capture_iterations != null && piece.max_ratio_capture_iterations !== -1 ? `, max ${piece.max_ratio_capture_iterations}x` : ''})</span>
+                    )}
                   </div>
                 )}
                 {pieceToDisplay.step_by_step_capture != null && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>👣</span>
                     Step Capture: {pieceToDisplay.step_by_step_capture} squares
+                  </div>
+                )}
+                {piece.repeating_capture && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🔄</span>
+                    Can Repeat Capture
+                    {piece.max_directional_capture_iterations != null && 
+                      ` (max ${piece.max_directional_capture_iterations}x)`}
                   </div>
                 )}
                 {pieceToDisplay.max_piece_captures_per_move != null && (
@@ -939,10 +961,58 @@ const PieceView = () => {
             </div>
           )}
 
-          {!pieceToDisplay.can_capture_enemy_on_move && !pieceToDisplay.can_capture_enemy_via_range && (
+          {!pieceToDisplay.can_capture_enemy_on_move && !pieceToDisplay.can_capture_enemy_via_range && 
+           !pieceToDisplay.capture_on_hop && !pieceToDisplay.can_capture_allies && (
             <div className={styles["no-abilities"]}>
               <span className={styles["no-abilities-icon"]}>🛡️</span>
               <span>This piece cannot attack</span>
+            </div>
+          )}
+
+          {/* Capture on Hop */}
+          {pieceToDisplay.capture_on_hop && (
+            <div className={styles["ability-card"]} style={{ borderLeftColor: '#ff9800' }}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>🔄</span>
+                <h3>Capture on Hop</h3>
+              </div>
+              <div className={styles["step-display"]}>
+                When this piece hops over an enemy piece during movement, it captures the hopped-over piece (like checkers).
+              </div>
+              <div className={styles["ability-properties"]}>
+                {pieceToDisplay.chain_capture_enabled && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>⛓️</span>
+                    Chain Capture — can make additional captures in the same turn (multi-jump)
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Can Capture Allies */}
+          {pieceToDisplay.can_capture_allies && (
+            <div className={styles["ability-card"]} style={{ borderLeftColor: '#9c27b0' }}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>🤝</span>
+                <h3>Ally Capture</h3>
+              </div>
+              <div className={styles["step-display"]}>
+                This piece can capture friendly pieces on the same team.
+              </div>
+            </div>
+          )}
+
+          {/* Cannot Be Captured */}
+          {pieceToDisplay.cannot_be_captured && (
+            <div className={styles["ability-card"]} style={{ borderLeftColor: '#607d8b' }}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>🛡️</span>
+                <h3>Immune to Capture</h3>
+              </div>
+              <div className={styles["step-display"]}>
+                This piece cannot be captured by enemy pieces.
+              </div>
             </div>
           )}
         </div>

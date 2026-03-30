@@ -553,9 +553,15 @@ const GameTypeView = () => {
 
     // Piece movements
     const pieceDescriptions = [];
+    const moveAttackPieceLinks = [];
     Object.values(uniquePieces).forEach(piece => {
       const pieceData = pieceDataMap[piece.id] || piece;
       const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+      const pieceId = pieceData.id || piece.id;
+      
+      if (pieceId && pieceName !== 'Unknown Piece') {
+        moveAttackPieceLinks.push({ name: pieceName, id: pieceId });
+      }
       
       const movementDesc = describePieceMovement(pieceData);
       const captureDesc = describePieceCapture(pieceData);
@@ -584,9 +590,13 @@ const GameTypeView = () => {
     if (pieceDescriptions.length > 0) {
       rules.push({
         title: "How Pieces Move and Attack",
-        content: pieceDescriptions.join('\n\n')
+        content: pieceDescriptions.join('\n\n'),
+        pieceLinks: moveAttackPieceLinks
       });
     }
+
+    // ---- Special Rules Section (combines multi-tile, castling, en passant, capture on hop) ----
+    const specialRulesContent = [];
 
     // Multi-tile piece explanations
     const multiTilePieces = Object.values(uniquePieces).filter(piece => {
@@ -603,193 +613,83 @@ const GameTypeView = () => {
         return `• **${pieceName}** (${pw}×${ph}): Occupies ${pw * ph} squares on the board. Movement and attack ranges are calculated from every square the piece occupies.`;
       }).join('\n');
 
-      rules.push({
-        title: "Multi-Tile Pieces",
-        content: `Some pieces in this game are larger than a single square. Multi-tile pieces have special properties:\n\n${multiTileDescs}\n\n**Multi-tile piece rules:**\n• A multi-tile piece can move or attack from **any square it occupies** — the entire piece acts as one unit.\n• When attacking, a multi-tile piece can **capture multiple enemies at once** if they are all within its strike zone.\n• A multi-tile piece is captured if **any** of its occupied squares is targeted.\n• Multi-tile pieces cannot hop over other pieces.`
-      });
+      specialRulesContent.push(`**Multi-Tile Pieces**\nSome pieces in this game are larger than a single square. Multi-tile pieces have special properties:\n\n${multiTileDescs}\n\n**Multi-tile piece rules:**\n• A multi-tile piece can move or attack from **any square it occupies** — the entire piece acts as one unit.\n• When attacking, a multi-tile piece can **capture multiple enemies at once** if they are all within its strike zone.\n• A multi-tile piece is captured if **any** of its occupied squares is targeted.\n• Multi-tile pieces cannot hop over other pieces.`);
     }
 
-    // Win conditions
-    const winConditions = [];
-
-    // Checkmate condition
-    if (game.mate_condition) {
-      const checkmatePieceNames = [...new Set(checkmatePieces.map(p => p.piece_name || 'designated piece'))];
-      
-      let checkmateDesc = "**Checkmate**: A player wins by checkmating their opponent's ";
-      if (checkmatePieceNames.length > 0) {
-        checkmateDesc += checkmatePieceNames.join(' or ') + '.';
-      } else {
-        checkmateDesc += "key piece.";
-      }
-      
-      checkmateDesc += "\n\n";
-      checkmateDesc += "• **Check**: When a piece can capture your " + (checkmatePieceNames[0] || "key piece") + " on the next move, you are \"in check.\"\n";
-      checkmateDesc += "• **Getting out of check**: You must immediately do one of the following: move your " + (checkmatePieceNames[0] || "key piece") + " to a safe square, block the attacking piece with another piece, or capture the attacking piece.\n";
-      checkmateDesc += "• **Checkmate**: If you cannot escape check by any legal move, you are checkmated and lose the game.\n";
-      checkmateDesc += "\n⚠️ **Important**: Protect your " + (checkmatePieceNames[0] || "key piece") + " from checkmate at all costs!";
-      
-      winConditions.push(checkmateDesc);
-    }
-
-    // Capture condition
-    if (game.capture_condition) {
-      const capturePieceNames = [...new Set(capturePieces.map(p => p.piece_name || 'designated piece'))];
-      
-      let captureDesc;
-      if (capturePieceNames.length > 0) {
-        captureDesc = "**Capture to Win**: A player wins by capturing their opponent's " + capturePieceNames.join(' or ') + '.';
-        captureDesc += "\n\n⚠️ **Important**: Protect your " + capturePieceNames[0] + " from being captured!";
-      } else {
-        captureDesc = "**Capture to Win**: A player wins by capturing **all** of their opponent's pieces.";
-        captureDesc += "\n\n⚠️ **Important**: Protect your pieces — losing all of them means losing the game!";
-      }
-      
-      winConditions.push(captureDesc);
-    }
-
-    // Value/points condition
-    if (game.value_condition) {
-      const valueTitle = game.value_title || 'points';
-      const valueMax = game.value_max || 'the target amount';
-      winConditions.push(`**${valueTitle} Victory**: First player to accumulate ${valueMax} ${valueTitle.toLowerCase()} wins the game.`);
-    }
-
-    // Squares condition
-    if (game.squares_condition) {
-      winConditions.push(`**Territory Control**: Control ${game.squares_count || 'the required number of'} designated squares to win.`);
-    }
-
-    // Hill condition
-    if (game.hill_condition) {
-      winConditions.push(`**King of the Hill**: Occupy the center hill square at (${game.hill_x || 'center'}, ${game.hill_y || 'center'}) for ${game.hill_turns || 3} consecutive turns to win.`);
-    }
-
-    // Draw conditions
-    const drawConditions = [];
-
-    // Stalemate condition (only when mate_condition is enabled)
-    if (game.mate_condition) {
-      const stalemateCheckmatePieceNames = [...new Set(checkmatePieces.map(p => p.piece_name || 'designated piece'))];
-      const pieceRef = stalemateCheckmatePieceNames.length > 0 ? stalemateCheckmatePieceNames.join(' or ') : 'key piece';
-      
-      let stalemateDesc = `**Stalemate**: If a player has no legal moves but their ${pieceRef} is NOT in check, the game ends in a draw.\n\n`;
-      stalemateDesc += "• This occurs when every possible move would either leave or put your " + pieceRef + " in check.\n";
-      stalemateDesc += "• Unlike checkmate, stalemate is a draw because the " + pieceRef + " is not currently under attack.";
-      
-      drawConditions.push(stalemateDesc);
-    }
-    
-    if (game.draw_move_limit != null) {
-      drawConditions.push(`**Move Limit Draw**: If ${game.draw_move_limit} moves pass without any captures or promotable piece moves, the game ends in a draw. (A "move" = one turn by each player)`);
-    }
-
-    if (game.repetition_draw_count != null) {
-      drawConditions.push(`**${game.repetition_draw_count}-Fold Repetition**: If the same board position occurs ${game.repetition_draw_count} times, the game ends in a draw.`);
-    }
-
-    if (winConditions.length > 0) {
-      rules.push({
-        title: "How to Win",
-        content: winConditions.join('\n\n')
-      });
-    } else {
-      rules.push({
-        title: "How to Win",
-        content: "No specific win conditions have been configured for this game type."
-      });
-    }
-
-    // Draw conditions section
-    if (drawConditions.length > 0) {
-      rules.push({
-        title: "Draw Conditions",
-        content: drawConditions.join('\n\n')
-      });
-    }
-
-    // Randomization options section
-    const modeDescriptions = {
-      'none': 'Standard (default positions)',
-      'mirrored': 'Mirrored - pieces swap positions symmetrically for both players',
-      'backrow': 'Back Row Mirrored (Chess960-style) - only the back row is randomized, mirrored for both players',
-      'independent': 'Independent - each player\'s pieces are randomized separately',
-      'shared': 'Shared Shuffle - all pieces redistributed among all starting squares',
-      'full': 'Full Board Random - pieces placed anywhere on the board'
-    };
-    
-    // Default all modes if not specified
-    let allowedModes = ['none', 'backrow', 'mirrored', 'independent', 'shared', 'full'];
-    
-    if (game.randomized_starting_positions) {
-      try {
-        const randomConfig = JSON.parse(game.randomized_starting_positions);
-        if (randomConfig.allowedModes && randomConfig.allowedModes.length > 0) {
-          allowedModes = randomConfig.allowedModes;
-        }
-      } catch (e) {
-        console.error('Error parsing randomized_starting_positions:', e);
-      }
-    }
-    
-    // Only show section if there are options beyond just 'none'
-    if (allowedModes.length > 1 || (allowedModes.length === 1 && allowedModes[0] !== 'none')) {
-      const modesList = allowedModes
-        .filter(mode => mode !== 'none')
-        .map(mode => `• **${modeDescriptions[mode] || mode}**`)
-        .join('\n');
-      
-      const hasStandard = allowedModes.includes('none');
-      
-      rules.push({
-        title: "Starting Position Options",
-        content: `When creating a game, players can choose from the following starting position modes:\n\n${hasStandard ? '• **Standard** - use the default piece positions\n' : ''}${modesList}`
-      });
-    }
-
-    // Special squares
-    const specialSquaresDesc = [];
-    
-    if (Object.keys(specialSquares.range).length > 0) {
-      specialSquaresDesc.push(`**Range Squares** (marked with R): ${Object.keys(specialSquares.range).length} squares that can modify piece attack or movement range when occupied.`);
-    }
-    
-    if (Object.keys(specialSquares.promotion).length > 0) {
-      specialSquaresDesc.push(`**Promotion Squares** (marked with P): ${Object.keys(specialSquares.promotion).length} squares where pieces can be promoted to more powerful pieces.`);
-    }
-    
-    if (Object.keys(specialSquares.control).length > 0) {
-      specialSquaresDesc.push(`**Control Squares** (marked with C): ${Object.keys(specialSquares.control).length} squares that must be controlled to achieve the control squares win condition.`);
-    }
-    
-    if (Object.keys(specialSquares.special).length > 0) {
-      specialSquaresDesc.push(`**Special Squares** (marked with S): ${Object.keys(specialSquares.special).length} squares with custom effects.`);
-    }
-
-    if (specialSquaresDesc.length > 0) {
-      rules.push({
-        title: "Special Squares",
-        content: specialSquaresDesc.join('\n\n')
-      });
-    }
-
-    // Castling information
+    // Castling information with partner identification
     const castlingPieces = Object.values(uniquePieces).filter(piece => {
       const pieceData = pieceDataMap[piece.id] || piece;
       return pieceData.can_castle;
     });
 
     if (castlingPieces.length > 0) {
+      // Determine castling partners from initial board positions
+      // Group placements by player and row to find castling partners
+      const placementsByPlayerAndRow = {};
+      Object.entries(piecePlacements).forEach(([key, placement]) => {
+        if (placement._occupied) return;
+        const [row, col] = key.split(',').map(Number);
+        const playerId = placement.player_id;
+        const rowKey = `${playerId}-${row}`;
+        if (!placementsByPlayerAndRow[rowKey]) {
+          placementsByPlayerAndRow[rowKey] = [];
+        }
+        placementsByPlayerAndRow[rowKey].push({ ...placement, row, col });
+      });
+
+      // For each castling piece, find partner pieces on the same row
+      // Castling partners are typically the pieces at the ends of the row relative to the castling piece
+      const castlingPartnerMap = {}; // pieceId -> Set of partner piece names
+      
+      Object.values(placementsByPlayerAndRow).forEach(rowPlacements => {
+        // Sort by column
+        rowPlacements.sort((a, b) => a.col - b.col);
+        
+        // Find castling pieces in this row
+        const castlingInRow = rowPlacements.filter(p => {
+          const pd = pieceDataMap[p.piece_id];
+          return pd && pd.can_castle;
+        });
+        
+        if (castlingInRow.length === 0) return;
+        
+        // Non-castling pieces in this row are potential partners
+        // In chess-like games, the edge pieces (like rooks) are castling partners with the central castling piece (like king)
+        // We identify partners as pieces that are NOT the same piece type as the castling piece and share the row
+        castlingInRow.forEach(castlingPiece => {
+          const partnersOnRow = rowPlacements.filter(p => {
+            return p.piece_id !== castlingPiece.piece_id && p.player_id === castlingPiece.player_id;
+          });
+          
+          if (partnersOnRow.length > 0) {
+            // Find the nearest pieces to the left and right of the castling piece
+            const leftPartners = partnersOnRow.filter(p => p.col < castlingPiece.col).sort((a, b) => b.col - a.col);
+            const rightPartners = partnersOnRow.filter(p => p.col > castlingPiece.col).sort((a, b) => a.col - b.col);
+            
+            // The outermost pieces on each side are the most likely castling partners (like rooks for a king)
+            const leftOutermost = leftPartners.length > 0 ? leftPartners[leftPartners.length - 1] : null;
+            const rightOutermost = rightPartners.length > 0 ? rightPartners[rightPartners.length - 1] : null;
+            
+            if (!castlingPartnerMap[castlingPiece.piece_id]) {
+              castlingPartnerMap[castlingPiece.piece_id] = new Set();
+            }
+            if (leftOutermost) castlingPartnerMap[castlingPiece.piece_id].add(leftOutermost.piece_name || 'Unknown');
+            if (rightOutermost) castlingPartnerMap[castlingPiece.piece_id].add(rightOutermost.piece_name || 'Unknown');
+          }
+        });
+      });
+
       const castlingDesc = castlingPieces.map(piece => {
-        const pieceData = pieceDataMap[piece.id] || piece;
+        const pieceData = pieceDataMap[piece.piece_id] || piece;
         const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+        const partners = castlingPartnerMap[piece.piece_id];
+        if (partners && partners.size > 0) {
+          return `• **${pieceName}** can castle with: ${[...partners].map(p => `**${p}**`).join(', ')}`;
+        }
         return `• **${pieceName}** can castle with partner pieces`;
       }).join('\n');
 
-      rules.push({
-        title: "Castling",
-        content: `Castling is a special move where a piece moves toward a partner piece, and the partner moves to the other side.\n\n${castlingDesc}\n\n**Castling Rules:**\n• Neither piece may have moved yet\n• The path must be clear (except for close-range castling)\n• The castling piece moves 2 squares toward its partner\n• The partner piece moves to the other side of the castling piece\n\n*Tip: Enable "Show castling info" during a game to see which pieces can castle with each other.*`
-      });
+      specialRulesContent.push(`**Castling**\nCastling is a special move where a piece moves toward a partner piece, and the partner moves to the other side.\n\n${castlingDesc}\n\n**Castling Rules:**\n• Neither piece may have moved yet\n• The path must be clear (except for close-range castling)\n• The castling piece moves 2 squares toward its partner\n• The partner piece moves to the other side of the castling piece\n\n*Tip: Enable "Show castling info" during a game to see which pieces can castle with each other.*`);
     }
 
     // En passant information
@@ -805,10 +705,7 @@ const GameTypeView = () => {
         return `• **${pieceName}** can capture via en passant`;
       }).join('\n');
 
-      rules.push({
-        title: "En Passant",
-        content: `En passant is a special capture where a piece captures an enemy piece of the same type that has just moved using a first-move-only ability.\n\n${enPassantDesc}\n\n**En Passant Rules:**\n• Enemy must have just used a first-move-only movement in the previous turn\n• The enemy must be the same piece type as the capturing piece (e.g., Pawn can only en passant another Pawn)\n• The capturing piece must be horizontally adjacent to the enemy\n• The capturing piece moves to the square the enemy "passed through"\n• The enemy piece is removed even though it's not on the destination square\n• En passant must be done immediately - it's not available on subsequent turns`
-      });
+      specialRulesContent.push(`**En Passant**\nEn passant is a special capture where a piece captures an enemy piece of the same type that has just moved using a first-move-only ability.\n\n${enPassantDesc}\n\n**En Passant Rules:**\n• Enemy must have just used a first-move-only movement in the previous turn\n• The enemy must be the same piece type as the capturing piece (e.g., Pawn can only en passant another Pawn)\n• The capturing piece must be horizontally adjacent to the enemy\n• The capturing piece moves to the square the enemy "passed through"\n• The enemy piece is removed even though it's not on the destination square\n• En passant must be done immediately - it's not available on subsequent turns`);
     }
 
     // Capture on Hop rules (checkers-style)
@@ -825,10 +722,55 @@ const GameTypeView = () => {
         return `• **${pieceName}** captures by hopping over enemies${hasChain ? ' (can chain multiple jumps)' : ''}`;
       }).join('\n');
 
-      rules.push({
-        title: "Capture on Hop",
-        content: `Some pieces capture by hopping over enemy pieces, like in checkers. When a piece jumps over an enemy, the enemy is captured and removed from the board.\n\n${hopDesc}\n\n**Capture on Hop Rules:**\n• The piece must jump over an adjacent enemy to an empty square beyond\n• The hopped-over enemy piece is captured and removed\n${hopCapturePieces.some(p => (pieceDataMap[p.id] || p).chain_capture_enabled) ? '• **Chain Capture**: After capturing, the piece can continue jumping to capture more enemies in the same turn\n• Chain captures are optional — you can stop after any jump\n' : ''}`
+      specialRulesContent.push(`**Capture on Hop**\nSome pieces capture by hopping over enemy pieces, like in checkers. When a piece jumps over an enemy, the enemy is captured and removed from the board.\n\n${hopDesc}\n\n**Capture on Hop Rules:**\n• The piece must jump over an adjacent enemy to an empty square beyond\n• The hopped-over enemy piece is captured and removed\n${hopCapturePieces.some(p => (pieceDataMap[p.id] || p).chain_capture_enabled) ? '• **Chain Capture**: After capturing, the piece can continue jumping to capture more enemies in the same turn\n• Chain captures are optional — you can stop after any jump\n' : ''}`);
+    }
+
+    // Promotion squares information
+    if (Object.keys(specialSquares.promotion).length > 0) {
+      // Find pieces that can promote
+      const promotablePieces = Object.values(uniquePieces).filter(piece => {
+        const pieceData = pieceDataMap[piece.id] || piece;
+        return pieceData.can_promote;
       });
+
+      // List promotion square locations
+      const promoSquareDescs = Object.keys(specialSquares.promotion).map(key => {
+        const [row, col] = key.split(',').map(Number);
+        return `${String.fromCharCode(97 + col)}${row + 1}`;
+      });
+
+      let promoContent = `**Promotion**\nCertain squares on the board are promotion squares. When a promotable piece lands on a promotion square, it can transform into a different, more powerful piece.\n\n**Promotion Squares:** ${promoSquareDescs.join(', ')}`;
+
+      if (promotablePieces.length > 0) {
+        const promoDescs = promotablePieces.map(piece => {
+          const pieceData = pieceDataMap[piece.id] || piece;
+          const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+          // Determine what the piece promotes to
+          let promotesTo = 'any non-checkmate piece in the game';
+          if (pieceData.promotion_pieces_ids) {
+            try {
+              const promoIds = typeof pieceData.promotion_pieces_ids === 'string' 
+                ? JSON.parse(pieceData.promotion_pieces_ids) 
+                : pieceData.promotion_pieces_ids;
+              if (Array.isArray(promoIds) && promoIds.length > 0) {
+                const promoNames = promoIds.map(pid => {
+                  const pd = pieceDataMap[pid];
+                  return pd ? `**${pd.piece_name}**` : `Piece #${pid}`;
+                });
+                promotesTo = promoNames.join(', ');
+              }
+            } catch (e) {
+              // fallback to default text
+            }
+          }
+          return `• **${pieceName}** can promote to: ${promotesTo}`;
+        }).join('\n');
+        promoContent += `\n\n${promoDescs}`;
+      }
+
+      promoContent += `\n\n**Promotion Rules:**\n• Move a promotable piece onto a promotion square\n• Choose which piece to transform into\n• The promoted piece keeps the same position and player ownership`;
+
+      specialRulesContent.push(promoContent);
     }
 
     // General gameplay rules
@@ -841,6 +783,14 @@ const GameTypeView = () => {
 • A piece cannot move through other pieces unless it has jumping ability.
 • The game continues until a win condition is met or players agree to a draw.`
     });
+
+    // Add the combined Special Rules section if any content exists
+    if (specialRulesContent.length > 0) {
+      rules.push({
+        title: "Special Rules",
+        content: specialRulesContent.join('\n\n---\n\n')
+      });
+    }
 
     return rules;
   }, [game, piecePlacements, pieceDataMap, specialSquares]);
@@ -1079,6 +1029,7 @@ const GameTypeView = () => {
                       <img
                         src={imageUrl}
                         alt={placement.piece_name}
+                        loading="lazy"
                         style={{
                           width: '100%',
                           height: '100%',
@@ -1276,13 +1227,10 @@ const GameTypeView = () => {
               <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(244, 67, 54, 0.55)', outlineOffset: '-3px', background: 'rgba(244, 67, 54, 0.1)', borderRadius: '3px' }}></div>
               <span>Ranged 💥</span>
             </div>
-            {/* Hop Capture Legend - show if any pieces have capture_on_hop */}
-            {(Object.values(pieceDataMap).some(p => p.capture_on_hop) || Object.values(piecePlacements).some(p => p.capture_on_hop)) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(76, 175, 80, 0.55)', outlineOffset: '-3px', background: 'rgba(76, 175, 80, 0.1)', borderRadius: '3px' }}></div>
-                <span>Capture on Hop</span>
-              </div>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '20px', height: '20px', outline: '3px solid rgba(76, 175, 80, 0.55)', outlineOffset: '-3px', background: 'rgba(76, 175, 80, 0.1)', borderRadius: '3px' }}></div>
+              <span>Capture on Hop</span>
+            </div>
             {/* Special Squares Legend */}            {Object.keys(specialSquares.promotion).length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <div style={{ width: '20px', height: '20px', border: '3px solid #4b0082', borderRadius: '3px', background: 'rgba(75, 0, 130, 0.3)' }}></div>
@@ -1348,41 +1296,61 @@ const GameTypeView = () => {
           <h2>📜 Game Rules</h2>
           {generateRules ? (
             <div className={styles["rules-container"]}>
-              {generateRules.map((section, index) => (
-                <div key={index} className={styles["rule-section"]}>
-                  <h3 className={styles["rule-title"]}>{section.title}</h3>
-                  <div className={styles["rule-content"]}>
-                    {section.content.split('\n').map((line, lineIndex) => {
-                      // Handle bold text markers
-                      const parts = line.split(/(\*\*[^*]+\*\*)/);
-                      return (
-                        <p key={lineIndex} className={styles["rule-line"]}>
-                          {parts.map((part, partIndex) => {
-                            if (part.startsWith('**') && part.endsWith('**')) {
-                              return <strong key={partIndex}>{part.slice(2, -2)}</strong>;
-                            }
-                            return part;
-                          })}
-                        </p>
-                      );
-                    })}
-                    {section.pieceLinks && section.pieceLinks.length > 0 && (
-                      <div className={styles["piece-links"]}>
-                        <strong>Pieces used:</strong>
-                        <ul className={styles["piece-link-list"]}>
-                          {section.pieceLinks.map((piece) => (
-                            <li key={piece.id}>
-                              <Link to={`/pieces/${piece.id}`} className={styles["piece-link"]}>
-                                {piece.name}
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+              {(() => {
+                // Build global piece name → id map from all sections' pieceLinks
+                const pieceNameToId = {};
+                generateRules.forEach(section => {
+                  if (section.pieceLinks) {
+                    section.pieceLinks.forEach(p => {
+                      pieceNameToId[p.name] = p.id;
+                    });
+                  }
+                });
+                return generateRules.map((section, index) => (
+                  <div key={index} className={styles["rule-section"]}>
+                    <h3 className={styles["rule-title"]}>{section.title}</h3>
+                    <div className={styles["rule-content"]}>
+                      {section.content.split('\n').map((line, lineIndex) => {
+                        // Handle horizontal rule separator
+                        if (line.trim() === '---') {
+                          return <hr key={lineIndex} className={styles["rule-divider"]} />;
+                        }
+                        // Handle bold text markers - convert piece names to links
+                        const parts = line.split(/(\*\*[^*]+\*\*)/);
+                        return (
+                          <p key={lineIndex} className={styles["rule-line"]}>
+                            {parts.map((part, partIndex) => {
+                              if (part.startsWith('**') && part.endsWith('**')) {
+                                const text = part.slice(2, -2);
+                                const pieceId = pieceNameToId[text];
+                                if (pieceId) {
+                                  return <Link key={partIndex} to={`/pieces/${pieceId}`} className={styles["piece-link"]}><strong>{text}</strong></Link>;
+                                }
+                                return <strong key={partIndex}>{text}</strong>;
+                              }
+                              return part;
+                            })}
+                          </p>
+                        );
+                      })}
+                      {section.pieceLinks && section.pieceLinks.length > 0 && (
+                        <div className={styles["piece-links"]}>
+                          <strong>Pieces used:</strong>
+                          <ul className={styles["piece-link-list"]}>
+                            {section.pieceLinks.map((piece) => (
+                              <li key={piece.id}>
+                                <Link to={`/pieces/${piece.id}`} className={styles["piece-link"]}>
+                                  {piece.name}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           ) : (
             <p className={styles["loading-rules"]}>Loading rules...</p>

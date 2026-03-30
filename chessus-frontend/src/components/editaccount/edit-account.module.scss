@@ -308,6 +308,65 @@
   }
 }
 
+.toggle-setting {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 0;
+}
+
+.toggle-label {
+  flex: 1;
+
+  span {
+    display: block;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #ffffff;
+    margin-bottom: 4px;
+  }
+}
+
+.toggle-description {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  background: var(--border-medium);
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  flex-shrink: 0;
+  padding: 0;
+
+  &.toggle-active {
+    background: var(--accent-primary);
+  }
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: transform 0.3s ease;
+
+  .toggle-active & {
+    transform: translateX(24px);
+  }
+}
+
 .show-password-section-button {
   background: linear-gradient(135deg, var(--border-medium) 0%, var(--panel-bg-end) 100%);
   color: #ffffff;

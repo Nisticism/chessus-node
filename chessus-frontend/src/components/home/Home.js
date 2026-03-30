@@ -25,7 +25,7 @@ const Home = () => {
   const allPieces = useSelector((state) => state.pieces);
   const allUsers = useSelector((state) => state.users);
 
-  const [boardSize, setBoardSize] = useState(8);
+  const [boardSize] = useState(8);
   const [selectedLayout, setSelectedLayout] = useState('chess');
   const [pieces, setPieces] = useState([]);
   const [draggedPiece, setDraggedPiece] = useState(null);
@@ -317,7 +317,7 @@ const Home = () => {
           <h2>Explore the Grove</h2>
           <p>
             {popularGames.length > 0 
-              ? "Try out our most popular games - click a piece to select it, then click a valid square to move!"
+              ? "Try out our featured games - click a piece to select it, then click a valid square to move!"
               : "Explore different piece configurations and game setups"}
           </p>
         </div>
@@ -345,9 +345,13 @@ const Home = () => {
                       </button>
                     ))}
                   </div>
-                  {popularGames[selectedGameIndex]?.play_count > 0 && (
+                  {popularGames[selectedGameIndex]?.play_count > 0 ? (
                     <div className={styles["play-count-tag"]}>
                       {popularGames[selectedGameIndex].play_count} {popularGames[selectedGameIndex].play_count === 1 ? 'game' : 'games'} played
+                    </div>
+                  ) : (
+                    <div className={styles["play-count-tag"]}>
+                      0 games played
                     </div>
                   )}
                 </>
@@ -389,7 +393,7 @@ const Home = () => {
 
           <div className={styles["board-info"]}>
             <div className={styles["info-card"]}>
-              <h3>Create Your Own Rules</h3>
+              <h3>Build Your Own Game</h3>
               <ul className={styles["info-list"]}>
                 <li>
                   <span className={styles["info-icon"]}>⭐</span>
@@ -404,8 +408,24 @@ const Home = () => {
                   <span>Create boards of any size from tiny 4×4 arenas to massive 48×48 battlefields</span>
                 </li>
                 <li>
-                  <span className={styles["info-icon"]}>⚔</span>
-                  <span>Support 2+ players with customizable turn actions and team configurations</span>
+                  <span className={styles["info-icon"]}>🧩</span>
+                  <span>Build multi-tile pieces that occupy multiple squares and can capture several enemies at once</span>
+                </li>
+                <li>
+                  <span className={styles["info-icon"]}>🏰</span>
+                  <span>Enable special rules like castling, en passant, promotion, and capture on hop</span>
+                </li>
+                <li>
+                  <span className={styles["info-icon"]}>⬛</span>
+                  <span>Place special squares: promotion zones, control points, range modifiers, and more</span>
+                </li>
+                <li>
+                  <span className={styles["info-icon"]}>🤝</span>
+                  <span>Challenge friends directly or join open matches and climb the ranked leaderboard</span>
+                </li>
+                <li>
+                  <span className={styles["info-icon"]}>🔬</span>
+                  <span>Test your creations in the sandbox before going live — tweak and iterate freely</span>
                 </li>
               </ul>
             </div>
@@ -457,7 +477,7 @@ const Home = () => {
             </span>
           </Link>
 
-          <Link to="/media/forums" className={styles["feature-card"]}>
+          <Link to="/forums" className={styles["feature-card"]}>
             <div className={styles["feature-icon"]}>💬</div>
             <h3>Forums & Discussion</h3>
             <p>

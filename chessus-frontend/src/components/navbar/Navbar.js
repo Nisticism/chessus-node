@@ -54,7 +54,7 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
       </div>
       <div className={`inner-menu ${openSubmenu === 'play' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item" to="/play">
-          Browse open games
+          Browse Open Games
         </Link>
         <Link as="div" className="inner-menu-item" to="/play/tournaments">
           Tournaments
@@ -63,10 +63,7 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
           Sandbox
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/games">
-          View game varients
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/home">
-          Play with friends
+          View Game Library
         </Link>
       </div>
     </div>
@@ -85,16 +82,16 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
       </div>
       <div className={`inner-menu ${openSubmenu === 'create' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item" to="/create/game">
-          Design a game
+          Design A Game
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/piece">
-          Design a piece
+          Design A Piece
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/games">
-          View games
+          View Game Library
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/pieces">
-          View pieces
+          View Piece Library
         </Link>
       </div>
     </div>
@@ -102,32 +99,6 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
     
     {/* design a game, design a piece, browse games */}
 
-    <div className="nav-item">
-      <div className="nav-item-wrapper">
-        <Link as="div" className="nav-item-inner" to="/media">Media</Link>
-        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'media')} aria-label="Toggle Media submenu">
-          <span className={`chevron ${openSubmenu === 'media' ? 'open' : ''}`}>▼</span>
-        </button>
-      </div>
-      <div className={`inner-menu ${openSubmenu === 'media' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item" to="/forums">
-          General forums
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/forums/game">
-          Game forums
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/media/social">
-          Social media
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/media/streams">
-          Streams
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/news">
-          News
-        </Link>
-      </div>
-    </div>
-    {/* general forums, new game forums, social media, contact, news */}
     <div className="nav-item">
       <div className="nav-item-wrapper">
         <Link as="div" className="nav-item-inner" to="/community">Community</Link>
@@ -139,11 +110,23 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
         <Link as="div" className="inner-menu-item" to="/community/players">
           Players
         </Link>
-        <Link as="div" className="inner-menu-item" to="/community/leaderboard">
-          Leaderboard
+        <Link as="div" className="inner-menu-item" to="/forums">
+          Forums
+        </Link>
+        <Link as="div" className="inner-menu-item" to="/community/social">
+          Social Media
+        </Link>
+        <Link as="div" className="inner-menu-item" to="/community/streams">
+          Streams
+        </Link>
+        <Link as="div" className="inner-menu-item" to="/news">
+          News
+        </Link>
+        <Link as="div" className="inner-menu-item" to="/community/about">
+          About Us
         </Link>
         <Link as="div" className="inner-menu-item" to="/donate">
-          Donate
+          Support GridGrove
         </Link>
       </div>
     </div>

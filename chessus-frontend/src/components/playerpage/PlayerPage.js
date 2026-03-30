@@ -606,8 +606,8 @@ const PlayerPage = (props) => {
             </div>
 
             <div className={styles["profile-content"]}>
-              {/* Personal Information - only show on own profile */}
-              {currentUser && username === currentUser.username && (
+              {/* Personal Information - show on own profile or when display name is enabled */}
+              {currentUser && username === currentUser.username ? (
                 <div className={styles["info-card"]}>
                   <h2 className={styles["card-title"]}>Personal Information</h2>
                   <div className={styles["info-grid"]}>
@@ -645,7 +645,29 @@ const PlayerPage = (props) => {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : playerPageUser?.first_name || playerPageUser?.last_name ? (
+                <div className={styles["info-card"]}>
+                  <h2 className={styles["card-title"]}>Display Name</h2>
+                  <div className={styles["info-grid"]}>
+                    {playerPageUser.first_name && (
+                      <div className={styles["info-item"]}>
+                        <span className={styles["info-label"]}>First Name</span>
+                        <span className={styles["info-value"]}>
+                          {playerPageUser.first_name}
+                        </span>
+                      </div>
+                    )}
+                    {playerPageUser.last_name && (
+                      <div className={styles["info-item"]}>
+                        <span className={styles["info-label"]}>Last Name</span>
+                        <span className={styles["info-value"]}>
+                          {playerPageUser.last_name}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
 
               <BioSection 
                 bio={playerPageUser?.bio}

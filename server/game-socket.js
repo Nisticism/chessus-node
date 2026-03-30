@@ -6402,8 +6402,9 @@ function isCheckmate(gameState, playerPosition) {
 
 /**
  * Update control square tracking after a move
- * Tracks which player (if any) has a piece with can_control_squares on each control square
- * and how many consecutive full turns they have controlled it
+ * Tracks per-player consecutive turns controlling ANY control square.
+ * A player's counter increments each half-turn they control at least one square.
+ * If a player doesn't control any control square on a half-turn, their counter resets.
  * @param {Object} gameState - The current game state
  * @returns {Object|null} - Win result if a control square win condition is met, null otherwise
  */
@@ -6422,12 +6423,20 @@ function updateControlSquareTracking(gameState) {
   
   if (!controlSquares || Object.keys(controlSquares).length === 0) return null;
   
-  // Ensure controlSquareTracking exists
+  // Ensure controlSquareTracking exists with proper structure
   if (!gameState.controlSquareTracking) {
     gameState.controlSquareTracking = {};
   }
+  if (!gameState.controlSquareTracking.bySquare) {
+    gameState.controlSquareTracking.bySquare = {};
+  }
+  if (!gameState.controlSquareTracking.byPlayer) {
+    gameState.controlSquareTracking.byPlayer = {};
+  }
   
-  // Check each control square
+  // Determine which players are currently controlling at least one square
+  const playersControlling = new Set();
+  
   for (const [squareKey, config] of Object.entries(controlSquares)) {
     const [row, col] = squareKey.split(',').map(Number);
     
@@ -6436,61 +6445,56 @@ function updateControlSquareTracking(gameState) {
       p.x === col && p.y === row && p.can_control_squares
     );
     
-    // Get the player ID controlling this square (if any)
-    let controllingPlayerId = null;
     if (controllingPiece) {
-      controllingPlayerId = controllingPiece.team || 
-                           controllingPiece.player_id || 
-                           controllingPiece.player_number;
-    }
-    
-    const tracking = gameState.controlSquareTracking[squareKey];
-    
-    if (controllingPlayerId) {
-      if (tracking && tracking.playerId === controllingPlayerId) {
-        // Same player still controls - increment half-turn count
-        tracking.halfTurns = (tracking.halfTurns || 0) + 1;
-      } else {
-        // New player takes control (or first time)
-        gameState.controlSquareTracking[squareKey] = {
-          playerId: controllingPlayerId,
-          halfTurns: 1
-        };
-      }
+      const controllingPlayerId = parseInt(controllingPiece.team || controllingPiece.player_id || controllingPiece.player_number);
+      playersControlling.add(controllingPlayerId);
+      
+      // Store per-square info for display
+      gameState.controlSquareTracking.bySquare[squareKey] = {
+        playerId: controllingPlayerId
+      };
     } else {
-      // No one controlling - check consecutiveTurns setting
-      if (tracking && config.consecutiveTurns) {
-        // Lost control - reset if consecutive is required
-        delete gameState.controlSquareTracking[squareKey];
-      }
-      // If not consecutive, keep the tracking as-is (don't increment but don't reset)
+      // No one controlling this square
+      delete gameState.controlSquareTracking.bySquare[squareKey];
     }
-    
-    // Check if win condition is met
-    const currentTracking = gameState.controlSquareTracking[squareKey];
-    if (currentTracking) {
-      const turnsRequired = config.turnsRequired || 1;
-      // Convert turns to half-turns: turnsRequired full turns = turnsRequired * 2 half-turns
-      // But a full turn is complete after both players move, so we need turnsRequired * 2 half-turns
-      const halfTurnsRequired = turnsRequired * 2;
-      
-      console.log(`Control square ${squareKey}: player ${currentTracking.playerId} has ${currentTracking.halfTurns} half-turns, needs ${halfTurnsRequired}`);
-      
-      if (currentTracking.halfTurns >= halfTurnsRequired) {
-        // Find the winning player
-        const winner = players.find(p => 
-          p.position === currentTracking.playerId || 
-          p.id === currentTracking.playerId
-        );
-        
-        console.log(`Control square win! Player ${currentTracking.playerId} controlled ${squareKey} for ${turnsRequired} full turns`);
-        
-        return {
-          gameOver: true,
-          winner: winner?.id,
-          reason: 'control'
-        };
+  }
+  
+  // Update per-player consecutive tracking
+  // Each player who controls at least one square gets their counter incremented
+  // Players who don't control any square get their counter reset (consecutive requirement)
+  for (const player of players) {
+    const playerPosition = player.position;
+    if (playersControlling.has(playerPosition)) {
+      // Player controls at least one square - increment
+      if (!gameState.controlSquareTracking.byPlayer[playerPosition]) {
+        gameState.controlSquareTracking.byPlayer[playerPosition] = { halfTurns: 0 };
       }
+      gameState.controlSquareTracking.byPlayer[playerPosition].halfTurns++;
+    } else {
+      // Player controls no squares - reset consecutive counter
+      delete gameState.controlSquareTracking.byPlayer[playerPosition];
+    }
+  }
+  
+  // Check win condition: use turnsRequired from the first control square config
+  const turnsRequired = Object.values(controlSquares)[0]?.turnsRequired || 1;
+  const halfTurnsRequired = turnsRequired * 2;
+  
+  for (const [playerPosition, tracking] of Object.entries(gameState.controlSquareTracking.byPlayer)) {
+    console.log(`Control squares: player position ${playerPosition} has ${tracking.halfTurns} half-turns, needs ${halfTurnsRequired}`);
+    
+    if (tracking.halfTurns >= halfTurnsRequired) {
+      const winner = players.find(p => 
+        p.position === parseInt(playerPosition)
+      );
+      
+      console.log(`Control square win! Player position ${playerPosition} controlled squares for ${turnsRequired} full turns`);
+      
+      return {
+        gameOver: true,
+        winner: winner?.id,
+        reason: 'control'
+      };
     }
   }
   
@@ -6603,6 +6607,33 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
   // Check hill condition (piece on specific square for X turns)
   if (gameType.hill_condition) {
     // Check if a piece has been on the hill square for required turns
+  }
+
+  // Control square games: if a player has no pieces left, they can never control a square
+  if (gameType.control_squares_string) {
+    try {
+      const controlSquares = JSON.parse(gameType.control_squares_string);
+      if (controlSquares && Object.keys(controlSquares).length > 0) {
+        for (const player of players) {
+          const playerPieces = pieces.filter(p => 
+            p.team === player.position || 
+            p.player_id === player.position || 
+            p.player === player.id ||
+            p.player_number === player.position
+          );
+          if (playerPieces.length === 0) {
+            const winner = players.find(p => p.id !== player.id);
+            return {
+              gameOver: true,
+              winner: winner?.id,
+              reason: 'elimination'
+            };
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
   }
 
   // Fallback: If no win conditions are defined, capturing all opponent pieces wins

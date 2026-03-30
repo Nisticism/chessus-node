@@ -2665,40 +2665,32 @@ const Sandbox = () => {
               <div style={{ width: '18px', height: '18px', outline: '3px solid rgba(244, 67, 54, 0.55)', outlineOffset: '-3px', background: 'rgba(244, 67, 54, 0.1)', borderRadius: '3px' }}></div>
               <span>Ranged 💥</span>
             </div>
-            {activeSandbox?.pieces?.some(p => p.capture_on_hop) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <div style={{ width: '18px', height: '18px', outline: '3px solid rgba(76, 175, 80, 0.7)', outlineOffset: '-3px', background: 'rgba(76, 175, 80, 0.2)', borderRadius: '3px' }}></div>
-                <span>Capture on Hop</span>
-              </div>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '18px', height: '18px', outline: '3px solid rgba(76, 175, 80, 0.7)', outlineOffset: '-3px', background: 'rgba(76, 175, 80, 0.2)', borderRadius: '3px' }}></div>
+              <span>Capture on Hop</span>
+            </div>
           </div>
         )}
         <div className={styles["board-instructions"]}>
-          <div className={styles["instructions-row"]}>
-            <span className={styles["instruction-item"]}>
-              <span className={styles["instruction-icon"]}>♟</span>
-              <strong>Move &amp; Capture:</strong> Drag piece to a valid square
-            </span>
-            <span className={styles["instruction-item"]}>
-              <span className={styles["instruction-icon"]}>✋</span>
-              <strong>Reposition:</strong> Click piece, then click any square
-            </span>
+          <div className={styles["instruction-item"]}>
+            <span className={styles["instruction-icon"]}>♟</span>
+            <strong>Move &amp; Capture:</strong> Drag piece to a valid square
           </div>
-          <div className={styles["instructions-row"]}>
-            <span className={styles["instruction-item"]}>
-              <span className={styles["instruction-icon"]}>➕</span>
-              <strong>Add:</strong> {isMobile ? 'Long press empty square' : 'Right-click empty square'}
-            </span>
-            <span className={styles["instruction-item"]}>
-              <span className={styles["instruction-icon"]}>❌</span>
-              <strong>Remove:</strong> {isMobile ? 'Select piece, tap Delete button' : 'Select piece, press Delete key'}
-            </span>
+          <div className={styles["instruction-item"]}>
+            <span className={styles["instruction-icon"]}>✋</span>
+            <strong>Reposition:</strong> Click piece, then click any square
           </div>
-          <div className={styles["instructions-row"]}>
-            <span className={styles["instruction-item"]}>
-              <span className={styles["instruction-icon"]}>🎯</span>
-              <strong>Ranged Attack:</strong> Right-click and drag from ranged piece to target
-            </span>
+          <div className={styles["instruction-item"]}>
+            <span className={styles["instruction-icon"]}>➕</span>
+            <strong>Add:</strong> {isMobile ? 'Long press empty square' : 'Right-click empty square'}
+          </div>
+          <div className={styles["instruction-item"]}>
+            <span className={styles["instruction-icon"]}>❌</span>
+            <strong>Remove:</strong> {isMobile ? 'Select piece, tap Delete button' : 'Select piece, press Delete key'}
+          </div>
+          <div className={styles["instruction-item"]}>
+            <span className={styles["instruction-icon"]}>🎯</span>
+            <strong>Ranged Attack:</strong> Right-click and drag from ranged piece to target
           </div>
         </div>
       </div>

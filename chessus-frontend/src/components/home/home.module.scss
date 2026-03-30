@@ -147,7 +147,7 @@
 .board-showcase {
   display: flex;
   gap: 40px;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: center;
   flex-wrap: wrap;
   width: 100%;
@@ -355,6 +355,8 @@
   flex: 1;
   max-width: 500px;
   min-width: 280px;
+  display: flex;
+  flex-direction: column;
 }
 
 .info-card {
@@ -362,6 +364,9 @@
   border: 2px solid var(--panel-border);
   border-radius: 12px;
   padding: 25px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .info-card h3 {
@@ -403,7 +408,7 @@
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 25px;
 }
 
@@ -523,6 +528,10 @@
   .interactive-board-container {
     max-width: 100%;
     width: 100%;
+  }
+
+  .features-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .board-info {

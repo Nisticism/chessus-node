@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from 'react-router-dom';
-import { useSelector, useDispatch } from "react-redux";
+import { useSelector } from "react-redux";
 import styles from "./piecewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import Divider from "../Divider/Divider";
@@ -13,7 +13,6 @@ import PieceStep4Special from "./PieceStep4Special";
 
 const PieceWizard = ({ editPieceId = null }) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
-  const dispatch = useDispatch();
   const navigate = useNavigate();
   
   const [currentStep, setCurrentStep] = useState(1);

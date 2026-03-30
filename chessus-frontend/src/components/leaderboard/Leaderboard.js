@@ -11,7 +11,7 @@ const Leaderboard = () => {
 
   useEffect(() => {
     if (!firstRender) {
-      dispatch(users());
+      dispatch(users(1, 10000, { sortBy: 'elo', sortOrder: 'desc' }));
       setFirstRender(true);
     }
   }, [firstRender, dispatch]);
@@ -66,7 +66,6 @@ const Leaderboard = () => {
           <div className={styles["table-header"]}>
             <div className={styles["col-rank"]}>Rank</div>
             <div className={styles["col-player"]}>Player</div>
-            <div className={styles["col-name"]}>Name</div>
             <div className={styles["col-elo"]}>ELO Rating</div>
           </div>
 
@@ -87,11 +86,6 @@ const Leaderboard = () => {
                     <Link to={`/profile/${user.username}`} className={styles["username-link"]}>
                       {user.username}
                     </Link>
-                  </div>
-                  <div className={styles["col-name"]}>
-                    {user.first_name && user.last_name
-                      ? `${user.first_name} ${user.last_name}`
-                      : user.first_name || user.last_name || "-"}
                   </div>
                   <div className={styles["col-elo"]}>
                     <span className={styles["elo-value"]}>{user.elo || 1000}</span>

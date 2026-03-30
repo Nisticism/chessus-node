@@ -67,17 +67,17 @@ const createUser = async (username, hashedPassword, email) => {
  * @returns {Promise<Object>} Result of update
  */
 const updateUser = async (userData, id) => {
-  const { username, password, email, first_name, last_name, bio } = userData;
+  const { username, password, email, first_name, last_name, bio, show_display_name } = userData;
   
   if (password) {
     return await query(
-      "UPDATE chessusnode.users SET username = ?, password = ?, email = ?, first_name = ?, last_name = ?, bio = ? WHERE id = ?",
-      [username, password, email, first_name, last_name, bio, id]
+      "UPDATE chessusnode.users SET username = ?, password = ?, email = ?, first_name = ?, last_name = ?, bio = ?, show_display_name = COALESCE(?, show_display_name) WHERE id = ?",
+      [username, password, email, first_name, last_name, bio, show_display_name !== undefined ? show_display_name : null, id]
     );
   } else {
     return await query(
-      "UPDATE chessusnode.users SET username = ?, email = ?, first_name = ?, last_name = ?, bio = ? WHERE id = ?",
-      [username, email, first_name, last_name, bio, id]
+      "UPDATE chessusnode.users SET username = ?, email = ?, first_name = ?, last_name = ?, bio = ?, show_display_name = COALESCE(?, show_display_name) WHERE id = ?",
+      [username, email, first_name, last_name, bio, show_display_name !== undefined ? show_display_name : null, id]
     );
   }
 };

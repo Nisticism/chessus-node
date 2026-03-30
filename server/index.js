@@ -17,6 +17,7 @@ const jwt = require("jsonwebtoken");
 
 const bcrypt = require("bcrypt");
 const helmet = require("helmet");
+const compression = require("compression");
 const rateLimit = require("express-rate-limit");
 const { OAuth2Client } = require("google-auth-library");
 
@@ -138,6 +139,9 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// Gzip compression for all responses
+app.use(compression());
 
 // Rate limiting configuration
 const generalLimiter = rateLimit({
@@ -926,8 +930,11 @@ app.get("/api/user", optionalAuthenticate, async (req, res) => {
     const isOwnProfile = req.user && req.user.username === username;
     if (!isOwnProfile) {
       delete user.email;
-      delete user.first_name;
-      delete user.last_name;
+      // Only show name if user has opted in via show_display_name
+      if (!user.show_display_name) {
+        delete user.first_name;
+        delete user.last_name;
+      }
     }
     
     res.json({ result: user, message: "User found" });
@@ -2098,7 +2105,7 @@ app.post("/api/register", registerLimiter, async (req, res) => {
 
 app.post("/api/profile/edit", async (req, res) => {
   try {
-    const { username, current_user, password, oldPassword, bio, email, first_name, last_name, id } = req.body;
+    const { username, current_user, password, oldPassword, bio, email, first_name, last_name, id, show_display_name } = req.body;
     const logged_in_username = current_user.username;
     const logged_in_email = current_user.email;
 
@@ -2139,6 +2146,11 @@ app.post("/api/profile/edit", async (req, res) => {
       bio,
       id
     };
+
+    // Handle show_display_name setting
+    if (show_display_name !== undefined) {
+      updatedUser.show_display_name = show_display_name ? 1 : 0;
+    }
 
     // Hash password if provided
     if (password && password.length > 0) {

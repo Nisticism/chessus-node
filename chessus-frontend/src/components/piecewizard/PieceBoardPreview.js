@@ -978,7 +978,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
                 <span>Ranged Attack 💥</span>
               </div>
             )}
-            {showAttack && pieceData.capture_on_hop && (
+            {showAttack && (
               <div className={styles["legend-item"]}>
                 <div className={`${styles["legend-square"]} ${styles["legend-hop-capture"]}`}></div>
                 <span>Capture on Hop</span>

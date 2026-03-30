@@ -70,7 +70,6 @@ const Play = () => {
   const [guestName, setGuestName] = useState("");
   const [isCreatingAnonymous, setIsCreatingAnonymous] = useState(false);
   const [isJoiningByCode, setIsJoiningByCode] = useState(false);
-  const [createdInviteCode, setCreatedInviteCode] = useState(null);
   const [showAnonCreateModal, setShowAnonCreateModal] = useState(false);
   const [anonTimeControl, setAnonTimeControl] = useState("10");
   const [anonIncrement, setAnonIncrement] = useState("0");
@@ -465,7 +464,6 @@ const Play = () => {
         startingMode: 'none'
       });
 
-      setCreatedInviteCode(result.inviteCode);
       setShowAnonCreateModal(false);
       navigate(`/play/${result.gameId}`);
     } catch (err) {
