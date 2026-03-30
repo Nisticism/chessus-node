@@ -549,7 +549,7 @@ const PlayerPage = (props) => {
                         >
                           ✓ Friends
                         </button>
-                        {isUserOnline && connected && (
+                        {connected && (
                           <button 
                             className={`${styles["friend-button"]} ${styles["challenge-friend"]}`}
                             onClick={handleChallenge}
