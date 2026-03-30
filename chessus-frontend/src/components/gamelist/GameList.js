@@ -170,17 +170,21 @@ const GameList = () => {
               {game.creator_username && (
                 <div className={styles["meta-item"]}>
                   <span className={styles["meta-label"]}>Creator:</span>
-                  <span 
-                    className={styles["creator-link"]}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      navigate(`/profile/${game.creator_username}`);
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {game.creator_username}
-                  </span>
+                  {game.creator_username === 'Anonymous' ? (
+                    <span className={styles["creator-link"]}>Anonymous</span>
+                  ) : (
+                    <span 
+                      className={styles["creator-link"]}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        navigate(`/profile/${game.creator_username}`);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {game.creator_username}
+                    </span>
+                  )}
                 </div>
               )}
               <div className={styles["meta-item"]}>
@@ -232,18 +236,9 @@ const GameList = () => {
         <p className={styles["subtitle"]}>
           Browse and manage custom game types
         </p>
-        {currentUser ? (
-          <Link to="/create/game" className={styles["create-button"]}>
-            + Create New Game
-          </Link>
-        ) : (
-          <button
-            className={styles["create-button"]}
-            onClick={() => navigate('/login', { state: { message: "Please log in to create a game type." } })}
-          >
-            + Create New Game
-          </button>
-        )}
+        <Link to="/create/game" className={styles["create-button"]}>
+          + Create New Game
+        </Link>
       </div>
 
       {/* My Games Section */}
@@ -293,18 +288,9 @@ const GameList = () => {
           <div className={styles["empty-icon"]}>🎲</div>
           <h3>No Games Yet</h3>
           <p>Create your first custom game type to get started!</p>
-          {currentUser ? (
-            <Link to="/create/game" className={styles["create-button"]}>
-              Create a Game
-            </Link>
-          ) : (
-            <button
-              className={styles["create-button"]}
-              onClick={() => navigate('/login', { state: { message: "Please log in to create a game type." } })}
-            >
-              Create a Game
-            </button>
-          )}
+          <Link to="/create/game" className={styles["create-button"]}>
+            Create a Game
+          </Link>
         </div>
       )}
 

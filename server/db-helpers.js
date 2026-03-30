@@ -113,7 +113,8 @@ const getAllPieces = async () => {
       p.piece_height,
       p.image_location,
       p.creator_id,
-      u.username as creator_username,
+      p.is_anonymous_creator,
+      CASE WHEN p.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END as creator_username,
       gt.game_name as game_type_name
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
@@ -137,7 +138,8 @@ const getAllPiecesWithMovement = async () => {
       p.piece_height,
       p.image_location,
       p.creator_id,
-      u.username as creator_username,
+      p.is_anonymous_creator,
+      CASE WHEN p.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END as creator_username,
       u.id as creator_user_id,
       -- Movement data
       p.directional_movement_style,
@@ -291,7 +293,8 @@ const getPieceById = async (pieceId) => {
       p.image_location,
       p.creator_id,
       p.can_promote,
-      u.username as creator_username, 
+      p.is_anonymous_creator,
+      CASE WHEN p.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END as creator_username, 
       u.id as creator_user_id, 
       -- Movement data
       p.directional_movement_style,
@@ -439,7 +442,9 @@ const getPieceById = async (pieceId) => {
  */
 const getAllGames = async () => {
   return await query(`
-    SELECT gt.*, u.username as creator_username, u.id as creator_user_id
+    SELECT gt.*, 
+      CASE WHEN gt.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END as creator_username,
+      u.id as creator_user_id
     FROM chessusnode.game_types gt
     LEFT JOIN chessusnode.users u ON gt.creator_id = u.id
     ORDER BY gt.id DESC
@@ -453,7 +458,9 @@ const getAllGames = async () => {
  */
 const getGameById = async (gameId) => {
   const result = await query(`
-    SELECT gt.*, u.username as creator_username, u.id as creator_user_id
+    SELECT gt.*, 
+      CASE WHEN gt.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END as creator_username,
+      u.id as creator_user_id
     FROM chessusnode.game_types gt
     LEFT JOIN chessusnode.users u ON gt.creator_id = u.id
     WHERE gt.id = ?
@@ -573,7 +580,9 @@ const getGameById = async (gameId) => {
  */
 const getGameTypesByPieceId = async (pieceId) => {
   const result = await query(`
-    SELECT DISTINCT gt.*, u.username as creator_username, u.id as creator_user_id
+    SELECT DISTINCT gt.*, 
+      CASE WHEN gt.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END as creator_username,
+      u.id as creator_user_id
     FROM chessusnode.game_types gt
     LEFT JOIN chessusnode.users u ON gt.creator_id = u.id
     INNER JOIN chessusnode.game_type_pieces gtp ON gt.id = gtp.game_type_id

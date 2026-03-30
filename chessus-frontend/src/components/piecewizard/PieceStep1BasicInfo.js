@@ -39,7 +39,7 @@ const computeImageBrightness = (dataUrl) => {
   });
 };
 
-const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, existingImages = [], setExistingImages }) => {
+const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, existingImages = [], setExistingImages, currentUser }) => {
   const [visibleImageCount, setVisibleImageCount] = useState(2);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [libraryTargetIndex, setLibraryTargetIndex] = useState(0);
@@ -282,6 +282,23 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
         />
         <p className={styles["field-hint"]}>
           Optional category to organize your pieces
+        </p>
+      </div>
+
+      <div className={styles["form-group"]}>
+        <label className={styles["checkbox-label"]}>
+          <input
+            type="checkbox"
+            checked={!currentUser || pieceData.is_anonymous_creator}
+            onChange={(e) => handleChange("is_anonymous_creator", e.target.checked)}
+            disabled={!currentUser}
+          />
+          <span>Create anonymously</span>
+        </label>
+        <p className={styles["field-hint"]}>
+          {!currentUser
+            ? "You are not logged in — your piece will be created anonymously."
+            : "When checked, your username will not be shown publicly as the creator of this piece."}
         </p>
       </div>
 

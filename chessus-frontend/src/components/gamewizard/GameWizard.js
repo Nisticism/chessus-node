@@ -28,6 +28,7 @@ const GameWizard = ({ editGameId }) => {
     game_name: "",
     descript: "",
     rules: "",
+    is_anonymous_creator: !currentUser,
     
     // Step 2: Win Conditions
     mate_condition: false,
@@ -193,7 +194,8 @@ const GameWizard = ({ editGameId }) => {
         // Create new game
         const newGameData = {
           ...finalGameData,
-          creator_id: currentUser.id,
+          creator_id: currentUser ? currentUser.id : null,
+          is_anonymous_creator: !currentUser || gameData.is_anonymous_creator,
         };
         await dispatch(createGame(newGameData));
         trackGameCreation(gameData.game_name);
@@ -211,7 +213,7 @@ const GameWizard = ({ editGameId }) => {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <Step1BasicInfo gameData={gameData} updateGameData={updateGameData} />;
+        return <Step1BasicInfo gameData={gameData} updateGameData={updateGameData} currentUser={currentUser} />;
       case 2:
         return <Step2WinConditions gameData={gameData} updateGameData={updateGameData} />;
       case 3:

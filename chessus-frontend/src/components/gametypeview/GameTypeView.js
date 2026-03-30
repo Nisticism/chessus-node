@@ -1103,7 +1103,7 @@ const GameTypeView = () => {
         <h1>{game.game_name}</h1>
         {game.creator_username && (
           <p className={styles["creator"]}>
-            Created by <Link to={`/profile/${game.creator_username}`}>{game.creator_username}</Link>
+            Created by {game.creator_username === 'Anonymous' ? 'Anonymous' : <Link to={`/profile/${game.creator_username}`}>{game.creator_username}</Link>}
             {game.created_at && ` on ${new Date(game.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`}
           </p>
         )}

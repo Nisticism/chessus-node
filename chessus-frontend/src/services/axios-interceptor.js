@@ -16,6 +16,34 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
+// Helper to check if a JWT token is expired or about to expire (within 60 seconds)
+function isTokenExpiringSoon(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 < Date.now() + 60000; // expired or expiring within 60s
+  } catch {
+    return true;
+  }
+}
+
+// Add request interceptor to proactively refresh expired tokens before sending
+// This prevents silent auth failures on optionalAuthenticate endpoints
+axios.interceptors.request.use(
+  async (config) => {
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (user && user.accessToken && user.refreshToken && isTokenExpiringSoon(user.accessToken)) {
+      try {
+        const newAccessToken = await AuthService.refreshAccessToken();
+        config.headers['Authorization'] = 'Bearer ' + newAccessToken;
+      } catch {
+        // Refresh failed, proceed without token
+      }
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 // Add response interceptor to handle token expiration
 axios.interceptors.response.use(
   (response) => {

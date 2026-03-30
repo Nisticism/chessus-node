@@ -3,7 +3,7 @@ import styles from "./gamewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 
-const Step1BasicInfo = ({ gameData, updateGameData }) => {
+const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
   const handleChange = (field, value) => {
     updateGameData({ [field]: value });
   };
@@ -87,6 +87,23 @@ const Step1BasicInfo = ({ gameData, updateGameData }) => {
           onChange={(val) => handleChange("actions_per_turn", Math.max(1, val))}
           options={{ min: 1, placeholder: "1", className: styles["form-input-small"] }}
         />
+      </div>
+
+      <div className={styles["form-group"]}>
+        <label className={styles["checkbox-label"]}>
+          <input
+            type="checkbox"
+            checked={!currentUser || gameData.is_anonymous_creator}
+            onChange={(e) => handleChange("is_anonymous_creator", e.target.checked)}
+            disabled={!currentUser}
+          />
+          <span>Create anonymously</span>
+        </label>
+        <p className={styles["field-hint"]}>
+          {!currentUser
+            ? "You are not logged in — your game will be created anonymously."
+            : "When checked, your username will not be shown publicly as the creator of this game."}
+        </p>
       </div>
     </div>
   );

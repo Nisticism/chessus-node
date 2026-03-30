@@ -543,7 +543,7 @@ const AdminDashboard = () => {
               <td>{piece.id}</td>
               <td><Link to={`/pieces/${piece.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{piece.piece_name}</Link></td>
               <td>{piece.piece_category || 'N/A'}</td>
-              <td>{piece.creator_name ? <Link to={`/profile/${piece.creator_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{piece.creator_name}</Link> : 'N/A'}</td>
+              <td>{piece.creator_name ? (piece.real_creator_name ? <Link to={`/profile/${piece.real_creator_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{piece.creator_name}</Link> : <span>{piece.creator_name}</span>) : 'N/A'}</td>
               <td>
                 {piece.movement_directional ? 'Directional' : piece.movement_ratio ? 'Ratio' : 'Step-by-step'}
               </td>
@@ -587,7 +587,7 @@ const AdminDashboard = () => {
             <tr key={game.id}>
               <td>{game.id}</td>
               <td><Link to={`/games/${game.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{game.game_name}</Link></td>
-              <td>{game.creator_name ? <Link to={`/profile/${game.creator_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{game.creator_name}</Link> : 'N/A'}</td>
+              <td>{game.creator_name ? (game.real_creator_name ? <Link to={`/profile/${game.real_creator_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{game.creator_name}</Link> : <span>{game.creator_name}</span>) : 'N/A'}</td>
               <td>{game.board_width}x{game.board_height}</td>
               <td>{game.player_count || 2}</td>
               <td>{game.last_played_at ? formatDateTime(game.last_played_at) : 'Never'}</td>
@@ -670,7 +670,7 @@ const AdminDashboard = () => {
             <tr key={forum.id}>
               <td>{forum.id}</td>
               <td><Link to={`/forums/${forum.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{forum.title}</Link></td>
-              <td>{forum.author_name ? <Link to={`/profile/${forum.author_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{forum.author_name}</Link> : 'N/A'}</td>
+              <td>{forum.author_name && forum.author_name !== 'Anonymous' ? <Link to={`/profile/${forum.author_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{forum.author_name}</Link> : <span>{forum.author_name || 'N/A'}</span>}</td>
               <td>{forum.game_name || 'N/A'}</td>
               <td>{forum.genre}</td>
               <td>{forum.public ? 'Yes' : 'No'}</td>

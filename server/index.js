@@ -2053,6 +2053,9 @@ app.post("/api/register", registerLimiter, async (req, res) => {
     if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
       return res.status(400).send({ message: "Username can only contain letters, numbers, underscores, and hyphens" });
     }
+    if (username.toLowerCase() === 'anonymous') {
+      return res.status(400).send({ message: "This username is reserved and cannot be used" });
+    }
 
     // Security: Password validation
     if (!password || password.length < 8) {
@@ -3080,8 +3083,12 @@ app.get("/api/forums", async (req, res) => {
       forum.likes = likes;
       
       // Get author name
-      const author = await dbHelpers.findUserById(forum.author_id);
-      forum.author_name = author ? author.username : "User Deleted";
+      if (forum.author_id) {
+        const author = await dbHelpers.findUserById(forum.author_id);
+        forum.author_name = author ? author.username : "User Deleted";
+      } else {
+        forum.author_name = "Anonymous";
+      }
       
       // Get game name if this is a game forum
       if (forum.game_type_id) {
@@ -3129,7 +3136,7 @@ app.get("/api/forum", async (params, res) => {
       const author = await dbHelpers.findUserById(forum.author_id);
       forum.author_name = author ? author.username : "User Deleted";
     } else {
-      forum.author_name = "User Deleted";
+      forum.author_name = "Anonymous";
     }
 
     // Get likes
@@ -3575,10 +3582,11 @@ app.post('/api/token', async (req, res) => {
 
 // ----------------------- Games/Game Types ------------------------------
 
-app.post("/api/games/create", authenticateToken, async (req, res) => {
+app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
   try {
     const gameData = req.body;
-    const creator_id = gameData.creator_id;
+    const creator_id = req.user ? req.user.id : null;
+    const is_anonymous_creator = gameData.is_anonymous_creator ? 1 : 0;
 
     // Validate required fields
     if (!gameData.game_name || gameData.game_name.length < 3) {
@@ -3604,7 +3612,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     // Build the SQL query
     const sql = `
       INSERT INTO game_types (
-        creator_id, game_name, descript, rules,
+        creator_id, is_anonymous_creator, game_name, descript, rules,
         mate_condition, mate_piece, capture_condition, capture_piece,
         value_condition, value_piece, value_max, value_title,
         squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
@@ -3613,11 +3621,12 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         promotion_squares_string, special_squares_string, control_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
         pieces_string, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
       creator_id,
+      is_anonymous_creator,
       gameData.game_name,
       gameData.descript,
       gameData.rules,
@@ -3708,12 +3717,13 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     const forumTitle = `${gameData.game_name} - Discussion`;
     const forumContent = `Welcome to the ${gameData.game_name} discussion forum! Share strategies, ask questions, and connect with other players of this game.${gameData.descript ? '\n\n' + gameData.descript : ''}`;
     
+    const forumAuthorId = is_anonymous_creator ? null : creator_id;
     const forumSql = `
       INSERT INTO articles (author_id, game_type_id, title, content, created_at, public)
       VALUES (?, ?, ?, ?, ?, ?)
     `;
     
-    await db_pool.query(forumSql, [creator_id, gameId, forumTitle, forumContent, currentTime, true]);
+    await db_pool.query(forumSql, [forumAuthorId, gameId, forumTitle, forumContent, currentTime, true]);
 
     res.status(201).send({
       message: "Game created successfully!",
@@ -3743,9 +3753,12 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 
 const parseBooleanField = (value) => value === true || value === 'true' || value === 1 || value === '1';
 
-app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req, res) => {
+app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_images', 8), async (req, res) => {
   try {
     const pieceData = req.body;
+    const creator_id = req.user ? req.user.id : null;
+    const rawAnonCreator = Array.isArray(pieceData.is_anonymous_creator) ? pieceData.is_anonymous_creator[0] : pieceData.is_anonymous_creator;
+    const is_anonymous_creator = rawAnonCreator === 'true' || rawAnonCreator === true ? 1 : 0;
     const imageFiles = Array.isArray(req.files) ? req.files : [];
 
     if (!imageFiles || imageFiles.length < 2) {
@@ -3759,7 +3772,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
     // Insert into consolidated pieces table (all fields in one table now)
     const pieceSql = `
       INSERT INTO pieces (
-        piece_name, image_location, piece_width, piece_height, creator_id, piece_description,
+        piece_name, image_location, piece_width, piece_height, creator_id, is_anonymous_creator, piece_description,
         piece_category, has_checkmate_rule, has_check_rule, has_lose_on_capture_rule, can_castle, can_promote,
         directional_movement_style, repeating_movement,
         up_left_movement, up_movement, up_right_movement, right_movement, down_right_movement, down_movement, down_left_movement, left_movement,
@@ -3793,7 +3806,7 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
         can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies,
         can_capture_allies, cannot_be_captured,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceValues = [
@@ -3801,7 +3814,8 @@ app.post("/api/pieces/create", pieceUpload.array('piece_images', 8), async (req,
       imagesJSON,
       parseInt(pieceData.piece_width) || 1,
       parseInt(pieceData.piece_height) || 1,
-      parseInt(pieceData.creator_id) || null,
+      creator_id,
+      is_anonymous_creator,
       pieceData.piece_description || null,
       // Piece metadata
       pieceData.piece_category || null,
@@ -4506,8 +4520,13 @@ app.get("/api/admin/pieces", authenticateAdmin, async (req, res) => {
 
     const [pieces] = await db_pool.query(
       `SELECT p.id, p.piece_name, p.piece_category, p.piece_description, 
-       p.creator_id, p.image_location,
-       u.username as creator_name,
+       p.creator_id, p.image_location, p.is_anonymous_creator,
+       u.username as real_creator_name,
+       CASE 
+         WHEN p.creator_id IS NULL THEN 'Anonymous (not logged in)'
+         WHEN p.is_anonymous_creator = 1 THEN CONCAT(u.username, ' (Anonymous)')
+         ELSE u.username 
+       END as creator_name,
        p.directional_movement_style as movement_directional, 
        p.ratio_movement_style as movement_ratio,
        p.can_capture_enemy_on_move as can_capture
@@ -4544,7 +4563,13 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
 
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_name, g.descript, g.board_width, g.board_height, 
-       g.player_count, g.last_played_at, u.username as creator_name 
+       g.player_count, g.last_played_at, g.is_anonymous_creator,
+       u.username as real_creator_name,
+       CASE 
+         WHEN g.creator_id IS NULL THEN 'Anonymous (not logged in)'
+         WHEN g.is_anonymous_creator = 1 THEN CONCAT(u.username, ' (Anonymous)')
+         ELSE u.username 
+       END as creator_name
        FROM game_types g
        LEFT JOIN users u ON g.creator_id = u.id
        ORDER BY g.id DESC

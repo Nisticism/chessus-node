@@ -138,9 +138,13 @@ const Forum = () => {
               }
             </div>
             <div className={styles["forum-author-date"]}>
-            <Link to={`/profile/${currentForum.author_name}`}>
-              <div className={styles["forum-username"]}>{ currentForum.author_name }</div>
-            </Link>
+            {currentForum.author_name && currentForum.author_name !== 'Anonymous' ? (
+              <Link to={`/profile/${currentForum.author_name}`}>
+                <div className={styles["forum-username"]}>{ currentForum.author_name }</div>
+              </Link>
+            ) : (
+              <div className={styles["forum-username"]}>{ currentForum.author_name || 'User Deleted' }</div>
+            )}
             <br/> {formatDateLegacy(currentForum.created_at)}</div>
             {currentForum.game_type_id && (
               <div className={styles["forum-game-link"]}>
@@ -169,9 +173,13 @@ const Forum = () => {
                       </div>
                       <div className={styles["comment-author"]}>
                         <div className={styles["comment-link"]}>
+                          {comment.author_name && comment.author_name !== 'Anonymous' && comment.author_name !== 'User Deleted' ? (
                             <Link to={`/profile/${comment.author_name}`}>
                               { comment.author_name }
                             </Link>
+                          ) : (
+                            <span>{ comment.author_name }</span>
+                          )}
                         </div>
                       </div>
                       <div className={styles["comment-content"]}>

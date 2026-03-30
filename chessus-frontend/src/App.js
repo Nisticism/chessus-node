@@ -106,7 +106,7 @@ function App() {
       '/play': 'Play Games | GridGrove',
       '/play/tournaments': 'Tournaments | GridGrove',
       '/sandbox': 'Sandbox | GridGrove',
-      '/chess': 'Chess | GridGrove',
+      '/chess-original': 'Chess (Original) | GridGrove',
       '/pieces': 'Pieces | GridGrove',
       '/community': 'Community Hub | GridGrove',
       '/community/players': 'Players | GridGrove',
@@ -180,7 +180,7 @@ function App() {
             <Route exact path="/play/:gameId" element={<LiveGame />} />
             <Route exact path="/sandbox" element={<Sandbox />} />
             <Route exact path="/match/:gameId" element={<MatchView />} />
-            <Route exact path="/chess" element={<ChessBoard />} />
+            <Route exact path="/chess-original" element={<ChessBoard />} />
             <Route exact path="/account-deleted" element={<DeletedAccount />} />
             <Route exact path="profile/edit" element={<EditAccount />}  />
             <Route exact path="profile/:username" element={<PlayerPage />} />

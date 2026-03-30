@@ -39,6 +39,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     piece_image_previews: [],
     piece_width: 1,
     piece_height: 1,
+    is_anonymous_creator: !currentUser,
     
     // Step 2: Movement Configuration
     directional_movement_style: false,
@@ -614,7 +615,7 @@ const PieceWizard = ({ editPieceId = null }) => {
                           'has_check_rule', 'has_lose_on_capture_rule', 'min_turns_per_move'];
       
       Object.keys(pieceData).forEach(key => {
-        if (key !== 'piece_images' && key !== 'piece_image_previews' && !skipFields.includes(key)) {
+        if (key !== 'piece_images' && key !== 'piece_image_previews' && key !== 'is_anonymous_creator' && !skipFields.includes(key)) {
           const value = pieceData[key];
           const dbFieldName = fieldMapping[key] || key;
           
@@ -627,8 +628,9 @@ const PieceWizard = ({ editPieceId = null }) => {
         }
       });
       
-      formData.append('creator_id', currentUser.id);
-      formData.append('user_role', currentUser.role);
+      formData.append('creator_id', currentUser ? currentUser.id : '');
+      formData.append('user_role', currentUser ? currentUser.role : '');
+      formData.append('is_anonymous_creator', !currentUser || pieceData.is_anonymous_creator ? 'true' : 'false');
       
       if (isEditMode && editPieceId) {
         // Update existing piece
@@ -651,7 +653,7 @@ const PieceWizard = ({ editPieceId = null }) => {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <PieceStep1BasicInfo pieceData={pieceData} updatePieceData={updatePieceData} isEditMode={isEditMode} existingImages={existingImages} setExistingImages={setExistingImages} />;
+        return <PieceStep1BasicInfo pieceData={pieceData} updatePieceData={updatePieceData} isEditMode={isEditMode} existingImages={existingImages} setExistingImages={setExistingImages} currentUser={currentUser} />;
       case 2:
         return <PieceStep2Movement pieceData={pieceData} updatePieceData={updatePieceData} />;
       case 3:

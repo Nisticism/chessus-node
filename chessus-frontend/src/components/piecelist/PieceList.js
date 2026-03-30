@@ -240,13 +240,17 @@ const PieceList = () => {
           {piece.creator_username && (
             <div className={styles["meta-item"]}>
               <span className={styles["meta-label"]}>Creator:</span>
-              <Link 
-                to={`/profile/${piece.creator_username}`} 
-                className={styles["creator-link"]}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {piece.creator_username}
-              </Link>
+              {piece.creator_username === 'Anonymous' ? (
+                <span className={styles["creator-link"]}>Anonymous</span>
+              ) : (
+                <Link 
+                  to={`/profile/${piece.creator_username}`} 
+                  className={styles["creator-link"]}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {piece.creator_username}
+                </Link>
+              )}
             </div>
           )}
 
@@ -287,18 +291,9 @@ const PieceList = () => {
           Browse and manage custom pieces for your games
         </p>
         
-        {currentUser ? (
-          <Link to="/create/piece" className={styles["create-button"]}>
-            + Create New Piece
-          </Link>
-        ) : (
-          <button
-            className={styles["create-button"]}
-            onClick={() => navigate('/login', { state: { message: "Please log in to create a piece." } })}
-          >
-            + Create New Piece
-          </button>
-        )}
+        <Link to="/create/piece" className={styles["create-button"]}>
+          + Create New Piece
+        </Link>
 
         <div className={styles["color-toggle"]}>
           <span className={styles["toggle-label"]}>Show pieces as</span>
@@ -374,18 +369,9 @@ const PieceList = () => {
           <div className={styles["empty-icon"]}>🧩</div>
           <h3>No Pieces Yet</h3>
           <p>Create your first custom piece to get started!</p>
-          {currentUser ? (
-            <Link to="/create/piece" className={styles["create-button"]}>
-              Create a Piece
-            </Link>
-          ) : (
-            <button
-              className={styles["create-button"]}
-              onClick={() => navigate('/login', { state: { message: "Please log in to create a piece." } })}
-            >
-              Create a Piece
-            </button>
-          )}
+          <Link to="/create/piece" className={styles["create-button"]}>
+            Create a Piece
+          </Link>
         </div>
       )}
 

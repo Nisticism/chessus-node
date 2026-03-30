@@ -2113,6 +2113,34 @@ Join us in revolutionizing chess, one variant at a time.
     console.error('Error adding created_at to game_types:', err.message);
   }
 
+  // Add is_anonymous_creator column to pieces table
+  try {
+    const piecesAnonCreator = await columnExists('pieces', 'is_anonymous_creator');
+    if (!piecesAnonCreator) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN is_anonymous_creator TINYINT(1) DEFAULT 0`,
+        "Add is_anonymous_creator column to pieces table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_anonymous_creator to pieces:', err.message);
+  }
+
+  // Add is_anonymous_creator column to game_types table
+  try {
+    const gameTypesAnonCreator = await columnExists('game_types', 'is_anonymous_creator');
+    if (!gameTypesAnonCreator) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN is_anonymous_creator TINYINT(1) DEFAULT 0`,
+        "Add is_anonymous_creator column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_anonymous_creator to game_types:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('âœ“ All migrations up to date\n');
   } else {

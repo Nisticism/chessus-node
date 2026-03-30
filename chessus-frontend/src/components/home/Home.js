@@ -289,24 +289,16 @@ const Home = () => {
           to original creations. Test your ideas, refine them, and share them with players around the world.
         </p>
         <div className={styles["hero-buttons"]}>
-          {currentUser ? (
-            <>
-              <Link to="/create/game" className={styles["primary-button"]}>
-                ♟️ Create a Game
-              </Link>
-              <Link to="/play" className={styles["secondary-button"]}>
-                ⚔️ Play Now
-              </Link>
-            </>
-          ) : (
-            <>
-              <Link to="/register" className={styles["primary-button"]}>
-                🚀 Get Started
-              </Link>
-              <Link to="/login" className={styles["secondary-button"]}>
-                🔑 Sign In
-              </Link>
-            </>
+          <Link to="/create/game" className={styles["primary-button"]}>
+            ♟️ Create a Game
+          </Link>
+          <Link to="/play" className={styles["secondary-button"]}>
+            ⚔️ Play Now
+          </Link>
+          {!currentUser && (
+            <Link to="/login" className={styles["secondary-button"]}>
+              🔑 Sign In
+            </Link>
           )}
         </div>
       </section>
