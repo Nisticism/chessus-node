@@ -257,10 +257,10 @@ const Home = () => {
     return squares;
   };
 
-  // Calculate stats
-  const gamesCount = allGames.gamesList?.length || 0;
-  const piecesCount = allPieces.piecesList?.length || 0;
-  const usersCount = allUsers.usersList?.length || 0;
+  // Calculate stats - use pagination total for accurate counts
+  const gamesCount = allGames.pagination?.total ?? allGames.gamesList?.length ?? 0;
+  const piecesCount = allPieces.pagination?.total ?? allPieces.piecesList?.length ?? 0;
+  const usersCount = allUsers.pagination?.total ?? allUsers.usersList?.length ?? 0;
 
   return (
     <div className={styles["home-container"]}>
