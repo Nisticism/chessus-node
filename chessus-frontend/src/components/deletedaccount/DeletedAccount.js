@@ -1,6 +1,5 @@
 import React from "react";
-import { Navigate, useNavigate } from 'react-router-dom';
-import { useSelector } from "react-redux";
+import { useNavigate } from 'react-router-dom';
 import styles from "./deletedaccount.module.scss";
 
 const DeletedAccount = () => {

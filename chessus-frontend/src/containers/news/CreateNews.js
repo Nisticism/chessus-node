@@ -15,8 +15,8 @@ const CreateNews = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // Check if user is admin - after all hooks
-  if (!currentUser || (currentUser.role !== 'Admin' && currentUser.role !== 'admin')) {
+  // Check if user is admin or owner - after all hooks
+  if (!currentUser || (currentUser.role !== 'Admin' && currentUser.role !== 'admin' && currentUser.role !== 'owner')) {
     return <Navigate to="/news" state={{ message: "You must be an admin to create news" }} />;
   }
 

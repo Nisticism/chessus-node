@@ -194,7 +194,7 @@ const Preferences = () => {
     setSaving(true);
     try {
       // Save to database
-      const response = await axios.post(
+      await axios.post(
         API_URL + "preferences/colors",
         {
           user_id: currentUser.id,

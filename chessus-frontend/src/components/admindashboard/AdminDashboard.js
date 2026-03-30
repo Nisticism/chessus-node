@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
@@ -430,7 +430,7 @@ const AdminDashboard = () => {
             data.map(user => (
             <tr key={user.id}>
               <td>{user.id}</td>
-              <td>{user.username}</td>
+              <td><Link to={`/profile/${user.username}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{user.username}</Link></td>
               <td>{user.email || 'N/A'}</td>
               <td>{`${user.first_name || ''} ${user.last_name || ''}`.trim() || 'N/A'}</td>
               <td>
@@ -541,9 +541,9 @@ const AdminDashboard = () => {
             data.map(piece => (
             <tr key={piece.id}>
               <td>{piece.id}</td>
-              <td>{piece.piece_name}</td>
+              <td><Link to={`/pieces/${piece.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{piece.piece_name}</Link></td>
               <td>{piece.piece_category || 'N/A'}</td>
-              <td>{piece.creator_name || 'N/A'}</td>
+              <td>{piece.creator_name ? <Link to={`/profile/${piece.creator_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{piece.creator_name}</Link> : 'N/A'}</td>
               <td>
                 {piece.movement_directional ? 'Directional' : piece.movement_ratio ? 'Ratio' : 'Step-by-step'}
               </td>
@@ -586,8 +586,8 @@ const AdminDashboard = () => {
             data.map(game => (
             <tr key={game.id}>
               <td>{game.id}</td>
-              <td>{game.game_name}</td>
-              <td>{game.creator_name || 'N/A'}</td>
+              <td><Link to={`/games/${game.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{game.game_name}</Link></td>
+              <td>{game.creator_name ? <Link to={`/profile/${game.creator_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{game.creator_name}</Link> : 'N/A'}</td>
               <td>{game.board_width}x{game.board_height}</td>
               <td>{game.player_count || 2}</td>
               <td>{game.last_played_at ? formatDateTime(game.last_played_at) : 'Never'}</td>
@@ -669,8 +669,8 @@ const AdminDashboard = () => {
             data.map(forum => (
             <tr key={forum.id}>
               <td>{forum.id}</td>
-              <td>{forum.title}</td>
-              <td>{forum.author_name}</td>
+              <td><Link to={`/forums/${forum.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{forum.title}</Link></td>
+              <td>{forum.author_name ? <Link to={`/profile/${forum.author_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{forum.author_name}</Link> : 'N/A'}</td>
               <td>{forum.game_name || 'N/A'}</td>
               <td>{forum.genre}</td>
               <td>{forum.public ? 'Yes' : 'No'}</td>
@@ -712,8 +712,8 @@ const AdminDashboard = () => {
             data.map(news => (
             <tr key={news.id}>
               <td>{news.id}</td>
-              <td>{news.title}</td>
-              <td>{news.author_name}</td>
+              <td><Link to={`/news/edit/${news.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{news.title}</Link></td>
+              <td>{news.author_name ? <Link to={`/profile/${news.author_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{news.author_name}</Link> : 'N/A'}</td>
               <td>{formatDateTime(news.created_at)}</td>
               <td>
                 <button className={styles["edit-btn"]} onClick={() => handleEdit(news)}>Edit</button>

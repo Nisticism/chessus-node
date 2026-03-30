@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import styles from "./forums.module.scss";
 import StandardButton from "../../components/standardbutton/StandardButton";
-import { forums, deleteForum, firstForumsRender } from "../../actions/forums";
+import { forums, firstForumsRender } from "../../actions/forums";
 import { formatDateLegacy } from "../../helpers/date-formatter";
 import Pagination from "../../components/pagination/Pagination";
 

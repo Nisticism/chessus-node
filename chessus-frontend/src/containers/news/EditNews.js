@@ -5,7 +5,7 @@ import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import styles from "./createnews.module.scss";
-import { editNews, news as fetchNews } from "../../actions/news";
+import { news as fetchNews } from "../../actions/news";
 import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
 const EditNews = () => {
@@ -45,8 +45,8 @@ const EditNews = () => {
     }
   }, [newsId]);
 
-  // Check if user is admin - after all hooks
-  if (!currentUser || (currentUser.role !== 'Admin' && currentUser.role !== 'admin')) {
+  // Check if user is admin or owner - after all hooks
+  if (!currentUser || (currentUser.role !== 'Admin' && currentUser.role !== 'admin' && currentUser.role !== 'owner')) {
     return <Navigate to="/news" state={{ message: "You must be an admin to edit news" }} />;
   }
 

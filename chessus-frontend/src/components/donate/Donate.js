@@ -12,7 +12,7 @@ const Donate = () => {
   const [customAmount, setCustomAmount] = useState("");
   const [showThankYou, setShowThankYou] = useState(false);
   const [donationAmount, setDonationAmount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState(null);
+  const [, setPaymentMethod] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPayPalLoaded, setIsPayPalLoaded] = useState(false);
   const [donateAnonymously, setDonateAnonymously] = useState(false);

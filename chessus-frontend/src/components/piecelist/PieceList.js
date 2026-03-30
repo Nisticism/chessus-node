@@ -128,6 +128,7 @@ const PieceList = () => {
               <img 
                 src={firstImage} 
                 alt={piece.piece_name} 
+                loading="lazy"
                 className={styles["piece-image"]}
                 onError={(e) => {
                   const img = e.currentTarget;

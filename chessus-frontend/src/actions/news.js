@@ -9,7 +9,6 @@ import {
   EDIT_NEWS_SUCCESS,
   EDIT_NEWS_FAILURE,
   DELETE_NEWS,
-  DELETE_NEWS_FAILURE,
 } from "./types";
 import NewsService from "../services/news.service";
 
@@ -86,12 +85,6 @@ export const news = () => (dispatch) => {
       return Promise.resolve();
     },
     (error) => {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString();
       dispatch({
         type: ALL_NEWS_FAILURE,
       });
@@ -112,12 +105,6 @@ export const getNews = (id) => (dispatch) => {
       return Promise.resolve();
     },
     (error) => {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString();
       dispatch({
         type: GET_NEWS_FAILURE,
       });

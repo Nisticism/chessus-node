@@ -1,21 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { Link } from 'react-router-dom';
-import { useDispatch, useSelector } from "react-redux";
-import axios from "axios";
+import { useSelector } from "react-redux";
 import { getAllPieces } from "../../actions/pieces";
 import styles from "./pieces.module.scss";
 import { pieces as pieceImages } from '../../assets/pieces.js';
 
 const Pieces = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
-  const allUsers = useSelector((state) => state.users);
-  const [loading, setLoading] = useState(false);
-  const { message } = useSelector(state => state.message);
-  const [ messageDisplay, setMessageDisplay ] = useState(false);
   const [firstRender, setFirstRender] = useState(false);
   const [pieces, setPieces] = useState(null);
-  // const [pieceImages, setPieceImages] = pieceImagesImport;
-  const dispatch = useDispatch();
 
   useEffect(() => {
     if (!firstRender) {
@@ -74,7 +67,7 @@ const Pieces = () => {
                     </td>
                     <td>
                       {/* <img src={piece.image_location} width="50px" height="50px" alt="piece name" /> */}
-                      <img src={pieceImages[0].src} alt="piece image" width="100" height="100"></img>
+                      <img src={pieceImages[0].src} alt="piece" loading="lazy" width="100" height="100"></img>
                       {/* {piece.image_location} */}
                     </td>
                     <td>
@@ -88,7 +81,7 @@ const Pieces = () => {
                       {true.toString()}
                       {((piece.image_location) === '../../assets/pieces/White-pawn.png').toString()}
                       
-                      <img src={require(`../../assets/pieces/${piece.image_location}`)} alt="piece image" width="100" height="100"></img>
+                      <img src={require(`../../assets/pieces/${piece.image_location}`)} alt="piece" loading="lazy" width="100" height="100"></img>
 
                     </td>
                     <td>

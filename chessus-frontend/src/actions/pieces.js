@@ -3,7 +3,6 @@ import { getErrorMessage } from "../helpers/error-handler";
 import {
   LIST_PIECES,
   LIST_PIECES_FAIL,
-  SET_MESSAGE,
 } from "./types";
 
 export const getPieces = (page = 1, limit = 20) => async (dispatch) => {
@@ -16,7 +15,7 @@ export const getPieces = (page = 1, limit = 20) => async (dispatch) => {
     });
     return Promise.resolve();
   } catch (error) {
-    const message = getErrorMessage(error);
+    getErrorMessage(error);
     dispatch({
       type: LIST_PIECES_FAIL,
     });

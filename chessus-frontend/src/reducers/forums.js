@@ -179,7 +179,7 @@ const forumsReducer = (state = initialState, action) => {
         message: "Like failed"
       }
     case DELETE_LIKE:
-      const newLikes = state.forum.likes.filter((like) => like.id != payload);
+      const newLikes = state.forum.likes.filter((like) => like.id !== payload);
       const updatedForumsWithoutLike = state.forums.map(forum =>
         forum.id === state.forum?.id
           ? { ...forum, likes: newLikes }

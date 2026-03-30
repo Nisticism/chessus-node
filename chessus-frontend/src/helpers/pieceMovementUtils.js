@@ -848,7 +848,6 @@ export const formatMoveNotation = (move, includeFrom = true) => {
   const fromSquare = toChessNotation(move.from.x, move.from.y);
   const toSquare = toChessNotation(move.to.x, move.to.y);
   const captureSymbol = move.captured ? 'x' : '-';
-  const rangedSymbol = move.isRangedAttack ? '→' : '';
   
   if (move.isRangedAttack) {
     return `${fromSquare}→${toSquare}${move.captured ? '×' : ''}`;

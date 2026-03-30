@@ -14,7 +14,6 @@ import {
   EDIT_POST_SUCCESS,
   EDIT_POST_FAILURE,
   DELETE_FORUM,
-  DELETE_FORUM_FAILURE,
   LIKE_SUCCESS,
   LIKE_FAILURE,
   DELETE_LIKE,
@@ -89,7 +88,7 @@ export const forums = (page = 1, limit = 20, gameTypeId = null) => async (dispat
     });
     return Promise.resolve();
   } catch (error) {
-    const message = getErrorMessage(error);
+    getErrorMessage(error);
     dispatch({
       type: ALL_FORUMS_FAILURE,
     });
@@ -108,7 +107,7 @@ export const getForum = (id) => async (dispatch) => {
     });
     return Promise.resolve();
   } catch (error) {
-    const message = getErrorMessage(error);
+    getErrorMessage(error);
     dispatch({
       type: GET_FORUM_FAILURE,
     });

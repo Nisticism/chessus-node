@@ -1,15 +1,13 @@
 import React, { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./likes-module.module.scss";
-import { deleteUser } from "../../actions/auth";
 import { AiOutlineLike } from "react-icons/ai";
 import { AiFillLike } from "react-icons/ai";
 import { newLike, deleteLike } from "../../actions/forums";
 
 const LikesModule = (props) => {
 
-  const [isLiked, setIsliked] = useState(props.isLiked);
-  const [likeCount, setLikeCount] = useState(props.likeCount);
+  const [, setIsliked] = useState(props.isLiked);
   const dispatch = useDispatch();
   const currentForum = useSelector((state) => state.forums.forum);
 

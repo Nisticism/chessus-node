@@ -56,7 +56,7 @@ const editForum = async (title, content, last_updated_at, id) => {
 };
 
 const deleteForum = async (id) => {
-  console.log("delete forum request " + "id: " + id);
+  console.log("delete forum request id: " + id);
   const response = await axios.post(API_URL + "forums/delete", {
     id,
     headers: authHeader(),

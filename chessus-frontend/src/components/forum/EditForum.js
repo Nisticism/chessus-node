@@ -2,22 +2,17 @@ import React, { useState, useEffect, useRef } from "react";
 import { Navigate, useNavigate, useParams, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./edit-forum.module.scss";
-import { deleteUser } from "../../actions/auth";
 import StandardButton from "../standardbutton/StandardButton";
 import { getForum, editForum } from "../../actions/forums";
-import axios from "axios";
 import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
 const EditForum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const form = useRef();
-  const checkBtn = useRef();
   const [title, setTitle] = useState(null);
   const [content, setContent] = useState(null);
-  const [date, setDate] = useState("");
   const [loading, setLoading] = useState(true);
-  const [successful, setSuccessful] = useState(false);
-  const [messageDisplay, setMessageDisplay] = useState(false);
+  const [successful] = useState(false);
   const { message } = useSelector(state => state.message);
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -50,7 +45,6 @@ const EditForum = () => {
     e.preventDefault();
     console.log("in handle edit post");
     const todaysDate = getCurrentMySQLDateTime();
-    setDate(todaysDate);
     let inputTitle = title;
     let inputContent = content;
     let last_updated_at = todaysDate;
@@ -72,7 +66,7 @@ const EditForum = () => {
     return <Navigate to="/login" state={{ message: "Please log in to edit forum posts." }} />;
   }
 
-  if (currentUser && currentForum && (currentForum.author_id != currentUser.id && currentUser.role !== "Admin")) {
+  if (currentUser && currentForum && (currentForum.author_id !== currentUser.id && currentUser.role !== "Admin")) {
     return <Navigate to="/" />;
   }
 
@@ -123,7 +117,7 @@ const EditForum = () => {
               </div>
             </div>
           )}
-          {message && messageDisplay && (
+          {message && (
             <div className="form-group">
               <div className={ successful ? "alert alert-success" : "alert alert-danger" } role="alert">
                 {message}

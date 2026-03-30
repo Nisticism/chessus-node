@@ -70,10 +70,10 @@ export const getUser = (username) => async (dispatch) => {
   }
 };
 
-export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword) => async (dispatch) => {
+export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name) => async (dispatch) => {
   try {
     console.log(id);
-    const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword);
+    const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name);
     console.log("in edit action");
     console.log(response.message);
     if (!admin_id) {
@@ -159,7 +159,7 @@ export const logout = () => async (dispatch) => {
 
 export const deleteUser = (username, admin_id) => async (dispatch) => {
   try {
-    const response = await AuthService.deleteUser(username, admin_id);
+    await AuthService.deleteUser(username, admin_id);
     if (admin_id) {
       console.log("admin attempting delete user from state");
       dispatch({

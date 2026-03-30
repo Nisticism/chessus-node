@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import styles from "./privacypolicy.module.scss";
 
 const PrivacyPolicy = () => {
@@ -6,7 +6,7 @@ const PrivacyPolicy = () => {
     <div className={styles.container}>
       <div className={styles.content}>
         <h1 className={styles.title}>Privacy Policy</h1>
-        <p className={styles.lastUpdated}>Last Updated: February 1, 2026</p>
+        <p className={styles.lastUpdated}>Last Updated: March 28, 2026</p>
 
         <section className={styles.section}>
           <h2>1. Information We Collect</h2>

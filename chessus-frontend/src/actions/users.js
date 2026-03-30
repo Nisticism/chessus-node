@@ -1,7 +1,6 @@
 import {
   LIST_USERS,
   LIST_USERS_FAIL,
-  SET_MESSAGE,
   CLEAR_PLAYER_PAGE,
 } from "./types";
 import UsersService from "../services/users.service";
@@ -20,7 +19,7 @@ export const users = (page = 1, limit = 20, filters = {}) => async (dispatch) =>
     });
     return Promise.resolve();
   } catch (error) {
-    const message = getErrorMessage(error);
+    getErrorMessage(error);
     dispatch({
       type: LIST_USERS_FAIL,
     });

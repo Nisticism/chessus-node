@@ -4,7 +4,6 @@ import { useSelector, useDispatch } from "react-redux";
 import styles from "./forum.module.scss";
 import { deleteComment, getForum, newComment, editComment, deleteForum } from "../../actions/forums";
 import StandardButton from "../standardbutton/StandardButton";
-import axios from "axios";
 import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
 import { FaEdit } from "react-icons/fa";
@@ -16,12 +15,9 @@ const Forum = () => {
 
   
   const [loading, setLoading] = useState(true);
-  const [ messageDisplay, setMessageDisplay ] = useState(false);
   const dispatch = useDispatch();
   const [firstRender, setFirstRender] = useState(false);
   const currentForum = useSelector((state) => state.forums.forum);
-  // const [currentForum, setCurrentForum] = useState(null);
-  const [realForum, setRealForum] = useState(false);
   const [commentContent, setCommentContent] = useState(null);
   
   const navigate = useNavigate();

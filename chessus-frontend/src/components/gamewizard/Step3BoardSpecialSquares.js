@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import styles from "./gamewizard.module.scss";
 import SpecialSquareSelector from "./SpecialSquareSelector";
-import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 import NumberInput from "../common/NumberInput";
 
 const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
@@ -12,13 +11,6 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showSquareSelector, setShowSquareSelector] = useState(false);
   const [draggedSquare, setDraggedSquare] = useState(null);
-  const [isMobile, setIsMobile] = useState(false);
-  const longPressTimeoutRef = useRef(null);
-
-  // Detect mobile
-  useEffect(() => {
-    setIsMobile(isMobileDevice());
-  }, []);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -26,10 +18,6 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
 
   const handleChange = (field, value) => {
     updateGameData({ [field]: value });
-  };
-
-  const handleSliderChange = (field, value) => {
-    updateGameData({ [field]: parseInt(value) });
   };
 
   // Track which data sources have been initialized to prevent re-initialization

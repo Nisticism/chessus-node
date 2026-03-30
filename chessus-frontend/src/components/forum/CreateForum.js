@@ -1,10 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import Form from "react-validation/build/form";
-import Input from "react-validation/build/input";
-import CheckButton from "react-validation/build/button";
 import { useNavigate, Navigate, useSearchParams } from "react-router-dom";
-import { isEmail } from "validator";
 import { newForum } from "../../actions/forums";
 import styles from "./create-forum.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
@@ -12,48 +8,15 @@ import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
 import { forums } from "../../actions/forums";
 
-const required = (value) => {
-  if (!value) {
-    return (
-      <div className="alert alert-danger" role="alert">
-        This field is required!
-      </div>
-    );
-  }
-};
-
-const validSubject = (value) => {
-  if (!isEmail(value)) {
-    return (
-      <div className="alert alert-danger" role="alert">
-        This is not a valid email.
-      </div>
-    );
-  }
-};
-
-const validContent = (value) => {
-  if (value.length < 3 || value.length > 20) {
-    return (
-      <div className="alert alert-danger" role="alert">
-        The username must be between 3 and 20 characters.
-      </div>
-    );
-  }
-};
-
 const CreateForum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const [searchParams] = useSearchParams();
   const gameTypeId = searchParams.get('game_type_id');
   
   const form = useRef();
-  const checkBtn = useRef();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [date, setDate] = useState("");
-  const [successful, setSuccessful] = useState(false);
-  const [messageDisplay, setMessageDisplay] = useState(false);
+  const [successful] = useState(false);
   const { message } = useSelector(state => state.message);
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -71,7 +34,6 @@ const CreateForum = () => {
   function handleCreatePost(e) {
     e.preventDefault();
     const todaysDate = getCurrentMySQLDateTime();
-    setDate(todaysDate);
     dispatch(newForum(currentUser.id, title, content, todaysDate, gameTypeId))
       //  Must run dispatch(forums()) to load the newly created forum into state, which is how /forums displays everything
       .then(() => {
@@ -142,7 +104,7 @@ const CreateForum = () => {
               </div>
             </div>
           )}
-          {message && messageDisplay && (
+          {message && (
             <div className="form-group">
               <div className={ successful ? "alert alert-success" : "alert alert-danger" } role="alert">
                 {message}

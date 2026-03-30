@@ -108,7 +108,7 @@ export const trackProfileView = (username) => {
   trackEvent('Profile', 'View', username);
 };
 
-export default {
+const analytics = {
   initGA,
   trackPageView,
   trackEvent,
@@ -126,3 +126,5 @@ export default {
   trackSearch,
   trackProfileView,
 };
+
+export default analytics;
