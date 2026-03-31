@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import styles from "./gamewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import PiecesService from "../../services/pieces.service";
+import InfoTooltip from "../piecewizard/InfoTooltip";
+import NumberInput from "../common/NumberInput";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -50,6 +52,14 @@ const PieceSelector = ({
   const [endsGameOnCheckmate, setEndsGameOnCheckmate] = useState(currentPlacement?.ends_game_on_checkmate || false);
   const [endsGameOnCapture, setEndsGameOnCapture] = useState(currentPlacement?.ends_game_on_capture || false);
   const [canControlSquares, setCanControlSquares] = useState(currentPlacement?.can_control_squares || false);
+  
+  // HP/AD system state
+  const [hitPoints, setHitPoints] = useState(currentPlacement?.hit_points ?? 1);
+  const [attackDamage, setAttackDamage] = useState(currentPlacement?.attack_damage ?? 1);
+  const [showHpAd, setShowHpAd] = useState(currentPlacement?.show_hp_ad || false);
+  const [showRegen, setShowRegen] = useState(currentPlacement?.show_regen ?? false);
+  const [hpRegen, setHpRegen] = useState(currentPlacement?.hp_regen ?? 0);
+  const [cannotBeCaptured, setCannotBeCaptured] = useState(currentPlacement?.cannot_be_captured || false);
   
   // Castling partner override state
   const [manualCastlingPartners, setManualCastlingPartners] = useState(currentPlacement?.manual_castling_partners || false);
@@ -218,6 +228,13 @@ const PieceSelector = ({
       ends_game_on_checkmate: endsGameOnCheckmate,
       ends_game_on_capture: endsGameOnCapture,
       can_control_squares: canControlSquares,
+      // HP/AD system
+      hit_points: hitPoints,
+      attack_damage: attackDamage,
+      show_hp_ad: showHpAd,
+      show_regen: showRegen,
+      hp_regen: hpRegen,
+      cannot_be_captured: cannotBeCaptured,
       // Castling override data - if manual is enabled, default partners are disabled
       manual_castling_partners: manualCastlingPartners,
       castling_partner_left_key: manualCastlingPartners ? leftCastlingPartnerKey : null,
@@ -489,6 +506,73 @@ const PieceSelector = ({
                   <img src={imageUrl} alt={`Option ${index + 1}`} loading="lazy" />
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* HP/AD System (shown when piece is selected) */}
+        {selectedPieceId && (
+          <div className={styles["hp-ad-section"]}>
+            <h3>Health Points & Attack Damage <InfoTooltip text="Configure piece durability. By default, all pieces have 1 HP and 1 AD (standard chess behavior — one hit = one capture). Increase HP to make pieces harder to capture, or increase AD to let them deal more damage." /></h3>
+            <div className={styles["hp-ad-row"]}>
+              <div className={styles["hp-ad-field"]}>
+                <label>
+                  Health Points <InfoTooltip text="How much damage this piece can take before being captured. At 1 HP (default), any attack captures it instantly." />
+                </label>
+                <NumberInput
+                  value={hitPoints}
+                  onChange={(val) => setHitPoints(val)}
+                  options={{ min: 1, max: 100 }}
+                />
+              </div>
+              <div className={styles["hp-ad-field"]}>
+                <label>
+                  Attack Damage <InfoTooltip text="How much HP this piece removes from a target when attacking. At 1 AD (default), it deals 1 damage per attack." />
+                </label>
+                <NumberInput
+                  value={attackDamage}
+                  onChange={(val) => setAttackDamage(val)}
+                  options={{ min: 1, max: 100 }}
+                />
+              </div>
+            </div>
+            <div className={styles["hp-ad-row"]}>
+              <div className={styles["hp-ad-field"]}>
+                <label>
+                  HP Regen (per turn) <InfoTooltip text="HP regenerated at the start of this piece's owner's turn. Set to 0 for no regen. Cannot exceed the piece's max HP." />
+                </label>
+                <NumberInput
+                  value={hpRegen}
+                  onChange={(val) => setHpRegen(val)}
+                  options={{ min: 0, max: 100 }}
+                />
+              </div>
+            </div>
+            <div className={styles["checkbox-group"]}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={showHpAd}
+                  onChange={(e) => setShowHpAd(e.target.checked)}
+                />
+                <span>Show HP/AD on this piece during game <InfoTooltip text="Display an HP bar and AD badge on this piece during gameplay. Can also be toggled globally in game settings." /></span>
+              </label>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={showRegen}
+                  onChange={(e) => setShowRegen(e.target.checked)}
+                />
+                <span>Show Regen badge <InfoTooltip text="Display the HP regeneration badge on this piece. Regen still functions even if hidden." /></span>
+              </label>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={cannotBeCaptured}
+                  onChange={(e) => setCannotBeCaptured(e.target.checked)}
+                />
+                <span>Cannot be captured or damaged <InfoTooltip text="This piece is completely immune to all damage and capture. Attacks against it are blocked. Useful for obstacle or terrain pieces." /></span>
+              </label>
             </div>
           </div>
         )}

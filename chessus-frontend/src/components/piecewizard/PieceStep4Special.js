@@ -348,15 +348,6 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             />
             <span>Can Capture Allied Pieces <InfoTooltip text="When enabled, this piece can capture friendly pieces using any of its attack methods (directional, ratio, or ranged). Useful for sacrifice-based mechanics." /></span>
           </label>
-
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.cannot_be_captured || false}
-              onChange={(e) => handleChange("cannot_be_captured", e.target.checked)}
-            />
-            <span>Cannot Be Captured <InfoTooltip text="When enabled, this piece cannot be captured by any means. It acts as an immovable wall that blocks other pieces. Useful for custom games like duck chess." /></span>
-          </label>
         </div>
       </div>
 

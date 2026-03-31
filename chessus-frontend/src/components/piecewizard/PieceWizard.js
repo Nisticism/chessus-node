@@ -172,6 +172,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     capture_on_hop: false,
     chain_capture_enabled: false,
     chain_hop_allies: false,
+    max_chain_hops: null,
     free_move_after_promotion: false,
     promotion_pieces_ids: null,
     // Can capture allies
@@ -389,6 +390,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             capture_on_hop: !!piece.capture_on_hop,
             chain_capture_enabled: !!piece.chain_capture_enabled,
             chain_hop_allies: !!piece.chain_hop_allies,
+            max_chain_hops: piece.max_chain_hops ?? null,
             free_move_after_promotion: !!piece.free_move_after_promotion,
             promotion_pieces_ids: piece.promotion_pieces_ids || null,
             can_capture_allies: !!piece.can_capture_allies,

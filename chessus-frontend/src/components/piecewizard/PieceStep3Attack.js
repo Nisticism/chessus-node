@@ -1047,7 +1047,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
               onChange={(e) => handleChange("capture_on_hop", e.target.checked)}
               disabled={!pieceData.can_hop_over_enemies}
             />
-            <span>Capture on Hop <InfoTooltip text="When this piece hops over enemy pieces (jumps over them to land on an empty square beyond), it captures all enemy pieces it hops over. Essential for checkers-style gameplay. Requires 'Can hop over enemy pieces' in Movement Hopping (Step 2)." /></span>
+            <span>Capture on Hop <InfoTooltip text="When this piece hops over enemy pieces, it deals damage equal to its Attack Damage. If the target's HP reaches 0, it is captured. If the target survives, it stays on the board with reduced HP but the hop still completes. Requires 'Can hop over enemy pieces' in Movement Hopping (Step 2)." /></span>
           </label>
         </div>
 
@@ -1072,6 +1072,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                 />
                 <span>Chain Hop Over Allies <InfoTooltip text="During chain capture sequences, this piece can also hop over allied pieces (not capturing them). Useful for variants where jumping over your own pieces is allowed during multi-jump moves." /></span>
               </label>
+              <div style={{ marginTop: '10px' }}>
+                <label className={styles["field-label"]}>
+                  Max Chain Hops <InfoTooltip text="Maximum number of consecutive capture hops allowed in a single chain. Leave empty for unlimited. Useful to prevent infinite hop-back-and-forth exploits." />
+                </label>
+                <NumberInput
+                  value={pieceData.max_chain_hops ?? ""}
+                  onChange={(val) => handleChange("max_chain_hops", val === "" || val === 0 ? null : val)}
+                  options={{ min: 1, max: 99, placeholder: "∞" }}
+                />
+              </div>
             </div>
           )}
         </div>

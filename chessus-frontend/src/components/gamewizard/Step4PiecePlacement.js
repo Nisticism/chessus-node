@@ -12,6 +12,8 @@ import {
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import InfoTooltip from "../piecewizard/InfoTooltip";
+import NumberInput from "../common/NumberInput";
 import BoardLegend from "../common/BoardLegend";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
@@ -313,6 +315,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
               ends_game_on_capture: pieceData.ends_game_on_capture || false,
               can_control_squares: pieceData.can_control_squares || false,
+              // HP/AD system
+              hit_points: pieceData.hit_points ?? 1,
+              attack_damage: pieceData.attack_damage ?? 1,
+              show_hp_ad: pieceData.show_hp_ad || false,
+              show_regen: pieceData.show_regen ?? false,
+              hp_regen: pieceData.hp_regen ?? 0,
+              cannot_be_captured: pieceData.cannot_be_captured || false,
               // Castling override data
               manual_castling_partners: pieceData.manual_castling_partners || false,
               castling_partner_left_key: pieceData.castling_partner_left_key || null,
@@ -363,6 +372,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
             ends_game_on_capture: pieceData.ends_game_on_capture || false,
             can_control_squares: pieceData.can_control_squares || false,
+            // HP/AD system
+            hit_points: pieceData.hit_points ?? 1,
+            attack_damage: pieceData.attack_damage ?? 1,
+            show_hp_ad: pieceData.show_hp_ad || false,
+            show_regen: pieceData.show_regen ?? false,
+            hp_regen: pieceData.hp_regen ?? 0,
+            cannot_be_captured: pieceData.cannot_be_captured || false,
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
             castling_partner_right_key: pieceData.castling_partner_right_key || null,
@@ -938,6 +954,45 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                     ⚔️
                   </div>
                 )}
+                {/* HP/AD indicators - show when piece or global setting is on */}
+                {(() => {
+                  let showGlobal = false;
+                  try { showGlobal = JSON.parse(gameData.other_game_data || '{}').show_all_hp_ad || false; } catch {}
+                  const showHp = showGlobal || placement.show_hp_ad || (placement.hit_points && placement.hit_points > 1);
+                  if (!showHp) return null;
+                  const hp = placement.hit_points ?? 1;
+                  const ad = placement.attack_damage ?? 1;
+                  const regen = placement.hp_regen ?? 0;
+                  const badgeStyle = {
+                    fontSize: `${Math.max(7, squareSize * 0.16)}px`,
+                    color: '#fff',
+                    borderRadius: '2px',
+                    padding: '0 2px',
+                    lineHeight: '1.3',
+                    pointerEvents: 'none',
+                    fontWeight: 'bold',
+                    display: 'inline-block',
+                    marginRight: '1px'
+                  };
+                  return (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '1px',
+                      left: '1px',
+                      display: 'flex',
+                      gap: '1px',
+                      pointerEvents: 'none',
+                      flexWrap: 'wrap',
+                      maxWidth: '90%'
+                    }}>
+                      <span style={{ ...badgeStyle, background: 'rgba(76, 175, 80, 0.75)' }} title={`Health Points: ${hp}`}>♥{hp}</span>
+                      <span style={{ ...badgeStyle, background: 'rgba(255, 87, 34, 0.75)' }} title={`Attack Damage: ${ad}`}>⚔{ad}</span>
+                      {regen > 0 && placement.show_regen && (
+                        <span style={{ ...badgeStyle, background: 'rgba(33, 150, 243, 0.75)' }} title={`HP Regen: +${regen}/turn`}>+{regen}</span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
             })()}
@@ -947,7 +1002,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     }
     
     return board;
-  }, [piecePlacements, gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, getSpecialSquareInfo]);
+  }, [piecePlacements, gameData.board_width, gameData.board_height, gameData.other_game_data, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, getSpecialSquareInfo]);
 
   const handleMirrorPieces = useCallback((sourcePlayerId, targetPlayerId) => {
     const boardHeight = gameData.board_height || 8;
@@ -1040,6 +1095,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         ends_game_on_checkmate: sourcePiece.ends_game_on_checkmate || false,
         ends_game_on_capture: sourcePiece.ends_game_on_capture || false,
         can_control_squares: sourcePiece.can_control_squares || false,
+        // HP/AD system
+        hit_points: sourcePiece.hit_points ?? 1,
+        attack_damage: sourcePiece.attack_damage ?? 1,
+        show_hp_ad: sourcePiece.show_hp_ad || false,
+        show_regen: sourcePiece.show_regen ?? false,
+        hp_regen: sourcePiece.hp_regen ?? 0,
+        cannot_be_captured: sourcePiece.cannot_be_captured || false,
         manual_castling_partners: sourcePiece.manual_castling_partners || false,
         castling_partner_left_key: mirroredLeftKey,
         castling_partner_right_key: mirroredRightKey,
@@ -1263,23 +1325,63 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         </div>
       </div>
 
-      {/* Additional Game Data */}
-      {/* Additional Game Data */}
-      <div className={styles["form-group"]} style={{ marginTop: '30px' }}>
-        <label className={styles["form-label"]}>
-          Additional Game Data (JSON)
-        </label>
-        <textarea
-          className={styles["form-textarea-code"]}
-          value={gameData.other_game_data || ""}
-          onChange={(e) => updateGameData({ other_game_data: e.target.value })}
-          placeholder='{"custom_rules": [], "special_mechanics": {}}'
-          rows={6}
-        />
-        <p className={styles["field-hint"]}>
-          Any additional game configuration in JSON format for future extensions.
-        </p>
+      {/* Global HP/AD Settings */}
+      <div className={styles["global-hp-ad-section"]}>
+        <h3>Global HP/AD Settings <InfoTooltip text="These settings apply to all pieces in the game. Individual piece HP/AD settings are configured per-placement in the piece selector." /></h3>
+        <div className={styles["global-hp-ad-row"]}>
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={(() => {
+                try { return JSON.parse(gameData.other_game_data || '{}').show_all_hp_ad || false; } catch { return false; }
+              })()}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                try {
+                  const data = JSON.parse(gameData.other_game_data || '{}');
+                  data.show_all_hp_ad = checked;
+                  updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+                } catch {
+                  updateGameData({ other_game_data: JSON.stringify({ show_all_hp_ad: checked }, null, 2) });
+                }
+                // Also update show_hp_ad on all existing placements
+                setPiecePlacements(prev => {
+                  const updated = { ...prev };
+                  Object.keys(updated).forEach(key => {
+                    if (!updated[key]._occupied) {
+                      updated[key] = { ...updated[key], show_hp_ad: checked };
+                    }
+                  });
+                  return updated;
+                });
+              }}
+            />
+            <span>Show HP/AD on all pieces <InfoTooltip text="Toggle HP bars and AD badges on every piece. Also sets each piece's individual show setting." /></span>
+          </label>
+        </div>
+        <div className={styles["global-hp-ad-row"]}>
+          <label>
+            Global HP Regen (per turn) <InfoTooltip text="HP regenerated each turn for pieces that don't have their own regen set. Only applies to pieces with 0 individual regen." />
+          </label>
+          <NumberInput
+            value={(() => {
+              try { return JSON.parse(gameData.other_game_data || '{}').global_hp_regen || 0; } catch { return 0; }
+            })()}
+            onChange={(val) => {
+              try {
+                const data = JSON.parse(gameData.other_game_data || '{}');
+                data.global_hp_regen = val;
+                updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+              } catch {
+                updateGameData({ other_game_data: JSON.stringify({ global_hp_regen: val }, null, 2) });
+              }
+            }}
+            options={{ min: 0, max: 100 }}
+          />
+        </div>
       </div>
+
+      {/* Additional Game Data - hidden, managed internally via global settings above */}
 
       {showPieceSelector && (
         <PieceSelector

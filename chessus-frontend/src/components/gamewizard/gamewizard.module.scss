@@ -1721,3 +1721,101 @@
   color: var(--text-light-gray);
   opacity: 0.8;
 }
+
+/* HP/AD System Section */
+.hp-ad-section {
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+
+  h3 {
+    margin: 0 0 12px 0;
+    color: var(--light-gray);
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
+.hp-ad-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.hp-ad-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+
+  label {
+    color: var(--light-gray);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+}
+
+.hp-ad-input {
+  width: 80px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--light-gray);
+  font-size: 14px;
+  text-align: center;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+  }
+
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    opacity: 1;
+  }
+}
+
+/* Global HP/AD toggles in Step4 */
+.global-hp-ad-section {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+
+  h3 {
+    margin: 0 0 12px 0;
+    color: var(--light-gray);
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
+.global-hp-ad-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+
+  label {
+    color: var(--light-gray);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+}
