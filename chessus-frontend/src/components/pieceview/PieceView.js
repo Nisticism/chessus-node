@@ -918,7 +918,7 @@ const PieceView = () => {
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>🔀</span>
                     Ratio Capture: {pieceToDisplay.ratio_one_capture || '?'}:{pieceToDisplay.ratio_two_capture || '?'}
-                    {piece.repeating_ratio_capture && (
+                    {!!piece.repeating_ratio_capture && (
                       <span> (repeating{piece.max_ratio_capture_iterations != null && piece.max_ratio_capture_iterations !== -1 ? `, max ${piece.max_ratio_capture_iterations}x` : ''})</span>
                     )}
                   </div>
@@ -929,7 +929,7 @@ const PieceView = () => {
                     Step Capture: {pieceToDisplay.step_by_step_capture} squares
                   </div>
                 )}
-                {piece.repeating_capture && (
+                {!!piece.repeating_capture && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>🔄</span>
                     Can Repeat Capture
