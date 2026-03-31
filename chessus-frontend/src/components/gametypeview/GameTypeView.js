@@ -571,10 +571,27 @@ const GameTypeView = () => {
     // Piece movements
     const pieceDescriptions = [];
     const moveAttackPieceLinks = [];
-    Object.values(uniquePieces).forEach(piece => {
-      const pieceData = pieceDataMap[piece.id] || piece;
+
+    // Gather HP/AD info from placements per piece type
+    const hpAdByPiece = {};
+    Object.values(piecePlacements).forEach(placement => {
+      if (placement._occupied) return;
+      const pid = placement.piece_id;
+      if (!pid) return;
+      if (!hpAdByPiece[pid]) hpAdByPiece[pid] = [];
+      hpAdByPiece[pid].push({
+        hit_points: placement.hit_points ?? 1,
+        attack_damage: placement.attack_damage ?? 1,
+        hp_regen: placement.hp_regen ?? 0,
+        cannot_be_captured: placement.cannot_be_captured || false,
+        show_hp_ad: placement.show_hp_ad || false,
+      });
+    });
+
+    Object.entries(uniquePieces).forEach(([uniqueKey, piece]) => {
+      const pieceData = pieceDataMap[piece.id] || pieceDataMap[uniqueKey] || piece;
       const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
-      const pieceId = pieceData.id || piece.id;
+      const pieceId = uniqueKey;
       
       if (pieceId && pieceName !== 'Unknown Piece') {
         moveAttackPieceLinks.push({ name: pieceName, id: pieceId });
@@ -592,13 +609,45 @@ const GameTypeView = () => {
         description += `• **Movement**: Not defined.\n`;
       }
       
-      // Attack/Capture description
+      // Attack/Capture description (without AD suffix - AD goes in stats line)
+      const placements = hpAdByPiece[pieceId] || hpAdByPiece[piece.id] || [];
+      
       if (captureDesc === "captures the same way it moves") {
-        description += `• **Attack**: Attacks the same way it moves.`;
+        description += `• **Attack**: Attacks the same way it moves.\n`;
       } else if (captureDesc) {
-        description += `• **Attack**: ${captureDesc.charAt(0).toUpperCase() + captureDesc.slice(1)}.`;
+        description += `• **Attack**: ${captureDesc.charAt(0).toUpperCase() + captureDesc.slice(1)}.\n`;
       } else {
-        description += `• **Attack**: Not defined.`;
+        description += `• **Attack**: Not defined.\n`;
+      }
+
+      // Piece Stats line - show if any stat is non-default or show flags are enabled
+      let showGlobalStats = false;
+      try { showGlobalStats = JSON.parse(game.other_game_data || '{}').show_all_hp_ad || false; } catch {}
+      const showFlags = showGlobalStats || placements.some(p => p.show_hp_ad);
+      const hps = [...new Set(placements.map(p => p.hit_points))];
+      const ads = [...new Set(placements.map(p => p.attack_damage))];
+      const regens = [...new Set(placements.map(p => p.hp_regen))];
+      const hasNonDefaultHp = showFlags || hps.some(hp => hp > 1);
+      const hasNonDefaultAd = showFlags || ads.some(ad => ad > 1);
+      const hasRegen = regens.some(r => r > 0);
+      const isInvincible = placements.some(p => p.cannot_be_captured);
+
+      if (hasNonDefaultHp || hasNonDefaultAd || hasRegen || isInvincible) {
+        const parts = [];
+        if (hasNonDefaultHp) {
+          parts.push(hps.length === 1 ? `${hps[0]} HP` : `${hps.join('/')} HP (varies)`);
+        }
+        if (hasNonDefaultAd) {
+          parts.push(ads.length === 1 ? `${ads[0]} AD` : `${ads.join('/')} AD (varies)`);
+        }
+        if (hasRegen) {
+          const nonZeroRegens = regens.filter(r => r > 0);
+          parts.push(`+${nonZeroRegens.join('/+')} Regen/turn`);
+        }
+        if (isInvincible) {
+          parts.push('Immune to capture');
+        }
+        description += `• **Piece Stats**: ${parts.join(' · ')}.\n`;
       }
       
       pieceDescriptions.push(description);
@@ -606,7 +655,7 @@ const GameTypeView = () => {
 
     if (pieceDescriptions.length > 0) {
       rules.push({
-        title: "How Pieces Move and Attack",
+        title: "Piece Settings",
         content: pieceDescriptions.join('\n\n'),
         pieceLinks: moveAttackPieceLinks
       });
@@ -826,11 +875,11 @@ const GameTypeView = () => {
     return rules;
   }, [game, piecePlacements, pieceDataMap, specialSquares]);
 
-  // Compute square size responsively based on container width
+  // Compute square size responsively based on container width, capped so board stays within 850px
   const squareSize = useMemo(() => {
     if (!game || boardContainerWidth === 0) return 0;
-    const availableWidth = Math.max(boardContainerWidth, 100);
-    return Math.min(60, availableWidth / game.board_width);
+    const availableWidth = Math.min(Math.max(boardContainerWidth, 100), 850);
+    return Math.floor(availableWidth / game.board_width);
   }, [game, boardContainerWidth]);
 
   const renderBoard = () => {
@@ -1069,6 +1118,47 @@ const GameTypeView = () => {
                     ⚔️
                   </div>
                 )}
+                {/* HP/AD indicators */}
+                {(() => {
+                  let showGlobal = false;
+                  try { showGlobal = JSON.parse(game.other_game_data || '{}').show_all_hp_ad || false; } catch {}
+                  const showHp = showGlobal || placement.show_hp_ad || (placement.hit_points && placement.hit_points > 1);
+                  if (!showHp) return null;
+                  const hp = placement.hit_points ?? 1;
+                  const ad = placement.attack_damage ?? 1;
+                  const regen = placement.hp_regen ?? 0;
+                  const badgeFontSize = `${Math.max(6, Math.min(11, squareSize * 0.15))}px`;
+                  const badgeStyle = {
+                    fontSize: badgeFontSize,
+                    color: '#fff',
+                    borderRadius: '2px',
+                    padding: '1px 2px',
+                    lineHeight: '1.2',
+                    pointerEvents: 'none',
+                    fontWeight: 'bold',
+                    flex: '1 1 0',
+                    textAlign: 'center',
+                    zIndex: 3
+                  };
+                  return (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '1px',
+                      left: '1px',
+                      right: '1px',
+                      display: 'flex',
+                      gap: '1px',
+                      pointerEvents: 'none',
+                      zIndex: 3
+                    }}>
+                      <span style={{ ...badgeStyle, background: 'rgba(76, 175, 80, 0.6)' }} title={`Health Points: ${hp}`}>♥{hp}</span>
+                      <span style={{ ...badgeStyle, background: 'rgba(255, 87, 34, 0.6)' }} title={`Attack Damage: ${ad}`}>⚔{ad}</span>
+                      {regen > 0 && placement.show_regen && (
+                        <span style={{ ...badgeStyle, background: 'rgba(33, 150, 243, 0.6)' }} title={`HP Regen: +${regen}/turn`}>+{regen}</span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

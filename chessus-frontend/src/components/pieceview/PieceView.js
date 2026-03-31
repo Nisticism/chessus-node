@@ -813,16 +813,10 @@ const PieceView = () => {
                 <span className={styles["special-name"]}>Can Capture Allies <InfoTooltip text="This piece can capture friendly pieces on the same team." /></span>
               </div>
             )}
-            {pieceToDisplay.cannot_be_captured && (
-              <div className={styles["special-ability-card"]}>
-                <span className={styles["special-icon"]}>🛡️</span>
-                <span className={styles["special-name"]}>Cannot Be Captured <InfoTooltip text="This piece is immune to capture by enemy pieces." /></span>
-              </div>
-            )}
             {!pieceToDisplay.can_promote && !pieceToDisplay.can_castle && !pieceToDisplay.has_checkmate_rule && 
              !pieceToDisplay.has_check_rule && !pieceToDisplay.has_lose_on_capture_rule && !pieceToDisplay.can_en_passant &&
              !pieceToDisplay.capture_on_hop && !pieceToDisplay.chain_capture_enabled &&
-             !pieceToDisplay.can_capture_allies && !pieceToDisplay.cannot_be_captured && (
+             !pieceToDisplay.can_capture_allies && (
               <div className={styles["no-abilities"]}>
                 <span className={styles["no-abilities-icon"]}>✨</span>
                 <span>No special abilities</span>
@@ -1038,19 +1032,6 @@ const PieceView = () => {
               </div>
               <div className={styles["step-display"]}>
                 This piece can capture friendly pieces on the same team.
-              </div>
-            </div>
-          )}
-
-          {/* Cannot Be Captured */}
-          {pieceToDisplay.cannot_be_captured && (
-            <div className={styles["ability-card"]} style={{ borderLeftColor: '#607d8b' }}>
-              <div className={styles["ability-header"]}>
-                <span className={styles["ability-icon"]}>🛡️</span>
-                <h3>Immune to Capture</h3>
-              </div>
-              <div className={styles["step-display"]}>
-                This piece cannot be captured by enemy pieces.
               </div>
             </div>
           )}
