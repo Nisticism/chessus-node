@@ -128,7 +128,22 @@ const describePieceMovement = (pieceData) => {
     hoppingDetails.push('enemies');
   }
   if (hoppingDetails.length > 0) {
-    movements.push(`can hop over ${hoppingDetails.join(' and ')}`);
+    let hopText = `can hop over ${hoppingDetails.join(' and ')}`;
+    // If hopping is disabled for directional movement, specify which movement types still allow hopping
+    const hasStepMovement = stepStyle && stepValue;
+    if (pieceData.directional_hop_disabled && hasDirectional) {
+      const hopMovementTypes = [];
+      if (hasRatio || hasRatioValues) {
+        hopMovementTypes.push(hasRatioValues ? 'ratio L-shaped movement' : 'ratio movement');
+      }
+      if (hasStepMovement) {
+        hopMovementTypes.push('exact movement');
+      }
+      if (hopMovementTypes.length > 0) {
+        hopText += ` when using its ${hopMovementTypes.join(' or ')}`;
+      }
+    }
+    movements.push(hopText);
   }
   
   return movements.join('; ');
