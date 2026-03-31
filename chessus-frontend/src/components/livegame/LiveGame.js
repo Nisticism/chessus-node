@@ -129,6 +129,8 @@ const LiveGame = () => {
   const dragGrabOffsetRef = useRef({ x: 0, y: 0 });
   const [inCheck, setInCheck] = useState(false);
   const [checkedPieces, setCheckedPieces] = useState([]);
+  const [damageAnimations, setDamageAnimations] = useState([]); // HP/AD: floating damage numbers [{id, pieceId, damage, x, y}]
+  const [regenAnimations, setRegenAnimations] = useState([]); // HP/AD: floating regen numbers [{id, pieceId, healed, x, y}]
   const [showMovableIndicators, setShowMovableIndicators] = useState(false);
   const [showPromotionSquares, setShowPromotionSquares] = useState(false);
   const [showCastlingInfo, setShowCastlingInfo] = useState(false);
@@ -221,7 +223,7 @@ const LiveGame = () => {
 
   // Subscribe to game events
   useEffect(() => {
-    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState }) => {
+    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces }) => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
         console.log('moveMade received:', { 
           moveFrom: move.from, 
@@ -260,9 +262,50 @@ const LiveGame = () => {
             soundManager.playCheck();
           } else if (move.captured) {
             soundManager.playCapture();
+          } else if (move.damagedPieces && move.damagedPieces.length > 0) {
+            // HP/AD: play capture sound for damage hits too
+            soundManager.playCapture();
           } else {
             soundManager.playMove();
           }
+        }
+
+        // HP/AD: Show floating damage numbers for damaged pieces
+        if (move.damagedPieces && move.damagedPieces.length > 0) {
+          const newAnims = move.damagedPieces.map((dp, i) => {
+            // Find the damaged piece to get its position
+            const damagedPiece = newState.pieces?.find(p => p.id === dp.id);
+            return {
+              id: `${Date.now()}-${i}`,
+              pieceId: dp.id,
+              damage: dp.damageDealt,
+              x: damagedPiece?.x ?? 0,
+              y: damagedPiece?.y ?? 0
+            };
+          });
+          setDamageAnimations(prev => [...prev, ...newAnims]);
+          // Clear animations after 1 second
+          setTimeout(() => {
+            setDamageAnimations(prev => prev.filter(a => !newAnims.some(n => n.id === a.id)));
+          }, 1000);
+        }
+
+        // HP/AD: Show floating regen numbers with 0.2s delay to avoid overlap with damage
+        if (regenPieces && regenPieces.length > 0) {
+          setTimeout(() => {
+            const regenAnims = regenPieces.map((rp, i) => ({
+              id: `regen-${Date.now()}-${i}`,
+              pieceId: rp.id,
+              healed: rp.healed,
+              x: rp.x,
+              y: rp.y
+            }));
+            setRegenAnimations(prev => [...prev, ...regenAnims]);
+            // Clear regen animations after 1 second
+            setTimeout(() => {
+              setRegenAnimations(prev => prev.filter(a => !regenAnims.some(n => n.id === a.id)));
+            }, 1000);
+          }, 200);
         }
         
         // Check if premove piece still exists, if not clear it
@@ -2623,6 +2666,27 @@ const LiveGame = () => {
       });
     }
 
+    // Calculate square size dynamically so the board always fits on screen
+    let squareSize;
+    if (windowWidth > 1200) {
+      // 3-column layout: sidebars (~280px each), gaps (24px each), container padding (40px), coord labels (~24px)
+      const containerWidth = Math.min(windowWidth, 1800);
+      const sidebarWidth = containerWidth <= 1400 ? 240 : 280;
+      const availableWidth = containerWidth - sidebarWidth * 2 - 24 * 2 - 40 - 24;
+      // Leave room for header (~120px), padding, and some breathing room
+      const availableHeight = windowHeight - 180;
+      const maxByWidth = Math.floor(availableWidth / boardWidth);
+      const maxByHeight = Math.floor(availableHeight / boardHeight);
+      squareSize = Math.max(20, Math.min(120, maxByWidth, maxByHeight));
+    } else {
+      // Single-column layout: board is centered, use most of viewport width
+      const availableWidth = windowWidth - 24 - 32 - 24; // viewport minus coord labels, wrapper padding, margin
+      const availableHeight = windowHeight - 200;
+      const maxByWidth = Math.floor(availableWidth / boardWidth);
+      const maxByHeight = Math.floor(availableHeight / boardHeight);
+      squareSize = Math.max(16, Math.min(65, maxByWidth, maxByHeight));
+    }
+
     const squares = [];
 
     for (let displayY = 0; displayY < boardHeight; displayY++) {
@@ -2843,9 +2907,37 @@ const LiveGame = () => {
                   // Fallback to unicode chess pieces
                   <span>{getPieceSymbol(piece)}</span>
                 )}
+                {/* HP/AD overlay - show when piece has show_hp_ad flag or HP > 1 */}
+                {(piece.show_hp_ad || (piece.hit_points && piece.hit_points > 1)) && (
+                  <div className={styles["hp-ad-overlay"]}>
+                    {piece.show_hp_ad && (
+                      <div className={styles["stat-badges"]} style={{ width: `${squareSize * 0.85}px` }}>
+                        <span className={styles["hp-badge"]} style={{ fontSize: `${Math.max(8, squareSize * 0.18)}px` }}>♥{piece.current_hp ?? piece.hit_points ?? 1}</span>
+                        <span className={styles["ad-badge"]} style={{ fontSize: `${Math.max(8, squareSize * 0.18)}px` }}>⚔{piece.attack_damage ?? 1}</span>
+                        {piece.show_regen && piece.hp_regen > 0 && (
+                          <span className={styles["regen-badge"]} style={{ fontSize: `${Math.max(8, squareSize * 0.18)}px` }}>+{piece.hp_regen}</span>
+                        )}
+                      </div>
+                    )}
+                    <div className={styles["hp-bar"]}>
+                      <div 
+                        className={styles["hp-bar-fill"]}
+                        style={{ width: `${Math.max(0, Math.min(100, ((piece.current_hp ?? piece.hit_points ?? 1) / (piece.hit_points || 1)) * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             );
             })()}
+            {/* HP/AD: Floating damage numbers */}
+            {damageAnimations.filter(a => a.x === gameX && a.y === gameY).map(anim => (
+              <div key={anim.id} className={styles["damage-float"]} style={{ fontSize: `${Math.max(12, squareSize * 0.3)}px`, left: '35%' }}>-{anim.damage}</div>
+            ))}
+            {/* HP/AD: Floating regen numbers */}
+            {regenAnimations.filter(a => a.x === gameX && a.y === gameY).map(anim => (
+              <div key={anim.id} className={styles["regen-float"]} style={{ fontSize: `${Math.max(12, squareSize * 0.3)}px`, left: '65%' }}>+{anim.healed}</div>
+            ))}
           </div>
         );
       }
@@ -2871,27 +2963,6 @@ const LiveGame = () => {
           {rowToRank(rankIndex)}
         </div>
       );
-    }
-
-    // Calculate square size dynamically so the board always fits on screen
-    let squareSize;
-    if (windowWidth > 1200) {
-      // 3-column layout: sidebars (~280px each), gaps (24px each), container padding (40px), coord labels (~24px)
-      const containerWidth = Math.min(windowWidth, 1800);
-      const sidebarWidth = containerWidth <= 1400 ? 240 : 280;
-      const availableWidth = containerWidth - sidebarWidth * 2 - 24 * 2 - 40 - 24;
-      // Leave room for header (~120px), padding, and some breathing room
-      const availableHeight = windowHeight - 180;
-      const maxByWidth = Math.floor(availableWidth / boardWidth);
-      const maxByHeight = Math.floor(availableHeight / boardHeight);
-      squareSize = Math.max(20, Math.min(120, maxByWidth, maxByHeight));
-    } else {
-      // Single-column layout: board is centered, use most of viewport width
-      const availableWidth = windowWidth - 24 - 32 - 24; // viewport minus coord labels, wrapper padding, margin
-      const availableHeight = windowHeight - 200;
-      const maxByWidth = Math.floor(availableWidth / boardWidth);
-      const maxByHeight = Math.floor(availableHeight / boardHeight);
-      squareSize = Math.max(16, Math.min(65, maxByWidth, maxByHeight));
     }
 
     return (

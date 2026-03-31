@@ -38,10 +38,10 @@ class SoundManager {
       sound.pause();
       sound.currentTime = 0;
 
-      // Stop playback after 1 second
+      // Stop playback after 0.5 seconds
       const stopTimer = setTimeout(() => {
         sound.pause();
-      }, 1000);
+      }, 500);
 
       sound.play().catch(err => {
         clearTimeout(stopTimer);

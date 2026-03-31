@@ -2291,3 +2291,128 @@
   font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-style: italic;
 }
+
+/* HP/AD System Overlay */
+.hp-ad-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.hp-bar {
+  width: 80%;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 1px;
+}
+
+.hp-bar-fill {
+  height: 100%;
+  background: #4caf50;
+  transition: width 0.3s ease;
+  border-radius: 2px;
+}
+
+.stat-badges {
+  display: flex;
+  gap: 1px;
+  justify-content: center;
+  margin-bottom: 1px;
+}
+
+.hp-badge,
+.ad-badge,
+.regen-badge {
+  font-weight: 400;
+  color: #fff;
+  border-radius: 2px;
+  padding: 1px 3px;
+  line-height: 1.2;
+  white-space: nowrap;
+  flex: 1 1 0;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hp-badge {
+  background: rgba(76, 175, 80, 0.6);
+}
+
+.ad-badge {
+  background: rgba(255, 87, 34, 0.6);
+}
+
+.regen-badge {
+  background: rgba(33, 150, 243, 0.6);
+}
+
+/* Damage animation */
+.damage-float {
+  position: absolute;
+  top: 10%;
+  left: 35%;
+  transform: translateX(-50%);
+  font-weight: 400;
+  color: #ff4444;
+  text-shadow: 0 0 4px #000, 0 0 8px #000;
+  animation: damageFloat 1s ease-out forwards;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* Regen animation */
+.regen-float {
+  position: absolute;
+  top: 10%;
+  left: 65%;
+  transform: translateX(-50%);
+  font-weight: 400;
+  color: #42a5f5;
+  text-shadow: 0 0 4px #000, 0 0 8px #000;
+  animation: regenFloat 1s ease-out forwards;
+  pointer-events: none;
+  z-index: 20;
+}
+
+@keyframes damageFloat {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-30px);
+  }
+}
+
+@keyframes regenFloat {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-30px);
+  }
+}
+
+.hp-bar-flash {
+  .hp-bar-fill {
+    animation: hpFlash 0.3s ease-in-out;
+  }
+}
+
+@keyframes hpFlash {
+  0%, 100% { background: #4caf50; }
+  50% { background: #ff4444; }
+}
