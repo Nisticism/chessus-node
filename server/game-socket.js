@@ -595,7 +595,14 @@ function initializeSocket(server) {
               castling_partner_left_key: piece.castling_partner_left_key || null,
               castling_partner_right_key: piece.castling_partner_right_key || null,
               // Castling distance (how many squares the piece moves when castling)
-              castling_distance: piece.castling_distance ?? 2
+              castling_distance: piece.castling_distance ?? 2,
+              // HP/AD system from junction table
+              hit_points: piece.hit_points ?? 1,
+              current_hp: piece.hit_points ?? 1,
+              attack_damage: piece.attack_damage ?? 1,
+              show_hp_ad: !!piece.show_hp_ad,
+              hp_regen: piece.hp_regen ?? 0,
+              cannot_be_captured: !!piece.cannot_be_captured
             };
           });
           
@@ -787,6 +794,7 @@ function initializeSocket(server) {
               capture_on_hop: fullPieceData.capture_on_hop,
               chain_capture_enabled: fullPieceData.chain_capture_enabled,
               chain_hop_allies: fullPieceData.chain_hop_allies,
+              max_chain_hops: fullPieceData.max_chain_hops,
               free_move_after_promotion: fullPieceData.free_move_after_promotion,
               promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
               // Dimensions for multi-tile pieces
@@ -794,12 +802,41 @@ function initializeSocket(server) {
               piece_height: fullPieceData.piece_height || 1,
               // Can capture allies
               can_capture_allies: fullPieceData.can_capture_allies,
-              // Cannot be captured
-              cannot_be_captured: fullPieceData.cannot_be_captured
+              // Cannot be captured - junction table value takes precedence, fallback to piece table
+              cannot_be_captured: piece.cannot_be_captured || fullPieceData.cannot_be_captured
             };
           }
           return piece;
         });
+
+        // Apply global HP/AD settings from other_game_data
+        let otherGameData = {};
+        try {
+          if (gameType.other_game_data) {
+            otherGameData = typeof gameType.other_game_data === 'string' 
+              ? JSON.parse(gameType.other_game_data) 
+              : gameType.other_game_data;
+          }
+        } catch (e) { /* ignore parse errors */ }
+        
+        const globalHpRegen = otherGameData.global_hp_regen || 0;
+        const showAllHpAd = !!otherGameData.show_all_hp_ad;
+        
+        // Apply global hp_regen to pieces that have hp_regen = 0 (individual overrides take precedence)
+        if (globalHpRegen > 0) {
+          piecesArray = piecesArray.map(piece => ({
+            ...piece,
+            hp_regen: piece.hp_regen > 0 ? piece.hp_regen : globalHpRegen
+          }));
+        }
+        
+        // Apply global show_all_hp_ad
+        if (showAllHpAd) {
+          piecesArray = piecesArray.map(piece => ({
+            ...piece,
+            show_hp_ad: true
+          }));
+        }
         
         const piecesData = JSON.stringify(piecesArray);
         
@@ -1703,6 +1740,8 @@ function initializeSocket(server) {
           pieceId: move.pieceId,
           captured: moveResult.captured,
           ...(moveResult.allCaptured && moveResult.allCaptured.length > 1 ? { allCaptured: moveResult.allCaptured } : {}),
+          ...(moveResult.damagedPieces && moveResult.damagedPieces.length > 0 ? { damagedPieces: moveResult.damagedPieces } : {}),
+          ...(moveResult.moveCancelled ? { moveCancelled: true } : {}),
           player: userId,
           position: gameState.currentTurn,
           timestamp: Date.now(),
@@ -1788,6 +1827,7 @@ function initializeSocket(server) {
           // Store that this piece can make additional captures (don't switch turns)
           gameState.chainCapturePieceId = moveResult.movingPiece.id;
           gameState.chainCapturePlayerId = userId;
+          gameState.chainCaptureHopCount = (gameState.chainCaptureHopCount || 0) + 1;
           
           // Update database with chain capture state
           await db_pool.query(
@@ -1824,9 +1864,26 @@ function initializeSocket(server) {
         // Clear any chain capture state after a non-chain-capture move
         gameState.chainCapturePieceId = null;
         gameState.chainCapturePlayerId = null;
+        gameState.chainCaptureHopCount = 0;
 
         // Switch turns
         gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+
+        // HP/AD system: Apply HP regeneration at the start of the new player's turn
+        const newTurnPlayer = gameState.currentTurn;
+        const regenPieces = [];
+        gameState.pieces.forEach(p => {
+          const owner = p.team || p.player_id;
+          if (owner === newTurnPlayer && p.hp_regen && p.hp_regen > 0) {
+            const maxHp = p.hit_points || 1;
+            const currentHp = p.current_hp ?? maxHp;
+            if (currentHp < maxHp) {
+              const healed = Math.min(p.hp_regen, maxHp - currentHp);
+              p.current_hp = Math.min(maxHp, currentHp + p.hp_regen);
+              regenPieces.push({ id: p.id, healed, previousHp: currentHp, currentHp: p.current_hp, x: p.x, y: p.y });
+            }
+          }
+        });
 
         // Initialize premove property if it doesn't exist (for backwards compatibility)
         if (gameState.premove === undefined) {
@@ -1854,6 +1911,8 @@ function initializeSocket(server) {
               pieceId: premove.move.pieceId,
               captured: premoveResult.captured,
               ...(premoveResult.allCaptured && premoveResult.allCaptured.length > 1 ? { allCaptured: premoveResult.allCaptured } : {}),
+              ...(premoveResult.damagedPieces && premoveResult.damagedPieces.length > 0 ? { damagedPieces: premoveResult.damagedPieces } : {}),
+              ...(premoveResult.moveCancelled ? { moveCancelled: true } : {}),
               player: nextPlayer.id,
               position: gameState.currentTurn,
               timestamp: Date.now(),
@@ -2672,7 +2731,8 @@ function initializeSocket(server) {
               rated: gameState.rated,
               enPassantTarget: gameState.enPassantTarget,
               controlSquareTracking: gameState.controlSquareTracking
-            }
+            },
+            ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {})
           });
 
           // If player is in check, emit a separate check event for visibility
@@ -3923,31 +3983,71 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
   
   const originalPos = { x: simulatedPieces[pieceIndex].x, y: simulatedPieces[pieceIndex].y };
   
+  // HP/AD system: Get attacker's attack damage for capture simulation
+  const simAttackDamage = simulatedPieces[pieceIndex].attack_damage || 1;
+  
   // Check if destination footprint has enemy pieces (would be captured)
   const pw = simulatedPieces[pieceIndex].piece_width || 1;
   const ph = simulatedPieces[pieceIndex].piece_height || 1;
   const pieceOwner = simulatedPieces[pieceIndex].team || simulatedPieces[pieceIndex].player_id;
+  const enemiesAtDest = [];
   const capturedIds = new Set();
+  let anySurvivor = false;
   if (pw > 1 || ph > 1) {
+    const seenIds = new Set();
     for (let fdy = 0; fdy < ph; fdy++) {
       for (let fdx = 0; fdx < pw; fdx++) {
         const idx = simulatedPieces.findIndex(p => {
-          if (p.id === pieceId || capturedIds.has(p.id)) return false;
+          if (p.id === pieceId || seenIds.has(p.id)) return false;
           if (!doesPieceOccupySquare(p, to.x + fdx, to.y + fdy)) return false;
           const pOwner = p.team || p.player_id;
           return pOwner !== pieceOwner;
         });
-        if (idx !== -1) capturedIds.add(simulatedPieces[idx].id);
+        if (idx !== -1) {
+          seenIds.add(simulatedPieces[idx].id);
+          enemiesAtDest.push(simulatedPieces[idx]);
+          // HP/AD: Only count as captured if damage would kill
+          const targetHp = simulatedPieces[idx].current_hp ?? simulatedPieces[idx].hit_points ?? 1;
+          if (!simulatedPieces[idx].cannot_be_captured && targetHp <= simAttackDamage) {
+            capturedIds.add(simulatedPieces[idx].id);
+          } else {
+            anySurvivor = true;
+          }
+        }
       }
     }
   } else {
     const capturedPieceIndex = simulatedPieces.findIndex(p => 
       p.id !== pieceId && doesPieceOccupySquare(p, to.x, to.y)
     );
-    if (capturedPieceIndex !== -1) capturedIds.add(simulatedPieces[capturedPieceIndex].id);
+    if (capturedPieceIndex !== -1) {
+      const targetPiece = simulatedPieces[capturedPieceIndex];
+      enemiesAtDest.push(targetPiece);
+      const targetHp = targetPiece.current_hp ?? targetPiece.hit_points ?? 1;
+      if (!targetPiece.cannot_be_captured && targetHp <= simAttackDamage) {
+        capturedIds.add(targetPiece.id);
+      } else {
+        anySurvivor = true;
+      }
+    }
   }
   
-  // Remove all captured pieces from simulation
+  // HP/AD: If any enemy survives at destination, move would be cancelled (piece stays in place)
+  if (anySurvivor && enemiesAtDest.length > 0) {
+    // Move is cancelled - piece doesn't move. Check if current position is still in check.
+    // Remove any killed pieces from simulation (those with HP <= attack damage)
+    if (capturedIds.size > 0) {
+      for (let i = simulatedPieces.length - 1; i >= 0; i--) {
+        if (capturedIds.has(simulatedPieces[i].id)) {
+          simulatedPieces.splice(i, 1);
+        }
+      }
+    }
+    const simState = { ...gameState, pieces: simulatedPieces };
+    return checkForCheck(simState, playerPosition).inCheck;
+  }
+  
+  // Remove all captured pieces from simulation (all enemies at destination would die)
   if (capturedIds.size > 0) {
     for (let i = simulatedPieces.length - 1; i >= 0; i--) {
       if (capturedIds.has(simulatedPieces[i].id)) {
@@ -4199,6 +4299,7 @@ async function validateAndApplyMove(gameState, move) {
   let capturedPiece = null;
   let destinationPieceIndex = -1;
   let allCapturedPieces = [];
+  let damagedPieces = []; // HP/AD system: pieces that took damage but survived
   if (pw > 1 || ph > 1) {
     const seenIds = new Set();
     for (let fdy = 0; fdy < ph; fdy++) {
@@ -4272,10 +4373,19 @@ async function validateAndApplyMove(gameState, move) {
       return { valid: false, reason: "Ranged attack is blocked by another piece" };
     }
     
-    capturedPiece = destPiece;
+    // HP/AD system: Apply damage to ranged attack target
+    const rangedAttackDamage = piece.attack_damage || 1;
+    const rangedPrevHp = destPiece.current_hp ?? destPiece.hit_points ?? 1;
+    destPiece.current_hp = Math.max(0, rangedPrevHp - rangedAttackDamage);
     
-    // Remove the captured piece
-    pieces.splice(destinationPieceIndex, 1);
+    if (destPiece.current_hp <= 0) {
+      // Target killed - capture as normal
+      capturedPiece = destPiece;
+      pieces.splice(destinationPieceIndex, 1);
+    } else {
+      // Target survived - damaged but not captured
+      damagedPieces.push({ id: destPiece.id, damageDealt: rangedAttackDamage, previousHp: rangedPrevHp, remainingHp: destPiece.current_hp });
+    }
     
     // Piece stays in place but turn still counts
     const movingPiece = pieces.find(p => p.id === pieceId);
@@ -4288,7 +4398,7 @@ async function validateAndApplyMove(gameState, move) {
       }
     }
     
-    return { valid: true, captured: capturedPiece, promotionEligible: null, movingPiece, isRangedAttack: true };
+    return { valid: true, captured: capturedPiece, damagedPieces, promotionEligible: null, movingPiece, isRangedAttack: true };
   }
   
   if (destinationPieceIndex !== -1) {
@@ -4373,12 +4483,97 @@ async function validateAndApplyMove(gameState, move) {
     }
   }
 
+  // HP/AD system: Calculate if capture targets would survive, making the move a damage-only attack
+  const attackDamage = piece.attack_damage || 1;
+  let moveCancelled = false;
+  let enPassantTargetSurvives = false;
+
+  // For standard/multi-tile captures, check if any target would survive
+  if (allCapturedPieces.length > 0) {
+    const anySurvivor = allCapturedPieces.some(t => {
+      if (t.cannot_be_captured) return true; // immune to all damage
+      const hp = t.current_hp ?? t.hit_points ?? 1;
+      return hp > attackDamage;
+    });
+    if (anySurvivor) {
+      moveCancelled = true;
+    }
+  }
+
+  // For en passant captures, check if victim would survive
+  if (capturedPiece && allCapturedPieces.length === 0) {
+    if (!capturedPiece.cannot_be_captured) {
+      const victimHp = capturedPiece.current_hp ?? capturedPiece.hit_points ?? 1;
+      if (victimHp > attackDamage) {
+        enPassantTargetSurvives = true;
+      }
+    }
+  }
+
+  // HP/AD: If standard/multi-tile capture target(s) survive, move is cancelled but damage is dealt
+  if (moveCancelled) {
+    // If player is in check, a damage-only move doesn't resolve it
+    const gameType = gameState.gameType;
+    if (gameType && gameType.mate_condition) {
+      const currentCheckStatus = checkForCheck(gameState, currentPlayer.position);
+      if (currentCheckStatus.inCheck) {
+        return { valid: false, reason: "You must get out of check" };
+      }
+    }
+
+    // Apply damage to all captured targets
+    let actualCaptured = [];
+    for (const target of allCapturedPieces) {
+      if (target.cannot_be_captured) continue;
+      const prevHp = target.current_hp ?? target.hit_points ?? 1;
+      target.current_hp = Math.max(0, prevHp - attackDamage);
+      if (target.current_hp <= 0) {
+        actualCaptured.push(target);
+      } else {
+        damagedPieces.push({ id: target.id, damageDealt: attackDamage, previousHp: prevHp, remainingHp: target.current_hp });
+      }
+    }
+
+    // Remove actually killed pieces (those whose HP reached 0)
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      if (actualCaptured.some(c => c.id === pieces[i].id)) {
+        pieces.splice(i, 1);
+      }
+    }
+
+    // Piece stays in place (move cancelled) but turn was used
+    const movingPiece = pieces.find(p => p.id === pieceId);
+    if (movingPiece) {
+      movingPiece.hasMoved = true;
+      if (movingPiece.moveCount === undefined) movingPiece.moveCount = 1;
+      else movingPiece.moveCount++;
+    }
+
+    capturedPiece = actualCaptured.length > 0 ? actualCaptured[0] : null;
+    return { valid: true, captured: capturedPiece, allCaptured: actualCaptured, damagedPieces, moveCancelled: true, movingPiece, promotionEligible: null };
+  }
+
   // Check if mate_condition is enabled - if so, validate move doesn't leave player in check
   const gameType = gameState.gameType;
   if (gameType && gameType.mate_condition) {
-    // Check if this move would leave the player in check
-    if (wouldMoveLeaveInCheck(gameState, move, currentPlayer.position)) {
-      // Check if player is currently in check for better error message
+    // HP/AD: For en passant with surviving target, custom check simulation (victim stays on board)
+    if (enPassantTargetSurvives) {
+      const simPieces = pieces.map(p => ({ ...p }));
+      const simMover = simPieces.find(p => p.id === pieceId);
+      if (simMover) {
+        simMover.x = to.x;
+        simMover.y = to.y;
+      }
+      const simState = { ...gameState, pieces: simPieces };
+      if (checkForCheck(simState, currentPlayer.position).inCheck) {
+        const currentCheckStatus = checkForCheck(gameState, currentPlayer.position);
+        if (currentCheckStatus.inCheck) {
+          return { valid: false, reason: "You must get out of check" };
+        } else {
+          return { valid: false, reason: "This move would put you in check" };
+        }
+      }
+    } else if (wouldMoveLeaveInCheck(gameState, move, currentPlayer.position)) {
       const currentCheckStatus = checkForCheck(gameState, currentPlayer.position);
       if (currentCheckStatus.inCheck) {
         return { valid: false, reason: "You must get out of check" };
@@ -4392,20 +4587,45 @@ async function validateAndApplyMove(gameState, move) {
   // Handle en passant capture (captured piece is at different position than destination)
   let isEnPassantCapture = false;
   if (capturedPiece && allCapturedPieces.length === 0) {
-    // This is an en passant capture - find and remove the captured piece
-    const epCapturedIndex = pieces.findIndex(p => p.id === capturedPiece.id);
-    if (epCapturedIndex !== -1) {
-      pieces.splice(epCapturedIndex, 1);
-      isEnPassantCapture = true;
+    // HP/AD system: Apply damage to en passant victim
+    const epAttackDamage = piece.attack_damage || 1;
+    const epPrevHp = capturedPiece.current_hp ?? capturedPiece.hit_points ?? 1;
+    capturedPiece.current_hp = Math.max(0, epPrevHp - epAttackDamage);
+
+    if (capturedPiece.current_hp <= 0) {
+      // Target killed - remove as normal
+      const epCapturedIndex = pieces.findIndex(p => p.id === capturedPiece.id);
+      if (epCapturedIndex !== -1) {
+        pieces.splice(epCapturedIndex, 1);
+      }
+    } else {
+      // Target survived en passant - piece still moves to capture square, target stays with reduced HP
+      damagedPieces.push({ id: capturedPiece.id, damageDealt: epAttackDamage, previousHp: epPrevHp, remainingHp: capturedPiece.current_hp });
+      capturedPiece = null; // Not actually captured
     }
+    isEnPassantCapture = true;
   } else if (allCapturedPieces.length > 0) {
-    // Remove all captured pieces (multi-tile pieces capture everything in their footprint)
-    const capturedIds = new Set(allCapturedPieces.map(p => p.id));
+    // HP/AD system: Apply damage to all captured pieces and only remove killed ones
+    const captureAttackDamage = piece.attack_damage || 1;
+    const actualKilled = [];
+    for (const target of allCapturedPieces) {
+      if (target.cannot_be_captured) continue;
+      const prevHp = target.current_hp ?? target.hit_points ?? 1;
+      target.current_hp = Math.max(0, prevHp - captureAttackDamage);
+      if (target.current_hp <= 0) {
+        actualKilled.push(target);
+      } else {
+        damagedPieces.push({ id: target.id, damageDealt: captureAttackDamage, previousHp: prevHp, remainingHp: target.current_hp });
+      }
+    }
+    const killedIds = new Set(actualKilled.map(p => p.id));
     for (let i = pieces.length - 1; i >= 0; i--) {
-      if (capturedIds.has(pieces[i].id)) {
+      if (killedIds.has(pieces[i].id)) {
         pieces.splice(i, 1);
       }
     }
+    allCapturedPieces = actualKilled;
+    capturedPiece = actualKilled.length > 0 ? actualKilled[0] : null;
   }
 
   // Update piece position
@@ -4450,19 +4670,29 @@ async function validateAndApplyMove(gameState, move) {
       }
     }
 
-    // Handle capture_on_hop (checkers-style captures) - capture all pieces hopped over
+    // Handle capture_on_hop (checkers-style captures) - deal damage to all pieces hopped over
     const hasCaptureOnHop = movingPiece.capture_on_hop === 1 || movingPiece.capture_on_hop === true;
     if (hasCaptureOnHop) {
       // Use the original from position to calculate hopped pieces
       const hoppedPieces = getPiecesHoppedOver(from.x, from.y, to.x, to.y, movingPiece, pieces);
       if (hoppedPieces.length > 0) {
-        console.log('[CAPTURE ON HOP] Capturing hopped pieces:', hoppedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })));
-        // Remove hopped pieces from the game
+        console.log('[CAPTURE ON HOP] Processing hopped pieces:', hoppedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })));
+        const hopAttackDamage = movingPiece.attack_damage || 1;
+        // HP/AD system: Apply damage to hopped pieces, only remove if HP reaches 0
         hoppedPieces.forEach(hoppedPiece => {
-          const hoppedIndex = pieces.findIndex(p => p.id === hoppedPiece.id);
-          if (hoppedIndex !== -1) {
-            pieces.splice(hoppedIndex, 1);
-            hoppedCaptures.push(hoppedPiece);
+          if (hoppedPiece.cannot_be_captured) return; // immune to damage
+          const hopPrevHp = hoppedPiece.current_hp ?? hoppedPiece.hit_points ?? 1;
+          hoppedPiece.current_hp = Math.max(0, hopPrevHp - hopAttackDamage);
+          if (hoppedPiece.current_hp <= 0) {
+            // Hopped piece killed
+            const hoppedIndex = pieces.findIndex(p => p.id === hoppedPiece.id);
+            if (hoppedIndex !== -1) {
+              pieces.splice(hoppedIndex, 1);
+              hoppedCaptures.push(hoppedPiece);
+            }
+          } else {
+            // Hopped piece survived - damaged but stays on board
+            damagedPieces.push({ id: hoppedPiece.id, damageDealt: hopAttackDamage, previousHp: hopPrevHp, remainingHp: hoppedPiece.current_hp });
           }
         });
       }
@@ -4473,9 +4703,12 @@ async function validateAndApplyMove(gameState, move) {
     const didCapture = capturedPiece !== null || hoppedCaptures.length > 0;
     
     if (hasChainCapture && didCapture) {
-      // Check if this piece can make another capture from its new position
-      // For now, mark that chain capture is available - the frontend will need to handle restricting to only this piece
-      chainCaptureAvailable = true;
+      // HP/AD: Enforce max_chain_hops limit
+      const maxHops = movingPiece.max_chain_hops;
+      const hopsSoFar = (gameState.chainCaptureHopCount || 0) + 1; // +1 for current hop
+      if (maxHops == null || hopsSoFar < maxHops) {
+        chainCaptureAvailable = true;
+      }
     }
 
     // Check for promotion eligibility
@@ -4571,7 +4804,7 @@ async function validateAndApplyMove(gameState, move) {
     }
   }
 
-  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable };
+  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable };
 }
 
 /**
@@ -4847,6 +5080,60 @@ function isPieceUnderAttack(gameState, targetPiece) {
         const eh = enemyPiece.piece_height || 1;
         if (ew > 1 || eh > 1) {
           // Multi-tile attacker: check if any anchor destination puts (sx, sy) in footprint
+          let canAttack = false;
+          for (let edy = 0; edy < eh && !canAttack; edy++) {
+            for (let edx = 0; edx < ew && !canAttack; edx++) {
+              if (canPieceAttackSquare(enemyPiece, sx - edx, sy - edy, pieces)) {
+                canAttack = true;
+              }
+            }
+          }
+          if (canAttack) return true;
+        } else {
+          if (canPieceAttackSquare(enemyPiece, sx, sy, pieces)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * HP/AD system: Check if a piece is under LETHAL attack (attacker AD >= target current HP)
+ * Only lethal attacks count as "check" - non-lethal attacks just deal damage.
+ * @param {Object} gameState - The current game state
+ * @param {Object} targetPiece - The piece to check
+ * @returns {boolean} - True if the piece is under lethal attack
+ */
+function isPieceUnderLethalAttack(gameState, targetPiece) {
+  const { pieces } = gameState;
+  const targetOwnerPosition = targetPiece.team || targetPiece.player_id;
+  const targetHp = targetPiece.current_hp ?? targetPiece.hit_points ?? 1;
+  
+  // Get all enemy pieces with enough attack damage to be lethal
+  const enemyPieces = pieces.filter(p => {
+    const pieceOwnerPosition = p.team || p.player_id;
+    if (pieceOwnerPosition === targetOwnerPosition || p.id === targetPiece.id) return false;
+    const enemyAd = p.attack_damage || 1;
+    return enemyAd >= targetHp; // Only consider lethal attackers
+  });
+  
+  if (enemyPieces.length === 0) return false;
+  
+  // For multi-tile pieces, check if any lethal enemy can attack ANY occupied square
+  const tw = targetPiece.piece_width || 1;
+  const th = targetPiece.piece_height || 1;
+  for (let dy = 0; dy < th; dy++) {
+    for (let dx = 0; dx < tw; dx++) {
+      const sx = targetPiece.x + dx;
+      const sy = targetPiece.y + dy;
+      for (const enemyPiece of enemyPieces) {
+        const ew = enemyPiece.piece_width || 1;
+        const eh = enemyPiece.piece_height || 1;
+        if (ew > 1 || eh > 1) {
           let canAttack = false;
           for (let edy = 0; edy < eh && !canAttack; edy++) {
             for (let edx = 0; edx < ew && !canAttack; edx++) {
@@ -5853,7 +6140,8 @@ function checkForCheck(gameState, playerPosition) {
   
   const checkedPieces = [];
   for (const piece of checkmatePieces) {
-    if (isPieceUnderAttack(gameState, piece)) {
+    // HP/AD system: Only lethal attacks count as check
+    if (isPieceUnderLethalAttack(gameState, piece)) {
       checkedPieces.push(piece);
     }
   }

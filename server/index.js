@@ -1979,7 +1979,13 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.castling_partner_left_key || null,
               piece.castling_partner_right_key || null,
               piece.can_control_squares || false,
-              piece.castling_distance ?? 2
+              piece.castling_distance ?? 2,
+              piece.hit_points ?? 1,
+              piece.attack_damage ?? 1,
+              piece.show_hp_ad || false,
+              piece.hp_regen ?? 0,
+              piece.cannot_be_captured || false,
+              piece.show_regen ?? false
             );
           }
         }
@@ -3756,7 +3762,13 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
               piece.castling_partner_left_key || null,
               piece.castling_partner_right_key || null,
               piece.can_control_squares || false,
-              piece.castling_distance ?? 2
+              piece.castling_distance ?? 2,
+              piece.hit_points ?? 1,
+              piece.attack_damage ?? 1,
+              piece.show_hp_ad || false,
+              piece.hp_regen ?? 0,
+              piece.cannot_be_captured || false,
+              piece.show_regen ?? false
             );
           }
         }
@@ -3857,9 +3869,9 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
         can_fire_over_allies, can_fire_over_enemies, can_en_passant,
         capture_on_hop, chain_capture_enabled, free_move_after_promotion, promotion_pieces_ids,
         can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies,
-        can_capture_allies, cannot_be_captured,
+        can_capture_allies, cannot_be_captured, max_chain_hops,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceValues = [
@@ -4017,6 +4029,8 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
       parseBooleanField(pieceData.cannot_be_captured),
+      // Max chain hops
+      pieceData.max_chain_hops != null ? parseInt(pieceData.max_chain_hops) : null,
       // Created at
       new Date().toISOString().slice(0, 19).replace('T', ' ')
     ];
@@ -4241,7 +4255,8 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         can_hop_attack_over_enemies = ?,
         chain_hop_allies = ?,
         can_capture_allies = ?,
-        cannot_be_captured = ?
+        cannot_be_captured = ?,
+        max_chain_hops = ?
       WHERE id = ?
     `;
 
@@ -4397,6 +4412,8 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
       parseBooleanField(pieceData.cannot_be_captured),
+      // Max chain hops
+      pieceData.max_chain_hops != null ? parseInt(pieceData.max_chain_hops) : null,
       pieceId
     ];
 

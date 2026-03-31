@@ -547,7 +547,14 @@ const getGameById = async (gameId) => {
         chain_capture_enabled: Boolean(piece.chain_capture_enabled),
         piece_name: piece.piece_name,
         image_url: imageUrl,
-        image_location: piece.image_location
+        image_location: piece.image_location,
+        // HP/AD system
+        hit_points: piece.hit_points ?? 1,
+        attack_damage: piece.attack_damage ?? 1,
+        show_hp_ad: Boolean(piece.show_hp_ad),
+        hp_regen: piece.hp_regen ?? 0,
+        cannot_be_captured: Boolean(piece.cannot_be_captured),
+        show_regen: Boolean(piece.show_regen)
       };
 
       // For multi-tile pieces, create extension square markers
@@ -626,11 +633,11 @@ const getPiecesForGameType = async (gameTypeId) => {
  * @param {boolean} canControlSquares - If true, this piece can control squares for the control squares win condition
  * @returns {Promise<Object>} Insert result
  */
-const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2) => {
+const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false) => {
   const result = await query(`
-    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2]);
+    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0]);
   return result;
 };
 

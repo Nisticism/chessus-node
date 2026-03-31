@@ -454,6 +454,49 @@ const migrations = [
     column: 'cannot_be_captured',
     sql: "ALTER TABLE pieces ADD COLUMN cannot_be_captured TINYINT(1) DEFAULT 0",
     description: "Add cannot_be_captured column - when enabled, the piece cannot be captured by any means (acts as a wall)"
+  },
+  // HP/AD system migrations
+  {
+    table: 'game_type_pieces',
+    column: 'hit_points',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN hit_points INT DEFAULT 1",
+    description: "Add hit_points column to game_type_pieces - HP per piece placement (default 1 = normal capture)"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'attack_damage',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN attack_damage INT DEFAULT 1",
+    description: "Add attack_damage column to game_type_pieces - AD per piece placement (default 1 = normal capture)"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'show_hp_ad',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN show_hp_ad TINYINT(1) DEFAULT 0",
+    description: "Add show_hp_ad column to game_type_pieces - per-piece toggle to show HP/AD on board"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'hp_regen',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN hp_regen INT DEFAULT 0",
+    description: "Add hp_regen column to game_type_pieces - HP regenerated per turn (0 = none)"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'cannot_be_captured',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN cannot_be_captured TINYINT(1) DEFAULT 0",
+    description: "Add cannot_be_captured column to game_type_pieces - per-placement override for damage immunity"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'show_regen',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN show_regen TINYINT(1) DEFAULT 0",
+    description: "Add show_regen column to game_type_pieces - toggle visibility of regen badge (default visible)"
+  },
+  {
+    table: 'pieces',
+    column: 'max_chain_hops',
+    sql: "ALTER TABLE pieces ADD COLUMN max_chain_hops INT DEFAULT NULL",
+    description: "Add max_chain_hops column to pieces - limits chain capture hops per turn (NULL = unlimited)"
   }
 ];
 
