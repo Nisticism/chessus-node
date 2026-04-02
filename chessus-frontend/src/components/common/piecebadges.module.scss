@@ -1,0 +1,89 @@
+/* Shared piece stat badges - anchored to corners */
+
+.hp-badge,
+.ad-badge,
+.regen-badge,
+.burn-badge {
+  position: absolute;
+  font-weight: 600;
+  color: #fff;
+  border-radius: 2px;
+  padding: 0px 2px;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-align: center;
+  pointer-events: none;
+  z-index: 6;
+  min-width: 2em;
+}
+
+.badge-icon {
+  margin-right: 2px;
+}
+
+.regen-icon {
+  display: inline-block;
+  margin-right: 2px;
+  font-size: 0.75em;
+  vertical-align: middle;
+  position: relative;
+  top: -1.5px;
+}
+
+.regen-icon-multi {
+  display: inline-block;
+  margin-right: 2px;
+  font-size: 0.75em;
+  vertical-align: middle;
+  position: relative;
+  top: -4px;
+}
+
+/* HP badge - bottom left */
+.hp-badge {
+  bottom: 1px;
+  left: 1px;
+  background: rgba(76, 175, 80, 0.55);
+}
+
+/* AD badge - bottom right */
+.ad-badge {
+  bottom: 1px;
+  right: 1px;
+  background: rgba(160, 30, 30, 0.65);
+}
+
+/* Regen badge - top right */
+.regen-badge {
+  top: 1px;
+  right: 1px;
+  background: rgba(33, 150, 243, 0.55);
+}
+
+/* Burn badge - top left, slightly wider */
+.burn-badge {
+  top: 1px;
+  left: 1px;
+  background: rgba(234, 120, 0, 0.65);
+  letter-spacing: -0.3px;
+  min-width: 2.4em;
+  padding: 0px 4px;
+}
+
+.burn-icon {
+  filter: saturate(2) hue-rotate(-15deg);
+  font-size: 0.9em;
+  margin-left: -5px;
+  margin-right: -3px;
+  position: relative;
+  top: -1px;
+}
+
+.burn-icon-multi {
+  filter: saturate(2) hue-rotate(-15deg);
+  font-size: 0.9em;
+  margin-left: -5px;
+  margin-right: -3px;
+  position: relative;
+  top: -2px;
+}

@@ -868,8 +868,8 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               checked={pieceData.directional_hop_disabled}
               onChange={(e) => handleChange("directional_hop_disabled", e.target.checked)}
             />
-            <span>Disable hopping for directional movement</span>
-            <InfoTooltip text="When enabled, hopping over pieces is disabled for directional (sliding) movements like rook or bishop movement. Hopping still works for ratio (L-shape) movements like a knight. Useful for hybrid pieces — e.g. a knight-bishop that can hop with its knight movement but not its bishop movement." />
+            <span>Disable hopping for non-exact directional movement</span>
+            <InfoTooltip text="When enabled, hopping over pieces is disabled for non-exact directional (sliding) movements like rook or bishop movement. Hopping still works for exact directional movements, ratio (L-shape) movements, and step-by-step movements. Useful for hybrid pieces that should only hop with specific movement styles." />
           </label>
         )}
       </div>

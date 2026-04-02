@@ -497,6 +497,25 @@ const migrations = [
     column: 'max_chain_hops',
     sql: "ALTER TABLE pieces ADD COLUMN max_chain_hops INT DEFAULT NULL",
     description: "Add max_chain_hops column to pieces - limits chain capture hops per turn (NULL = unlimited)"
+  },
+  // Burn damage (DOT) system migrations
+  {
+    table: 'game_type_pieces',
+    column: 'burn_damage',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN burn_damage INT DEFAULT 0",
+    description: "Add burn_damage column to game_type_pieces - DOT damage inflicted per turn on attacked targets (0 = none)"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'burn_duration',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN burn_duration INT DEFAULT 0",
+    description: "Add burn_duration column to game_type_pieces - number of turns burn damage lasts (0 = none)"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'show_burn',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN show_burn TINYINT(1) DEFAULT 0",
+    description: "Add show_burn column to game_type_pieces - whether to display burn badge on this piece during gameplay"
   }
 ];
 
@@ -2188,6 +2207,20 @@ Join us in revolutionizing chess, one variant at a time.
     }
   } catch (err) {
     console.error('Error adding is_anonymous_creator to game_types:', err.message);
+  }
+
+  // Add piece_count_condition column to game_types for Othello-style "most pieces wins" condition
+  try {
+    const pieceCountConditionCol = await columnExists('game_types', 'piece_count_condition');
+    if (!pieceCountConditionCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN piece_count_condition BOOLEAN DEFAULT FALSE COMMENT 'If true, player with the most pieces on the board wins when no more valid moves can be made or the board is full (Othello-style)'`,
+        "Add piece_count_condition column to game_types table for Othello-style win condition"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding piece_count_condition column:', err.message);
   }
 
   if (migrationsRun === 0) {

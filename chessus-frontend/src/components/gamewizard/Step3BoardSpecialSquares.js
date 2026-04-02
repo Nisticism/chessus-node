@@ -399,7 +399,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
 
   const renderBoard = React.useMemo(() => {
     const board = [];
-    const squareSize = Math.min(80, 600 / Math.max(gameData.board_width, gameData.board_height));
+    const squareSize = Math.min(100, 850 / Math.max(gameData.board_width, gameData.board_height));
 
     for (let row = 0; row < gameData.board_height; row++) {
       for (let col = 0; col < gameData.board_width; col++) {

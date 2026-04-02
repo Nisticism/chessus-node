@@ -1200,10 +1200,10 @@ const Sandbox = () => {
     return false;
   }, [canPieceMoveTo]);
 
-  const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false) => {
+  const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false, isExactDirectional = false) => {
     const directionalHopDisabled = pieceData?.directional_hop_disabled === 1 || pieceData?.directional_hop_disabled === true;
-    const canHopAllies = !directionalHopDisabled && (pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true);
-    const canHopEnemies = !directionalHopDisabled && (pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true);
+    const baseCanHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true;
+    const baseCanHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true;
     const pieceTeam = pieceData?.player_id || pieceData?.team;
     const movingPieceId = pieceData?.id;
     
@@ -1214,6 +1214,10 @@ const Sandbox = () => {
     const xDiff = Math.abs(toX - fromX);
     const yDiff = Math.abs(toY - fromY);
     if (xDiff !== yDiff && xDiff !== 0 && yDiff !== 0) {
+      // Ratio/L-shape: directionalHopDisabled does NOT affect these — always use full hop ability
+      const canHopAllies = baseCanHopAllies;
+      const canHopEnemies = baseCanHopEnemies;
+
       // If piece can hop over both allies and enemies, no path check needed
       if (canHopAllies && canHopEnemies) return true;
 
@@ -1243,6 +1247,11 @@ const Sandbox = () => {
 
       return checkLPath(path1) || checkLPath(path2);
     }
+
+    // Straight-line (directional) move: apply directionalHopDisabled
+    // Hopping allowed if: piece has hop ability AND (flag is off OR move is exact directional)
+    const canHopAllies = baseCanHopAllies && (!directionalHopDisabled || isExactDirectional);
+    const canHopEnemies = baseCanHopEnemies && (!directionalHopDisabled || isExactDirectional);
 
     let x = fromX + dx;
     let y = fromY + dy;
@@ -1397,6 +1406,32 @@ const Sandbox = () => {
           }
         }
 
+        // Determine if this is an exact directional move (for hopping logic)
+        const isExactDir = (() => {
+          if (isRatioMove || isStepMove) return false;
+          const rowDist = toY - piece.y;
+          const colDist = toX - piece.x;
+          const aR = Math.abs(rowDist);
+          const aC = Math.abs(colDist);
+          // Determine effective direction (flip for player 2)
+          const isP2 = pieceTeam === 2;
+          const eR = isP2 ? -rowDist : rowDist;
+          const eC = isP2 ? -colDist : colDist;
+          if (aC === 0 && aR > 0) {
+            return !!(eR < 0 ? piece.up_movement_exact : piece.down_movement_exact);
+          }
+          if (aR === 0 && aC > 0) {
+            return !!(eC < 0 ? piece.left_movement_exact : piece.right_movement_exact);
+          }
+          if (aR === aC && aR > 0) {
+            if (eR < 0 && eC < 0) return !!piece.up_left_movement_exact;
+            if (eR < 0 && eC > 0) return !!piece.up_right_movement_exact;
+            if (eR > 0 && eC < 0) return !!piece.down_left_movement_exact;
+            if (eR > 0 && eC > 0) return !!piece.down_right_movement_exact;
+          }
+          return false;
+        })();
+
         let pathClear = false;
         if (isStepMove) {
           pathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, isCapture);
@@ -1405,13 +1440,13 @@ const Sandbox = () => {
           pathClear = true;
           for (let dy = 0; dy < ph && pathClear; dy++) {
             for (let dx = 0; dx < pw && pathClear; dx++) {
-              if (!isPathClear(piece.x + dx, piece.y + dy, toX + dx, toY + dy, pieces, piece, isCapture)) {
+              if (!isPathClear(piece.x + dx, piece.y + dy, toX + dx, toY + dy, pieces, piece, isCapture, isExactDir)) {
                 pathClear = false;
               }
             }
           }
         } else {
-          pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture);
+          pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture, isExactDir);
         }
 
         // For repeating ratio moves, check intermediate landing positions are clear

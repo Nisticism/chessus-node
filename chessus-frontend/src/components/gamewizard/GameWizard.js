@@ -46,6 +46,7 @@ const GameWizard = ({ editGameId }) => {
     hill_y: null,
     hill_turns: null,
     no_moves_condition: false, // Disabled by default like other win conditions
+    piece_count_condition: false,
     optional_condition: null,
     draw_move_limit: null,
     repetition_draw_count: null,
@@ -115,6 +116,7 @@ const GameWizard = ({ editGameId }) => {
             hill_y: existingGame.hill_y || null,
             hill_turns: existingGame.hill_turns || null,
             no_moves_condition: Boolean(existingGame.no_moves_condition),
+            piece_count_condition: Boolean(existingGame.piece_count_condition),
             optional_condition: existingGame.optional_condition || null,
             draw_move_limit: existingGame.draw_move_limit != null ? existingGame.draw_move_limit : null,
             repetition_draw_count: existingGame.repetition_draw_count != null ? existingGame.repetition_draw_count : null,

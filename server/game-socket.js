@@ -582,6 +582,7 @@ function initializeSocket(server) {
             return {
               ...piece,
               id: `${piece.piece_id}_${piece.y}_${piece.x}`, // Unique ID for this piece instance
+              player_id: piece.player_number || 1, // Ensure player_id is set from junction table
               // Store initial position for promotion square checking
               initial_x: piece.x,
               initial_y: piece.y,
@@ -602,7 +603,13 @@ function initializeSocket(server) {
               attack_damage: piece.attack_damage ?? 1,
               show_hp_ad: !!piece.show_hp_ad,
               hp_regen: piece.hp_regen ?? 0,
-              cannot_be_captured: !!piece.cannot_be_captured
+              cannot_be_captured: !!piece.cannot_be_captured,
+              // Burn/DOT system from junction table
+              burn_damage: piece.burn_damage ?? 0,
+              burn_duration: piece.burn_duration ?? 0,
+              show_burn: !!piece.show_burn,
+              burn_active_damage: 0,
+              burn_active_turns: 0
             };
           });
           
@@ -659,22 +666,8 @@ function initializeSocket(server) {
           }
         }
         
-        // Fix player_id assignment based on Y position FIRST (before setting images)
-        // This ensures pieces have the correct ownership regardless of what's in the database
-        const boardHeight = gameType.board_height || 8;
-        piecesArray = piecesArray.map(piece => {
-          // Determine player based on Y position
-          // Bottom half of board (lower Y values) = Player 2
-          // Top half of board (higher Y values) = Player 1
-          const inferredPlayerId = piece.y < (boardHeight / 2) ? 2 : 1;
-          
-          return {
-            ...piece,
-            player_id: inferredPlayerId
-          };
-        });
-        
-        // Merge piece movement data into pieces array (now that player_id is set)
+        // Use player_id from database as-is (the game wizard saves piece ownership correctly)
+        // Merge piece movement data into pieces array
         piecesArray = piecesArray.map(piece => {
           const fullPieceData = pieceDataMap[piece.piece_id];
           if (fullPieceData) {
@@ -838,6 +831,17 @@ function initializeSocket(server) {
           }));
         }
         
+        // Apply global show_all_badges
+        const showAllBadges = !!otherGameData.show_all_badges;
+        if (showAllBadges) {
+          piecesArray = piecesArray.map(piece => ({
+            ...piece,
+            show_hp_ad: true,
+            show_regen: true,
+            show_burn: true
+          }));
+        }
+        
         const piecesData = JSON.stringify(piecesArray);
         
         const isChallenge = challengedUserId ? 1 : 0;
@@ -863,6 +867,7 @@ function initializeSocket(server) {
           id: gameId,
           gameTypeId,
           gameType: gameType,
+          otherGameData,
           timeControl,
           increment: increment || 0,
           status: 'waiting',
@@ -1010,6 +1015,7 @@ function initializeSocket(server) {
         let piecesArray = junctionPieces.map(piece => ({
           ...piece,
           id: `${piece.piece_id}_${piece.y}_${piece.x}`,
+          player_id: piece.player_number || 1, // Ensure player_id is set from junction table
           initial_x: piece.x,
           initial_y: piece.y,
           ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
@@ -1033,13 +1039,7 @@ function initializeSocket(server) {
           pieceRows.forEach(p => { pieceDataMap[p.id] = p; });
         }
 
-        // Fix player_id assignment based on Y position
-        const boardHeight = gameType.board_height || 8;
-        piecesArray = piecesArray.map(piece => {
-          const inferredPlayerId = piece.y < (boardHeight / 2) ? 2 : 1;
-          return { ...piece, player_id: inferredPlayerId };
-        });
-
+        // Use player_id from database as-is (the game wizard saves piece ownership correctly)
         // Merge piece movement data (same as createGame)
         piecesArray = piecesArray.map(piece => {
           const fullPieceData = pieceDataMap[piece.piece_id];
@@ -1537,6 +1537,9 @@ function initializeSocket(server) {
             id: gameId,
             gameTypeId: game.game_type_id,
             gameType: gameType,
+            otherGameData: (() => {
+              try { return gameType?.other_game_data ? (typeof gameType.other_game_data === 'string' ? JSON.parse(gameType.other_game_data) : gameType.other_game_data) : {}; } catch { return {}; }
+            })(),
             timeControl: game.turn_length,
             increment: game.increment || 0,
             status: game.status,
@@ -1718,6 +1721,298 @@ function initializeSocket(server) {
           startGameTimer(io, gameId);
         }
 
+        // Handle piece placement action (Othello-style)
+        const otherData = gameState.otherGameData || {};
+        if (move.type === 'place' && otherData.place_pieces_action) {
+          const placeX = move.to?.x;
+          const placeY = move.to?.y;
+          const boardWidth = gameState.gameType?.board_width || 8;
+          const boardHeight = gameState.gameType?.board_height || 8;
+
+          // Validate placement target is within bounds
+          if (placeX == null || placeY == null || placeX < 0 || placeX >= boardWidth || placeY < 0 || placeY >= boardHeight) {
+            return socket.emit("error", { message: "Invalid placement position" });
+          }
+
+          // Validate square is empty
+          const existingPiece = gameState.pieces.find(p => p.x === placeX && p.y === placeY);
+          if (existingPiece) {
+            return socket.emit("error", { message: "Square is already occupied" });
+          }
+
+          // Resolve the placeable piece template
+          const placeablePieces = otherData.placeable_pieces || [];
+          const pieceTemplate = move.placePieceId != null 
+            ? placeablePieces.find(pp => pp.piece_id === move.placePieceId)
+            : placeablePieces[0];
+
+          if (!pieceTemplate) {
+            return socket.emit("error", { message: "No valid piece to place" });
+          }
+
+          // If image_location is missing from template, look it up from the pieces table
+          let imageLocation = pieceTemplate.image_location || null;
+          if (!imageLocation && pieceTemplate.piece_id) {
+            try {
+              const [[pieceRow]] = await db_pool.query(
+                'SELECT image_location FROM pieces WHERE id = ?',
+                [pieceTemplate.piece_id]
+              );
+              if (pieceRow?.image_location) {
+                imageLocation = pieceRow.image_location;
+              }
+            } catch (e) { /* ignore lookup errors */ }
+          }
+
+          // Pick the correct image for the placing player
+          const placedImageUrl = imageLocation
+            ? getImageUrlForPlayer(imageLocation, gameState.currentTurn)
+            : pieceTemplate.image_url;
+
+          // Validate flanking if must_flank is enabled
+          let flippedPieces = [];
+          if (otherData.flanking_captures) {
+            const validPlacements = getValidFlankingPlacements(gameState, gameState.currentTurn);
+            const validPlacement = validPlacements.find(vp => vp.x === placeX && vp.y === placeY);
+            
+            if (otherData.must_flank && !validPlacement) {
+              return socket.emit("error", { message: "Must place piece where it flanks opponent pieces" });
+            }
+
+            // Add the new piece
+            const newPiece = {
+              id: `placed_${Date.now()}_${placeX}_${placeY}`,
+              piece_id: pieceTemplate.piece_id,
+              piece_name: pieceTemplate.name || 'Placed Piece',
+              image_url: placedImageUrl,
+              image_location: imageLocation,
+              x: placeX,
+              y: placeY,
+              team: gameState.currentTurn,
+              player_id: gameState.currentTurn,
+              hit_points: 1,
+              current_hp: 1,
+              attack_damage: 1,
+              piece_width: 1,
+              piece_height: 1
+            };
+            gameState.pieces.push(newPiece);
+
+            // Apply flanking captures if placement flanks
+            if (validPlacement) {
+              flippedPieces = applyFlankingCaptures(gameState, placeX, placeY, gameState.currentTurn);
+            }
+          } else {
+            // No flanking — just place the piece
+            const newPiece = {
+              id: `placed_${Date.now()}_${placeX}_${placeY}`,
+              piece_id: pieceTemplate.piece_id,
+              piece_name: pieceTemplate.name || 'Placed Piece',
+              image_url: placedImageUrl,
+              image_location: imageLocation,
+              x: placeX,
+              y: placeY,
+              team: gameState.currentTurn,
+              player_id: gameState.currentTurn,
+              hit_points: 1,
+              current_hp: 1,
+              attack_damage: 1,
+              piece_width: 1,
+              piece_height: 1
+            };
+            gameState.pieces.push(newPiece);
+          }
+
+          // Record the placement move
+          const placeMoveRecord = {
+            type: 'place',
+            to: { x: placeX, y: placeY },
+            player: userId,
+            position: gameState.currentTurn,
+            timestamp: Date.now(),
+            flipped: flippedPieces.length > 0 ? flippedPieces : undefined
+          };
+          gameState.moveHistory.push(placeMoveRecord);
+
+          // Switch turns
+          gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+
+          // Check if next player must skip (no valid flanking placements)
+          let skippedTurn = false;
+          if (otherData.flanking_captures && otherData.must_flank && otherData.skip_turn_no_flank) {
+            const nextValidPlacements = getValidFlankingPlacements(gameState, gameState.currentTurn);
+            if (nextValidPlacements.length === 0) {
+              // Next player has no valid placements — skip their turn
+              skippedTurn = true;
+              gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+
+              // Check if the original player ALSO has no valid placements → game ends
+              const originalPlayerPlacements = getValidFlankingPlacements(gameState, gameState.currentTurn);
+              if (originalPlayerPlacements.length === 0) {
+                // Both players have no valid placements — game ends
+                stopGameTimer(gameId);
+                gameState.status = 'completed';
+
+                // Count pieces per player
+                const player1Count = gameState.pieces.filter(p => (p.team || p.player_id) === 1).length;
+                const player2Count = gameState.pieces.filter(p => (p.team || p.player_id) === 2).length;
+
+                let winnerId = null;
+                let reason = 'piece_count';
+
+                if (gameState.gameType?.piece_count_condition) {
+                  if (player1Count > player2Count) {
+                    winnerId = gameState.players.find(p => p.position === 1)?.id;
+                  } else if (player2Count > player1Count) {
+                    winnerId = gameState.players.find(p => p.position === 2)?.id;
+                  } else if (otherData.equal_piece_count_draw) {
+                    reason = 'equal_piece_count';
+                    winnerId = null;
+                  }
+                }
+
+                gameState.winner = winnerId;
+                gameState.winReason = reason;
+
+                let eloChanges = null;
+                if (gameState.rated !== false && winnerId) {
+                  const loserId = gameState.players.find(p => p.id !== winnerId)?.id;
+                  if (loserId) {
+                    eloChanges = await updateEloRatings(winnerId, loserId);
+                  }
+                }
+
+                const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                try {
+                  await db_pool.query(
+                    `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                     pieces = ?, other_data = ? WHERE id = ?`,
+                    [endTime, winnerId ? sanitizeWinnerId(winnerId) : null, JSON.stringify(gameState.pieces),
+                     JSON.stringify({
+                       moves: gameState.moveHistory,
+                       winner: winnerId,
+                       reason,
+                       player1Count,
+                       player2Count,
+                       eloChanges,
+                       rated: gameState.rated,
+                       allowPremoves: gameState.allowPremoves
+                     }),
+                     gameId]
+                  );
+                } catch (dbError) {
+                  console.error('Failed to update database:', dbError);
+                }
+
+                io.to(`game-${gameId}`).emit("gameOver", {
+                  gameId,
+                  winner: winnerId,
+                  reason,
+                  player1Count,
+                  player2Count,
+                  finalState: gameState,
+                  eloChanges
+                });
+                console.log(`Game ${gameId} ended: ${reason} (P1: ${player1Count}, P2: ${player2Count})`);
+                return;
+              }
+            }
+          }
+
+          // Check if board is full → game ends with piece count
+          const totalSquares = boardWidth * boardHeight;
+          if (gameState.pieces.length >= totalSquares && gameState.gameType?.piece_count_condition) {
+            stopGameTimer(gameId);
+            gameState.status = 'completed';
+
+            const player1Count = gameState.pieces.filter(p => (p.team || p.player_id) === 1).length;
+            const player2Count = gameState.pieces.filter(p => (p.team || p.player_id) === 2).length;
+
+            let winnerId = null;
+            let reason = 'piece_count';
+
+            if (player1Count > player2Count) {
+              winnerId = gameState.players.find(p => p.position === 1)?.id;
+            } else if (player2Count > player1Count) {
+              winnerId = gameState.players.find(p => p.position === 2)?.id;
+            } else if (otherData.equal_piece_count_draw) {
+              reason = 'equal_piece_count';
+            }
+
+            gameState.winner = winnerId;
+            gameState.winReason = reason;
+
+            let eloChanges = null;
+            if (gameState.rated !== false && winnerId) {
+              const loserId = gameState.players.find(p => p.id !== winnerId)?.id;
+              if (loserId) {
+                eloChanges = await updateEloRatings(winnerId, loserId);
+              }
+            }
+
+            const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            try {
+              await db_pool.query(
+                `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                 pieces = ?, other_data = ? WHERE id = ?`,
+                [endTime, winnerId ? sanitizeWinnerId(winnerId) : null, JSON.stringify(gameState.pieces),
+                 JSON.stringify({
+                   moves: gameState.moveHistory,
+                   winner: winnerId,
+                   reason,
+                   player1Count,
+                   player2Count,
+                   eloChanges,
+                   rated: gameState.rated,
+                   allowPremoves: gameState.allowPremoves
+                 }),
+                 gameId]
+              );
+            } catch (dbError) {
+              console.error('Failed to update database:', dbError);
+            }
+
+            io.to(`game-${gameId}`).emit("gameOver", {
+              gameId,
+              winner: winnerId,
+              reason,
+              player1Count,
+              player2Count,
+              finalState: gameState,
+              eloChanges
+            });
+            console.log(`Board full in game ${gameId}: ${reason} (P1: ${player1Count}, P2: ${player2Count})`);
+            return;
+          }
+
+          // Update DB and broadcast
+          await db_pool.query(
+            "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+            [gameState.currentTurn, JSON.stringify(gameState.pieces),
+             JSON.stringify({
+               moves: gameState.moveHistory,
+               rated: gameState.rated,
+               allowPremoves: gameState.allowPremoves
+             }), gameId]
+          );
+
+          io.to(`game-${gameId}`).emit("moveMade", {
+            gameId,
+            move: placeMoveRecord,
+            gameState: {
+              pieces: gameState.pieces,
+              currentTurn: gameState.currentTurn,
+              playerTimes: gameState.playerTimes,
+              moveHistory: gameState.moveHistory
+            },
+            flipped: flippedPieces.length > 0 ? flippedPieces : undefined,
+            skippedTurn: skippedTurn || undefined
+          });
+
+          console.log(`Piece placed in game ${gameId} at (${placeX},${placeY}) by player ${gameState.currentTurn === 1 ? 2 : 1}, flipped ${flippedPieces.length} pieces${skippedTurn ? ', next turn skipped' : ''}`);
+          return; // Placement handled, exit early
+        }
+
         // Validate move (basic validation - full validation handled by game rules)
         const moveResult = await validateAndApplyMove(gameState, move);
         
@@ -1874,8 +2169,32 @@ function initializeSocket(server) {
           gameState.lastMoveTime = Date.now();
         }
 
-        // HP/AD system: Apply HP regeneration at the start of the new player's turn
+        // HP/AD system: Apply burn/DOT damage at the start of the new player's turn (BEFORE regen)
         const newTurnPlayer = gameState.currentTurn;
+        const burnPieces = [];
+        const burnKilledPieces = [];
+        gameState.pieces.forEach(p => {
+          const owner = p.team || p.player_id;
+          if (owner === newTurnPlayer && p.burn_active_turns && p.burn_active_turns > 0 && p.burn_active_damage > 0) {
+            const currentHp = p.current_hp ?? p.hit_points ?? 1;
+            const burnDmg = Math.min(p.burn_active_damage, currentHp);
+            p.current_hp = Math.max(0, currentHp - p.burn_active_damage);
+            p.burn_active_turns--;
+            burnPieces.push({ id: p.id, damage: burnDmg, previousHp: currentHp, currentHp: p.current_hp, turnsRemaining: p.burn_active_turns, x: p.x, y: p.y });
+            if (p.current_hp <= 0) {
+              burnKilledPieces.push(p);
+            }
+          }
+        });
+        // Remove pieces killed by burn damage
+        for (const killed of burnKilledPieces) {
+          const idx = gameState.pieces.findIndex(p => p.id === killed.id);
+          if (idx !== -1) {
+            gameState.pieces.splice(idx, 1);
+          }
+        }
+
+        // HP/AD system: Apply HP regeneration at the start of the new player's turn (AFTER burn)
         const regenPieces = [];
         gameState.pieces.forEach(p => {
           const owner = p.team || p.player_id;
@@ -1895,6 +2214,32 @@ function initializeSocket(server) {
           gameState.premove = null;
         }
 
+        // Check if any burn-killed piece triggers a game over (ends_game_on_capture)
+        if (burnKilledPieces.length > 0) {
+          const burnWinResult = checkWinCondition(gameState, burnKilledPieces);
+          if (burnWinResult.gameOver) {
+            stopGameTimer(gameId);
+            gameState.status = 'completed';
+            gameState.winner = burnWinResult.winner;
+            gameState.winReason = burnWinResult.reason;
+            const loser = gameState.players.find(p => p.id !== burnWinResult.winner);
+            let eloChanges = null;
+            if (gameState.rated !== false && burnWinResult.winner && loser) {
+              eloChanges = await updateEloRatings(burnWinResult.winner, loser.id);
+            }
+            const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            await db_pool.query(
+              `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+               pieces = ?, other_data = ? WHERE id = ?`,
+              [endTime, sanitizeWinnerId(burnWinResult.winner), JSON.stringify(gameState.pieces),
+               JSON.stringify({ moves: gameState.moveHistory, winner: burnWinResult.winner, reason: burnWinResult.reason, eloChanges, rated: gameState.rated, allowPremoves: gameState.allowPremoves }),
+               gameId]
+            );
+            io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: burnWinResult.winner, reason: burnWinResult.reason, finalState: gameState, eloChanges });
+            return;
+          }
+        }
+
         // Check if opponent has a premove queued
         const nextPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
         let premoveExecuted = false;
@@ -1904,7 +2249,7 @@ function initializeSocket(server) {
           gameState.premove = null; // Clear premove
           
           // Validate that the premove is still valid after opponent's move
-          const premoveResult = await validateAndApplyMove(gameState, premove.move);
+          const premoveResult = await validateAndApplyMove(gameState, premove.move, { isPremove: true });
           
           if (premoveResult.valid) {
             // Premove is valid, execute it
@@ -1954,7 +2299,10 @@ function initializeSocket(server) {
                 currentTurn: gameState.currentTurn,
                 playerTimes: gameState.playerTimes,
                 moveHistory: gameState.moveHistory
-              }
+              },
+              ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
+              ...(burnPieces && burnPieces.length > 0 ? { burnPieces } : {}),
+              ...(burnKilledPieces && burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
             });
             
             // Update control square tracking after premove
@@ -2585,6 +2933,76 @@ function initializeSocket(server) {
             }
           }
 
+          // Check piece_count_condition: if current player has 0 pieces, they lose
+          if (gameState.gameType?.piece_count_condition) {
+            const player1Count = gameState.pieces.filter(p => (p.team || p.player_id) === 1).length;
+            const player2Count = gameState.pieces.filter(p => (p.team || p.player_id) === 2).length;
+
+            if (player1Count === 0 || player2Count === 0) {
+              stopGameTimer(gameId);
+              gameState.status = 'completed';
+
+              let winnerId = null;
+              let reason = 'piece_count';
+
+              if (player1Count > player2Count) {
+                winnerId = gameState.players.find(p => p.position === 1)?.id;
+              } else if (player2Count > player1Count) {
+                winnerId = gameState.players.find(p => p.position === 2)?.id;
+              } else {
+                const otherDataCheck = gameState.otherGameData || {};
+                if (otherDataCheck.equal_piece_count_draw) {
+                  reason = 'equal_piece_count';
+                }
+              }
+
+              gameState.winner = winnerId;
+              gameState.winReason = reason;
+
+              let eloChanges = null;
+              if (gameState.rated !== false && winnerId) {
+                const loserId = gameState.players.find(p => p.id !== winnerId)?.id;
+                if (loserId) {
+                  eloChanges = await updateEloRatings(winnerId, loserId);
+                }
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              try {
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, winnerId ? sanitizeWinnerId(winnerId) : null, JSON.stringify(gameState.pieces),
+                   JSON.stringify({
+                     moves: gameState.moveHistory,
+                     winner: winnerId,
+                     reason,
+                     player1Count,
+                     player2Count,
+                     eloChanges,
+                     rated: gameState.rated,
+                     allowPremoves: gameState.allowPremoves
+                   }),
+                   gameId]
+                );
+              } catch (dbError) {
+                console.error('Failed to update database:', dbError);
+              }
+
+              io.to(`game-${gameId}`).emit("gameOver", {
+                gameId,
+                winner: winnerId,
+                reason,
+                player1Count,
+                player2Count,
+                finalState: gameState,
+                eloChanges
+              });
+              console.log(`Game ${gameId} ended by piece count: ${reason} (P1: ${player1Count}, P2: ${player2Count})`);
+              return;
+            }
+          }
+
           // Track position for N-fold repetition detection
           const positionHash = getPositionHash(gameState.pieces, gameState.currentTurn);
           if (!gameState.positionHistory) {
@@ -2738,7 +3156,9 @@ function initializeSocket(server) {
               enPassantTarget: gameState.enPassantTarget,
               controlSquareTracking: gameState.controlSquareTracking
             },
-            ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {})
+            ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
+            ...(burnPieces && burnPieces.length > 0 ? { burnPieces } : {}),
+            ...(burnKilledPieces && burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
           });
 
           // Send notification for correspondence or no-time-limit games
@@ -3400,6 +3820,7 @@ function initializeSocket(server) {
               pieces = junctionPieces.map(piece => ({
                 ...piece,
                 id: `${piece.piece_id}_${piece.y}_${piece.x}`,
+                player_id: piece.player_number || 1, // Ensure player_id is set from junction table
                 ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
                 ends_game_on_capture: !!piece.ends_game_on_capture,
                 // Control squares flag from junction table
@@ -3525,7 +3946,9 @@ function initializeSocket(server) {
                     promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
                     // Dimensions for multi-tile pieces
                     piece_width: fullPieceData.piece_width || 1,
-                    piece_height: fullPieceData.piece_height || 1
+                    piece_height: fullPieceData.piece_height || 1,
+                    // Image location for player-specific images (needed for flanking flips)
+                    image_location: piece.image_location || fullPieceData.image_location
                   };
                 }
                 return piece;
@@ -3536,21 +3959,14 @@ function initializeSocket(server) {
             pieces = [];
           }
 
-          // Fix player_id assignment based on Y position (for standard chess setup)
-          // This ensures pieces have the correct ownership regardless of database state
-          const boardHeight = gameType?.board_height || 8;
+          // Assign image URLs based on player_id (already set from junction table)
           pieces = pieces.map(piece => {
-            // Determine player based on ORIGINAL Y position from piece ID
-            // Piece IDs are formatted as: pieceId_originalRow_originalCol
-            const idParts = piece.id?.split('_');
-            if (idParts && idParts.length >= 2) {
-              const originalRow = parseInt(idParts[1]);
-              // Bottom half of board (lower Y values) = Player 2
-              // Top half of board (higher Y values) = Player 1  
-              const inferredPlayerId = originalRow < (boardHeight / 2) ? 2 : 1;
+            if (piece.image_location) {
+              const imageUrl = getImageUrlForPlayer(piece.image_location, piece.player_id);
               return {
                 ...piece,
-                player_id: inferredPlayerId
+                image: imageUrl,
+                image_url: imageUrl
               };
             }
             return piece;
@@ -3577,10 +3993,21 @@ function initializeSocket(server) {
             playerTimes[p.id] = p.timeRemaining ? p.timeRemaining * 60 : (game.turn_length ? game.turn_length * 60 : null);
           });
 
+          // Parse other_game_data from game type for placement/flanking settings
+          let otherGameData = {};
+          try {
+            if (gameType?.other_game_data) {
+              otherGameData = typeof gameType.other_game_data === 'string'
+                ? JSON.parse(gameType.other_game_data)
+                : gameType.other_game_data;
+            }
+          } catch (e) { /* ignore parse errors */ }
+
           gameState = {
             id: game.id,
             gameTypeId: game.game_type_id,
             gameType: gameType,
+            otherGameData,
             timeControl: game.turn_length,
             increment: game.increment || 0,
             status: game.status,
@@ -4343,8 +4770,10 @@ function getPiecesHoppedOver(fromX, fromY, toX, toY, movingPiece, allPieces) {
 
 /**
  * Basic move validation - checks if move is legal based on piece rules
+ * @param {Object} options - Optional settings
+ * @param {boolean} options.isPremove - If true, allows capture-rule fallback for empty destination squares
  */
-async function validateAndApplyMove(gameState, move) {
+async function validateAndApplyMove(gameState, move, options = {}) {
   const { from, to, pieceId } = move;
   const pieces = gameState.pieces;
   
@@ -4487,6 +4916,11 @@ async function validateAndApplyMove(gameState, move) {
       pieces.splice(destinationPieceIndex, 1);
     } else {
       // Target survived - damaged but not captured
+      // Apply burn if attacker has burn stats
+      if (piece.burn_damage > 0 && piece.burn_duration > 0) {
+        destPiece.burn_active_damage = piece.burn_damage;
+        destPiece.burn_active_turns = piece.burn_duration;
+      }
       damagedPieces.push({ id: destPiece.id, damageDealt: rangedAttackDamage, previousHp: rangedPrevHp, remainingHp: destPiece.current_hp });
     }
     
@@ -4581,7 +5015,17 @@ async function validateAndApplyMove(gameState, move) {
       // Use canPieceMoveToSquare which checks movement rules only (not capture rules)
       const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces);
       if (!canMove) {
-        return { valid: false, reason: "Piece cannot move to that square" };
+        // For premoves: the player may have queued a capture premove, but the target moved away.
+        // If the piece's capture rules allow reaching this square, execute as a regular (non-capture) move.
+        if (options.isPremove) {
+          const canCaptureToSquare = canPieceAttackSquare(piece, to.x, to.y, pieces);
+          if (!canCaptureToSquare) {
+            return { valid: false, reason: "Piece cannot move to that square" };
+          }
+          // Capture rules allow reaching here — proceed as a regular move to the empty square
+        } else {
+          return { valid: false, reason: "Piece cannot move to that square" };
+        }
       }
     }
   }
@@ -4633,6 +5077,11 @@ async function validateAndApplyMove(gameState, move) {
       if (target.current_hp <= 0) {
         actualCaptured.push(target);
       } else {
+        // Apply burn if attacker has burn stats
+        if (piece.burn_damage > 0 && piece.burn_duration > 0) {
+          target.burn_active_damage = piece.burn_damage;
+          target.burn_active_turns = piece.burn_duration;
+        }
         damagedPieces.push({ id: target.id, damageDealt: attackDamage, previousHp: prevHp, remainingHp: target.current_hp });
       }
     }
@@ -4703,6 +5152,11 @@ async function validateAndApplyMove(gameState, move) {
       }
     } else {
       // Target survived en passant - piece still moves to capture square, target stays with reduced HP
+      // Apply burn if attacker has burn stats
+      if (piece.burn_damage > 0 && piece.burn_duration > 0) {
+        capturedPiece.burn_active_damage = piece.burn_damage;
+        capturedPiece.burn_active_turns = piece.burn_duration;
+      }
       damagedPieces.push({ id: capturedPiece.id, damageDealt: epAttackDamage, previousHp: epPrevHp, remainingHp: capturedPiece.current_hp });
       capturedPiece = null; // Not actually captured
     }
@@ -4718,6 +5172,11 @@ async function validateAndApplyMove(gameState, move) {
       if (target.current_hp <= 0) {
         actualKilled.push(target);
       } else {
+        // Apply burn if attacker has burn stats
+        if (piece.burn_damage > 0 && piece.burn_duration > 0) {
+          target.burn_active_damage = piece.burn_damage;
+          target.burn_active_turns = piece.burn_duration;
+        }
         damagedPieces.push({ id: target.id, damageDealt: captureAttackDamage, previousHp: prevHp, remainingHp: target.current_hp });
       }
     }
@@ -4795,6 +5254,11 @@ async function validateAndApplyMove(gameState, move) {
             }
           } else {
             // Hopped piece survived - damaged but stays on board
+            // Apply burn if attacker has burn stats
+            if (movingPiece.burn_damage > 0 && movingPiece.burn_duration > 0) {
+              hoppedPiece.burn_active_damage = movingPiece.burn_damage;
+              hoppedPiece.burn_active_turns = movingPiece.burn_duration;
+            }
             damagedPieces.push({ id: hoppedPiece.id, damageDealt: hopAttackDamage, previousHp: hopPrevHp, remainingHp: hoppedPiece.current_hp });
           }
         });
@@ -5882,9 +6346,22 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   const effectiveDx = isPlayer2 ? -dx : dx;
   const effectiveDy = isPlayer2 ? -dy : dy;
   
+  // Helper: can this piece hop over a given blocker?
+  const pieceOwnerForHop = piece.team || piece.player_id;
+  const canHopAlliesBase = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
+  const canHopEnemiesBase = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+  const dirHopDisabled = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
+
+  const canHopOverPiece = (blocker) => {
+    const blockerOwner = blocker.team || blocker.player_id;
+    if (blockerOwner === pieceOwnerForHop) return canHopAlliesBase;
+    return canHopEnemiesBase;
+  };
+
   // Helper function to check if path is clear
   // For multi-tile pieces, checks all sub-square parallel paths
-  const isPathClear = (fromX, fromY, toX, toY) => {
+  // allowHop: when true, pieces in the path that can be hopped are skipped
+  const isPathClear = (fromX, fromY, toX, toY, allowHop = false) => {
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
     const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
@@ -5896,7 +6373,9 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
         while (x !== toX + sdx || y !== toY + sdy) {
           const blocking = findPieceAtSquare(allPieces, x, y);
           if (blocking && blocking.id !== piece.id) {
-            return false; // Path blocked
+            if (!allowHop || !canHopOverPiece(blocking)) {
+              return false; // Path blocked
+            }
           }
           x += stepX;
           y += stepY;
@@ -5978,7 +6457,8 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
       const maxDist = Math.abs(moveVal);
       const repM = piece.repeating_movement && exactFlag;
       if (moveVal === 99 || (exactFlag ? (repM ? (absDy > 0 && absDy % maxDist === 0) : absDy === maxDist) : absDy <= maxDist)) {
-        if (isPathClear(piece.x, piece.y, targetX, targetY)) {
+        const canHopDir = (canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || exactFlag);
+        if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           return true;
         }
       }
@@ -5993,7 +6473,8 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
       const maxDist = Math.abs(moveVal);
       const repM = piece.repeating_movement && exactFlag;
       if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0) : absDx === maxDist) : absDx <= maxDist)) {
-        if (isPathClear(piece.x, piece.y, targetX, targetY)) {
+        const canHopDir = (canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || exactFlag);
+        if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           return true;
         }
       }
@@ -6021,7 +6502,8 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
       const maxDist = Math.abs(moveVal);
       const repM = piece.repeating_movement && exactFlag;
       if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0) : absDx === maxDist) : absDx <= maxDist)) {
-        if (isPathClear(piece.x, piece.y, targetX, targetY)) {
+        const canHopDir = (canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || exactFlag);
+        if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           return true;
         }
       }
@@ -6296,9 +6778,21 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   const pieceOwner = piece.team || piece.player_id;
   const isPlayer2 = pieceOwner === 2;
   
+  // Helper: hopping support for directional moves
+  const canHopAlliesGen = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
+  const canHopEnemiesGen = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+  const dirHopDisabledGen = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
+
+  const canHopOverPieceGen = (blocker) => {
+    const blockerOwner = blocker.team || blocker.player_id;
+    if (blockerOwner === pieceOwner) return canHopAlliesGen;
+    return canHopEnemiesGen;
+  };
+
   // Helper to check if path is clear
   // For multi-tile pieces, checks all sub-square parallel paths
-  const isPathClear = (fromX, fromY, toX, toY) => {
+  // allowHop: when true, pieces in path that can be hopped are skipped
+  const isPathClear = (fromX, fromY, toX, toY, allowHop = false) => {
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
     const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
@@ -6310,7 +6804,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         while (x !== toX + sdx || y !== toY + sdy) {
           const blocking = findPieceAtSquare(allPieces, x, y);
           if (blocking && blocking.id !== piece.id) {
-            return false;
+            if (!allowHop || !canHopOverPieceGen(blocking)) {
+              return false;
+            }
           }
           x += stepX;
           y += stepY;
@@ -6333,6 +6829,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       if (piece.moveCount >= availableForMoves) return;
     }
     
+    // Determine if hopping is allowed for this directional move
+    const canHopDir = (canHopAlliesGen || canHopEnemiesGen) && (!dirHopDisabledGen || exactFlag);
+    
     const limit = maxDist === 99 ? Math.max(boardWidth, boardHeight) : Math.abs(maxDist);
     const exactDist = exactFlag ? Math.abs(maxDist) : 0;
     const maxIter = (exactFlag && repeating) ? Math.max(boardWidth, boardHeight) : limit;
@@ -6342,8 +6841,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       
       if (!isValidSquare(targetX, targetY)) break;
       
-      // Check if path is clear up to this point
-      if (!isPathClear(piece.x, piece.y, targetX, targetY)) break;
+      // Check if path is clear up to this point (with hopping support)
+      if (!isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) break;
       
       const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
       if (targetPiece) {
@@ -6361,7 +6860,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
             moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
           }
         }
-        break; // Can't move past a piece
+        // If hopping, continue past this piece; otherwise stop
+        if (!canHopDir || !canHopOverPieceGen(targetPiece)) break;
       } else {
         // For exact moves, only add valid landing squares
         const isLandingSquare = exactFlag ? (repeating ? (dist % exactDist === 0) : (dist === exactDist)) : true;
@@ -6796,6 +7296,126 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
  * Get all legal moves for a player (moves that don't leave them in check)
  * @param {Object} gameState - The current game state
  * @param {number} playerPosition - The player position (1 or 2)
+/**
+ * Get all valid flanking placements for a player.
+ * A valid flanking placement is an empty square where placing a piece would flank
+ * at least one line of opponent pieces (horizontally, vertically, or diagonally).
+ * @param {Object} gameState
+ * @param {Number} playerPosition - 1 or 2
+ * @returns {Array} - Array of { x, y, flips: [{x, y}] }
+ */
+function getValidFlankingPlacements(gameState, playerPosition) {
+  const { pieces } = gameState;
+  const boardWidth = gameState.gameType?.board_width || 8;
+  const boardHeight = gameState.gameType?.board_height || 8;
+  const directions = [
+    { dx: 0, dy: -1 }, { dx: 0, dy: 1 },   // vertical
+    { dx: -1, dy: 0 }, { dx: 1, dy: 0 },   // horizontal
+    { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, // diagonals
+    { dx: -1, dy: 1 }, { dx: 1, dy: 1 }
+  ];
+
+  const pieceAt = (x, y) => pieces.find(p => p.x === x && p.y === y);
+  const validPlacements = [];
+
+  for (let y = 0; y < boardHeight; y++) {
+    for (let x = 0; x < boardWidth; x++) {
+      if (pieceAt(x, y)) continue; // must be empty
+
+      const allFlips = [];
+      for (const { dx, dy } of directions) {
+        const lineFlips = [];
+        let cx = x + dx, cy = y + dy;
+        // Walk in direction, collecting opponent pieces
+        while (cx >= 0 && cx < boardWidth && cy >= 0 && cy < boardHeight) {
+          const p = pieceAt(cx, cy);
+          if (!p) break; // empty square = no flank in this direction
+          const owner = p.team || p.player_id;
+          if (owner === playerPosition) {
+            // Found own piece — flank is valid if we collected any opponents
+            if (lineFlips.length > 0) {
+              allFlips.push(...lineFlips);
+            }
+            break;
+          } else {
+            lineFlips.push({ x: cx, y: cy });
+          }
+          cx += dx;
+          cy += dy;
+        }
+      }
+
+      if (allFlips.length > 0) {
+        validPlacements.push({ x, y, flips: allFlips });
+      }
+    }
+  }
+
+  return validPlacements;
+}
+
+/**
+ * Apply flanking captures: flip opponent pieces to the placing player's color.
+ * @param {Object} gameState
+ * @param {Number} placedX - x position of placed piece
+ * @param {Number} placedY - y position of placed piece
+ * @param {Number} playerPosition - 1 or 2
+ * @returns {Array} - Array of flipped piece positions [{x, y}]
+ */
+function applyFlankingCaptures(gameState, placedX, placedY, playerPosition) {
+  const { pieces } = gameState;
+  const boardWidth = gameState.gameType?.board_width || 8;
+  const boardHeight = gameState.gameType?.board_height || 8;
+  const directions = [
+    { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
+    { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+    { dx: -1, dy: -1 }, { dx: 1, dy: -1 },
+    { dx: -1, dy: 1 }, { dx: 1, dy: 1 }
+  ];
+
+  const pieceAt = (x, y) => pieces.find(p => p.x === x && p.y === y);
+  const allFlipped = [];
+
+  for (const { dx, dy } of directions) {
+    const lineFlips = [];
+    let cx = placedX + dx, cy = placedY + dy;
+    while (cx >= 0 && cx < boardWidth && cy >= 0 && cy < boardHeight) {
+      const p = pieceAt(cx, cy);
+      if (!p) break;
+      const owner = p.team || p.player_id;
+      if (owner === playerPosition) {
+        // Found own piece — all collected opponents get flipped
+        for (const flip of lineFlips) {
+          const target = pieceAt(flip.x, flip.y);
+          if (target) {
+            target.team = playerPosition;
+            target.player_id = playerPosition;
+            // Update image to match new owner if image_location is available
+            if (target.image_location) {
+              const newImageUrl = getImageUrlForPlayer(target.image_location, playerPosition);
+              if (newImageUrl) {
+                target.image_url = newImageUrl;
+                target.image = newImageUrl;
+              }
+            }
+            allFlipped.push({ x: flip.x, y: flip.y });
+          }
+        }
+        break;
+      } else {
+        lineFlips.push({ x: cx, y: cy });
+      }
+      cx += dx;
+      cy += dy;
+    }
+  }
+
+  return allFlipped;
+}
+
+/**
+ * @param {Object} gameState
+ * @param {Number} playerPosition - 1 or 2
  * @returns {Array} - Array of legal moves { pieceId, from: {x, y}, to: {x, y} }
  */
 function getAllLegalMovesForPlayer(gameState, playerPosition) {

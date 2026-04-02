@@ -469,7 +469,6 @@ const getGameById = async (gameId) => {
   if (result.length === 0) return null;
   
   const game = result[0];
-  const boardHeight = game.board_height || 8;
   
   // Parse the original pieces_string to get player_id values (which are correct)
   // This is needed because the junction table may have incorrect player_number values
@@ -494,17 +493,8 @@ const getGameById = async (gameId) => {
     for (const piece of pieces) {
       const key = `${piece.y},${piece.x}`;
       
-      // Priority: 1) original pieces_string, 2) junction table, 3) infer from Y position (like LiveGame)
-      let playerId = originalPiecePlayerMap[key] || piece.player_number;
-      if (!playerId || playerId === 1) {
-        // If still 1 or missing, infer from Y position as fallback
-        // Top half (y < boardHeight/2) = Player 2, Bottom half = Player 1
-        const inferredPlayerId = piece.y < (boardHeight / 2) ? 2 : 1;
-        // Only use inferred if we don't have original data
-        if (!originalPiecePlayerMap[key]) {
-          playerId = inferredPlayerId;
-        }
-      }
+      // Priority: 1) original pieces_string, 2) junction table player_number
+      let playerId = originalPiecePlayerMap[key] || piece.player_number || 1;
       
       // Parse image_location and get the correct player image
       let imageUrl = null;
@@ -554,7 +544,10 @@ const getGameById = async (gameId) => {
         show_hp_ad: Boolean(piece.show_hp_ad),
         hp_regen: piece.hp_regen ?? 0,
         cannot_be_captured: Boolean(piece.cannot_be_captured),
-        show_regen: Boolean(piece.show_regen)
+        show_regen: Boolean(piece.show_regen),
+        burn_damage: piece.burn_damage ?? 0,
+        burn_duration: piece.burn_duration ?? 0,
+        show_burn: Boolean(piece.show_burn)
       };
 
       // For multi-tile pieces, create extension square markers
@@ -633,11 +626,11 @@ const getPiecesForGameType = async (gameTypeId) => {
  * @param {boolean} canControlSquares - If true, this piece can control squares for the control squares win condition
  * @returns {Promise<Object>} Insert result
  */
-const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false) => {
+const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false) => {
   const result = await query(`
-    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0]);
+    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen, burn_damage, burn_duration, show_burn)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0, burnDamage || 0, burnDuration || 0, showBurn ? 1 : 0]);
   return result;
 };
 

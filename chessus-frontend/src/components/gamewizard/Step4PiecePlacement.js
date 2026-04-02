@@ -15,6 +15,7 @@ import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import NumberInput from "../common/NumberInput";
 import BoardLegend from "../common/BoardLegend";
+import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -37,6 +38,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [draggedPiecePosition, setDraggedPiecePosition] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+  const [randomizationOpen, setRandomizationOpen] = useState(false);
+  const [hpAdSectionOpen, setHpAdSectionOpen] = useState(false);
   const longPressTimeoutRef = useRef(null);
   
   // Check if the board setup is symmetric (for mirrored randomization)
@@ -295,6 +298,27 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
 
   const handlePieceSelected = useCallback((pieceData) => {
     if (selectedSquare) {
+      // Handle placeable piece selection (for piece placement action)
+      if (selectedSquare.isPlaceable) {
+        try {
+          const data = JSON.parse(gameData.other_game_data || '{}');
+          const placeablePieces = data.placeable_pieces || [];
+          placeablePieces.push({
+            piece_id: pieceData.piece_id,
+            name: pieceData.piece_name,
+            image_url: pieceData.image_url,
+            image_location: pieceData.image_location || null
+          });
+          data.placeable_pieces = placeablePieces;
+          updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+        } catch {
+          updateGameData({ other_game_data: JSON.stringify({ placeable_pieces: [{ piece_id: pieceData.piece_id, name: pieceData.piece_name, image_url: pieceData.image_url, image_location: pieceData.image_location || null }] }, null, 2) });
+        }
+        setShowPieceSelector(false);
+        setSelectedSquare(null);
+        return;
+      }
+
       // Check if fill row is enabled
       const { fillRow, fillRowData } = pieceData;
       
@@ -322,6 +346,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               show_regen: pieceData.show_regen ?? false,
               hp_regen: pieceData.hp_regen ?? 0,
               cannot_be_captured: pieceData.cannot_be_captured || false,
+              burn_damage: pieceData.burn_damage ?? 0,
+              burn_duration: pieceData.burn_duration ?? 0,
+              show_burn: pieceData.show_burn ?? false,
               // Castling override data
               manual_castling_partners: pieceData.manual_castling_partners || false,
               castling_partner_left_key: pieceData.castling_partner_left_key || null,
@@ -379,6 +406,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             show_regen: pieceData.show_regen ?? false,
             hp_regen: pieceData.hp_regen ?? 0,
             cannot_be_captured: pieceData.cannot_be_captured || false,
+            burn_damage: pieceData.burn_damage ?? 0,
+            burn_duration: pieceData.burn_duration ?? 0,
+            show_burn: pieceData.show_burn ?? false,
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
             castling_partner_right_key: pieceData.castling_partner_right_key || null,
@@ -670,8 +700,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const boardDimensions = useMemo(() => {
     const boardPadding = 10 * 2; // 10px each side
     const boardBorder = 1 * 2;   // 1px each side
-    const maxBoardPx = Math.min(700, windowWidth - 60 - boardPadding - boardBorder);
-    const squareSize = Math.min(80, maxBoardPx / Math.max(gameData.board_width, gameData.board_height));
+    const maxBoardPx = Math.min(850, windowWidth - 60 - boardPadding - boardBorder);
+    const squareSize = Math.min(100, maxBoardPx / Math.max(gameData.board_width, gameData.board_height));
     const boardWidth = squareSize * gameData.board_width;
     return { squareSize, boardWidth };
   }, [gameData.board_width, gameData.board_height, windowWidth]);
@@ -954,44 +984,11 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                     ⚔️
                   </div>
                 )}
-                {/* HP/AD indicators - show when piece or global setting is on */}
+                {/* Stat badges - anchored to corners via PieceBadges component */}
                 {(() => {
                   let showGlobal = false;
                   try { showGlobal = JSON.parse(gameData.other_game_data || '{}').show_all_hp_ad || false; } catch {}
-                  const showHp = showGlobal || placement.show_hp_ad || (placement.hit_points && placement.hit_points > 1);
-                  if (!showHp) return null;
-                  const hp = placement.hit_points ?? 1;
-                  const ad = placement.attack_damage ?? 1;
-                  const regen = placement.hp_regen ?? 0;
-                  const badgeStyle = {
-                    fontSize: `${Math.max(7, squareSize * 0.16)}px`,
-                    color: '#fff',
-                    borderRadius: '2px',
-                    padding: '0 2px',
-                    lineHeight: '1.3',
-                    pointerEvents: 'none',
-                    fontWeight: 'bold',
-                    display: 'inline-block',
-                    marginRight: '1px'
-                  };
-                  return (
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '1px',
-                      left: '1px',
-                      display: 'flex',
-                      gap: '1px',
-                      pointerEvents: 'none',
-                      flexWrap: 'wrap',
-                      maxWidth: '90%'
-                    }}>
-                      <span style={{ ...badgeStyle, background: 'rgba(76, 175, 80, 0.75)' }} title={`Health Points: ${hp}`}>♥{hp}</span>
-                      <span style={{ ...badgeStyle, background: 'rgba(255, 87, 34, 0.75)' }} title={`Attack Damage: ${ad}`}>⚔{ad}</span>
-                      {regen > 0 && placement.show_regen && (
-                        <span style={{ ...badgeStyle, background: 'rgba(33, 150, 243, 0.75)' }} title={`HP Regen: +${regen}/turn`}>+{regen}</span>
-                      )}
-                    </div>
-                  );
+                  return <PieceBadges piece={placement} squareSize={squareSize} showGlobalHpAd={showGlobal} />;
                 })()}
               </div>
             );
@@ -1102,6 +1099,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         show_regen: sourcePiece.show_regen ?? false,
         hp_regen: sourcePiece.hp_regen ?? 0,
         cannot_be_captured: sourcePiece.cannot_be_captured || false,
+        burn_damage: sourcePiece.burn_damage ?? 0,
+        burn_duration: sourcePiece.burn_duration ?? 0,
+        show_burn: sourcePiece.show_burn ?? false,
         manual_castling_partners: sourcePiece.manual_castling_partners || false,
         castling_partner_left_key: mirroredLeftKey,
         castling_partner_right_key: mirroredRightKey,
@@ -1242,14 +1242,75 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         </ul>
       </div>
 
-      {/* Allowed Starting Position Modes */}
-      <div className={styles["form-group"]} style={{ marginTop: '30px' }}>
-        <label className={styles["form-label"]}>
+      {/* Placeable Pieces Section - shown when place_pieces_action is enabled */}
+      {(() => {
+        const otherData = (() => { try { return JSON.parse(gameData.other_game_data || '{}'); } catch { return {}; } })();
+        if (!otherData.place_pieces_action) return null;
+
+        const placeablePieces = otherData.placeable_pieces || [];
+
+        return (
+          <div className={styles["global-hp-ad-section"]} style={{ marginTop: '20px' }}>
+            <h3>Placeable Pieces <InfoTooltip text="Select which pieces can be placed onto empty squares during gameplay. Players will spend an action to place one of these pieces on their turn." /></h3>
+            <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
+              Choose piece types that players can place during gameplay. These are separate from starting board positions.
+            </p>
+
+            {placeablePieces.length > 0 && (
+              <div className={styles["placeable-pieces-list"]}>
+                {placeablePieces.map((pp, idx) => (
+                  <div key={idx} className={styles["placeable-piece-item"]}>
+                    {pp.image_url && (
+                      <img
+                        src={getImageUrl(pp.image_url)}
+                        alt={pp.name}
+                        className={styles["placeable-piece-image"]}
+                      />
+                    )}
+                    <span className={styles["placeable-piece-name"]}>{pp.name || `Piece #${pp.piece_id}`}</span>
+                    <button
+                      className={styles["placeable-piece-remove"]}
+                      onClick={() => {
+                        const updated = placeablePieces.filter((_, i) => i !== idx);
+                        const data = { ...otherData, placeable_pieces: updated };
+                        updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+                      }}
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              className={styles["add-placeable-piece-btn"]}
+              onClick={() => {
+                setSelectedSquare({ key: '__placeable__', isPlaceable: true });
+                setShowPieceSelector(true);
+              }}
+            >
+              + Add Placeable Piece
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* Allowed Starting Position Modes — collapsible */}
+      <div className={styles["global-hp-ad-section"]} style={{ marginTop: '20px' }}>
+        <h3
+          className={styles["collapsible-header"]}
+          onClick={() => setRandomizationOpen(prev => !prev)}
+        >
+          <span className={styles["collapse-chevron"]} style={{ transform: randomizationOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
           Allowed Starting Position Modes
-          <span style={{ marginLeft: '10px', fontSize: '12px', color: '#888' }}>
-            (Board symmetric: {isBoardSymmetric ? 'Yes ✓' : 'No ✗'} | At least one mode must be enabled)
+          <span style={{ marginLeft: '10px', fontSize: '12px', color: '#888', fontWeight: 400 }}>
+            (Board symmetric: {isBoardSymmetric ? 'Yes ✓' : 'No ✗'})
           </span>
-        </label>
+        </h3>
+        {randomizationOpen && (
+        <>
         <p className={styles["field-hint"]} style={{ marginBottom: '15px' }}>
           Select which starting position modes players can choose from when creating a match with this game type.
         </p>
@@ -1323,11 +1384,22 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             <p className={styles["checkbox-hint"]}>Pieces placed randomly anywhere on the board. Maximum chaos!</p>
           </label>
         </div>
+        </>
+        )}
       </div>
 
-      {/* Global HP/AD Settings */}
+      {/* Global HP/AD Settings — collapsible */}
       <div className={styles["global-hp-ad-section"]}>
-        <h3>Global HP/AD Settings <InfoTooltip text="These settings apply to all pieces in the game. Individual piece HP/AD settings are configured per-placement in the piece selector." /></h3>
+        <h3
+          className={styles["collapsible-header"]}
+          onClick={() => setHpAdSectionOpen(prev => !prev)}
+        >
+          <span className={styles["collapse-chevron"]} style={{ transform: hpAdSectionOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+          Global HP/AD Settings
+          <InfoTooltip text="These settings apply to all pieces in the game. Individual piece HP/AD settings are configured per-placement in the piece selector." />
+        </h3>
+        {hpAdSectionOpen && (
+        <>
         <div className={styles["global-hp-ad-row"]}>
           <label className={styles["checkbox-label"]}>
             <input
@@ -1379,6 +1451,29 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             options={{ min: 0, max: 100 }}
           />
         </div>
+        <div className={styles["global-hp-ad-row"]}>
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={(() => {
+                try { return JSON.parse(gameData.other_game_data || '{}').show_all_badges || false; } catch { return false; }
+              })()}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                try {
+                  const data = JSON.parse(gameData.other_game_data || '{}');
+                  data.show_all_badges = checked;
+                  updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+                } catch {
+                  updateGameData({ other_game_data: JSON.stringify({ show_all_badges: checked }, null, 2) });
+                }
+              }}
+            />
+            <span>Show all badges on all pieces <InfoTooltip text="Toggle HP/AD, Regen, and Burn badges on every piece during gameplay. Individual per-piece badge settings are ignored when this is on." /></span>
+          </label>
+        </div>
+        </>
+        )}
       </div>
 
       {/* Additional Game Data - hidden, managed internally via global settings above */}

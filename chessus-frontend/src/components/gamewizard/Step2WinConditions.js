@@ -12,6 +12,16 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
     updateGameData({ [field]: value === "true" });
   };
 
+  const getOtherData = () => {
+    try { return JSON.parse(gameData.other_game_data || '{}'); } catch { return {}; }
+  };
+
+  const setOtherDataField = (key, value) => {
+    const data = getOtherData();
+    data[key] = value;
+    updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+  };
+
   return (
     <div className={styles["step-container"]}>
       <h2>Win Conditions</h2>
@@ -203,6 +213,33 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         )}
       </div>
 
+      {/* Piece Count Condition */}
+      <div className={styles["condition-section"]}>
+        <h3>Piece Count Condition <InfoTooltip text="The player with the most pieces on the board wins when no more moves can be made or when the board is full. Used in Othello/Reversi-style games." /></h3>
+        <div className={styles["radio-group"]}>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="piece_count_condition"
+              value="true"
+              checked={gameData.piece_count_condition === true}
+              onChange={(e) => handleBooleanChange("piece_count_condition", e.target.value)}
+            />
+            <span>Player with the most pieces wins</span>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="piece_count_condition"
+              value="false"
+              checked={gameData.piece_count_condition === false}
+              onChange={(e) => handleBooleanChange("piece_count_condition", e.target.value)}
+            />
+            <span>Disable</span>
+          </label>
+        </div>
+      </div>
+
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>Optional Condition ID <InfoTooltip text="Reference to a custom win condition defined externally. Leave empty unless you have a custom condition system set up." /></label>
         <NumberInput
@@ -298,6 +335,163 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           </div>
         )}
       </div>
+
+      {/* Equal Piece Count Draw */}
+      <div className={styles["condition-section"]}>
+        <h3>Equal Piece Count Draw <InfoTooltip text="The game ends in a draw when both players have equal piece counts and neither player has valid moves remaining. Used in Othello/Reversi-style games." /></h3>
+        <div className={styles["radio-group"]}>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="equal_piece_count_draw"
+              value="enabled"
+              checked={getOtherData().equal_piece_count_draw === true}
+              onChange={() => setOtherDataField("equal_piece_count_draw", true)}
+            />
+            <span>Equal piece count with no valid moves is a draw</span>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="equal_piece_count_draw"
+              value="disabled"
+              checked={getOtherData().equal_piece_count_draw !== true}
+              onChange={() => setOtherDataField("equal_piece_count_draw", false)}
+            />
+            <span>Disable</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Gameplay Mechanics Section */}
+      <div className={styles["section-divider"]}></div>
+      <h2 style={{ marginTop: '32px' }}>Gameplay Mechanics</h2>
+      <p className={styles["step-description"]}>
+        Configure special gameplay rules and actions.
+      </p>
+
+      {/* Place Pieces Action */}
+      <div className={styles["condition-section"]}>
+        <h3>Place Pieces Action <InfoTooltip text="When enabled, players can spend actions to place pieces onto empty squares during their turn. The specific pieces available for placement are configured in Step 4 (Pieces)." /></h3>
+        <div className={styles["radio-group"]}>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="place_pieces_action"
+              value="enabled"
+              checked={getOtherData().place_pieces_action === true}
+              onChange={() => setOtherDataField("place_pieces_action", true)}
+            />
+            <span>Spend actions to place pieces</span>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="place_pieces_action"
+              value="disabled"
+              checked={getOtherData().place_pieces_action !== true}
+              onChange={() => {
+                const data = getOtherData();
+                data.place_pieces_action = false;
+                data.placeable_pieces = [];
+                updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+              }}
+            />
+            <span>Disable</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Flanking Captures */}
+      <div className={styles["condition-section"]}>
+        <h3>Flanking Captures <InfoTooltip text="When enabled, placing a piece that flanks opponent pieces in a line (horizontally, vertically, or diagonally) converts those opponent pieces to your color. Used in Othello/Reversi-style games." /></h3>
+        <div className={styles["radio-group"]}>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="flanking_captures"
+              value="enabled"
+              checked={getOtherData().flanking_captures === true}
+              onChange={() => setOtherDataField("flanking_captures", true)}
+            />
+            <span>Enable flanking captures</span>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="flanking_captures"
+              value="disabled"
+              checked={getOtherData().flanking_captures !== true}
+              onChange={() => {
+                const data = getOtherData();
+                data.flanking_captures = false;
+                data.must_flank = false;
+                data.skip_turn_no_flank = false;
+                updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+              }}
+            />
+            <span>Disable</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Must Flank */}
+      {getOtherData().flanking_captures && (
+        <div className={styles["condition-section"]}>
+          <h3>Must Flank <InfoTooltip text="When enabled, players can only place pieces on squares that result in at least one flank. If no flanking placement is available, the player's turn is skipped." /></h3>
+          <div className={styles["radio-group"]}>
+            <label className={styles["radio-label"]}>
+              <input
+                type="radio"
+                name="must_flank"
+                value="enabled"
+                checked={getOtherData().must_flank === true}
+                onChange={() => setOtherDataField("must_flank", true)}
+              />
+              <span>Must flank if possible</span>
+            </label>
+            <label className={styles["radio-label"]}>
+              <input
+                type="radio"
+                name="must_flank"
+                value="disabled"
+                checked={getOtherData().must_flank !== true}
+                onChange={() => setOtherDataField("must_flank", false)}
+              />
+              <span>Disable</span>
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Skip Turn If No Flank */}
+      {getOtherData().flanking_captures && getOtherData().must_flank && (
+        <div className={styles["condition-section"]}>
+          <h3>Skip Turn If No Flank <InfoTooltip text="When enabled, if a player has no valid flanking placements, their turn is automatically skipped. If both players have no valid placements, the game ends." /></h3>
+          <div className={styles["radio-group"]}>
+            <label className={styles["radio-label"]}>
+              <input
+                type="radio"
+                name="skip_turn_no_flank"
+                value="enabled"
+                checked={getOtherData().skip_turn_no_flank === true}
+                onChange={() => setOtherDataField("skip_turn_no_flank", true)}
+              />
+              <span>Skip turn if no flanking move available</span>
+            </label>
+            <label className={styles["radio-label"]}>
+              <input
+                type="radio"
+                name="skip_turn_no_flank"
+                value="disabled"
+                checked={getOtherData().skip_turn_no_flank !== true}
+                onChange={() => setOtherDataField("skip_turn_no_flank", false)}
+              />
+              <span>Disable</span>
+            </label>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

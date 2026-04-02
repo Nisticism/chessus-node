@@ -187,6 +187,7 @@
   flex-direction: column;
   justify-content: space-between;
   gap: 16px;
+  grid-row: 1;
 
   @media (max-width: 1200px) {
     display: none;
@@ -318,12 +319,31 @@
   background: var(--bg-dark);
   border-radius: 8px;
   padding: 10px 12px;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   width: 100%;
 
   @media (max-width: 1200px) {
     max-width: 700px;
     margin: 0 auto;
+  }
+
+  &.player-1-color {
+    background: #a0a0a0;
+    border-color: #a0a0a0;
+
+    .player-name,
+    .time-value {
+      color: #1a1a1a;
+    }
+
+    .player-indicator {
+      background: #888;
+    }
+  }
+
+  &.player-2-color {
+    background: #1a1a1a;
+    border-color: #1a1a1a;
   }
 
   &.current-turn {
@@ -470,6 +490,57 @@
   justify-content: center;
   align-items: center;
   min-height: 0;
+}
+
+// Running piece count tracker below board
+.piece-count-tracker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-column: 2;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--bg-dark);
+  border-radius: 8px;
+  margin-top: 8px;
+
+  @media (max-width: 1200px) {
+    grid-column: 1;
+  }
+
+  .piece-count-tracker-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .piece-count-tracker-player {
+    font-size: 0.85rem;
+    font-weight: 600;
+
+    &.player-white {
+      color: #e0e0e0;
+    }
+
+    &.player-black {
+      color: #999;
+    }
+  }
+
+  .piece-count-tracker-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    min-width: 28px;
+    text-align: center;
+  }
+
+  .piece-count-tracker-divider {
+    color: #555;
+    font-size: 1.2rem;
+    font-weight: 300;
+  }
 }
 
 // Game settings
@@ -1378,6 +1449,34 @@
   .reason {
     color: #888;
     margin-bottom: 24px;
+  }
+
+  .piece-count-result {
+    margin-bottom: 24px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .piece-count-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .piece-count-label {
+      color: #aaa;
+      font-size: 0.9rem;
+    }
+
+    .piece-count-value {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+    }
   }
 
   .eloChanges {
@@ -2337,41 +2436,6 @@
   border-radius: 2px;
 }
 
-.stat-badges {
-  display: flex;
-  gap: 1px;
-  justify-content: center;
-  margin-bottom: 1px;
-}
-
-.hp-badge,
-.ad-badge,
-.regen-badge {
-  font-weight: 400;
-  color: #fff;
-  border-radius: 2px;
-  padding: 1px 3px;
-  line-height: 1.2;
-  white-space: nowrap;
-  flex: 1 1 0;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.hp-badge {
-  background: rgba(76, 175, 80, 0.6);
-}
-
-.ad-badge {
-  background: rgba(255, 87, 34, 0.6);
-}
-
-.regen-badge {
-  background: rgba(33, 150, 243, 0.6);
-}
-
 /* Damage animation */
 .damage-float {
   position: absolute;
@@ -2400,6 +2464,32 @@
   z-index: 20;
 }
 
+/* Burn/DOT active fire icon */
+.burn-active-icon {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  pointer-events: none;
+  z-index: 6;
+  filter: drop-shadow(0 0 3px rgba(255, 100, 0, 0.8));
+  animation: burnPulse 1.2s ease-in-out infinite;
+  line-height: 1;
+}
+
+/* Burn/DOT floating damage animation */
+.burn-float {
+  position: absolute;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-weight: 400;
+  color: #ff6b35;
+  text-shadow: 0 0 4px #000, 0 0 8px #000;
+  animation: burnFloat 1.2s ease-out forwards;
+  pointer-events: none;
+  z-index: 20;
+}
+
 @keyframes damageFloat {
   0% {
     opacity: 1;
@@ -2419,6 +2509,31 @@
   100% {
     opacity: 0;
     transform: translateX(-50%) translateY(-30px);
+  }
+}
+
+@keyframes burnFloat {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  20% {
+    transform: translateX(-50%) translateY(-5px) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-35px) scale(0.9);
+  }
+}
+
+@keyframes burnPulse {
+  0%, 100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
   }
 }
 

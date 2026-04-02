@@ -1893,9 +1893,10 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         value_condition = ?, value_piece = ?, value_max = ?, value_title = ?,
         squares_condition = ?, squares_count = ?, hill_condition = ?, hill_x = ?, hill_y = ?, hill_turns = ?,
         actions_per_turn = ?, board_width = ?, board_height = ?, player_count = ?,
-        starting_piece_count = ?, range_squares_string = ?,
+        starting_piece_count = ?, pieces_string = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
-        randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?
+        randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?,
+        no_moves_condition = ?, piece_count_condition = ?
       WHERE id = ?
     `;
     
@@ -1922,6 +1923,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.board_height || 8,
       gameData.player_count || 2,
       gameData.starting_piece_count || 0,
+      gameData.pieces_string || null,
       gameData.range_squares_string || null,
       gameData.promotion_squares_string || null,
       gameData.special_squares_string || null,
@@ -1931,6 +1933,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.optional_condition || null,
       gameData.draw_move_limit != null ? gameData.draw_move_limit : null,
       gameData.repetition_draw_count != null && gameData.repetition_draw_count >= 2 && gameData.repetition_draw_count <= 9 ? gameData.repetition_draw_count : null,
+      gameData.no_moves_condition || false,
+      gameData.piece_count_condition || false,
       gameId
     ];
     
@@ -1985,7 +1989,10 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.show_hp_ad || false,
               piece.hp_regen ?? 0,
               piece.cannot_be_captured || false,
-              piece.show_regen ?? false
+              piece.show_regen ?? false,
+              piece.burn_damage ?? 0,
+              piece.burn_duration ?? 0,
+              piece.show_burn ?? false
             );
           }
         }
@@ -3678,8 +3685,9 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
         starting_piece_count, range_squares_string,
         promotion_squares_string, special_squares_string, control_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
+        no_moves_condition, piece_count_condition,
         pieces_string, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -3716,6 +3724,8 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
       gameData.optional_condition || null,
       gameData.draw_move_limit != null ? gameData.draw_move_limit : null,
       gameData.repetition_draw_count != null && gameData.repetition_draw_count >= 2 && gameData.repetition_draw_count <= 9 ? gameData.repetition_draw_count : null,
+      gameData.no_moves_condition || false,
+      gameData.piece_count_condition || false,
       gameData.pieces_string || '{}',
       new Date().toISOString().slice(0, 19).replace('T', ' ')
     ];
@@ -3768,7 +3778,10 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
               piece.show_hp_ad || false,
               piece.hp_regen ?? 0,
               piece.cannot_be_captured || false,
-              piece.show_regen ?? false
+              piece.show_regen ?? false,
+              piece.burn_damage ?? 0,
+              piece.burn_duration ?? 0,
+              piece.show_burn ?? false
             );
           }
         }

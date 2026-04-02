@@ -125,13 +125,16 @@ export const parseSpecialScenarioCaptures = (data) => {
  * @param {number} value - Movement value (99 = infinite, negative = exact, positive = up to)
  * @param {number} distance - Target distance
  * @param {boolean} isExact - Whether exact movement is required
+ * @param {boolean} repeating - Whether the movement repeats at multiples of the exact distance
  * @returns {boolean}
  */
-export const checkMovement = (value, distance, isExact = false) => {
+export const checkMovement = (value, distance, isExact = false, repeating = false) => {
   if (value === 99) return true; // Infinite movement
   if (value === 0 || value === null || value === undefined) return false;
   if (isExact) {
-    return distance === Math.abs(value); // Exact distance
+    const exact = Math.abs(value);
+    if (repeating) return distance > 0 && distance % exact === 0;
+    return distance === exact;
   }
   if (value > 0) return distance <= value; // Up to that distance
   if (value < 0) return distance === Math.abs(value); // Legacy exact (negative value)
@@ -291,8 +294,9 @@ export const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, player
     const exactKey = `${direction}_movement_exact`;
     const movementValue = pieceData[movementKey];
     const isExact = !!pieceData[exactKey];
+    const repeating = !!(pieceData.repeating_movement && isExact);
 
-    if (checkMovement(movementValue, distance, isExact)) {
+    if (checkMovement(movementValue, distance, isExact, repeating)) {
       const isFirstMoveOnly = isDirectionalMovementFirstMoveOnly(pieceData, direction);
       return { allowed: true, isFirstMoveOnly };
     }
@@ -325,6 +329,17 @@ export const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, player
         (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
       const isFirstMoveOnly = isRatioMovementFirstMoveOnly(pieceData, specialMoves);
       return { allowed: true, isFirstMoveOnly };
+    }
+    // Check repeating ratio movement
+    if (pieceData.repeating_ratio) {
+      const maxK = pieceData.max_ratio_iterations === -1 ? Math.max(Math.abs(rowDiff), Math.abs(colDiff)) : (pieceData.max_ratio_iterations || 1);
+      for (let k = 2; k <= maxK; k++) {
+        if ((Math.abs(rowDiff) === k * ratio1 && Math.abs(colDiff) === k * ratio2) ||
+            (Math.abs(rowDiff) === k * ratio2 && Math.abs(colDiff) === k * ratio1)) {
+          const isFirstMoveOnly = isRatioMovementFirstMoveOnly(pieceData, specialMoves);
+          return { allowed: true, isFirstMoveOnly };
+        }
+      }
     }
   }
 
@@ -417,8 +432,9 @@ export const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, pl
     const exactField = `${direction}_capture_exact`;
     const captureValue = pieceData[captureField];
     const isExact = !!pieceData[exactField];
+    const repeating = !!(pieceData.repeating_capture && isExact);
 
-    if (checkMovement(captureValue, distance, isExact)) {
+    if (checkMovement(captureValue, distance, isExact, repeating)) {
       const isFirstMoveOnly = isDirectionalCaptureFirstMoveOnly(pieceData, direction);
       return { allowed: true, isFirstMoveOnly };
     }
@@ -450,6 +466,17 @@ export const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, pl
         (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
       const isFirstMoveOnly = isRatioCaptureFirstMoveOnly(pieceData);
       return { allowed: true, isFirstMoveOnly };
+    }
+    // Check repeating ratio capture
+    if (pieceData.repeating_ratio_capture) {
+      const maxK = pieceData.max_ratio_capture_iterations === -1 ? Math.max(Math.abs(rowDiff), Math.abs(colDiff)) : (pieceData.max_ratio_capture_iterations || 1);
+      for (let k = 2; k <= maxK; k++) {
+        if ((Math.abs(rowDiff) === k * ratio1 && Math.abs(colDiff) === k * ratio2) ||
+            (Math.abs(rowDiff) === k * ratio2 && Math.abs(colDiff) === k * ratio1)) {
+          const isFirstMoveOnly = isRatioCaptureFirstMoveOnly(pieceData);
+          return { allowed: true, isFirstMoveOnly };
+        }
+      }
     }
   }
 

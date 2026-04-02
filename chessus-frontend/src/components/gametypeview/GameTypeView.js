@@ -14,6 +14,7 @@ import {
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import BoardLegend from "../common/BoardLegend";
+import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -92,14 +93,27 @@ const describePieceMovement = (pieceData) => {
     }
     
     if (directions.length > 0) {
-      movements.push(directions.join(', '));
+      let dirText = directions.join(', ');
+      if (pieceData.repeating_movement) {
+        dirText += ' (exact distances repeat infinitely)';
+      }
+      movements.push(dirText);
     }
   }
   
   // Check ratio movement (L-shape like knight) - check both flag and values
   if (hasRatio || hasRatioValues) {
     if (hasRatioValues) {
-      movements.push(`in an L-shape (${ratio1} squares in one direction and ${ratio2} squares perpendicular)`);
+      let ratioText = `in an L-shape (${ratio1} squares in one direction and ${ratio2} squares perpendicular)`;
+      if (pieceData.repeating_ratio) {
+        const maxIter = pieceData.max_ratio_iterations;
+        if (maxIter === -1) {
+          ratioText += ', repeating infinitely';
+        } else if (maxIter && maxIter > 1) {
+          ratioText += `, repeating up to ${maxIter} times`;
+        }
+      }
+      movements.push(ratioText);
     }
   }
   
@@ -138,11 +152,11 @@ const describePieceMovement = (pieceData) => {
         hopMovementTypes.push(hasRatioValues ? 'ratio L-shaped movement' : 'ratio movement');
       }
       if (hasStepMovement) {
-        hopMovementTypes.push('exact movement');
+        hopMovementTypes.push('step-by-step movement');
       }
-      if (hopMovementTypes.length > 0) {
-        hopText += ` when using its ${hopMovementTypes.join(' or ')}`;
-      }
+      // Exact directional movements still allow hopping
+      hopMovementTypes.push('exact directional movement');
+      hopText += ` when using its ${hopMovementTypes.join(' or ')}`;
     }
     movements.push(hopText);
   }
@@ -221,7 +235,11 @@ const describePieceCapture = (pieceData) => {
     }
     
     if (directions.length > 0) {
-      captures.push(directions.join(', '));
+      let dirText = directions.join(', ');
+      if (pieceData.repeating_capture) {
+        dirText += ' (exact distances repeat infinitely)';
+      }
+      captures.push(dirText);
     }
   }
   
@@ -232,7 +250,16 @@ const describePieceCapture = (pieceData) => {
   const ratio2 = pieceData.ratio_capture_2 || pieceData.ratio_two_capture || 0;
   if (hasRatioCapture || (ratio1 > 0 && ratio2 > 0)) {
     if (ratio1 > 0 && ratio2 > 0) {
-      captures.push(`in an L-shape (${ratio1} squares by ${ratio2} squares)`);
+      let ratioText = `in an L-shape (${ratio1} squares by ${ratio2} squares)`;
+      if (pieceData.repeating_ratio_capture) {
+        const maxIter = pieceData.max_ratio_capture_iterations;
+        if (maxIter === -1) {
+          ratioText += ', repeating infinitely';
+        } else if (maxIter && maxIter > 1) {
+          ratioText += `, repeating up to ${maxIter} times`;
+        }
+      }
+      captures.push(ratioText);
     }
   }
   
@@ -485,7 +512,7 @@ const GameTypeView = () => {
 
   // Generate auto-generated rules based on game configuration
   const generateRules = useMemo(() => {
-    if (!game || Object.keys(pieceDataMap).length === 0) return null;
+    if (!game) return null;
 
     const rules = [];
     
@@ -585,6 +612,8 @@ const GameTypeView = () => {
         hit_points: placement.hit_points ?? 1,
         attack_damage: placement.attack_damage ?? 1,
         hp_regen: placement.hp_regen ?? 0,
+        burn_damage: placement.burn_damage ?? 0,
+        burn_duration: placement.burn_duration ?? 0,
         cannot_be_captured: placement.cannot_be_captured || false,
         show_hp_ad: placement.show_hp_ad || false,
       });
@@ -632,19 +661,34 @@ const GameTypeView = () => {
       const hasNonDefaultHp = showFlags || hps.some(hp => hp > 1);
       const hasNonDefaultAd = showFlags || ads.some(ad => ad > 1);
       const hasRegen = regens.some(r => r > 0);
+      const burnDamages = [...new Set(placements.map(p => p.burn_damage))];
+      const burnDurations = [...new Set(placements.map(p => p.burn_duration))];
+      const hasBurn = burnDamages.some(d => d > 0) && burnDurations.some(d => d > 0);
       const isInvincible = placements.some(p => p.cannot_be_captured);
 
-      if (hasNonDefaultHp || hasNonDefaultAd || hasRegen || isInvincible) {
+      if (hasNonDefaultHp || hasNonDefaultAd || hasRegen || hasBurn || isInvincible) {
         const parts = [];
         if (hasNonDefaultHp) {
-          parts.push(hps.length === 1 ? `${hps[0]} HP` : `${hps.join('/')} HP (varies)`);
+          parts.push(hps.length === 1 ? `${hps[0]} HP` : `${hps.join(', ')} HP (varies)`);
         }
         if (hasNonDefaultAd) {
-          parts.push(ads.length === 1 ? `${ads[0]} AD` : `${ads.join('/')} AD (varies)`);
+          parts.push(ads.length === 1 ? `${ads[0]} AD` : `${ads.join(', ')} AD (varies)`);
         }
         if (hasRegen) {
           const nonZeroRegens = regens.filter(r => r > 0);
-          parts.push(`+${nonZeroRegens.join('/+')} Regen/turn`);
+          if (nonZeroRegens.length === 1) {
+            parts.push(`+${nonZeroRegens[0]} Regen/turn`);
+          } else {
+            parts.push(`+${nonZeroRegens.join(', +')} Regen/turn (varies)`);
+          }
+        }
+        if (hasBurn) {
+          const nonZeroBurnDmg = burnDamages.filter(d => d > 0);
+          const nonZeroBurnDur = burnDurations.filter(d => d > 0);
+          const dmgText = nonZeroBurnDmg.length === 1 ? `${nonZeroBurnDmg[0]}` : `${nonZeroBurnDmg.join(', ')}`;
+          const durText = nonZeroBurnDur.length === 1 ? `${nonZeroBurnDur[0]}` : `${nonZeroBurnDur.join(', ')}`;
+          const variesText = (nonZeroBurnDmg.length > 1 || nonZeroBurnDur.length > 1) ? ' (varies)' : '';
+          parts.push(`🔥 ${dmgText} dmg for ${durText} turn${nonZeroBurnDur.some(d => d > 1) ? 's' : ''} on attack${variesText}`);
         }
         if (isInvincible) {
           parts.push('Immune to capture');
@@ -853,6 +897,135 @@ const GameTypeView = () => {
       promoContent += `\n\n**Promotion Rules:**\n• Move a promotable piece onto a promotion square\n• Choose which piece to transform into\n• The promoted piece keeps the same position and player ownership`;
 
       specialRulesContent.push(promoContent);
+    }
+
+    // ---- Win Conditions Section ----
+    const winConditions = [];
+
+    if (game.mate_condition) {
+      const matePieceData = game.mate_piece ? pieceDataMap[game.mate_piece] : null;
+      const matePieceName = matePieceData ? `**${matePieceData.piece_name}**` : 'the designated piece';
+      winConditions.push(`• **Checkmate**: A player wins by checkmating their opponent's ${matePieceName}. When ${matePieceName} is in check and cannot escape, the game is over.`);
+    }
+
+    if (game.capture_condition) {
+      const capPieceData = game.capture_piece ? pieceDataMap[game.capture_piece] : null;
+      const capPieceName = capPieceData ? `**${capPieceData.piece_name}**` : 'the designated piece';
+      winConditions.push(`• **Capture**: A player wins by capturing their opponent's ${capPieceName}.`);
+    }
+
+    if (game.value_condition) {
+      const valPieceData = game.value_piece ? pieceDataMap[game.value_piece] : null;
+      const valPieceName = valPieceData ? `**${valPieceData.piece_name}**` : 'the scoring piece';
+      const valTitle = game.value_title || 'points';
+      winConditions.push(`• **${valTitle}**: Capture ${game.value_max || '?'} ${valPieceName} pieces to win.`);
+    }
+
+    if (game.squares_condition) {
+      if (game.squares_count) {
+        winConditions.push(`• **Territory (Count)**: Control more special squares than your opponent to win.`);
+      } else {
+        winConditions.push(`• **Territory**: Control all designated special squares to win.`);
+      }
+    }
+
+    if (game.hill_condition) {
+      const hillTurns = game.hill_turns || 1;
+      winConditions.push(`• **King of the Hill**: Move a piece to the hill square and hold it for ${hillTurns} turn${hillTurns > 1 ? 's' : ''} to win.`);
+    }
+
+    if (game.no_moves_condition) {
+      winConditions.push(`• **No Legal Moves**: A player with no legal moves on their turn loses the game (checkers-style).`);
+    }
+
+    if (game.piece_count_condition) {
+      winConditions.push(`• **Piece Count**: When no more valid moves remain or the board is full, the player with the most pieces wins (Othello-style).`);
+    }
+
+    if (winConditions.length > 0) {
+      // Build piece links for win condition pieces
+      const winPieceLinks = [];
+      if (game.mate_piece && pieceDataMap[game.mate_piece]) {
+        winPieceLinks.push({ name: pieceDataMap[game.mate_piece].piece_name, id: game.mate_piece });
+      }
+      if (game.capture_piece && pieceDataMap[game.capture_piece]) {
+        winPieceLinks.push({ name: pieceDataMap[game.capture_piece].piece_name, id: game.capture_piece });
+      }
+      if (game.value_piece && pieceDataMap[game.value_piece]) {
+        winPieceLinks.push({ name: pieceDataMap[game.value_piece].piece_name, id: game.value_piece });
+      }
+      rules.push({
+        title: "Win Conditions",
+        content: winConditions.join('\n'),
+        pieceLinks: winPieceLinks.length > 0 ? winPieceLinks : undefined
+      });
+    }
+
+    // ---- Draw Conditions Section ----
+    const drawConditions = [];
+
+    if (game.draw_move_limit) {
+      drawConditions.push(`• **Move Limit Draw**: If ${game.draw_move_limit} moves are made without any captures, the game is declared a draw.`);
+    }
+
+    if (game.repetition_draw_count) {
+      drawConditions.push(`• **Repetition Draw**: If the same board position occurs ${game.repetition_draw_count} times, the game is declared a draw.`);
+    }
+
+    // Parse other_game_data for extra draw conditions
+    let otherData = {};
+    try { otherData = JSON.parse(game.other_game_data || '{}') || {}; } catch {}
+
+    if (otherData.equal_piece_count_draw) {
+      drawConditions.push(`• **Equal Piece Count Draw**: If both players have the same number of pieces when the game ends by piece count, it is a draw.`);
+    }
+
+    if (drawConditions.length > 0) {
+      rules.push({
+        title: "Draw Conditions",
+        content: drawConditions.join('\n')
+      });
+    }
+
+    // ---- Gameplay Mechanics Section (Flanking, Piece Placement) ----
+    const mechanicsContent = [];
+
+    if (otherData.place_pieces_action) {
+      let placeDesc = `**Piece Placement**\nPlayers can place new pieces onto the board during their turn instead of moving an existing piece.`;
+      if (otherData.placeable_pieces && otherData.placeable_pieces.length > 0) {
+        const pieceNames = otherData.placeable_pieces.map(p => `**${p.piece_name || p.name || 'Unknown'}**`).join(', ');
+        placeDesc += `\n\n**Placeable piece types:** ${pieceNames}`;
+      }
+      mechanicsContent.push(placeDesc);
+    }
+
+    if (otherData.flanking_captures) {
+      let flankDesc = `**Flanking Captures**\nWhen a piece is placed, any opponent pieces that are flanked (enclosed in a straight line between two of the placing player's pieces) are captured and converted to the placing player's side.`;
+      if (otherData.must_flank) {
+        flankDesc += `\n• **Must Flank**: Pieces can only be placed in positions where they will flank at least one opponent piece.`;
+      }
+      if (otherData.skip_turn_no_flank) {
+        flankDesc += `\n• **Skip Turn**: If a player has no valid flanking placement, their turn is skipped. If both players cannot place, the game ends.`;
+      }
+      mechanicsContent.push(flankDesc);
+    }
+
+    if (mechanicsContent.length > 0) {
+      // Build piece links for placeable pieces
+      const mechPieceLinks = [];
+      if (otherData.placeable_pieces) {
+        otherData.placeable_pieces.forEach(p => {
+          const pName = p.piece_name || p.name;
+          if (p.piece_id && pName) {
+            mechPieceLinks.push({ name: pName, id: p.piece_id });
+          }
+        });
+      }
+      rules.push({
+        title: "Gameplay Mechanics",
+        content: mechanicsContent.join('\n\n---\n\n'),
+        pieceLinks: mechPieceLinks.length > 0 ? mechPieceLinks : undefined
+      });
     }
 
     // General gameplay rules
@@ -1120,46 +1293,11 @@ const GameTypeView = () => {
                     ⚔️
                   </div>
                 )}
-                {/* HP/AD indicators */}
+                {/* Stat badges - anchored to corners via PieceBadges component */}
                 {(() => {
                   let showGlobal = false;
                   try { showGlobal = JSON.parse(game.other_game_data || '{}').show_all_hp_ad || false; } catch {}
-                  const showHp = showGlobal || placement.show_hp_ad || (placement.hit_points && placement.hit_points > 1);
-                  if (!showHp) return null;
-                  const hp = placement.hit_points ?? 1;
-                  const ad = placement.attack_damage ?? 1;
-                  const regen = placement.hp_regen ?? 0;
-                  const badgeFontSize = `${Math.max(6, Math.min(11, squareSize * 0.15))}px`;
-                  const badgeStyle = {
-                    fontSize: badgeFontSize,
-                    color: '#fff',
-                    borderRadius: '2px',
-                    padding: '1px 2px',
-                    lineHeight: '1.2',
-                    pointerEvents: 'none',
-                    fontWeight: 'bold',
-                    flex: '1 1 0',
-                    textAlign: 'center',
-                    zIndex: 3
-                  };
-                  return (
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '1px',
-                      left: '1px',
-                      right: '1px',
-                      display: 'flex',
-                      gap: '1px',
-                      pointerEvents: 'none',
-                      zIndex: 3
-                    }}>
-                      <span style={{ ...badgeStyle, background: 'rgba(76, 175, 80, 0.6)' }} title={`Health Points: ${hp}`}>♥{hp}</span>
-                      <span style={{ ...badgeStyle, background: 'rgba(255, 87, 34, 0.6)' }} title={`Attack Damage: ${ad}`}>⚔{ad}</span>
-                      {regen > 0 && placement.show_regen && (
-                        <span style={{ ...badgeStyle, background: 'rgba(33, 150, 243, 0.6)' }} title={`HP Regen: +${regen}/turn`}>+{regen}</span>
-                      )}
-                    </div>
-                  );
+                  return <PieceBadges piece={placement} squareSize={squareSize} showGlobalHpAd={showGlobal} />;
                 })()}
               </div>
             )}
@@ -1321,6 +1459,34 @@ const GameTypeView = () => {
           </div>
         </div>
 
+        {/* Placeable Pieces Visual Section */}
+        {(() => {
+          let od = {};
+          try { od = JSON.parse(game.other_game_data || '{}') || {}; } catch {}
+          if (!od.place_pieces_action || !od.placeable_pieces || od.placeable_pieces.length === 0) return null;
+          return (
+            <div className={styles["section"]}>
+              <h2>♟ Placeable Pieces</h2>
+              <p style={{ color: '#aac', marginBottom: '12px' }}>These pieces can be placed onto the board during gameplay.</p>
+              <div className={styles["placeable-pieces-grid"]}>
+                {od.placeable_pieces.map((pp, idx) => {
+                  const imgUrl = pp.image_url ? getImageUrl(pp.image_url) : null;
+                  return (
+                    <Link key={idx} to={pp.piece_id ? `/pieces/${pp.piece_id}` : '#'} className={styles["placeable-piece-card"]}>
+                      {imgUrl ? (
+                        <img src={imgUrl} alt={pp.piece_name || pp.name || 'Piece'} className={styles["placeable-piece-img"]} />
+                      ) : (
+                        <span className={styles["placeable-piece-placeholder"]}>?</span>
+                      )}
+                      <span className={styles["placeable-piece-label"]}>{pp.piece_name || pp.name || 'Unknown'}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Auto-generated Rules Section */}
         <div className={styles["section"]}>
           <h2>📜 Game Rules</h2>
@@ -1383,7 +1549,7 @@ const GameTypeView = () => {
               })()}
             </div>
           ) : (
-            <p className={styles["loading-rules"]}>Loading rules...</p>
+            <p className={styles["loading-rules"]}>⚠️ This game has no rules configured and may be incomplete.</p>
           )}
         </div>
       </div>

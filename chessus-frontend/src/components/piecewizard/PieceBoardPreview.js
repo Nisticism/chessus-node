@@ -158,6 +158,66 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     });
     
     maxRange = Math.max(maxRange, ratioMovement, ratioCapture, ratioAttack, stepMovement, stepCapture, stepAttack);
+
+    // Extend board for repeating movements so the user can see at least the 2nd iteration.
+    // Use the smallest repeating distance in any direction × 2.
+    let repeatingExtension = 0;
+
+    if (pieceData.repeating_movement) {
+      // Collect exact directional distances that would repeat
+      const exactMoveDirs = [
+        pieceData.up_left_movement_exact ? pieceData.up_left_movement : null,
+        pieceData.up_movement_exact ? pieceData.up_movement : null,
+        pieceData.up_right_movement_exact ? pieceData.up_right_movement : null,
+        pieceData.left_movement_exact ? pieceData.left_movement : null,
+        pieceData.right_movement_exact ? pieceData.right_movement : null,
+        pieceData.down_left_movement_exact ? pieceData.down_left_movement : null,
+        pieceData.down_movement_exact ? pieceData.down_movement : null,
+        pieceData.down_right_movement_exact ? pieceData.down_right_movement : null,
+      ].filter(v => v && v !== 0 && v !== 99).map(v => Math.abs(v));
+
+      if (exactMoveDirs.length > 0) {
+        const smallest = Math.min(...exactMoveDirs);
+        repeatingExtension = Math.max(repeatingExtension, smallest * 2);
+      }
+    }
+
+    if (pieceData.repeating_ratio) {
+      const r1 = Math.abs(pieceData.ratio_one_movement || 0);
+      const r2 = Math.abs(pieceData.ratio_two_movement || 0);
+      if (r1 > 0 && r2 > 0) {
+        // For ratio, the max reach per axis for 2nd iteration is 2 * max(r1, r2)
+        repeatingExtension = Math.max(repeatingExtension, 2 * Math.max(r1, r2));
+      }
+    }
+
+    if (pieceData.repeating_capture) {
+      const exactCapDirs = [
+        pieceData.up_left_capture_exact ? pieceData.up_left_capture : null,
+        pieceData.up_capture_exact ? pieceData.up_capture : null,
+        pieceData.up_right_capture_exact ? pieceData.up_right_capture : null,
+        pieceData.left_capture_exact ? pieceData.left_capture : null,
+        pieceData.right_capture_exact ? pieceData.right_capture : null,
+        pieceData.down_left_capture_exact ? pieceData.down_left_capture : null,
+        pieceData.down_capture_exact ? pieceData.down_capture : null,
+        pieceData.down_right_capture_exact ? pieceData.down_right_capture : null,
+      ].filter(v => v && v !== 0 && v !== 99).map(v => Math.abs(v));
+
+      if (exactCapDirs.length > 0) {
+        const smallest = Math.min(...exactCapDirs);
+        repeatingExtension = Math.max(repeatingExtension, smallest * 2);
+      }
+    }
+
+    if (pieceData.repeating_ratio_capture) {
+      const rc1 = Math.abs(pieceData.ratio_one_capture || 0);
+      const rc2 = Math.abs(pieceData.ratio_two_capture || 0);
+      if (rc1 > 0 && rc2 > 0) {
+        repeatingExtension = Math.max(repeatingExtension, 2 * Math.max(rc1, rc2));
+      }
+    }
+
+    maxRange = Math.max(maxRange, repeatingExtension);
     
     // Padding: at least 4 squares on every side of the piece, or enough for max range
     const padding = Math.max(4, maxRange);

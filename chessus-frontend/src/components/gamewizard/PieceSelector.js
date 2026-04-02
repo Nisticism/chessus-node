@@ -61,6 +61,11 @@ const PieceSelector = ({
   const [hpRegen, setHpRegen] = useState(currentPlacement?.hp_regen ?? 0);
   const [cannotBeCaptured, setCannotBeCaptured] = useState(currentPlacement?.cannot_be_captured || false);
   
+  // Burn/DOT system state
+  const [burnDamage, setBurnDamage] = useState(currentPlacement?.burn_damage ?? 0);
+  const [burnDuration, setBurnDuration] = useState(currentPlacement?.burn_duration ?? 0);
+  const [showBurn, setShowBurn] = useState(currentPlacement?.show_burn ?? false);
+  
   // Castling partner override state
   const [manualCastlingPartners, setManualCastlingPartners] = useState(currentPlacement?.manual_castling_partners || false);
   const [leftCastlingPartnerKey, setLeftCastlingPartnerKey] = useState(currentPlacement?.castling_partner_left_key || null);
@@ -69,6 +74,11 @@ const PieceSelector = ({
   
   // Fill row state
   const [fillRow, setFillRow] = useState(false);
+  
+  // Collapsible section state
+  const [combatSectionOpen, setCombatSectionOpen] = useState(
+    (currentPlacement?.hit_points ?? 1) > 1 || (currentPlacement?.attack_damage ?? 1) > 1 || (currentPlacement?.hp_regen ?? 0) > 0 || (currentPlacement?.burn_damage ?? 0) > 0
+  );
   
   // Update selectedPlayerId when currentPlacement changes (e.g., when opening modal for different piece)
   useEffect(() => {
@@ -235,6 +245,10 @@ const PieceSelector = ({
       show_regen: showRegen,
       hp_regen: hpRegen,
       cannot_be_captured: cannotBeCaptured,
+      // Burn/DOT system
+      burn_damage: burnDamage,
+      burn_duration: burnDuration,
+      show_burn: showBurn,
       // Castling override data - if manual is enabled, default partners are disabled
       manual_castling_partners: manualCastlingPartners,
       castling_partner_left_key: manualCastlingPartners ? leftCastlingPartnerKey : null,
@@ -513,7 +527,15 @@ const PieceSelector = ({
         {/* HP/AD System (shown when piece is selected) */}
         {selectedPieceId && (
           <div className={styles["hp-ad-section"]}>
-            <h3>Health Points & Attack Damage <InfoTooltip text="Configure piece durability. By default, all pieces have 1 HP and 1 AD (standard chess behavior — one hit = one capture). Increase HP to make pieces harder to capture, or increase AD to let them deal more damage." /></h3>
+            <h3 
+              onClick={() => setCombatSectionOpen(!combatSectionOpen)} 
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+            >
+              <span style={{ display: 'inline-block', transition: 'transform 0.2s', transform: combatSectionOpen ? 'rotate(90deg)' : 'rotate(0deg)', marginRight: '4px' }}>▶</span>
+              Combat Stats (HP, AD, Heal, Burn) <InfoTooltip text="Configure piece durability, damage, healing, and burn. By default, all pieces have 1 HP and 1 AD (standard chess behavior — one hit = one capture)." />
+            </h3>
+            {combatSectionOpen && (
+              <>
             <div className={styles["hp-ad-row"]}>
               <div className={styles["hp-ad-field"]}>
                 <label>
@@ -548,6 +570,36 @@ const PieceSelector = ({
                 />
               </div>
             </div>
+            <div className={styles["hp-ad-row"]}>
+              <div className={styles["hp-ad-field"]}>
+                <label>
+                  Burn Damage (per turn) <InfoTooltip text="When this piece attacks and the target survives, the target takes this much damage at the start of each of their turns. Both burn damage and duration must be at least 1 if either is set." />
+                </label>
+                <NumberInput
+                  value={burnDamage}
+                  onChange={(val) => {
+                    setBurnDamage(val);
+                    if (val > 0 && burnDuration < 1) setBurnDuration(1);
+                    if (val === 0) setBurnDuration(0);
+                  }}
+                  options={{ min: 0, max: 10 }}
+                />
+              </div>
+              <div className={styles["hp-ad-field"]}>
+                <label>
+                  Burn Duration (turns) <InfoTooltip text="Number of turns the burn damage lasts on the target. Both burn damage and duration must be at least 1 if either is set." />
+                </label>
+                <NumberInput
+                  value={burnDuration}
+                  onChange={(val) => {
+                    setBurnDuration(val);
+                    if (val > 0 && burnDamage < 1) setBurnDamage(1);
+                    if (val === 0) setBurnDamage(0);
+                  }}
+                  options={{ min: 0, max: 100 }}
+                />
+              </div>
+            </div>
             <div className={styles["checkbox-group"]}>
               <label className={styles["checkbox-label"]}>
                 <input
@@ -555,7 +607,7 @@ const PieceSelector = ({
                   checked={showHpAd}
                   onChange={(e) => setShowHpAd(e.target.checked)}
                 />
-                <span>Show HP/AD on this piece during game <InfoTooltip text="Display an HP bar and AD badge on this piece during gameplay. Can also be toggled globally in game settings." /></span>
+                <span>Show HP/AD badge <InfoTooltip text="Display an HP bar and AD badge on this piece during gameplay. Can also be toggled globally in game settings." /></span>
               </label>
               <label className={styles["checkbox-label"]}>
                 <input
@@ -565,6 +617,25 @@ const PieceSelector = ({
                 />
                 <span>Show Regen badge <InfoTooltip text="Display the HP regeneration badge on this piece. Regen still functions even if hidden." /></span>
               </label>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={showBurn}
+                  onChange={(e) => setShowBurn(e.target.checked)}
+                />
+                <span>Show Burn badge <InfoTooltip text="Display the burn damage badge on this piece. The badge shows damage/duration — e.g. 🔥2/3 means this piece deals 2 burn damage per turn for 3 turns when it attacks. Burn still functions even if hidden." /></span>
+              </label>
+            </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Additional Piece Settings */}
+        {selectedPieceId && (
+          <div className={styles["hp-ad-section"]}>
+            <h3>Additional Piece Settings</h3>
+            <div className={styles["checkbox-group"]}>
               <label className={styles["checkbox-label"]}>
                 <input
                   type="checkbox"

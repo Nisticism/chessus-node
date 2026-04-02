@@ -1804,6 +1804,23 @@
   }
 }
 
+.collapsible-header {
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 0 !important;
+
+  &:hover {
+    color: var(--accent-primary);
+  }
+}
+
+.collapse-chevron {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+  display: inline-block;
+  margin-right: 2px;
+}
+
 .global-hp-ad-row {
   display: flex;
   align-items: center;
@@ -1817,5 +1834,65 @@
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+}
+
+.placeable-pieces-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.placeable-piece-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+}
+
+.placeable-piece-image {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.placeable-piece-name {
+  color: var(--light-gray);
+  font-size: 13px;
+}
+
+.placeable-piece-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 100, 100, 0.7);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: all 0.2s;
+
+  &:hover {
+    color: #ff6666;
+    background: rgba(255, 100, 100, 0.1);
+  }
+}
+
+.add-placeable-piece-btn {
+  background: rgba(var(--accent-rgb), 0.15);
+  border: 1px dashed rgba(var(--accent-rgb), 0.4);
+  color: var(--accent-primary);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(var(--accent-rgb), 0.25);
+    border-color: var(--accent-primary);
   }
 }

@@ -7,6 +7,7 @@ import soundManager from "../../utils/soundEffects";
 import PromotionModal from "./PromotionModal";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import BoardLegend from "../common/BoardLegend";
+import PieceBadges from "../common/PieceBadges";
 import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
@@ -131,6 +132,7 @@ const LiveGame = () => {
   const [checkedPieces, setCheckedPieces] = useState([]);
   const [damageAnimations, setDamageAnimations] = useState([]); // HP/AD: floating damage numbers [{id, pieceId, damage, x, y}]
   const [regenAnimations, setRegenAnimations] = useState([]); // HP/AD: floating regen numbers [{id, pieceId, healed, x, y}]
+  const [burnAnimations, setBurnAnimations] = useState([]); // DOT: floating burn damage numbers [{id, pieceId, damage, x, y}]
   const [showMovableIndicators, setShowMovableIndicators] = useState(false);
   const [showPromotionSquares, setShowPromotionSquares] = useState(false);
   const [showCastlingInfo, setShowCastlingInfo] = useState(false);
@@ -143,6 +145,8 @@ const LiveGame = () => {
   const [pendingDrawOffer, setPendingDrawOffer] = useState(null); // {from, fromUsername} when opponent offers draw
   const [drawOfferSent, setDrawOfferSent] = useState(false); // Track if current user sent a draw offer
   const [showCapturedPieces, setShowCapturedPieces] = useState(true); // Show/hide captured pieces section
+  const [showPlacementModal, setShowPlacementModal] = useState(false);
+  const [placementTarget, setPlacementTarget] = useState(null); // {x, y} where user wants to place
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
   const [windowHeight, setWindowHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 1080);
 
@@ -232,7 +236,7 @@ const LiveGame = () => {
 
   // Subscribe to game events
   useEffect(() => {
-    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces }) => {
+    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces }) => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
         console.log('moveMade received:', { 
           moveFrom: move.from, 
@@ -316,6 +320,25 @@ const LiveGame = () => {
             }, 1000);
           }, 200);
         }
+
+        // DOT/Burn: Show floating burn damage numbers with 0.4s delay (after regen)
+        if (burnPieces && burnPieces.length > 0) {
+          setTimeout(() => {
+            const burnAnims = burnPieces.map((bp, i) => ({
+              id: `burn-${Date.now()}-${i}`,
+              pieceId: bp.id,
+              damage: bp.damage,
+              x: bp.x,
+              y: bp.y,
+              turnsRemaining: bp.turnsRemaining
+            }));
+            setBurnAnimations(prev => [...prev, ...burnAnims]);
+            // Clear burn animations after 1.2 seconds
+            setTimeout(() => {
+              setBurnAnimations(prev => prev.filter(a => !burnAnims.some(n => n.id === a.id)));
+            }, 1200);
+          }, 400);
+        }
         
         // Check if premove piece still exists, if not clear it
         setPremove(prev => {
@@ -342,9 +365,9 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges }) => {
+    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges, player1Count, player2Count }) => {
       if (parseInt(overGameId) === parseInt(gameId)) {
-        setGameOverData({ winner, winnerUsername, reason, eloChanges });
+        setGameOverData({ winner, winnerUsername, reason, eloChanges, player1Count, player2Count });
         setShowGameOver(true);
         setPendingDrawOffer(null); // Clear any pending draw offer
         setDrawOfferSent(false); // Clear any sent draw offer
@@ -441,7 +464,7 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribePremoveExecuted = onGameEvent("premoveExecuted", ({ gameId: execGameId, move, gameState: newState }) => {
+    const unsubscribePremoveExecuted = onGameEvent("premoveExecuted", ({ gameId: execGameId, move, gameState: newState, regenPieces, burnPieces }) => {
       if (parseInt(execGameId) === parseInt(gameId)) {
         setPremove(null);
         setGameState(prev => ({
@@ -451,9 +474,61 @@ const LiveGame = () => {
           playerTimes: newState.playerTimes,
           moveHistory: newState.moveHistory
         }));
+        // HP/AD: Show floating damage numbers for damaged pieces from premove
+        if (move.damagedPieces && move.damagedPieces.length > 0) {
+          const newAnims = move.damagedPieces.map((dp, i) => {
+            const damagedPiece = newState.pieces?.find(p => p.id === dp.id);
+            return {
+              id: `premove-dmg-${Date.now()}-${i}`,
+              pieceId: dp.id,
+              damage: dp.damageDealt,
+              x: damagedPiece?.x ?? 0,
+              y: damagedPiece?.y ?? 0
+            };
+          });
+          setDamageAnimations(prev => [...prev, ...newAnims]);
+          setTimeout(() => {
+            setDamageAnimations(prev => prev.filter(a => !newAnims.some(n => n.id === a.id)));
+          }, 1000);
+        }
+        // HP/AD: Show regen animations from turn start (before premove)
+        if (regenPieces && regenPieces.length > 0) {
+          setTimeout(() => {
+            const regenAnims = regenPieces.map((rp, i) => ({
+              id: `premove-regen-${Date.now()}-${i}`,
+              pieceId: rp.id,
+              healed: rp.healed,
+              x: rp.x,
+              y: rp.y
+            }));
+            setRegenAnimations(prev => [...prev, ...regenAnims]);
+            setTimeout(() => {
+              setRegenAnimations(prev => prev.filter(a => !regenAnims.some(n => n.id === a.id)));
+            }, 1000);
+          }, 200);
+        }
+        // DOT: Show burn animations from turn start (before premove)
+        if (burnPieces && burnPieces.length > 0) {
+          setTimeout(() => {
+            const burnAnims = burnPieces.map((bp, i) => ({
+              id: `premove-burn-${Date.now()}-${i}`,
+              pieceId: bp.id,
+              damage: bp.damage,
+              x: bp.x,
+              y: bp.y,
+              turnsRemaining: bp.turnsRemaining
+            }));
+            setBurnAnimations(prev => [...prev, ...burnAnims]);
+            setTimeout(() => {
+              setBurnAnimations(prev => prev.filter(a => !burnAnims.some(n => n.id === a.id)));
+            }, 1200);
+          }, 400);
+        }
         // Play sound for premove execution
         if (soundEnabledRef.current) {
           if (move.captured) {
+            soundManager.playCapture();
+          } else if (move.damagedPieces && move.damagedPieces.length > 0) {
             soundManager.playCapture();
           } else {
             soundManager.playMove();
@@ -2053,12 +2128,38 @@ const LiveGame = () => {
         setValidMoves([]);
       }
     } else {
+      // Check for piece placement action (Othello-style)
+      const otherData = gameState.otherGameData || {};
+      const canPlace = isMyTurn && otherData.place_pieces_action && !clickedPiece && 
+        (gameState.status === 'active' || gameState.status === 'ready');
+      if (canPlace) {
+        const placeablePieces = otherData.placeable_pieces || [];
+        if (placeablePieces.length === 1) {
+          // Single piece type — place directly without modal
+          makeMove(parseInt(gameId), {
+            type: 'place',
+            to: { x, y },
+            placePieceId: placeablePieces[0].piece_id
+          });
+        } else if (placeablePieces.length > 1) {
+          // Multiple piece types — show placement modal
+          setPlacementTarget({ x, y });
+          setShowPlacementModal(true);
+        } else {
+          // No placeable pieces configured
+          console.warn('Place pieces action enabled but no placeable pieces configured');
+        }
+        setSelectedPiece(null);
+        setValidMoves([]);
+        return;
+      }
+
       console.log('Cannot make move:', { hasSelectedPiece: !!selectedPiece, isMyTurn, status: gameState?.status });
       // Clicking elsewhere, deselect
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, makeMove, sendPremove, setPremove, gameId, rangedSelectedPiece]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, makeMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget]);
 
   // Handle piece hover for movement helpers
   const handlePieceHover = useCallback((piece) => {
@@ -2536,6 +2637,23 @@ const LiveGame = () => {
     setPendingDrawOffer(null);
   };
 
+  // Handle piece placement selection from modal
+  const handlePlacementSelect = useCallback((piece) => {
+    if (!placementTarget) return;
+    makeMove(parseInt(gameId), {
+      type: 'place',
+      to: { x: placementTarget.x, y: placementTarget.y },
+      placePieceId: piece.piece_id
+    });
+    setShowPlacementModal(false);
+    setPlacementTarget(null);
+  }, [gameId, makeMove, placementTarget]);
+
+  const handlePlacementCancel = useCallback(() => {
+    setShowPlacementModal(false);
+    setPlacementTarget(null);
+  }, []);
+
   // Handle promotion selection
   const handlePromotionSelect = useCallback((selectedPiece) => {
     if (!promotionData) return;
@@ -2964,21 +3082,20 @@ const LiveGame = () => {
                 {/* HP/AD overlay - show when piece has show_hp_ad flag or HP > 1 */}
                 {(piece.show_hp_ad || (piece.hit_points && piece.hit_points > 1)) && (
                   <div className={styles["hp-ad-overlay"]}>
-                    {piece.show_hp_ad && (
-                      <div className={styles["stat-badges"]} style={{ width: `${squareSize * 0.85}px` }}>
-                        <span className={styles["hp-badge"]} style={{ fontSize: `${Math.max(8, squareSize * 0.18)}px` }}>♥{piece.current_hp ?? piece.hit_points ?? 1}</span>
-                        <span className={styles["ad-badge"]} style={{ fontSize: `${Math.max(8, squareSize * 0.18)}px` }}>⚔{piece.attack_damage ?? 1}</span>
-                        {piece.show_regen && piece.hp_regen > 0 && (
-                          <span className={styles["regen-badge"]} style={{ fontSize: `${Math.max(8, squareSize * 0.18)}px` }}>+{piece.hp_regen}</span>
-                        )}
-                      </div>
-                    )}
                     <div className={styles["hp-bar"]}>
                       <div 
                         className={styles["hp-bar-fill"]}
                         style={{ width: `${Math.max(0, Math.min(100, ((piece.current_hp ?? piece.hit_points ?? 1) / (piece.hit_points || 1)) * 100))}%` }}
                       />
                     </div>
+                  </div>
+                )}
+                {/* Stat badges - anchored to corners via PieceBadges component */}
+                <PieceBadges piece={piece} squareSize={squareSize} />
+                {/* Fire icon for actively burning pieces */}
+                {piece.burn_active_turns > 0 && (
+                  <div className={styles["burn-active-icon"]} style={{ fontSize: `${Math.max(10, squareSize * 0.22)}px` }}>
+                    🔥
                   </div>
                 )}
               </div>
@@ -2991,6 +3108,10 @@ const LiveGame = () => {
             {/* HP/AD: Floating regen numbers */}
             {regenAnimations.filter(a => a.x === gameX && a.y === gameY).map(anim => (
               <div key={anim.id} className={styles["regen-float"]} style={{ fontSize: `${Math.max(12, squareSize * 0.3)}px`, left: '65%' }}>+{anim.healed}</div>
+            ))}
+            {/* DOT/Burn: Floating burn damage numbers */}
+            {burnAnimations.filter(a => a.x === gameX && a.y === gameY).map(anim => (
+              <div key={anim.id} className={styles["burn-float"]} style={{ fontSize: `${Math.max(12, squareSize * 0.3)}px`, left: '50%' }}>🔥-{anim.damage}</div>
             ))}
           </div>
         );
@@ -3259,6 +3380,7 @@ const LiveGame = () => {
         <div className={styles["layout-row-top-clock"]}>
           <div className={`
             ${styles["player-clock"]} 
+            ${currentPlayer?.position === 1 ? styles["player-2-color"] : styles["player-1-color"]}
             ${(!currentPlayer || (currentPlayer.position === 2 && gameState.currentTurn === 1) || (currentPlayer.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles["current-turn"] : ''}
             ${gameState.winner === (currentPlayer?.position === 1 ? player2?.id : player1?.id) ? styles.winner : ''}
           `}>
@@ -3296,6 +3418,7 @@ const LiveGame = () => {
             <div className={`
               ${styles["player-clock"]} 
               ${styles["top-clock"]}
+              ${currentPlayer?.position === 1 ? styles["player-2-color"] : styles["player-1-color"]}
               ${(!currentPlayer || (currentPlayer.position === 2 && gameState.currentTurn === 1) || (currentPlayer.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles["current-turn"] : ''}
               ${gameState.winner === (currentPlayer?.position === 1 ? player2?.id : player1?.id) ? styles.winner : ''}
             `}>
@@ -3328,6 +3451,7 @@ const LiveGame = () => {
             <div className={`
               ${styles["player-clock"]} 
               ${styles["bottom-clock"]}
+              ${currentPlayer?.position === 1 ? styles["player-1-color"] : styles["player-2-color"]}
               ${(currentPlayer && ((currentPlayer.position === 1 && gameState.currentTurn === 1) || (currentPlayer.position === 2 && gameState.currentTurn === 2))) && gameState.status === 'active' ? styles["current-turn"] : ''}
               ${gameState.winner === currentPlayer?.id ? styles.winner : ''}
             `}>
@@ -3566,6 +3690,35 @@ const LiveGame = () => {
               </div>
             )}
           </div>
+
+          {/* Running Piece Count - only for piece_count_condition games */}
+          {gameState.gameType?.piece_count_condition && gameState.pieces && (
+            <div className={styles["piece-count-tracker"]}>
+              <div className={styles["piece-count-tracker-row"]}>
+                <span className={`${styles["piece-count-tracker-player"]} ${styles["player-white"]}`}>
+                  {(() => {
+                    const p1 = currentPlayer?.position === 1 ? currentPlayer : (player1 || player2);
+                    return p1?.username || 'Player 1';
+                  })()}
+                </span>
+                <span className={styles["piece-count-tracker-value"]}>
+                  {gameState.pieces.filter(p => (p.team || p.player_id) === 1).length}
+                </span>
+              </div>
+              <div className={styles["piece-count-tracker-divider"]}>—</div>
+              <div className={styles["piece-count-tracker-row"]}>
+                <span className={styles["piece-count-tracker-value"]}>
+                  {gameState.pieces.filter(p => (p.team || p.player_id) === 2).length}
+                </span>
+                <span className={`${styles["piece-count-tracker-player"]} ${styles["player-black"]}`}>
+                  {(() => {
+                    const p2 = currentPlayer?.position === 1 ? (player2 || player1) : currentPlayer;
+                    return p2?.username || 'Player 2';
+                  })()}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -3942,8 +4095,31 @@ const LiveGame = () => {
                gameOverData.reason === 'agreement' ? 'By Agreement' :
                gameOverData.reason === 'resignation' ? 'By Resignation' :
                gameOverData.reason === 'timeout' ? 'By Timeout' :
+               gameOverData.reason === 'piece_count' ? 'By Piece Count' :
+               gameOverData.reason === 'equal_piece_count' ? 'Equal Piece Count - Draw' :
                gameOverData.reason}
             </div>
+            {(gameOverData.reason === 'piece_count' || gameOverData.reason === 'equal_piece_count') && 
+             gameOverData.player1Count != null && gameOverData.player2Count != null && (
+              <div className={styles["piece-count-result"]}>
+                <div className={styles["piece-count-row"]}>
+                  <span className={styles["piece-count-label"]}>
+                    {(currentPlayer?.position === 1 ? player1 : player2)?.username || 'Player 1'} (White)
+                  </span>
+                  <span className={styles["piece-count-value"]}>
+                    {currentPlayer?.position === 1 ? gameOverData.player1Count : gameOverData.player2Count}
+                  </span>
+                </div>
+                <div className={styles["piece-count-row"]}>
+                  <span className={styles["piece-count-label"]}>
+                    {(currentPlayer?.position === 1 ? player2 : player1)?.username || 'Player 2'} (Black)
+                  </span>
+                  <span className={styles["piece-count-value"]}>
+                    {currentPlayer?.position === 1 ? gameOverData.player2Count : gameOverData.player1Count}
+                  </span>
+                </div>
+              </div>
+            )}
             {gameOverData.eloChanges && (
               <div className={styles.eloChanges}>
                 <div className={styles.eloChange}>
@@ -3987,6 +4163,41 @@ const LiveGame = () => {
           onSelect={handlePromotionSelect}
           onCancel={handlePromotionCancel}
         />
+      )}
+
+      {/* Piece Placement Modal */}
+      {showPlacementModal && placementTarget && (
+        <div className={styles["promotion-modal-overlay"]} onClick={handlePlacementCancel}>
+          <div className={styles["promotion-modal"]} onClick={(e) => e.stopPropagation()}>
+            <h3>Place a Piece</h3>
+            <p>Select which piece to place at {String.fromCharCode(97 + placementTarget.x)}{placementTarget.y + 1}:</p>
+            <div className={styles["promotion-options"]}>
+              {(gameState?.otherGameData?.placeable_pieces || []).map((piece, index) => {
+                const imageUrl = piece.image_url
+                  ? (piece.image_url.startsWith('http') ? piece.image_url : `${ASSET_URL}${piece.image_url}`)
+                  : null;
+                return (
+                  <button
+                    key={piece.piece_id || index}
+                    className={styles["promotion-option"]}
+                    onClick={() => handlePlacementSelect(piece)}
+                    title={piece.piece_name || piece.name || 'Piece'}
+                  >
+                    {imageUrl ? (
+                      <img src={imageUrl} alt={piece.piece_name || piece.name || 'Piece'} draggable={false} />
+                    ) : (
+                      <span className={styles["piece-name"]}>{piece.piece_name || piece.name || '?'}</span>
+                    )}
+                    <span className={styles["piece-label"]}>{piece.piece_name || piece.name || 'Unknown'}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button className={styles["cancel-button"]} onClick={handlePlacementCancel}>
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
       </div>
     </div>
