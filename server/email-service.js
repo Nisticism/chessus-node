@@ -1,4 +1,4 @@
-﻿const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 
 // Initialize AWS SES client
 const sesClient = new SESClient({
@@ -132,7 +132,7 @@ const getEmailTemplate = (content) => `
 <body>
   <div class="container">
     <div class="header">
-      <h1 class="logo">â™” GridGrove</h1>
+      <h1 class="logo">♔ GridGrove</h1>
     </div>
     <div class="content">
       ${content}
@@ -146,7 +146,7 @@ const getEmailTemplate = (content) => `
         <a href="https://gridgrove.gg/play" class="footer-link">Play Games</a>
       </div>
       <p style="margin-top: 20px; color: #607d8b;">
-        Â© ${new Date().getFullYear()} GridGrove. All rights reserved.
+        © ${new Date().getFullYear()} GridGrove. All rights reserved.
       </p>
     </div>
   </div>
@@ -156,7 +156,7 @@ const getEmailTemplate = (content) => `
 
 // Welcome email template
 const getWelcomeEmailContent = (username) => `
-  <h2 class="title">Welcome to GridGrove! ðŸŽ‰</h2>
+  <h2 class="title">Welcome to GridGrove! 🎉</h2>
   <p class="message">
     Hi <strong>${username}</strong>,
   </p>
@@ -166,18 +166,18 @@ const getWelcomeEmailContent = (username) => `
   </p>
   
   <div class="highlight-box">
-    <p class="highlight-text">â™Ÿ Your account is now active!</p>
+    <p class="highlight-text">♟ Your account is now active!</p>
   </div>
 
   <p class="message">
     Here's what you can do now:
   </p>
   <p class="message">
-    â™Ÿï¸ <strong>Play Games</strong> - Explore and play unique chess variants created by our community<br>
-    ðŸŽ¨ <strong>Create Pieces</strong> - Design your own custom chess pieces with unique movement patterns<br>
-    ðŸ† <strong>Create Games</strong> - Build entirely new chess variants with custom rules and win conditions<br>
-    ðŸ’¬ <strong>Join Forums</strong> - Connect with other players, share strategies, and discuss game design<br>
-    ðŸ“Š <strong>Climb the Leaderboard</strong> - Compete with players worldwide and showcase your skills
+    ♟️ <strong>Play Games</strong> - Explore and play unique chess variants created by our community<br>
+    🎨 <strong>Create Pieces</strong> - Design your own custom chess pieces with unique movement patterns<br>
+    🏆 <strong>Create Games</strong> - Build entirely new chess variants with custom rules and win conditions<br>
+    💬 <strong>Join Forums</strong> - Connect with other players, share strategies, and discuss game design<br>
+    📊 <strong>Climb the Leaderboard</strong> - Compete with players worldwide and showcase your skills
   </p>
 
   <div class="button-center">
@@ -195,7 +195,7 @@ const getWelcomeEmailContent = (username) => `
 
 // Donation thank you email template
 const getDonationEmailContent = (username, amount) => `
-  <h2 class="title">Thank You for Your Generous Support! ðŸ’™</h2>
+  <h2 class="title">Thank You for Your Generous Support! 💙</h2>
   <p class="message">
     Hi <strong>${username || 'Friend'}</strong>,
   </p>
@@ -205,18 +205,18 @@ const getDonationEmailContent = (username, amount) => `
   </p>
   
   <div class="highlight-box">
-    <p class="highlight-text">âœ“ Donation Received: $${parseFloat(amount).toFixed(2)}</p>
+    <p class="highlight-text">✓ Donation Received: $${parseFloat(amount).toFixed(2)}</p>
   </div>
 
   <p class="message">
     Your contribution directly supports:
   </p>
   <p class="message">
-    ðŸš€ <strong>Platform Development</strong> - New features and improvements<br>
-    ðŸ–¥ï¸ <strong>Server Costs</strong> - Keeping the site fast and reliable<br>
-    âš” <strong>Community Growth</strong> - Tools and resources for our players<br>
-    ðŸŽ¨ <strong>Content Creation</strong> - Tutorials, guides, and game showcases<br>
-    ðŸ› <strong>Maintenance</strong> - Bug fixes and security updates
+    🚀 <strong>Platform Development</strong> - New features and improvements<br>
+    🖥️ <strong>Server Costs</strong> - Keeping the site fast and reliable<br>
+    ⚔ <strong>Community Growth</strong> - Tools and resources for our players<br>
+    🎨 <strong>Content Creation</strong> - Tutorials, guides, and game showcases<br>
+    🐛 <strong>Maintenance</strong> - Bug fixes and security updates
   </p>
 
   <p class="message">
@@ -236,20 +236,20 @@ const getDonationEmailContent = (username, amount) => `
   </p>
   
   <p class="message" style="text-align: center; font-size: 18px; margin-top: 30px;">
-    <strong>Thank you for being an amazing supporter! ðŸŽ‰</strong>
+    <strong>Thank you for being an amazing supporter! 🎉</strong>
   </p>
 `;
 
 // Send welcome email on registration
 const sendWelcomeEmail = async (email, username) => {
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-    console.log('â„¹ï¸ AWS SES not configured. Skipping welcome email to:', email);
+    console.log('ℹ️ AWS SES not configured. Skipping welcome email to:', email);
     console.log('   To enable emails, add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to your .env file');
     return { success: false, message: 'AWS SES not configured' };
   }
 
   if (!process.env.AWS_SES_FROM_EMAIL) {
-    console.warn('âš ï¸ AWS_SES_FROM_EMAIL not set, using default: noreply@gridgrove.gg');
+    console.warn('⚠️ AWS_SES_FROM_EMAIL not set, using default: noreply@gridgrove.gg');
   }
 
   try {
@@ -260,7 +260,7 @@ const sendWelcomeEmail = async (email, username) => {
       },
       Message: {
         Subject: {
-          Data: 'Welcome to GridGrove! ðŸŽ‰',
+          Data: 'Welcome to GridGrove! 🎉',
           Charset: 'UTF-8',
         },
         Body: {
@@ -274,10 +274,10 @@ const sendWelcomeEmail = async (email, username) => {
 
     const command = new SendEmailCommand(params);
     await sesClient.send(command);
-    console.log(`âœ… Welcome email sent to ${email}`);
+    console.log(`✅ Welcome email sent to ${email}`);
     return { success: true };
   } catch (error) {
-    console.error('âŒ Error sending welcome email:', error.message);
+    console.error('❌ Error sending welcome email:', error.message);
     return { success: false, error };
   }
 };
@@ -285,13 +285,13 @@ const sendWelcomeEmail = async (email, username) => {
 // Send donation thank you email
 const sendDonationEmail = async (email, username, amount) => {
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-    console.log('â„¹ï¸ AWS SES not configured. Skipping donation email to:', email);
+    console.log('ℹ️ AWS SES not configured. Skipping donation email to:', email);
     console.log('   To enable emails, add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to your .env file');
     return { success: false, message: 'AWS SES not configured' };
   }
 
   if (!process.env.AWS_SES_FROM_EMAIL) {
-    console.warn('âš ï¸ AWS_SES_FROM_EMAIL not set, using default: noreply@gridgrove.gg');
+    console.warn('⚠️ AWS_SES_FROM_EMAIL not set, using default: noreply@gridgrove.gg');
   }
 
   try {
@@ -302,7 +302,7 @@ const sendDonationEmail = async (email, username, amount) => {
       },
       Message: {
         Subject: {
-          Data: 'Thank You for Your Donation! ðŸ’™',
+          Data: 'Thank You for Your Donation! 💙',
           Charset: 'UTF-8',
         },
         Body: {
@@ -316,17 +316,17 @@ const sendDonationEmail = async (email, username, amount) => {
 
     const command = new SendEmailCommand(params);
     await sesClient.send(command);
-    console.log(`âœ… Donation email sent to ${email} for $${amount}`);
+    console.log(`✅ Donation email sent to ${email} for $${amount}`);
     return { success: true };
   } catch (error) {
-    console.error('âŒ Error sending donation email:', error.message);
+    console.error('❌ Error sending donation email:', error.message);
     return { success: false, error };
   }
 };
 
 // Password reset email template
 const getPasswordResetEmailContent = (username, resetLink) => `
-  <h2 class="title">Reset Your Password ðŸ”</h2>
+  <h2 class="title">Reset Your Password 🔐</h2>
   <p class="message">
     Hi <strong>${username}</strong>,
   </p>
@@ -336,7 +336,7 @@ const getPasswordResetEmailContent = (username, resetLink) => `
   </p>
   
   <div class="highlight-box">
-    <p class="highlight-text">â° This link expires in 1 hour</p>
+    <p class="highlight-text">⏰ This link expires in 1 hour</p>
   </div>
 
   <p class="message">
@@ -363,13 +363,13 @@ const getPasswordResetEmailContent = (username, resetLink) => `
 // Send password reset email
 const sendPasswordResetEmail = async (email, username, resetToken) => {
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-    console.log('â„¹ï¸ AWS SES not configured. Skipping password reset email to:', email);
+    console.log('ℹ️ AWS SES not configured. Skipping password reset email to:', email);
     console.log('   To enable emails, add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to your .env file');
     return { success: false, message: 'AWS SES not configured' };
   }
 
   if (!process.env.AWS_SES_FROM_EMAIL) {
-    console.warn('âš ï¸ AWS_SES_FROM_EMAIL not set, using default: noreply@gridgrove.gg');
+    console.warn('⚠️ AWS_SES_FROM_EMAIL not set, using default: noreply@gridgrove.gg');
   }
 
   const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
@@ -383,7 +383,7 @@ const sendPasswordResetEmail = async (email, username, resetToken) => {
       },
       Message: {
         Subject: {
-          Data: 'Reset Your GridGrove Password ðŸ”',
+          Data: 'Reset Your GridGrove Password 🔐',
           Charset: 'UTF-8',
         },
         Body: {
@@ -397,10 +397,10 @@ const sendPasswordResetEmail = async (email, username, resetToken) => {
 
     const command = new SendEmailCommand(params);
     await sesClient.send(command);
-    console.log(`âœ… Password reset email sent to ${email}`);
+    console.log(`✅ Password reset email sent to ${email}`);
     return { success: true };
   } catch (error) {
-    console.error('âŒ Error sending password reset email:', error.message);
+    console.error('❌ Error sending password reset email:', error.message);
     return { success: false, error };
   }
 };
@@ -408,7 +408,7 @@ const sendPasswordResetEmail = async (email, username, resetToken) => {
 // Send contact form message
 const sendContactEmail = async (name, email, subject, message) => {
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-    console.log('â„¹ï¸ AWS SES not configured. Would send contact email from:', email);
+    console.log('ℹ️ AWS SES not configured. Would send contact email from:', email);
     return { success: false, message: 'AWS SES not configured' };
   }
 
@@ -457,10 +457,10 @@ const sendContactEmail = async (name, email, subject, message) => {
 
     const command = new SendEmailCommand(params);
     await sesClient.send(command);
-    console.log(`âœ… Contact email sent from ${email} to fosterhans@gmail.com`);
+    console.log(`✅ Contact email sent from ${email} to fosterhans@gmail.com`);
     return { success: true };
   } catch (error) {
-    console.error('âŒ Error sending contact email:', error.message);
+    console.error('❌ Error sending contact email:', error.message);
     return { success: false, error };
   }
 };
@@ -469,18 +469,18 @@ const sendContactEmail = async (name, email, subject, message) => {
 const getNotificationSummaryContent = (username, summaryItems, totalCount) => {
   const summaryRows = summaryItems.map(item => {
     const labels = {
-      friend_request: 'ðŸ‘¥ Friend Requests',
-      challenge: 'âš”ï¸ Game Challenges',
-      comment: 'ðŸ’¬ Comments on Your Posts',
-      game_thread: 'ðŸŽ® Game Thread Activity',
-      system: 'ðŸ“¢ System Notifications',
+      friend_request: '👥 Friend Requests',
+      challenge: '⚔️ Game Challenges',
+      comment: '💬 Comments on Your Posts',
+      game_thread: '🎮 Game Thread Activity',
+      system: '📢 System Notifications',
     };
-    const label = labels[item.type] || `ðŸ“Œ ${item.type}`;
+    const label = labels[item.type] || `📌 ${item.type}`;
     return `<tr><td style="padding: 10px 15px; color: #e0e0e0; border-bottom: 1px solid rgba(255,255,255,0.05);">${label}</td><td style="padding: 10px 15px; color: #64b5f6; font-weight: 600; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.05);">${item.count}</td></tr>`;
   }).join('');
 
   return `
-    <h2 class="title">Your Weekly Notification Summary ðŸ””</h2>
+    <h2 class="title">Your Weekly Notification Summary 🔔</h2>
     <p class="message">
       Hi <strong>${username}</strong>,
     </p>
@@ -509,7 +509,7 @@ const getNotificationSummaryContent = (username, summaryItems, totalCount) => {
     <div class="divider"></div>
 
     <p class="message" style="font-size: 14px; color: #90a4ae;">
-      Don't miss out on any activity â€” log in to respond to friend requests, game challenges, and community discussions!
+      Don't miss out on any activity — log in to respond to friend requests, game challenges, and community discussions!
     </p>
   `;
 };
@@ -543,10 +543,10 @@ const sendNotificationSummaryEmail = async (email, username, summaryItems, total
 
     const command = new SendEmailCommand(params);
     await sesClient.send(command);
-    console.log(`âœ… Notification summary email sent to ${email}`);
+    console.log(`✅ Notification summary email sent to ${email}`);
     return { success: true };
   } catch (error) {
-    console.error('âŒ Error sending notification summary email:', error.message);
+    console.error('❌ Error sending notification summary email:', error.message);
     return { success: false, error };
   }
 };
