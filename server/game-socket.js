@@ -1869,6 +1869,11 @@ function initializeSocket(server) {
         // Switch turns
         gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
 
+        // Track last move time for correspondence games
+        if (gameState.isCorrespondence) {
+          gameState.lastMoveTime = Date.now();
+        }
+
         // HP/AD system: Apply HP regeneration at the start of the new player's turn
         const newTurnPlayer = gameState.currentTurn;
         const regenPieces = [];
@@ -2712,7 +2717,8 @@ function initializeSocket(server) {
                controlSquareTracking: gameState.controlSquareTracking,
                rated: gameState.rated,
                allowPremoves: gameState.allowPremoves,
-               enPassantTarget: gameState.enPassantTarget
+               enPassantTarget: gameState.enPassantTarget,
+               lastMoveTime: gameState.isCorrespondence ? Date.now() : undefined
              }), gameId]
           );
 
@@ -2735,6 +2741,56 @@ function initializeSocket(server) {
             ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {})
           });
 
+          // Send notification for correspondence or no-time-limit games
+          if (gameState.status === 'active' && (gameState.isCorrespondence || !gameState.timeControl)) {
+            try {
+              const dbHelpers = require("./db-helpers");
+              const movingPlayer = gameState.players.find(p => p.id === userId);
+              const opponent = gameState.players.find(p => p.id !== userId);
+              if (opponent) {
+                // Check if opponent is currently viewing this game (in the game room)
+                const opponentSocketId = userSockets.get(opponent.id.toString());
+                const opponentInGame = opponentSocketId && io.sockets.sockets.get(opponentSocketId)?.rooms?.has(`game-${gameId}`);
+                
+                if (!opponentInGame) {
+                  const moveNum = gameState.moveHistory.length;
+                  const title = `${movingPlayer?.username || 'Opponent'} made a move`;
+                  const content = `Move #${moveNum} in your ${gameState.isCorrespondence ? 'correspondence' : ''} game. It's your turn!`;
+                  const actionUrl = `/play/${gameId}`;
+
+                  // Check for existing unread notification for this game
+                  const existing = await dbHelpers.findUnreadNotification(opponent.id, 'game_move', parseInt(gameId));
+                  if (existing) {
+                    await dbHelpers.updateNotification(existing.id, {
+                      sender_id: userId,
+                      title,
+                      content
+                    });
+                    const updatedNotification = { ...existing, sender_id: userId, title, content, sender_username: movingPlayer?.username };
+                    if (opponentSocketId) {
+                      io.to(opponentSocketId).emit('newNotification', updatedNotification);
+                    }
+                  } else {
+                    const notification = await dbHelpers.createNotification({
+                      user_id: opponent.id,
+                      sender_id: userId,
+                      type: 'game_move',
+                      title,
+                      content,
+                      related_id: parseInt(gameId),
+                      action_url: actionUrl
+                    });
+                    if (opponentSocketId) {
+                      io.to(opponentSocketId).emit('newNotification', { ...notification, sender_username: movingPlayer?.username });
+                    }
+                  }
+                }
+              }
+            } catch (notifErr) {
+              console.error('Error sending move notification:', notifErr);
+            }
+          }
+
           // If player is in check, emit a separate check event for visibility
           if (checkResult.inCheck) {
             const checkedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
@@ -2754,6 +2810,7 @@ function initializeSocket(server) {
         }
 
         console.log(`Move made in game ${gameId}: ${JSON.stringify(move)}`);
+
       } catch (error) {
         console.error("Error making move:", error);
         socket.emit("error", { message: "Failed to make move" });
@@ -3261,6 +3318,13 @@ function initializeSocket(server) {
       }
     });
 
+    // Leave game room (when user navigates away from the game page)
+    socket.on("leaveGame", ({ gameId }) => {
+      if (gameId) {
+        socket.leave(`game-${gameId}`);
+      }
+    });
+
     // Get current game state (for reconnection)
     socket.on("getGameState", async (data) => {
       const { gameId, userId } = data;
@@ -3535,7 +3599,10 @@ function initializeSocket(server) {
             showPieceHelpers: game.show_piece_helpers === 1,
             rated: rated,
             allowPremoves: allowPremoves,
-            premove: null
+            premove: null,
+            isCorrespondence: !!game.is_correspondence,
+            correspondenceDays: game.correspondence_days || null,
+            lastMoveTime: otherData?.lastMoveTime || null
           };
 
           // Check if current player is in check (if game is active)
@@ -3559,6 +3626,42 @@ function initializeSocket(server) {
             console.log(`Restarting timer for active game ${gameId} after server restart`);
             startGameTimer(io, gameId);
           }
+
+          // Check for correspondence timeout
+          if (gameState.status === 'active' && gameState.isCorrespondence && gameState.correspondenceDays && gameState.lastMoveTime) {
+            const elapsed = Date.now() - gameState.lastMoveTime;
+            const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
+            if (elapsed > allowedMs) {
+              // Current player ran out of time
+              const currentPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+              const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+              gameState.status = 'completed';
+              gameState.winner = winner?.id;
+              gameState.winReason = 'timeout';
+
+              let eloChanges = null;
+              if (gameState.rated !== false && winner?.id && currentPlayer?.id) {
+                eloChanges = await updateEloRatings(winner.id, currentPlayer.id);
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              await db_pool.query(
+                `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                 pieces = ?, other_data = ? WHERE id = ?`,
+                [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces),
+                 JSON.stringify({
+                   moves: gameState.moveHistory,
+                   winner: winner?.id,
+                   reason: 'timeout',
+                   eloChanges,
+                   rated: gameState.rated,
+                   allowPremoves: gameState.allowPremoves
+                 }),
+                 gameId]
+              );
+              console.log(`Correspondence game ${gameId} ended - ${currentPlayer?.username} ran out of time`);
+            }
+          }
           
           socket.join(`game-${gameId}`);
           socket.emit("gameState", gameState);
@@ -3578,7 +3681,7 @@ function initializeSocket(server) {
           return;
         }
 
-        if (gameState.status !== 'active') {
+        if (gameState.status !== 'active' && gameState.status !== 'ready') {
           socket.emit("error", { message: "Game is not active" });
           return;
         }

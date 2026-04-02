@@ -842,6 +842,21 @@ const createNotification = async ({ user_id, sender_id, type, title, content, re
   return { id: result.insertId, user_id, sender_id, type, title, content, related_id, action_url, is_read: 0, is_actioned: 0 };
 };
 
+const findUnreadNotification = async (userId, type, relatedId) => {
+  const rows = await query(
+    `SELECT * FROM notifications WHERE user_id = ? AND type = ? AND related_id = ? AND is_read = 0 ORDER BY created_at DESC LIMIT 1`,
+    [userId, type, relatedId]
+  );
+  return rows.length > 0 ? rows[0] : null;
+};
+
+const updateNotification = async (notificationId, { sender_id, title, content }) => {
+  await query(
+    `UPDATE notifications SET sender_id = ?, title = ?, content = ?, created_at = NOW() WHERE id = ?`,
+    [sender_id || null, title, content || null, notificationId]
+  );
+};
+
 const getNotificationsByUserId = async (userId, page = 1, limit = 20) => {
   const offset = (page - 1) * limit;
   const notifications = await query(
@@ -963,6 +978,8 @@ module.exports = {
   getAllNews,
   updateUserDonations,
   createNotification,
+  findUnreadNotification,
+  updateNotification,
   getNotificationsByUserId,
   getUnreadNotificationCount,
   markNotificationRead,
