@@ -16,6 +16,7 @@ const NOTIFICATION_ICONS = {
   challenge: "⚔️",
   comment: "💬",
   game_thread: "🎮",
+  game_move: "♟️",
   system: "📢",
 };
 
@@ -167,7 +168,7 @@ const NotificationsPage = () => {
             {notifications.map((notification) => (
               <div
                 key={notification.id}
-                className={`${styles["notification-item"]} ${
+                className={`${styles["notification-item"]} ${styles[`type-${notification.type}`] || ""} ${
                   !notification.is_read ? styles.unread : ""
                 } ${notification.is_actioned ? styles.actioned : ""}`}
                 onClick={() => handleNotificationClick(notification)}
@@ -245,6 +246,20 @@ const NotificationsPage = () => {
                         }}
                       >
                         View Thread
+                      </button>
+                    </div>
+                  )}
+
+                  {notification.type === "game_move" && (
+                    <div className={styles["notification-actions-row"]}>
+                      <button
+                        className={`${styles["notification-action-btn"]} ${styles.view}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNotificationClick(notification);
+                        }}
+                      >
+                        View Game
                       </button>
                     </div>
                   )}

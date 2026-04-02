@@ -1,0 +1,361 @@
+/* ============================================
+   Notifications Page — Modern Themed Cards
+   Uses CSS variables for multi-theme support
+   ============================================ */
+
+.notifications-container {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+}
+
+/* ---------- Header ---------- */
+.notifications-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle, #1a3d2b);
+}
+
+.notifications-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-bright, #e0f0e8);
+  margin: 0;
+}
+
+.mark-all-read-btn {
+  background: transparent;
+  border: 1px solid var(--border-medium, #2a8b5d);
+  color: var(--accent-highlight, #81c784);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+
+  &:hover:not(:disabled) {
+    background: var(--accent-primary, #4a9e5a);
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+}
+
+/* ---------- States ---------- */
+.notifications-loading,
+.notifications-empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--text-muted, #a0d0b8);
+}
+
+.empty-icon {
+  font-size: 2.4rem;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.notifications-login-prompt {
+  text-align: center;
+  padding: 64px 16px;
+  color: var(--text-muted, #a0d0b8);
+
+  a {
+    color: var(--accent-highlight, #81c784);
+    text-decoration: underline;
+  }
+}
+
+/* ---------- Notification List ---------- */
+.notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------- Notification Card ---------- */
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--bg-card, #262a28);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  position: relative;
+
+  &:hover {
+    background: color-mix(in srgb, var(--bg-card, #262a28) 85%, var(--accent-primary, #4a9e5a));
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+
+  /* Unread indicator */
+  &.unread {
+    border-left-color: var(--accent-highlight, #81c784);
+    background: color-mix(in srgb, var(--bg-card, #262a28) 90%, var(--accent-primary, #4a9e5a));
+  }
+
+  &.unread .notification-title {
+    color: var(--text-bright, #e0f0e8);
+    font-weight: 600;
+  }
+
+  &.actioned {
+    opacity: 0.6;
+  }
+}
+
+/* ---------- Icon Badge ---------- */
+.notification-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  background: var(--bg-deep, #0a1e12);
+  border: 1px solid var(--border-subtle, #1a3d2b);
+}
+
+/* ---------- Body ---------- */
+.notification-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--text-muted, #a0d0b8);
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+
+.notification-content {
+  font-size: 0.82rem;
+  color: var(--text-dim, #6ba88b);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.notification-time {
+  font-size: 0.75rem;
+  color: var(--text-dim, #6ba88b);
+  margin-top: 6px;
+}
+
+/* ---------- Action Buttons ---------- */
+.notification-actions-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.notification-action-btn {
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &.accept {
+    background: var(--accent-primary, #4a9e5a);
+    color: #fff;
+
+    &:hover {
+      background: var(--accent-primary-hover, #3d8a4d);
+    }
+  }
+
+  &.decline {
+    background: rgba(220, 50, 50, 0.15);
+    color: #ef5350;
+    border: 1px solid rgba(220, 50, 50, 0.3);
+
+    &:hover {
+      background: rgba(220, 50, 50, 0.25);
+    }
+  }
+
+  &.view {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--accent-highlight, #81c784);
+    border: 1px solid var(--border-subtle, #1a3d2b);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+  }
+}
+
+/* ---------- Dismiss Button ---------- */
+.notification-dismiss {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #6ba88b);
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s, background 0.2s;
+
+  .notification-item:hover & {
+    opacity: 1;
+  }
+
+  &:hover {
+    color: #ef5350;
+    background: rgba(220, 50, 50, 0.1);
+  }
+}
+
+/* ============================================
+   Type-Specific Accent Colors
+   Each type gets its own left-border & icon tint
+   ============================================ */
+
+/* Friend Request — warm purple/pink */
+.type-friend_request {
+  &.unread {
+    border-left-color: #ba68c8;
+  }
+
+  .notification-icon {
+    background: rgba(186, 104, 200, 0.12);
+    border-color: rgba(186, 104, 200, 0.25);
+  }
+}
+
+/* Challenge — fiery orange */
+.type-challenge {
+  &.unread {
+    border-left-color: #ffa726;
+  }
+
+  .notification-icon {
+    background: rgba(255, 167, 38, 0.12);
+    border-color: rgba(255, 167, 38, 0.25);
+  }
+}
+
+/* Comment — soft blue */
+.type-comment {
+  &.unread {
+    border-left-color: #42a5f5;
+  }
+
+  .notification-icon {
+    background: rgba(66, 165, 245, 0.12);
+    border-color: rgba(66, 165, 245, 0.25);
+  }
+}
+
+/* Game Thread — teal/cyan */
+.type-game_thread {
+  &.unread {
+    border-left-color: #26c6da;
+  }
+
+  .notification-icon {
+    background: rgba(38, 198, 218, 0.12);
+    border-color: rgba(38, 198, 218, 0.25);
+  }
+}
+
+/* Game Move — theme accent (adapts to grove/classic) */
+.type-game_move {
+  &.unread {
+    border-left-color: var(--accent-highlight, #81c784);
+  }
+
+  .notification-icon {
+    background: color-mix(in srgb, var(--accent-primary, #4a9e5a) 15%, transparent);
+    border-color: color-mix(in srgb, var(--accent-primary, #4a9e5a) 30%, transparent);
+  }
+}
+
+/* System — muted gold */
+.type-system {
+  &.unread {
+    border-left-color: #ffca28;
+  }
+
+  .notification-icon {
+    background: rgba(255, 202, 40, 0.12);
+    border-color: rgba(255, 202, 40, 0.25);
+  }
+}
+
+/* ---------- Load More ---------- */
+.notifications-load-more {
+  text-align: center;
+  margin-top: 20px;
+
+  button {
+    background: transparent;
+    border: 1px solid var(--border-medium, #2a8b5d);
+    color: var(--accent-highlight, #81c784);
+    padding: 8px 28px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+
+    &:hover:not(:disabled) {
+      background: var(--accent-primary, #4a9e5a);
+      color: #fff;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 600px) {
+  .notifications-container {
+    padding: 20px 10px 36px;
+  }
+
+  .notifications-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .notification-item {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .notification-icon {
+    width: 34px;
+    height: 34px;
+    font-size: 1rem;
+  }
+
+  .notification-dismiss {
+    opacity: 1;
+  }
+}
