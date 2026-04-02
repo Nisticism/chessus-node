@@ -3691,34 +3691,7 @@ const LiveGame = () => {
             )}
           </div>
 
-          {/* Running Piece Count - only for piece_count_condition games */}
-          {gameState.gameType?.piece_count_condition && gameState.pieces && (
-            <div className={styles["piece-count-tracker"]}>
-              <div className={styles["piece-count-tracker-row"]}>
-                <span className={`${styles["piece-count-tracker-player"]} ${styles["player-white"]}`}>
-                  {(() => {
-                    const p1 = currentPlayer?.position === 1 ? currentPlayer : (player1 || player2);
-                    return p1?.username || 'Player 1';
-                  })()}
-                </span>
-                <span className={styles["piece-count-tracker-value"]}>
-                  {gameState.pieces.filter(p => (p.team || p.player_id) === 1).length}
-                </span>
-              </div>
-              <div className={styles["piece-count-tracker-divider"]}>—</div>
-              <div className={styles["piece-count-tracker-row"]}>
-                <span className={styles["piece-count-tracker-value"]}>
-                  {gameState.pieces.filter(p => (p.team || p.player_id) === 2).length}
-                </span>
-                <span className={`${styles["piece-count-tracker-player"]} ${styles["player-black"]}`}>
-                  {(() => {
-                    const p2 = currentPlayer?.position === 1 ? (player2 || player1) : currentPlayer;
-                    return p2?.username || 'Player 2';
-                  })()}
-                </span>
-              </div>
-            </div>
-          )}
+          {/* Running Piece Count - moved out of grid, positioned after layout-row-middle */}
         </div>
       </div>
 
@@ -3832,6 +3805,35 @@ const LiveGame = () => {
           </div>
         </div>
       </div>
+
+      {/* Running Piece Count - below bottom clock */}
+      {!!gameState.gameType?.piece_count_condition && gameState.pieces?.length > 0 && (
+        <div className={styles["piece-count-tracker"]}>
+          <div className={styles["piece-count-tracker-row"]}>
+            <span className={`${styles["piece-count-tracker-player"]} ${styles["player-white"]}`}>
+              {(() => {
+                const p1 = currentPlayer?.position === 1 ? currentPlayer : (player1 || player2);
+                return p1?.username || 'Player 1';
+              })()}
+            </span>
+            <span className={styles["piece-count-tracker-value"]}>
+              {gameState.pieces.filter(p => (p.team || p.player_id) === 1).length}
+            </span>
+          </div>
+          <div className={styles["piece-count-tracker-divider"]}>—</div>
+          <div className={styles["piece-count-tracker-row"]}>
+            <span className={styles["piece-count-tracker-value"]}>
+              {gameState.pieces.filter(p => (p.team || p.player_id) === 2).length}
+            </span>
+            <span className={`${styles["piece-count-tracker-player"]} ${styles["player-black"]}`}>
+              {(() => {
+                const p2 = currentPlayer?.position === 1 ? (player2 || player1) : currentPlayer;
+                return p2?.username || 'Player 2';
+              })()}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Captured Pieces Row */}
       {(capturedPieces.player1.length > 0 || capturedPieces.player2.length > 0) && (
