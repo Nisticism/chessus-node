@@ -146,7 +146,6 @@ p {
   right: 0;
   min-width: 210px;
   border-radius: 10px !important;
-  box-shadow: 0 0 5 rgba(0, 0, 0, 0.2);
   z-index: 1000;
 }
 
@@ -188,9 +187,10 @@ p {
 // Removed hardcoded .upper-right-corner and .lower-corner classes
 // Border radius is now automatically applied via :first-child and :last-child selectors
 
-.nav-item:hover {
+// Desktop-only hover styles — scoped so they don't affect the mobile hamburger menu
+.navbar-links-container .nav-item:hover {
   background: $nav-hover-color;
-  box-shadow:inset 2px 0px $lighter-hover;
+  box-shadow: inset 2px 0px $lighter-hover;
   .inner-menu {
     display: block;
     position: absolute;
@@ -200,18 +200,18 @@ p {
     border-radius: 4px 4px 4px 4px;
   }
   .inner-menu-item {
-    display:flex;
+    display: flex;
     align-items: center;
     justify-content: flex-start;
     padding: 0px 15px 0px;
     background: $nav-hover-color;
     height: 40px;
-    box-shadow:inset 2px 0px $lighter-hover;
+    box-shadow: inset 2px 0px $lighter-hover;
     text-decoration: none;
     font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
   }
   .inner-menu-item:hover {
-    background:$lighter-hover;
+    background: $lighter-hover;
   }
   
   // Auto-apply rounded corners to first and last submenu items
@@ -526,29 +526,12 @@ p {
     position: static;
     width: 100%;
     background: transparent;
-    box-shadow: none !important;
-    border: none !important;
-    outline: none !important;
+    box-shadow: none;
+    border: none;
+    outline: none;
     border-radius: 0;
     padding: 0 0 0 20px;
     margin-top: 4px;
-    
-    &.mobile-open {
-      display: block;
-    }
-    
-    &:hover {
-      box-shadow: none !important;
-      border: none !important;
-      outline: none !important;
-    }
-  }
-
-  // Override hover behavior for mobile - only show via toggle
-  .navbar-menu-container .nav-item:hover .inner-menu {
-    display: none;
-    box-shadow: none !important;
-    border: none !important;
     
     &.mobile-open {
       display: block;
@@ -558,14 +541,21 @@ p {
   .navbar-menu-container .inner-menu-item {
     display: block;
     padding: 10px 15px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
     margin-bottom: 4px;
     text-decoration: none;
     font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
+    box-shadow: none;
+    color: #e0e0e0;
     
     &:hover {
       background: $nav-hover-color;
+      color: #ffffff;
+    }
+
+    &:last-child {
+      margin-bottom: 0;
     }
   }
 

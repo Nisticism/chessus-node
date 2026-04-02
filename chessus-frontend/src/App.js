@@ -58,6 +58,7 @@ const NotFound = lazy(() => import('./components/notfound/NotFound'));
 const FAQ = lazy(() => import("./containers/faq/FAQ"));
 const About = lazy(() => import("./containers/about/About"));
 const Tutorial = lazy(() => import("./containers/tutorial/Tutorial"));
+const InfoHub = lazy(() => import("./containers/infohub/InfoHub"));
 
 function App() {
 
@@ -193,6 +194,7 @@ function App() {
             <Route exact path="/forums/:forumId" element={<Forum />} />
             <Route exact path="/forums/:forumId/edit" element={<EditForum />} />
             <Route exact path="/news" element={<News />} />
+            <Route exact path="/info" element={<InfoHub />} />
             <Route exact path="/news/new" element={<CreateNews />} />
             <Route exact path="/news/edit/:newsId" element={<EditNews />} />
             <Route exact path="/careers" element={<Careers />} />

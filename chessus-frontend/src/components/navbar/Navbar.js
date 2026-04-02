@@ -124,7 +124,7 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
 
     <div className="nav-item">
       <div className="nav-item-wrapper">
-        <Link as="div" className="nav-item-inner" to="/news">Info</Link>
+        <Link as="div" className="nav-item-inner" to="/info">Info</Link>
         <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'info')} aria-label="Toggle Info submenu">
           <span className={`chevron ${openSubmenu === 'info' ? 'open' : ''}`}>▼</span>
         </button>
