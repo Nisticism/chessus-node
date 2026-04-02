@@ -31,28 +31,10 @@ const CommunityHub = () => {
       path: "/community/streams",
     },
     {
-      title: "News",
-      description: "Stay updated with the latest announcements, features, and community highlights",
-      icon: "📰",
-      path: "/news",
-    },
-    {
-      title: "Support GridGrove",
-      description: "Support GridGrove and help us grow the platform",
-      icon: "💝",
-      path: "/donate",
-    },
-    {
-      title: "FAQ",
-      description: "Find answers to common questions about creating pieces, games, and more",
-      icon: "❓",
-      path: "/faq",
-    },
-    {
-      title: "About Us",
-      description: "Learn about GridGrove, our team, and our mission",
-      icon: "ℹ️",
-      path: "/community/about",
+      title: "Leaderboard",
+      description: "See top-ranked players and track standings across game types",
+      icon: "🏆",
+      path: "/leaderboard",
     },
   ];
 
@@ -64,8 +46,14 @@ const CommunityHub = () => {
     <div className={styles["community-hub-container"]}>
       <div className={styles["community-hub-header"]}>
         <h1>Community Hub</h1>
-        <p className={styles["subtitle"]}>
-          Connect with players, compete for the top spot, and support the platform
+      </div>
+
+      <div className={styles["community-welcome"]}>
+        <h2>Welcome to the GridGrove Community</h2>
+        <p>
+          This is your starting point for everything community-related on GridGrove.
+          Browse player profiles, participate in forum discussions, check the leaderboard,
+          tune into live streams, or connect with us on social media.
         </p>
       </div>
 
@@ -82,16 +70,6 @@ const CommunityHub = () => {
             <div className={styles["explore-button"]}>Explore →</div>
           </div>
         ))}
-      </div>
-
-      <div className={styles["community-welcome"]}>
-        <h2>Welcome to the GridGrove Community!</h2>
-        <p>
-          Join thousands of players creating custom chess variants, competing in tournaments,
-          and sharing strategies. Whether you're here to climb the leaderboard, showcase your
-          creative designs, or simply enjoy unique gameplay experiences, you'll find your place
-          in our vibrant community.
-        </p>
       </div>
     </div>
   );
