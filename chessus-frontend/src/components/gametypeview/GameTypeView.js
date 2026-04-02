@@ -107,15 +107,16 @@ const describePieceMovement = (pieceData) => {
   const stepStyle = pieceData.step_movement_style || pieceData.step_by_step_movement_style;
   const stepValue = pieceData.step_movement_value || pieceData.step_by_step_movement_value;
   
-  if (stepStyle === 'manhattan' || stepStyle === 1) {
+  if (stepStyle && stepValue) {
+    // Negative stepValue = manhattan (diagonals excluded), positive = chebyshev (includes diagonals)
+    const isManhattan = stepStyle === 'manhattan' || stepValue < 0;
     const range = describeMovementRange(stepValue);
     if (range) {
-      movements.push(`${range} counting horizontal and vertical steps`);
-    }
-  } else if (stepStyle === 'chebyshev' || stepStyle === 2) {
-    const range = describeMovementRange(stepValue);
-    if (range) {
-      movements.push(`${range} in any direction (including diagonals)`);
+      if (isManhattan) {
+        movements.push(`${range} counting horizontal and vertical steps`);
+      } else {
+        movements.push(`${range} in any direction (including diagonals)`);
+      }
     }
   }
   
@@ -237,17 +238,18 @@ const describePieceCapture = (pieceData) => {
   
   // Step-based capture - handle both naming conventions
   const stepStyle = pieceData.step_capture_style || pieceData.step_by_step_capture;
-  const stepValue = pieceData.step_capture_value || pieceData.step_by_step_capture;
+  const stepValue = pieceData.step_capture_value || pieceData.step_by_step_capture_value || pieceData.step_by_step_capture;
   
-  if (stepStyle === 'manhattan' || stepStyle === 1) {
+  if (stepStyle && stepValue) {
+    // Negative stepValue = manhattan (diagonals excluded), positive = chebyshev (includes diagonals)
+    const isManhattan = stepStyle === 'manhattan' || stepValue < 0;
     const range = describeMovementRange(stepValue);
     if (range) {
-      captures.push(`within ${range} (counting horizontal and vertical steps)`);
-    }
-  } else if (stepStyle === 'chebyshev' || stepStyle === 2) {
-    const range = describeMovementRange(stepValue);
-    if (range) {
-      captures.push(`within ${range} in any direction`);
+      if (isManhattan) {
+        captures.push(`within ${range} (counting horizontal and vertical steps)`);
+      } else {
+        captures.push(`within ${range} in any direction`);
+      }
     }
   }
   
@@ -1266,25 +1268,6 @@ const GameTypeView = () => {
           <p>{game.descript || "No description provided."}</p>
         </div>
 
-        <div className={styles["stats-grid"]}>
-          <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Board Size</span>
-            <span className={styles["stat-value"]}>{game.board_width} × {game.board_height}</span>
-          </div>
-          <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Players</span>
-            <span className={styles["stat-value"]}>{game.player_count}</span>
-          </div>
-          <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Actions per Turn</span>
-            <span className={styles["stat-value"]}>{game.actions_per_turn || 1}</span>
-          </div>
-          <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Pieces</span>
-            <span className={styles["stat-value"]}>{Object.values(piecePlacements).filter(p => !p._occupied).length}</span>
-          </div>
-        </div>
-
         <div className={styles["section"]}>
           <h2>Board Setup</h2>
           <BoardLegend
@@ -1316,6 +1299,25 @@ const GameTypeView = () => {
             >
               {renderBoard()}
             </div>
+          </div>
+        </div>
+
+        <div className={styles["stats-grid"]}>
+          <div className={styles["stat-card"]}>
+            <span className={styles["stat-label"]}>Board Size</span>
+            <span className={styles["stat-value"]}>{game.board_width} × {game.board_height}</span>
+          </div>
+          <div className={styles["stat-card"]}>
+            <span className={styles["stat-label"]}>Players</span>
+            <span className={styles["stat-value"]}>{game.player_count}</span>
+          </div>
+          <div className={styles["stat-card"]}>
+            <span className={styles["stat-label"]}>Actions per Turn</span>
+            <span className={styles["stat-value"]}>{game.actions_per_turn || 1}</span>
+          </div>
+          <div className={styles["stat-card"]}>
+            <span className={styles["stat-label"]}>Pieces</span>
+            <span className={styles["stat-value"]}>{Object.values(piecePlacements).filter(p => !p._occupied).length}</span>
           </div>
         </div>
 

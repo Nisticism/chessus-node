@@ -334,9 +334,9 @@ export const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, player
   
   if ((stepStyle || stepValue) && stepValue) {
     const maxSteps = Math.abs(stepValue);
-    // Style 1 = Manhattan (orthogonal only), Style 2 = Chebyshev (includes diagonal)
-    // Negative stepValue is a legacy fallback for Manhattan
-    const useManhattan = Number(stepStyle) === 1 || stepValue < 0;
+    // Negative stepValue = Manhattan (orthogonal only), Positive = Chebyshev (includes diagonal)
+    // String style names 'manhattan'/'chebyshev' are also supported
+    const useManhattan = stepStyle === 'manhattan' || stepValue < 0;
 
     if (useManhattan) {
       // Manhattan distance: orthogonal only
@@ -459,8 +459,8 @@ export const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, pl
   
   if ((stepCaptureStyle || stepCaptureValue) && stepCaptureValue) {
     const maxSteps = Math.abs(stepCaptureValue);
-    // Style 1 = Manhattan (orthogonal only), Style 2 = Chebyshev (includes diagonal)
-    const useManhattan = Number(stepCaptureStyle) === 1 || stepCaptureValue < 0;
+    // Negative stepCaptureValue = Manhattan (orthogonal only), Positive = Chebyshev (includes diagonal)
+    const useManhattan = stepCaptureStyle === 'manhattan' || stepCaptureValue < 0;
 
     if (useManhattan) {
       const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
