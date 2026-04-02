@@ -62,15 +62,20 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         down_left_capture_available_for: pieceData.down_left_movement_available_for,
         down_capture_available_for: pieceData.down_movement_available_for,
         down_right_capture_available_for: pieceData.down_right_movement_available_for,
-        // Copy ratio movement
-        ratio_one_capture: pieceData.ratio_one_movement,
-        ratio_two_capture: pieceData.ratio_two_movement,
+        // Copy ratio movement (only if ratio movement is enabled)
+        ratio_one_capture: pieceData.ratio_movement_style ? pieceData.ratio_one_movement : 0,
+        ratio_two_capture: pieceData.ratio_movement_style ? pieceData.ratio_two_movement : 0,
         // Copy step-by-step
         step_by_step_capture: pieceData.step_by_step_movement_value,
         // Copy repeating movement setting
         repeating_capture: pieceData.repeating_movement,
+        // Copy ratio repeating settings
+        repeating_ratio_capture: pieceData.ratio_movement_style ? pieceData.repeating_ratio : false,
+        max_ratio_capture_iterations: pieceData.ratio_movement_style ? pieceData.max_ratio_iterations : 0,
         // Copy additional movements to additional captures
-        ...(convertedCaptures && { special_scenario_capture: convertedCaptures })
+        ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
+        // Disable ranged by default when capturing on move
+        can_capture_enemy_via_range: false
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -316,16 +321,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         down_left_capture_available_for: pieceData.down_left_movement_available_for,
         down_capture_available_for: pieceData.down_movement_available_for,
         down_right_capture_available_for: pieceData.down_right_movement_available_for,
-        // Copy ratio movement
-        ratio_one_capture: pieceData.ratio_one_movement,
-        ratio_two_capture: pieceData.ratio_two_movement,
+        // Copy ratio movement (only if ratio movement is enabled)
+        ratio_one_capture: pieceData.ratio_movement_style ? pieceData.ratio_one_movement : 0,
+        ratio_two_capture: pieceData.ratio_movement_style ? pieceData.ratio_two_movement : 0,
         // Copy step-by-step
         step_by_step_capture: pieceData.step_by_step_movement_value,
         // Copy repeating movement setting
         repeating_capture: pieceData.repeating_movement,
         // Copy ratio repeating settings
-        repeating_ratio_capture: pieceData.repeating_ratio,
-        max_ratio_capture_iterations: pieceData.max_ratio_iterations,
+        repeating_ratio_capture: pieceData.ratio_movement_style ? pieceData.repeating_ratio : false,
+        max_ratio_capture_iterations: pieceData.ratio_movement_style ? pieceData.max_ratio_iterations : 0,
         // Copy additional movements to additional captures
         ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
         // Disable ranged by default when capturing on move

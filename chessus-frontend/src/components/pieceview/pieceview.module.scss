@@ -108,9 +108,10 @@
   a {
     color: var(--accent-primary);
     text-decoration: none;
+    transition: color 0.2s;
 
     &:hover {
-      text-decoration: underline;
+      color: var(--accent-highlight, #7fdfff);
     }
   }
 }
@@ -654,10 +655,21 @@
   .header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
 
     button {
-      width: 100%;
+      flex: 1 1 calc(50% - 4px);
+      min-width: 0;
     }
+  }
+
+  .back-button {
+    width: 100%;
   }
 }
 .games-grid {
