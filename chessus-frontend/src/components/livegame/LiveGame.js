@@ -221,6 +221,15 @@ const LiveGame = () => {
     loadGame();
   }, [gameId, connected, getGameState]);
 
+  // Leave game room on unmount so notifications can be sent
+  useEffect(() => {
+    return () => {
+      if (socket && gameId) {
+        socket.emit("leaveGame", { gameId: parseInt(gameId) });
+      }
+    };
+  }, [socket, gameId]);
+
   // Subscribe to game events
   useEffect(() => {
     const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces }) => {
@@ -594,6 +603,33 @@ const LiveGame = () => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Format correspondence days remaining
+  const formatCorrespondenceTime = (isCurrentTurnPlayer) => {
+    if (!gameState?.isCorrespondence || !gameState?.correspondenceDays) return null;
+    if (!isCurrentTurnPlayer) return `${gameState.correspondenceDays} days`;
+    const lastMoveTime = gameState.lastMoveTime;
+    if (!lastMoveTime) return `${gameState.correspondenceDays} days`;
+    const elapsed = Date.now() - lastMoveTime;
+    const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
+    const remainingMs = Math.max(0, allowedMs - elapsed);
+    const remainingDays = remainingMs / (24 * 60 * 60 * 1000);
+    if (remainingDays >= 1) {
+      const d = Math.ceil(remainingDays);
+      return `${d} ${d === 1 ? 'day' : 'days'}`;
+    }
+    const remainingHours = remainingMs / (60 * 60 * 1000);
+    if (remainingHours >= 1) {
+      const h = Math.ceil(remainingHours);
+      return `${h} ${h === 1 ? 'hour' : 'hours'}`;
+    }
+    const remainingMins = remainingMs / (60 * 1000);
+    if (remainingMins > 0) {
+      const m = Math.ceil(remainingMins);
+      return `${m} ${m === 1 ? 'min' : 'mins'}`;
+    }
+    return '0 mins';
   };
 
   // Helper function to check if a value allows movement at a distance
@@ -2572,24 +2608,42 @@ const LiveGame = () => {
   const castlingInfo = useMemo(() => {
     if (!gameState?.pieces) return [];
     const pieces = parsePieces(gameState.pieces);
+    const boardWidth = gameState.gameType?.board_width || 8;
     
     return pieces
       .filter(piece => piece.can_castle)
       .map(piece => {
-        const leftPartner = piece.castling_partner_left_id 
+        let leftPartner = piece.castling_partner_left_id 
           ? pieces.find(p => p.id === piece.castling_partner_left_id)
           : null;
-        const rightPartner = piece.castling_partner_right_id 
+        let rightPartner = piece.castling_partner_right_id 
           ? pieces.find(p => p.id === piece.castling_partner_right_id)
           : null;
+        
+        // Auto-discover partners on the client if server hasn't set them yet
+        if (!leftPartner && piece.castling_partner_left_id === undefined) {
+          const owner = piece.team || piece.player_id;
+          for (let x = piece.x - 1; x >= 0; x--) {
+            const found = pieces.find(p => p.x === x && p.y === piece.y && (p.team || p.player_id) === owner);
+            if (found) leftPartner = found;
+          }
+        }
+        if (!rightPartner && piece.castling_partner_right_id === undefined) {
+          const owner = piece.team || piece.player_id;
+          for (let x = piece.x + 1; x < boardWidth; x++) {
+            const found = pieces.find(p => p.x === x && p.y === piece.y && (p.team || p.player_id) === owner);
+            if (found) rightPartner = found;
+          }
+        }
         
         return {
           piece,
           leftPartner,
-          rightPartner
+          rightPartner,
+          distance: piece.castling_distance ?? 2
         };
       });
-  }, [gameState?.pieces]);
+  }, [gameState?.pieces, gameState?.gameType?.board_width]);
 
   // Compute captured pieces for each player from move history
   const capturedPieces = useMemo(() => {
@@ -3153,7 +3207,15 @@ const LiveGame = () => {
     <div className={styles["live-game-container"]}>
       <div className={styles["game-header"]}>
         <div className={styles["game-title"]}>
-          <h1>{gameState.gameType?.game_name || 'Game'}</h1>
+          <h1>
+            {gameState.gameTypeId ? (
+              <Link to={`/games/${gameState.gameTypeId}`} className={styles["game-type-link"]}>
+                {gameState.gameType?.game_name || 'Game'}
+              </Link>
+            ) : (
+              gameState.gameType?.game_name || 'Game'
+            )}
+          </h1>
           <div className={`${styles["game-status"]} ${styles[gameState.status]}`}>
             {gameState.status === 'active' ? 'In Progress' : 
              gameState.status === 'completed' ? 'Game Over' : 
@@ -3215,6 +3277,13 @@ const LiveGame = () => {
                   </div>
                 </div>
               )}
+              {!gameState.timeControl && gameState.isCorrespondence && (
+                <div className={styles["player-time"]}>
+                  <div className={styles["time-value"]}>
+                    {formatCorrespondenceTime((currentPlayer?.position === 1 && gameState.currentTurn === 2) || (currentPlayer?.position === 2 && gameState.currentTurn === 1))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -3245,6 +3314,13 @@ const LiveGame = () => {
                     </div>
                   </div>
                 )}
+                {!gameState.timeControl && gameState.isCorrespondence && (
+                  <div className={styles["player-time"]}>
+                    <div className={styles["time-value"]}>
+                      {formatCorrespondenceTime((currentPlayer?.position === 1 && gameState.currentTurn === 2) || (currentPlayer?.position === 2 && gameState.currentTurn === 1))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -3260,6 +3336,13 @@ const LiveGame = () => {
                   <div className={styles["player-time"]}>
                     <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.id] < 60 ? styles["low-time"] : ''}`}>
                       {formatTime(gameState.playerTimes?.[currentPlayer?.id])}
+                    </div>
+                  </div>
+                )}
+                {!gameState.timeControl && gameState.isCorrespondence && (
+                  <div className={styles["player-time"]}>
+                    <div className={styles["time-value"]}>
+                      {formatCorrespondenceTime((currentPlayer?.position === 1 && gameState.currentTurn === 1) || (currentPlayer?.position === 2 && gameState.currentTurn === 2))}
                     </div>
                   </div>
                 )}
@@ -3440,13 +3523,16 @@ const LiveGame = () => {
                 <h4>Castling Pieces</h4>
                 {castlingInfo.map((info, index) => (
                   <div key={index} className={styles["castling-piece-info"]}>
-                    <span className={styles["piece-name"]}>{info.piece.name}</span>
+                    <span className={styles["piece-name"]}>
+                      {info.piece.piece_name || info.piece.name}
+                      <span className={styles["castle-distance"]}> (moves {info.distance} squares)</span>
+                    </span>
                     <div className={styles["castling-partners"]}>
                       {info.leftPartner && (
-                        <span className={styles["partner"]}>← {info.leftPartner.name}</span>
+                        <span className={styles["partner"]}>← {info.leftPartner.piece_name || info.leftPartner.name}</span>
                       )}
                       {info.rightPartner && (
-                        <span className={styles["partner"]}>{info.rightPartner.name} →</span>
+                        <span className={styles["partner"]}>{info.rightPartner.piece_name || info.rightPartner.name} →</span>
                       )}
                       {!info.leftPartner && !info.rightPartner && (
                         <span className={styles["no-partner"]}>No partners assigned</span>
@@ -3573,6 +3659,13 @@ const LiveGame = () => {
               <div className={styles["player-time"]}>
                 <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.id] < 60 ? styles["low-time"] : ''}`}>
                   {formatTime(gameState.playerTimes?.[currentPlayer?.id])}
+                </div>
+              </div>
+            )}
+            {!gameState.timeControl && gameState.isCorrespondence && (
+              <div className={styles["player-time"]}>
+                <div className={styles["time-value"]}>
+                  {formatCorrespondenceTime((currentPlayer?.position === 1 && gameState.currentTurn === 1) || (currentPlayer?.position === 2 && gameState.currentTurn === 2))}
                 </div>
               </div>
             )}
@@ -3737,13 +3830,16 @@ const LiveGame = () => {
               <h4>Castling Pieces</h4>
               {castlingInfo.map((info, index) => (
                 <div key={index} className={styles["castling-piece-info"]}>
-                  <span className={styles["piece-name"]}>{info.piece.name}</span>
+                  <span className={styles["piece-name"]}>
+                    {info.piece.piece_name || info.piece.name}
+                    <span className={styles["castle-distance"]}> (moves {info.distance} squares)</span>
+                  </span>
                   <div className={styles["castling-partners"]}>
                     {info.leftPartner && (
-                      <span className={styles["partner"]}>← {info.leftPartner.name}</span>
+                      <span className={styles["partner"]}>← {info.leftPartner.piece_name || info.leftPartner.name}</span>
                     )}
                     {info.rightPartner && (
-                      <span className={styles["partner"]}>{info.rightPartner.name} →</span>
+                      <span className={styles["partner"]}>{info.rightPartner.piece_name || info.rightPartner.name} →</span>
                     )}
                     {!info.leftPartner && !info.rightPartner && (
                       <span className={styles["no-partner"]}>No partners assigned</span>
