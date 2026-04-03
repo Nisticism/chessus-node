@@ -4,6 +4,7 @@ import { useSelector, useDispatch } from "react-redux";
 import styles from "./preferences.module.scss";
 import Divider from "../Divider/Divider";
 import StandardButton from "../standardbutton/StandardButton";
+import InfoTooltip from "../piecewizard/InfoTooltip";
 import axios from "axios";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
@@ -149,6 +150,22 @@ const Preferences = () => {
     return currentUser?.hide_donation_badge === 1 || currentUser?.hide_donation_badge === true;
   });
 
+  const [allowNonFriendDMs, setAllowNonFriendDMs] = useState(() => {
+    return currentUser?.allow_non_friend_dms === 1 || currentUser?.allow_non_friend_dms === true;
+  });
+
+  const [disableGameChat, setDisableGameChat] = useState(() => {
+    return currentUser?.disable_game_chat === 1 || currentUser?.disable_game_chat === true;
+  });
+
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    return currentUser?.sound_enabled === 1 || currentUser?.sound_enabled === true;
+  });
+
+  const [pieceShadow, setPieceShadow] = useState(() => {
+    return localStorage.getItem('pieceShadow') === 'true';
+  });
+
   // Fixed saturation for good-looking colors
   const SATURATION = 40;
 
@@ -186,6 +203,10 @@ const Preferences = () => {
     localStorage.setItem('boardAnimations', boardAnimations ? 'true' : 'false');
   }, [boardAnimations]);
 
+  useEffect(() => {
+    localStorage.setItem('pieceShadow', pieceShadow ? 'true' : 'false');
+  }, [pieceShadow]);
+
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to manage your account preferences." }} />;
   }
@@ -193,7 +214,7 @@ const Preferences = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Save to database
+      // Save board colors + badge
       await axios.post(
         API_URL + "preferences/colors",
         {
@@ -204,6 +225,17 @@ const Preferences = () => {
         },
         { headers: authHeader() }
       );
+
+      // Save messaging preferences
+      await axios.put(
+        API_URL + `users/${currentUser.id}/messaging-preferences`,
+        {
+          allow_non_friend_dms: allowNonFriendDMs,
+          disable_game_chat: disableGameChat,
+          sound_enabled: soundEnabled,
+        },
+        { headers: authHeader() }
+      );
       
       // Update user in localStorage
       const updatedUser = {
@@ -211,6 +243,9 @@ const Preferences = () => {
         light_square_color: lightSquareColor,
         dark_square_color: darkSquareColor,
         hide_donation_badge: hideDonationBadge ? 1 : 0,
+        allow_non_friend_dms: allowNonFriendDMs ? 1 : 0,
+        disable_game_chat: disableGameChat ? 1 : 0,
+        sound_enabled: soundEnabled ? 1 : 0,
       };
       localStorage.setItem("user", JSON.stringify(updatedUser));
       
@@ -242,6 +277,7 @@ const Preferences = () => {
     setDarkHue(DEFAULT_DARK.h);
     setDarkLightness(DEFAULT_DARK.l);
     setBoardAnimations(true);
+    setPieceShadow(false);
   };
 
   const applyPreset = (presetKey) => {
@@ -269,16 +305,27 @@ const Preferences = () => {
     <div className={styles["preferences-container"]}>
       <div className={styles["preferences-header"]}>
         <h1>User Preferences</h1>
-        <p className={styles["header-description"]}>
-          Customize your board appearance and other settings
-        </p>
       </div>
 
-      <Divider />
-
       <div className={styles["preferences-content"]}>
+        {/* Top Save/Reset buttons */}
+        <div className={styles["action-buttons"]}>
+          <StandardButton buttonText="Reset to Default" onClick={handleReset} />
+          <StandardButton 
+            buttonText={saving ? "Saving..." : "Save Preferences"} 
+            onClick={handleSave}
+            disabled={saving}
+          />
+        </div>
+
+        {saved && (
+          <div className={styles["save-message"]}>
+            Preferences saved successfully!
+          </div>
+        )}
+
         <section className={styles["preference-section"]}>
-          <h2>Board Appearance</h2>
+          <h2>Board Theme & Settings</h2>
           
           {/* Color Preview */}
           <div className={styles["board-preview"]}>
@@ -449,8 +496,7 @@ const Preferences = () => {
           <div className={styles["animations-section"]}>
             <div className={styles["animations-label"]}>Animations</div>
             <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Enable board animations</span>
-              <span className={styles["toggle-hint"]}>Shows visual effects on special pieces (e.g. smoky aura on multi-tile pieces)</span>
+              <span className={styles["toggle-text"]}>Enable board animations <InfoTooltip text="Shows visual effects on special pieces (e.g. smoky aura on multi-tile pieces)" /></span>
               <div className={styles["toggle-switch"]}>
                 <input
                   type="checkbox"
@@ -461,9 +507,41 @@ const Preferences = () => {
               </div>
             </label>
           </div>
+
+          {/* Sound Effects Section */}
+          <div className={styles["animations-section"]}>
+            <div className={styles["animations-label"]}>Sound</div>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Enable sound effects <InfoTooltip text="Play sound effects for captures, moves, and other game events" /></span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={soundEnabled}
+                  onChange={(e) => setSoundEnabled(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+          </div>
+
+          {/* Piece Shadow Section */}
+          <div className={styles["animations-section"]}>
+            <div className={styles["animations-label"]}>Piece Shadow</div>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Enable piece shadow <InfoTooltip text="Adds a subtle shadow beneath pieces as if lit from the upper right of the board" /></span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={pieceShadow}
+                  onChange={(e) => setPieceShadow(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+          </div>
         </section>
 
-        <Divider />
+        <Divider muted />
 
         <section className={styles["preference-section"]}>
           <h2>Site Theme</h2>
@@ -494,32 +572,15 @@ const Preferences = () => {
               {siteTheme === 'classic' && <span className={styles["preset-check"]}>✓</span>}
             </button>
           </div>
-
-          <div className={styles["action-buttons"]}>
-            <StandardButton buttonText="Reset to Default" onClick={handleReset} />
-            <StandardButton 
-              buttonText={saving ? "Saving..." : "Save Preferences"} 
-              onClick={handleSave}
-              disabled={saving}
-            />
-          </div>
-
-          {saved && (
-            <div className={styles["save-message"]}>
-              Preferences saved successfully!
-            </div>
-          )}
         </section>
 
-        <Divider />
+        <Divider muted />
 
         <section className={styles["preference-section"]}>
           <h2>Donation Badge</h2>
-          <p className={styles["section-description"]}>Control how your donor badge appears on your profile</p>
           <div className={styles["animations-section"]}>
             <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Hide donation badge</span>
-              <span className={styles["toggle-hint"]}>When enabled, your donor badge will not be displayed on your profile page</span>
+              <span className={styles["toggle-text"]}>Hide donation badge <InfoTooltip text="When enabled, your donor badge will not be displayed on your profile page" /></span>
               <div className={styles["toggle-switch"]}>
                 <input
                   type="checkbox"
@@ -531,6 +592,52 @@ const Preferences = () => {
             </label>
           </div>
         </section>
+
+        <Divider muted />
+
+        <section className={styles["preference-section"]}>
+          <h2>Messaging & Chat</h2>
+          <div className={styles["animations-section"]}>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Allow DMs from non-friends <InfoTooltip text="When enabled, any user can send you direct messages. When disabled, only friends can message you." /></span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={allowNonFriendDMs}
+                  onChange={(e) => setAllowNonFriendDMs(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Disable in-game chat <InfoTooltip text="When enabled, you won't see or be able to send messages during live games" /></span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={disableGameChat}
+                  onChange={(e) => setDisableGameChat(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+          </div>
+        </section>
+
+        {/* Bottom Save/Reset buttons */}
+        <div className={styles["action-buttons"]}>
+          <StandardButton buttonText="Reset to Default" onClick={handleReset} />
+          <StandardButton 
+            buttonText={saving ? "Saving..." : "Save Preferences"} 
+            onClick={handleSave}
+            disabled={saving}
+          />
+        </div>
+
+        {saved && (
+          <div className={styles["save-message"]}>
+            Preferences saved successfully!
+          </div>
+        )}
       </div>
     </div>
   );

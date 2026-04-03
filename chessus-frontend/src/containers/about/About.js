@@ -41,9 +41,9 @@ const About = () => {
           <div className={styles["team-member"]}>
             <div className={styles["member-info"]}>
               <h3><Link to="/profile/Zoe" className={styles["profile-link"]}>Zoe</Link></h3>
-              <div className={styles["member-role"]}>Game Tester</div>
+              <div className={styles["member-role"]}>Social Media Manager & Game Tester</div>
               <p>
-                Zoe has helped test games and provide feedback throughout GridGrove's development, 
+                Zoe manages GridGrove's social media presence and has helped test games and provide feedback throughout development, 
                 ensuring the platform is fun and functional for all players.
               </p>
             </div>

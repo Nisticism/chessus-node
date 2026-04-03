@@ -110,6 +110,7 @@ const GameList = () => {
     if (game.value_condition) conditions.push(game.value_title || "Points");
     if (game.squares_condition) conditions.push("Territory");
     if (game.hill_condition) conditions.push("King of the Hill");
+    if (game.piece_count_condition) conditions.push("Piece Count");
     return conditions.length > 0 ? conditions.join(", ") : "None";
   };
 

@@ -181,6 +181,21 @@
   }
 }
 
+// Mobile chat row - only visible on small screens, below bottom clock
+.layout-row-mobile-chat {
+  display: none;
+
+  @media (max-width: 1200px) {
+    display: block;
+    padding: 0 12px;
+    margin-top: 8px;
+    max-width: 700px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
 // Clocks column (left side) - hidden on small screens
 .clocks-column {
   display: flex;
@@ -210,7 +225,9 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  min-height: 0;
+  height: 0;
+  min-height: 100%;
+  overflow-y: auto;
 
   @media (max-width: 1200px) {
     display: none !important;
@@ -231,12 +248,11 @@
   }
 }
 
-// Move history column (right side)
+// Move history column (right side) — overflow handled by first definition
 .move-history-column {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  height: fit-content;
 }
 
 .move-history {
@@ -1177,27 +1193,45 @@
 .move-history {
   background: var(--bg-dark);
   border-radius: 12px;
-  padding: 16px;
+  padding: 12px;
   flex: 1;
-  max-height: 310px;
+  max-height: 200px;
   display: flex;
   flex-direction: column;
 
   @media (max-width: 1200px) {
-    max-height: 350px;
+    max-height: 200px;
   }
 
   h3 {
     color: #fff;
-    font-size: 1rem;
-    margin: 0 0 12px 0;
+    font-size: 0.95rem;
+    margin: 0 0 8px 0;
+  }
+
+  .moves-header {
+    display: flex;
+    padding: 2px 0 4px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.72rem;
+    color: #666;
+    font-weight: 600;
+
+    .move-number-header {
+      width: 28px;
+      text-align: center;
+    }
+
+    .move-col-header {
+      flex: 1;
+    }
   }
 
   .moves-list {
     flex: 1;
     overflow-y: auto;
     font-family: monospace;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
 
     &::-webkit-scrollbar {
       width: 6px;
@@ -1211,12 +1245,14 @@
 
   .move-row {
     display: flex;
-    padding: 4px 0;
+    padding: 2px 0;
     border-bottom: 1px solid var(--border-subtle);
 
     .move-number {
       color: #666;
-      width: 30px;
+      width: 28px;
+      text-align: center;
+      font-size: 0.75rem;
     }
 
     .move-white, .move-black {
@@ -1229,39 +1265,107 @@
 .game-options {
   background: var(--bg-dark);
   border-radius: 12px;
-  padding: 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 
+  .options-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
   h3, h4 {
     color: #fff;
     font-size: 1rem;
-    margin: 0 0 8px 0;
+    margin: 0;
   }
 
-  .option-checkbox {
+  .sound-toggle-btn {
+    background: none;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+    transition: background 0.15s, border-color 0.15s;
+
+    &.sound-on {
+      border-color: var(--accent-secondary);
+    }
+
+    &.sound-off {
+      opacity: 0.5;
+    }
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  .option-toggle {
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: space-between;
     cursor: pointer;
     color: #ccc;
     font-size: 0.9rem;
     padding: 4px 0;
 
-    input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      accent-color: var(--accent-secondary);
-      cursor: pointer;
-    }
-
-    span {
+    span:first-child {
       user-select: none;
     }
 
     &:hover {
       color: #fff;
+    }
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+
+    input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #444;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+
+      &::before {
+        content: "";
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        left: 3px;
+        bottom: 3px;
+        background: #fff;
+        border-radius: 50%;
+        transition: transform 0.2s;
+      }
+    }
+
+    input:checked + .toggle-slider {
+      background: var(--accent-secondary);
+
+      &::before {
+        transform: translateX(16px);
+      }
     }
   }
 }
@@ -1279,7 +1383,7 @@
 
   .control-buttons {
     display: flex;
-    gap: 8px;
+    gap: 12px;
     justify-content: space-between;
 
     button {

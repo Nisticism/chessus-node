@@ -1,5 +1,7 @@
 {
   "watch": ["server/"],
   "ignore": ["chessus-frontend/", "uploads/", "node_modules/"],
-  "ext": "js,json"
+  "ext": "js,json",
+  "signal": "SIGTERM",
+  "delay": "500"
 }

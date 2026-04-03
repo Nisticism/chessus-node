@@ -8,6 +8,7 @@ import axios from "axios";
 import API_URL from "../../global/global";
 import StandardButton from "../standardbutton/StandardButton";
 import BioSection from "../biosection/BioSection";
+import AuthService from "../../services/auth.service";
 
 const EditAccount = (props) => {
 
@@ -32,6 +33,7 @@ const EditAccount = (props) => {
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [sendingResetEmail, setSendingResetEmail] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
   const [bannerMessage, setBannerMessage] = useState("");
   const [bannerType, setBannerType] = useState("success"); // "success" or "error"
@@ -104,6 +106,22 @@ const EditAccount = (props) => {
     const oldPassword = e.target.value;
     setOldPassword(oldPassword);
   }
+
+  const handleSendResetEmail = async () => {
+    if (!email) return;
+    setSendingResetEmail(true);
+    try {
+      await AuthService.forgotPassword(email);
+      setBannerMessage("Password reset link sent to your email");
+      setBannerType("success");
+      setShowBanner(true);
+    } catch (err) {
+      setBannerMessage(err.response?.data?.message || "Failed to send reset email");
+      setBannerType("error");
+      setShowBanner(true);
+    }
+    setSendingResetEmail(false);
+  };
 
   const onChangeProfilePicture = (e) => {
     const file = e.target.files[0];
@@ -395,13 +413,23 @@ const EditAccount = (props) => {
               <div className={styles["form-card"]}>
                 <h2 className={styles["card-title"]}>Security</h2>
                 {!showPasswordSection ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowPasswordSection(true)}
-                    className={styles["show-password-section-button"]}
-                  >
-                    🔒 Change Password
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '300px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordSection(true)}
+                      className={styles["show-password-section-button"]}
+                    >
+                      🔒 Change Password
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSendResetEmail}
+                      disabled={sendingResetEmail}
+                      className={styles["reset-email-button"]}
+                    >
+                      {sendingResetEmail ? '📧 Sending...' : '📧 Send Password Reset Email'}
+                    </button>
+                  </div>
                 ) : (
                   <>
                     <p className={styles["password-hint"]}>

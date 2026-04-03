@@ -201,6 +201,15 @@ code {
   /* Teal accent */
   --color-teal: #2ecc71;
 
+  /* Chat/Inbox UI colors */
+  --bg-input: #0d1f14;
+  --bg-secondary: #0d1f14;
+  --bg-hover: #142e1f;
+  --bg-active: #1a3d2b;
+  --bg-tertiary: #1a3d2b;
+  --accent-hover: #5ab56a;
+  --text-main: #c8e6d0;
+
   /* Last-move highlight colors */
   --last-move-from: rgba(200, 170, 80, 0.3);
   --last-move-to: rgba(80, 180, 140, 0.4);
@@ -282,6 +291,15 @@ code {
 
   /* Teal accent */
   --color-teal: #4ecdc4;
+
+  /* Chat/Inbox UI colors */
+  --bg-input: #0d1420;
+  --bg-secondary: #0d1420;
+  --bg-hover: #142030;
+  --bg-active: #1a2b3d;
+  --bg-tertiary: #1a2b3d;
+  --accent-hover: #5a9be6;
+  --text-main: #c8d6e8;
 
   /* Last-move highlight colors */
   --last-move-from: rgba(140, 130, 200, 0.3);

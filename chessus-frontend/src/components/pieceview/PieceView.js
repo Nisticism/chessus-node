@@ -573,15 +573,24 @@ const PieceView = () => {
 
         <div className={styles["stats-grid"]}>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Size</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Size</span>
+              <InfoTooltip text="The width × height in squares this piece occupies on the board" />
+            </div>
             <span className={styles["stat-value"]}>{pieceToDisplay.piece_width} × {pieceToDisplay.piece_height}</span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Directional Movement</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Directional Movement</span>
+              <InfoTooltip text="Piece moves in straight lines (up, down, left, right, diagonals) with configurable range per direction" />
+            </div>
             <span className={styles["stat-value"]}>{pieceToDisplay.directional_movement_style ? 'Yes' : 'No'}</span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Ratio Movement</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Ratio Movement</span>
+              <InfoTooltip text="Piece moves in an L-shape pattern defined by a ratio (e.g. 2:1 like a knight)" />
+            </div>
             <span className={styles["stat-value"]}>
               {pieceToDisplay.ratio_movement_style ? 'Yes' : 'No'}
               {pieceToDisplay.ratio_movement_style && pieceToDisplay.ratio_one_movement && pieceToDisplay.ratio_two_movement && (
@@ -590,7 +599,10 @@ const PieceView = () => {
             </span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Step-by-Step Movement</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Step-by-Step Movement</span>
+              <InfoTooltip text="Piece moves a fixed number of steps in any valid direction, potentially changing direction at each step" />
+            </div>
             <span className={styles["stat-value"]}>
               {pieceToDisplay.step_by_step_movement_style ? 'Yes' : 'No'}
               {pieceToDisplay.step_by_step_movement_style && pieceToDisplay.step_by_step_movement_value != null && (
@@ -599,29 +611,38 @@ const PieceView = () => {
             </span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>
-              Capture on Move
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Capture on Move</span>
               <InfoTooltip text="Can capture enemy pieces while moving (see Attack Details for specific squares)" />
-            </span>
+            </div>
             <span className={styles["stat-value"]}>{pieceToDisplay.can_capture_enemy_on_move ? 'Yes' : 'No'}</span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Ranged Attack</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Ranged Attack</span>
+              <InfoTooltip text="Can attack enemy pieces from a distance without moving to their square" />
+            </div>
             <span className={styles["stat-value"]}>{pieceToDisplay.can_capture_enemy_via_range ? 'Yes' : 'No'}</span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Hop Over Allies</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Hop Over Allies</span>
+              <InfoTooltip text="Can jump over friendly pieces in its movement path" />
+            </div>
             <span className={styles["stat-value"]}>{pieceToDisplay.can_hop_over_allies ? 'Yes' : 'No'}</span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Hop Over Enemies</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Hop Over Enemies</span>
+              <InfoTooltip text="Can jump over enemy pieces in its movement path" />
+            </div>
             <span className={styles["stat-value"]}>{pieceToDisplay.can_hop_over_enemies ? 'Yes' : 'No'}</span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>
-              Exact Movement
-              <InfoTooltip text="When enabled, pieces must move exactly the specified number of squares, not any distance up to that number." />
-            </span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Exact Movement</span>
+              <InfoTooltip text="When enabled, pieces must move exactly the specified number of squares, not any distance up to that number" />
+            </div>
             <span className={styles["stat-value"]}>
               {(piece.up_movement_exact || piece.down_movement_exact || piece.left_movement_exact || piece.right_movement_exact ||
                 piece.up_left_movement_exact || piece.up_right_movement_exact || piece.down_left_movement_exact || piece.down_right_movement_exact) ? 'Yes' : 'No'}
@@ -868,6 +889,11 @@ const PieceView = () => {
           
           {/* Capture on Move */}
           {pieceToDisplay.can_capture_enemy_on_move && (
+            getDirectionalCaptureDetails().length > 0 ||
+            pieceToDisplay.ratio_one_capture || pieceToDisplay.ratio_two_capture ||
+            pieceToDisplay.step_by_step_capture != null ||
+            !!piece.repeating_capture
+          ) && (
             <div className={styles["ability-card"]}>
               <div className={styles["ability-header"]}>
                 <span className={styles["ability-icon"]}>⚔️</span>
@@ -994,8 +1020,14 @@ const PieceView = () => {
             </div>
           )}
 
-          {!pieceToDisplay.can_capture_enemy_on_move && !pieceToDisplay.can_capture_enemy_via_range && 
-           !pieceToDisplay.capture_on_hop && !pieceToDisplay.can_capture_allies && (
+          {!pieceToDisplay.can_capture_enemy_via_range && 
+           !pieceToDisplay.capture_on_hop && !pieceToDisplay.can_capture_allies &&
+           (!pieceToDisplay.can_capture_enemy_on_move || (
+             getDirectionalCaptureDetails().length === 0 &&
+             !pieceToDisplay.ratio_one_capture && !pieceToDisplay.ratio_two_capture &&
+             pieceToDisplay.step_by_step_capture == null &&
+             !piece.repeating_capture
+           )) && (
             <div className={styles["no-abilities"]}>
               <span className={styles["no-abilities-icon"]}>🛡️</span>
               <span>This piece cannot attack</span>
