@@ -54,6 +54,7 @@ const Contact = lazy(() => import("./components/contact/Contact"));
 const PrivacyPolicy = lazy(() => import("./components/privacypolicy/PrivacyPolicy"));
 const AdminDashboard = lazy(() => import("./components/admindashboard/AdminDashboard"));
 const NotificationsPage = lazy(() => import("./components/notifications/NotificationsPage"));
+const Inbox = lazy(() => import("./components/inbox/Inbox"));
 const NotFound = lazy(() => import('./components/notfound/NotFound'));
 const FAQ = lazy(() => import("./containers/faq/FAQ"));
 const About = lazy(() => import("./containers/about/About"));
@@ -127,6 +128,7 @@ function App() {
       '/contact': 'Contact Us | GridGrove',
       '/privacy': 'Privacy Policy | GridGrove',
       '/notifications': 'Notifications | GridGrove',
+      '/inbox': 'Inbox | GridGrove',
       '/admin/dashboard': 'Admin Dashboard | GridGrove',
       '/faq': 'FAQ | GridGrove',
       '/tutorial/chess': 'Chess Tutorial | GridGrove',
@@ -205,6 +207,7 @@ function App() {
             <Route exact path="/contact" element={<Contact />} />
             <Route exact path="/privacy" element={<PrivacyPolicy />} />
             <Route exact path="/notifications" element={<NotificationsPage />} />
+            <Route exact path="/inbox" element={<Inbox />} />
             <Route exact path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/*" element={<NotFound />} />
           </Routes>

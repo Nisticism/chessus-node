@@ -9,6 +9,7 @@ import pieces from "./pieces";
 import games from "./games";
 import friends from "./friends";
 import notifications from "./notifications";
+import messages from "./messages";
 export default combineReducers({
   authReducer,
   message,
@@ -20,4 +21,5 @@ export default combineReducers({
   games,
   friends,
   notifications,
+  messages,
 });

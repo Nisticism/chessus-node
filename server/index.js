@@ -1992,7 +1992,10 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.show_regen ?? false,
               piece.burn_damage ?? 0,
               piece.burn_duration ?? 0,
-              piece.show_burn ?? false
+              piece.show_burn ?? false,
+              piece.trample || false,
+              piece.trample_radius ?? 0,
+              piece.ghostwalk || false
             );
           }
         }
@@ -3781,7 +3784,10 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
               piece.show_regen ?? false,
               piece.burn_damage ?? 0,
               piece.burn_duration ?? 0,
-              piece.show_burn ?? false
+              piece.show_burn ?? false,
+              piece.trample || false,
+              piece.trample_radius ?? 0,
+              piece.ghostwalk || false
             );
           }
         }
@@ -3841,6 +3847,23 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
 
     if (!imageFiles || imageFiles.length < 2) {
       return res.status(400).send({ message: "At least two piece images are required (Player 1 light and Player 2 dark)" });
+    }
+
+    // Rename with color suffix when exactly 2 images: first = -w (white/light), second = -b (black/dark)
+    if (imageFiles.length === 2) {
+      const suffixes = ['-w', '-b'];
+      for (let i = 0; i < 2; i++) {
+        const file = imageFiles[i];
+        const ext = path.extname(file.filename);
+        const base = file.filename.replace(ext, '');
+        const newName = base + suffixes[i] + ext;
+        const oldPath = path.join(file.destination, file.filename);
+        const newPath = path.join(file.destination, newName);
+        try {
+          fs.renameSync(oldPath, newPath);
+          imageFiles[i].filename = newName;
+        } catch (e) { /* keep original name on error */ }
+      }
     }
 
     const imagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
@@ -4123,6 +4146,22 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
     }
     
     // Add new image paths if any
+    // Rename with color suffix when exactly 2 new images: first = -w, second = -b
+    if (imageFiles && imageFiles.length === 2) {
+      const suffixes = ['-w', '-b'];
+      for (let i = 0; i < 2; i++) {
+        const file = imageFiles[i];
+        const ext = path.extname(file.filename);
+        const base = file.filename.replace(ext, '');
+        const newName = base + suffixes[i] + ext;
+        const oldPathFull = path.join(file.destination, file.filename);
+        const newPathFull = path.join(file.destination, newName);
+        try {
+          fs.renameSync(oldPathFull, newPathFull);
+          imageFiles[i].filename = newName;
+        } catch (e) { /* keep original name on error */ }
+      }
+    }
     const newImagePaths = imageFiles ? imageFiles.map(file => `/uploads/pieces/${file.filename}`) : [];
     
     // Combine kept and new images (max 8 total)
@@ -5387,6 +5426,264 @@ app.post("/api/contact", async (req, res) => {
   }
 });
 
+// ===================== DIRECT MESSAGES API =====================
+
+// Search for a user by exact username (for starting new conversations)
+app.get("/api/users/search", async (req, res) => {
+  try {
+    const username = req.query.username;
+    if (!username) {
+      return res.status(400).json({ error: "username query parameter required" });
+    }
+    const user = await dbHelpers.findUserByUsername(username);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ user: { id: user.id, username: user.username, profile_picture: user.profile_picture } });
+  } catch (err) {
+    console.error("Error searching user:", err);
+    res.status(500).json({ error: "Failed to search user" });
+  }
+});
+
+// Look up a user by ID (public, returns minimal info)
+app.get("/api/users/search-by-id", async (req, res) => {
+  try {
+    const id = parseInt(req.query.id);
+    if (!id || isNaN(id)) {
+      return res.status(400).json({ error: "id query parameter required" });
+    }
+    const user = await dbHelpers.findUserById(id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ user: { id: user.id, username: user.username, profile_picture: user.profile_picture } });
+  } catch (err) {
+    console.error("Error searching user by ID:", err);
+    res.status(500).json({ error: "Failed to search user" });
+  }
+});
+
+// Search messageable users: friends first, then non-friends with allow_non_friend_dms
+app.get("/api/users/:userId/messageable-users", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const search = (req.query.q || "").trim();
+    const limit = Math.min(parseInt(req.query.limit) || 15, 50);
+
+    // Get friends matching the search (or all friends if no search)
+    const friendRows = await dbHelpers.query(
+      `SELECT DISTINCT u.id, u.username, u.profile_picture, 1 AS is_friend
+       FROM friends f
+       JOIN chessusnode.users u ON u.id = CASE WHEN f.user_id = ? THEN f.friend_id ELSE f.user_id END
+       WHERE ((f.user_id = ? AND f.friend_id != ?) OR (f.friend_id = ? AND f.user_id != ?))
+         AND f.status = 'accepted'
+         AND u.username LIKE ?
+       ORDER BY u.username ASC
+       LIMIT ?`,
+      [userId, userId, userId, userId, userId, `%${search}%`, limit]
+    );
+
+    const friendIds = new Set(friendRows.map(r => r.id));
+    const remaining = limit - friendRows.length;
+
+    let otherRows = [];
+    if (remaining > 0) {
+      // Get non-friend users who accept DMs from non-friends
+      const placeholders = friendIds.size > 0
+        ? `AND u.id NOT IN (${[...friendIds].map(() => '?').join(',')})`
+        : '';
+      const params = [userId, `%${search}%`, ...(friendIds.size > 0 ? [...friendIds] : []), remaining];
+      otherRows = await dbHelpers.query(
+        `SELECT u.id, u.username, u.profile_picture, 0 AS is_friend
+         FROM chessusnode.users u
+         WHERE u.id != ?
+           AND u.username LIKE ?
+           AND u.allow_non_friend_dms = 1
+           ${placeholders}
+         ORDER BY u.username ASC
+         LIMIT ?`,
+        params
+      );
+    }
+
+    res.json({ users: [...friendRows, ...otherRows] });
+  } catch (err) {
+    console.error("Error searching messageable users:", err);
+    res.status(500).json({ error: "Failed to search users" });
+  }
+});
+
+// Get conversations for a user
+app.get("/api/users/:userId/conversations", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const conversations = await dbHelpers.getConversations(userId);
+    res.json({ conversations });
+  } catch (err) {
+    console.error("Error fetching conversations:", err);
+    res.status(500).json({ error: "Failed to fetch conversations" });
+  }
+});
+
+// Get unread DM count
+app.get("/api/users/:userId/messages/unread-count", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const count = await dbHelpers.getUnreadDMCount(userId);
+    res.json({ unreadCount: count });
+  } catch (err) {
+    console.error("Error fetching unread DM count:", err);
+    res.status(500).json({ error: "Failed to fetch unread count" });
+  }
+});
+
+// Get messages with a specific user
+app.get("/api/users/:userId/messages/:otherUserId", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const otherUserId = parseInt(req.params.otherUserId);
+    if (isNaN(otherUserId)) {
+      return res.status(400).json({ error: "Invalid user ID" });
+    }
+    const page = parseInt(req.query.page) || 1;
+    const messages = await dbHelpers.getDirectMessages(userId, otherUserId, page);
+    res.json({ messages });
+  } catch (err) {
+    console.error("Error fetching messages:", err);
+    res.status(500).json({ error: "Failed to fetch messages" });
+  }
+});
+
+// Send a direct message
+app.post("/api/users/:userId/messages", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const { recipientId, content } = req.body;
+    if (!recipientId || !content || !content.trim()) {
+      return res.status(400).json({ error: "recipientId and content are required" });
+    }
+    if (content.length > 2000) {
+      return res.status(400).json({ error: "Message too long (max 2000 characters)" });
+    }
+    const recipientIdInt = parseInt(recipientId);
+    if (recipientIdInt === userId) {
+      return res.status(400).json({ error: "Cannot message yourself" });
+    }
+
+    // Check if recipient exists
+    const recipient = await dbHelpers.findUserById(recipientIdInt);
+    if (!recipient) {
+      return res.status(404).json({ error: "Recipient not found" });
+    }
+
+    // Check DM permissions - friends-only by default
+    if (!recipient.allow_non_friend_dms) {
+      const areFriends = await dbHelpers.checkFriendship(userId, recipientIdInt);
+      if (!areFriends) {
+        return res.status(403).json({ error: "This user only accepts messages from friends" });
+      }
+    }
+
+    const message = await dbHelpers.sendDirectMessage(userId, recipientIdInt, content.trim());
+
+    // Push real-time notification via socket
+    const io = req.app.get('io');
+    if (io) {
+      const { userSockets } = require('./game-socket');
+      const recipientSocketId = userSockets?.get(recipientIdInt.toString());
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit('newDirectMessage', message);
+      }
+    }
+
+    res.status(201).json({ message });
+  } catch (err) {
+    console.error("Error sending message:", err);
+    res.status(500).json({ error: "Failed to send message" });
+  }
+});
+
+// Mark messages from a user as read
+app.put("/api/users/:userId/messages/:otherUserId/read", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const otherUserId = parseInt(req.params.otherUserId);
+    if (isNaN(otherUserId)) {
+      return res.status(400).json({ error: "Invalid user ID" });
+    }
+    await dbHelpers.markDirectMessagesRead(userId, otherUserId);
+    res.json({ message: "Messages marked as read" });
+  } catch (err) {
+    console.error("Error marking messages read:", err);
+    res.status(500).json({ error: "Failed to mark messages read" });
+  }
+});
+
+// Get game chat history
+app.get("/api/games/:gameId/chat", async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    const messages = await dbHelpers.getGameChatMessages(gameId);
+    res.json({ messages });
+  } catch (err) {
+    console.error("Error fetching game chat:", err);
+    res.status(500).json({ error: "Failed to fetch game chat" });
+  }
+});
+
+// Update user messaging preferences
+app.put("/api/users/:userId/messaging-preferences", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const { allow_non_friend_dms, disable_game_chat, sound_enabled } = req.body;
+    const updates = [];
+    const values = [];
+    if (allow_non_friend_dms !== undefined) {
+      updates.push("allow_non_friend_dms = ?");
+      values.push(allow_non_friend_dms ? 1 : 0);
+    }
+    if (disable_game_chat !== undefined) {
+      updates.push("disable_game_chat = ?");
+      values.push(disable_game_chat ? 1 : 0);
+    }
+    if (sound_enabled !== undefined) {
+      updates.push("sound_enabled = ?");
+      values.push(sound_enabled ? 1 : 0);
+    }
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No preferences to update" });
+    }
+    values.push(userId);
+    await dbHelpers.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+    res.json({ message: "Preferences updated" });
+  } catch (err) {
+    console.error("Error updating messaging preferences:", err);
+    res.status(500).json({ error: "Failed to update preferences" });
+  }
+});
+
 // All other GET requests not handled before will return our React app
 app.get('/api/*', (req, res) => {
   res.json({ message: "No data to return from this endpoint!" });
@@ -5402,6 +5699,25 @@ app.set('io', io);
 server.listen(PORT, () => {
   console.log(`Server listening on ${PORT}`);
   console.log(`Socket.io ready for connections`);
+});
+
+// Graceful shutdown for nodemon restarts
+process.once('SIGUSR2', () => {
+  server.close(() => {
+    process.kill(process.pid, 'SIGUSR2');
+  });
+});
+
+process.on('SIGINT', () => {
+  server.close(() => {
+    process.exit(0);
+  });
+});
+
+process.on('SIGTERM', () => {
+  server.close(() => {
+    process.exit(0);
+  });
 });
 
 // Weekly notification email digest - runs every hour, checks if users have >10 notifications this week

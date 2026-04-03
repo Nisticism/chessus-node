@@ -18,10 +18,21 @@ const MatchView = () => {
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [chatHistory, setChatHistory] = useState([]);
 
   useEffect(() => {
     fetchMatch();
+    fetchChatHistory();
   }, [gameId]);
+
+  const fetchChatHistory = async () => {
+    try {
+      const response = await axios.get(`${API_URL}games/${gameId}/chat`);
+      setChatHistory(response.data.messages || []);
+    } catch (err) {
+      // Chat history is optional, don't show error
+    }
+  };
 
   const fetchMatch = async () => {
     setLoading(true);
@@ -395,6 +406,24 @@ const MatchView = () => {
                 <span key={index} className={`${styles["move-item"]} ${index % 2 === 0 ? styles["move-white"] : styles["move-black"]}`}>
                   {Math.floor(index / 2) + 1}. {formatMoveNotation(move)}
                 </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Chat History */}
+        {chatHistory.length > 0 && (
+          <div className={styles["chat-history"]}>
+            <h3>💬 Game Chat</h3>
+            <div className={styles["chat-history-list"]}>
+              {chatHistory.map((msg, idx) => (
+                <div key={msg.id || idx} className={styles["chat-history-msg"]}>
+                  <span className={styles["chat-history-sender"]}>{msg.sender_username}:</span>
+                  <span className={styles["chat-history-text"]}>{msg.content}</span>
+                  <span className={styles["chat-history-time"]}>
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
               ))}
             </div>
           </div>

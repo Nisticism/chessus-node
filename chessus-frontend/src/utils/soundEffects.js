@@ -24,19 +24,41 @@ class SoundManager {
     // Set default volume
     Object.values(this.sounds).forEach(sound => {
       sound.volume = 0.5;
+      sound.preload = 'auto';
     });
 
     this.enabled = true;
+    this.unlocked = false;
+
+    // Unlock audio on first user interaction (bypasses browser autoplay policy)
+    const unlock = () => {
+      if (this.unlocked) return;
+      this.unlocked = true;
+      // Play and immediately pause each sound to prime them
+      Object.values(this.sounds).forEach(sound => {
+        sound.play().then(() => {
+          sound.pause();
+          sound.currentTime = 0;
+        }).catch(() => {});
+      });
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('keydown', unlock);
+      document.removeEventListener('touchstart', unlock);
+    };
+
+    document.addEventListener('click', unlock, { once: false });
+    document.addEventListener('keydown', unlock, { once: false });
+    document.addEventListener('touchstart', unlock, { once: false });
   }
 
   play(soundName) {
     if (!this.enabled || !this.sounds[soundName]) return;
 
     try {
-      const sound = this.sounds[soundName];
-      // Stop any currently playing instance and reset
-      sound.pause();
-      sound.currentTime = 0;
+      const source = this.sounds[soundName];
+      // Clone the audio node so the unlock prime cycle can't interfere
+      const sound = source.cloneNode();
+      sound.volume = source.volume;
 
       // Stop playback after 0.5 seconds
       const stopTimer = setTimeout(() => {

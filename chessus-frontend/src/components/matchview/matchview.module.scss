@@ -364,6 +364,51 @@
   font-family: monospace;
 }
 
+/* Chat History */
+.chat-history {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--bg-card, #0f261a);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, #1a3d2b);
+
+  h3 {
+    margin: 0 0 12px;
+    font-size: 1rem;
+    color: var(--text-bright, #e0f0e8);
+  }
+}
+
+.chat-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.chat-history-msg {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  padding: 2px 0;
+}
+
+.chat-history-sender {
+  font-weight: 700;
+  color: var(--accent-highlight, #81c784);
+  margin-right: 4px;
+}
+
+.chat-history-text {
+  color: var(--text-main, #c8e6d0);
+}
+
+.chat-history-time {
+  font-size: 0.7rem;
+  color: var(--text-dim, #5a7a63);
+  margin-left: 6px;
+}
+
 /* Actions */
 .actions {
   display: flex;

@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import { getFriends, removeFriend, setOnlineUsers } from "../../actions/friends";
 import styles from "./friendslist.module.scss";
-import DefaultAvatar from "../../assets/pieces/White-pawn.png";
+import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 

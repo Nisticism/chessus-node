@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./player-page.module.scss";
 import { deleteUser, getUser } from "../../actions/auth";
@@ -16,7 +16,7 @@ import OngoingGames from "../ongoinggames/OngoingGames";
 import FriendsList from "../friendslist/FriendsList";
 import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests } from "../../actions/friends";
 import { useSocket } from "../../contexts/SocketContext";
-import DefaultAvatar from "../../assets/pieces/White-pawn.png";
+import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
 // import NotFound from "../notfound/NotFound";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
@@ -558,29 +558,63 @@ const PlayerPage = (props) => {
                             ⚔️ Challenge
                           </button>
                         )}
+                        <Link 
+                          to={`/inbox?user=${playerPageUser.id}`}
+                          className={`${styles["friend-button"]} ${styles["message-friend"]}`}
+                          title="Send a message"
+                        >
+                          💬 Message
+                        </Link>
                       </>
                     ) : friendshipStatus.status === 'pending_outgoing' ? (
-                      <button 
-                        className={`${styles["friend-button"]} ${styles["pending"]}`}
-                        onClick={handleCancelRequest}
-                        title="Click to cancel request"
-                      >
-                        ⏳ Request Sent
-                      </button>
+                      <>
+                        <button 
+                          className={`${styles["friend-button"]} ${styles["pending"]}`}
+                          onClick={handleCancelRequest}
+                          title="Click to cancel request"
+                        >
+                          ⏳ Request Sent
+                        </button>
+                        <Link 
+                          to={`/inbox?user=${playerPageUser.id}`}
+                          className={`${styles["friend-button"]} ${styles["message-friend"]}`}
+                          title="Send a message"
+                        >
+                          💬 Message
+                        </Link>
+                      </>
                     ) : friendshipStatus.status === 'pending_incoming' ? (
-                      <button 
-                        className={`${styles["friend-button"]} ${styles["accept"]}`}
-                        onClick={handleAcceptRequest}
-                      >
-                        ✓ Accept Request
-                      </button>
+                      <>
+                        <button 
+                          className={`${styles["friend-button"]} ${styles["accept"]}`}
+                          onClick={handleAcceptRequest}
+                        >
+                          ✓ Accept Request
+                        </button>
+                        <Link 
+                          to={`/inbox?user=${playerPageUser.id}`}
+                          className={`${styles["friend-button"]} ${styles["message-friend"]}`}
+                          title="Send a message"
+                        >
+                          💬 Message
+                        </Link>
+                      </>
                     ) : (
-                      <button 
-                        className={styles["friend-button"]}
-                        onClick={handleAddFriend}
-                      >
-                        + Add Friend
-                      </button>
+                      <>
+                        <button 
+                          className={styles["friend-button"]}
+                          onClick={handleAddFriend}
+                        >
+                          + Add Friend
+                        </button>
+                        <Link 
+                          to={`/inbox?user=${playerPageUser.id}`}
+                          className={`${styles["friend-button"]} ${styles["message-friend"]}`}
+                          title="Send a message"
+                        >
+                          💬 Message
+                        </Link>
+                      </>
                     )}
                   </div>
                 )}

@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { RiMenu3Line, RiCloseLine } from 'react-icons/ri';
-import { IoNotificationsOutline } from 'react-icons/io5';
+import { IoNotificationsOutline, IoChatbubbleOutline } from 'react-icons/io5';
 import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
 import { getUnreadCount, receiveNewNotification } from "../../actions/notifications";
+import { getUnreadDMCount, receiveDirectMessage } from "../../actions/messages";
 import { useSocket } from "../../contexts/SocketContext";
 import logo from '../../assets/logo.png';
 import './navbar.scss';
@@ -193,6 +194,7 @@ const Navbar = () => {
 
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const { unreadCount } = useSelector((state) => state.notifications);
+  const { unreadDMCount } = useSelector((state) => state.messages);
   const dispatch = useDispatch();
   const { socket } = useSocket();
 
@@ -207,6 +209,7 @@ const Navbar = () => {
   useEffect(() => {
     if (currentUser) {
       dispatch(getUnreadCount(currentUser.id));
+      dispatch(getUnreadDMCount(currentUser.id));
     }
   }, [currentUser, dispatch]);
 
@@ -215,6 +218,7 @@ const Navbar = () => {
     if (!currentUser) return;
     const interval = setInterval(() => {
       dispatch(getUnreadCount(currentUser.id));
+      dispatch(getUnreadDMCount(currentUser.id));
     }, 60000);
     return () => clearInterval(interval);
   }, [currentUser, dispatch]);
@@ -227,9 +231,22 @@ const Navbar = () => {
       dispatch(receiveNewNotification(notification));
     };
 
+    // When server pushes unread count on connect/reconnect, sync immediately
+    const handleUnreadCount = ({ unreadCount }) => {
+      dispatch({ type: 'GET_UNREAD_COUNT_SUCCESS', payload: unreadCount });
+    };
+
+    const handleNewDM = (message) => {
+      dispatch(receiveDirectMessage(message));
+    };
+
     socket.on('newNotification', handleNewNotification);
+    socket.on('unreadNotificationCount', handleUnreadCount);
+    socket.on('newDirectMessage', handleNewDM);
     return () => {
       socket.off('newNotification', handleNewNotification);
+      socket.off('unreadNotificationCount', handleUnreadCount);
+      socket.off('newDirectMessage', handleNewDM);
     };
   }, [socket, currentUser, dispatch]);
 
@@ -267,6 +284,16 @@ const Navbar = () => {
           </div>
           {currentUser ? (
             <div className="user-info desktop-only">
+              <div className="nav-item notification-bell-item">
+                <Link to="/inbox" className="notification-bell" title="Messages">
+                  <IoChatbubbleOutline size={20} />
+                  {unreadDMCount > 0 && (
+                    <span className="notification-badge">
+                      {unreadDMCount > 99 ? "99+" : unreadDMCount}
+                    </span>
+                  )}
+                </Link>
+              </div>
               <div className="nav-item notification-bell-item">
                 <Link to="/notifications" className="notification-bell" title="Notifications">
                   <IoNotificationsOutline size={22} />
@@ -312,14 +339,24 @@ const Navbar = () => {
         </div>
         <div className="navbar-menu" ref={menuRef}>
           {currentUser && (
-            <Link to="/notifications" className="notification-bell navbar-menu-bell" title="Notifications">
-              <IoNotificationsOutline size={22} />
-              {unreadCount > 0 && (
-                <span className="notification-badge">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </Link>
+            <>
+              <Link to="/inbox" className="notification-bell navbar-menu-bell" title="Messages" style={{ marginRight: '4px' }}>
+                <IoChatbubbleOutline size={20} />
+                {unreadDMCount > 0 && (
+                  <span className="notification-badge">
+                    {unreadDMCount > 99 ? "99+" : unreadDMCount}
+                  </span>
+                )}
+              </Link>
+              <Link to="/notifications" className="notification-bell navbar-menu-bell" title="Notifications">
+                <IoNotificationsOutline size={22} />
+                {unreadCount > 0 && (
+                  <span className="notification-badge">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+            </>
           )}
           { toggleMenu 
             ? <RiCloseLine color="fff" size={27} onClick={() => setToggleMenu(false)} />
