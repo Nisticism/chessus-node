@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import styles from "./gamewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import PiecesService from "../../services/pieces.service";
@@ -29,7 +29,6 @@ const PieceSelector = ({
   embedded = false  // New prop: if true, don't render modal wrapper
 }) => {
   const [pieces, setPieces] = useState([]);
-  const [filteredPieces, setFilteredPieces] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -61,6 +60,11 @@ const PieceSelector = ({
   const [hpRegen, setHpRegen] = useState(currentPlacement?.hp_regen ?? 0);
   const [cannotBeCaptured, setCannotBeCaptured] = useState(currentPlacement?.cannot_be_captured || false);
   
+  // Trample & Ghostwalk state (per-placement overrides, initialized from placement or piece defaults)
+  const [trample, setTrample] = useState(currentPlacement?.trample || false);
+  const [trampleRadius, setTrampleRadius] = useState(currentPlacement?.trample_radius ?? 0);
+  const [ghostwalk, setGhostwalk] = useState(currentPlacement?.ghostwalk || false);
+  
   // Burn/DOT system state
   const [burnDamage, setBurnDamage] = useState(currentPlacement?.burn_damage ?? 0);
   const [burnDuration, setBurnDuration] = useState(currentPlacement?.burn_duration ?? 0);
@@ -79,6 +83,9 @@ const PieceSelector = ({
   const [combatSectionOpen, setCombatSectionOpen] = useState(
     (currentPlacement?.hit_points ?? 1) > 1 || (currentPlacement?.attack_damage ?? 1) > 1 || (currentPlacement?.hp_regen ?? 0) > 0 || (currentPlacement?.burn_damage ?? 0) > 0
   );
+  const [additionalSettingsOpen, setAdditionalSettingsOpen] = useState(
+    currentPlacement?.cannot_be_captured || currentPlacement?.trample || currentPlacement?.ghostwalk || false
+  );
   
   // Update selectedPlayerId when currentPlacement changes (e.g., when opening modal for different piece)
   useEffect(() => {
@@ -96,53 +103,49 @@ const PieceSelector = ({
     loadPieces();
   }, []);
 
-  useEffect(() => {
-    // Filter pieces based on search term and pagination
-    let filtered = pieces;
-    
-    if (searchTerm.trim() !== "") {
-      const term = searchTerm.toLowerCase();
-      filtered = pieces.filter(piece => 
-        (piece.piece_name && piece.piece_name.toLowerCase().includes(term)) ||
-        (piece.id && piece.id.toString().includes(term)) ||
-        (piece.piece_id && piece.piece_id.toString().includes(term)) ||
-        (piece.piece_description && piece.piece_description.toLowerCase().includes(term))
-      );
-    }
-    
-    // Apply pagination
+  // Memoize filtered pieces (before pagination) to avoid re-filtering on every render
+  const allFilteredPieces = useMemo(() => {
+    if (searchTerm.trim() === "") return pieces;
+    const term = searchTerm.toLowerCase();
+    return pieces.filter(piece => 
+      (piece.piece_name && piece.piece_name.toLowerCase().includes(term)) ||
+      (piece.id && piece.id.toString().includes(term)) ||
+      (piece.piece_id && piece.piece_id.toString().includes(term)) ||
+      (piece.piece_description && piece.piece_description.toLowerCase().includes(term))
+    );
+  }, [searchTerm, pieces]);
+
+  const totalFilteredCount = allFilteredPieces.length;
+  const totalPages = Math.ceil(totalFilteredCount / PIECES_PER_PAGE);
+
+  // Memoize paginated pieces
+  const paginatedPieces = useMemo(() => {
     const startIndex = (currentPage - 1) * PIECES_PER_PAGE;
-    const endIndex = startIndex + PIECES_PER_PAGE;
-    setFilteredPieces(filtered.slice(startIndex, endIndex));
-  }, [searchTerm, pieces, currentPage]);
+    return allFilteredPieces.slice(startIndex, startIndex + PIECES_PER_PAGE);
+  }, [allFilteredPieces, currentPage]);
+
+  // Pre-compute thumbnail URLs for the current page to avoid JSON.parse in render
+  const thumbnailMap = useMemo(() => {
+    const map = {};
+    paginatedPieces.forEach(piece => {
+      const pieceId = piece.id || piece.piece_id;
+      try {
+        const images = JSON.parse(piece.image_location || "[]");
+        const playerImageIndex = selectedPlayerId - 1;
+        map[pieceId] = Array.isArray(images) && images.length > 0 
+          ? getImageUrl(images[playerImageIndex] || images[0]) 
+          : null;
+      } catch (e) {
+        map[pieceId] = null;
+      }
+    });
+    return map;
+  }, [paginatedPieces, selectedPlayerId]);
 
   // Reset to page 1 when search term changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
-
-  // Calculate total pages
-  const getTotalPages = () => {
-    const filtered = searchTerm.trim() === "" 
-      ? pieces 
-      : pieces.filter(piece => 
-          (piece.piece_name && piece.piece_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (piece.id && piece.id.toString().includes(searchTerm)) ||
-          (piece.piece_id && piece.piece_id.toString().includes(searchTerm)) ||
-          (piece.piece_description && piece.piece_description.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-    return Math.ceil(filtered.length / PIECES_PER_PAGE);
-  };
-
-  const getTotalFilteredCount = () => {
-    if (searchTerm.trim() === "") return pieces.length;
-    return pieces.filter(piece => 
-      (piece.piece_name && piece.piece_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (piece.id && piece.id.toString().includes(searchTerm)) ||
-      (piece.piece_id && piece.piece_id.toString().includes(searchTerm)) ||
-      (piece.piece_description && piece.piece_description.toLowerCase().includes(searchTerm.toLowerCase()))
-    ).length;
-  };
 
   useEffect(() => {
     // When a piece is selected, load its available images
@@ -202,7 +205,6 @@ const PieceSelector = ({
         console.log("Sample piece data:", piecesData[0]);
       }
       setPieces(piecesData || []);
-      setFilteredPieces(piecesData || []);
       setError(null);
     } catch (err) {
       console.error("Error loading pieces:", err);
@@ -213,7 +215,8 @@ const PieceSelector = ({
   };
 
   const handlePieceClick = (piece) => {
-    setSelectedPieceId(piece.id || piece.piece_id);
+    const pieceId = piece.id || piece.piece_id;
+    setSelectedPieceId(pieceId);
   };
 
   const handleConfirm = () => {
@@ -256,7 +259,11 @@ const PieceSelector = ({
       castling_distance: castlingDistance,
       // Fill row option
       fillRow: fillRow,
-      fillRowData: fillRow ? { row: squarePosition?.row, boardWidth } : null
+      fillRowData: fillRow ? { row: squarePosition?.row, boardWidth } : null,
+      // Trample & Ghostwalk
+      trample: trample,
+      trample_radius: trampleRadius,
+      ghostwalk: ghostwalk
     });
   };
 
@@ -377,17 +384,17 @@ const PieceSelector = ({
         <div className={styles["piece-list-section"]}>
           {loading && <p key="loading">Loading pieces...</p>}
           {error && <p key="error" className={styles["error-text"]}>{error}</p>}
-          {!loading && !error && getTotalFilteredCount() > PIECES_PER_PAGE && (
+          {!loading && !error && totalFilteredCount > PIECES_PER_PAGE && (
             <p key="hint" className={styles["piece-count-hint"]}>
-              Showing {filteredPieces.length} of {getTotalFilteredCount()} pieces (Page {currentPage} of {getTotalPages()})
+              Showing {paginatedPieces.length} of {totalFilteredCount} pieces (Page {currentPage} of {totalPages})
             </p>
           )}
-          {!loading && !error && filteredPieces.length === 0 && (
+          {!loading && !error && paginatedPieces.length === 0 && (
             <p key="no-pieces">No pieces found. Try a different search term.</p>
           )}
           
           {/* Pagination Controls */}
-          {!loading && !error && getTotalPages() > 1 && (
+          {!loading && !error && totalPages > 1 && (
             <div key="pagination" className={styles["pagination-controls"]}>
               <button 
                 className={styles["pagination-btn"]}
@@ -404,39 +411,29 @@ const PieceSelector = ({
                 «
               </button>
               <span className={styles["pagination-info"]}>
-                Page {currentPage} of {getTotalPages()}
+                Page {currentPage} of {totalPages}
               </span>
               <button 
                 className={styles["pagination-btn"]}
-                onClick={() => setCurrentPage(p => Math.min(getTotalPages(), p + 1))}
-                disabled={currentPage === getTotalPages()}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
               >
                 »
               </button>
               <button 
                 className={styles["pagination-btn"]}
-                onClick={() => setCurrentPage(getTotalPages())}
-                disabled={currentPage === getTotalPages()}
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
               >
                 »»
               </button>
             </div>
           )}
-          {!loading && !error && filteredPieces.length > 0 && (
+          {!loading && !error && paginatedPieces.length > 0 && (
             <div key="piece-grid" className={styles["piece-grid"]}>
-              {filteredPieces.map(piece => {
+              {paginatedPieces.map(piece => {
                 const pieceId = piece.id || piece.piece_id;
-                let thumbnail = null;
-                try {
-                  const images = JSON.parse(piece.image_location || "[]");
-                  // Use the image for the selected player, default to first if not available
-                  const playerImageIndex = selectedPlayerId - 1;
-                  thumbnail = Array.isArray(images) && images.length > 0 
-                    ? getImageUrl(images[playerImageIndex] || images[0]) 
-                    : null;
-                } catch (e) {
-                  thumbnail = null;
-                }
+                const thumbnail = thumbnailMap[pieceId];
 
                 return (
                   <div
@@ -626,6 +623,10 @@ const PieceSelector = ({
                 <span>Show Burn badge <InfoTooltip text="Display the burn damage badge on this piece. The badge shows damage/duration — e.g. 🔥2/3 means this piece deals 2 burn damage per turn for 3 turns when it attacks. Burn still functions even if hidden." /></span>
               </label>
             </div>
+            <p style={{ marginTop: '10px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+              HP/AD system inspired by ideas from Vasilije — thanks! Check out his project at{' '}
+              <a href="https://www.nichess.org/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--link-color, #58a6ff)' }}>nichess.org</a>
+            </p>
               </>
             )}
           </div>
@@ -634,7 +635,15 @@ const PieceSelector = ({
         {/* Additional Piece Settings */}
         {selectedPieceId && (
           <div className={styles["hp-ad-section"]}>
-            <h3>Additional Piece Settings</h3>
+            <h3
+              onClick={() => setAdditionalSettingsOpen(!additionalSettingsOpen)}
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+            >
+              <span style={{ display: 'inline-block', transition: 'transform 0.2s', transform: additionalSettingsOpen ? 'rotate(90deg)' : 'rotate(0deg)', marginRight: '4px' }}>▶</span>
+              Additional Piece Settings <InfoTooltip text="Configure special abilities like damage immunity, trample, and ghostwalk for this placement." />
+            </h3>
+            {additionalSettingsOpen && (
+              <>
             <div className={styles["checkbox-group"]}>
               <label className={styles["checkbox-label"]}>
                 <input
@@ -644,7 +653,36 @@ const PieceSelector = ({
                 />
                 <span>Cannot be captured or damaged <InfoTooltip text="This piece is completely immune to all damage and capture. Attacks against it are blocked. Useful for obstacle or terrain pieces." /></span>
               </label>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={trample}
+                  onChange={(e) => setTrample(e.target.checked)}
+                />
+                <span>Trample <InfoTooltip text="This piece damages all pieces in its straight-line path during movement. Trample can cause check if the piece has hop abilities. Trample radius controls how wide the area of effect is." /></span>
+              </label>
+              {trample && (
+                <div style={{ marginLeft: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Trample Radius:</label>
+                  <NumberInput
+                    value={trampleRadius}
+                    onChange={(val) => setTrampleRadius(val)}
+                    options={{ min: 0, max: 4 }}
+                  />
+                  <InfoTooltip text="0 = only pieces directly in path. 1+ = also affects surrounding squares at each step along the path. Checkmateable pieces (e.g. kings) are immune to trample radius splash damage." />
+                </div>
+              )}
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={ghostwalk}
+                  onChange={(e) => setGhostwalk(e.target.checked)}
+                />
+                <span>Ghostwalk <InfoTooltip text="This piece can pass through any piece (ally or enemy) during movement." /></span>
+              </label>
             </div>
+              </>
+            )}
           </div>
         )}
 

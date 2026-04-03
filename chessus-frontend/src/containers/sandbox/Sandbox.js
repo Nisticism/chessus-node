@@ -85,6 +85,7 @@ const Sandbox = () => {
   };
   const [sidebarPlayerView, setSidebarPlayerView] = useState(getInitialSidebarPlayerView());
   const boardAnimationsEnabled = localStorage.getItem('boardAnimations') !== 'false';
+  const pieceShadowEnabled = localStorage.getItem('pieceShadow') === 'true';
   
   // Save sidebarPlayerView to localStorage whenever it changes
   useEffect(() => {
@@ -811,7 +812,9 @@ const Sandbox = () => {
       return false;
     }
 
-    const occupied = new Set(
+    const hasGhostwalk = piece.ghostwalk === 1 || piece.ghostwalk === true;
+
+    const occupied = hasGhostwalk ? new Set() : new Set(
       pieces
         .filter(p => p.id !== piece.id)
         .map(p => `${p.x},${p.y}`)
@@ -1201,6 +1204,10 @@ const Sandbox = () => {
   }, [canPieceMoveTo]);
 
   const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false, isExactDirectional = false) => {
+    // Ghostwalk: piece can pass through any piece
+    const hasGhostwalk = pieceData?.ghostwalk === 1 || pieceData?.ghostwalk === true;
+    if (hasGhostwalk) return true;
+
     const directionalHopDisabled = pieceData?.directional_hop_disabled === 1 || pieceData?.directional_hop_disabled === true;
     const baseCanHopAllies = pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true;
     const baseCanHopEnemies = pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true;
@@ -2479,6 +2486,7 @@ const Sandbox = () => {
                     style={{
                       width: '100%',
                       height: '100%',
+                      ...(pieceShadowEnabled ? { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } : {})
                     }}
                     draggable={false}
                   />
@@ -2487,6 +2495,7 @@ const Sandbox = () => {
                     src={getBoardPieceImage(piece)}
                     alt={piece.piece_name}
                     draggable={false}
+                    {...(pieceShadowEnabled ? { style: { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } } : {})}
                   />
                 )}
               </div>

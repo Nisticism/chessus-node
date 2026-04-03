@@ -499,6 +499,17 @@ function initializeSocket(server) {
           db_pool.query("UPDATE users SET last_active_at = NOW() WHERE id = ?", [userId])
             .catch(err => console.error("Error updating last_active_at on socket auth:", err.message));
           
+          // Push pending unread notification count on connect/reconnect
+          try {
+            const dbHelpers = require("./db-helpers");
+            const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
+            if (unreadCount > 0) {
+              socket.emit('unreadNotificationCount', { unreadCount });
+            }
+          } catch (err) {
+            console.error("Error pushing unread count on auth:", err.message);
+          }
+
           // Broadcast updated online users list
           io.emit("onlineUsers", Array.from(onlineUsers));
         }
@@ -796,7 +807,11 @@ function initializeSocket(server) {
               // Can capture allies
               can_capture_allies: fullPieceData.can_capture_allies,
               // Cannot be captured - junction table value takes precedence, fallback to piece table
-              cannot_be_captured: piece.cannot_be_captured || fullPieceData.cannot_be_captured
+              cannot_be_captured: piece.cannot_be_captured || fullPieceData.cannot_be_captured,
+              // Trample & Ghostwalk - junction table values (per-placement overrides)
+              trample: piece.trample || fullPieceData.trample,
+              trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
+              ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk
             };
           }
           return piece;
@@ -1147,10 +1162,13 @@ function initializeSocket(server) {
               piece_width: fullPieceData.piece_width || 1,
               piece_height: fullPieceData.piece_height || 1,
               can_capture_allies: fullPieceData.can_capture_allies,
-              cannot_be_captured: fullPieceData.cannot_be_captured,
+              cannot_be_captured: piece.cannot_be_captured || fullPieceData.cannot_be_captured,
               first_move_only_capture: fullPieceData.first_move_only_capture,
               hop_capture: fullPieceData.hop_capture,
               draw_move_limit: fullPieceData.draw_move_limit,
+              trample: piece.trample || fullPieceData.trample,
+              trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
+              ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
             };
           }
           return piece;
@@ -1526,7 +1544,11 @@ function initializeSocket(server) {
                   promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
                   // Dimensions for multi-tile pieces
                   piece_width: fullPieceData.piece_width || 1,
-                  piece_height: fullPieceData.piece_height || 1
+                  piece_height: fullPieceData.piece_height || 1,
+                  // Trample & Ghostwalk - junction table values (per-placement overrides)
+                  trample: piece.trample || fullPieceData.trample,
+                  trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
+                  ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk
                 };
               }
               return piece;
@@ -3439,6 +3461,10 @@ function initializeSocket(server) {
           chain_hop_allies: fullPieceData.chain_hop_allies,
           free_move_after_promotion: fullPieceData.free_move_after_promotion,
           promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
+          // Trample & Ghostwalk
+          trample: fullPieceData.trample,
+          trample_radius: fullPieceData.trample_radius,
+          ghostwalk: fullPieceData.ghostwalk,
           // Reset move tracking for the new piece type
           moveCount: 0,
           hasMoved: false
@@ -3948,7 +3974,11 @@ function initializeSocket(server) {
                     piece_width: fullPieceData.piece_width || 1,
                     piece_height: fullPieceData.piece_height || 1,
                     // Image location for player-specific images (needed for flanking flips)
-                    image_location: piece.image_location || fullPieceData.image_location
+                    image_location: piece.image_location || fullPieceData.image_location,
+                    // Trample & Ghostwalk - junction table values (per-placement overrides)
+                    trample: piece.trample || fullPieceData.trample,
+                    trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
+                    ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk
                   };
                 }
                 return piece;
@@ -4275,6 +4305,170 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error declining draw:", error);
         socket.emit("error", { message: "Failed to decline draw" });
+      }
+    });
+
+    // ===================== IN-GAME CHAT =====================
+
+    // Send a chat message in a game
+    socket.on("sendGameChat", async ({ gameId, content }) => {
+      try {
+        if (!socket.userId || !socket.username) {
+          return socket.emit("error", { message: "Not authenticated" });
+        }
+        if (!content || !content.trim() || content.length > 500) {
+          return;
+        }
+
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) {
+          return socket.emit("error", { message: "Game not found" });
+        }
+
+        // Check if either player has chat disabled
+        const player = gameState.players.find(p => p.id === socket.userId);
+        if (!player && !gameState.allowSpectators) {
+          return; // Spectators can't chat if spectating isn't allowed
+        }
+
+        // Check game-level chat disabled (stored in other_data)
+        if (gameState.chatDisabled) {
+          return socket.emit("gameChatError", { message: "Chat is disabled for this game" });
+        }
+
+        // Check user-level chat preference
+        try {
+          const [userRows] = await db_pool.query("SELECT disable_game_chat FROM users WHERE id = ?", [socket.userId]);
+          if (userRows && userRows[0] && userRows[0].disable_game_chat) {
+            return socket.emit("gameChatError", { message: "You have game chat disabled in your preferences" });
+          }
+        } catch (e) { /* continue if check fails */ }
+
+        const chatMessage = {
+          id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+          gameId: parseInt(gameId),
+          senderId: socket.userId,
+          senderUsername: socket.username,
+          content: content.trim().substring(0, 500),
+          timestamp: new Date().toISOString(),
+          isPlayer: !!player
+        };
+
+        // Persist to DB immediately
+        try {
+          const dbHelpers = require("./db-helpers");
+          await dbHelpers.saveGameChatMessages(parseInt(gameId), [chatMessage]);
+        } catch (dbErr) {
+          console.error("Error persisting game chat:", dbErr);
+        }
+
+        // Broadcast to all in the game room
+        io.to(`game-${gameIdStr}`).emit("gameChatMessage", chatMessage);
+
+        // Notify opponent if they're not in the game room
+        if (player) {
+          const opponent = gameState.players.find(p => p.id !== socket.userId);
+          if (opponent) {
+            const opponentSocketId = userSockets.get(opponent.id);
+            let opponentInRoom = false;
+            if (opponentSocketId) {
+              const opponentSocket = io.sockets.sockets.get(opponentSocketId);
+              if (opponentSocket) {
+                opponentInRoom = opponentSocket.rooms.has(`game-${gameIdStr}`);
+              }
+            }
+            if (!opponentInRoom) {
+              try {
+                const dbHelpers = require("./db-helpers");
+                // Upsert: update existing unread game_chat notification or create new
+                const existing = await dbHelpers.query(
+                  `SELECT id FROM notifications WHERE user_id = ? AND type = 'game_chat' AND related_id = ? AND is_read = 0 LIMIT 1`,
+                  [opponent.id, parseInt(gameId)]
+                );
+                if (existing.length > 0) {
+                  await dbHelpers.query(
+                    `UPDATE notifications SET title = ?, content = ?, created_at = NOW() WHERE id = ?`,
+                    [`Chat from ${socket.username}`, content.trim().substring(0, 100), existing[0].id]
+                  );
+                  // Push updated notification to client
+                  if (opponentSocketId) {
+                    const [updatedNotif] = await dbHelpers.query(
+                      `SELECT * FROM notifications WHERE id = ?`, [existing[0].id]
+                    );
+                    if (updatedNotif) {
+                      io.to(opponentSocketId).emit('newNotification', { ...updatedNotif, sender_username: socket.username });
+                    }
+                  }
+                } else {
+                  const notification = await dbHelpers.createNotification({
+                    user_id: opponent.id,
+                    sender_id: socket.userId,
+                    type: 'game_chat',
+                    title: `Chat from ${socket.username}`,
+                    content: content.trim().substring(0, 100),
+                    related_id: parseInt(gameId),
+                    action_url: `/play/${gameId}`
+                  });
+                  // Push new notification to client
+                  if (opponentSocketId) {
+                    io.to(opponentSocketId).emit('newNotification', { ...notification, sender_username: socket.username });
+                  }
+                }
+                // Push updated count if opponent is online
+                if (opponentSocketId) {
+                  const unreadCount = await dbHelpers.getUnreadNotificationCount(opponent.id);
+                  io.to(opponentSocketId).emit('unreadNotificationCount', { unreadCount });
+                }
+              } catch (notifErr) {
+                console.error("Error creating game chat notification:", notifErr);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error in sendGameChat:", error);
+      }
+    });
+
+    // Request game chat history when joining a game
+    socket.on("getGameChatHistory", async ({ gameId }) => {
+      try {
+        const dbHelpers = require("./db-helpers");
+        const messages = await dbHelpers.getGameChatMessages(parseInt(gameId));
+        const formatted = messages.map(m => ({
+          id: m.id,
+          gameId: m.game_id,
+          senderId: m.sender_id,
+          senderUsername: m.sender_username,
+          content: m.content,
+          timestamp: m.created_at,
+          isPlayer: true
+        }));
+
+        // Check if either player has chat disabled
+        let chatDisabledBy = null;
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+        if (gameState && gameState.players) {
+          const playerIds = gameState.players.map(p => p.id).filter(Boolean);
+          if (playerIds.length > 0) {
+            try {
+              const [rows] = await db_pool.query(
+                `SELECT id, username, disable_game_chat FROM users WHERE id IN (${playerIds.map(() => '?').join(',')})`,
+                playerIds
+              );
+              const disabledUser = rows.find(r => r.disable_game_chat && r.id !== socket.userId);
+              if (disabledUser) {
+                chatDisabledBy = disabledUser.username;
+              }
+            } catch (e) { /* continue */ }
+          }
+        }
+
+        socket.emit("gameChatHistory", { gameId, messages: formatted, chatDisabledBy });
+      } catch (error) {
+        console.error("Error fetching game chat history:", error);
       }
     });
 
@@ -5265,6 +5459,119 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       }
     }
 
+    // Handle trample ability - damage all pieces in the straight-line path (and optionally surrounding squares)
+    const hasTrample = movingPiece.trample === 1 || movingPiece.trample === true;
+    if (hasTrample) {
+      const trampleDx = to.x - from.x;
+      const trampleDy = to.y - from.y;
+      const absTrampleDx = Math.abs(trampleDx);
+      const absTrampleDy = Math.abs(trampleDy);
+      
+      // Trample only works in straight lines (not L-shaped/ratio movement)
+      const isStraightLine = (trampleDx === 0 && trampleDy !== 0) || 
+                             (trampleDy === 0 && trampleDx !== 0) || 
+                             (absTrampleDx === absTrampleDy && absTrampleDx > 0);
+      
+      if (isStraightLine) {
+        const trampleRadius = movingPiece.trample_radius || 0;
+        const trampleAttackDamage = movingPiece.attack_damage || 1;
+        const trampledPieceIds = new Set(); // Track already-damaged pieces (each piece only damaged once)
+        const pieceOwner = movingPiece.team || movingPiece.player_id;
+        
+        // Don't re-damage pieces already hit by capture_on_hop
+        hoppedCaptures.forEach(p => trampledPieceIds.add(p.id));
+        damagedPieces.forEach(d => trampledPieceIds.add(d.id));
+        
+        const stepX = trampleDx > 0 ? 1 : trampleDx < 0 ? -1 : 0;
+        const stepY = trampleDy > 0 ? 1 : trampleDy < 0 ? -1 : 0;
+        
+        // Collect all squares affected by trample (path + radius around each step, including landing)
+        const affectedSquares = new Set();
+        const pathSquares = new Set(); // Track direct path squares separately from radius splash
+        let cx = from.x + stepX;
+        let cy = from.y + stepY;
+        
+        // Include all steps along the path AND the landing square surroundings
+        const pathSteps = [];
+        // Add intermediate steps
+        while (cx !== to.x || cy !== to.y) {
+          pathSteps.push({ x: cx, y: cy });
+          cx += stepX;
+          cy += stepY;
+        }
+        // Add landing square
+        pathSteps.push({ x: to.x, y: to.y });
+        
+        for (const step of pathSteps) {
+          // Add the path square itself
+          const pathKey = `${step.x},${step.y}`;
+          affectedSquares.add(pathKey);
+          pathSquares.add(pathKey);
+          
+          // Add surrounding squares within radius
+          if (trampleRadius > 0) {
+            for (let ry = -trampleRadius; ry <= trampleRadius; ry++) {
+              for (let rx = -trampleRadius; rx <= trampleRadius; rx++) {
+                affectedSquares.add(`${step.x + rx},${step.y + ry}`);
+              }
+            }
+          }
+        }
+        
+        // Also add radius around starting square (take off)
+        if (trampleRadius > 0) {
+          for (let ry = -trampleRadius; ry <= trampleRadius; ry++) {
+            for (let rx = -trampleRadius; rx <= trampleRadius; rx++) {
+              affectedSquares.add(`${from.x + rx},${from.y + ry}`);
+            }
+          }
+        }
+        
+        // Apply trample damage to all pieces on affected squares
+        console.log('[TRAMPLE] Affected squares:', [...affectedSquares]);
+        
+        for (const squareKey of affectedSquares) {
+          const [sx, sy] = squareKey.split(',').map(Number);
+          const targetPiece = findPieceAtSquare(pieces, sx, sy);
+          
+          if (!targetPiece) continue;
+          if (targetPiece.id === movingPiece.id) continue; // Don't damage self
+          if (trampledPieceIds.has(targetPiece.id)) continue; // Already damaged
+          if (targetPiece.cannot_be_captured) continue; // Immune to damage
+          
+          // Checkmateable pieces are immune to trample radius splash (but not direct path trample)
+          if (targetPiece.ends_game_on_checkmate && !pathSquares.has(squareKey)) continue;
+          
+          // Check if allied piece (trample only damages enemies unless can_capture_allies)
+          const targetOwner = targetPiece.team || targetPiece.player_id;
+          if (targetOwner === pieceOwner && !(movingPiece.can_capture_allies === 1 || movingPiece.can_capture_allies === true)) {
+            continue;
+          }
+          
+          trampledPieceIds.add(targetPiece.id);
+          
+          const prevHp = targetPiece.current_hp ?? targetPiece.hit_points ?? 1;
+          targetPiece.current_hp = Math.max(0, prevHp - trampleAttackDamage);
+          
+          if (targetPiece.current_hp <= 0) {
+            // Trampled piece killed
+            const trampledIndex = pieces.findIndex(p => p.id === targetPiece.id);
+            if (trampledIndex !== -1) {
+              pieces.splice(trampledIndex, 1);
+              hoppedCaptures.push(targetPiece);
+            }
+          } else {
+            // Trampled piece survived - apply burn if applicable
+            if (movingPiece.burn_damage > 0 && movingPiece.burn_duration > 0) {
+              targetPiece.burn_active_damage = movingPiece.burn_damage;
+              targetPiece.burn_active_turns = movingPiece.burn_duration;
+            }
+            damagedPieces.push({ id: targetPiece.id, damageDealt: trampleAttackDamage, previousHp: prevHp, remainingHp: targetPiece.current_hp });
+          }
+        }
+      }
+    }
+
     // Check for chain capture ability (can continue capturing after a capture)
     const hasChainCapture = movingPiece.chain_capture_enabled === 1 || movingPiece.chain_capture_enabled === true;
     const didCapture = capturedPiece !== null || hoppedCaptures.length > 0;
@@ -5995,7 +6302,10 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   
   // Check if path is blocked (for sliding pieces)
   // For multi-tile pieces, checks all sub-square parallel paths
+  // Ghostwalk: piece can pass through any piece
+  const hasGhostwalk = piece.ghostwalk === 1 || piece.ghostwalk === true;
   const isPathClear = (fromX, fromY, toX, toY) => {
+    if (hasGhostwalk) return true; // Ghostwalk ignores all blocking
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
     const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
@@ -6105,6 +6415,8 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
     if (isRatioMatch) {
       // For attacks, check attack-specific hopping first, then fallback to movement hopping
       // Also check chain_hop_allies which allows hopping over allies during chain capture sequences
+      // Ghostwalk can pass through everything
+      if (hasGhostwalk) return true;
       const canHopAllies = (piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true) ||
                            (piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true) ||
                            (piece.chain_hop_allies === 1 || piece.chain_hop_allies === true);
@@ -6283,17 +6595,19 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
     if (inRange) {
       // Use BFS traversal to check if target is reachable
       const occupied = new Set();
-      allPieces
-        .filter(p => p.id !== piece.id && !doesPieceOccupySquare(p, targetX, targetY))
-        .forEach(p => {
-          const pw = p.piece_width || 1;
-          const ph = p.piece_height || 1;
-          for (let dr = 0; dr < ph; dr++) {
-            for (let dc = 0; dc < pw; dc++) {
-              occupied.add(`${p.x + dc},${p.y + dr}`);
+      if (!hasGhostwalk) {
+        allPieces
+          .filter(p => p.id !== piece.id && !doesPieceOccupySquare(p, targetX, targetY))
+          .forEach(p => {
+            const pw = p.piece_width || 1;
+            const ph = p.piece_height || 1;
+            for (let dr = 0; dr < ph; dr++) {
+              for (let dc = 0; dc < pw; dc++) {
+                occupied.add(`${p.x + dc},${p.y + dr}`);
+              }
             }
-          }
-        });
+          });
+      }
 
       const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
       const visited = new Set([`${piece.x},${piece.y}`]);
@@ -6323,6 +6637,96 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
     }
   }
   
+  // Trample path attack: a piece with trample + hop/ghostwalk can threaten squares
+  // it passes through on the way to a destination beyond the target.
+  // Trample only works on straight lines (not ratio/L-shaped moves).
+  const hasTrampleAttack = piece.trample === 1 || piece.trample === true;
+  if (hasTrampleAttack) {
+    const isTrampleLine = (dx === 0 && dy !== 0) || (dy === 0 && dx !== 0) ||
+                          (absDx === absDy && absDx > 0);
+    if (isTrampleLine) {
+      // Piece must be able to pass through enemy pieces (to hop over the target)
+      const canHopEnemiesTr = hasGhostwalk ||
+        (piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true) ||
+        (piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true);
+
+      if (canHopEnemiesTr) {
+        const distToTarget = Math.max(absDx, absDy);
+
+        // Get movement/capture values for this direction
+        let cVal = 0, mVal = 0, cExact = false, mExact = false;
+        if (effectiveDx === 0 && effectiveDy < 0) {
+          cVal = piece.up_capture || 0; mVal = piece.up_movement || 0;
+          cExact = piece.up_capture_exact; mExact = piece.up_movement_exact;
+        } else if (effectiveDx === 0 && effectiveDy > 0) {
+          cVal = piece.down_capture || 0; mVal = piece.down_movement || 0;
+          cExact = piece.down_capture_exact; mExact = piece.down_movement_exact;
+        } else if (effectiveDy === 0 && effectiveDx < 0) {
+          cVal = piece.left_capture || 0; mVal = piece.left_movement || 0;
+          cExact = piece.left_capture_exact; mExact = piece.left_movement_exact;
+        } else if (effectiveDy === 0 && effectiveDx > 0) {
+          cVal = piece.right_capture || 0; mVal = piece.right_movement || 0;
+          cExact = piece.right_capture_exact; mExact = piece.right_movement_exact;
+        } else if (effectiveDx < 0 && effectiveDy < 0) {
+          cVal = piece.up_left_capture || 0; mVal = piece.up_left_movement || 0;
+          cExact = piece.up_left_capture_exact; mExact = piece.up_left_movement_exact;
+        } else if (effectiveDx > 0 && effectiveDy < 0) {
+          cVal = piece.up_right_capture || 0; mVal = piece.up_right_movement || 0;
+          cExact = piece.up_right_capture_exact; mExact = piece.up_right_movement_exact;
+        } else if (effectiveDx < 0 && effectiveDy > 0) {
+          cVal = piece.down_left_capture || 0; mVal = piece.down_left_movement || 0;
+          cExact = piece.down_left_capture_exact; mExact = piece.down_left_movement_exact;
+        } else if (effectiveDx > 0 && effectiveDy > 0) {
+          cVal = piece.down_right_capture || 0; mVal = piece.down_right_movement || 0;
+          cExact = piece.down_right_capture_exact; mExact = piece.down_right_movement_exact;
+        }
+
+        // Check if movement/capture range extends PAST the target (so target is in the path)
+        const canReachPast = (val, exact) => {
+          if (!val) return false;
+          const range = val === 99 ? 99 : Math.abs(val);
+          if (exact) {
+            // For repeating exact (e.g. exact=3 repeating → lands on 3, 6, 9...)
+            // any non-zero exact distance eventually exceeds distToTarget
+            const rep = piece.repeating_capture || piece.repeating;
+            if (rep) return range > 0;
+            return range > distToTarget;
+          }
+          return range === 99 || range > distToTarget;
+        };
+
+        if (canReachPast(cVal, cExact) || canReachPast(mVal, mExact)) {
+          // Check path from piece to target is traversable (hop-aware)
+          let pathOk = true;
+          if (!hasGhostwalk) {
+            const canHopAlliesTr = 
+              (piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true) ||
+              (piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true) ||
+              (piece.chain_hop_allies === 1 || piece.chain_hop_allies === true);
+            const trStepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+            const trStepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+            let cx = piece.x + trStepX;
+            let cy = piece.y + trStepY;
+            while (cx !== targetX || cy !== targetY) {
+              const blocking = findPieceAtSquare(allPieces, cx, cy);
+              if (blocking && blocking.id !== piece.id) {
+                const blockOwner = blocking.team || blocking.player_id;
+                const isAlly = blockOwner === pieceOwner;
+                if (!(isAlly ? canHopAlliesTr : canHopEnemiesTr)) {
+                  pathOk = false;
+                  break;
+                }
+              }
+              cx += trStepX;
+              cy += trStepY;
+            }
+          }
+          if (pathOk) return true;
+        }
+      }
+    }
+  }
+
   return false;
 }
 
@@ -6351,8 +6755,10 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   const canHopAlliesBase = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
   const canHopEnemiesBase = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
   const dirHopDisabled = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
+  const hasGhostwalkMove = piece.ghostwalk === 1 || piece.ghostwalk === true;
 
   const canHopOverPiece = (blocker) => {
+    if (hasGhostwalkMove) return true; // Ghostwalk ignores all blocking
     const blockerOwner = blocker.team || blocker.player_id;
     if (blockerOwner === pieceOwnerForHop) return canHopAlliesBase;
     return canHopEnemiesBase;
@@ -6361,7 +6767,9 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
   // Helper function to check if path is clear
   // For multi-tile pieces, checks all sub-square parallel paths
   // allowHop: when true, pieces in the path that can be hopped are skipped
+  // Ghostwalk: piece can pass through any piece
   const isPathClear = (fromX, fromY, toX, toY, allowHop = false) => {
+    if (hasGhostwalkMove) return true; // Ghostwalk ignores all blocking
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
     const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
@@ -6389,17 +6797,19 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
     if (maxSteps <= 0) return false;
 
     const occupied = new Set();
-    allPieces
-      .filter(p => p.id !== piece.id)
-      .forEach(p => {
-        const pw = p.piece_width || 1;
-        const ph = p.piece_height || 1;
-        for (let dr = 0; dr < ph; dr++) {
-          for (let dc = 0; dc < pw; dc++) {
-            occupied.add(`${p.x + dc},${p.y + dr}`);
+    if (!hasGhostwalkMove) {
+      allPieces
+        .filter(p => p.id !== piece.id)
+        .forEach(p => {
+          const pw = p.piece_width || 1;
+          const ph = p.piece_height || 1;
+          for (let dr = 0; dr < ph; dr++) {
+            for (let dc = 0; dc < pw; dc++) {
+              occupied.add(`${p.x + dc},${p.y + dr}`);
+            }
           }
-        }
-      });
+        });
+    }
 
     const queue = [{ x: fromX, y: fromY, steps: 0 }];
     const visited = new Set([`${fromX},${fromY}`]);
@@ -6530,8 +6940,8 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
       const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
       const pieceOwner = piece.team || piece.player_id;
       
-      // If can hop over everything, no need to check path
-      if (canHopAllies && canHopEnemies) {
+      // Ghostwalk or can hop over everything - no need to check path
+      if (hasGhostwalkMove || (canHopAllies && canHopEnemies)) {
         return true;
       }
       
@@ -6782,8 +7192,10 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   const canHopAlliesGen = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
   const canHopEnemiesGen = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
   const dirHopDisabledGen = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
+  const hasGhostwalkGen = piece.ghostwalk === 1 || piece.ghostwalk === true;
 
   const canHopOverPieceGen = (blocker) => {
+    if (hasGhostwalkGen) return true; // Ghostwalk ignores all blocking
     const blockerOwner = blocker.team || blocker.player_id;
     if (blockerOwner === pieceOwner) return canHopAlliesGen;
     return canHopEnemiesGen;
@@ -6792,7 +7204,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   // Helper to check if path is clear
   // For multi-tile pieces, checks all sub-square parallel paths
   // allowHop: when true, pieces in path that can be hopped are skipped
+  // Ghostwalk: piece can pass through any piece
   const isPathClear = (fromX, fromY, toX, toY, allowHop = false) => {
+    if (hasGhostwalkGen) return true; // Ghostwalk ignores all blocking
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
     const stepX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
@@ -6830,7 +7244,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
     }
     
     // Determine if hopping is allowed for this directional move
-    const canHopDir = (canHopAlliesGen || canHopEnemiesGen) && (!dirHopDisabledGen || exactFlag);
+    // Ghostwalk always allows passing through pieces
+    const canHopDir = hasGhostwalkGen || ((canHopAlliesGen || canHopEnemiesGen) && (!dirHopDisabledGen || exactFlag));
     
     const limit = maxDist === 99 ? Math.max(boardWidth, boardHeight) : Math.abs(maxDist);
     const exactDist = exactFlag ? Math.abs(maxDist) : 0;
@@ -6961,7 +7376,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       if (!isValidSquare(targetX, targetY)) continue;
       
       // Check if piece has NO hopping ability at all
-      const noHoppingAbility = !canHopAllies && !canHopEnemies;
+      const noHoppingAbility = !hasGhostwalkGen && !canHopAllies && !canHopEnemies;
       
       if (noHoppingAbility) {
         // If no hopping ability, path must be completely clear
@@ -7042,6 +7457,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         
         // Helper to check if piece can hop over an obstruction
         const canHopOver = (obstruction) => {
+          if (hasGhostwalkGen) return true; // Ghostwalk ignores all blocking
           const obstructionOwner = obstruction.team || obstruction.player_id;
           const isAlly = obstructionOwner === pieceOwner;
           return (isAlly && canHopAllies) || (!isAlly && canHopEnemies);
@@ -7135,13 +7551,15 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
 
           // Check intermediate landing positions are clear
           let intermediatesClear = true;
-          for (let j = 1; j < k; j++) {
-            const intX = piece.x + dx * j;
-            const intY = piece.y + dy * j;
-            const blocking = findPieceAtSquare(allPieces, intX, intY);
-            if (blocking && blocking.id !== piece.id) {
-              intermediatesClear = false;
-              break;
+          if (!hasGhostwalkGen) {
+            for (let j = 1; j < k; j++) {
+              const intX = piece.x + dx * j;
+              const intY = piece.y + dy * j;
+              const blocking = findPieceAtSquare(allPieces, intX, intY);
+              if (blocking && blocking.id !== piece.id) {
+                intermediatesClear = false;
+                break;
+              }
             }
           }
           if (!intermediatesClear) break;

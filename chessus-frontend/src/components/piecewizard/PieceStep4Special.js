@@ -348,6 +348,8 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             />
             <span>Can Capture Allied Pieces <InfoTooltip text="When enabled, this piece can capture friendly pieces using any of its attack methods (directional, ratio, or ranged). Useful for sacrifice-based mechanics." /></span>
           </label>
+
+
         </div>
       </div>
 

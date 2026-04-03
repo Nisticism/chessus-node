@@ -547,7 +547,11 @@ const getGameById = async (gameId) => {
         show_regen: Boolean(piece.show_regen),
         burn_damage: piece.burn_damage ?? 0,
         burn_duration: piece.burn_duration ?? 0,
-        show_burn: Boolean(piece.show_burn)
+        show_burn: Boolean(piece.show_burn),
+        // Trample & Ghostwalk
+        trample: Boolean(piece.trample),
+        trample_radius: piece.trample_radius ?? 0,
+        ghostwalk: Boolean(piece.ghostwalk)
       };
 
       // For multi-tile pieces, create extension square markers
@@ -602,7 +606,11 @@ const getPiecesForGameType = async (gameTypeId) => {
   const result = await query(`
     SELECT gtp.*, p.*,
       gtp.x, gtp.y, gtp.player_number,
-      gtp.id as junction_id
+      gtp.id as junction_id,
+      gtp.trample as trample,
+      gtp.trample_radius as trample_radius,
+      gtp.ghostwalk as ghostwalk,
+      gtp.cannot_be_captured as cannot_be_captured
     FROM chessusnode.game_type_pieces gtp
     INNER JOIN chessusnode.pieces p ON gtp.piece_id = p.id
     WHERE gtp.game_type_id = ?
@@ -626,11 +634,11 @@ const getPiecesForGameType = async (gameTypeId) => {
  * @param {boolean} canControlSquares - If true, this piece can control squares for the control squares win condition
  * @returns {Promise<Object>} Insert result
  */
-const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false) => {
+const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false, trample = false, trampleRadius = 0, ghostwalk = false) => {
   const result = await query(`
-    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen, burn_damage, burn_duration, show_burn)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0, burnDamage || 0, burnDuration || 0, showBurn ? 1 : 0]);
+    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen, burn_damage, burn_duration, show_burn, trample, trample_radius, ghostwalk)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0, burnDamage || 0, burnDuration || 0, showBurn ? 1 : 0, trample ? 1 : 0, trampleRadius || 0, ghostwalk ? 1 : 0]);
   return result;
 };
 
@@ -938,6 +946,112 @@ const hasEmailBeenSentForWeek = async (userId, weekStart) => {
   return result[0].count > 0;
 };
 
+// ----------------------- Direct Messages ---------------------------
+
+const sendDirectMessage = async (senderId, recipientId, content) => {
+  const result = await query(
+    `INSERT INTO direct_messages (sender_id, recipient_id, content) VALUES (?, ?, ?)`,
+    [senderId, recipientId, content]
+  );
+  const message = await query(
+    `SELECT dm.*, u.username as sender_username, u.profile_picture as sender_profile_picture
+     FROM direct_messages dm
+     JOIN users u ON dm.sender_id = u.id
+     WHERE dm.id = ?`,
+    [result.insertId]
+  );
+  return message[0];
+};
+
+const getConversations = async (userId) => {
+  const rows = await query(
+    `SELECT 
+       other_user.id as user_id,
+       other_user.username,
+       other_user.profile_picture,
+       latest.content as last_message,
+       latest.created_at as last_message_time,
+       latest.sender_id as last_sender_id,
+       COALESCE(unread.unread_count, 0) as unread_count
+     FROM (
+       SELECT 
+         CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id,
+         MAX(id) as max_id
+       FROM direct_messages
+       WHERE sender_id = ? OR recipient_id = ?
+       GROUP BY other_id
+     ) conv
+     JOIN direct_messages latest ON latest.id = conv.max_id
+     JOIN users other_user ON other_user.id = conv.other_id
+     LEFT JOIN (
+       SELECT sender_id, COUNT(*) as unread_count
+       FROM direct_messages
+       WHERE recipient_id = ? AND is_read = 0
+       GROUP BY sender_id
+     ) unread ON unread.sender_id = conv.other_id
+     ORDER BY latest.created_at DESC`,
+    [userId, userId, userId, userId]
+  );
+  return rows;
+};
+
+const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50) => {
+  const offset = (page - 1) * limit;
+  const messages = await query(
+    `SELECT dm.*, u.username as sender_username, u.profile_picture as sender_profile_picture
+     FROM direct_messages dm
+     JOIN users u ON dm.sender_id = u.id
+     WHERE (dm.sender_id = ? AND dm.recipient_id = ?) 
+        OR (dm.sender_id = ? AND dm.recipient_id = ?)
+     ORDER BY dm.created_at DESC
+     LIMIT ? OFFSET ?`,
+    [userId, otherUserId, otherUserId, userId, limit, offset]
+  );
+  return messages.reverse();
+};
+
+const markDirectMessagesRead = async (recipientId, senderId) => {
+  await query(
+    `UPDATE direct_messages SET is_read = 1 WHERE recipient_id = ? AND sender_id = ? AND is_read = 0`,
+    [recipientId, senderId]
+  );
+};
+
+const getUnreadDMCount = async (userId) => {
+  const result = await query(
+    "SELECT COUNT(*) as count FROM direct_messages WHERE recipient_id = ? AND is_read = 0",
+    [userId]
+  );
+  return result[0].count;
+};
+
+const checkFriendship = async (userId, otherUserId) => {
+  const rows = await query(
+    `SELECT status FROM friends WHERE user_id = ? AND friend_id = ? AND status = 'accepted' LIMIT 1`,
+    [userId, otherUserId]
+  );
+  return rows.length > 0;
+};
+
+// ----------------------- Game Chat ---------------------------
+
+const saveGameChatMessages = async (gameId, messages) => {
+  if (!messages || messages.length === 0) return;
+  const values = messages.map(m => [gameId, m.senderId || null, m.senderUsername, m.content, m.timestamp ? new Date(m.timestamp) : new Date()]);
+  await query(
+    `INSERT INTO game_chat_messages (game_id, sender_id, sender_username, content, created_at) VALUES ?`,
+    [values]
+  );
+};
+
+const getGameChatMessages = async (gameId) => {
+  const rows = await query(
+    `SELECT * FROM game_chat_messages WHERE game_id = ? ORDER BY created_at ASC`,
+    [gameId]
+  );
+  return rows;
+};
+
 module.exports = {
   query,
   findUserByUsername,
@@ -983,4 +1097,14 @@ module.exports = {
   getNotificationSummaryForUser,
   logNotificationEmail,
   hasEmailBeenSentForWeek,
+  // Direct Messages
+  sendDirectMessage,
+  getConversations,
+  getDirectMessages,
+  markDirectMessagesRead,
+  getUnreadDMCount,
+  checkFriendship,
+  // Game Chat
+  saveGameChatMessages,
+  getGameChatMessages,
 };

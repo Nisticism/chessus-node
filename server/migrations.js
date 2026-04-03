@@ -1,4 +1,4 @@
-﻿const db_pool = require("../configs/db");
+const db_pool = require("../configs/db");
 
 /**
  * Check if a table exists
@@ -2222,6 +2222,183 @@ Join us in revolutionizing chess, one variant at a time.
   } catch (err) {
     console.error('Error adding piece_count_condition column:', err.message);
   }
+
+  // Add trample column to pieces table for trample ability (damages all pieces in path)
+  try {
+    const trampleCol = await columnExists('pieces', 'trample');
+    if (!trampleCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN trample TINYINT(1) DEFAULT 0 COMMENT 'If true, this piece damages every piece in its straight-line path during movement'`,
+        "Add trample column to pieces table for trample ability"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding trample column:', err.message);
+  }
+
+  // Add trample_radius column to pieces table for trample area of effect
+  try {
+    const trampleRadiusCol = await columnExists('pieces', 'trample_radius');
+    if (!trampleRadiusCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN trample_radius INT DEFAULT 0 COMMENT 'Radius of trample effect (0-4). 0 = only path squares, 1+ = also affects surrounding squares at each step'`,
+        "Add trample_radius column to pieces table for trample area of effect"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding trample_radius column:', err.message);
+  }
+
+  // Add ghostwalk column to pieces table for passing through pieces
+  try {
+    const ghostwalkCol = await columnExists('pieces', 'ghostwalk');
+    if (!ghostwalkCol) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN ghostwalk TINYINT(1) DEFAULT 0 COMMENT 'If true, this piece can pass through any piece during movement'`,
+        "Add ghostwalk column to pieces table for ghostwalk ability"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding ghostwalk column:', err.message);
+  }
+
+  // Add trample, ghostwalk, trample_radius columns to game_type_pieces for per-placement overrides
+  try {
+    const gtpTrample = await columnExists('game_type_pieces', 'trample');
+    if (!gtpTrample) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN trample TINYINT(1) DEFAULT 0 COMMENT 'Per-placement trample override'`,
+        "Add trample column to game_type_pieces for per-placement override"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding trample to game_type_pieces:', err.message);
+  }
+
+  try {
+    const gtpTrampleRadius = await columnExists('game_type_pieces', 'trample_radius');
+    if (!gtpTrampleRadius) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN trample_radius INT DEFAULT 0 COMMENT 'Per-placement trample radius override'`,
+        "Add trample_radius column to game_type_pieces for per-placement override"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding trample_radius to game_type_pieces:', err.message);
+  }
+
+  try {
+    const gtpGhostwalk = await columnExists('game_type_pieces', 'ghostwalk');
+    if (!gtpGhostwalk) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN ghostwalk TINYINT(1) DEFAULT 0 COMMENT 'Per-placement ghostwalk override'`,
+        "Add ghostwalk column to game_type_pieces for per-placement override"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding ghostwalk to game_type_pieces:', err.message);
+  }
+
+  
+  // ===================== MESSAGING SYSTEM MIGRATIONS =====================
+  
+    // Create direct_messages table for private messaging
+    try {
+      const messagesExists = await tableExists('direct_messages');
+      if (!messagesExists) {
+        await runMigration(
+          `CREATE TABLE direct_messages (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sender_id INT UNSIGNED NOT NULL,
+            recipient_id INT UNSIGNED NOT NULL,
+            content TEXT NOT NULL,
+            is_read TINYINT(1) DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE,
+            INDEX idx_dm_sender (sender_id),
+            INDEX idx_dm_recipient (recipient_id),
+            INDEX idx_dm_conversation (sender_id, recipient_id, created_at),
+            INDEX idx_dm_unread (recipient_id, is_read)
+          )`,
+          "Create direct_messages table for private messaging"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error creating direct_messages table:', err.message);
+    }
+  
+    // Create game_chat_messages table for persisting in-game chat
+    try {
+      const gameChatExists = await tableExists('game_chat_messages');
+      if (!gameChatExists) {
+        await runMigration(
+          `CREATE TABLE game_chat_messages (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            game_id BIGINT UNSIGNED NOT NULL,
+            sender_id INT UNSIGNED,
+            sender_username VARCHAR(100) NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_gc_game (game_id),
+            INDEX idx_gc_game_time (game_id, created_at)
+          )`,
+          "Create game_chat_messages table for persisting in-game chat"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error creating game_chat_messages table:', err.message);
+    }
+  
+    // Add allow_non_friend_dms column to users (default 0 = friends only)
+    try {
+      const allowDmsCol = await columnExists('users', 'allow_non_friend_dms');
+      if (!allowDmsCol) {
+        await runMigration(
+          "ALTER TABLE users ADD COLUMN allow_non_friend_dms TINYINT(1) DEFAULT 0 COMMENT 'If true, allows DMs from non-friends'",
+          "Add allow_non_friend_dms column to users table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding allow_non_friend_dms column:', err.message);
+    }
+  
+    // Add disable_game_chat column to users (default 0 = chat enabled)
+    try {
+      const disableChatCol = await columnExists('users', 'disable_game_chat');
+      if (!disableChatCol) {
+        await runMigration(
+          "ALTER TABLE users ADD COLUMN disable_game_chat TINYINT(1) DEFAULT 0 COMMENT 'If true, game chat is disabled for this user'",
+          "Add disable_game_chat column to users table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding disable_game_chat column:', err.message);
+    }
+
+    // Add sound_enabled column to users (default 0 = sound off)
+    try {
+      const soundCol = await columnExists('users', 'sound_enabled');
+      if (!soundCol) {
+        await runMigration(
+          "ALTER TABLE users ADD COLUMN sound_enabled TINYINT(1) DEFAULT 0 COMMENT 'If true, sound effects are enabled in games'",
+          "Add sound_enabled column to users table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding sound_enabled column:', err.message);
+    }
 
   if (migrationsRun === 0) {
     console.log('âœ“ All migrations up to date\n');

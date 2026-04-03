@@ -349,6 +349,10 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               burn_damage: pieceData.burn_damage ?? 0,
               burn_duration: pieceData.burn_duration ?? 0,
               show_burn: pieceData.show_burn ?? false,
+              // Trample & Ghostwalk
+              trample: pieceData.trample || false,
+              trample_radius: pieceData.trample_radius ?? 0,
+              ghostwalk: pieceData.ghostwalk || false,
               // Castling override data
               manual_castling_partners: pieceData.manual_castling_partners || false,
               castling_partner_left_key: pieceData.castling_partner_left_key || null,
@@ -409,6 +413,10 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             burn_damage: pieceData.burn_damage ?? 0,
             burn_duration: pieceData.burn_duration ?? 0,
             show_burn: pieceData.show_burn ?? false,
+            // Trample & Ghostwalk
+            trample: pieceData.trample || false,
+            trample_radius: pieceData.trample_radius ?? 0,
+            ghostwalk: pieceData.ghostwalk || false,
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
             castling_partner_right_key: pieceData.castling_partner_right_key || null,
@@ -1106,6 +1114,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         castling_partner_left_key: mirroredLeftKey,
         castling_partner_right_key: mirroredRightKey,
         castling_distance: sourcePiece.castling_distance ?? 2,
+        trample: sourcePiece.trample ?? false,
+        trample_radius: sourcePiece.trample_radius ?? 0,
+        ghostwalk: sourcePiece.ghostwalk ?? false,
         piece_width: pw,
         piece_height: ph,
         player_id: targetPlayerId,
@@ -1388,47 +1399,74 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         )}
       </div>
 
-      {/* Global HP/AD Settings — collapsible */}
+      {/* Global Combat Settings — collapsible */}
       <div className={styles["global-hp-ad-section"]}>
         <h3
           className={styles["collapsible-header"]}
           onClick={() => setHpAdSectionOpen(prev => !prev)}
         >
           <span className={styles["collapse-chevron"]} style={{ transform: hpAdSectionOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-          Global HP/AD Settings
-          <InfoTooltip text="These settings apply to all pieces in the game. Individual piece HP/AD settings are configured per-placement in the piece selector." />
+          Global Combat Settings
+          <InfoTooltip text="These settings apply to all pieces in the game. Individual piece combat settings are configured per-placement in the piece selector." />
         </h3>
         {hpAdSectionOpen && (
         <>
         <div className={styles["global-hp-ad-row"]}>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={(() => {
-                try { return JSON.parse(gameData.other_game_data || '{}').show_all_hp_ad || false; } catch { return false; }
-              })()}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                try {
-                  const data = JSON.parse(gameData.other_game_data || '{}');
-                  data.show_all_hp_ad = checked;
-                  updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
-                } catch {
-                  updateGameData({ other_game_data: JSON.stringify({ show_all_hp_ad: checked }, null, 2) });
-                }
-                // Also update show_hp_ad on all existing placements
-                setPiecePlacements(prev => {
-                  const updated = { ...prev };
-                  Object.keys(updated).forEach(key => {
-                    if (!updated[key]._occupied) {
-                      updated[key] = { ...updated[key], show_hp_ad: checked };
-                    }
-                  });
-                  return updated;
-                });
-              }}
-            />
+          <label className={styles["toggle-label"]}>
+            <span>Show all badges on all pieces <InfoTooltip text="Force-show HP/AD, Regen, and Burn badges on every piece during gameplay. Overrides all individual per-piece badge settings." /></span>
+            <div className={styles["toggle-switch"]}>
+              <input
+                type="checkbox"
+                checked={(() => {
+                  try { return JSON.parse(gameData.other_game_data || '{}').show_all_badges || false; } catch { return false; }
+                })()}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  try {
+                    const data = JSON.parse(gameData.other_game_data || '{}');
+                    data.show_all_badges = checked;
+                    updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+                  } catch {
+                    updateGameData({ other_game_data: JSON.stringify({ show_all_badges: checked }, null, 2) });
+                  }
+                }}
+              />
+              <span className={styles["toggle-slider"]}></span>
+            </div>
+          </label>
+        </div>
+        <div className={styles["global-hp-ad-row"]}>
+          <label className={styles["toggle-label"]}>
             <span>Show HP/AD on all pieces <InfoTooltip text="Toggle HP bars and AD badges on every piece. Also sets each piece's individual show setting." /></span>
+            <div className={styles["toggle-switch"]}>
+              <input
+                type="checkbox"
+                checked={(() => {
+                  try { return JSON.parse(gameData.other_game_data || '{}').show_all_hp_ad || false; } catch { return false; }
+                })()}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  try {
+                    const data = JSON.parse(gameData.other_game_data || '{}');
+                    data.show_all_hp_ad = checked;
+                    updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+                  } catch {
+                    updateGameData({ other_game_data: JSON.stringify({ show_all_hp_ad: checked }, null, 2) });
+                  }
+                  // Also update show_hp_ad on all existing placements
+                  setPiecePlacements(prev => {
+                    const updated = { ...prev };
+                    Object.keys(updated).forEach(key => {
+                      if (!updated[key]._occupied) {
+                        updated[key] = { ...updated[key], show_hp_ad: checked };
+                      }
+                    });
+                    return updated;
+                  });
+                }}
+              />
+              <span className={styles["toggle-slider"]}></span>
+            </div>
           </label>
         </div>
         <div className={styles["global-hp-ad-row"]}>
@@ -1451,27 +1489,10 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             options={{ min: 0, max: 100 }}
           />
         </div>
-        <div className={styles["global-hp-ad-row"]}>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={(() => {
-                try { return JSON.parse(gameData.other_game_data || '{}').show_all_badges || false; } catch { return false; }
-              })()}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                try {
-                  const data = JSON.parse(gameData.other_game_data || '{}');
-                  data.show_all_badges = checked;
-                  updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
-                } catch {
-                  updateGameData({ other_game_data: JSON.stringify({ show_all_badges: checked }, null, 2) });
-                }
-              }}
-            />
-            <span>Show all badges on all pieces <InfoTooltip text="Toggle HP/AD, Regen, and Burn badges on every piece during gameplay. Individual per-piece badge settings are ignored when this is on." /></span>
-          </label>
-        </div>
+        <p style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+          HP/AD system inspired by ideas from Vasilije — thanks! Check out his project at{' '}
+          <a href="https://www.nichess.org/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--link-color, #58a6ff)' }}>nichess.org</a>
+        </p>
         </>
         )}
       </div>

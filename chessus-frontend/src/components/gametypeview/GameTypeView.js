@@ -16,6 +16,7 @@ import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
+import InfoTooltip from "../piecewizard/InfoTooltip";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -851,6 +852,41 @@ const GameTypeView = () => {
       specialRulesContent.push(`**Capture on Hop**\nSome pieces capture by hopping over enemy pieces, like in checkers. When a piece jumps over an enemy, the enemy is captured and removed from the board.\n\n${hopDesc}\n\n**Capture on Hop Rules:**\n• The piece must jump over an adjacent enemy to an empty square beyond\n• The hopped-over enemy piece is captured and removed\n${hopCapturePieces.some(p => (pieceDataMap[p.id] || p).chain_capture_enabled) ? '• **Chain Capture**: After capturing, the piece can continue jumping to capture more enemies in the same turn\n• Chain captures are optional — you can stop after any jump\n' : ''}`);
     }
 
+    // Trample ability
+    const tramplePieces = Object.values(uniquePieces).filter(piece => {
+      const pieceData = pieceDataMap[piece.id] || piece;
+      return pieceData.trample;
+    });
+
+    if (tramplePieces.length > 0) {
+      const trampleDesc = tramplePieces.map(piece => {
+        const pieceData = pieceDataMap[piece.id] || piece;
+        const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+        const radius = pieceData.trample_radius || 0;
+        const hasGhostwalk = pieceData.ghostwalk;
+        return `• **${pieceName}** tramples pieces in its path${radius > 0 ? ` (radius ${radius})` : ''}${hasGhostwalk ? ' + Ghostwalk' : ''}`;
+      }).join('\n');
+
+      specialRulesContent.push(`**Trample**\nSome pieces damage every piece in their straight-line path as they move.\n\n${trampleDesc}\n\n**Trample Rules:**\n• The piece damages all pieces along its movement path\n• Works with directional and exact movement (not L-shaped/ratio movement)\n• Trample can cause check — a piece with trample and hop abilities threatens squares along its path\n• The piece must still make a valid move — it can be blocked unless it has Ghostwalk or hop abilities\n${tramplePieces.some(p => (pieceDataMap[p.id] || p).trample_radius > 0) ? '• **Trample Radius**: Pieces with a radius also damage pieces on surrounding squares at each step along the path\n• Checkmateable pieces (e.g. kings) are immune to trample radius splash damage — they can only be harmed by direct path trample\n• Each piece can only be damaged once per trample, even if caught in multiple steps\n' : ''}`);
+    }
+
+    // Ghostwalk ability
+    const ghostwalkPieces = Object.values(uniquePieces).filter(piece => {
+      const pieceData = pieceDataMap[piece.id] || piece;
+      return pieceData.ghostwalk;
+    });
+
+    if (ghostwalkPieces.length > 0) {
+      const ghostDesc = ghostwalkPieces.map(piece => {
+        const pieceData = pieceDataMap[piece.id] || piece;
+        const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+        const hasTrample = pieceData.trample;
+        return `• **${pieceName}** can pass through any piece${hasTrample ? ' (with Trample — damages pieces along the way)' : ''}`;
+      }).join('\n');
+
+      specialRulesContent.push(`**Ghostwalk**\nSome pieces can pass through any other piece during movement.\n\n${ghostDesc}\n\n**Ghostwalk Rules:**\n• The piece ignores all pieces in its path — nothing can block it\n• The piece can still capture normally at its destination\n• Combined with Trample, the piece damages every piece it passes through`);
+    }
+
     // Promotion squares information
     if (Object.keys(specialSquares.promotion).length > 0) {
       // Find pieces that can promote
@@ -1442,19 +1478,31 @@ const GameTypeView = () => {
 
         <div className={styles["stats-grid"]}>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Board Size</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Board Size</span>
+              <InfoTooltip text="The dimensions of the game board (width × height)" />
+            </div>
             <span className={styles["stat-value"]}>{game.board_width} × {game.board_height}</span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Players</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Players</span>
+              <InfoTooltip text="Number of players in this game type" />
+            </div>
             <span className={styles["stat-value"]}>{game.player_count}</span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Actions per Turn</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Actions per Turn</span>
+              <InfoTooltip text="How many actions each player can take on their turn (moves, captures, or ranged attacks)" />
+            </div>
             <span className={styles["stat-value"]}>{game.actions_per_turn || 1}</span>
           </div>
           <div className={styles["stat-card"]}>
-            <span className={styles["stat-label"]}>Pieces</span>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Pieces</span>
+              <InfoTooltip text="Total number of unique pieces placed on the starting board" />
+            </div>
             <span className={styles["stat-value"]}>{Object.values(piecePlacements).filter(p => !p._occupied).length}</span>
           </div>
         </div>

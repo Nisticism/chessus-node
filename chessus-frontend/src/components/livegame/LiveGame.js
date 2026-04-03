@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
+import axios from "axios";
+import authHeader from "../../services/auth-header";
 import { useSocket } from "../../contexts/SocketContext";
 import styles from "./livegame.module.scss";
 import soundManager from "../../utils/soundEffects";
@@ -8,6 +10,7 @@ import PromotionModal from "./PromotionModal";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
+import GameChat from "./GameChat";
 import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
@@ -21,6 +24,7 @@ import {
   isDestinationClear
 } from "../../helpers/pieceMovementUtils";
 
+const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
 // Helper to parse image_location and get the first image URL
@@ -96,6 +100,7 @@ const parsePieces = (pieces) => {
 const LiveGame = () => {
   const { gameId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { user: currentUser } = useSelector((state) => state.authReducer);
   
   const { 
@@ -136,8 +141,10 @@ const LiveGame = () => {
   const [showMovableIndicators, setShowMovableIndicators] = useState(false);
   const [showPromotionSquares, setShowPromotionSquares] = useState(false);
   const [showCastlingInfo, setShowCastlingInfo] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(false);
-  const soundEnabledRef = useRef(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    return currentUser?.sound_enabled === 1 || currentUser?.sound_enabled === true;
+  });
+  const soundEnabledRef = useRef(currentUser?.sound_enabled === 1 || currentUser?.sound_enabled === true);
   const [premove, setPremove] = useState(null); // Store premove {from, to, pieceId}
   const [showPromotionModal, setShowPromotionModal] = useState(false);
   const [promotionData, setPromotionData] = useState(null); // {pieceId, options, promotingPiece}
@@ -151,6 +158,7 @@ const LiveGame = () => {
   const [windowHeight, setWindowHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 1080);
 
   const boardAnimationsEnabled = typeof window !== 'undefined' && localStorage.getItem('boardAnimations') !== 'false';
+  const pieceShadowEnabled = typeof window !== 'undefined' && localStorage.getItem('pieceShadow') === 'true';
 
   // Ranged attack state
   const [rangedAttackSource, setRangedAttackSource] = useState(null);
@@ -160,6 +168,23 @@ const LiveGame = () => {
   const rightClickDataRef = useRef(null);
   const [isRightClickActive, setIsRightClickActive] = useState(false);
   const [rangedSelectedPiece, setRangedSelectedPiece] = useState(null); // for right-click-twice mode
+
+  // Helper to persist a user preference to the server and local storage
+  const updateUserPreference = useCallback(async (key, value) => {
+    if (!currentUser) return;
+    try {
+      await axios.put(
+        `${API_URL}users/${currentUser.id}/messaging-preferences`,
+        { [key]: value },
+        { headers: authHeader() }
+      );
+      const updatedUser = { ...currentUser, [key]: value ? 1 : 0 };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      dispatch({ type: "UPDATE_USER_PREFERENCES", payload: { user: updatedUser } });
+    } catch (err) {
+      console.error(`Error saving ${key} preference:`, err);
+    }
+  }, [currentUser, dispatch]);
 
   // Track window size for responsive board sizing
   useEffect(() => {
@@ -1115,6 +1140,10 @@ const LiveGame = () => {
 
   // Check if path is clear for sliding pieces (no pieces in between)
   const isPathClear = useCallback((fromX, fromY, toX, toY, pieces, pieceData, isCapture = false) => {
+    // Ghostwalk: piece can pass through any piece
+    const hasGhostwalk = pieceData?.ghostwalk === 1 || pieceData?.ghostwalk === true;
+    if (hasGhostwalk) return true;
+
     const directionalHopDisabled = pieceData?.directional_hop_disabled === 1 || pieceData?.directional_hop_disabled === true;
     const canHopAllies = !directionalHopDisabled && (pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true);
     const canHopEnemies = !directionalHopDisabled && (pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true);
@@ -1221,9 +1250,10 @@ const LiveGame = () => {
   const checkRatioPathClear = useCallback((piece, targetX, targetY, pieces) => {
     const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
     const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+    const hasGhostwalk = piece.ghostwalk === 1 || piece.ghostwalk === true;
     
-    // If can hop over everything, path is always clear
-    if (canHopAllies && canHopEnemies) {
+    // If ghostwalk or can hop over everything, path is always clear
+    if (hasGhostwalk || (canHopAllies && canHopEnemies)) {
       return true;
     }
     
@@ -1286,16 +1316,20 @@ const LiveGame = () => {
       return false;
     }
 
+    const hasGhostwalk = piece.ghostwalk === 1 || piece.ghostwalk === true;
+
     const occupied = new Set();
-    pieces.filter(p => p.id !== piece.id).forEach(p => {
-      const pw = p.piece_width || 1;
-      const ph = p.piece_height || 1;
-      for (let dy = 0; dy < ph; dy++) {
-        for (let dx = 0; dx < pw; dx++) {
-          occupied.add(`${p.x + dx},${p.y + dy}`);
+    if (!hasGhostwalk) {
+      pieces.filter(p => p.id !== piece.id).forEach(p => {
+        const pw = p.piece_width || 1;
+        const ph = p.piece_height || 1;
+        for (let dy = 0; dy < ph; dy++) {
+          for (let dx = 0; dx < pw; dx++) {
+            occupied.add(`${p.x + dx},${p.y + dy}`);
+          }
         }
-      }
-    });
+      });
+    }
 
     const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
     const visited = new Set([`${piece.x},${piece.y}`]);
@@ -3059,6 +3093,7 @@ const LiveGame = () => {
                       style={{
                         width: '100%',
                         height: '100%',
+                        ...(pieceShadowEnabled ? { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } : {})
                       }}
                     />
                   ) : (
@@ -3066,6 +3101,7 @@ const LiveGame = () => {
                       src={imageUrl} 
                       alt={piece.piece_name || piece.name || 'piece'} 
                       draggable={false}
+                      {...(pieceShadowEnabled ? { style: { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } } : {})}
                       onError={(e) => {
                         console.error('Failed to load piece image:', {
                           src: imageUrl,
@@ -3447,6 +3483,9 @@ const LiveGame = () => {
               </div>
             </div>
 
+            {/* In-Game Chat */}
+            <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} />
+
             {/* Your Clock */}
             <div className={`
               ${styles["player-clock"]} 
@@ -3582,16 +3621,27 @@ const LiveGame = () => {
             <div className={styles["move-history"]}>
               <h3>Move History</h3>
               <div className={styles["moves-list"]}>
-                {(gameState.moveHistory || []).map((move, index) => (
-                  <div key={index} className={styles["move-row"]}>
-                    <span className={styles["move-number"]}>{Math.floor(index / 2) + 1}.</span>
-                    <span className={index % 2 === 0 ? styles["move-white"] : styles["move-black"]}>
-                      {formatMoveNotation(move)}
-                    </span>
-                  </div>
-                ))}
+                <div className={styles["moves-header"]}>
+                  <span className={styles["move-number-header"]}>#</span>
+                  <span className={styles["move-col-header"]}>P1</span>
+                  <span className={styles["move-col-header"]}>P2</span>
+                </div>
+                {(() => {
+                  const moves = gameState.moveHistory || [];
+                  const rows = [];
+                  for (let i = 0; i < moves.length; i += 2) {
+                    rows.push(
+                      <div key={i} className={styles["move-row"]}>
+                        <span className={styles["move-number"]}>{Math.floor(i / 2) + 1}.</span>
+                        <span className={styles["move-white"]}>{formatMoveNotation(moves[i])}</span>
+                        <span className={styles["move-black"]}>{moves[i + 1] ? formatMoveNotation(moves[i + 1]) : ''}</span>
+                      </div>
+                    );
+                  }
+                  return rows;
+                })()}
                 {(!gameState.moveHistory || gameState.moveHistory.length === 0) && (
-                  <div style={{ color: '#666', textAlign: 'center', padding: '20px' }}>
+                  <div style={{ color: '#666', textAlign: 'center', padding: '12px' }}>
                     No moves yet
                   </div>
                 )}
@@ -3600,45 +3650,71 @@ const LiveGame = () => {
 
             {/* Game Options */}
             <div className={styles["game-options"]}>
-              <h3>Options</h3>
-            <label className={styles["option-checkbox"]}>
-              <input
-                type="checkbox"
-                checked={showMovableIndicators}
-                onChange={(e) => setShowMovableIndicators(e.target.checked)}
-              />
+              <div className={styles["options-header"]}>
+                <h3>Options</h3>
+                <button
+                  className={`${styles["sound-toggle-btn"]} ${soundEnabled ? styles["sound-on"] : styles["sound-off"]}`}
+                  onClick={() => {
+                    const enabled = !soundEnabled;
+                    setSoundEnabled(enabled);
+                    soundEnabledRef.current = enabled;
+                    updateUserPreference('sound_enabled', enabled);
+                  }}
+                  title={soundEnabled ? 'Mute sound effects' : 'Unmute sound effects'}
+                >
+                  {soundEnabled ? '🔊' : '🔇'}
+                </button>
+              </div>
+            <label className={styles["option-toggle"]}>
               <span>Show movable pieces</span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={showMovableIndicators}
+                  onChange={(e) => setShowMovableIndicators(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
             </label>
             {Object.keys(specialSquares.promotion).length > 0 && (
-              <label className={styles["option-checkbox"]}>
-                <input
-                  type="checkbox"
-                  checked={showPromotionSquares}
-                  onChange={(e) => setShowPromotionSquares(e.target.checked)}
-                />
+              <label className={styles["option-toggle"]}>
                 <span>Show promotion squares</span>
+                <div className={styles["toggle-switch"]}>
+                  <input
+                    type="checkbox"
+                    checked={showPromotionSquares}
+                    onChange={(e) => setShowPromotionSquares(e.target.checked)}
+                  />
+                  <span className={styles["toggle-slider"]} />
+                </div>
               </label>
             )}
-            <label className={styles["option-checkbox"]}>
-              <input
-                type="checkbox"
-                checked={soundEnabled}
-                onChange={(e) => {
-                  const enabled = e.target.checked;
-                  setSoundEnabled(enabled);
-                  soundEnabledRef.current = enabled;
-                }}
-              />
-              <span>Enable sound effects</span>
-            </label>
+            {currentUser && (
+              <label className={styles["option-toggle"]}>
+                <span>Disable chat</span>
+                <div className={styles["toggle-switch"]}>
+                  <input
+                    type="checkbox"
+                    checked={currentUser.disable_game_chat === 1 || currentUser.disable_game_chat === true}
+                    onChange={(e) => {
+                      updateUserPreference('disable_game_chat', e.target.checked);
+                    }}
+                  />
+                  <span className={styles["toggle-slider"]} />
+                </div>
+              </label>
+            )}
             {castlingInfo.length > 0 && (
-              <label className={styles["option-checkbox"]}>
-                <input
-                  type="checkbox"
-                  checked={showCastlingInfo}
-                  onChange={(e) => setShowCastlingInfo(e.target.checked)}
-                />
+              <label className={styles["option-toggle"]}>
                 <span>Show castling info</span>
+                <div className={styles["toggle-switch"]}>
+                  <input
+                    type="checkbox"
+                    checked={showCastlingInfo}
+                    onChange={(e) => setShowCastlingInfo(e.target.checked)}
+                  />
+                  <span className={styles["toggle-slider"]} />
+                </div>
               </label>
             )}
             
@@ -3806,6 +3882,11 @@ const LiveGame = () => {
         </div>
       </div>
 
+      {/* Mobile Chat - Only visible on small screens, below bottom clock */}
+      <div className={styles["layout-row-mobile-chat"]}>
+        <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} />
+      </div>
+
       {/* Running Piece Count - below bottom clock */}
       {!!gameState.gameType?.piece_count_condition && gameState.pieces?.length > 0 && (
         <div className={styles["piece-count-tracker"]}>
@@ -3921,16 +4002,27 @@ const LiveGame = () => {
         <div className={styles["move-history"]}>
           <h3>Move History</h3>
           <div className={styles["moves-list"]}>
-            {(gameState.moveHistory || []).map((move, index) => (
-              <div key={index} className={styles["move-row"]}>
-                <span className={styles["move-number"]}>{Math.floor(index / 2) + 1}.</span>
-                <span className={index % 2 === 0 ? styles["move-white"] : styles["move-black"]}>
-                  {formatMoveNotation(move)}
-                </span>
-              </div>
-            ))}
+            <div className={styles["moves-header"]}>
+              <span className={styles["move-number-header"]}>#</span>
+              <span className={styles["move-col-header"]}>P1</span>
+              <span className={styles["move-col-header"]}>P2</span>
+            </div>
+            {(() => {
+              const moves = gameState.moveHistory || [];
+              const rows = [];
+              for (let i = 0; i < moves.length; i += 2) {
+                rows.push(
+                  <div key={i} className={styles["move-row"]}>
+                    <span className={styles["move-number"]}>{Math.floor(i / 2) + 1}.</span>
+                    <span className={styles["move-white"]}>{formatMoveNotation(moves[i])}</span>
+                    <span className={styles["move-black"]}>{moves[i + 1] ? formatMoveNotation(moves[i + 1]) : ''}</span>
+                  </div>
+                );
+              }
+              return rows;
+            })()}
             {(!gameState.moveHistory || gameState.moveHistory.length === 0) && (
-              <div style={{ color: '#666', textAlign: 'center', padding: '20px' }}>
+              <div style={{ color: '#666', textAlign: 'center', padding: '12px' }}>
                 No moves yet
               </div>
             )}
@@ -3938,45 +4030,71 @@ const LiveGame = () => {
         </div>
 
         <div className={styles["game-options"]}>
-          <h3>Options</h3>
-          <label className={styles["option-checkbox"]}>
-            <input
-              type="checkbox"
-              checked={showMovableIndicators}
-              onChange={(e) => setShowMovableIndicators(e.target.checked)}
-            />
-            <span>Show movable pieces</span>
-          </label>
-          {Object.keys(specialSquares.promotion).length > 0 && (
-            <label className={styles["option-checkbox"]}>
-              <input
-                type="checkbox"
-                checked={showPromotionSquares}
-                onChange={(e) => setShowPromotionSquares(e.target.checked)}
-              />
-              <span>Show promotion squares</span>
-            </label>
-          )}
-          <label className={styles["option-checkbox"]}>
-            <input
-              type="checkbox"
-              checked={soundEnabled}
-              onChange={(e) => {
-                const enabled = e.target.checked;
+          <div className={styles["options-header"]}>
+            <h3>Options</h3>
+            <button
+              className={`${styles["sound-toggle-btn"]} ${soundEnabled ? styles["sound-on"] : styles["sound-off"]}`}
+              onClick={() => {
+                const enabled = !soundEnabled;
                 setSoundEnabled(enabled);
                 soundEnabledRef.current = enabled;
+                updateUserPreference('sound_enabled', enabled);
               }}
-            />
-            <span>Enable sound effects</span>
-          </label>
-          {castlingInfo.length > 0 && (
-            <label className={styles["option-checkbox"]}>
+              title={soundEnabled ? 'Mute sound effects' : 'Unmute sound effects'}
+            >
+              {soundEnabled ? '🔊' : '🔇'}
+            </button>
+          </div>
+          <label className={styles["option-toggle"]}>
+            <span>Show movable pieces</span>
+            <div className={styles["toggle-switch"]}>
               <input
                 type="checkbox"
-                checked={showCastlingInfo}
-                onChange={(e) => setShowCastlingInfo(e.target.checked)}
+                checked={showMovableIndicators}
+                onChange={(e) => setShowMovableIndicators(e.target.checked)}
               />
+              <span className={styles["toggle-slider"]} />
+            </div>
+          </label>
+          {Object.keys(specialSquares.promotion).length > 0 && (
+            <label className={styles["option-toggle"]}>
+              <span>Show promotion squares</span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={showPromotionSquares}
+                  onChange={(e) => setShowPromotionSquares(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+          )}
+          {currentUser && (
+            <label className={styles["option-toggle"]}>
+              <span>Disable chat</span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={currentUser.disable_game_chat === 1 || currentUser.disable_game_chat === true}
+                  onChange={(e) => {
+                    updateUserPreference('disable_game_chat', e.target.checked);
+                  }}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+          )}
+          {castlingInfo.length > 0 && (
+            <label className={styles["option-toggle"]}>
               <span>Show castling info</span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={showCastlingInfo}
+                  onChange={(e) => setShowCastlingInfo(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
             </label>
           )}
           
