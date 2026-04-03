@@ -43,9 +43,14 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
   const [visibleImageCount, setVisibleImageCount] = useState(2);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [libraryTargetIndex, setLibraryTargetIndex] = useState(0);
-  const [libraryFilter, setLibraryFilter] = useState('All');
   const [libraryColorFilter, setLibraryColorFilter] = useState('All');
+  const [libraryTypeFilter, setLibraryTypeFilter] = useState('All');
+  const [libraryCategoryFilter, setLibraryCategoryFilter] = useState('All');
+  const [libraryStyleFilter, setLibraryStyleFilter] = useState('All');
+  const [categorySectionOpen, setCategorySectionOpen] = useState(false);
   const [brightnessWarning, setBrightnessWarning] = useState('');
+  const [libraryPage, setLibraryPage] = useState(1);
+  const LIBRARY_PAGE_SIZE = 60;
   const fileInputRefs = useRef([]);
 
   // Check brightness whenever both P1 and P2 previews are set
@@ -217,13 +222,45 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
     }
   };
 
-  const libraryCategories = ['All', ...new Set(pieceImageLibrary.map(img => img.category))];
   const libraryColorOptions = ['All', 'White', 'Black'];
+  const libraryTypeOptions = ['All', 'Pawn', 'Knight', 'Bishop', 'Rook', 'Queen', 'King', 'Other'];
+  const libraryCategories = ['All', ...new Set(pieceImageLibrary.map(img => img.category).filter(c => c !== 'Legacy'))].sort((a, b) => a === 'All' ? -1 : b === 'All' ? 1 : a.localeCompare(b));
+
+  // Styles available for the selected category
+  const libraryStyles = libraryCategoryFilter !== 'All'
+    ? ['All', ...new Set(pieceImageLibrary.filter(img => img.category === libraryCategoryFilter && img.style).map(img => img.style))].sort((a, b) => a === 'All' ? -1 : b === 'All' ? 1 : a.localeCompare(b))
+    : [];
+
+  // Credit for the selected category/style (if consistent)
+  const selectedCredit = (() => {
+    if (libraryCategoryFilter === 'All') return null;
+    const relevant = pieceImageLibrary.filter(img => {
+      if (img.category !== libraryCategoryFilter) return false;
+      if (libraryStyleFilter !== 'All' && img.style !== libraryStyleFilter) return false;
+      return true;
+    });
+    const credits = relevant.filter(img => img.credit).map(img => img.credit);
+    if (credits.length === 0) return null;
+    // Check if all same author
+    const firstAuthor = credits[0].author;
+    const allSame = credits.every(c => c.author === firstAuthor);
+    return allSame ? credits[0] : null;
+  })();
+
   const filteredLibraryImages = pieceImageLibrary.filter(img => {
-    const matchesCategory = libraryFilter === 'All' || img.category === libraryFilter;
-    const matchesColor = libraryColorFilter === 'All' || img.color === libraryColorFilter;
-    return matchesCategory && matchesColor;
+    if (libraryColorFilter !== 'All' && img.color !== libraryColorFilter) return false;
+    if (libraryTypeFilter !== 'All' && img.type !== libraryTypeFilter) return false;
+    if (libraryCategoryFilter !== 'All' && img.category !== libraryCategoryFilter) return false;
+    if (libraryStyleFilter !== 'All' && img.style !== libraryStyleFilter) return false;
+    // Hide legacy images when no filters active (they'll show under "Legacy" category)
+    return true;
   });
+
+  const totalLibraryPages = Math.ceil(filteredLibraryImages.length / LIBRARY_PAGE_SIZE);
+  const paginatedLibraryImages = filteredLibraryImages.slice(
+    (libraryPage - 1) * LIBRARY_PAGE_SIZE,
+    libraryPage * LIBRARY_PAGE_SIZE
+  );
 
   return (
     <div className={styles["step-container"]}>
@@ -471,48 +508,123 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
             </div>
             
             <div className={styles["library-filter"]}>
-              <div className={styles["filter-row"]}>
-                <span className={styles["filter-label"]}>Category:</span>
-                {libraryCategories.map(category => (
-                  <button
-                    key={category}
-                    type="button"
-                    className={`${styles["filter-btn"]} ${libraryFilter === category ? styles["active"] : ''}`}
-                    onClick={() => setLibraryFilter(category)}
-                  >
-                    {category}
-                  </button>
-                ))}
+              {/* Color filter */}
+              <div className={styles["filter-section"]}>
+                <span className={styles["filter-label"]}>Color</span>
+                <div className={styles["filter-row"]}>
+                  {libraryColorOptions.map(color => (
+                    <button
+                      key={color}
+                      type="button"
+                      className={`${styles["filter-btn"]} ${libraryColorFilter === color ? styles["active"] : ''}`}
+                      onClick={() => { setLibraryColorFilter(color); setLibraryPage(1); }}
+                    >
+                      {color === 'White' ? <><span className={styles["color-circle"] + ' ' + styles["color-circle-white"]} /> White</> : color === 'Black' ? <><span className={styles["color-circle"] + ' ' + styles["color-circle-black"]} /> Black</> : color}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className={styles["filter-row"]}>
-                <span className={styles["filter-label"]}>Color:</span>
-                {libraryColorOptions.map(color => (
-                  <button
-                    key={color}
-                    type="button"
-                    className={`${styles["filter-btn"]} ${libraryColorFilter === color ? styles["active"] : ''}`}
-                    onClick={() => setLibraryColorFilter(color)}
-                  >
-                    {color === 'White' ? <><span className={styles["color-circle"] + ' ' + styles["color-circle-white"]} /> White</> : color === 'Black' ? <><span className={styles["color-circle"] + ' ' + styles["color-circle-black"]} /> Black</> : color}
-                  </button>
-                ))}
+
+              {/* Type filter */}
+              <div className={styles["filter-section"]}>
+                <span className={styles["filter-label"]}>Type</span>
+                <div className={styles["filter-row"]}>
+                  {libraryTypeOptions.map(type => (
+                    <button
+                      key={type}
+                      type="button"
+                      className={`${styles["filter-btn"]} ${libraryTypeFilter === type ? styles["active"] : ''}`}
+                      onClick={() => { setLibraryTypeFilter(type); setLibraryPage(1); }}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {/* Category filter — collapsible */}
+              <div className={styles["filter-section"]}>
+                <span 
+                  className={styles["filter-label"] + ' ' + styles["filter-label-collapsible"]}
+                  onClick={() => setCategorySectionOpen(prev => !prev)}
+                >
+                  <span className={styles["collapse-chevron"]} style={{ transform: categorySectionOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                  Category
+                </span>
+                {categorySectionOpen && (
+                  <div className={styles["filter-row"]}>
+                    {libraryCategories.map(category => (
+                      <button
+                        key={category}
+                        type="button"
+                        className={`${styles["filter-btn"]} ${libraryCategoryFilter === category ? styles["active"] : ''}`}
+                        onClick={() => { setLibraryCategoryFilter(category); setLibraryStyleFilter('All'); setLibraryPage(1); }}
+                      >
+                        {category}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Style filter — only when category is selected */}
+              {libraryCategoryFilter !== 'All' && libraryStyles.length > 2 && (
+                <div className={styles["filter-section"]}>
+                  <span className={styles["filter-label"]}>Style</span>
+                  <div className={styles["filter-row"]}>
+                    {libraryStyles.map(style => (
+                      <button
+                        key={style}
+                        type="button"
+                        className={`${styles["filter-btn"]} ${libraryStyleFilter === style ? styles["active"] : ''}`}
+                        onClick={() => { setLibraryStyleFilter(style); setLibraryPage(1); }}
+                      >
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Artist credit */}
+              {selectedCredit && (
+                <div className={styles["library-credit"]}>
+                  <span>
+                    Art by <strong>{selectedCredit.author}</strong>
+                    {selectedCredit.variantBy && <> · Color variant by <strong>{selectedCredit.variantBy}</strong></>}
+                    {selectedCredit.license && <> · {selectedCredit.license}</>}
+                    {selectedCredit.source && <> · <a href={selectedCredit.source} target="_blank" rel="noopener noreferrer">Source</a></>}
+                  </span>
+                </div>
+              )}
             </div>
             
             <div className={styles["library-grid"]}>
-              {filteredLibraryImages.map((image, idx) => (
+              {filteredLibraryImages.length === 0 && (
+                <div className={styles["library-empty"]}>No images match the selected filters.</div>
+              )}
+              {paginatedLibraryImages.map((image, idx) => (
                 <button
-                  key={idx}
+                  key={`${libraryPage}-${idx}`}
                   type="button"
                   className={styles["library-item"]}
                   onClick={() => handleLibrarySelect(image)}
-                  title={image.name}
+                  title={`${image.name}${image.credit ? `\nArt by ${image.credit.author}` : ''}`}
                 >
-                  <img src={image.src} alt={image.name} />
+                  <img src={image.src} alt={image.name} loading="lazy" />
                   <span className={styles["library-item-name"]}>{image.name}</span>
                 </button>
               ))}
             </div>
+            {totalLibraryPages > 1 && (
+              <div className={styles["library-pagination"]}>
+                <button type="button" disabled={libraryPage === 1} onClick={() => setLibraryPage(1)}>««</button>
+                <button type="button" disabled={libraryPage === 1} onClick={() => setLibraryPage(p => p - 1)}>«</button>
+                <span>Page {libraryPage} of {totalLibraryPages} ({filteredLibraryImages.length} images)</span>
+                <button type="button" disabled={libraryPage === totalLibraryPages} onClick={() => setLibraryPage(p => p + 1)}>»</button>
+                <button type="button" disabled={libraryPage === totalLibraryPages} onClick={() => setLibraryPage(totalLibraryPages)}>»»</button>
+              </div>
+            )}
           </div>
         </div>
       )}

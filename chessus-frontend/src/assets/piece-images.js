@@ -1,115 +1,54 @@
-import whitepawn from './pieces/White-pawn.png';
-import blackpawn from './pieces/Black-pawn.png';
-import whiteknight from './pieces/White-knight.png';
-import blackknight from './pieces/Black-knight.png';
-import whitebishup from './pieces/White-bishup.png';
-import blackbishup from './pieces/Black-bishup.png';
-import whiterook from './pieces/White-rook.png';
-import blackrook from './pieces/Black-rook.png';
-import whitequeen from './pieces/White-queen.png';
-import blackqueen from './pieces/Black-queen.png';
-import whiteking from './pieces/White-king.png';
-import blackking from './pieces/Black-king.png';
+import pieceCredits from './piece-credits';
 
-import whitechest from './pieces/white-chest.png';
-import blackchest from './pieces/black-chest.png';
+// Legacy piece imports (used by Home.js board demo and pieces.js)
+import whitepawn from './pieces/legacy/White-pawn.png';
+import blackpawn from './pieces/legacy/Black-pawn.png';
+import whiteknight from './pieces/legacy/White-knight.png';
+import blackknight from './pieces/legacy/Black-knight.png';
+import whitebishup from './pieces/legacy/White-bishup.png';
+import blackbishup from './pieces/legacy/Black-bishup.png';
+import whiterook from './pieces/legacy/White-rook.png';
+import blackrook from './pieces/legacy/Black-rook.png';
+import whitequeen from './pieces/legacy/White-queen.png';
+import blackqueen from './pieces/legacy/Black-queen.png';
+import whiteking from './pieces/legacy/White-king.png';
+import blackking from './pieces/legacy/Black-king.png';
 
-import whiteswordsman from './pieces/white-swordsman.png';
-import blackswordsman from './pieces/black-swordsman.png';
-
-import whitewizard from './pieces/white-wizard.png';
-import blackwizard from './pieces/black-wizard.png';
-
-import whitetieronemelee from './pieces/white-tier_one_melee.png';
-import blacktieronemelee from './pieces/black-tier_one_melee.png';
-
-import whitetieronerange from './pieces/white-tier_one_range.png';
-import blacktieronerange from './pieces/black-tier_one_range.png';
-
-import whitetiertwomelee from './pieces/white-tier_two_melee.png';
-import blacktiertwomelee from './pieces/black-tier_two_melee.png';
-
-import whitetiertworange from './pieces/white-tier_two_range.png';
-import blacktiertworange from './pieces/black-tier_two_range.png';
-
-import whitetierthreemelee from './pieces/white-tier_three_melee.png';
-import blacktierthreemelee from './pieces/black-tier_three_melee.png';
-
-import whitetierthreerange from './pieces/white-tier_three_range.png';
-import blacktierthreerange from './pieces/black-tier_three_range.png';
-
-// Pawns
 export const WhitePawn = whitepawn;
 export const BlackPawn = blackpawn;
-
-// Knights
 export const WhiteKnight = whiteknight;
-export const BlackKnight = blackknight
-
-// Bishups
+export const BlackKnight = blackknight;
 export const WhiteBishup = whitebishup;
 export const BlackBishup = blackbishup;
-
-// Rooks
 export const WhiteRook = whiterook;
 export const BlackRook = blackrook;
-
-// Queens
 export const WhiteQueen = whitequeen;
 export const BlackQueen = blackqueen;
-
-// Kings
 export const WhiteKing = whiteking;
 export const BlackKing = blackking;
 
-// Chests
-export const WhiteChest = whitechest;
-export const BlackChest = blackchest;
+// --- Piece type detection from filename ---
+const TYPE_MAP = { b: 'Bishop', k: 'King', n: 'Knight', p: 'Pawn', q: 'Queen', r: 'Rook' };
 
-// Swordsmen
-export const WhiteSwordsman = whiteswordsman;
-export const BlackSwordsman = blackswordsman;
+const LEGACY_TYPE_MAP = {
+  pawn: 'Pawn', knight: 'Knight', bishup: 'Bishop', bishop: 'Bishop',
+  rook: 'Rook', queen: 'Queen', king: 'King'
+};
 
-// Wizards
-export const WhiteWizard = whitewizard;
-export const BlackWizard = blackwizard;
-
-// Tier One Melee
-export const WhiteTierOneMelee = whitetieronemelee;
-export const BlackTierOneMelee = blacktieronemelee;
-
-// Tier One Range
-export const WhiteTierOneRange = whitetieronerange;
-export const BlackTierOneRange = blacktieronerange;
-
-// Tier Two Melee
-export const WhiteTierTwoMelee = whitetiertwomelee;
-export const BlackTierTwoMelee = blacktiertwomelee;
-
-// Tier Two Range
-export const WhiteTierTwoRange = whitetiertworange;
-export const BlackTierTwoRange = blacktiertworange;
-
-// Tier Three Melee
-export const WhiteTierThreeMelee = whitetierthreemelee;
-export const BlackTierThreeMelee = blacktierthreemelee;
-
-// Tier Three Range
-export const WhiteTierThreeRange = whitetierthreerange;
-export const BlackTierThreeRange = blacktierthreerange;
-
-const toTitleCase = (value) => value
-  .replace(/[-_]+/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .replace(/\b\w/g, (char) => char.toUpperCase());
+const detectType = (fileName) => {
+  const stem = fileName.replace(/\.[^.]+$/, '').toLowerCase();
+  // 2-char SVG names: first char is type letter
+  if (stem.length === 2 && TYPE_MAP[stem[0]]) return TYPE_MAP[stem[0]];
+  // Legacy: "White-king.png" or "black-swordsman.png"
+  const namePart = stem.replace(/^(white|black)[-_]?/i, '');
+  if (LEGACY_TYPE_MAP[namePart]) return LEGACY_TYPE_MAP[namePart];
+  return 'Other';
+};
 
 const detectColor = (fileName) => {
   const lower = fileName.toLowerCase();
-  // Check prefix: white-xxx or black-xxx
   if (lower.startsWith('white')) return 'White';
   if (lower.startsWith('black')) return 'Black';
-  // 2-char SVG names: {piece}{color}.svg — last char before ext determines color
   const stem = lower.replace(/\.[^.]+$/, '');
   if (stem.length === 2) {
     if (stem.endsWith('w')) return 'White';
@@ -118,27 +57,87 @@ const detectColor = (fileName) => {
   return 'Other';
 };
 
+const toTitleCase = (value) => value
+  .replace(/[-_]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .replace(/\b\w/g, (char) => char.toUpperCase());
+
+// --- Build library from all images in pieces/ ---
 const imageLibraryContext = require.context('./pieces', true, /\.(png|jpe?g|svg|webp)$/i);
 
-export const pieceImageLibrary = imageLibraryContext
-  .keys()
-  .map((key) => {
-    const normalizedPath = key.replace('./', '');
-    const pathParts = normalizedPath.split('/');
-    const fileName = pathParts[pathParts.length - 1];
-    const folderName = pathParts.length > 1 ? pathParts[0] : 'Core';
-    const displayName = toTitleCase(fileName.replace(/\.[^.]+$/, ''));
+// Build metadata only — defer image resolution until accessed
+const _libraryKeys = imageLibraryContext.keys();
+let _libraryCache = null;
 
-    return {
-      name: displayName,
-      src: imageLibraryContext(key),
-      category: toTitleCase(folderName),
-      color: detectColor(fileName)
-    };
-  })
-  .sort((left, right) => {
-    if (left.category === right.category) {
-      return left.name.localeCompare(right.name);
-    }
-    return left.category.localeCompare(right.category);
-  });
+const buildLibraryEntry = (key) => {
+  const normalizedPath = key.replace('./', '');
+  const pathParts = normalizedPath.split('/');
+  const fileName = pathParts[pathParts.length - 1];
+
+  let category, style, creditKey;
+  if (pathParts.length >= 3) {
+    category = pathParts[0];
+    style = pathParts[1];
+    creditKey = `${category}/${style}`;
+  } else if (pathParts.length === 2 && pathParts[0] === 'legacy') {
+    category = 'legacy';
+    style = '';
+    creditKey = null;
+  } else {
+    category = 'legacy';
+    style = '';
+    creditKey = null;
+  }
+
+  const credit = creditKey ? (pieceCredits[creditKey] || null) : null;
+  const color = detectColor(fileName);
+  const type = detectType(fileName);
+
+  return {
+    name: toTitleCase(fileName.replace(/\.[^.]+$/, '')),
+    _key: key,
+    get src() {
+      // Resolve the actual image URL on first access
+      if (!this._resolved) {
+        this._resolved = imageLibraryContext(key);
+      }
+      return this._resolved;
+    },
+    category: toTitleCase(category),
+    style: style ? toTitleCase(style) : '',
+    color,
+    type,
+    credit
+  };
+};
+
+// Lazy getter — only builds the full sorted array on first access
+export const getPieceImageLibrary = () => {
+  if (!_libraryCache) {
+    _libraryCache = _libraryKeys
+      .map(buildLibraryEntry)
+      .sort((left, right) => {
+        if (left.category === right.category) {
+          if (left.style === right.style) {
+            return left.name.localeCompare(right.name);
+          }
+          return left.style.localeCompare(right.style);
+        }
+        return left.category.localeCompare(right.category);
+      });
+  }
+  return _libraryCache;
+};
+
+// Keep backward-compatible export (builds on first access via getter)
+export const pieceImageLibrary = new Proxy([], {
+  get(target, prop) {
+    const lib = getPieceImageLibrary();
+    if (prop === 'length') return lib.length;
+    if (prop === Symbol.iterator) return lib[Symbol.iterator].bind(lib);
+    if (typeof prop === 'string' && !isNaN(prop)) return lib[Number(prop)];
+    if (typeof lib[prop] === 'function') return lib[prop].bind(lib);
+    return lib[prop];
+  }
+});

@@ -79,7 +79,7 @@ const Pieces = () => {
                       {/* {piece.piece_description}
                       {piece.image_location} */}
                       {true.toString()}
-                      {((piece.image_location) === '../../assets/pieces/White-pawn.png').toString()}
+                      {((piece.image_location) === '../../assets/pieces/legacy/White-pawn.png').toString()}
                       
                       <img src={require(`../../assets/pieces/${piece.image_location}`)} alt="piece" loading="lazy" width="100" height="100"></img>
 
