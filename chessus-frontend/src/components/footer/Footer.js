@@ -1,9 +1,20 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import axios from "../../services/axios-interceptor";
+import API_URL from "../../global/global";
 import styles from "./footer.module.scss";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
+  const [showChangelog, setShowChangelog] = useState(true);
+
+  useEffect(() => {
+    axios.get(`${API_URL}site-settings/changelog_enabled`)
+      .then(res => {
+        if (res.data.value === "false") setShowChangelog(false);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <footer className={styles.footer}>
@@ -46,6 +57,7 @@ const Footer = () => {
             <li><Link to="/community/about">About Us</Link></li>
             <li><Link to="/contact">Contact</Link></li>
             <li><Link to="/donate">Support GridGrove</Link></li>
+            {showChangelog && <li><Link to="/changelog">Changelog</Link></li>}
           </ul>
         </div>
 

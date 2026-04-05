@@ -7,6 +7,8 @@ import { logout, removeUsers } from "../../actions/auth";
 import { getUnreadCount, receiveNewNotification } from "../../actions/notifications";
 import { getUnreadDMCount, receiveDirectMessage } from "../../actions/messages";
 import { useSocket } from "../../contexts/SocketContext";
+import axios from "../../services/axios-interceptor";
+import API_URL from "../../global/global";
 import logo from '../../assets/logo.png';
 import './navbar.scss';
 
@@ -35,7 +37,7 @@ const UserMenu = ({ currentUser, logOut }) => (
   </div>
 );
 
-const Menu = ({ currentUser, logOut, unreadCount }) => {
+const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
   const [openSubmenu, setOpenSubmenu] = useState(null);
 
   const toggleSubmenu = (e, menuName) => {
@@ -146,9 +148,9 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
         <Link as="div" className="inner-menu-item" to="/donate">
           Support GridGrove
         </Link>
-        <Link as="div" className="inner-menu-item" to="/changelog">
+        {showChangelog && <Link as="div" className="inner-menu-item" to="/changelog">
           Changelog
-        </Link>
+        </Link>}
       </div>
     </div>
 
@@ -192,6 +194,7 @@ const Menu = ({ currentUser, logOut, unreadCount }) => {
 
 const Navbar = () => {
   const [toggleMenu, setToggleMenu] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(true);
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
@@ -207,6 +210,14 @@ const Navbar = () => {
     navigate('/');
     setToggleMenu(false);
   };
+
+  useEffect(() => {
+    axios.get(`${API_URL}site-settings/changelog_enabled`)
+      .then(res => {
+        if (res.data.value === "false") setShowChangelog(false);
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch unread notification count on mount and when user changes
   useEffect(() => {
@@ -282,7 +293,7 @@ const Navbar = () => {
               <span>GRIDGROVE</span>
             </Link>
             <div className="navbar-links-container">
-              <Menu currentUser={currentUser} logOut={logOut} unreadCount={unreadCount} />
+              <Menu currentUser={currentUser} logOut={logOut} unreadCount={unreadCount} showChangelog={showChangelog} />
             </div>
           </div>
           {currentUser ? (
@@ -374,7 +385,7 @@ const Navbar = () => {
                 </div>
                 {/* Full Menu for mobile (≤750px) - all nav + user controls */}
                 <div className="mobile-menu-only">
-                  <Menu currentUser={currentUser} logOut={logOut} unreadCount={unreadCount} />
+                  <Menu currentUser={currentUser} logOut={logOut} unreadCount={unreadCount} showChangelog={showChangelog} />
                 </div>
               </div>
             </div>

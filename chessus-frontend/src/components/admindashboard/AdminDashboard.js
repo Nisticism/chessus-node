@@ -1477,8 +1477,8 @@ const AdminDashboard = () => {
                 <h3>Site Settings</h3>
                 <div className={styles["setting-row"]}>
                   <div className={styles["setting-info"]}>
-                    <span className={styles["setting-label"]}>Changelog Page</span>
-                    <span className={styles["setting-desc"]}>Show or hide the public changelog page</span>
+                    <span className={styles["setting-label"]}>Show Changelog</span>
+                    <span className={styles["setting-desc"]}>Show or hide the changelog link in navigation and footer</span>
                   </div>
                   <label className={styles["setting-toggle"]}>
                     <input

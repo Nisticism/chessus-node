@@ -1,9 +1,20 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "../../services/axios-interceptor";
+import API_URL from "../../global/global";
 import styles from "./infohub.module.scss";
 
 const InfoHub = () => {
   const navigate = useNavigate();
+  const [showChangelog, setShowChangelog] = useState(true);
+
+  useEffect(() => {
+    axios.get(`${API_URL}site-settings/changelog_enabled`)
+      .then(res => {
+        if (res.data.value === "false") setShowChangelog(false);
+      })
+      .catch(() => {});
+  }, []);
 
   const infoOptions = [
     {
@@ -36,12 +47,12 @@ const InfoHub = () => {
       icon: "💝",
       path: "/donate",
     },
-    {
+    ...(showChangelog ? [{
       title: "Changelog",
       description: "See the latest updates, features, and improvements to GridGrove",
       icon: "📋",
       path: "/changelog",
-    },
+    }] : []),
   ];
 
   const handleNavigate = (path) => {
