@@ -1085,7 +1085,8 @@ const Sandbox = () => {
                                      pieceData.up_left_capture || pieceData.up_right_capture ||
                                      pieceData.down_left_capture || pieceData.down_right_capture ||
                                      pieceData.ratio_capture_1 || pieceData.ratio_capture_2 ||
-                                     pieceData.step_capture_value;
+                                     pieceData.step_capture_value ||
+                                     pieceData.special_scenario_captures;
 
     // If piece can capture on move AND no separate capture fields, use movement logic
     if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
@@ -1195,8 +1196,8 @@ const Sandbox = () => {
       }
     }
 
-    // If piece can capture where it moves, also check movement as fallback
-    if (pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) {
+    // If piece can capture where it moves AND has no separate capture fields, also check movement as fallback
+    if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
       return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
     }
 

@@ -1183,8 +1183,8 @@ const LiveGame = () => {
       }
     }
 
-    // If piece can capture where it moves, also check movement as fallback
-    if (pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) {
+    // If piece can capture where it moves AND has no separate capture fields, also check movement as fallback
+    if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
       return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
     }
 
@@ -3385,14 +3385,6 @@ const LiveGame = () => {
     }
 
     return (
-      <>
-        {/* Ghost mode banner above the board */}
-        {isGhostMode && (
-          <div className={styles["ghost-banner"]}>
-            <span>Reviewing move {ghostMoveIndex + 1} of {gameState.moveHistory.length}</span>
-            <button onClick={() => setGhostMoveIndex(null)}>✕ Exit Review</button>
-          </div>
-        )}
         <div className={`${styles["board-with-coords"]}${isGhostMode ? ` ${styles["ghost-mode"]}` : ''}`}>
         {showBoardNotation && (
         <div 
@@ -3521,7 +3513,6 @@ const LiveGame = () => {
           )}
         </div>
       </div>
-      </>
     );
   };
 
@@ -3888,6 +3879,12 @@ const LiveGame = () => {
               </div>
             )}
             
+            {ghostMoveIndex !== null && (
+              <div className={styles["ghost-banner"]}>
+                <span>Reviewing move {ghostMoveIndex + 1} of {gameState.moveHistory.length}</span>
+                <button onClick={() => setGhostMoveIndex(null)}>✕ Exit Review</button>
+              </div>
+            )}
             <div className={styles["game-board-wrapper"]}>
               {renderBoard()}
             </div>
