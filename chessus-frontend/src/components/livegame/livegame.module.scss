@@ -196,6 +196,86 @@
   }
 }
 
+// Spectator list - desktop (vertical, below chat in clocks column)
+.spectator-section {
+  background: rgba(var(--panel-bg-start-rgb), 0.6);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+
+  @media (max-width: 1200px) {
+    display: none;
+  }
+}
+
+// Spectator list - mobile (horizontal with vertical scrolling)
+.spectator-section-mobile {
+  display: none;
+
+  @media (max-width: 1200px) {
+    display: block;
+    background: rgba(var(--panel-bg-start-rgb), 0.6);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+}
+
+.spectator-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(var(--panel-bg-end-rgb), 0.4);
+
+  &:hover {
+    background: rgba(var(--panel-bg-end-rgb), 0.6);
+  }
+}
+
+.spectator-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.spectator-toggle {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+
+  &.expanded {
+    transform: rotate(180deg);
+  }
+}
+
+.spectator-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 10px 6px;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.spectator-list-horizontal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 10px 6px;
+  max-height: 60px;
+  overflow-y: auto;
+}
+
+.spectator-name {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
 // Clocks column (left side) - hidden on small screens
 .clocks-column {
   display: flex;
@@ -276,10 +356,10 @@
   border-radius: 8px;
   padding: 12px;
   overflow-y: auto;
-  max-height: 310px;
+  max-height: 400px;
 
   @media (max-width: 1200px) {
-    max-height: 350px;
+    max-height: 400px;
   }
 
   &::-webkit-scrollbar {
@@ -777,6 +857,7 @@
   border: 2px solid var(--panel-border);
   border-radius: 4px;
   overflow: hidden;
+  touch-action: none; /* Prevent scroll during touch drag on mobile */
 }
 
 .board-square {
@@ -1195,12 +1276,12 @@
   border-radius: 12px;
   padding: 12px;
   flex: 1;
-  max-height: 200px;
+  max-height: 400px;
   display: flex;
   flex-direction: column;
 
   @media (max-width: 1200px) {
-    max-height: 200px;
+    max-height: 400px;
   }
 
   h3 {
@@ -1821,7 +1902,7 @@
   }
 
   .move-history {
-    max-height: 250px;
+    max-height: 400px;
     padding: 12px;
   }
 
@@ -2652,4 +2733,97 @@
 @keyframes hpFlash {
   0%, 100% { background: #4caf50; }
   50% { background: #ff4444; }
+}
+
+// Ghost board review mode
+.ghost-mode {
+  position: relative;
+
+  .game-board {
+    opacity: 0.85;
+    box-shadow: 0 0 20px rgba(100, 180, 255, 0.3);
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(140, 200, 255, 0.08);
+      pointer-events: none;
+      z-index: 10;
+    }
+  }
+}
+
+.move-nav-arrows {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0 2px;
+
+  button {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #ccc;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.15s, color 0.15s;
+
+    &:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.18);
+      color: #fff;
+    }
+
+    &:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+  }
+}
+
+.ghost-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(100, 180, 255, 0.15);
+  border: 1px solid rgba(100, 180, 255, 0.3);
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  color: #8bbdff;
+
+  button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ccc;
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+    }
+  }
+}
+
+.active-move {
+  background: rgba(100, 180, 255, 0.3) !important;
+  border-radius: 3px;
+  color: #fff !important;
+}
+
+.move-white,
+.move-black {
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
 }

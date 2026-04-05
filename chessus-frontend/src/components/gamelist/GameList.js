@@ -15,12 +15,41 @@ const GameList = () => {
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
   const [alertType, setAlertType] = useState(""); // "success" or "error"
+  const [sortBy, setSortBy] = useState("newest");
+  const [winConditionFilter, setWinConditionFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
   useEffect(() => {
-    dispatch(getGames(currentPage, 20));
-  }, [currentPage, dispatch]);
+    dispatch(getGames(currentPage, 20, sortBy, winConditionFilter, searchQuery));
+  }, [currentPage, sortBy, winConditionFilter, searchQuery, dispatch]);
+
+  const handleSortChange = (e) => {
+    setSortBy(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleFilterChange = (e) => {
+    setWinConditionFilter(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    setSearchQuery(searchInput);
+    setCurrentPage(1);
+  };
+
+  // Auto-filter: debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchInput);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   useEffect(() => {
     let timer;
@@ -81,7 +110,7 @@ const GameList = () => {
       setShowAlert(true);
       // Force a fresh fetch after delete
       setTimeout(() => {
-        dispatch(getGames(currentPage, 20));
+        dispatch(getGames(currentPage, 20, sortBy, winConditionFilter, searchQuery));
       }, 100);
     } catch (error) {
       console.error("Error deleting game:", error);
@@ -111,7 +140,7 @@ const GameList = () => {
     if (game.squares_condition) conditions.push("Territory");
     if (game.hill_condition) conditions.push("King of the Hill");
     if (game.piece_count_condition) conditions.push("Piece Count");
-    return conditions.length > 0 ? conditions.join(", ") : "None";
+    return conditions.length > 0 ? conditions.join(", ") : "Capture (default)";
   };
 
   const getPieceCount = (game) => {
@@ -242,6 +271,41 @@ const GameList = () => {
         <Link to="/create/game" className={styles["create-button"]}>
           + Create New Game
         </Link>
+
+        <div className={styles["filter-controls"]}>
+          <form className={styles["search-form"]} onSubmit={handleSearch}>
+            <input
+              type="text"
+              className={styles["search-input"]}
+              placeholder="Search games..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+            <button type="submit" className={styles["search-button"]}>Search</button>
+          </form>
+          <div className={styles["filter-row"]}>
+            <div className={styles["filter-group"]}>
+              <label className={styles["filter-label"]}>Sort by</label>
+              <select className={styles["filter-select"]} value={sortBy} onChange={handleSortChange}>
+                <option value="newest">Newest</option>
+                <option value="popular">Most Popular</option>
+                <option value="last_played">Recently Played</option>
+                <option value="alphabetical">Alphabetical</option>
+              </select>
+            </div>
+            <div className={styles["filter-group"]}>
+              <label className={styles["filter-label"]}>Win Condition</label>
+              <select className={styles["filter-select"]} value={winConditionFilter} onChange={handleFilterChange}>
+                <option value="">All</option>
+                <option value="checkmate">Checkmate</option>
+                <option value="capture">Capture</option>
+                <option value="points">Points</option>
+                <option value="territory">Territory</option>
+                <option value="piece_count">Piece Count</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* My Games Section */}

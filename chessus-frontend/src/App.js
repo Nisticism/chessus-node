@@ -60,6 +60,7 @@ const FAQ = lazy(() => import("./containers/faq/FAQ"));
 const About = lazy(() => import("./containers/about/About"));
 const Tutorial = lazy(() => import("./containers/tutorial/Tutorial"));
 const InfoHub = lazy(() => import("./containers/infohub/InfoHub"));
+const Changelog = lazy(() => import("./containers/changelog/Changelog"));
 
 function App() {
 
@@ -122,6 +123,7 @@ function App() {
       '/forums/new': 'New Post | GridGrove',
       '/news': 'News | GridGrove',
       '/news/new': 'Create News | GridGrove',
+      '/changelog': 'Changelog | GridGrove',
       '/careers': 'Careers | GridGrove',
       '/preferences': 'Preferences | GridGrove',
       '/donate': 'Donate | GridGrove',
@@ -197,6 +199,8 @@ function App() {
             <Route exact path="/forums/:forumId/edit" element={<EditForum />} />
             <Route exact path="/news" element={<News />} />
             <Route exact path="/info" element={<InfoHub />} />
+            <Route exact path="/changelog" element={<Changelog />} />
+            <Route exact path="/changelog" element={<Changelog />} />
             <Route exact path="/news/new" element={<CreateNews />} />
             <Route exact path="/news/edit/:newsId" element={<EditNews />} />
             <Route exact path="/careers" element={<Careers />} />

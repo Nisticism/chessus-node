@@ -14,10 +14,13 @@ import axios from "../services/axios-interceptor";
 import API_URL from "../global/global";
 import authHeader from "../services/auth-header";
 
-export const getGames = (page = 1, limit = 20) => async (dispatch) => {
+export const getGames = (page = 1, limit = 20, sort = 'newest', winCondition = '', search = '') => async (dispatch) => {
   try {
+    const params = { page, limit, sort };
+    if (winCondition) params.winCondition = winCondition;
+    if (search) params.search = search;
     const response = await axios.get(API_URL + "games", {
-      params: { page, limit }
+      params
     });
     
     dispatch({

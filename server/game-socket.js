@@ -26,6 +26,19 @@ function sanitizeWinnerId(id) {
 }
 
 /**
+ * Build the other_data JSON object for DB writes, always including initialPieces for replay.
+ */
+function buildOtherData(gameState, extraFields = {}) {
+  return JSON.stringify({
+    moves: gameState.moveHistory,
+    rated: gameState.rated,
+    allowPremoves: gameState.allowPremoves,
+    ...(gameState.initialPieces ? { initialPieces: gameState.initialPieces } : {}),
+    ...extraFields
+  });
+}
+
+/**
  * Helper function to parse image_location and get the correct image URL based on player
  */
 function getImageUrlForPlayer(imageLocation, playerNumber) {
@@ -890,6 +903,7 @@ function initializeSocket(server) {
           hostUsername,
           players: [{ id: hostId, username: hostUsername, position: null }],
           pieces: piecesArray,
+          initialPieces: JSON.parse(JSON.stringify(piecesArray)),
           currentTurn: 1,
           moveHistory: [],
           movesWithoutCapture: 0, // Track for draw by move limit
@@ -1569,6 +1583,7 @@ function initializeSocket(server) {
             hostUsername: hostPlayer?.username || 'Unknown',
             players: [{ id: hostPlayer.user_id, username: hostPlayer.username, position: null }],
             pieces: pieces,
+            initialPieces: null,
             currentTurn: 1,
             moveHistory: [],
             controlSquareTracking: {}, // Track control square occupancy
@@ -1692,11 +1707,20 @@ function initializeSocket(server) {
 
     // Spectate a game (join room but not as player)
     socket.on("spectateGame", async (data) => {
-      const { gameId } = data;
+      const { gameId, userId, username } = data;
       socket.join(`game-${gameId}`);
       
       const gameState = activeGames.get(gameId.toString());
       if (gameState) {
+        // Track spectators
+        if (!gameState.spectators) gameState.spectators = [];
+        const spectatorName = username || 'Guest';
+        const spectatorEntry = { id: userId || socket.id, username: spectatorName, socketId: socket.id };
+        // Avoid duplicates
+        if (!gameState.spectators.some(s => s.socketId === socket.id)) {
+          gameState.spectators.push(spectatorEntry);
+          io.to(`game-${gameId}`).emit("spectatorUpdate", { spectators: gameState.spectators.map(s => ({ id: s.id, username: s.username })) });
+        }
         socket.emit("gameState", gameState);
       }
     });
@@ -1722,10 +1746,27 @@ function initializeSocket(server) {
         if (gameState.status === 'ready' && gameState.moveHistory.length === 0) {
           gameState.status = 'active';
           gameState.startTime = Date.now();
+          // Snapshot initial pieces for replay (if not already set)
+          if (!gameState.initialPieces) {
+            gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
+          }
+          const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
           await db_pool.query(
-            "UPDATE games SET status = 'active', start_time = ? WHERE id = ?",
-            [new Date().toISOString().slice(0, 19).replace('T', ' '), gameId]
+            "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
+            [startTimeStr, buildOtherData(gameState), gameId]
           );
+          
+          // Update last_played_at on the game type
+          if (gameState.gameTypeId) {
+            try {
+              await db_pool.query(
+                "UPDATE game_types SET last_played_at = ? WHERE id = ?",
+                [startTimeStr, gameState.gameTypeId]
+              );
+            } catch (err) {
+              console.error('Failed to update last_played_at:', err);
+            }
+          }
           
           // Initialize castling partners for all pieces that can castle
           initializeCastlingPartners(gameState);
@@ -1910,16 +1951,7 @@ function initializeSocket(server) {
                     `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                      pieces = ?, other_data = ? WHERE id = ?`,
                     [endTime, winnerId ? sanitizeWinnerId(winnerId) : null, JSON.stringify(gameState.pieces),
-                     JSON.stringify({
-                       moves: gameState.moveHistory,
-                       winner: winnerId,
-                       reason,
-                       player1Count,
-                       player2Count,
-                       eloChanges,
-                       rated: gameState.rated,
-                       allowPremoves: gameState.allowPremoves
-                     }),
+                     buildOtherData(gameState, { winner: winnerId, reason, player1Count, player2Count, eloChanges }),
                      gameId]
                   );
                 } catch (dbError) {
@@ -1978,16 +2010,7 @@ function initializeSocket(server) {
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                  pieces = ?, other_data = ? WHERE id = ?`,
                 [endTime, winnerId ? sanitizeWinnerId(winnerId) : null, JSON.stringify(gameState.pieces),
-                 JSON.stringify({
-                   moves: gameState.moveHistory,
-                   winner: winnerId,
-                   reason,
-                   player1Count,
-                   player2Count,
-                   eloChanges,
-                   rated: gameState.rated,
-                   allowPremoves: gameState.allowPremoves
-                 }),
+                 buildOtherData(gameState, { winner: winnerId, reason, player1Count, player2Count, eloChanges }),
                  gameId]
               );
             } catch (dbError) {
@@ -2011,11 +2034,7 @@ function initializeSocket(server) {
           await db_pool.query(
             "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
             [gameState.currentTurn, JSON.stringify(gameState.pieces),
-             JSON.stringify({
-               moves: gameState.moveHistory,
-               rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves
-             }), gameId]
+             buildOtherData(gameState), gameId]
           );
 
           io.to(`game-${gameId}`).emit("moveMade", {
@@ -2063,7 +2082,8 @@ function initializeSocket(server) {
           position: gameState.currentTurn,
           timestamp: Date.now(),
           ...(movingPieceWidth > 1 || movingPieceHeight > 1 ? { piece_width: movingPieceWidth, piece_height: movingPieceHeight } : {}),
-          ...(moveResult.isRangedAttack ? { isRangedAttack: true } : {})
+          ...(moveResult.isRangedAttack ? { isRangedAttack: true } : {}),
+          ...(move.isCastling ? { isCastling: true, castlingWith: move.castlingWith, castlingDirection: move.castlingDirection } : {})
         };
         gameState.moveHistory.push(moveRecord);
 
@@ -2095,12 +2115,7 @@ function initializeSocket(server) {
           await db_pool.query(
             "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
             [JSON.stringify(gameState.pieces), 
-             JSON.stringify({ 
-               moves: gameState.moveHistory, 
-               pendingPromotion: gameState.pendingPromotion,
-               rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves
-             }), gameId]
+             buildOtherData(gameState, { pendingPromotion: gameState.pendingPromotion }), gameId]
           );
 
           // Find the promoted piece for additional data
@@ -2150,13 +2165,7 @@ function initializeSocket(server) {
           await db_pool.query(
             "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
             [JSON.stringify(gameState.pieces), 
-             JSON.stringify({ 
-               moves: gameState.moveHistory, 
-               rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves,
-               chainCapturePieceId: gameState.chainCapturePieceId,
-               chainCapturePlayerId: gameState.chainCapturePlayerId
-             }), gameId]
+             buildOtherData(gameState, { chainCapturePieceId: gameState.chainCapturePieceId, chainCapturePlayerId: gameState.chainCapturePlayerId }), gameId]
           );
           
           // Emit chain capture state to players
@@ -2254,7 +2263,7 @@ function initializeSocket(server) {
               `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                pieces = ?, other_data = ? WHERE id = ?`,
               [endTime, sanitizeWinnerId(burnWinResult.winner), JSON.stringify(gameState.pieces),
-               JSON.stringify({ moves: gameState.moveHistory, winner: burnWinResult.winner, reason: burnWinResult.reason, eloChanges, rated: gameState.rated, allowPremoves: gameState.allowPremoves }),
+               buildOtherData(gameState, { winner: burnWinResult.winner, reason: burnWinResult.reason, eloChanges }),
                gameId]
             );
             io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: burnWinResult.winner, reason: burnWinResult.reason, finalState: gameState, eloChanges });
@@ -2351,15 +2360,7 @@ function initializeSocket(server) {
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                  pieces = ?, other_data = ? WHERE id = ?`,
                 [endTime, sanitizeWinnerId(premoveControlWinResult.winner), JSON.stringify(gameState.pieces), 
-                 JSON.stringify({ 
-                   moves: gameState.moveHistory, 
-                   winner: premoveControlWinResult.winner, 
-                   reason: premoveControlWinResult.reason, 
-                   eloChanges,
-                   rated: gameState.rated,
-                   allowPremoves: gameState.allowPremoves,
-                   controlSquareTracking: gameState.controlSquareTracking
-                 }),
+                 buildOtherData(gameState, { winner: premoveControlWinResult.winner, reason: premoveControlWinResult.reason, eloChanges, controlSquareTracking: gameState.controlSquareTracking }),
                  gameId]
               );
 
@@ -2398,14 +2399,7 @@ function initializeSocket(server) {
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                  pieces = ?, other_data = ? WHERE id = ?`,
                 [endTime, sanitizeWinnerId(premoveWinResult.winner), JSON.stringify(gameState.pieces), 
-                 JSON.stringify({ 
-                   moves: gameState.moveHistory, 
-                   winner: premoveWinResult.winner, 
-                   reason: premoveWinResult.reason, 
-                   eloChanges,
-                   rated: gameState.rated,
-                   allowPremoves: gameState.allowPremoves
-                 }),
+                 buildOtherData(gameState, { winner: premoveWinResult.winner, reason: premoveWinResult.reason, eloChanges }),
                  gameId]
               );
 
@@ -2452,14 +2446,7 @@ function initializeSocket(server) {
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                    pieces = ?, other_data = ? WHERE id = ?`,
                   [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces), 
-                   JSON.stringify({ 
-                     moves: gameState.moveHistory, 
-                     winner: winner?.id, 
-                     reason: 'checkmate', 
-                     eloChanges,
-                     rated: gameState.rated,
-                     allowPremoves: gameState.allowPremoves
-                   }),
+                   buildOtherData(gameState, { winner: winner?.id, reason: 'checkmate', eloChanges }),
                    gameId]
                 );
 
@@ -2509,13 +2496,7 @@ function initializeSocket(server) {
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
                    pieces = ?, other_data = ? WHERE id = ?`,
                   [endTime, JSON.stringify(gameState.pieces), 
-                   JSON.stringify({ 
-                     moves: gameState.moveHistory, 
-                     reason: 'stalemate',
-                     eloChanges,
-                     rated: gameState.rated,
-                     allowPremoves: gameState.allowPremoves
-                   }),
+                   buildOtherData(gameState, { reason: 'stalemate', eloChanges }),
                    gameId]
                 );
 
@@ -2569,14 +2550,7 @@ function initializeSocket(server) {
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
                  pieces = ?, other_data = ? WHERE id = ?`,
                 [endTime, JSON.stringify(gameState.pieces), 
-                 JSON.stringify({ 
-                   moves: gameState.moveHistory, 
-                   reason: 'draw_move_limit',
-                   movesWithoutCapture: gameState.movesWithoutCapture,
-                   eloChanges,
-                   rated: gameState.rated,
-                   allowPremoves: gameState.allowPremoves
-                 }),
+                 buildOtherData(gameState, { reason: 'draw_move_limit', movesWithoutCapture: gameState.movesWithoutCapture, eloChanges }),
                  gameId]
               );
 
@@ -2621,15 +2595,7 @@ function initializeSocket(server) {
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
                  pieces = ?, other_data = ? WHERE id = ?`,
                 [endTime, JSON.stringify(gameState.pieces), 
-                 JSON.stringify({ 
-                   moves: gameState.moveHistory, 
-                   reason: 'repetition',
-                   repetitionCount: premovePositionCount,
-                   positionHistory: gameState.positionHistory,
-                   eloChanges,
-                   rated: gameState.rated,
-                   allowPremoves: gameState.allowPremoves
-                 }),
+                 buildOtherData(gameState, { reason: 'repetition', repetitionCount: premovePositionCount, positionHistory: gameState.positionHistory, eloChanges }),
                  gameId]
               );
 
@@ -2696,15 +2662,7 @@ function initializeSocket(server) {
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
              pieces = ?, other_data = ? WHERE id = ?`,
             [endTime, sanitizeWinnerId(controlWinResult.winner), JSON.stringify(gameState.pieces), 
-             JSON.stringify({ 
-               moves: gameState.moveHistory, 
-               winner: controlWinResult.winner, 
-               reason: controlWinResult.reason, 
-               eloChanges,
-               rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves,
-               controlSquareTracking: gameState.controlSquareTracking
-             }),
+             buildOtherData(gameState, { winner: controlWinResult.winner, reason: controlWinResult.reason, eloChanges, controlSquareTracking: gameState.controlSquareTracking }),
              gameId]
           );
 
@@ -2742,14 +2700,7 @@ function initializeSocket(server) {
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
              pieces = ?, other_data = ? WHERE id = ?`,
             [endTime, sanitizeWinnerId(winResult.winner), JSON.stringify(gameState.pieces), 
-             JSON.stringify({ 
-               moves: gameState.moveHistory, 
-               winner: winResult.winner, 
-               reason: winResult.reason, 
-               eloChanges,
-               rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves
-             }),
+             buildOtherData(gameState, { winner: winResult.winner, reason: winResult.reason, eloChanges }),
              gameId]
           );
 
@@ -2805,14 +2756,7 @@ function initializeSocket(server) {
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                    pieces = ?, other_data = ? WHERE id = ?`,
                   [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces), 
-                   JSON.stringify({ 
-                     moves: gameState.moveHistory, 
-                     winner: winner?.id, 
-                     reason: 'checkmate', 
-                     eloChanges,
-                     rated: gameState.rated,
-                     allowPremoves: gameState.allowPremoves
-                   }),
+                   buildOtherData(gameState, { winner: winner?.id, reason: 'checkmate', eloChanges }),
                    gameId]
                 );
                 console.log('Database updated successfully');
@@ -2868,13 +2812,7 @@ function initializeSocket(server) {
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
                    pieces = ?, other_data = ? WHERE id = ?`,
                   [endTime, JSON.stringify(gameState.pieces), 
-                   JSON.stringify({ 
-                     moves: gameState.moveHistory, 
-                     reason: 'stalemate',
-                     eloChanges,
-                     rated: gameState.rated,
-                     allowPremoves: gameState.allowPremoves
-                   }),
+                   buildOtherData(gameState, { reason: 'stalemate', eloChanges }),
                    gameId]
                 );
                 console.log('Database updated for stalemate');
@@ -2926,14 +2864,7 @@ function initializeSocket(server) {
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                    pieces = ?, other_data = ? WHERE id = ?`,
                   [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces), 
-                   JSON.stringify({ 
-                     moves: gameState.moveHistory, 
-                     winner: winner?.id,
-                     reason: 'no_moves',
-                     eloChanges,
-                     rated: gameState.rated,
-                     allowPremoves: gameState.allowPremoves
-                   }),
+                   buildOtherData(gameState, { winner: winner?.id, reason: 'no_moves', eloChanges }),
                    gameId]
                 );
                 console.log('Database updated for no_moves win');
@@ -2995,16 +2926,7 @@ function initializeSocket(server) {
                   `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                    pieces = ?, other_data = ? WHERE id = ?`,
                   [endTime, winnerId ? sanitizeWinnerId(winnerId) : null, JSON.stringify(gameState.pieces),
-                   JSON.stringify({
-                     moves: gameState.moveHistory,
-                     winner: winnerId,
-                     reason,
-                     player1Count,
-                     player2Count,
-                     eloChanges,
-                     rated: gameState.rated,
-                     allowPremoves: gameState.allowPremoves
-                   }),
+                   buildOtherData(gameState, { winner: winnerId, reason, player1Count, player2Count, eloChanges }),
                    gameId]
                 );
               } catch (dbError) {
@@ -3062,14 +2984,7 @@ function initializeSocket(server) {
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
                  pieces = ?, other_data = ? WHERE id = ?`,
                 [endTime, JSON.stringify(gameState.pieces), 
-                 JSON.stringify({ 
-                   moves: gameState.moveHistory, 
-                   reason: 'draw_move_limit',
-                   movesWithoutCapture: gameState.movesWithoutCapture,
-                   eloChanges,
-                   rated: gameState.rated,
-                   allowPremoves: gameState.allowPremoves
-                 }),
+                 buildOtherData(gameState, { reason: 'draw_move_limit', movesWithoutCapture: gameState.movesWithoutCapture, eloChanges }),
                  gameId]
               );
               console.log('Database updated for draw by move limit');
@@ -3118,15 +3033,7 @@ function initializeSocket(server) {
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
                  pieces = ?, other_data = ? WHERE id = ?`,
                 [endTime, JSON.stringify(gameState.pieces), 
-                 JSON.stringify({ 
-                   moves: gameState.moveHistory, 
-                   reason: 'repetition',
-                   repetitionCount: currentPositionCount,
-                   positionHistory: gameState.positionHistory,
-                   eloChanges,
-                   rated: gameState.rated,
-                   allowPremoves: gameState.allowPremoves
-                 }),
+                 buildOtherData(gameState, { reason: 'repetition', repetitionCount: currentPositionCount, positionHistory: gameState.positionHistory, eloChanges }),
                  gameId]
               );
               console.log('Database updated for draw by repetition');
@@ -3149,14 +3056,11 @@ function initializeSocket(server) {
           await db_pool.query(
             "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
             [gameState.currentTurn, JSON.stringify(gameState.pieces), 
-             JSON.stringify({ 
-               moves: gameState.moveHistory, 
+             buildOtherData(gameState, {
                inCheck: checkResult.inCheck,
                movesWithoutCapture: gameState.movesWithoutCapture,
                positionHistory: gameState.positionHistory,
                controlSquareTracking: gameState.controlSquareTracking,
-               rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves,
                enPassantTarget: gameState.enPassantTarget,
                lastMoveTime: gameState.isCorrespondence ? Date.now() : undefined
              }), gameId]
@@ -3293,14 +3197,7 @@ function initializeSocket(server) {
         const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
         await db_pool.query(
           `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, other_data = ?, pieces = ? WHERE id = ?`,
-          [endTime, sanitizeWinnerId(winner?.id), JSON.stringify({ 
-            moves: gameState.moveHistory, 
-            winner: winner?.id, 
-            reason: 'resignation', 
-            eloChanges,
-            rated: gameState.rated,
-            allowPremoves: gameState.allowPremoves
-          }), JSON.stringify(gameState.pieces), gameId]
+          [endTime, sanitizeWinnerId(winner?.id), buildOtherData(gameState, { winner: winner?.id, reason: 'resignation', eloChanges }), JSON.stringify(gameState.pieces), gameId]
         );
 
         io.to(`game-${gameId}`).emit("gameOver", {
@@ -3529,15 +3426,7 @@ function initializeSocket(server) {
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
              pieces = ?, other_data = ? WHERE id = ?`,
             [endTime, sanitizeWinnerId(promotionControlWinResult.winner), JSON.stringify(gameState.pieces), 
-             JSON.stringify({ 
-               moves: gameState.moveHistory, 
-               winner: promotionControlWinResult.winner, 
-               reason: promotionControlWinResult.reason, 
-               eloChanges,
-               rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves,
-               controlSquareTracking: gameState.controlSquareTracking
-             }),
+             buildOtherData(gameState, { winner: promotionControlWinResult.winner, reason: promotionControlWinResult.reason, eloChanges, controlSquareTracking: gameState.controlSquareTracking }),
              gameId]
           );
 
@@ -3570,14 +3459,7 @@ function initializeSocket(server) {
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
              pieces = ?, other_data = ? WHERE id = ?`,
             [endTime, sanitizeWinnerId(winResult.winner), JSON.stringify(gameState.pieces), 
-             JSON.stringify({ 
-               moves: gameState.moveHistory, 
-               winner: winResult.winner, 
-               reason: winResult.reason, 
-               eloChanges,
-               rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves
-             }),
+             buildOtherData(gameState, { winner: winResult.winner, reason: winResult.reason, eloChanges }),
              gameId]
           );
 
@@ -3617,14 +3499,7 @@ function initializeSocket(server) {
               `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                pieces = ?, other_data = ? WHERE id = ?`,
               [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces), 
-               JSON.stringify({ 
-                 moves: gameState.moveHistory, 
-                 winner: winner?.id, 
-                 reason: 'checkmate', 
-                 eloChanges,
-                 rated: gameState.rated,
-                 allowPremoves: gameState.allowPremoves
-               }),
+               buildOtherData(gameState, { winner: winner?.id, reason: 'checkmate', eloChanges }),
                gameId]
             );
 
@@ -3768,6 +3643,12 @@ function initializeSocket(server) {
     socket.on("leaveGame", ({ gameId }) => {
       if (gameId) {
         socket.leave(`game-${gameId}`);
+        // Remove from spectators if applicable
+        const gameState = activeGames.get(gameId.toString());
+        if (gameState && gameState.spectators) {
+          gameState.spectators = gameState.spectators.filter(s => s.socketId !== socket.id);
+          io.to(`game-${gameId}`).emit("spectatorUpdate", { spectators: gameState.spectators.map(s => ({ id: s.id, username: s.username })) });
+        }
       }
     });
 
@@ -4045,6 +3926,7 @@ function initializeSocket(server) {
             hostUsername: players.find(p => p.id === game.host_id)?.username || 'Unknown',
             players: players,
             pieces: pieces,
+            initialPieces: otherData.initialPieces || null,
             currentTurn: game.player_turn || 1,
             moveHistory: moveHistory,
             movesWithoutCapture: otherData?.movesWithoutCapture || 0, // Load counter from DB
@@ -4106,14 +3988,7 @@ function initializeSocket(server) {
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                  pieces = ?, other_data = ? WHERE id = ?`,
                 [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces),
-                 JSON.stringify({
-                   moves: gameState.moveHistory,
-                   winner: winner?.id,
-                   reason: 'timeout',
-                   eloChanges,
-                   rated: gameState.rated,
-                   allowPremoves: gameState.allowPremoves
-                 }),
+                 buildOtherData(gameState, { winner: winner?.id, reason: 'timeout', eloChanges }),
                  gameId]
               );
               console.log(`Correspondence game ${gameId} ended - ${currentPlayer?.username} ran out of time`);
@@ -4235,13 +4110,7 @@ function initializeSocket(server) {
             `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
              pieces = ?, other_data = ? WHERE id = ?`,
             [endTime, JSON.stringify(gameState.pieces), 
-             JSON.stringify({ 
-               moves: gameState.moveHistory, 
-               reason: 'agreement',
-               eloChanges,
-               rated: gameState.rated,
-               allowPremoves: gameState.allowPremoves
-             }),
+             buildOtherData(gameState, { reason: 'agreement', eloChanges }),
              gameId]
           );
           console.log('Database updated for draw by agreement');
@@ -4476,6 +4345,17 @@ function initializeSocket(server) {
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);
       
+      // Remove from spectator lists in any active games
+      for (const [gameIdStr, gameState] of activeGames) {
+        if (gameState.spectators) {
+          const before = gameState.spectators.length;
+          gameState.spectators = gameState.spectators.filter(s => s.socketId !== socket.id);
+          if (gameState.spectators.length < before) {
+            io.to(`game-${gameIdStr}`).emit("spectatorUpdate", { spectators: gameState.spectators.map(s => ({ id: s.id, username: s.username })) });
+          }
+        }
+      }
+      
       const userData = playerSockets.get(socket.id);
       if (userData) {
         // Don't immediately remove from onlineUsers - use a grace period
@@ -4640,14 +4520,7 @@ function startGameTimer(io, gameId) {
           `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
            pieces = ?, other_data = ? WHERE id = ?`,
           [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(currentGameState.pieces), 
-           JSON.stringify({ 
-             moves: currentGameState.moveHistory, 
-             winner: winner?.id, 
-             reason: 'timeout', 
-             eloChanges,
-             rated: currentGameState.rated,
-             allowPremoves: currentGameState.allowPremoves
-           }),
+           buildOtherData(currentGameState, { winner: winner?.id, reason: 'timeout', eloChanges }),
            gameId]
         );
         
@@ -5293,6 +5166,59 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       movingPiece.hasMoved = true;
       if (movingPiece.moveCount === undefined) movingPiece.moveCount = 1;
       else movingPiece.moveCount++;
+
+      // Stop-before-target: For directional (non-exact) attacks where target survives,
+      // move the piece to one square before the target instead of staying in place
+      const otherSettings = gameState.otherGameData || {};
+      if (otherSettings.stop_before_target_directional) {
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const absDx = Math.abs(dx);
+        const absDy = Math.abs(dy);
+        const distance = Math.max(absDx, absDy);
+        const isStraightLine = (dx === 0 && dy !== 0) || (dy === 0 && dx !== 0) || (absDx === absDy && absDx > 0);
+
+        if (isStraightLine && distance > 1) {
+          // Determine the exact flag for this direction's capture
+          const pieceOwner = piece.team || piece.player_id;
+          const isPlayer2 = pieceOwner === 2;
+          const effectiveDx = isPlayer2 ? -dx : dx;
+          const effectiveDy = isPlayer2 ? -dy : dy;
+          const useMovementForCapture = piece.attacks_like_movement || piece.can_capture_enemy_on_move;
+
+          let isExact = false;
+          if (dx === 0 && dy !== 0) {
+            isExact = effectiveDy < 0
+              ? (piece.up_capture_exact || (useMovementForCapture && piece.up_movement_exact))
+              : (piece.down_capture_exact || (useMovementForCapture && piece.down_movement_exact));
+          } else if (dy === 0 && dx !== 0) {
+            isExact = dx < 0
+              ? (piece.left_capture_exact || (useMovementForCapture && piece.left_movement_exact))
+              : (piece.right_capture_exact || (useMovementForCapture && piece.right_movement_exact));
+          } else if (absDx === absDy) {
+            if (effectiveDx < 0 && effectiveDy < 0) {
+              isExact = piece.up_left_capture_exact || (useMovementForCapture && piece.up_left_movement_exact);
+            } else if (effectiveDx > 0 && effectiveDy < 0) {
+              isExact = piece.up_right_capture_exact || (useMovementForCapture && piece.up_right_movement_exact);
+            } else if (effectiveDx < 0 && effectiveDy > 0) {
+              isExact = piece.down_left_capture_exact || (useMovementForCapture && piece.down_left_movement_exact);
+            } else {
+              isExact = piece.down_right_capture_exact || (useMovementForCapture && piece.down_right_movement_exact);
+            }
+          }
+
+          if (!isExact) {
+            const stopX = to.x - Math.sign(dx);
+            const stopY = to.y - Math.sign(dy);
+            // Only move there if the stop square isn't occupied by another piece
+            const blockingPiece = findPieceAtSquare(pieces, stopX, stopY);
+            if (!blockingPiece || blockingPiece.id === pieceId) {
+              movingPiece.x = stopX;
+              movingPiece.y = stopY;
+            }
+          }
+        }
+      }
     }
 
     capturedPiece = actualCaptured.length > 0 ? actualCaptured[0] : null;

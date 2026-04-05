@@ -21,7 +21,8 @@ import {
   findPieceAtSquare,
   doesPieceOccupySquare,
   doesPieceFitOnBoard,
-  isDestinationClear
+  isDestinationClear,
+  replayToMove
 } from "../../helpers/pieceMovementUtils";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
@@ -123,6 +124,8 @@ const LiveGame = () => {
   const [gameState, setGameState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [spectators, setSpectators] = useState([]);
+  const [showSpectators, setShowSpectators] = useState(true);
   const [moveError, setMoveError] = useState(null);
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [validMoves, setValidMoves] = useState([]);
@@ -141,6 +144,7 @@ const LiveGame = () => {
   const [showMovableIndicators, setShowMovableIndicators] = useState(false);
   const [showPromotionSquares, setShowPromotionSquares] = useState(false);
   const [showCastlingInfo, setShowCastlingInfo] = useState(false);
+  const [showBoardNotation, setShowBoardNotation] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return currentUser?.sound_enabled === 1 || currentUser?.sound_enabled === true;
   });
@@ -168,6 +172,15 @@ const LiveGame = () => {
   const rightClickDataRef = useRef(null);
   const [isRightClickActive, setIsRightClickActive] = useState(false);
   const [rangedSelectedPiece, setRangedSelectedPiece] = useState(null); // for right-click-twice mode
+
+  // Touch drag state for mobile
+  const touchDragRef = useRef({ piece: null, moves: [], startX: 0, startY: 0, isDragging: false });
+  const [touchDragPos, setTouchDragPos] = useState(null); // {x, y} screen coords for ghost piece
+  const [touchDragPiece, setTouchDragPiece] = useState(null); // piece being touch-dragged
+
+  // Ghost board state for move history review
+  const [ghostMoveIndex, setGhostMoveIndex] = useState(null);
+  const initialPiecesRef = useRef(null);
 
   // Helper to persist a user preference to the server and local storage
   const updateUserPreference = useCallback(async (key, value) => {
@@ -197,6 +210,26 @@ const LiveGame = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Ghost board keyboard navigation (arrow keys)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (ghostMoveIndex === null || !gameState?.moveHistory) return;
+      const totalMoves = gameState.moveHistory.length;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setGhostMoveIndex(prev => prev > 0 ? prev - 1 : prev);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setGhostMoveIndex(prev => prev < totalMoves - 1 ? prev + 1 : null);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setGhostMoveIndex(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [ghostMoveIndex, gameState?.moveHistory]);
+
   // Load game state on mount
   useEffect(() => {
     const loadGame = async () => {
@@ -214,6 +247,19 @@ const LiveGame = () => {
           state.premove = null;
         }
         setGameState(state);
+        
+        // Capture initial pieces for ghost board replay
+        if (state.initialPieces) {
+          initialPiecesRef.current = state.initialPieces;
+        } else if (!state.moveHistory || state.moveHistory.length === 0) {
+          // Game just started — current pieces ARE the initial pieces
+          initialPiecesRef.current = JSON.parse(JSON.stringify(parsePieces(state.pieces)));
+        }
+        
+        // Initialize spectators from game state
+        if (state.spectators) {
+          setSpectators(state.spectators.map(s => ({ id: s.id, username: s.username })));
+        }
         
         // Parse special squares from game type
         if (state.gameType) {
@@ -290,7 +336,7 @@ const LiveGame = () => {
         });
         setSelectedPiece(null);
         setValidMoves([]);
-        // Update check status from move response
+        setGhostMoveIndex(null); // Exit ghost review when a new move arrives
         setInCheck(newState.inCheck || false);
         setCheckedPieces(newState.checkedPieces || []);
         
@@ -650,6 +696,11 @@ const LiveGame = () => {
       }
     });
 
+    // Spectator list updates
+    const unsubscribeSpectatorUpdate = onGameEvent("spectatorUpdate", ({ spectators: spectatorList }) => {
+      setSpectators(spectatorList || []);
+    });
+
     return () => {
       unsubscribeMove();
       unsubscribeCheck();
@@ -667,6 +718,7 @@ const LiveGame = () => {
       unsubscribeDrawOffered();
       unsubscribeDrawDeclined();
       unsubscribeGameDeleted();
+      unsubscribeSpectatorUpdate();
     };
   }, [gameId, onGameEvent, navigate, currentUser?.id]);
 
@@ -1018,7 +1070,8 @@ const LiveGame = () => {
                                      pieceData.up_left_capture || pieceData.up_right_capture ||
                                      pieceData.down_left_capture || pieceData.down_right_capture ||
                                      pieceData.ratio_capture_1 || pieceData.ratio_capture_2 ||
-                                     pieceData.step_capture_value;
+                                     pieceData.step_capture_value ||
+                                     pieceData.special_scenario_captures;
 
     // If piece can capture on move AND no separate capture fields, use movement logic
     if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
@@ -1983,7 +2036,7 @@ const LiveGame = () => {
     }
 
     // Allow selecting pieces to preview moves when waiting or during gameplay
-    const canInteract = gameState && gameState.status !== 'completed';
+    const canInteract = gameState && gameState.status !== 'completed' && ghostMoveIndex === null;
     if (!canInteract) {
       return;
     }
@@ -2409,6 +2462,159 @@ const LiveGame = () => {
     setDragValidMoves([]);
   }, [draggedPiece, dragValidMoves, isMyTurn, gameState, makeMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
 
+  // Check if board should be flipped (player 2 sees board from their perspective)
+  const shouldFlipBoard = useMemo(() => {
+    if (!currentPlayer) return false;
+    return currentPlayer.position === 2;
+  }, [currentPlayer]);
+
+  // Touch event handlers for mobile drag support
+  const handleTouchStart = useCallback((e, piece) => {
+    const pieceTeam = piece.player_id || piece.team;
+    const isOwnPiece = currentPlayer && pieceTeam === currentPlayer.position;
+    const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
+    const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
+
+    if (!canDragForMove && !canDragForPremove) return;
+
+    const touch = e.touches[0];
+    const pieces = parsePieces(gameState.pieces);
+    const moves = calculateValidMoves(
+      piece, pieces,
+      gameState.gameType?.board_width || 8,
+      gameState.gameType?.board_height || 8,
+      false,
+      canDragForPremove
+    );
+
+    touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false };
+    setSelectedPiece(piece);
+    setValidMoves(moves);
+  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves]);
+
+  const handleTouchMove = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (!td.piece) return;
+
+    const touch = e.touches[0];
+    const dx = touch.clientX - td.startX;
+    const dy = touch.clientY - td.startY;
+
+    // Start dragging after a small threshold to distinguish from taps
+    if (!td.isDragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      td.isDragging = true;
+      setTouchDragPiece(td.piece);
+    }
+
+    if (td.isDragging) {
+      e.preventDefault();
+      setTouchDragPos({ x: touch.clientX, y: touch.clientY });
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (!td.piece) return;
+
+    if (td.isDragging && boardRef.current) {
+      const touch = e.changedTouches[0];
+      const boardRect = boardRef.current.getBoundingClientRect();
+      const boardWidth = gameState?.gameType?.board_width || 8;
+      const boardHeight = gameState?.gameType?.board_height || 8;
+
+      const relX = touch.clientX - boardRect.left;
+      const relY = touch.clientY - boardRect.top;
+
+      let displayCol = Math.floor(relX / (boardRect.width / boardWidth));
+      let displayRow = Math.floor(relY / (boardRect.height / boardHeight));
+
+      // Convert from display coordinates to game coordinates (account for flip)
+      let gameX = shouldFlipBoard ? (boardWidth - 1 - displayCol) : displayCol;
+      let gameY = shouldFlipBoard ? (boardHeight - 1 - displayRow) : displayRow;
+
+      // Bounds check
+      if (gameX >= 0 && gameX < boardWidth && gameY >= 0 && gameY < boardHeight) {
+        const piece = td.piece;
+        const moves = td.moves;
+
+        // Same as handleDrop logic
+        const pw = piece.piece_width || 1;
+        const ph = piece.piece_height || 1;
+
+        // Don't move if dropping within the piece's own footprint
+        if (!(gameX >= piece.x && gameX < piece.x + pw && gameY >= piece.y && gameY < piece.y + ph)) {
+          let validMove = moves.find(m => m.x === gameX && m.y === gameY);
+
+          // Multi-tile footprint overlap
+          if (!validMove && (pw > 1 || ph > 1)) {
+            validMove = moves.find(m => !m.isRangedAttack &&
+              gameX >= m.x && gameX < m.x + pw && gameY >= m.y && gameY < m.y + ph
+            );
+          }
+
+          // Multi-tile enemy fallback
+          if (!validMove) {
+            const pieces = parsePieces(gameState?.pieces);
+            const targetPiece = findPieceAtSquare(pieces, gameX, gameY);
+            if (targetPiece && targetPiece.id !== piece.id) {
+              validMove = moves.find(m => {
+                if (!m.isCapture) return false;
+                for (let dy = 0; dy < ph; dy++) {
+                  for (let dx = 0; dx < pw; dx++) {
+                    if (doesPieceOccupySquare(targetPiece, m.x + dx, m.y + dy)) return true;
+                  }
+                }
+                return false;
+              });
+            }
+          }
+
+          if (validMove) {
+            const canMakeMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
+            const canMakePremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false;
+
+            if (canMakeMove) {
+              const moveData = {
+                from: { x: piece.x, y: piece.y },
+                to: { x: validMove.x, y: validMove.y },
+                pieceId: piece.id
+              };
+              if (validMove.isCastling) {
+                moveData.isCastling = true;
+                moveData.castlingWith = validMove.castlingWith;
+                moveData.castlingDirection = validMove.castlingDirection;
+              }
+              if (validMove.isHopCapture) {
+                moveData.isHopCapture = true;
+                moveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
+              }
+              makeMove(parseInt(gameId), moveData);
+            } else if (canMakePremove) {
+              const premoveData = {
+                from: { x: piece.x, y: piece.y },
+                to: { x: validMove.x, y: validMove.y },
+                pieceId: piece.id,
+                pieceWidth: pw,
+                pieceHeight: ph
+              };
+              setPremove(premoveData);
+              sendPremove(parseInt(gameId), premoveData);
+            }
+          }
+        }
+      }
+    }
+    // If not dragging, let onClick handle the tap
+
+    touchDragRef.current = { piece: null, moves: [], startX: 0, startY: 0, isDragging: false };
+    setTouchDragPiece(null);
+    setTouchDragPos(null);
+    if (td.isDragging) {
+      setSelectedPiece(null);
+      setValidMoves([]);
+    }
+  }, [gameState, shouldFlipBoard, isMyTurn, makeMove, sendPremove, gameId]);
+
   // Handle right-click mousedown for ranged attack drag detection
   const handleSquareMouseDown = useCallback((e, x, y) => {
     if (e.button !== 2) return;
@@ -2750,12 +2956,6 @@ const LiveGame = () => {
     }
   };
 
-  // Check if board should be flipped (player 2 sees board from their perspective)
-  const shouldFlipBoard = useMemo(() => {
-    if (!currentPlayer) return false;
-    return currentPlayer.position === 2;
-  }, [currentPlayer]);
-
   // Get castling info for display
   const castlingInfo = useMemo(() => {
     if (!gameState?.pieces) return [];
@@ -2839,13 +3039,18 @@ const LiveGame = () => {
 
     const boardWidth = gameState.gameType?.board_width || 8;
     const boardHeight = gameState.gameType?.board_height || 8;
-    const pieces = parsePieces(gameState.pieces);
-    const lastMove = gameState.moveHistory?.slice(-1)[0];
+    const isGhostMode = ghostMoveIndex !== null && initialPiecesRef.current;
+    const pieces = isGhostMode
+      ? replayToMove(initialPiecesRef.current, gameState.moveHistory, ghostMoveIndex)
+      : parsePieces(gameState.pieces);
+    const lastMove = isGhostMode
+      ? gameState.moveHistory[ghostMoveIndex] || null
+      : gameState.moveHistory?.slice(-1)[0];
     const showHelpers = gameState.showPieceHelpers;
     
     // Calculate which of the current player's pieces can move (only if feature is enabled and it's their turn)
     const movablePieceIds = new Set();
-    if (showMovableIndicators && isMyTurn && currentPlayer && (gameState.status === 'active' || gameState.status === 'ready')) {
+    if (!isGhostMode && showMovableIndicators && isMyTurn && currentPlayer && (gameState.status === 'active' || gameState.status === 'ready')) {
       // Check if the current player is in check
       const playerInCheck = inCheck && currentPlayer.position === gameState.currentTurn;
       
@@ -3077,6 +3282,9 @@ const LiveGame = () => {
                   draggable={canDragForMove || canDragForPremove}
                   onDragStart={(e) => handleDragStart(e, piece)}
                   onDragEnd={handleDragEnd}
+                  onTouchStart={(e) => handleTouchStart(e, piece)}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
                   onMouseEnter={() => (showHelpers || showMovableIndicators) && handlePieceHover(piece)}
                   onMouseLeave={() => (showHelpers || showMovableIndicators) && handlePieceHover(null)}
                 >
@@ -3116,7 +3324,7 @@ const LiveGame = () => {
                   <span>{getPieceSymbol(piece)}</span>
                 )}
                 {/* HP/AD overlay - show when piece has show_hp_ad flag or HP > 1 */}
-                {(piece.show_hp_ad || (piece.hit_points && piece.hit_points > 1)) && (
+                {(piece.show_hp_ad || piece.hit_points > 1) && (
                   <div className={styles["hp-ad-overlay"]}>
                     <div className={styles["hp-bar"]}>
                       <div 
@@ -3177,8 +3385,16 @@ const LiveGame = () => {
     }
 
     return (
-      <div className={styles["board-with-coords"]}>
-        {/* Rank labels (numbers on the left) */}
+      <>
+        {/* Ghost mode banner above the board */}
+        {isGhostMode && (
+          <div className={styles["ghost-banner"]}>
+            <span>Reviewing move {ghostMoveIndex + 1} of {gameState.moveHistory.length}</span>
+            <button onClick={() => setGhostMoveIndex(null)}>✕ Exit Review</button>
+          </div>
+        )}
+        <div className={`${styles["board-with-coords"]}${isGhostMode ? ` ${styles["ghost-mode"]}` : ''}`}>
+        {showBoardNotation && (
         <div 
           className={styles["rank-labels"]}
           style={{
@@ -3187,6 +3403,7 @@ const LiveGame = () => {
         >
           {rankLabels}
         </div>
+        )}
         
         {/* Board */}
         <div className={styles["board-and-files"]}>
@@ -3252,9 +3469,47 @@ const LiveGame = () => {
                 </svg>
               );
             })()}
+            {/* Touch drag ghost piece for mobile */}
+            {touchDragPiece && touchDragPos && (() => {
+              const piece = touchDragPiece;
+              const team = piece.player_id || piece.team || 1;
+              let imageUrl = null;
+              try {
+                const images = JSON.parse(piece.image_location || piece.piece_images || '[]');
+                if (Array.isArray(images) && images.length > 0) {
+                  const idx = team === 2 && images.length > 1 ? 1 : 0;
+                  const path = images[idx];
+                  const ASSET_URL = process.env.REACT_APP_ASSET_URL || 'http://localhost:3001';
+                  imageUrl = path.startsWith('http') ? path : `${ASSET_URL}${path}`;
+                }
+              } catch { /* no image */ }
+              const boardRect = boardRef.current?.getBoundingClientRect();
+              const cellSize = boardRect ? boardRect.width / (gameState?.gameType?.board_width || 8) : 60;
+              return (
+                <div style={{
+                  position: 'fixed',
+                  left: touchDragPos.x - cellSize / 2,
+                  top: touchDragPos.y - cellSize / 2,
+                  width: cellSize * (piece.piece_width || 1),
+                  height: cellSize * (piece.piece_height || 1),
+                  pointerEvents: 'none',
+                  zIndex: 9999,
+                  opacity: 0.8,
+                }}>
+                  {imageUrl ? (
+                    <img src={imageUrl} alt="" style={{ width: '100%', height: '100%' }} draggable={false} />
+                  ) : (
+                    <span style={{ fontSize: cellSize * 0.7, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                      {team === 1 ? '♙' : '♟'}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           
           {/* File labels (letters at the bottom) */}
+          {showBoardNotation && (
           <div 
             className={styles["file-labels"]}
             style={{
@@ -3263,8 +3518,10 @@ const LiveGame = () => {
           >
             {fileLabels}
           </div>
+          )}
         </div>
       </div>
+      </>
     );
   };
 
@@ -3486,6 +3743,26 @@ const LiveGame = () => {
             {/* In-Game Chat */}
             <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} />
 
+            {/* Spectator List - Desktop */}
+            {gameState.allowSpectators && spectators.length > 0 && (
+              <div className={styles["spectator-section"]}>
+                <div 
+                  className={styles["spectator-header"]}
+                  onClick={() => setShowSpectators(!showSpectators)}
+                >
+                  <span className={styles["spectator-title"]}>👁 Spectators ({spectators.length})</span>
+                  <span className={`${styles["spectator-toggle"]} ${showSpectators ? styles.expanded : ''}`}>▼</span>
+                </div>
+                {showSpectators && (
+                  <div className={styles["spectator-list"]}>
+                    {spectators.map((spec, i) => (
+                      <span key={spec.id || i} className={styles["spectator-name"]}>{spec.username}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Your Clock */}
             <div className={`
               ${styles["player-clock"]} 
@@ -3628,13 +3905,26 @@ const LiveGame = () => {
                 </div>
                 {(() => {
                   const moves = gameState.moveHistory || [];
+                  const bh = gameState?.gameType?.board_height || 8;
                   const rows = [];
                   for (let i = 0; i < moves.length; i += 2) {
+                    const a = moves[i];
+                    const b = moves[i + 1];
+                    const p1Move = a?.position === 1 ? a : (b?.position === 1 ? b : a);
+                    const p2Move = a?.position === 2 ? a : (b?.position === 2 ? b : (b && b !== p1Move ? b : null));
                     rows.push(
                       <div key={i} className={styles["move-row"]}>
                         <span className={styles["move-number"]}>{Math.floor(i / 2) + 1}.</span>
-                        <span className={styles["move-white"]}>{formatMoveNotation(moves[i])}</span>
-                        <span className={styles["move-black"]}>{moves[i + 1] ? formatMoveNotation(moves[i + 1]) : ''}</span>
+                        <span 
+                          className={`${styles["move-white"]}${ghostMoveIndex === i ? ` ${styles["active-move"]}` : ''}`}
+                          onClick={() => initialPiecesRef.current && setGhostMoveIndex(ghostMoveIndex === i ? null : i)}
+                          style={{ cursor: initialPiecesRef.current ? 'pointer' : 'default' }}
+                        >{formatMoveNotation(p1Move, true, bh)}</span>
+                        <span 
+                          className={`${styles["move-black"]}${ghostMoveIndex === i + 1 ? ` ${styles["active-move"]}` : ''}`}
+                          onClick={() => p2Move && initialPiecesRef.current && setGhostMoveIndex(ghostMoveIndex === i + 1 ? null : i + 1)}
+                          style={{ cursor: p2Move && initialPiecesRef.current ? 'pointer' : 'default' }}
+                        >{p2Move ? formatMoveNotation(p2Move, true, bh) : ''}</span>
                       </div>
                     );
                   }
@@ -3646,6 +3936,14 @@ const LiveGame = () => {
                   </div>
                 )}
               </div>
+              {initialPiecesRef.current && gameState.moveHistory && gameState.moveHistory.length > 0 && (
+                <div className={styles["move-nav-arrows"]}>
+                  <button onClick={() => setGhostMoveIndex(0)} disabled={ghostMoveIndex === 0} title="First move">⏮</button>
+                  <button onClick={() => setGhostMoveIndex(prev => prev === null ? (gameState.moveHistory.length - 2) : Math.max(0, prev - 1))} disabled={ghostMoveIndex === 0} title="Previous move">◀</button>
+                  <button onClick={() => setGhostMoveIndex(prev => prev === null ? 0 : (prev >= gameState.moveHistory.length - 1 ? null : prev + 1))} disabled={ghostMoveIndex === null || ghostMoveIndex >= gameState.moveHistory.length - 1} title="Next move">▶</button>
+                  <button onClick={() => setGhostMoveIndex(null)} disabled={ghostMoveIndex === null} title="Live board">⏭</button>
+                </div>
+              )}
             </div>
 
             {/* Game Options */}
@@ -3689,6 +3987,17 @@ const LiveGame = () => {
                 </div>
               </label>
             )}
+            <label className={styles["option-toggle"]}>
+              <span>Show board notation</span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={showBoardNotation}
+                  onChange={(e) => setShowBoardNotation(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
             {currentUser && (
               <label className={styles["option-toggle"]}>
                 <span>Disable chat</span>
@@ -3885,6 +4194,25 @@ const LiveGame = () => {
       {/* Mobile Chat - Only visible on small screens, below bottom clock */}
       <div className={styles["layout-row-mobile-chat"]}>
         <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} />
+        {/* Spectator List - Mobile */}
+        {gameState.allowSpectators && spectators.length > 0 && (
+          <div className={styles["spectator-section-mobile"]}>
+            <div 
+              className={styles["spectator-header"]}
+              onClick={() => setShowSpectators(!showSpectators)}
+            >
+              <span className={styles["spectator-title"]}>👁 Spectators ({spectators.length})</span>
+              <span className={`${styles["spectator-toggle"]} ${showSpectators ? styles.expanded : ''}`}>▼</span>
+            </div>
+            {showSpectators && (
+              <div className={styles["spectator-list-horizontal"]}>
+                {spectators.map((spec, i) => (
+                  <span key={spec.id || i} className={styles["spectator-name"]}>{spec.username}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Running Piece Count - below bottom clock */}
@@ -4009,13 +4337,26 @@ const LiveGame = () => {
             </div>
             {(() => {
               const moves = gameState.moveHistory || [];
+              const bh = gameState?.gameType?.board_height || 8;
               const rows = [];
               for (let i = 0; i < moves.length; i += 2) {
+                const a = moves[i];
+                const b = moves[i + 1];
+                const p1Move = a?.position === 1 ? a : (b?.position === 1 ? b : a);
+                const p2Move = a?.position === 2 ? a : (b?.position === 2 ? b : (b && b !== p1Move ? b : null));
                 rows.push(
                   <div key={i} className={styles["move-row"]}>
                     <span className={styles["move-number"]}>{Math.floor(i / 2) + 1}.</span>
-                    <span className={styles["move-white"]}>{formatMoveNotation(moves[i])}</span>
-                    <span className={styles["move-black"]}>{moves[i + 1] ? formatMoveNotation(moves[i + 1]) : ''}</span>
+                    <span 
+                      className={`${styles["move-white"]}${ghostMoveIndex === i ? ` ${styles["active-move"]}` : ''}`}
+                      onClick={() => initialPiecesRef.current && setGhostMoveIndex(ghostMoveIndex === i ? null : i)}
+                      style={{ cursor: initialPiecesRef.current ? 'pointer' : 'default' }}
+                    >{formatMoveNotation(p1Move, true, bh)}</span>
+                    <span 
+                      className={`${styles["move-black"]}${ghostMoveIndex === i + 1 ? ` ${styles["active-move"]}` : ''}`}
+                      onClick={() => p2Move && initialPiecesRef.current && setGhostMoveIndex(ghostMoveIndex === i + 1 ? null : i + 1)}
+                      style={{ cursor: p2Move && initialPiecesRef.current ? 'pointer' : 'default' }}
+                    >{p2Move ? formatMoveNotation(p2Move, true, bh) : ''}</span>
                   </div>
                 );
               }
@@ -4027,6 +4368,14 @@ const LiveGame = () => {
               </div>
             )}
           </div>
+          {initialPiecesRef.current && gameState.moveHistory && gameState.moveHistory.length > 0 && (
+            <div className={styles["move-nav-arrows"]}>
+              <button onClick={() => setGhostMoveIndex(0)} disabled={ghostMoveIndex === 0} title="First move">⏮</button>
+              <button onClick={() => setGhostMoveIndex(prev => prev === null ? (gameState.moveHistory.length - 2) : Math.max(0, prev - 1))} disabled={ghostMoveIndex === 0} title="Previous move">◀</button>
+              <button onClick={() => setGhostMoveIndex(prev => prev === null ? 0 : (prev >= gameState.moveHistory.length - 1 ? null : prev + 1))} disabled={ghostMoveIndex === null || ghostMoveIndex >= gameState.moveHistory.length - 1} title="Next move">▶</button>
+              <button onClick={() => setGhostMoveIndex(null)} disabled={ghostMoveIndex === null} title="Live board">⏭</button>
+            </div>
+          )}
         </div>
 
         <div className={styles["game-options"]}>
@@ -4069,6 +4418,17 @@ const LiveGame = () => {
               </div>
             </label>
           )}
+          <label className={styles["option-toggle"]}>
+            <span>Show board notation</span>
+            <div className={styles["toggle-switch"]}>
+              <input
+                type="checkbox"
+                checked={showBoardNotation}
+                onChange={(e) => setShowBoardNotation(e.target.checked)}
+              />
+              <span className={styles["toggle-slider"]} />
+            </div>
+          </label>
           {currentUser && (
             <label className={styles["option-toggle"]}>
               <span>Disable chat</span>
@@ -4264,6 +4624,17 @@ const LiveGame = () => {
               >
                 View Home
               </button>
+              {initialPiecesRef.current && gameState?.moveHistory?.length > 0 && (
+                <button 
+                  className={`${styles.btn} ${styles["btn-secondary"]}`}
+                  onClick={() => {
+                    setShowGameOver(false);
+                    setGhostMoveIndex(gameState.moveHistory.length - 1);
+                  }}
+                >
+                  Review Game
+                </button>
+              )}
               <button 
                 className={`${styles.btn} ${styles["btn-primary"]}`}
                 onClick={handlePlayAgain}

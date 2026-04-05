@@ -43,6 +43,7 @@ const Play = () => {
   const [showPieceHelpers, setShowPieceHelpers] = useState(true);
   const [rated, setRated] = useState(true);
   const [allowPremoves, setAllowPremoves] = useState(true);
+  const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
   const [startingMode, setStartingMode] = useState("none");
   const [playerSide, setPlayerSide] = useState("random"); // "p1", "p2", or "random"
   const [isCreating, setIsCreating] = useState(false);
@@ -347,7 +348,9 @@ const Play = () => {
     if (gameType.value_condition) conditions.push(gameType.value_title || "Points");
     if (gameType.squares_condition) conditions.push("Territory");
     if (gameType.hill_condition) conditions.push("King of the Hill");
-    return conditions.length > 0 ? conditions.join(" / ") : "Standard";
+    if (gameType.no_moves_condition) conditions.push("No Legal Moves");
+    if (gameType.piece_count_condition) conditions.push("Piece Count");
+    return conditions.length > 0 ? conditions.join(" / ") : "Capture (default)";
   };
 
   // Get piece count per player from pieces_string
@@ -1327,6 +1330,17 @@ const Play = () => {
               </div>
             </div>
 
+            <div className={styles["additional-options-section"]}>
+              <button 
+                type="button"
+                className={styles["additional-options-toggle"]}
+                onClick={() => setShowAdditionalOptions(!showAdditionalOptions)}
+              >
+                <span>Additional Options</span>
+                <span className={`${styles["toggle-arrow"]} ${showAdditionalOptions ? styles["open"] : ''}`}>▼</span>
+              </button>
+              {showAdditionalOptions && (
+                <div className={styles["additional-options-content"]}>
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["checkbox-label"]}>
                 <input
@@ -1367,6 +1381,9 @@ const Play = () => {
               <div className={styles["input-hint"]}>
                 Let other players watch this game
               </div>
+            </div>
+                </div>
+              )}
             </div>
 
             {/* Starting Position Mode Selection */}

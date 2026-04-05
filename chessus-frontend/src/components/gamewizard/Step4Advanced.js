@@ -120,8 +120,10 @@ const Step4Advanced = ({ gameData, updateGameData }) => {
             gameData.capture_condition && "Capture",
             gameData.value_condition && "Points",
             gameData.squares_condition && "Control Squares",
-            gameData.hill_condition && "King of the Hill"
-          ].filter(Boolean).join(", ") || "None set"}
+            gameData.hill_condition && "King of the Hill",
+            gameData.no_moves_condition && "No Legal Moves",
+            gameData.piece_count_condition && "Piece Count"
+          ].filter(Boolean).join(", ") || "Capture (default)"}
         </div>
       </div>
     </div>

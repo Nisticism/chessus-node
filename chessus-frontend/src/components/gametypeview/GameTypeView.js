@@ -995,6 +995,11 @@ const GameTypeView = () => {
         content: winConditions.join('\n'),
         pieceLinks: winPieceLinks.length > 0 ? winPieceLinks : undefined
       });
+    } else {
+      rules.push({
+        title: "Win Conditions",
+        content: "• **Capture (default)**: Capture all of your opponent's pieces to win."
+      });
     }
 
     // ---- Draw Conditions Section ----

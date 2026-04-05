@@ -51,6 +51,10 @@ const AdminDashboard = () => {
     game_name: ''
   });
 
+  // Site settings state
+  const [siteSettings, setSiteSettings] = useState({});
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
   // Auto-hide alert after 2 seconds
   useEffect(() => {
     let timer;
@@ -100,6 +104,8 @@ const AdminDashboard = () => {
       fetchFeaturedGames();
     } else if (activeTab === 'anonymous-games') {
       fetchAnonymousGames(1);
+    } else if (activeTab === 'settings') {
+      fetchSiteSettings();
     } else {
       fetchData(activeTab, 1);
     }
@@ -122,6 +128,42 @@ const AdminDashboard = () => {
       setShowAlert(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSiteSettings = async () => {
+    setSettingsLoading(true);
+    try {
+      const response = await axios.get(
+        `${API_URL}admin/site-settings`,
+        { headers: authHeader() }
+      );
+      const map = {};
+      (response.data.settings || []).forEach(s => { map[s.setting_key] = s.setting_value; });
+      setSiteSettings(map);
+    } catch (error) {
+      console.error("Error fetching site settings:", error);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const updateSiteSetting = async (key, value) => {
+    try {
+      await axios.put(
+        `${API_URL}admin/site-settings/${key}`,
+        { value: String(value) },
+        { headers: authHeader() }
+      );
+      setSiteSettings(prev => ({ ...prev, [key]: String(value) }));
+      setAlertMessage(`Setting "${key}" updated`);
+      setAlertType('success');
+      setShowAlert(true);
+    } catch (error) {
+      console.error("Error updating site setting:", error);
+      setAlertMessage("Failed to update setting");
+      setAlertType('error');
+      setShowAlert(true);
     }
   };
 
@@ -646,6 +688,7 @@ const AdminDashboard = () => {
             <th>Creator</th>
             <th>Board Size</th>
             <th>Players</th>
+            <th>Play Count</th>
             <th>Last Played</th>
             <th>Actions</th>
           </tr>
@@ -653,7 +696,7 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
                 {!data ? 'Loading...' : 'No games found'}
               </td>
             </tr>
@@ -665,6 +708,7 @@ const AdminDashboard = () => {
               <td>{game.creator_name ? (game.real_creator_name ? <Link to={`/profile/${game.real_creator_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{game.creator_name}</Link> : <span>{game.creator_name}</span>) : 'N/A'}</td>
               <td>{game.board_width}x{game.board_height}</td>
               <td>{game.player_count || 2}</td>
+              <td>{game.play_count || 0}</td>
               <td>{game.last_played_at ? formatDateTime(game.last_played_at) : 'Never'}</td>
               <td>
                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
@@ -748,7 +792,7 @@ const AdminDashboard = () => {
             <tr key={forum.id}>
               <td>{forum.id}</td>
               <td><Link to={`/forums/${forum.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{forum.title}</Link></td>
-              <td>{forum.author_name && forum.author_name !== 'Anonymous' ? <Link to={`/profile/${forum.author_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{forum.author_name}</Link> : <span>{forum.author_name || 'N/A'}</span>}</td>
+              <td>{forum.author_name && forum.author_name !== 'Anonymous' && forum.author_name !== 'User Deleted' ? <Link to={`/profile/${forum.author_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{forum.author_name}</Link> : <span>{forum.author_name || 'N/A'}</span>}</td>
               <td>{forum.game_name || 'N/A'}</td>
               <td>{forum.genre}</td>
               <td>{forum.public ? 'Yes' : 'No'}</td>
@@ -1407,10 +1451,16 @@ const AdminDashboard = () => {
         >
           Anonymous Games
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "settings" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("settings")}
+        >
+          Settings
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {loading || (activeTab === 'featured' && featuredLoading) ? (
+        {loading || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -1422,7 +1472,26 @@ const AdminDashboard = () => {
             {activeTab === "featured" && renderFeaturedTab()}
             {activeTab === "streams" && renderStreamsTab()}
             {activeTab === "anonymous-games" && renderAnonymousGamesTable()}
-            {activeTab !== "featured" && activeTab !== "streams" && renderPagination()}
+            {activeTab === "settings" && (
+              <div className={styles["settings-section"]}>
+                <h3>Site Settings</h3>
+                <div className={styles["setting-row"]}>
+                  <div className={styles["setting-info"]}>
+                    <span className={styles["setting-label"]}>Changelog Page</span>
+                    <span className={styles["setting-desc"]}>Show or hide the public changelog page</span>
+                  </div>
+                  <label className={styles["setting-toggle"]}>
+                    <input
+                      type="checkbox"
+                      checked={siteSettings.changelog_enabled !== "false"}
+                      onChange={(e) => updateSiteSetting("changelog_enabled", e.target.checked)}
+                    />
+                    <span className={styles["toggle-slider"]} />
+                  </label>
+                </div>
+              </div>
+            )}
+            {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && renderPagination()}
             {activeTab === "streams" && renderPagination()}
           </>
         )}

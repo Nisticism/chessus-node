@@ -1617,3 +1617,43 @@
   color: #888;
   font-size: 0.9rem;
 }
+
+.additional-options-section {
+  margin-top: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.additional-options-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #e0e8f0;
+  }
+}
+
+.toggle-arrow {
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+
+  &.open {
+    transform: rotate(180deg);
+  }
+}
+
+.additional-options-content {
+  padding: 4px 14px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}

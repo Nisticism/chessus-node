@@ -54,7 +54,7 @@ const PlayerList = () => {
   const allUsers = useSelector((state) => state.users);
   const currentUser = useSelector((state) => state.auth?.user);
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState('id');
+  const [sortBy, setSortBy] = useState('last_active_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');

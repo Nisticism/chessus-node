@@ -3,9 +3,11 @@ import authHeader from "./auth-header";
 
 import API_URL from "../global/global.js";
 
-const getPieces = async (page = 1, limit = 20) => {
+const getPieces = async (page = 1, limit = 20, sort = 'newest', search = '') => {
+  const params = { page, limit, sort };
+  if (search) params.search = search;
   const response = await axios.get(API_URL + "pieces", { 
-    params: { page, limit },
+    params,
     headers: authHeader() 
   });
   return response;

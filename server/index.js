@@ -1632,6 +1632,7 @@ app.get("/api/match/:gameId", async (req, res) => {
       winnerId: winnerId,
       pieces,
       moveHistory: otherData.moves || [],
+      initialPieces: otherData.initialPieces || null,
       reason: otherData.reason || 'unknown',
       eloChanges: otherData.eloChanges || null,
       gameTypeName: game.game_type_name,
@@ -1659,15 +1660,52 @@ app.get("/api/pieces", async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
-    
+    const sort = req.query.sort || 'newest';
+    const search = req.query.search || '';
+
+    // Build WHERE clause
+    let whereClause = '';
+    const whereParams = [];
+    const conditions = [];
+
+    if (search) {
+      conditions.push('p.piece_name LIKE ?');
+      whereParams.push(`%${search}%`);
+    }
+
+    if (conditions.length > 0) {
+      whereClause = 'WHERE ' + conditions.join(' AND ');
+    }
+
+    // Build ORDER BY clause
+    let orderClause = 'ORDER BY p.id DESC';
+    let joinClause = '';
+    let selectExtra = '';
+
+    switch (sort) {
+      case 'most_used':
+        joinClause = 'LEFT JOIN game_type_pieces gtp ON p.id = gtp.piece_id';
+        selectExtra = ', COUNT(DISTINCT gtp.game_type_id) as game_count';
+        orderClause = 'ORDER BY game_count DESC, p.id DESC';
+        break;
+      case 'alphabetical':
+        orderClause = 'ORDER BY p.piece_name ASC';
+        break;
+      case 'newest':
+      default:
+        orderClause = 'ORDER BY p.id DESC';
+        break;
+    }
+
     // Get total count
-    const [countResult] = await db_pool.query("SELECT COUNT(*) as total FROM pieces");
+    const countQuery = `SELECT COUNT(*) as total FROM pieces p ${whereClause}`;
+    const [countResult] = await db_pool.query(countQuery, whereParams);
     const total = countResult[0].total;
-    
+
     // Get paginated pieces
-    const [pieces] = await db_pool.query(
-      `SELECT * FROM pieces ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
-    );
+    const groupBy = joinClause ? 'GROUP BY p.id' : '';
+    const dataQuery = `SELECT p.*${selectExtra} FROM pieces p ${joinClause} ${whereClause} ${groupBy} ${orderClause} LIMIT ? OFFSET ?`;
+    const [pieces] = await db_pool.query(dataQuery, [...whereParams, limit, offset]);
     
     res.json({
       pieces,
@@ -1801,15 +1839,70 @@ app.get("/api/games", async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
-    
+    const sort = req.query.sort || 'newest';
+    const winCondition = req.query.winCondition || '';
+    const search = req.query.search || '';
+
+    // Build WHERE clause
+    let whereClause = '';
+    const whereParams = [];
+    const conditions = [];
+
+    if (winCondition) {
+      const condMap = {
+        'checkmate': 'gt.mate_condition = 1',
+        'capture': 'gt.capture_condition = 1',
+        'points': 'gt.value_condition = 1',
+        'territory': 'gt.squares_condition = 1',
+        'hill': 'gt.hill_condition = 1',
+        'piece_count': 'gt.piece_count_condition = 1',
+      };
+      if (condMap[winCondition]) {
+        conditions.push(condMap[winCondition]);
+      }
+    }
+
+    if (search) {
+      conditions.push('gt.game_name LIKE ?');
+      whereParams.push(`%${search}%`);
+    }
+
+    if (conditions.length > 0) {
+      whereClause = 'WHERE ' + conditions.join(' AND ');
+    }
+
+    // Build ORDER BY clause
+    let orderClause = 'ORDER BY gt.id DESC';
+    let joinClause = '';
+    let selectExtra = '';
+
+    switch (sort) {
+      case 'popular':
+        joinClause = 'LEFT JOIN games g ON gt.id = g.game_type_id';
+        selectExtra = ', COUNT(g.id) as play_count';
+        orderClause = 'ORDER BY play_count DESC, gt.id DESC';
+        break;
+      case 'last_played':
+        orderClause = 'ORDER BY gt.last_played_at DESC NULLS LAST, gt.id DESC';
+        break;
+      case 'alphabetical':
+        orderClause = 'ORDER BY gt.game_name ASC';
+        break;
+      case 'newest':
+      default:
+        orderClause = 'ORDER BY gt.id DESC';
+        break;
+    }
+
     // Get total count
-    const [countResult] = await db_pool.query("SELECT COUNT(*) as total FROM game_types");
+    const countQuery = `SELECT COUNT(*) as total FROM game_types gt ${whereClause}`;
+    const [countResult] = await db_pool.query(countQuery, whereParams);
     const total = countResult[0].total;
-    
+
     // Get paginated games
-    const [games] = await db_pool.query(
-      `SELECT * FROM game_types ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`
-    );
+    const groupBy = joinClause ? 'GROUP BY gt.id' : '';
+    const dataQuery = `SELECT gt.*${selectExtra} FROM game_types gt ${joinClause} ${whereClause} ${groupBy} ${orderClause} LIMIT ? OFFSET ?`;
+    const [games] = await db_pool.query(dataQuery, [...whereParams, limit, offset]);
     
     res.json({
       games,
@@ -3256,35 +3349,94 @@ app.post("/api/forums/delete", authenticateToken, async (req, res) => {
 
 app.post("/api/comments/new", async (req, res) => {
   try {
-    const { author_id, forum_id, content, created_at, author_name } = req.body;
+    const { author_id, forum_id, content, created_at, author_name, parent_id } = req.body;
     
     const comment = await dbHelpers.createComment({
       author_id,
       article_id: forum_id,
       content,
       created_at,
-      author_name
+      author_name,
+      parent_id: parent_id || null
     });
 
-    // Notify the forum post author about the new comment
+    const io = app.get('io');
+    const { userSockets } = require('./game-socket');
+
+    // If this is a reply, notify the parent comment's author
+    if (parent_id) {
+      try {
+        const parentComments = await dbHelpers.query(
+          "SELECT author_id FROM chessusnode.comments WHERE id = ?", [parent_id]
+        );
+        if (parentComments.length > 0) {
+          const parentAuthorId = parentComments[0].author_id;
+          if (parentAuthorId && parentAuthorId !== parseInt(author_id)) {
+            const notification = await dbHelpers.createNotification({
+              user_id: parentAuthorId,
+              sender_id: parseInt(author_id),
+              type: 'reply',
+              title: `${author_name} replied to your comment`,
+              content: content ? content.substring(0, 200) : 'New reply to your comment',
+              related_id: forum_id,
+              action_url: `/forums/${forum_id}`
+            });
+            if (io) {
+              const targetSocketId = userSockets?.get(parentAuthorId);
+              if (targetSocketId) {
+                io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author_name });
+              }
+            }
+          }
+        }
+      } catch (replyNotifErr) {
+        console.error('Error creating reply notification:', replyNotifErr.message);
+      }
+    }
+
+    // Notify the forum post author about the new comment (if not already notified as parent comment author)
     try {
       const forum = await dbHelpers.findArticleById(forum_id);
       if (forum && forum.author_id && forum.author_id !== parseInt(author_id)) {
-        const notification = await dbHelpers.createNotification({
-          user_id: forum.author_id,
-          sender_id: parseInt(author_id),
-          type: 'comment',
-          title: `${author_name} commented on your post`,
-          content: content ? content.substring(0, 200) : 'New comment on your post',
-          related_id: forum_id,
-          action_url: `/forums/${forum_id}`
-        });
-        const io = app.get('io');
-        if (io) {
-          const { userSockets } = require('./game-socket');
-          const targetSocketId = userSockets?.get(forum.author_id);
-          if (targetSocketId) {
-            io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author_name });
+        // Don't double-notify if forum author is also the parent comment author
+        if (parent_id) {
+          const parentComments = await dbHelpers.query(
+            "SELECT author_id FROM chessusnode.comments WHERE id = ?", [parent_id]
+          );
+          if (parentComments.length > 0 && parentComments[0].author_id === forum.author_id) {
+            // Already notified as parent comment author, skip
+          } else {
+            const notification = await dbHelpers.createNotification({
+              user_id: forum.author_id,
+              sender_id: parseInt(author_id),
+              type: 'comment',
+              title: `${author_name} commented on your post`,
+              content: content ? content.substring(0, 200) : 'New comment on your post',
+              related_id: forum_id,
+              action_url: `/forums/${forum_id}`
+            });
+            if (io) {
+              const targetSocketId = userSockets?.get(forum.author_id);
+              if (targetSocketId) {
+                io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author_name });
+              }
+            }
+          }
+        } else {
+          const notification = await dbHelpers.createNotification({
+            user_id: forum.author_id,
+            sender_id: parseInt(author_id),
+            type: 'comment',
+            title: `${author_name} commented on your post`,
+            content: content ? content.substring(0, 200) : 'New comment on your post',
+            related_id: forum_id,
+            action_url: `/forums/${forum_id}`
+          });
+          if (io) {
+            const targetSocketId = userSockets?.get(forum.author_id);
+            if (targetSocketId) {
+              io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author_name });
+            }
           }
         }
       }
@@ -4691,7 +4843,8 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
          WHEN g.creator_id IS NULL THEN 'Anonymous (not logged in)'
          WHEN g.is_anonymous_creator = 1 THEN CONCAT(u.username, ' (Anonymous)')
          ELSE u.username 
-       END as creator_name
+       END as creator_name,
+       (SELECT COUNT(*) FROM games gm WHERE gm.game_type_id = g.id) as play_count
        FROM game_types g
        LEFT JOIN users u ON g.creator_id = u.id
        ORDER BY g.id DESC
@@ -5718,6 +5871,52 @@ process.on('SIGTERM', () => {
   server.close(() => {
     process.exit(0);
   });
+});
+
+// ========== Site Settings API ==========
+
+// Public: Get a single site setting by key
+app.get("/api/site-settings/:key", async (req, res) => {
+  try {
+    const { key } = req.params;
+    const [rows] = await db_pool.query(
+      "SELECT setting_value FROM site_settings WHERE setting_key = ?", [key]
+    );
+    if (rows.length === 0) {
+      return res.json({ value: "true" }); // default to enabled
+    }
+    res.json({ value: rows[0].setting_value });
+  } catch (err) {
+    console.error("Error fetching site setting:", err.message);
+    res.json({ value: "true" });
+  }
+});
+
+// Admin: Get all site settings
+app.get("/api/admin/site-settings", authenticateAdmin, async (req, res) => {
+  try {
+    const [rows] = await db_pool.query("SELECT * FROM site_settings ORDER BY setting_key");
+    res.json({ settings: rows });
+  } catch (err) {
+    console.error("Error fetching site settings:", err.message);
+    res.status(500).json({ message: "Failed to load settings" });
+  }
+});
+
+// Admin: Update a site setting
+app.put("/api/admin/site-settings/:key", authenticateAdmin, async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { value } = req.body;
+    await db_pool.query(
+      "INSERT INTO site_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+      [key, String(value), String(value)]
+    );
+    res.json({ message: "Setting updated", key, value: String(value) });
+  } catch (err) {
+    console.error("Error updating site setting:", err.message);
+    res.status(500).json({ message: "Failed to update setting" });
+  }
 });
 
 // Weekly notification email digest - runs every hour, checks if users have >10 notifications this week

@@ -11,12 +11,12 @@ import styles from './piecebadges.module.scss';
  * @param {boolean} [showGlobalHpAd] - Whether global show_all_hp_ad is on
  */
 const PieceBadges = ({ piece, squareSize, showGlobalHpAd = false }) => {
-  const showHp = showGlobalHpAd || piece.show_hp_ad || (piece.hit_points && piece.hit_points > 1);
+  const showHp = !!(showGlobalHpAd || piece.show_hp_ad || piece.hit_points > 1);
   const hp = piece.current_hp ?? piece.hit_points ?? 1;
   const ad = piece.attack_damage ?? 1;
   const regen = piece.hp_regen ?? 0;
-  const showRegenBadge = piece.show_regen && regen > 0;
-  const showBurnBadge = piece.show_burn && piece.burn_damage > 0 && piece.burn_duration > 0;
+  const showRegenBadge = !!(piece.show_regen && regen > 0);
+  const showBurnBadge = !!(piece.show_burn && piece.burn_damage > 0 && piece.burn_duration > 0);
 
   if (!showHp && !showRegenBadge && !showBurnBadge) return null;
 

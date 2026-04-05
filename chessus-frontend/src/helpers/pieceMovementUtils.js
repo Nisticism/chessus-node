@@ -407,7 +407,8 @@ export const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, pl
                                    pieceData.down_left_capture || pieceData.down_right_capture ||
                                    pieceData.ratio_capture_1 || pieceData.ratio_capture_2 ||
                                    pieceData.ratio_one_capture || pieceData.ratio_two_capture ||
-                                   pieceData.step_capture_style || pieceData.step_by_step_capture;
+                                   pieceData.step_capture_style || pieceData.step_by_step_capture ||
+                                   (specialCaptures.additionalCaptures && Object.keys(specialCaptures.additionalCaptures).length > 0);
 
   // If no separate capture fields, use movement logic
   if (!hasSeparateCaptureFields) {
@@ -867,22 +868,98 @@ export const toChessNotation = (col, row) => {
  * Format a move in standard chess notation
  * @param {Object} move - Move object with from, to, captured, pieceName, etc.
  * @param {boolean} includeFrom - Whether to include the source square
+ * @param {number} boardHeight - Board height for rank conversion (default 8)
  * @returns {string} Formatted move (e.g., "e2-e4", "Nxf3")
  */
-export const formatMoveNotation = (move, includeFrom = true) => {
+export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) => {
   if (!move || !move.from || !move.to) return '';
   
-  const fromSquare = toChessNotation(move.from.x, move.from.y);
-  const toSquare = toChessNotation(move.to.x, move.to.y);
-  const captureSymbol = move.captured ? 'x' : '-';
-  
-  if (move.isRangedAttack) {
-    return `${fromSquare}→${toSquare}${move.captured ? '×' : ''}`;
+  // Castling notation
+  if (move.isCastling) {
+    const dx = move.to.x - move.from.x;
+    return dx < 0 ? 'O-O-O' : 'O-O';
   }
+  
+  const fromSquare = colToFile(move.from.x) + rowToRank(boardHeight - 1 - move.from.y);
+  const toSquare = colToFile(move.to.x) + rowToRank(boardHeight - 1 - move.to.y);
+  
+  // Ranged attack notation
+  if (move.isRangedAttack) {
+    if (move.captured) {
+      return `${fromSquare}→${toSquare}×`;
+    }
+    // Ranged attack that dealt damage but didn't kill
+    if (move.damagedPieces && move.damagedPieces.length > 0) {
+      return `${fromSquare}→${toSquare}⚔`;
+    }
+    return `${fromSquare}→${toSquare}`;
+  }
+
+  const captureSymbol = move.captured ? 'x' : '-';
   
   if (includeFrom) {
     return `${fromSquare}${captureSymbol}${toSquare}`;
   }
   
   return `${move.captured ? 'x' : ''}${toSquare}`;
+};
+
+/**
+ * Reconstruct board state at a given move index by replaying from initial pieces.
+ * @param {Array} initialPieces - The starting pieces array (deep-cloned internally)
+ * @param {Array} moveHistory - Full array of move records
+ * @param {number} targetIndex - Replay up to and including this move index
+ * @returns {Array} Reconstructed pieces array at the given move
+ */
+export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
+  const pieces = JSON.parse(JSON.stringify(initialPieces));
+
+  for (let i = 0; i <= targetIndex && i < moveHistory.length; i++) {
+    const move = moveHistory[i];
+
+    // Place-mode moves (Othello-style) — skip, can't fully reconstruct
+    if (move.type === 'place') continue;
+
+    // Remove captured pieces
+    if (move.allCaptured && move.allCaptured.length > 0) {
+      const capturedIds = new Set(move.allCaptured.map(c => c.id));
+      for (let j = pieces.length - 1; j >= 0; j--) {
+        if (capturedIds.has(pieces[j].id)) pieces.splice(j, 1);
+      }
+    } else if (move.captured) {
+      const idx = pieces.findIndex(p => p.id === move.captured.id);
+      if (idx !== -1) pieces.splice(idx, 1);
+    }
+
+    // Apply HP damage to surviving pieces
+    if (move.damagedPieces) {
+      for (const dp of move.damagedPieces) {
+        const piece = pieces.find(p => p.id === dp.id);
+        if (piece) piece.current_hp = dp.remainingHp;
+      }
+    }
+
+    // Move the piece (unless move was cancelled or ranged attack)
+    const movingPiece = pieces.find(p => p.id === move.pieceId);
+    if (movingPiece && !move.moveCancelled && !move.isRangedAttack) {
+      movingPiece.x = move.to.x;
+      movingPiece.y = move.to.y;
+    }
+
+    // Handle castling partner movement
+    if (move.isCastling && move.castlingWith && movingPiece) {
+      const partner = pieces.find(p => p.id === move.castlingWith);
+      if (partner) {
+        if (move.castlingDirection === 'left') {
+          partner.x = move.to.x + 1;
+          partner.y = move.to.y;
+        } else {
+          partner.x = move.to.x - 1;
+          partner.y = move.to.y;
+        }
+      }
+    }
+  }
+
+  return pieces;
 };

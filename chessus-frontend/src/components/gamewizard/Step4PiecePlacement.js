@@ -1411,7 +1411,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         </h3>
         {hpAdSectionOpen && (
         <>
-        <div className={styles["global-hp-ad-row"]}>
+        <div className={styles["global-hp-ad-row"]} style={{ marginTop: '12px' }}>
           <label className={styles["toggle-label"]}>
             <span>Show all badges on all pieces <InfoTooltip text="Force-show HP/AD, Regen, and Burn badges on every piece during gameplay. Overrides all individual per-piece badge settings." /></span>
             <div className={styles["toggle-switch"]}>
@@ -1489,8 +1489,32 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             options={{ min: 0, max: 100 }}
           />
         </div>
+        <div className={styles["global-hp-ad-row"]}>
+          <label className={styles["toggle-label"]}>
+            <span>Directional attacks stop before target <InfoTooltip text="When a piece attacks along a directional (sliding) path and the target survives due to HP, the attacker stops one square before the target instead of staying in place. Only applies to non-exact directional attacks — does not affect ratio, step-by-step, or exact patterns. If the attack distance is 1, the piece stays in place since the square before is its current position." /></span>
+            <div className={styles["toggle-switch"]}>
+              <input
+                type="checkbox"
+                checked={(() => {
+                  try { return JSON.parse(gameData.other_game_data || '{}').stop_before_target_directional || false; } catch { return false; }
+                })()}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  try {
+                    const data = JSON.parse(gameData.other_game_data || '{}');
+                    data.stop_before_target_directional = checked;
+                    updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+                  } catch {
+                    updateGameData({ other_game_data: JSON.stringify({ stop_before_target_directional: checked }, null, 2) });
+                  }
+                }}
+              />
+              <span className={styles["toggle-slider"]}></span>
+            </div>
+          </label>
+        </div>
         <p style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-          HP/AD system inspired by ideas from Vasilije — thanks! Check out his project at{' '}
+          HP/AD system inspired by ideas from Vasilije. Check out his project at{' '}
           <a href="https://www.nichess.org/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--link-color, #58a6ff)' }}>nichess.org</a>
         </p>
         </>

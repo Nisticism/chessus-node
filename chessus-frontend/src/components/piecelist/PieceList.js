@@ -18,12 +18,35 @@ const PieceList = () => {
   const [, setAlertMessage] = useState("");
   const [, setAlertType] = useState(""); // "success" or "error"
   const [displayColor, setDisplayColor] = useState("p1"); // "p1" (white/light), "p2" (black/dark), "both"
+  const [sortBy, setSortBy] = useState("newest");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
   useEffect(() => {
-    dispatch(getPieces(currentPage, 20));
-  }, [currentPage, dispatch]);
+    dispatch(getPieces(currentPage, 20, sortBy, searchQuery));
+  }, [currentPage, sortBy, searchQuery, dispatch]);
+
+  const handleSortChange = (e) => {
+    setSortBy(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    setSearchQuery(searchInput);
+    setCurrentPage(1);
+  };
+
+  // Auto-filter: debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchInput);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   useEffect(() => {
     let timer;
@@ -108,7 +131,7 @@ const PieceList = () => {
       setShowAlert(true);
       // Force a fresh fetch after delete
       setTimeout(() => {
-        dispatch(getPieces(currentPage, 20));
+        dispatch(getPieces(currentPage, 20, sortBy, searchQuery));
       }, 100);
     } catch (error) {
       console.error("Error deleting piece:", error);
@@ -296,6 +319,29 @@ const PieceList = () => {
         <Link to="/create/piece" className={styles["create-button"]}>
           + Create New Piece
         </Link>
+
+        <div className={styles["filter-controls"]}>
+          <form className={styles["search-form"]} onSubmit={handleSearch}>
+            <input
+              type="text"
+              className={styles["search-input"]}
+              placeholder="Search pieces..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+            <button type="submit" className={styles["search-button"]}>Search</button>
+          </form>
+          <div className={styles["filter-row"]}>
+            <div className={styles["filter-group"]}>
+              <label className={styles["filter-label"]}>Sort by</label>
+              <select className={styles["filter-select"]} value={sortBy} onChange={handleSortChange}>
+                <option value="newest">Newest</option>
+                <option value="most_used">Most Used in Games</option>
+                <option value="alphabetical">Alphabetical</option>
+              </select>
+            </div>
+          </div>
+        </div>
 
         <div className={styles["color-toggle"]}>
           <span className={styles["toggle-label"]}>Show pieces as</span>

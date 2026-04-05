@@ -21,6 +21,7 @@ const GameWizard = ({ editGameId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [showCheckmateWarning, setShowCheckmateWarning] = useState(false);
   
   // Game data state - all fields from game_types table
   const [gameData, setGameData] = useState({
@@ -92,7 +93,8 @@ const GameWizard = ({ editGameId }) => {
           const existingGame = await dispatch(getGameById(editGameId));
           
           // Check if user has permission to edit
-          if (existingGame.creator_id !== currentUser?.id && currentUser?.role !== "Admin") {
+          const role = (currentUser?.role || "").toLowerCase();
+          if (Number(existingGame.creator_id) !== Number(currentUser?.id) && role !== "admin" && role !== "owner") {
             setLoadError("You don't have permission to edit this game.");
             return;
           }
@@ -169,7 +171,20 @@ const GameWizard = ({ editGameId }) => {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (skipWarning = false) => {
+    // Check for checkmate warning
+    if (!skipWarning && gameData.mate_condition) {
+      try {
+        const pieces = JSON.parse(gameData.pieces_string || '[]');
+        const piecesArr = Array.isArray(pieces) ? pieces : Object.values(pieces);
+        const hasCheckmateTarget = piecesArr.some(p => p.ends_game_on_checkmate && !p._occupied);
+        if (!hasCheckmateTarget) {
+          setShowCheckmateWarning(true);
+          return;
+        }
+      } catch (e) { /* ignore parse errors */ }
+    }
+
     setIsSubmitting(true);
     
     try {
@@ -326,6 +341,25 @@ const GameWizard = ({ editGameId }) => {
           )}
         </div>
       </div>
+
+      {showCheckmateWarning && (
+        <div className={styles["warning-overlay"]}>
+          <div className={styles["warning-modal"]}>
+            <h3>⚠️ Checkmate Warning</h3>
+            <p>You have <strong>Checkmate</strong> enabled as a win condition, but no piece is marked as "Ends Game on Checkmate." The game will never end by checkmate unless at least one piece has this flag.</p>
+            <div className={styles["warning-buttons"]}>
+              <StandardButton 
+                buttonText="Go Back" 
+                onClick={() => setShowCheckmateWarning(false)}
+              />
+              <StandardButton 
+                buttonText="Create Anyway" 
+                onClick={() => { setShowCheckmateWarning(false); handleSubmit(true); }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

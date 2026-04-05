@@ -624,7 +624,7 @@ const PieceSelector = ({
               </label>
             </div>
             <p style={{ marginTop: '10px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-              HP/AD system inspired by ideas from Vasilije — thanks! Check out his project at{' '}
+              HP/AD system inspired by ideas from Vasilije. Check out his project at{' '}
               <a href="https://www.nichess.org/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--link-color, #58a6ff)' }}>nichess.org</a>
             </p>
               </>

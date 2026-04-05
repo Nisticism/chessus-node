@@ -430,8 +430,12 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
-    socket.emit('spectateGame', { gameId });
-  }, [socket, connected]);
+    socket.emit('spectateGame', { 
+      gameId,
+      userId: user?.id || `anon_${socket.id}`,
+      username: user?.username || 'Guest'
+    });
+  }, [socket, connected, user]);
 
   // Set a premove
   const setPremove = useCallback((gameId, move) => {

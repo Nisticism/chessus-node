@@ -129,9 +129,9 @@ export const deleteForum = (id) => async (dispatch) => {
   }
 };
 
-export const newComment = (author_id, article_id, content, created_at, author_name) => async (dispatch) => {
+export const newComment = (author_id, article_id, content, created_at, author_name, parent_id = null) => async (dispatch) => {
   try {
-    const response = await ForumsService.newComment(author_id, article_id, content, created_at, author_name);
+    const response = await ForumsService.newComment(author_id, article_id, content, created_at, author_name, parent_id);
     console.log("dispatching comment success");
     console.log(response.result);
     dispatch({

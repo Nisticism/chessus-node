@@ -64,7 +64,7 @@ const deleteForum = async (id) => {
   return response.data;
 };
 
-const newComment = async (author_id, forum_id, content, created_at, author_name) => {
+const newComment = async (author_id, forum_id, content, created_at, author_name, parent_id = null) => {
   if (content === "") {
     content = null;
   }
@@ -75,6 +75,7 @@ const newComment = async (author_id, forum_id, content, created_at, author_name)
     content,
     created_at,
     author_name,
+    parent_id,
     headers: authHeader(),
   });
   return response.data;

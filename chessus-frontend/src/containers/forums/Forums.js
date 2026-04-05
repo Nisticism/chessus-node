@@ -116,7 +116,7 @@ const Forums = () => {
                     </td>
                     <td>
                       <div className={styles["forums-link"]}>
-                        { forum.author_name && forum.author_name !== 'Anonymous' ? 
+                        { forum.author_name && forum.author_name !== 'Anonymous' && forum.author_name !== 'User Deleted' ? 
                           <Link to={`/profile/${forum.author_name}`} onClick={(e) => e.stopPropagation()}>
                             <div className={styles["forums-username"]}>{ forum.author_name }</div>
                           </Link>

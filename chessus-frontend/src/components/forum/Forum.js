@@ -8,6 +8,7 @@ import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-fo
 
 import { FaEdit } from "react-icons/fa";
 import { FaTrash } from "react-icons/fa";
+import { FaReply } from "react-icons/fa";
 import LikesModule from "./LikesModule";
 
 const Forum = () => {
@@ -19,6 +20,9 @@ const Forum = () => {
   const [firstRender, setFirstRender] = useState(false);
   const currentForum = useSelector((state) => state.forums.forum);
   const [commentContent, setCommentContent] = useState(null);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyContent, setReplyContent] = useState("");
   
   const navigate = useNavigate();
 
@@ -58,10 +62,24 @@ const Forum = () => {
       navigate('/login', { state: { message: "Please log in to comment on forums." } });
       return;
     }
-    let commentContent = document.getElementById("comment-field").value;
+    if (!newCommentText.trim()) return;
     const currentTime = getCurrentMySQLDateTime();
-    console.log(commentContent);
-    dispatch(newComment(currentUser.id, currentForum.id, commentContent, currentTime, currentUser.username));
+    console.log(newCommentText);
+    dispatch(newComment(currentUser.id, currentForum.id, newCommentText, currentTime, currentUser.username));
+    setNewCommentText("");
+  }
+
+  const handleReply = (e, parentCommentId) => {
+    e.preventDefault();
+    if (!currentUser) {
+      navigate('/login', { state: { message: "Please log in to reply to comments." } });
+      return;
+    }
+    if (!replyContent.trim()) return;
+    const currentTime = getCurrentMySQLDateTime();
+    dispatch(newComment(currentUser.id, currentForum.id, replyContent, currentTime, currentUser.username, parentCommentId));
+    setReplyingTo(null);
+    setReplyContent("");
   }
 
   const handleEditComment = (e, elementId, id) => {
@@ -141,7 +159,7 @@ const Forum = () => {
               }
             </div>
             <div className={styles["forum-author-date"]}>
-            {currentForum.author_name && currentForum.author_name !== 'Anonymous' ? (
+            {currentForum.author_name && currentForum.author_name !== 'Anonymous' && currentForum.author_name !== 'User Deleted' ? (
               <Link to={`/profile/${currentForum.author_name}`}>
                 <div className={styles["forum-username"]}>{ currentForum.author_name }</div>
               </Link>
@@ -166,59 +184,90 @@ const Forum = () => {
             </div>
             <h2>Comments</h2>
             {
-            currentForum.comments ? currentForum.comments.map(function(comment) {
-              return (
-                <div className={styles["comment-container"]} key={comment.id}>
-                  <div className={styles["comment"]}>
-                    <div className={styles["comment-data"]}>
-                      <div className={styles["comment-date"]}>
-                        { comment.last_updated_at ? formatDateLegacy(comment.last_updated_at) : "" }{comment.last_updated_at === comment.created_at ? "" : <span className={styles["edited-text"]}>&nbsp;Edited</span>}
-                      </div>
-                      <div className={styles["comment-author"]}>
-                        <div className={styles["comment-link"]}>
-                          {comment.author_name && comment.author_name !== 'Anonymous' && comment.author_name !== 'User Deleted' ? (
-                            <Link to={`/profile/${comment.author_name}`}>
-                              { comment.author_name }
-                            </Link>
-                          ) : (
-                            <span>{ comment.author_name }</span>
-                          )}
+            currentForum.comments ? (() => {
+              const topLevel = currentForum.comments.filter(c => !c.parent_id);
+              const getReplies = (parentId) => currentForum.comments.filter(c => c.parent_id === parentId);
+
+              const renderComment = (comment, depth = 0) => {
+                const replies = getReplies(comment.id);
+                return (
+                  <div className={depth > 0 ? styles["reply-container"] : styles["comment-container"]} key={comment.id}>
+                    <div className={styles["comment"]}>
+                      <div className={styles["comment-data"]}>
+                        <div className={styles["comment-date"]}>
+                          { comment.last_updated_at ? formatDateLegacy(comment.last_updated_at) : "" }{comment.last_updated_at === comment.created_at ? "" : <span className={styles["edited-text"]}>&nbsp;Edited</span>}
+                        </div>
+                        <div className={styles["comment-author"]}>
+                          <div className={styles["comment-link"]}>
+                            {comment.author_name && comment.author_name !== 'Anonymous' && comment.author_name !== 'User Deleted' ? (
+                              <Link to={`/profile/${comment.author_name}`}>
+                                { comment.author_name }
+                              </Link>
+                            ) : (
+                              <span>{ comment.author_name }</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className={styles["comment-content"]}>
                         </div>
                       </div>
-                      <div className={styles["comment-content"]}>
-                        {/* { comment.content } */}
-                      </div>
-                    </div>
-                    <div className={styles["comment-buttons"]}>
-                      <div className={styles["comment-edit-button"]}>
-                        { currentUser && (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
-                          <div>
-                            <div onClick={(event) => handleEdit(event, comment.id + "edit", comment.id)}><FaEdit/></div>
+                      <div className={styles["comment-buttons"]}>
+                        { currentUser &&
+                          <div className={styles["comment-reply-button"]} onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)} title="Reply">
+                            <FaReply/>
                           </div>
-                        : "" }
-                      </div>
-                      <div className={styles["comment-delete"]}>
-                        { currentUser && (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
-                          <div>
-                            <div onClick={(event) => handleDelete(event, comment.id)}><FaTrash/></div>
-                          </div>
-                        : "" }
+                        }
+                        <div className={styles["comment-edit-button"]}>
+                          { currentUser && (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
+                            <div>
+                              <div onClick={(event) => handleEdit(event, comment.id + "edit", comment.id)}><FaEdit/></div>
+                            </div>
+                          : "" }
+                        </div>
+                        <div className={styles["comment-delete"]}>
+                          { currentUser && (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
+                            <div>
+                              <div onClick={(event) => handleDelete(event, comment.id)}><FaTrash/></div>
+                            </div>
+                          : "" }
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className={styles["comment-content-container"]}> { comment.content }</div>
-                  <div id={comment.id + "edit"} className={styles["comment-edit"]}>
-                    <textarea id={comment.id + "edit-field"} onChange={onChangeCommentContent} defaultValue={comment.content}></textarea>
-                    <div className={styles["submit-comment-button"]}>
-                      <StandardButton buttonText={"Update Comment"} onClick={(event) => handleEditComment(event, comment.id + "edit-field", comment.id)}/>
+                    <div className={styles["comment-content-container"]}> { comment.content }</div>
+                    <div id={comment.id + "edit"} className={styles["comment-edit"]}>
+                      <textarea id={comment.id + "edit-field"} onChange={onChangeCommentContent} defaultValue={comment.content}></textarea>
+                      <div className={styles["submit-comment-button"]}>
+                        <StandardButton buttonText={"Update Comment"} onClick={(event) => handleEditComment(event, comment.id + "edit-field", comment.id)}/>
+                      </div>
                     </div>
+                    {replyingTo === comment.id && (
+                      <div className={styles["reply-form"]}>
+                        <textarea 
+                          className={styles["reply-field"]} 
+                          placeholder={`Reply to ${comment.author_name}...`}
+                          value={replyContent}
+                          onChange={(e) => setReplyContent(e.target.value)}
+                        />
+                        <div className={styles["reply-form-buttons"]}>
+                          <StandardButton buttonText={"Reply"} onClick={(e) => handleReply(e, comment.id)}/>
+                          <StandardButton buttonText={"Cancel"} onClick={() => { setReplyingTo(null); setReplyContent(""); }}/>
+                        </div>
+                      </div>
+                    )}
+                    {replies.length > 0 && (
+                      <div className={styles["replies"]}>
+                        {replies.map(reply => renderComment(reply, depth + 1))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )
-            }) : "No comments so far"
+                );
+              };
+
+              return topLevel.map(comment => renderComment(comment));
+            })() : "No comments so far"
           }
           <div className={styles["new-comment"]}>
-            <textarea className={styles["comment-field"]} id="comment-field" disabled={!currentUser}></textarea>
+            <textarea className={styles["comment-field"]} id="comment-field" disabled={!currentUser} value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)}></textarea>
           </div>
           <div className={styles["submit-comment-button"]}>
             {currentUser ? (

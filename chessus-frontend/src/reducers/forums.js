@@ -77,24 +77,24 @@ const forumsReducer = (state = initialState, action) => {
       }
     }
     case DELETE_COMMENT: {
-      // const comments = Object.entries({...state.forum.comments});
       const comments = state.forum.comments;
       console.log(comments);
       console.log("in delete comment reducer", payload);
-      let deleteIndex;
-      comments.forEach(function(comment, index) {
-        if (comment.id === payload) {
-          deleteIndex = index;
-        }
-      });
-      comments.splice(deleteIndex, 1);
-      console.log(comments);
-      // const newCommentsObject = Object.assign({}, ...newComments);
+      // Collect IDs to delete (the comment + all nested replies)
+      const idsToDelete = new Set();
+      const collectReplies = (parentId) => {
+        idsToDelete.add(parentId);
+        comments.forEach(c => {
+          if (c.parent_id === parentId) collectReplies(c.id);
+        });
+      };
+      collectReplies(payload);
+      const filteredComments = comments.filter(c => !idsToDelete.has(c.id));
       return {
         ...state,
         forum: {
           ...state.forum,
-          comments: comments
+          comments: filteredComments
         }
       }
     }

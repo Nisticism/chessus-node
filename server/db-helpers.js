@@ -83,12 +83,35 @@ const updateUser = async (userData, id) => {
 };
 
 /**
- * Delete user by username
+ * Delete user by username — disables FK checks so that articles/comments
+ * retain their author_id (server resolves missing users as "User Deleted").
  * @param {string} username - Username
  * @returns {Promise<Object>} Result of deletion
  */
 const deleteUser = async (username) => {
-  return await query("DELETE FROM chessusnode.users WHERE username = ?", [username]);
+  // Find the user first
+  const user = await query("SELECT id FROM chessusnode.users WHERE username = ?", [username]);
+  if (!user || user.length === 0) return null;
+  const userId = user[0].id;
+  
+  // Clean up tables that have strict FK constraints (non-content tables)
+  await query("DELETE FROM notifications WHERE user_id = ? OR sender_id = ?", [userId, userId]);
+  await query("DELETE FROM friends WHERE user_id = ? OR friend_id = ?", [userId, userId]);
+  await query("DELETE FROM friend_requests WHERE sender_id = ? OR receiver_id = ?", [userId, userId]);
+  await query("DELETE FROM players WHERE user_id = ?", [userId]);
+  await query("DELETE FROM liked_articles WHERE user_id = ?", [userId]);
+  
+  // Disable FK checks to allow user deletion while preserving author_id
+  // references in articles/comments (so they display as "User Deleted")
+  await query("SET FOREIGN_KEY_CHECKS = 0");
+  try {
+    const result = await query("DELETE FROM chessusnode.users WHERE username = ?", [username]);
+    await query("SET FOREIGN_KEY_CHECKS = 1");
+    return result;
+  } catch (err) {
+    await query("SET FOREIGN_KEY_CHECKS = 1");
+    throw err;
+  }
 };
 
 /**
@@ -733,10 +756,10 @@ const getLikesByArticleId = async (articleId) => {
  * @param {Object} commentData - Comment data
  * @returns {Promise<Object>} Created comment with ID
  */
-const createComment = async ({ author_id, article_id, content, created_at, author_name }) => {
+const createComment = async ({ author_id, article_id, content, created_at, author_name, parent_id = null }) => {
   const result = await query(
-    "INSERT INTO chessusnode.comments (author_id, article_id, content, created_at, last_updated_at) VALUES (?,?,?,?,?)",
-    [author_id, article_id, content, created_at, created_at]
+    "INSERT INTO chessusnode.comments (author_id, article_id, content, created_at, last_updated_at, parent_id) VALUES (?,?,?,?,?,?)",
+    [author_id, article_id, content, created_at, created_at, parent_id]
   );
   return {
     id: result.insertId,
@@ -745,7 +768,8 @@ const createComment = async ({ author_id, article_id, content, created_at, autho
     content,
     created_at,
     last_updated_at: created_at,
-    author_name
+    author_name,
+    parent_id
   };
 };
 
@@ -768,6 +792,7 @@ const updateComment = async ({ id, content, last_updated_at }) => {
  * @returns {Promise<Object>} Result of deletion
  */
 const deleteComment = async (id) => {
+  // Replies are deleted via ON DELETE CASCADE on parent_id FK
   return await query("DELETE FROM chessusnode.comments WHERE id = ?", [id]);
 };
 

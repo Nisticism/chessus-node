@@ -516,6 +516,15 @@ const migrations = [
     column: 'show_burn',
     sql: "ALTER TABLE game_type_pieces ADD COLUMN show_burn TINYINT(1) DEFAULT 0",
     description: "Add show_burn column to game_type_pieces - whether to display burn badge on this piece during gameplay"
+  },
+  {
+    table: 'site_settings',
+    sql: `CREATE TABLE IF NOT EXISTS site_settings (
+      setting_key VARCHAR(100) PRIMARY KEY,
+      setting_value VARCHAR(500) NOT NULL DEFAULT 'true',
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`,
+    description: "Create site_settings table for admin-configurable site options"
   }
 ];
 
@@ -2398,6 +2407,29 @@ Join us in revolutionizing chess, one variant at a time.
       }
     } catch (err) {
       console.error('Error adding sound_enabled column:', err.message);
+    }
+
+    // Add parent_id column to comments for threaded replies
+    try {
+      const parentIdCol = await columnExists('comments', 'parent_id');
+      if (!parentIdCol) {
+        await runMigration(
+          "ALTER TABLE comments ADD COLUMN parent_id INT DEFAULT NULL",
+          "Add parent_id column to comments for threaded replies"
+        );
+        // Add foreign key separately so it doesn't fail if constraint already exists
+        try {
+          await runMigration(
+            "ALTER TABLE comments ADD CONSTRAINT fk_comment_parent FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE",
+            "Add foreign key for comment parent_id"
+          );
+        } catch (fkErr) {
+          console.error('FK constraint may already exist:', fkErr.message);
+        }
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding parent_id column to comments:', err.message);
     }
 
   if (migrationsRun === 0) {

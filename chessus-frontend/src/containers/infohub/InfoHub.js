@@ -36,6 +36,12 @@ const InfoHub = () => {
       icon: "💝",
       path: "/donate",
     },
+    {
+      title: "Changelog",
+      description: "See the latest updates, features, and improvements to GridGrove",
+      icon: "📋",
+      path: "/changelog",
+    },
   ];
 
   const handleNavigate = (path) => {

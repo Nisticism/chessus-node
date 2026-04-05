@@ -4,7 +4,7 @@ import { useSelector } from "react-redux";
 import axios from "axios";
 import styles from "./matchview.module.scss";
 import API_URL from "../../global/global";
-import { colToFile, rowToRank, formatMoveNotation } from "../../helpers/pieceMovementUtils";
+import { colToFile, rowToRank, formatMoveNotation, replayToMove } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 
@@ -19,11 +19,32 @@ const MatchView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
+  const [reviewMoveIndex, setReviewMoveIndex] = useState(null);
 
   useEffect(() => {
     fetchMatch();
     fetchChatHistory();
   }, [gameId]);
+
+  // Keyboard navigation for review mode
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (reviewMoveIndex === null || !match?.moveHistory) return;
+      const totalMoves = match.moveHistory.length;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setReviewMoveIndex(prev => prev > 0 ? prev - 1 : prev);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setReviewMoveIndex(prev => prev < totalMoves - 1 ? prev + 1 : null);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setReviewMoveIndex(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [reviewMoveIndex, match?.moveHistory]);
 
   const fetchChatHistory = async () => {
     try {
@@ -105,7 +126,13 @@ const MatchView = () => {
     // Calculate square size to keep squares square
     const squareSize = Math.min(60, 480 / Math.max(boardWidth, boardHeight));
     const squares = [];
-    const pieces = Array.isArray(match.pieces) ? match.pieces : [];
+    
+    // Use replayed pieces when reviewing, otherwise show final position
+    const isReviewing = reviewMoveIndex !== null && match.initialPieces;
+    const pieces = isReviewing
+      ? replayToMove(match.initialPieces, match.moveHistory, reviewMoveIndex)
+      : (Array.isArray(match.pieces) ? match.pieces : []);
+    const lastMove = isReviewing ? match.moveHistory[reviewMoveIndex] : null;
 
     for (let y = boardHeight - 1; y >= 0; y--) {
       for (let x = 0; x < boardWidth; x++) {
@@ -118,11 +145,13 @@ const MatchView = () => {
         });
         const isAnchor = piece && piece.x === x && piece.y === y;
         const isLight = (x + y) % 2 === 0;
+        const isLastMoveFrom = lastMove && lastMove.from && lastMove.from.x === x && lastMove.from.y === y;
+        const isLastMoveTo = lastMove && lastMove.to && lastMove.to.x === x && lastMove.to.y === y;
 
         squares.push(
           <div
             key={`${x}-${y}`}
-            className={`${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}`}
+            className={`${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}${isLastMoveFrom || isLastMoveTo ? ` ${styles["last-move"]}` : ''}`}
             style={isAnchor && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : undefined}
           >
             {isAnchor && (() => {
@@ -362,7 +391,17 @@ const MatchView = () => {
 
         {/* Board */}
         <div className={styles["board-container"]}>
-          <h3 className={styles["board-title"]}>Final Position</h3>
+          <h3 className={styles["board-title"]}>
+            {reviewMoveIndex !== null ? `Move ${reviewMoveIndex + 1} of ${match.moveHistory?.length || 0}` : 'Final Position'}
+          </h3>
+          {reviewMoveIndex !== null && (
+            <div className={styles["review-controls"]}>
+              <button onClick={() => setReviewMoveIndex(0)} disabled={reviewMoveIndex === 0}>⏮</button>
+              <button onClick={() => setReviewMoveIndex(prev => Math.max(0, prev - 1))} disabled={reviewMoveIndex === 0}>◀</button>
+              <button onClick={() => setReviewMoveIndex(prev => prev < (match.moveHistory?.length || 1) - 1 ? prev + 1 : prev)} disabled={reviewMoveIndex === (match.moveHistory?.length || 1) - 1}>▶</button>
+              <button onClick={() => setReviewMoveIndex(null)}>⏭ Final</button>
+            </div>
+          )}
           {renderBoard()}
         </div>
 
@@ -402,11 +441,36 @@ const MatchView = () => {
           <div className={styles["move-history"]}>
             <h3>Move History</h3>
             <div className={styles["moves-list"]}>
-              {match.moveHistory.map((move, index) => (
-                <span key={index} className={`${styles["move-item"]} ${index % 2 === 0 ? styles["move-white"] : styles["move-black"]}`}>
-                  {Math.floor(index / 2) + 1}. {formatMoveNotation(move)}
-                </span>
-              ))}
+              {(() => {
+                const moves = match.moveHistory;
+                const bh = match.boardHeight || 8;
+                const canReview = !!match.initialPieces;
+                const rows = [];
+                for (let i = 0; i < moves.length; i += 2) {
+                  const p1Move = moves[i];
+                  const p2Move = moves[i + 1] || null;
+                  rows.push(
+                    <div key={i} className={styles["move-row"]}>
+                      <span className={styles["move-number"]}>{Math.floor(i / 2) + 1}.</span>
+                      <span 
+                        className={`${styles["move-item"]} ${styles["move-white"]}${reviewMoveIndex === i ? ` ${styles["active-move"]}` : ''}`}
+                        onClick={() => canReview && setReviewMoveIndex(reviewMoveIndex === i ? null : i)}
+                        style={{ cursor: canReview ? 'pointer' : 'default' }}
+                      >
+                        {formatMoveNotation(p1Move, true, bh)}
+                      </span>
+                      <span 
+                        className={`${styles["move-item"]} ${styles["move-black"]}${reviewMoveIndex === i + 1 ? ` ${styles["active-move"]}` : ''}`}
+                        onClick={() => p2Move && canReview && setReviewMoveIndex(reviewMoveIndex === i + 1 ? null : i + 1)}
+                        style={{ cursor: p2Move && canReview ? 'pointer' : 'default' }}
+                      >
+                        {p2Move ? formatMoveNotation(p2Move, true, bh) : ''}
+                      </span>
+                    </div>
+                  );
+                }
+                return rows;
+              })()}
             </div>
           </div>
         )}
