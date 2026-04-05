@@ -5837,42 +5837,6 @@ app.put("/api/users/:userId/messaging-preferences", authenticateToken, async (re
   }
 });
 
-// All other GET requests not handled before will return our React app
-app.get('/api/*', (req, res) => {
-  res.json({ message: "No data to return from this endpoint!" });
-});
-
-// Create HTTP server and initialize Socket.io
-const server = http.createServer(app);
-const io = initializeSocket(server);
-
-// Store io instance for use in routes if needed
-app.set('io', io);
-
-server.listen(PORT, () => {
-  console.log(`Server listening on ${PORT}`);
-  console.log(`Socket.io ready for connections`);
-});
-
-// Graceful shutdown for nodemon restarts
-process.once('SIGUSR2', () => {
-  server.close(() => {
-    process.kill(process.pid, 'SIGUSR2');
-  });
-});
-
-process.on('SIGINT', () => {
-  server.close(() => {
-    process.exit(0);
-  });
-});
-
-process.on('SIGTERM', () => {
-  server.close(() => {
-    process.exit(0);
-  });
-});
-
 // ========== Site Settings API ==========
 
 // Public: Get a single site setting by key
@@ -5917,6 +5881,42 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin, async (req, res) => 
     console.error("Error updating site setting:", err.message);
     res.status(500).json({ message: "Failed to update setting" });
   }
+});
+
+// All other GET requests not handled before will return our React app
+app.get('/api/*', (req, res) => {
+  res.json({ message: "No data to return from this endpoint!" });
+});
+
+// Create HTTP server and initialize Socket.io
+const server = http.createServer(app);
+const io = initializeSocket(server);
+
+// Store io instance for use in routes if needed
+app.set('io', io);
+
+server.listen(PORT, () => {
+  console.log(`Server listening on ${PORT}`);
+  console.log(`Socket.io ready for connections`);
+});
+
+// Graceful shutdown for nodemon restarts
+process.once('SIGUSR2', () => {
+  server.close(() => {
+    process.kill(process.pid, 'SIGUSR2');
+  });
+});
+
+process.on('SIGINT', () => {
+  server.close(() => {
+    process.exit(0);
+  });
+});
+
+process.on('SIGTERM', () => {
+  server.close(() => {
+    process.exit(0);
+  });
 });
 
 // Weekly notification email digest - runs every hour, checks if users have >10 notifications this week
