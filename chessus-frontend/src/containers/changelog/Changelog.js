@@ -5,6 +5,30 @@ import API_URL from "../../global/global";
 
 const changelogData = [
   {
+    date: "April 6, 2026",
+    title: "AI Improvements & UI Fixes",
+    items: [
+      "Computer opponent now shows 'Computer is thinking...' indicator reliably during bot games",
+      "Improved AI error recovery — bot will attempt a fallback move if the engine encounters an issue",
+      "Play vs Computer option now appears at the top of the host game modal for easier access",
+      "Admin dashboard toggles now respond immediately to clicks",
+      "Computer clock now correctly tracks thinking time",
+      "Computer clock now counts down in real-time while the AI is thinking",
+      "Stronger AI with deeper search, quiescence search to avoid tactical blunders, and improved position evaluation",
+      "AI now detects actual piece attack lines instead of using simple proximity checks",
+      "Computer now properly continues after pawn promotion",
+      "Promotion dialog now shows all starting piece types, not just currently alive pieces",
+      "Computer games now appear in match history with a BOT badge (no ELO impact)",
+      "Fixed rare page loading errors on slow connections — pages now show a reload prompt instead of crashing",
+      "Messages and sound effects are now enabled by default for new accounts",
+      "Added toggle to show or hide piece badges during live games",
+      "Added simultaneous turns option in the game wizard for new game types",
+      "Fixed checkmate detection bug where pawns could incorrectly capture forward instead of diagonally",
+      "Match history board now shows your pieces at the bottom with correct notation orientation",
+      "Bot opponent now shows as 'Computer (Easy/Medium/Hard)' in match history",
+    ],
+  },
+  {
     date: "April 5, 2026",
     title: "Changelog, Game Options & Bug Fixes",
     items: [

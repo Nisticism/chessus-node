@@ -1008,6 +1008,8 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
     const offset = (page - 1) * limit;
 
     // Get completed games where the user was a player
+    // Uses a single players join to find any row for this user, then separately
+    // joins p1/p2 for display. This handles bot games where only one player row exists.
     const [games] = await db_pool.query(`
       SELECT 
         g.id,
@@ -1032,23 +1034,23 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
         u2.username as player2_username,
         u2.elo as player2_elo
       FROM games g
+      INNER JOIN players pme ON g.id = pme.game_id AND pme.user_id = ?
       LEFT JOIN game_types gt ON g.game_type_id = gt.id
       LEFT JOIN players p1 ON g.id = p1.game_id AND p1.player_position = 1
       LEFT JOIN users u1 ON p1.user_id = u1.id
       LEFT JOIN players p2 ON g.id = p2.game_id AND p2.player_position = 2
       LEFT JOIN users u2 ON p2.user_id = u2.id
       WHERE g.status = 'completed'
-        AND (p1.user_id = ? OR p2.user_id = ?)
       ORDER BY g.end_time DESC
       LIMIT ? OFFSET ?
-    `, [userId, userId, limit, offset]);
+    `, [userId, limit, offset]);
 
     // Get total count for pagination
     const [countResult] = await db_pool.query(`
       SELECT COUNT(DISTINCT g.id) as total
       FROM games g
-      LEFT JOIN players p ON g.id = p.game_id
-      WHERE g.status = 'completed' AND p.user_id = ?
+      INNER JOIN players p ON g.id = p.game_id AND p.user_id = ?
+      WHERE g.status = 'completed'
     `, [userId]);
 
     const total = countResult[0].total;
@@ -1075,6 +1077,8 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
         result: isDraw ? 'draw' : (isWinner ? 'win' : 'loss'),
         reason: otherData.reason || 'unknown',
         eloChanges: otherData.eloChanges || null,
+        isBotGame: !!otherData.isBotGame,
+        botDifficulty: otherData.botDifficulty || null,
         gameTypeName: game.game_type_name,
         boardWidth: game.board_width,
         boardHeight: game.board_height,
@@ -1087,13 +1091,18 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
             elo: game.player1_elo,
             position: game.player1_position
           },
-          {
+          game.player2_id ? {
             id: game.player2_id,
             username: game.player2_username,
             elo: game.player2_elo,
             position: game.player2_position
-          }
-        ].filter(p => p.id)
+          } : (otherData.isBotGame ? {
+            id: 'bot',
+            username: `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`,
+            elo: null,
+            position: 2
+          } : null)
+        ].filter(Boolean)
       };
     });
 
@@ -1641,13 +1650,25 @@ app.get("/api/match/:gameId", async (req, res) => {
       boardHeight: game.board_height || 8,
       timeControl: game.turn_length,
       increment: game.increment,
-      players: players.map(p => ({
-        id: p.user_id,
-        username: p.username,
-        elo: p.elo,
-        position: p.player_position,
-        profilePicture: p.profile_picture
-      }))
+      players: (() => {
+        const mapped = players.map(p => ({
+          id: p.user_id,
+          username: p.username,
+          elo: p.elo,
+          position: p.player_position,
+          profilePicture: p.profile_picture
+        }));
+        if (otherData.isBotGame && !mapped.some(p => p.id === 'bot' || p.position === 2)) {
+          mapped.push({
+            id: 'bot',
+            username: `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`,
+            elo: null,
+            position: 2,
+            profilePicture: null
+          });
+        }
+        return mapped;
+      })()
     });
   } catch (err) {
     console.error("Error in /api/match/:gameId:", err);
@@ -1985,7 +2006,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         mate_condition = ?, mate_piece = ?, capture_condition = ?, capture_piece = ?,
         value_condition = ?, value_piece = ?, value_max = ?, value_title = ?,
         squares_condition = ?, squares_count = ?, hill_condition = ?, hill_x = ?, hill_y = ?, hill_turns = ?,
-        actions_per_turn = ?, board_width = ?, board_height = ?, player_count = ?,
+        actions_per_turn = ?, simultaneous_turns = ?, board_width = ?, board_height = ?, player_count = ?,,
         starting_piece_count = ?, pieces_string = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
         randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?,
@@ -2012,6 +2033,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.hill_y || null,
       gameData.hill_turns || null,
       gameData.actions_per_turn || 1,
+      gameData.simultaneous_turns || false,
       gameData.board_width || 8,
       gameData.board_height || 8,
       gameData.player_count || 2,
@@ -2538,7 +2560,7 @@ app.post("/api/auth/google", async (req, res) => {
         const defaultLightColor = '#e3d4bf';
         const defaultDarkColor = '#64472b';
         await db_pool.query(
-          "INSERT INTO chessusnode.users (username, password, email, google_id, light_square_color, dark_square_color) VALUES (?,?,?,?,?,?)",
+          "INSERT INTO chessusnode.users (username, password, email, google_id, light_square_color, dark_square_color, allow_non_friend_dms, sound_enabled) VALUES (?,?,?,?,?,?,1,1)",
           [username, "", email, googleId, defaultLightColor, defaultDarkColor]
         );
 
@@ -3836,13 +3858,13 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
         mate_condition, mate_piece, capture_condition, capture_piece,
         value_condition, value_piece, value_max, value_title,
         squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
-        actions_per_turn, board_width, board_height, player_count,
+        actions_per_turn, simultaneous_turns, board_width, board_height, player_count,
         starting_piece_count, range_squares_string,
         promotion_squares_string, special_squares_string, control_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
         no_moves_condition, piece_count_condition,
         pieces_string, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -3866,6 +3888,7 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
       gameData.hill_y || null,
       gameData.hill_turns || null,
       gameData.actions_per_turn || 1,
+      gameData.simultaneous_turns || false,
       gameData.board_width || 8,
       gameData.board_height || 8,
       gameData.player_count || 2,

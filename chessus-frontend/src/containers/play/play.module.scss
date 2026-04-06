@@ -1544,6 +1544,60 @@
   text-align: center;
 }
 
+// Play vs Computer - Difficulty selector
+.difficulty-selector {
+  margin-top: 12px;
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    color: #ccc;
+  }
+}
+
+.difficulty-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.difficulty-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border: 2px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: #aaa;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: var(--accent-primary);
+    color: #fff;
+  }
+}
+
+.difficulty-active {
+  border-color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb, 100, 180, 255), 0.15);
+  color: #fff;
+  box-shadow: 0 0 8px rgba(var(--accent-primary-rgb, 100, 180, 255), 0.3);
+}
+
+.difficulty-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.difficulty-desc {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
 // Second line of game stats in compact view
 .game-stats-line2 {
   display: flex;

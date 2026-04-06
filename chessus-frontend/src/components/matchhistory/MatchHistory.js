@@ -86,6 +86,12 @@ const MatchHistory = ({ userId, username }) => {
   };
 
   const getOpponent = (game) => {
+    if (game.isBotGame) {
+      const diffLabel = game.botDifficulty
+        ? game.botDifficulty.charAt(0).toUpperCase() + game.botDifficulty.slice(1)
+        : "Medium";
+      return { username: `Computer (${diffLabel})`, elo: null, isBot: true };
+    }
     const opponent = game.players.find(p => p.id !== parseInt(userId));
     return opponent || { username: "Unknown", elo: "?" };
   };
@@ -146,7 +152,12 @@ const MatchHistory = ({ userId, username }) => {
                 <div className={styles["opponent-info"]}>
                   <span className={styles["vs-text"]}>vs</span>
                   <span className={styles["opponent-name"]}>{opponent.username}</span>
-                  <span className={styles["opponent-elo"]}>({opponent.elo || "?"})</span>
+                  {!opponent.isBot && (
+                    <span className={styles["opponent-elo"]}>({opponent.elo || "?"})</span>
+                  )}
+                  {game.isBotGame && (
+                    <span className={styles["bot-badge"]}>BOT</span>
+                  )}
                 </div>
                 <div className={styles["game-details"]}>
                   <span className={styles["game-type"]}>{game.gameTypeName || "Custom Game"}</span>

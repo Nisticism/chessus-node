@@ -127,6 +127,7 @@ const LiveGame = () => {
   const [spectators, setSpectators] = useState([]);
   const [showSpectators, setShowSpectators] = useState(true);
   const [moveError, setMoveError] = useState(null);
+  const [botThinking, setBotThinking] = useState(false);
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [validMoves, setValidMoves] = useState([]);
   const [showGameOver, setShowGameOver] = useState(false);
@@ -145,6 +146,7 @@ const LiveGame = () => {
   const [showPromotionSquares, setShowPromotionSquares] = useState(false);
   const [showCastlingInfo, setShowCastlingInfo] = useState(false);
   const [showBoardNotation, setShowBoardNotation] = useState(true);
+  const [showBadges, setShowBadges] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return currentUser?.sound_enabled === 1 || currentUser?.sound_enabled === true;
   });
@@ -305,10 +307,38 @@ const LiveGame = () => {
     };
   }, [socket, gameId]);
 
+  // Client-side countdown for bot's clock while thinking
+  // (server event loop is blocked during AI computation so timer ticks don't emit)
+  useEffect(() => {
+    if (!botThinking || !gameState?.botPlayer || !gameState?.playerTimes) return;
+    const botId = gameState.botPlayer.id || 'bot';
+    if (gameState.playerTimes[botId] == null) return;
+    
+    const interval = setInterval(() => {
+      setGameState(prev => {
+        if (!prev?.playerTimes || prev.playerTimes[botId] == null) return prev;
+        const newTime = Math.max(0, prev.playerTimes[botId] - 1);
+        return {
+          ...prev,
+          playerTimes: { ...prev.playerTimes, [botId]: newTime }
+        };
+      });
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [botThinking, gameState?.botPlayer]);
+
   // Subscribe to game events
   useEffect(() => {
+    const unsubscribeBotThinking = onGameEvent("botThinking", ({ gameId: botGameId, thinking }) => {
+      if (parseInt(botGameId) === parseInt(gameId)) {
+        setBotThinking(thinking);
+      }
+    });
+
     const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces }) => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
+        setBotThinking(false);
         console.log('moveMade received:', { 
           moveFrom: move.from, 
           moveTo: move.to, 
@@ -702,6 +732,7 @@ const LiveGame = () => {
     });
 
     return () => {
+      unsubscribeBotThinking();
       unsubscribeMove();
       unsubscribeCheck();
       unsubscribeGameOver();
@@ -2318,6 +2349,12 @@ const LiveGame = () => {
     e.dataTransfer.effectAllowed = 'move';
     // Set drag data to make it work properly
     e.dataTransfer.setData('text/plain', piece.id);
+    
+    // Set drag image to just the piece element (prevents browser from ghosting nearby pieces)
+    const pieceEl = e.currentTarget;
+    const rect = pieceEl.getBoundingClientRect();
+    e.dataTransfer.setDragImage(pieceEl, rect.width / 2, rect.height / 2);
+    
     e.currentTarget.style.opacity = '0.5';
   }, [isMyTurn, gameState, currentPlayer, calculateValidMoves]);
 
@@ -2467,6 +2504,42 @@ const LiveGame = () => {
     if (!currentPlayer) return false;
     return currentPlayer.position === 2;
   }, [currentPlayer]);
+
+  // Compute captured pieces for each player from move history
+  const capturedPieces = useMemo(() => {
+    if (!gameState?.moveHistory) return { player1: [], player2: [] };
+    
+    const result = { player1: [], player2: [] };
+    
+    gameState.moveHistory.forEach(move => {
+      if (move.captured) {
+        // Use allCaptured array for multi-captures, otherwise single captured piece
+        const captures = move.allCaptured && move.allCaptured.length > 1
+          ? move.allCaptured
+          : [move.captured];
+        // The capturing player is indicated by move.position (1 or 2)
+        // The captured pieces belong to the opponent
+        if (move.position === 1) {
+          result.player1.push(...captures);
+        } else {
+          result.player2.push(...captures);
+        }
+      }
+    });
+    
+    return result;
+  }, [gameState?.moveHistory]);
+
+  // Convert display coordinates to game coordinates
+  const toGameCoords = useCallback((displayX, displayY, boardWidth, boardHeight) => {
+    if (shouldFlipBoard) {
+      return {
+        x: boardWidth - 1 - displayX,
+        y: boardHeight - 1 - displayY
+      };
+    }
+    return { x: displayX, y: displayY };
+  }, [shouldFlipBoard]);
 
   // Touch event handlers for mobile drag support
   const handleTouchStart = useCallback((e, piece) => {
@@ -2997,42 +3070,6 @@ const LiveGame = () => {
       });
   }, [gameState?.pieces, gameState?.gameType?.board_width]);
 
-  // Compute captured pieces for each player from move history
-  const capturedPieces = useMemo(() => {
-    if (!gameState?.moveHistory) return { player1: [], player2: [] };
-    
-    const result = { player1: [], player2: [] };
-    
-    gameState.moveHistory.forEach(move => {
-      if (move.captured) {
-        // Use allCaptured array for multi-captures, otherwise single captured piece
-        const captures = move.allCaptured && move.allCaptured.length > 1
-          ? move.allCaptured
-          : [move.captured];
-        // The capturing player is indicated by move.position (1 or 2)
-        // The captured pieces belong to the opponent
-        if (move.position === 1) {
-          result.player1.push(...captures);
-        } else {
-          result.player2.push(...captures);
-        }
-      }
-    });
-    
-    return result;
-  }, [gameState?.moveHistory]);
-
-  // Convert display coordinates to game coordinates
-  const toGameCoords = useCallback((displayX, displayY, boardWidth, boardHeight) => {
-    if (shouldFlipBoard) {
-      return {
-        x: boardWidth - 1 - displayX,
-        y: boardHeight - 1 - displayY
-      };
-    }
-    return { x: displayX, y: displayY };
-  }, [shouldFlipBoard]);
-
   // Render board
   const renderBoard = () => {
     if (!gameState) return null;
@@ -3335,7 +3372,7 @@ const LiveGame = () => {
                   </div>
                 )}
                 {/* Stat badges - anchored to corners via PieceBadges component */}
-                <PieceBadges piece={piece} squareSize={squareSize} />
+                <PieceBadges piece={piece} squareSize={squareSize} hidden={!showBadges} />
                 {/* Fire icon for actively burning pieces */}
                 {piece.burn_active_turns > 0 && (
                   <div className={styles["burn-active-icon"]} style={{ fontSize: `${Math.max(10, squareSize * 0.22)}px` }}>
@@ -3624,7 +3661,7 @@ const LiveGame = () => {
           <div className={`${styles["game-status"]} ${styles[gameState.status]}`}>
             {gameState.status === 'active' ? 'In Progress' : 
              gameState.status === 'completed' ? 'Game Over' : 
-             gameState.status === 'ready' ? 'Starting...' : 
+             gameState.status === 'ready' ? (gameState.botPlayer ? 'vs Computer' : 'Starting...') : 
              gameState.status === 'waiting' ? 'Waiting for Opponent' : gameState.status}
           </div>
         </div>
@@ -3643,7 +3680,11 @@ const LiveGame = () => {
               </>
             ) : (
               <>
-                <span className={styles["waiting-turn"]}>Waiting for opponent...</span>
+                <span className={styles["waiting-turn"]}>
+                  {(botThinking || (gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position)) 
+                    ? "Computer is thinking..." 
+                    : "Waiting for opponent..."}
+                </span>
                 {inCheck && currentPlayer.position !== gameState.currentTurn && (
                   <span className={styles["check-info"]}>Opponent is in check</span>
                 )}
@@ -3995,6 +4036,19 @@ const LiveGame = () => {
                 <span className={styles["toggle-slider"]} />
               </div>
             </label>
+            {gameState.pieces?.some(p => p.show_hp_ad || p.hit_points > 1 || (p.show_regen && p.hp_regen > 0) || (p.show_burn && p.burn_damage > 0)) && (
+              <label className={styles["option-toggle"]}>
+                <span>Show piece badges</span>
+                <div className={styles["toggle-switch"]}>
+                  <input
+                    type="checkbox"
+                    checked={showBadges}
+                    onChange={(e) => setShowBadges(e.target.checked)}
+                  />
+                  <span className={styles["toggle-slider"]} />
+                </div>
+              </label>
+            )}
             {currentUser && (
               <label className={styles["option-toggle"]}>
                 <span>Disable chat</span>
@@ -4426,6 +4480,19 @@ const LiveGame = () => {
               <span className={styles["toggle-slider"]} />
             </div>
           </label>
+          {gameState.pieces?.some(p => p.show_hp_ad || p.hit_points > 1 || (p.show_regen && p.hp_regen > 0) || (p.show_burn && p.burn_damage > 0)) && (
+            <label className={styles["option-toggle"]}>
+              <span>Show piece badges</span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={showBadges}
+                  onChange={(e) => setShowBadges(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+          )}
           {currentUser && (
             <label className={styles["option-toggle"]}>
               <span>Disable chat</span>

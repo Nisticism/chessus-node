@@ -10,7 +10,8 @@ import styles from './piecebadges.module.scss';
  * @param {number} squareSize - The size of the board square in pixels
  * @param {boolean} [showGlobalHpAd] - Whether global show_all_hp_ad is on
  */
-const PieceBadges = ({ piece, squareSize, showGlobalHpAd = false }) => {
+const PieceBadges = ({ piece, squareSize, showGlobalHpAd = false, hidden = false }) => {
+  if (hidden) return null;
   const showHp = !!(showGlobalHpAd || piece.show_hp_ad || piece.hit_points > 1);
   const hp = piece.current_hp ?? piece.hit_points ?? 1;
   const ad = piece.attack_damage ?? 1;

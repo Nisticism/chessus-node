@@ -93,6 +93,29 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
         <label className={styles["checkbox-label"]}>
           <input
             type="checkbox"
+            checked={gameData.simultaneous_turns || false}
+            onChange={(e) => handleChange("simultaneous_turns", e.target.checked)}
+            disabled={gameData.actions_per_turn > 1}
+          />
+          <span>Simultaneous turns</span>
+          <InfoTooltip text="Both players submit their moves secretly, then both moves are revealed and executed at the same time. Incompatible with multiple actions per turn." />
+        </label>
+        {gameData.simultaneous_turns && (
+          <p className={styles["field-hint"]}>
+            ⚠ Experimental: Both players choose their move in secret. Moves are revealed and resolved simultaneously. Some mechanics (multi-action turns, piece placement) are not compatible.
+          </p>
+        )}
+        {gameData.actions_per_turn > 1 && gameData.simultaneous_turns && (
+          <p className={styles["validation-error"]}>
+            Simultaneous turns requires exactly 1 action per turn.
+          </p>
+        )}
+      </div>
+
+      <div className={styles["form-group"]}>
+        <label className={styles["checkbox-label"]}>
+          <input
+            type="checkbox"
             checked={!currentUser || gameData.is_anonymous_creator}
             onChange={(e) => handleChange("is_anonymous_creator", e.target.checked)}
             disabled={!currentUser}

@@ -3,6 +3,7 @@ import { useDispatch } from "react-redux";
 import { Route, Routes, useLocation } from 'react-router-dom';
 import Navbar from './components/navbar/Navbar';
 import Footer from './components/footer/Footer';
+import ChunkErrorBoundary from './components/ChunkErrorBoundary';
 import { SocketProvider } from "./contexts/SocketContext";
 import { clearMessage, resetEdit } from "./actions/general";
 import { initGA, trackPageView } from "./analytics/GoogleAnalytics";
@@ -153,6 +154,7 @@ function App() {
           <Navbar />
         </div>
         <div className="content">
+          <ChunkErrorBoundary>
           <Suspense fallback={<div style={{minHeight: '60vh'}} />}>
           <Routes>
             <Route path="/" element={<Home props={location}/>} />
@@ -216,6 +218,7 @@ function App() {
             <Route path="/*" element={<NotFound />} />
           </Routes>
           </Suspense>
+          </ChunkErrorBoundary>
         </div>
         <Footer />
       </div>

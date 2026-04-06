@@ -78,6 +78,10 @@ const Play = () => {
   const [guestName, setGuestName] = useState("");
   const [isCreatingAnonymous, setIsCreatingAnonymous] = useState(false);
   const [isJoiningByCode, setIsJoiningByCode] = useState(false);
+
+  // Bot / Play vs Computer state
+  const [vsComputer, setVsComputer] = useState(false);
+  const [botDifficulty, setBotDifficulty] = useState("medium");
   const [showAnonCreateModal, setShowAnonCreateModal] = useState(false);
   const [anonTimeControl, setAnonTimeControl] = useState("10");
   const [anonIncrement, setAnonIncrement] = useState("0");
@@ -453,12 +457,14 @@ const Play = () => {
         increment: incrementSeconds,
         allowSpectators,
         showPieceHelpers,
-        rated,
-        allowPremoves,
+        rated: vsComputer ? false : rated,
+        allowPremoves: vsComputer ? false : allowPremoves,
         startingMode,
         playerSide,
         isCorrespondence,
-        correspondenceDays: isCorrespondence ? parseInt(correspondenceDays) : null
+        correspondenceDays: isCorrespondence ? parseInt(correspondenceDays) : null,
+        vsComputer,
+        botDifficulty: vsComputer ? botDifficulty : undefined
       };
 
       // Add challenge data if challenging a friend
@@ -1161,6 +1167,47 @@ const Play = () => {
               </div>
             )}
 
+            {/* Play vs Computer Option */}
+            {!challengedUserId && (
+              <div className={styles["form-group"]}>
+                <div className={`${styles["checkbox-group"]}`}>
+                  <label className={styles["checkbox-label"]}>
+                    <input
+                      type="checkbox"
+                      checked={vsComputer}
+                      onChange={(e) => setVsComputer(e.target.checked)}
+                    />
+                    <span>Play vs Computer</span>
+                  </label>
+                  <div className={styles["input-hint"]}>
+                    Play against an AI opponent instead of waiting for a player
+                  </div>
+                </div>
+                {vsComputer && (
+                  <div className={styles["difficulty-selector"]}>
+                    <label>AI Difficulty</label>
+                    <div className={styles["difficulty-buttons"]}>
+                      {[
+                        { value: 'easy', label: 'Easy', desc: 'Casual play' },
+                        { value: 'medium', label: 'Medium', desc: 'Moderate challenge' },
+                        { value: 'hard', label: 'Hard', desc: 'Strong opponent' }
+                      ].map(d => (
+                        <button
+                          key={d.value}
+                          className={`${styles["difficulty-btn"]} ${botDifficulty === d.value ? styles["difficulty-active"] : ""}`}
+                          onClick={() => setBotDifficulty(d.value)}
+                          type="button"
+                        >
+                          <span className={styles["difficulty-label"]}>{d.label}</span>
+                          <span className={styles["difficulty-desc"]}>{d.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Game Mode Tabs */}
             <div className={styles["game-mode-tabs"]}>
               <button
@@ -1387,6 +1434,7 @@ const Play = () => {
             </div>
 
             {/* Starting Position Mode Selection */}
+
             {allowedStartingModes.length === 1 ? (
               <div className={styles["form-group"]}>
                 <label>Starting Position Mode</label>
@@ -1444,9 +1492,11 @@ const Play = () => {
               >
                 {isCreating 
                   ? "Creating..." 
-                  : challengedUserId 
-                    ? "Send Challenge" 
-                    : "Create Match"}
+                  : vsComputer
+                    ? "Play vs Computer"
+                    : challengedUserId 
+                      ? "Send Challenge" 
+                      : "Create Match"}
               </button>
             </div>
           </div>

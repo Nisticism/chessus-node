@@ -2,21 +2,20 @@ const db_pool = require("../configs/db");
 
 /**
  * Backfill game_type_pieces junction table from games.pieces JSON data.
- * Scans all game types, and for pieces not yet linked in game_type_pieces,
- * checks the games table for any games of that type containing those pieces,
- * then creates the junction entries.
+ * Only backfills game types that have ZERO entries in the junction table,
+ * meaning they were created before the junction table existed.
+ * Game types that already have entries are left untouched (they may have
+ * had pieces deliberately removed by the user).
  */
 const backfillGameTypePieces = async () => {
   console.log('\n🔗 Checking game_type_pieces backfill...\n');
 
   try {
-    // Get all existing game_type_pieces entries for fast lookup
-    const [existingEntries] = await db_pool.query(
-      'SELECT DISTINCT game_type_id, piece_id FROM game_type_pieces'
+    // Find game types that have NO entries in the junction table at all
+    const [gameTypesWithPieces] = await db_pool.query(
+      'SELECT DISTINCT game_type_id FROM game_type_pieces'
     );
-    const existingSet = new Set(
-      existingEntries.map(e => `${e.game_type_id}_${e.piece_id}`)
-    );
+    const populatedGameTypes = new Set(gameTypesWithPieces.map(e => e.game_type_id));
 
     // Get all games with their pieces JSON and game_type_id
     const [games] = await db_pool.query(
@@ -28,6 +27,9 @@ const backfillGameTypePieces = async () => {
     for (const game of games) {
       if (!game.pieces || !game.game_type_id) continue;
 
+      // Skip game types that already have junction entries — they've been set up
+      if (populatedGameTypes.has(game.game_type_id)) continue;
+
       let piecesData;
       try {
         piecesData = typeof game.pieces === 'string' ? JSON.parse(game.pieces) : game.pieces;
@@ -38,37 +40,32 @@ const backfillGameTypePieces = async () => {
       if (!Array.isArray(piecesData)) continue;
 
       // Extract unique piece IDs from this game
-      const pieceIds = new Set();
+      const seenPieceIds = new Set();
       for (const piece of piecesData) {
-        if (piece.piece_id) {
-          pieceIds.add(piece.piece_id);
-        }
-      }
-
-      for (const pieceId of pieceIds) {
-        const key = `${game.game_type_id}_${pieceId}`;
-        if (!existingSet.has(key)) {
+        if (piece.piece_id && !seenPieceIds.has(piece.piece_id)) {
+          seenPieceIds.add(piece.piece_id);
           try {
-            // Find the piece's position from the game data (use first occurrence)
-            const pieceData = piecesData.find(p => p.piece_id === pieceId);
+            const pieceData = piecesData.find(p => p.piece_id === piece.piece_id);
             await db_pool.query(
               `INSERT IGNORE INTO game_type_pieces (game_type_id, piece_id, x, y, player_number) 
                VALUES (?, ?, ?, ?, ?)`,
               [
                 game.game_type_id,
-                pieceId,
+                piece.piece_id,
                 pieceData?.x ?? 0,
                 pieceData?.y ?? 0,
                 pieceData?.player_id ?? 1
               ]
             );
-            existingSet.add(key);
             backfilled++;
           } catch (err) {
             // Skip duplicates or FK constraint failures silently
           }
         }
       }
+
+      // Mark this game type as populated so we don't process it again
+      populatedGameTypes.add(game.game_type_id);
     }
 
     if (backfilled > 0) {

@@ -127,6 +127,10 @@ const MatchView = () => {
     const squareSize = Math.min(60, 480 / Math.max(boardWidth, boardHeight));
     const squares = [];
     
+    // Flip the board so the current user's side is at the bottom
+    const userPlayer = currentUser && match.players?.find(p => p.id === currentUser.id);
+    const shouldFlip = userPlayer?.position === 2;
+    
     // Use replayed pieces when reviewing, otherwise show final position
     const isReviewing = reviewMoveIndex !== null && match.initialPieces;
     const pieces = isReviewing
@@ -134,8 +138,11 @@ const MatchView = () => {
       : (Array.isArray(match.pieces) ? match.pieces : []);
     const lastMove = isReviewing ? match.moveHistory[reviewMoveIndex] : null;
 
-    for (let y = boardHeight - 1; y >= 0; y--) {
-      for (let x = 0; x < boardWidth; x++) {
+    for (let displayY = 0; displayY < boardHeight; displayY++) {
+      for (let displayX = 0; displayX < boardWidth; displayX++) {
+        // Convert display coordinates to game coordinates (matches LiveGame toGameCoords)
+        const x = shouldFlip ? (boardWidth - 1 - displayX) : displayX;
+        const y = shouldFlip ? (boardHeight - 1 - displayY) : displayY;
         // Multi-tile aware: find piece whose footprint covers this square
         const piece = pieces.find(p => {
           if (!p || p.captured) return false;
@@ -204,9 +211,10 @@ const MatchView = () => {
     // Generate file labels (a, b, c, ... for columns)
     const fileLabels = [];
     for (let i = 0; i < boardWidth; i++) {
+      const fileIndex = shouldFlip ? (boardWidth - 1 - i) : i;
       fileLabels.push(
         <div key={`file-${i}`} className={styles["file-label"]}>
-          {colToFile(i)}
+          {colToFile(fileIndex)}
         </div>
       );
     }
@@ -214,9 +222,10 @@ const MatchView = () => {
     // Generate rank labels (1, 2, 3, ... for rows)
     const rankLabels = [];
     for (let i = 0; i < boardHeight; i++) {
+      const rankIndex = shouldFlip ? i : (boardHeight - 1 - i);
       rankLabels.push(
         <div key={`rank-${i}`} className={styles["rank-label"]}>
-          {rowToRank(boardHeight - 1 - i)}
+          {rowToRank(rankIndex)}
         </div>
       );
     }

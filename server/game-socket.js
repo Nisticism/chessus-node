@@ -573,7 +573,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium' } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -927,6 +927,49 @@ function initializeSocket(server) {
 
         // Join the game room
         socket.join(`game-${gameId}`);
+
+        // --- Bot game setup ---
+        if (vsComputer) {
+          const botInfo = BOT_PLAYERS[botDifficulty] || BOT_PLAYERS.medium;
+
+          // Assign host as player 1, bot as player 2
+          gameState.players = [
+            { id: hostId, username: hostUsername, position: 1 },
+            { id: botInfo.id, username: botInfo.username, position: 2, isBot: true }
+          ];
+          gameState.botPlayer = { ...botInfo, position: 2 };
+          gameState.status = 'ready';
+          gameState.rated = false; // Bot games are never rated
+          gameState.allowPremoves = false; // No premoves vs bot
+
+          // Set player times (timeControl is in minutes, convert to seconds)
+          if (timeControl) {
+            gameState.playerTimes[hostId] = timeControl * 60;
+            gameState.playerTimes[botInfo.id] = timeControl * 60;
+          }
+
+          // Update host player_position to 1 in DB (so match history query finds this game)
+          await db_pool.query(
+            "UPDATE players SET player_position = 1 WHERE game_id = ? AND user_id = ?",
+            [gameId, hostId]
+          );
+
+          // Update DB: mark game as ready with bot player
+          await db_pool.query(
+            "UPDATE games SET status = 'ready', other_data = ? WHERE id = ?",
+            [buildOtherData(gameState, { isBotGame: true, botDifficulty: botInfo.difficulty }), gameId]
+          );
+
+          socket.emit("gameCreated", { gameId, gameState });
+          socket.emit("botGameReady", {
+            gameId,
+            gameState,
+            botPlayer: { username: botInfo.username, difficulty: botInfo.difficulty }
+          });
+
+          console.log(`[Bot] Game ${gameId} created vs ${botInfo.username} by ${hostUsername}`);
+          return; // Skip normal game lobby flow
+        }
 
         // Emit game created event
         socket.emit("gameCreated", { gameId, gameState });
@@ -3157,6 +3200,15 @@ function initializeSocket(server) {
 
         console.log(`Move made in game ${gameId}: ${JSON.stringify(move)}`);
 
+        // Trigger bot turn if next player is the bot
+        if (gameState.status !== 'completed' && gameState.botPlayer &&
+            gameState.currentTurn === gameState.botPlayer.position) {
+          console.log(`[Bot] Triggering bot turn in game ${gameId} (turn=${gameState.currentTurn}, botPos=${gameState.botPlayer.position}, difficulty=${gameState.botPlayer.difficulty})`);
+          processBotTurn(io, gameId, gameState);
+        } else if (gameState.botPlayer) {
+          console.log(`[Bot] NOT triggering bot turn: status=${gameState.status}, currentTurn=${gameState.currentTurn}, botPos=${gameState.botPlayer.position}`);
+        }
+
       } catch (error) {
         console.error("Error making move:", error);
         socket.emit("error", { message: "Failed to make move" });
@@ -3180,6 +3232,7 @@ function initializeSocket(server) {
         }
 
         const winner = gameState.players.find(p => p.id !== userId);
+        const isBotGame = !!(gameState.botPlayer);
 
         // Stop the timer
         stopGameTimer(gameId);
@@ -3188,16 +3241,19 @@ function initializeSocket(server) {
         gameState.winner = winner?.id;
         gameState.winReason = 'resignation';
 
-        // Update ELO ratings only if game is rated
+        // Update ELO ratings only if game is rated (bot games are never rated)
         let eloChanges = null;
-        if (gameState.rated !== false && winner?.id && userId) {
+        if (!isBotGame && gameState.rated !== false && winner?.id && userId) {
           eloChanges = await updateEloRatings(winner.id, userId);
         }
+
+        // For bot games, store NULL as winner_id (bot id 'bot' can't go in INT column)
+        const dbWinnerId = (winner && isBotPlayer(winner)) ? null : sanitizeWinnerId(winner?.id);
 
         const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
         await db_pool.query(
           `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, other_data = ?, pieces = ? WHERE id = ?`,
-          [endTime, sanitizeWinnerId(winner?.id), buildOtherData(gameState, { winner: winner?.id, reason: 'resignation', eloChanges }), JSON.stringify(gameState.pieces), gameId]
+          [endTime, dbWinnerId, buildOtherData(gameState, { winner: winner?.id, reason: 'resignation', eloChanges, isBotGame }), JSON.stringify(gameState.pieces), gameId]
         );
 
         io.to(`game-${gameId}`).emit("gameOver", {
@@ -3525,6 +3581,13 @@ function initializeSocket(server) {
               checkedPieces: checkResult.checkedPieces
             }
           });
+        }
+
+        // Trigger bot turn after promotion if it's now the bot's turn
+        if (gameState.status !== 'completed' && gameState.botPlayer &&
+            gameState.currentTurn === gameState.botPlayer.position) {
+          console.log(`[Bot] Triggering bot turn after promotion in game ${gameId}`);
+          processBotTurn(io, gameId, gameState);
         }
 
       } catch (error) {
@@ -5735,7 +5798,9 @@ async function getPromotionOptions(gameState, promotingPiece) {
   }
   
   // Default logic: Get all unique piece types that the player started with
-  const playerPieces = pieces.filter(p => {
+  // Use initialPieces (snapshot from game start) so captured piece types remain available
+  const sourcePieces = gameState.initialPieces || pieces;
+  const playerPieces = sourcePieces.filter(p => {
     const owner = p.player_id || p.team;
     return owner === pieceOwner;
   });
@@ -6116,10 +6181,10 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   const pieceOwner = piece.team || piece.player_id;
   const isPlayer2 = pieceOwner === 2;
   
-  // For ALL player 2 pieces, flip perspective to match client-side
+  // For Player 2, only flip the Y axis (up/down) to match client-side perspective.
+  // Left/right are NOT flipped — they are absolute, same for both players.
   // Client uses: rowDiff = player2 ? (fromY - toY) : (toY - fromY)
-  // So we flip: dy becomes -dy, dx becomes -dx
-  const effectiveDx = isPlayer2 ? -dx : dx;
+  const effectiveDx = dx;  // Left/right never flip
   const effectiveDy = isPlayer2 ? -dy : dy;
   
   // Parse additional captures from special_scenario_captures
@@ -6202,10 +6267,15 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   // First check capture-specific fields, then fall back to movement
   const useMovementForCapture = piece.attacks_like_movement || piece.can_capture_enemy_on_move;
   
+  // Check if this piece has any dedicated capture directions (separate from movement)
+  // If it does, only use capture values for attack checks — don't fall back to movement
+  const hasAnyCaptureDir = !!(piece.up_capture || piece.down_capture || piece.left_capture || piece.right_capture ||
+    piece.up_left_capture || piece.up_right_capture || piece.down_left_capture || piece.down_right_capture);
+  
   // Check directional capture/movement
   const checkDirectional = (captureValue, moveValue, exactFlag, repeating) => {
     const value = captureValue !== undefined && captureValue !== null ? captureValue : 
-                  (useMovementForCapture ? moveValue : null);
+                  (useMovementForCapture && !hasAnyCaptureDir ? moveValue : null);
     if (!value) return false;
     if (value === 99) return true; // Infinite
     if (value > 0) {
@@ -7114,6 +7184,11 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   const pieceOwner = piece.team || piece.player_id;
   const isPlayer2 = pieceOwner === 2;
   
+  // Check if this piece has any dedicated capture directions (separate from movement)
+  // Pieces like pawns capture in different directions than they move
+  const hasAnyCaptureDirection = !!(piece.up_capture || piece.down_capture || piece.left_capture || piece.right_capture ||
+    piece.up_left_capture || piece.up_right_capture || piece.down_left_capture || piece.down_right_capture);
+  
   // Helper: hopping support for directional moves
   const canHopAlliesGen = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
   const canHopEnemiesGen = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
@@ -7157,11 +7232,17 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   };
   
   // Helper to check directional moves
-  const checkDirectionalMoves = (dx, dy, maxDist, directionName = null, isFirstMoveOnly = false, exactFlag = false, repeating = false) => {
+  // captureOnly: only generate moves where an enemy can be captured (no empty square moves)
+  const checkDirectionalMoves = (dx, dy, maxDist, directionName = null, isFirstMoveOnly = false, exactFlag = false, repeating = false, captureOnly = false) => {
     if (!maxDist || maxDist === 0) return;
     
     // Check global first_move_only restriction
     if (hasGlobalFirstMoveOnlyRestriction) return;
+    
+    // If piece has dedicated capture directions, only allow capture in directions
+    // that have a capture value. E.g., pawns move forward but capture diagonally.
+    const canCaptureInDir = captureOnly || !hasAnyCaptureDirection || !directionName ||
+      !!piece[directionName.replace('_movement', '_capture')];
     
     // Check direction-specific availableForMoves
     if (directionName && piece[`${directionName}_available_for`]) {
@@ -7195,7 +7276,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         
         // Can capture enemy (or ally if can_capture_allies) on valid landing squares
         if (isLandingSquare && !targetPiece.cannot_be_captured) {
-          if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && !hasGlobalFirstMoveOnlyCaptureRestriction) {
+          if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && canCaptureInDir && !hasGlobalFirstMoveOnlyCaptureRestriction) {
             moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
           } else if (targetOwner === pieceOwner && piece.can_capture_allies) {
             moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
@@ -7204,9 +7285,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         // If hopping, continue past this piece; otherwise stop
         if (!canHopDir || !canHopOverPieceGen(targetPiece)) break;
       } else {
-        // For exact moves, only add valid landing squares
+        // For exact moves, only add valid landing squares (skip for capture-only directions)
         const isLandingSquare = exactFlag ? (repeating ? (dist % exactDist === 0) : (dist === exactDist)) : true;
-        if (isLandingSquare) {
+        if (isLandingSquare && !captureOnly) {
           moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
         }
       }
@@ -7272,6 +7353,29 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         checkDirectionalMoves(dx, dy, maxDist, null, movementOption.availableForMoves || movementOption.firstMoveOnly || false);
       }
     }
+  }
+  
+  // Capture-only directional moves (directions where capture exists but no movement)
+  // This handles pieces like pawns that capture diagonally but move forward
+  if (hasAnyCaptureDirection) {
+    const repC = piece.repeating_capture;
+    if (isPlayer2) {
+      if (piece.up_capture && !piece.up_movement) checkDirectionalMoves(0, 1, piece.up_capture, null, false, piece.up_capture_exact, repC && piece.up_capture_exact, true);
+      if (piece.down_capture && !piece.down_movement) checkDirectionalMoves(0, -1, piece.down_capture, null, false, piece.down_capture_exact, repC && piece.down_capture_exact, true);
+      if (piece.up_left_capture && !piece.up_left_movement) checkDirectionalMoves(-1, 1, piece.up_left_capture, null, false, piece.up_left_capture_exact, repC && piece.up_left_capture_exact, true);
+      if (piece.up_right_capture && !piece.up_right_movement) checkDirectionalMoves(1, 1, piece.up_right_capture, null, false, piece.up_right_capture_exact, repC && piece.up_right_capture_exact, true);
+      if (piece.down_left_capture && !piece.down_left_movement) checkDirectionalMoves(-1, -1, piece.down_left_capture, null, false, piece.down_left_capture_exact, repC && piece.down_left_capture_exact, true);
+      if (piece.down_right_capture && !piece.down_right_movement) checkDirectionalMoves(1, -1, piece.down_right_capture, null, false, piece.down_right_capture_exact, repC && piece.down_right_capture_exact, true);
+    } else {
+      if (piece.up_capture && !piece.up_movement) checkDirectionalMoves(0, -1, piece.up_capture, null, false, piece.up_capture_exact, repC && piece.up_capture_exact, true);
+      if (piece.down_capture && !piece.down_movement) checkDirectionalMoves(0, 1, piece.down_capture, null, false, piece.down_capture_exact, repC && piece.down_capture_exact, true);
+      if (piece.up_left_capture && !piece.up_left_movement) checkDirectionalMoves(-1, -1, piece.up_left_capture, null, false, piece.up_left_capture_exact, repC && piece.up_left_capture_exact, true);
+      if (piece.up_right_capture && !piece.up_right_movement) checkDirectionalMoves(1, -1, piece.up_right_capture, null, false, piece.up_right_capture_exact, repC && piece.up_right_capture_exact, true);
+      if (piece.down_left_capture && !piece.down_left_movement) checkDirectionalMoves(-1, 1, piece.down_left_capture, null, false, piece.down_left_capture_exact, repC && piece.down_left_capture_exact, true);
+      if (piece.down_right_capture && !piece.down_right_movement) checkDirectionalMoves(1, 1, piece.down_right_capture, null, false, piece.down_right_capture_exact, repC && piece.down_right_capture_exact, true);
+    }
+    if (piece.left_capture && !piece.left_movement) checkDirectionalMoves(-1, 0, piece.left_capture, null, false, piece.left_capture_exact, repC && piece.left_capture_exact, true);
+    if (piece.right_capture && !piece.right_movement) checkDirectionalMoves(1, 0, piece.right_capture, null, false, piece.right_capture_exact, repC && piece.right_capture_exact, true);
   }
   
   // Ratio movements (knight-like)
@@ -7831,17 +7935,44 @@ function isCheckmate(gameState, playerPosition) {
   // Player is in check - now verify they have no legal moves to escape
   const legalMoves = getAllLegalMovesForPlayer(gameState, playerPosition);
   
-  console.log('Checkmate check:', {
-    playerPosition,
-    inCheck: checkResult.inCheck,
-    checkedPieces: checkResult.checkedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })),
-    legalMovesCount: legalMoves.length,
-    legalMoves: legalMoves.slice(0, 5).map(m => ({ 
-      pieceId: m.pieceId, 
-      from: m.from, 
-      to: m.to 
-    }))
-  });
+  console.log('=== CHECKMATE CHECK ===');
+  console.log('Player', playerPosition, 'is in check.');
+  console.log('Checked pieces:', checkResult.checkedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })));
+  console.log('Legal moves found:', legalMoves.length);
+  if (legalMoves.length > 0) {
+    console.log('NOT checkmate. Escape moves:');
+    for (const m of legalMoves.slice(0, 10)) {
+      const piece = gameState.pieces.find(p => p.id === m.pieceId);
+      console.log(`  ${piece?.piece_name || 'unknown'} (id=${m.pieceId}) from (${m.from.x},${m.from.y}) to (${m.to.x},${m.to.y})`);
+      
+      // Re-simulate to show WHY this move is considered safe
+      const simPieces = gameState.pieces.map(p => ({ ...p }));
+      const simPiece = simPieces.find(p => p.id === m.pieceId);
+      if (simPiece) {
+        // Remove any captured piece at destination
+        const capturedIdx = simPieces.findIndex(p => p.id !== m.pieceId && doesPieceOccupySquare(p, m.to.x, m.to.y));
+        if (capturedIdx !== -1) {
+          console.log(`    Would capture: ${simPieces[capturedIdx].piece_name} (id=${simPieces[capturedIdx].id}) at (${simPieces[capturedIdx].x},${simPieces[capturedIdx].y})`);
+          simPieces.splice(capturedIdx, 1);
+        }
+        const simPieceAfter = simPieces.find(p => p.id === m.pieceId);
+        if (simPieceAfter) {
+          simPieceAfter.x = m.to.x;
+          simPieceAfter.y = m.to.y;
+        }
+        // Check which enemy pieces COULD attack the king after this move
+        const simState = { ...gameState, pieces: simPieces };
+        const simCheck = checkForCheck(simState, playerPosition);
+        console.log(`    After sim: inCheck=${simCheck.inCheck}, checkedPieces=${simCheck.checkedPieces.length}`);
+        if (simCheck.inCheck) {
+          console.log(`    INCONSISTENCY: wouldMoveLeaveInCheck said safe but sim says still in check!`);
+        }
+      }
+    }
+  } else {
+    console.log('CHECKMATE DETECTED!');
+  }
+  console.log('=== END CHECKMATE CHECK ===');
   
   // If no legal moves exist, it's checkmate
   return legalMoves.length === 0;
@@ -8114,6 +8245,469 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
   return { gameOver: false };
 }
 
+// =============================================
+// BOT / AI PLAYER SUPPORT
+// =============================================
+
+const BOT_PLAYERS = {
+  easy:   { id: 'bot', username: 'Computer (Easy)',   difficulty: 'easy' },
+  medium: { id: 'bot', username: 'Computer (Medium)', difficulty: 'medium' },
+  hard:   { id: 'bot', username: 'Computer (Hard)',   difficulty: 'hard' }
+};
+
+function isBotPlayer(player) {
+  return player && player.id === 'bot';
+}
+
+/**
+ * Process a full bot turn: compute AI move, apply it, handle all post-move logic, broadcast.
+ * This mirrors the makeMove handler but is streamlined for bot play (no premoves,
+ * no socket error handling, auto-promotion, auto-chain-capture).
+ */
+async function processBotTurn(io, gameId, gameState) {
+  const botPlayer = gameState.botPlayer;
+  if (!botPlayer) { console.log(`[Bot] No botPlayer in game ${gameId}`); return; }
+  if (gameState.currentTurn !== botPlayer.position) { console.log(`[Bot] Not bot's turn in game ${gameId}`); return; }
+  if (gameState.status === 'completed') { console.log(`[Bot] Game ${gameId} already completed`); return; }
+
+  const aiEngine = require('./ai/ai-engine');
+  const settings = aiEngine.DIFFICULTY[botPlayer.difficulty] || aiEngine.DIFFICULTY.medium;
+
+  // Artificial thinking delay for natural feel
+  const delay = settings.thinkDelay + Math.floor(Math.random() * 300);
+
+  console.log(`[Bot] Processing turn in game ${gameId} (difficulty=${botPlayer.difficulty}, delay=${delay}ms, timeLimit=${settings.timeLimit}ms)`);
+
+  // Emit thinking indicator
+  io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: true });
+
+  // Safety timeout: if the entire processBotTurn takes too long, force a random move
+  const MAX_BOT_TIME = settings.timeLimit + 10000; // timeLimit + 10s buffer
+  let safetyTimedOut = false;
+  const safetyTimer = setTimeout(() => {
+    safetyTimedOut = true;
+    console.error(`[Bot] SAFETY TIMEOUT in game ${gameId} after ${MAX_BOT_TIME}ms`);
+  }, MAX_BOT_TIME);
+
+  setTimeout(async () => {
+    try {
+      // 1. Compute AI move
+      let bestMove;
+      const aiStartTime = Date.now();
+      // Save bot's clock before AI computation (getBestMove is synchronous and
+      // blocks the event loop, so the setInterval timer ticks will be starved).
+      const botTimeBeforeAI = gameState.playerTimes?.[botPlayer.id];
+
+      // Debug: log a sample of bot's pieces with move properties
+      const botPieces = gameState.pieces.filter(p => (p.team || p.player_id) === botPlayer.position);
+      const samplePiece = botPieces[0];
+      if (samplePiece) {
+        console.log(`[Bot] Sample piece "${samplePiece.piece_name}" (id=${samplePiece.id}):`, {
+          moveCount: samplePiece.moveCount, hasMoved: samplePiece.hasMoved,
+          special_scenario_moves: samplePiece.special_scenario_moves ? 'present' : 'none',
+          ratio_movement_1: samplePiece.ratio_movement_1, ratio_movement_2: samplePiece.ratio_movement_2,
+          up_movement: samplePiece.up_movement, down_movement: samplePiece.down_movement,
+          up_movement_available_for: samplePiece.up_movement_available_for,
+        });
+      }
+      // Debug: count legal moves
+      const debugLegalMoves = getAllLegalMovesForPlayer(gameState, botPlayer.position);
+      console.log(`[Bot] Legal moves available: ${debugLegalMoves.length}`);
+      if (debugLegalMoves.length <= 30) {
+        debugLegalMoves.forEach(m => {
+          const p = gameState.pieces.find(pp => pp.id === m.pieceId);
+          console.log(`  ${p?.piece_name || '?'} (${m.from.x},${m.from.y}) -> (${m.to.x},${m.to.y})`);
+        });
+      }
+
+      try {
+        bestMove = aiEngine.getBestMove(gameState, botPlayer.position, botPlayer.difficulty);
+        const aiElapsedMs = Date.now() - aiStartTime;
+        console.log(`[Bot] AI computed in ${aiElapsedMs}ms for game ${gameId}`);
+        // Correct the bot's clock using wall-clock time, since the setInterval
+        // couldn't fire while the event loop was blocked by minimax.
+        if (gameState.playerTimes && botTimeBeforeAI != null && gameState.timeControl) {
+          const aiElapsedSec = Math.floor(aiElapsedMs / 1000);
+          gameState.playerTimes[botPlayer.id] = Math.max(0, botTimeBeforeAI - aiElapsedSec);
+          // Emit corrected time to clients
+          io.to(`game-${gameId}`).emit("timeUpdate", {
+            gameId,
+            playerTimes: gameState.playerTimes,
+            currentTurn: gameState.currentTurn
+          });
+        }
+      } catch (aiError) {
+        console.error(`[Bot] AI engine error in game ${gameId}:`, aiError);
+        // Fallback: try a random legal move
+        try {
+          const { getAllLegalMovesForPlayer } = require('./game-socket');
+          const legalMoves = getAllLegalMovesForPlayer(gameState, botPlayer.position);
+          if (legalMoves.length > 0) {
+            bestMove = legalMoves[Math.floor(Math.random() * legalMoves.length)];
+            console.log(`[Bot] Using random fallback move in game ${gameId}`);
+          }
+        } catch (fallbackErr) {
+          console.error(`[Bot] Fallback also failed in game ${gameId}:`, fallbackErr);
+        }
+        if (!bestMove) {
+          io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+          clearTimeout(safetyTimer);
+          return;
+        }
+      }
+      if (!bestMove) {
+        console.log(`[Bot] No moves available in game ${gameId}`);
+        io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+        clearTimeout(safetyTimer);
+        return;
+      }
+
+      io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+
+      // Guard: game may have ended while bot was thinking (e.g. timeout)
+      if (gameState.status === 'completed') {
+        console.log(`[Bot] Game ${gameId} ended while bot was thinking, skipping move`);
+        return;
+      }
+
+      // 2. Apply move via validateAndApplyMove (authoritative validation)
+      let moveResult = await validateAndApplyMove(gameState, bestMove);
+      if (!moveResult.valid) {
+        console.error(`[Bot] Move validation failed in game ${gameId}:`, moveResult.reason, 
+          `move: piece=${bestMove.pieceId} from=(${bestMove.from.x},${bestMove.from.y}) to=(${bestMove.to.x},${bestMove.to.y})`);
+        
+        // Retry with other legal moves
+        const legalMoves = getAllLegalMovesForPlayer(gameState, botPlayer.position);
+        let retrySuccess = false;
+        for (const altMove of legalMoves) {
+          if (altMove.pieceId === bestMove.pieceId && altMove.to.x === bestMove.to.x && altMove.to.y === bestMove.to.y) continue;
+          const altResult = await validateAndApplyMove(gameState, altMove);
+          if (altResult.valid) {
+            console.log(`[Bot] Retry succeeded in game ${gameId}: piece=${altMove.pieceId} to=(${altMove.to.x},${altMove.to.y})`);
+            bestMove = altMove;
+            moveResult = altResult;
+            retrySuccess = true;
+            break;
+          }
+        }
+        if (!retrySuccess) {
+          console.error(`[Bot] All moves failed validation in game ${gameId} (${legalMoves.length} tried)`);
+          io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+          clearTimeout(safetyTimer);
+          return;
+        }
+      }
+
+      // 3. Record the move
+      const movingPw = moveResult.movingPiece?.piece_width || 1;
+      const movingPh = moveResult.movingPiece?.piece_height || 1;
+      const moveRecord = {
+        from: bestMove.from,
+        to: bestMove.to,
+        pieceId: bestMove.pieceId,
+        captured: moveResult.captured,
+        ...(moveResult.allCaptured && moveResult.allCaptured.length > 1 ? { allCaptured: moveResult.allCaptured } : {}),
+        ...(moveResult.damagedPieces && moveResult.damagedPieces.length > 0 ? { damagedPieces: moveResult.damagedPieces } : {}),
+        ...(moveResult.moveCancelled ? { moveCancelled: true } : {}),
+        player: botPlayer.id,
+        position: gameState.currentTurn,
+        timestamp: Date.now(),
+        isBot: true,
+        ...(movingPw > 1 || movingPh > 1 ? { piece_width: movingPw, piece_height: movingPh } : {}),
+        ...(bestMove.to.isCastling ? { isCastling: true, castlingWith: bestMove.to.castlingWith, castlingDirection: bestMove.to.castlingDirection } : {})
+      };
+      gameState.moveHistory.push(moveRecord);
+
+      // Track moves without capture
+      if (moveResult.captured || moveResult.movingPiece?.can_promote) {
+        gameState.movesWithoutCapture = 0;
+      } else {
+        gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
+      }
+
+      // 4. Handle promotion (auto-select best option)
+      if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
+        const bestPromo = aiEngine.chooseBestPromotion(moveResult.promotionEligible.options);
+        if (bestPromo && bestPromo.piece_id) {
+          const pieceIndex = gameState.pieces.findIndex(p => p.id === moveResult.promotionEligible.pieceId);
+          if (pieceIndex !== -1) {
+            try {
+              const [[fullPieceData]] = await db_pool.query('SELECT * FROM pieces WHERE id = ?', [bestPromo.piece_id]);
+              if (fullPieceData) {
+                const piece = gameState.pieces[pieceIndex];
+                const imageUrl = getImageUrlForPlayer(fullPieceData.image_location, piece.player_id || piece.team || 1);
+                gameState.pieces[pieceIndex] = {
+                  ...piece,
+                  piece_id: fullPieceData.id,
+                  piece_name: fullPieceData.piece_name,
+                  image_location: fullPieceData.image_location,
+                  image: imageUrl,
+                  image_url: imageUrl,
+                  directional_movement_style: fullPieceData.directional_movement_style,
+                  up_movement: fullPieceData.up_movement, down_movement: fullPieceData.down_movement,
+                  left_movement: fullPieceData.left_movement, right_movement: fullPieceData.right_movement,
+                  up_left_movement: fullPieceData.up_left_movement, up_right_movement: fullPieceData.up_right_movement,
+                  down_left_movement: fullPieceData.down_left_movement, down_right_movement: fullPieceData.down_right_movement,
+                  ratio_movement_style: fullPieceData.ratio_movement_style,
+                  ratio_movement_1: fullPieceData.ratio_one_movement, ratio_movement_2: fullPieceData.ratio_two_movement,
+                  step_movement_style: fullPieceData.step_by_step_movement_style,
+                  step_movement_value: fullPieceData.step_by_step_movement_value,
+                  can_hop_over_allies: fullPieceData.can_hop_over_allies, can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+                  can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
+                  up_capture: fullPieceData.up_capture, down_capture: fullPieceData.down_capture,
+                  left_capture: fullPieceData.left_capture, right_capture: fullPieceData.right_capture,
+                  up_left_capture: fullPieceData.up_left_capture, up_right_capture: fullPieceData.up_right_capture,
+                  down_left_capture: fullPieceData.down_left_capture, down_right_capture: fullPieceData.down_right_capture,
+                  piece_value: fullPieceData.piece_value,
+                  is_royal: fullPieceData.is_royal,
+                  can_promote: fullPieceData.can_promote,
+                  can_castle: fullPieceData.can_castle,
+                  can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
+                  can_en_passant: fullPieceData.can_en_passant,
+                  special_scenario_moves: fullPieceData.special_scenario_moves,
+                  special_scenario_captures: fullPieceData.special_scenario_captures,
+                  capture_on_hop: fullPieceData.capture_on_hop,
+                  chain_capture_enabled: fullPieceData.chain_capture_enabled,
+                  ends_game_on_checkmate: piece.ends_game_on_checkmate,
+                  ends_game_on_capture: piece.ends_game_on_capture,
+                  moveCount: 0,
+                  hasMoved: false
+                };
+                console.log(`[Bot] Auto-promoted to ${fullPieceData.piece_name} in game ${gameId}`);
+              }
+            } catch (promoError) {
+              console.error('[Bot] Promotion error:', promoError);
+            }
+          }
+        }
+      }
+
+      // 5. Handle chain capture (auto-continue)
+      if (moveResult.chainCaptureAvailable && moveResult.movingPiece) {
+        // For now, bot skips chain captures (takes the first capture only)
+        // A full implementation would recursively find the best chain
+        gameState.chainCapturePieceId = null;
+        gameState.chainCapturePlayerId = null;
+        gameState.chainCaptureHopCount = 0;
+      }
+
+      // 6. Switch turns
+      gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+
+      // 7. Burn/regen processing for the next player's turn
+      const newTurnPlayer = gameState.currentTurn;
+      const burnPieces = [];
+      const burnKilledPieces = [];
+      gameState.pieces.forEach(p => {
+        const owner = p.team || p.player_id;
+        if (owner === newTurnPlayer && p.burn_active_turns && p.burn_active_turns > 0 && p.burn_active_damage > 0) {
+          const currentHp = p.current_hp ?? p.hit_points ?? 1;
+          const burnDmg = Math.min(p.burn_active_damage, currentHp);
+          p.current_hp = Math.max(0, currentHp - p.burn_active_damage);
+          p.burn_active_turns--;
+          burnPieces.push({ id: p.id, damage: burnDmg, previousHp: currentHp, currentHp: p.current_hp, turnsRemaining: p.burn_active_turns, x: p.x, y: p.y });
+          if (p.current_hp <= 0) burnKilledPieces.push(p);
+        }
+      });
+      for (const killed of burnKilledPieces) {
+        const idx = gameState.pieces.findIndex(p => p.id === killed.id);
+        if (idx !== -1) gameState.pieces.splice(idx, 1);
+      }
+
+      const regenPieces = [];
+      gameState.pieces.forEach(p => {
+        const owner = p.team || p.player_id;
+        if (owner === newTurnPlayer && p.hp_regen && p.hp_regen > 0) {
+          const maxHp = p.hit_points || 1;
+          const currentHp = p.current_hp ?? maxHp;
+          if (currentHp < maxHp) {
+            const healed = Math.min(p.hp_regen, maxHp - currentHp);
+            p.current_hp = Math.min(maxHp, currentHp + p.hp_regen);
+            regenPieces.push({ id: p.id, healed, previousHp: currentHp, currentHp: p.current_hp, x: p.x, y: p.y });
+          }
+        }
+      });
+
+      // 8. Check burn-kill win condition
+      if (burnKilledPieces.length > 0) {
+        const burnWinResult = checkWinCondition(gameState, burnKilledPieces);
+        if (burnWinResult.gameOver) {
+          return await finishBotGame(io, gameId, gameState, burnWinResult, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+        }
+      }
+
+      // 9. Control square tracking
+      const controlWinResult = updateControlSquareTracking(gameState);
+      if (controlWinResult?.gameOver) {
+        return await finishBotGame(io, gameId, gameState, controlWinResult, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+      }
+
+      // 10. Win condition check (capture-based)
+      const winResult = checkWinCondition(gameState, moveResult.allCaptured || moveResult.captured);
+      if (winResult.gameOver) {
+        return await finishBotGame(io, gameId, gameState, winResult, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+      }
+
+      // 11. Check/checkmate/stalemate detection
+      const checkResult = checkForCheck(gameState, gameState.currentTurn);
+      gameState.inCheck = checkResult.inCheck;
+      gameState.checkedPieces = checkResult.checkedPieces;
+
+      if (checkResult.inCheck && gameState.gameType?.mate_condition) {
+        if (isCheckmate(gameState, gameState.currentTurn)) {
+          const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+          return await finishBotGame(io, gameId, gameState, {
+            gameOver: true, winner: winner?.id, reason: 'checkmate'
+          }, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+        }
+      }
+
+      if (!checkResult.inCheck && gameState.gameType?.mate_condition) {
+        const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
+        if (legalMoves.length === 0) {
+          return await finishBotGame(io, gameId, gameState, {
+            gameOver: true, winner: null, reason: 'stalemate'
+          }, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+        }
+      }
+
+      if (gameState.gameType?.no_moves_condition) {
+        const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
+        if (legalMoves.length === 0) {
+          const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+          return await finishBotGame(io, gameId, gameState, {
+            gameOver: true, winner: winner?.id, reason: 'no_moves'
+          }, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+        }
+      }
+
+      // 12. Draw conditions
+      const positionHash = getPositionHash(gameState.pieces, gameState.currentTurn);
+      if (!gameState.positionHistory) gameState.positionHistory = {};
+      gameState.positionHistory[positionHash] = (gameState.positionHistory[positionHash] || 0) + 1;
+
+      const effectiveMoveLimit = gameState.gameType?.draw_move_limit ? gameState.gameType.draw_move_limit * 2 : null;
+      if (effectiveMoveLimit && gameState.movesWithoutCapture >= effectiveMoveLimit) {
+        return await finishBotGame(io, gameId, gameState, {
+          gameOver: true, winner: null, reason: 'draw_move_limit'
+        }, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+      }
+
+      const repetitionLimit = gameState.gameType?.repetition_draw_count;
+      if (repetitionLimit && (gameState.positionHistory[positionHash] || 0) >= repetitionLimit) {
+        return await finishBotGame(io, gameId, gameState, {
+          gameOver: true, winner: null, reason: 'repetition'
+        }, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+      }
+
+      // 13. Update DB
+      await db_pool.query(
+        "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+        [gameState.currentTurn, JSON.stringify(gameState.pieces),
+         buildOtherData(gameState, {
+           inCheck: checkResult.inCheck,
+           movesWithoutCapture: gameState.movesWithoutCapture,
+           positionHistory: gameState.positionHistory,
+           controlSquareTracking: gameState.controlSquareTracking,
+           enPassantTarget: gameState.enPassantTarget
+         }), gameId]
+      );
+
+      // 14. Broadcast the move
+      io.to(`game-${gameId}`).emit("moveMade", {
+        gameId,
+        move: moveRecord,
+        gameState: {
+          pieces: gameState.pieces,
+          currentTurn: gameState.currentTurn,
+          playerTimes: gameState.playerTimes,
+          moveHistory: gameState.moveHistory,
+          inCheck: checkResult.inCheck,
+          checkedPieces: checkResult.checkedPieces,
+          allowPremoves: gameState.allowPremoves,
+          rated: gameState.rated,
+          enPassantTarget: gameState.enPassantTarget,
+          controlSquareTracking: gameState.controlSquareTracking
+        },
+        ...(regenPieces.length > 0 ? { regenPieces } : {}),
+        ...(burnPieces.length > 0 ? { burnPieces } : {}),
+        ...(burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
+      });
+
+      if (checkResult.inCheck) {
+        io.to(`game-${gameId}`).emit("check", {
+          gameId,
+          playerPosition: gameState.currentTurn,
+          checkedPieces: checkResult.checkedPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y }))
+        });
+      }
+
+      console.log(`[Bot] Move made in game ${gameId}: piece ${bestMove.pieceId} to (${bestMove.to.x},${bestMove.to.y})`);
+      clearTimeout(safetyTimer);
+
+    } catch (error) {
+      console.error(`[Bot] Error processing turn in game ${gameId}:`, error);
+      io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+      clearTimeout(safetyTimer);
+    }
+  }, delay);
+}
+
+/**
+ * Helper: finish a bot game (game over from any condition).
+ * Handles DB update, ELO (skipped for bot games), and broadcast.
+ */
+async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effects = {}) {
+  stopGameTimer(gameId);
+  gameState.status = 'completed';
+  gameState.winner = winResult.winner;
+  gameState.winReason = winResult.reason;
+
+  // Bot games are unrated — skip ELO updates
+  const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  // For winner_id in DB: if bot won, store NULL; if human won, store human's ID
+  const dbWinnerId = (winResult.winner && !isBotPlayer(gameState.players.find(p => p.id === winResult.winner)))
+    ? sanitizeWinnerId(winResult.winner)
+    : null;
+
+  try {
+    await db_pool.query(
+      `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+       pieces = ?, other_data = ? WHERE id = ?`,
+      [endTime, dbWinnerId, JSON.stringify(gameState.pieces),
+       buildOtherData(gameState, { winner: winResult.winner, reason: winResult.reason, isBotGame: true }),
+       gameId]
+    );
+  } catch (dbError) {
+    console.error('[Bot] Failed to update database:', dbError);
+  }
+
+  // Broadcast the move that caused the game to end
+  io.to(`game-${gameId}`).emit("moveMade", {
+    gameId,
+    move: moveRecord,
+    gameState: {
+      pieces: gameState.pieces,
+      currentTurn: gameState.currentTurn,
+      playerTimes: gameState.playerTimes,
+      moveHistory: gameState.moveHistory
+    },
+    ...(effects.regenPieces?.length > 0 ? { regenPieces: effects.regenPieces } : {}),
+    ...(effects.burnPieces?.length > 0 ? { burnPieces: effects.burnPieces } : {}),
+    ...(effects.burnKilledPieces?.length > 0 ? { burnKilledPieces: effects.burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
+  });
+
+  io.to(`game-${gameId}`).emit("gameOver", {
+    gameId,
+    winner: winResult.winner,
+    reason: winResult.reason,
+    finalState: gameState,
+    eloChanges: null
+  });
+
+  console.log(`[Bot] Game ${gameId} ended: ${winResult.reason}, winner: ${winResult.winner || 'draw'}`);
+}
+
 /**
  * Get the Socket.io instance for use in other modules
  */
@@ -8121,4 +8715,20 @@ function getIO() {
   return ioInstance;
 }
 
-module.exports = { initializeSocket, activeGames, onlineUsers, userSockets, getIO };
+module.exports = {
+  initializeSocket,
+  activeGames,
+  onlineUsers,
+  userSockets,
+  getIO,
+  // Pure game logic functions (used by AI engine)
+  getPossibleMovesForPiece,
+  getAllLegalMovesForPlayer,
+  checkForCheck,
+  isCheckmate,
+  checkWinCondition,
+  validateAndApplyMove,
+  wouldMoveLeaveInCheck,
+  findPieceAtSquare,
+  doesPieceOccupySquare
+};

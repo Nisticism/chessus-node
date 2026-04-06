@@ -57,6 +57,7 @@ const GameWizard = ({ editGameId }) => {
     board_height: 8,
     player_count: 2,
     actions_per_turn: 1,
+    simultaneous_turns: false,
     
     // Step 4: Advanced Settings
     starting_piece_count: 0,
@@ -126,6 +127,7 @@ const GameWizard = ({ editGameId }) => {
             board_height: existingGame.board_height || 8,
             player_count: existingGame.player_count || 2,
             actions_per_turn: existingGame.actions_per_turn || 1,
+            simultaneous_turns: Boolean(existingGame.simultaneous_turns),
             starting_piece_count: existingGame.starting_piece_count || 0,
             pieces_string: existingGame.pieces_string || "[]",
             range_squares_string: existingGame.range_squares_string || "",

@@ -123,6 +123,17 @@
   font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
 }
 
+.bot-badge {
+  background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin-left: 4px;
+}
+
 .game-details {
   display: flex;
   gap: 12px;

@@ -54,10 +54,10 @@ const createUser = async (username, hashedPassword, email) => {
   const defaultDarkColor = '#64472b';   // Wood dark: hsl(30, 40%, 28%)
   
   await query(
-    "INSERT INTO chessusnode.users (username, password, email, light_square_color, dark_square_color) VALUES (?,?,?,?,?)",
+    "INSERT INTO chessusnode.users (username, password, email, light_square_color, dark_square_color, allow_non_friend_dms, sound_enabled) VALUES (?,?,?,?,?,1,1)",
     [username, hashedPassword, email, defaultLightColor, defaultDarkColor]
   );
-  return { username, password: hashedPassword, email, light_square_color: defaultLightColor, dark_square_color: defaultDarkColor };
+  return { username, password: hashedPassword, email, light_square_color: defaultLightColor, dark_square_color: defaultDarkColor, allow_non_friend_dms: 1, sound_enabled: 1 };
 };
 
 /**

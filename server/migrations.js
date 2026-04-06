@@ -2367,12 +2367,12 @@ Join us in revolutionizing chess, one variant at a time.
       console.error('Error creating game_chat_messages table:', err.message);
     }
   
-    // Add allow_non_friend_dms column to users (default 0 = friends only)
+    // Add allow_non_friend_dms column to users (default 1 = open DMs)
     try {
       const allowDmsCol = await columnExists('users', 'allow_non_friend_dms');
       if (!allowDmsCol) {
         await runMigration(
-          "ALTER TABLE users ADD COLUMN allow_non_friend_dms TINYINT(1) DEFAULT 0 COMMENT 'If true, allows DMs from non-friends'",
+          "ALTER TABLE users ADD COLUMN allow_non_friend_dms TINYINT(1) DEFAULT 1 COMMENT 'If true, allows DMs from non-friends'",
           "Add allow_non_friend_dms column to users table"
         );
         migrationsRun++;
@@ -2395,12 +2395,12 @@ Join us in revolutionizing chess, one variant at a time.
       console.error('Error adding disable_game_chat column:', err.message);
     }
 
-    // Add sound_enabled column to users (default 0 = sound off)
+    // Add sound_enabled column to users (default 1 = sound on)
     try {
       const soundCol = await columnExists('users', 'sound_enabled');
       if (!soundCol) {
         await runMigration(
-          "ALTER TABLE users ADD COLUMN sound_enabled TINYINT(1) DEFAULT 0 COMMENT 'If true, sound effects are enabled in games'",
+          "ALTER TABLE users ADD COLUMN sound_enabled TINYINT(1) DEFAULT 1 COMMENT 'If true, sound effects are enabled in games'",
           "Add sound_enabled column to users table"
         );
         migrationsRun++;
@@ -2430,6 +2430,77 @@ Join us in revolutionizing chess, one variant at a time.
       }
     } catch (err) {
       console.error('Error adding parent_id column to comments:', err.message);
+    }
+
+    // Update default preferences: allow_non_friend_dms and sound_enabled should default to 1
+    // This migrates existing users who still have the old default (0) and changes the column default
+    try {
+      const checkDefault = async (colName) => {
+        const sql = `SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = ?`;
+        const [rows] = await db_pool.query(sql, [process.env.DB_NAME || 'chessusnode', colName]);
+        return rows[0]?.COLUMN_DEFAULT;
+      };
+      const dmDefault = await checkDefault('allow_non_friend_dms');
+      if (dmDefault === '0') {
+        await runMigration(
+          "ALTER TABLE users ALTER COLUMN allow_non_friend_dms SET DEFAULT 1",
+          "Change allow_non_friend_dms default to 1"
+        );
+        await runMigration(
+          "UPDATE users SET allow_non_friend_dms = 1 WHERE allow_non_friend_dms = 0",
+          "Enable DMs for existing users"
+        );
+        migrationsRun++;
+      }
+      const soundDefault = await checkDefault('sound_enabled');
+      if (soundDefault === '0') {
+        await runMigration(
+          "ALTER TABLE users ALTER COLUMN sound_enabled SET DEFAULT 1",
+          "Change sound_enabled default to 1"
+        );
+        await runMigration(
+          "UPDATE users SET sound_enabled = 1 WHERE sound_enabled = 0",
+          "Enable sound for existing users"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error updating default preferences:', err.message);
+    }
+
+    // Backfill: set player_position = 1 for bot game hosts that still have NULL position
+    try {
+      const [nullPositions] = await db_pool.query(
+        `SELECT COUNT(*) as cnt FROM players p
+         INNER JOIN games g ON p.game_id = g.id
+         WHERE p.player_position IS NULL AND g.other_data LIKE '%"isBotGame":true%'`
+      );
+      if (nullPositions[0].cnt > 0) {
+        await runMigration(
+          `UPDATE players p
+           INNER JOIN games g ON p.game_id = g.id
+           SET p.player_position = 1
+           WHERE p.player_position IS NULL AND g.other_data LIKE '%"isBotGame":true%'`,
+          `Backfill player_position=1 for ${nullPositions[0].cnt} bot game hosts`
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error backfilling bot game positions:', err.message);
+    }
+
+    // Add simultaneous_turns column to game_types
+    try {
+      const simTurnsCol = await columnExists('game_types', 'simultaneous_turns');
+      if (!simTurnsCol) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN simultaneous_turns TINYINT(1) DEFAULT 0 COMMENT 'If true, both players submit moves secretly and they resolve simultaneously'",
+          "Add simultaneous_turns column to game_types table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding simultaneous_turns column:', err.message);
     }
 
   if (migrationsRun === 0) {

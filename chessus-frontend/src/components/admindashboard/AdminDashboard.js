@@ -149,18 +149,23 @@ const AdminDashboard = () => {
   };
 
   const updateSiteSetting = async (key, value) => {
+    const stringValue = String(value);
+    const previousSettings = { ...siteSettings };
+    // Optimistic update: apply immediately so UI responds to the click
+    setSiteSettings(prev => ({ ...prev, [key]: stringValue }));
     try {
       await axios.put(
         `${API_URL}admin/site-settings/${key}`,
-        { value: String(value) },
+        { value: stringValue },
         { headers: authHeader() }
       );
-      setSiteSettings(prev => ({ ...prev, [key]: String(value) }));
       setAlertMessage(`Setting "${key}" updated`);
       setAlertType('success');
       setShowAlert(true);
     } catch (error) {
       console.error("Error updating site setting:", error);
+      // Revert on failure
+      setSiteSettings(previousSettings);
       setAlertMessage("Failed to update setting");
       setAlertType('error');
       setShowAlert(true);
