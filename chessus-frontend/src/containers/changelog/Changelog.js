@@ -26,6 +26,8 @@ const changelogData = [
       "Fixed checkmate detection bug where pawns could incorrectly capture forward instead of diagonally",
       "Match history board now shows your pieces at the bottom with correct notation orientation",
       "Bot opponent now shows as 'Computer (Easy/Medium/Hard)' in match history",
+      "Premoves now work during computer games",
+      "Computer now actively pushes promotable pieces toward promotion when the path is clear",
     ],
   },
   {

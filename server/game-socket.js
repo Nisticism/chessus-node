@@ -34,6 +34,7 @@ function buildOtherData(gameState, extraFields = {}) {
     rated: gameState.rated,
     allowPremoves: gameState.allowPremoves,
     ...(gameState.initialPieces ? { initialPieces: gameState.initialPieces } : {}),
+    ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium' } : {}),
     ...extraFields
   });
 }
@@ -940,7 +941,6 @@ function initializeSocket(server) {
           gameState.botPlayer = { ...botInfo, position: 2 };
           gameState.status = 'ready';
           gameState.rated = false; // Bot games are never rated
-          gameState.allowPremoves = false; // No premoves vs bot
 
           // Set player times (timeControl is in minutes, convert to seconds)
           if (timeControl) {
@@ -8644,6 +8644,111 @@ async function processBotTurn(io, gameId, gameState) {
 
       console.log(`[Bot] Move made in game ${gameId}: piece ${bestMove.pieceId} to (${bestMove.to.x},${bestMove.to.y})`);
       clearTimeout(safetyTimer);
+
+      // Check if human has a premove queued after bot's move
+      if (gameState.allowPremoves && gameState.premove && gameState.status !== 'completed') {
+        const humanPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+        if (gameState.premove.playerId === humanPlayer?.id) {
+          const premove = gameState.premove;
+          gameState.premove = null;
+          const premoveResult = await validateAndApplyMove(gameState, premove.move, { isPremove: true });
+          if (premoveResult.valid) {
+            const pmPw = premoveResult.movingPiece?.piece_width || 1;
+            const pmPh = premoveResult.movingPiece?.piece_height || 1;
+            const pmRecord = {
+              from: premove.move.from,
+              to: premove.move.to,
+              pieceId: premove.move.pieceId,
+              captured: premoveResult.captured,
+              ...(premoveResult.allCaptured && premoveResult.allCaptured.length > 1 ? { allCaptured: premoveResult.allCaptured } : {}),
+              ...(premoveResult.damagedPieces && premoveResult.damagedPieces.length > 0 ? { damagedPieces: premoveResult.damagedPieces } : {}),
+              ...(premoveResult.moveCancelled ? { moveCancelled: true } : {}),
+              player: humanPlayer.id,
+              position: gameState.currentTurn,
+              timestamp: Date.now(),
+              isPremove: true,
+              ...(pmPw > 1 || pmPh > 1 ? { piece_width: pmPw, piece_height: pmPh } : {}),
+              ...(premove.move.isRangedAttack ? { isRangedAttack: true } : {})
+            };
+            gameState.moveHistory.push(pmRecord);
+
+            if (premoveResult.captured || gameState.pieces.find(p => p.id === premove.move.pieceId)?.can_promote) {
+              gameState.movesWithoutCapture = 0;
+            } else {
+              gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
+            }
+
+            if (gameState.increment && gameState.playerTimes[humanPlayer.id]) {
+              gameState.playerTimes[humanPlayer.id] += gameState.increment;
+            }
+
+            gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+
+            // Apply regen/burn for premove
+            const pmRegenPieces = applyRegeneration(gameState);
+            const { burnPieces: pmBurnPieces, killedPieces: pmBurnKilled } = applyBurnDamage(gameState);
+
+            // Check win conditions after premove
+            const pmWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+            if (pmWinResult.gameOver) {
+              return await finishBotGame(io, gameId, gameState, pmWinResult, pmRecord, {
+                regenPieces: pmRegenPieces, burnPieces: pmBurnPieces, burnKilledPieces: pmBurnKilled
+              });
+            }
+
+            const pmCheckResult = checkForCheck(gameState);
+            gameState.inCheck = pmCheckResult.inCheck;
+            gameState.checkedPieces = pmCheckResult.checkedPieces;
+
+            if (pmCheckResult.inCheck) {
+              const mateResult = isCheckmate(gameState);
+              if (mateResult.isCheckmate) {
+                const loser = gameState.players.find(p => p.position === gameState.currentTurn);
+                const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+                return await finishBotGame(io, gameId, gameState, {
+                  gameOver: true, winner: winner?.id, reason: 'checkmate'
+                }, pmRecord, { regenPieces: pmRegenPieces, burnPieces: pmBurnPieces, burnKilledPieces: pmBurnKilled });
+              }
+            }
+
+            // Update DB
+            await db_pool.query(
+              "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+              [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+            );
+
+            // Broadcast premove execution
+            io.to(`game-${gameId}`).emit("premoveExecuted", {
+              gameId,
+              move: pmRecord,
+              gameState: {
+                pieces: gameState.pieces,
+                currentTurn: gameState.currentTurn,
+                playerTimes: gameState.playerTimes,
+                moveHistory: gameState.moveHistory,
+                inCheck: pmCheckResult.inCheck,
+                checkedPieces: pmCheckResult.checkedPieces,
+                allowPremoves: gameState.allowPremoves,
+                rated: gameState.rated,
+                enPassantTarget: gameState.enPassantTarget
+              },
+              ...(pmRegenPieces.length > 0 ? { regenPieces: pmRegenPieces } : {}),
+              ...(pmBurnPieces.length > 0 ? { burnPieces: pmBurnPieces } : {}),
+              ...(pmBurnKilled.length > 0 ? { burnKilledPieces: pmBurnKilled.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
+            });
+
+            console.log(`[Bot] Human premove executed in game ${gameId}`);
+
+            // After premove, it's bot's turn again — trigger bot
+            if (gameState.status !== 'completed' && gameState.botPlayer &&
+                gameState.currentTurn === gameState.botPlayer.position) {
+              processBotTurn(io, gameId, gameState);
+            }
+          } else {
+            io.to(`game-${gameId}`).emit("premoveCancelled", { gameId, reason: 'Premove is no longer valid' });
+          }
+        }
+      }
 
     } catch (error) {
       console.error(`[Bot] Error processing turn in game ${gameId}:`, error);

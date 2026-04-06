@@ -739,6 +739,82 @@ function evaluatePosition(state, perspective) {
   score += threatenedByUs.size * 1.5;    // More squares we threaten = better mobility
   score -= threatenedByOpponent.size * 1.5;
 
+  // --- Pawn promotion incentive ---
+  // Reward promotable pieces for advancing toward promotion squares.
+  // Bonus scales with proximity; extra bonus if the path is clear.
+  if (gameType?.promotion_squares_string) {
+    let promoSquares = null;
+    try { promoSquares = JSON.parse(gameType.promotion_squares_string); } catch {}
+    if (promoSquares && typeof promoSquares === 'object') {
+      const promoCoords = Object.keys(promoSquares).map(k => {
+        const [py, px] = k.split(',').map(Number);
+        return { x: px, y: py };
+      });
+
+      if (promoCoords.length > 0) {
+        const maxBoardDist = bw + bh;
+        for (const myPiece of myPieces) {
+          if (!myPiece.can_promote) continue;
+          let minDist = maxBoardDist;
+          for (const sq of promoCoords) {
+            const d = Math.abs(myPiece.x - sq.x) + Math.abs(myPiece.y - sq.y);
+            if (d < minDist) minDist = d;
+          }
+          // Scale: the closer, the higher the bonus (max ~15 when 1 step away)
+          const proximityBonus = Math.max(0, (maxBoardDist - minDist) / maxBoardDist) * 8;
+          score += proximityBonus;
+
+          // Extra bonus if the file ahead is clear (no blocking pieces)
+          if (minDist > 0) {
+            const targetPromo = promoCoords.reduce((best, sq) => {
+              const d = Math.abs(myPiece.x - sq.x) + Math.abs(myPiece.y - sq.y);
+              return d < best.d ? { sq, d } : best;
+            }, { sq: null, d: maxBoardDist });
+            if (targetPromo.sq && myPiece.x === targetPromo.sq.x) {
+              // Same file — check if path is clear
+              const dy = targetPromo.sq.y > myPiece.y ? 1 : -1;
+              let pathClear = true;
+              for (let cy = myPiece.y + dy; cy !== targetPromo.sq.y; cy += dy) {
+                if (pieces.some(p => p.x === myPiece.x && p.y === cy && !p.captured)) {
+                  pathClear = false;
+                  break;
+                }
+              }
+              if (pathClear) score += 6;
+            }
+          }
+        }
+        for (const opPiece of opPieces) {
+          if (!opPiece.can_promote) continue;
+          let minDist = maxBoardDist;
+          for (const sq of promoCoords) {
+            const d = Math.abs(opPiece.x - sq.x) + Math.abs(opPiece.y - sq.y);
+            if (d < minDist) minDist = d;
+          }
+          const proximityBonus = Math.max(0, (maxBoardDist - minDist) / maxBoardDist) * 8;
+          score -= proximityBonus;
+          if (minDist > 0) {
+            const targetPromo = promoCoords.reduce((best, sq) => {
+              const d = Math.abs(opPiece.x - sq.x) + Math.abs(opPiece.y - sq.y);
+              return d < best.d ? { sq, d } : best;
+            }, { sq: null, d: maxBoardDist });
+            if (targetPromo.sq && opPiece.x === targetPromo.sq.x) {
+              const dy = targetPromo.sq.y > opPiece.y ? 1 : -1;
+              let pathClear = true;
+              for (let cy = opPiece.y + dy; cy !== targetPromo.sq.y; cy += dy) {
+                if (pieces.some(p => p.x === opPiece.x && p.y === cy && !p.captured)) {
+                  pathClear = false;
+                  break;
+                }
+              }
+              if (pathClear) score -= 6;
+            }
+          }
+        }
+      }
+    }
+  }
+
   return score;
 }
 
