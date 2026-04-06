@@ -34,8 +34,9 @@ function buildOtherData(gameState, extraFields = {}) {
     rated: gameState.rated,
     allowPremoves: gameState.allowPremoves,
     ...(gameState.initialPieces ? { initialPieces: gameState.initialPieces } : {}),
-    ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium' } : {}),
+    ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium', botPosition: gameState.botPlayer.position } : {}),
     ...(gameState.materialClockPenalty ? { materialClockPenalty: true } : {}),
+    ...(gameState.materialClockHandicap ? { materialClockHandicap: true } : {}),
     ...extraFields
   });
 }
@@ -575,7 +576,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random' } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -880,7 +881,7 @@ function initializeSocket(server) {
         const [result] = await db_pool.query(
           `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id, is_correspondence, correspondence_days)
            VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?)`,
-          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode, materialClockPenalty: !!materialClockPenalty }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
+          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode, materialClockPenalty: !!materialClockPenalty, materialClockHandicap: !!materialClockHandicap }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
         );
 
         const gameId = result.insertId;
@@ -923,7 +924,8 @@ function initializeSocket(server) {
           challengedUserId,
           isCorrespondence: !!isCorrespondence,
           correspondenceDays: correspondenceDays || null,
-          materialClockPenalty: !!materialClockPenalty
+          materialClockPenalty: !!materialClockPenalty,
+          materialClockHandicap: !!materialClockHandicap
         };
 
         activeGames.set(gameId.toString(), gameState);
@@ -935,12 +937,25 @@ function initializeSocket(server) {
         if (vsComputer) {
           const botInfo = BOT_PLAYERS[botDifficulty] || BOT_PLAYERS.medium;
 
-          // Assign host as player 1, bot as player 2
+          // Determine side assignment based on playerSide preference
+          let hostPosition, botPosition;
+          if (playerSide === 'p1') {
+            hostPosition = 1;
+            botPosition = 2;
+          } else if (playerSide === 'p2') {
+            hostPosition = 2;
+            botPosition = 1;
+          } else {
+            // Random
+            hostPosition = Math.random() < 0.5 ? 1 : 2;
+            botPosition = hostPosition === 1 ? 2 : 1;
+          }
+
           gameState.players = [
-            { id: hostId, username: hostUsername, position: 1 },
-            { id: botInfo.id, username: botInfo.username, position: 2, isBot: true }
+            { id: hostId, username: hostUsername, position: hostPosition },
+            { id: botInfo.id, username: botInfo.username, position: botPosition, isBot: true }
           ];
-          gameState.botPlayer = { ...botInfo, position: 2 };
+          gameState.botPlayer = { ...botInfo, position: botPosition };
           gameState.status = 'ready';
           gameState.rated = false; // Bot games are never rated
 
@@ -950,10 +965,10 @@ function initializeSocket(server) {
             gameState.playerTimes[botInfo.id] = timeControl * 60;
           }
 
-          // Update host player_position to 1 in DB (so match history query finds this game)
+          // Update host player_position in DB (so match history query finds this game)
           await db_pool.query(
-            "UPDATE players SET player_position = 1 WHERE game_id = ? AND user_id = ?",
-            [gameId, hostId]
+            "UPDATE players SET player_position = ? WHERE game_id = ? AND user_id = ?",
+            [hostPosition, gameId, hostId]
           );
 
           // Update DB: mark game as ready with bot player
@@ -970,6 +985,30 @@ function initializeSocket(server) {
           });
 
           console.log(`[Bot] Game ${gameId} created vs ${botInfo.username} by ${hostUsername}`);
+
+          // If bot is Player 1, it moves first — start the game and trigger bot turn
+          if (botPosition === 1) {
+            gameState.status = 'active';
+            gameState.startTime = Date.now();
+            if (!gameState.initialPieces) {
+              gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
+            }
+            initializeCastlingPartners(gameState);
+            const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            await db_pool.query(
+              "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
+              [startTimeStr, buildOtherData(gameState, { isBotGame: true, botDifficulty: botInfo.difficulty }), gameId]
+            );
+            if (gameState.gameTypeId) {
+              try {
+                await db_pool.query("UPDATE game_types SET last_played_at = ? WHERE id = ?", [startTimeStr, gameState.gameTypeId]);
+              } catch (err) { console.error('Failed to update last_played_at:', err); }
+            }
+            startGameTimer(io, gameId);
+            console.log(`[Bot] Bot is P1, starting game ${gameId} and triggering first bot turn`);
+            processBotTurn(io, gameId, gameState);
+          }
+
           return; // Skip normal game lobby flow
         }
 
@@ -3112,6 +3151,15 @@ function initializeSocket(server) {
           );
 
           // Broadcast move to all players in game
+          // Compute fresh clock multipliers after material change
+          let moveClockMultipliers;
+          if (gameState.materialClockPenalty || gameState.materialClockHandicap) {
+            moveClockMultipliers = {};
+            for (const p of gameState.players) {
+              const m = getClockMultiplier(gameState, p.id);
+              if (Math.abs(m - 1) >= 0.1) moveClockMultipliers[p.id] = Math.round(m * 100) / 100;
+            }
+          }
           io.to(`game-${gameId}`).emit("moveMade", {
             gameId,
             move: moveRecord,
@@ -3127,6 +3175,7 @@ function initializeSocket(server) {
               enPassantTarget: gameState.enPassantTarget,
               controlSquareTracking: gameState.controlSquareTracking
             },
+            ...(moveClockMultipliers && Object.keys(moveClockMultipliers).length > 0 ? { clockMultipliers: moveClockMultipliers } : { clockMultipliers: {} }),
             ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
             ...(burnPieces && burnPieces.length > 0 ? { burnPieces } : {}),
             ...(burnKilledPieces && burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
@@ -3621,8 +3670,11 @@ function initializeSocket(server) {
         }
 
         // Verify it's NOT this player's turn (can only premove on opponent's turn)
+        // Exception: in bot games, allow premoves even on your own turn since the bot
+        // moves quickly and the premove should queue for after the bot's next response
         const currentPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
-        if (currentPlayer && currentPlayer.id === userId) {
+        const isBotGame = !!gameState.botPlayer;
+        if (currentPlayer && currentPlayer.id === userId && !isBotGame) {
           return socket.emit("error", { message: "Cannot premove on your own turn" });
         }
 
@@ -4007,7 +4059,8 @@ function initializeSocket(server) {
             isCorrespondence: !!game.is_correspondence,
             correspondenceDays: game.correspondence_days || null,
             lastMoveTime: otherData?.lastMoveTime || null,
-            materialClockPenalty: !!otherData?.materialClockPenalty
+            materialClockPenalty: !!otherData?.materialClockPenalty,
+            materialClockHandicap: !!otherData?.materialClockHandicap
           };
 
           // Check if current player is in check (if game is active)
@@ -4023,6 +4076,20 @@ function initializeSocket(server) {
           // Initialize castling partners for pieces that can castle
           initializeCastlingPartners(gameState);
 
+          // Restore botPlayer if this is a bot game
+          if (otherData?.isBotGame && otherData?.botDifficulty) {
+            const botInfo = BOT_PLAYERS[otherData.botDifficulty] || BOT_PLAYERS.medium;
+            const restoredBotPosition = otherData.botPosition || 2; // Default to 2 for legacy games
+            gameState.botPlayer = { ...botInfo, position: restoredBotPosition };
+            gameState.rated = false; // Bot games are never rated
+            // Ensure bot player is in the players array with correct structure
+            const botInPlayers = gameState.players.find(p => p.id === botInfo.id);
+            if (!botInPlayers) {
+              gameState.players.push({ id: botInfo.id, username: botInfo.username, position: restoredBotPosition, isBot: true });
+            }
+            console.log(`Restored botPlayer for game ${gameId} (difficulty: ${otherData.botDifficulty}, position: ${restoredBotPosition})`);
+          }
+
           // Store in memory for future use
           activeGames.set(gameId.toString(), gameState);
           
@@ -4030,6 +4097,13 @@ function initializeSocket(server) {
           if (gameState.status === 'active' && gameState.timeControl) {
             console.log(`Restarting timer for active game ${gameId} after server restart`);
             startGameTimer(io, gameId);
+          }
+
+          // If it's the bot's turn in an active bot game, trigger bot move
+          if (gameState.status === 'active' && gameState.botPlayer &&
+              gameState.currentTurn === gameState.botPlayer.position) {
+            console.log(`[Bot] Triggering bot turn for restored game ${gameId}`);
+            processBotTurn(io, gameId, gameState);
           }
 
           // Check for correspondence timeout
@@ -4542,62 +4616,102 @@ async function getOngoingGames() {
  */
 function estimatePieceValue(piece, boardSize) {
   if (!piece) return 0;
-  let value = piece.piece_value || 1;
-  if (piece.ends_game_on_checkmate) value += 100;
-  if (piece.ends_game_on_capture) value += 100;
+  if (piece.ends_game_on_checkmate || piece.ends_game_on_capture) return 100;
   const bs = boardSize || 8;
-  const boardScale = bs / 8;
-  const moveDirs = ['up_movement','down_movement','left_movement','right_movement','up_left_movement','up_right_movement','down_left_movement','down_right_movement'];
-  const capDirs = ['up_capture','down_capture','left_capture','right_capture','up_left_capture','up_right_capture','down_left_capture','down_right_capture'];
-  let moveDirections = 0;
-  for (const dir of moveDirs) {
-    if (piece[dir] && piece[dir] > 0) {
-      moveDirections++;
-      value += piece[dir] === 99 ? 1.5 * boardScale : Math.min(piece[dir], 8) * 0.3;
-    }
+  const center = Math.floor(bs / 2);
+  const ORTH_WEIGHT = 1.4;
+  const dirs = [
+    { move: 'up_movement', cap: 'up_capture', dx: 0, dy: -1, orth: true },
+    { move: 'down_movement', cap: 'down_capture', dx: 0, dy: 1, orth: true },
+    { move: 'left_movement', cap: 'left_capture', dx: -1, dy: 0, orth: true },
+    { move: 'right_movement', cap: 'right_capture', dx: 1, dy: 0, orth: true },
+    { move: 'up_left_movement', cap: 'up_left_capture', dx: -1, dy: -1, orth: false },
+    { move: 'up_right_movement', cap: 'up_right_capture', dx: 1, dy: -1, orth: false },
+    { move: 'down_left_movement', cap: 'down_left_capture', dx: -1, dy: 1, orth: false },
+    { move: 'down_right_movement', cap: 'down_right_capture', dx: 1, dy: 1, orth: false },
+  ];
+  function countSquares(dx, dy, range) {
+    if (!range || range <= 0) return 0;
+    let steps = 0, x = center, y = center;
+    const limit = range === 99 ? bs : range;
+    for (let i = 0; i < limit; i++) { x += dx; y += dy; if (x < 0 || x >= bs || y < 0 || y >= bs) break; steps++; }
+    return steps;
   }
-  let captureDirections = 0;
-  for (const dir of capDirs) {
-    if (piece[dir] && piece[dir] > 0) {
-      captureDirections++;
-      value += piece[dir] === 99 ? 1.0 * boardScale : Math.min(piece[dir], 8) * 0.2;
-    }
+  let coverage = 0;
+  for (const d of dirs) {
+    const effective = Math.max(piece[d.move] || 0, piece[d.cap] || 0);
+    if (effective <= 0) continue;
+    coverage += countSquares(d.dx, d.dy, effective) * (d.orth ? ORTH_WEIGHT : 1.0);
   }
-  value += moveDirections * 0.5 + captureDirections * 0.3;
-  if (moveDirections >= 4 && captureDirections >= 4) value += 2 * boardScale;
-  if (piece.ratio_movement_1 && piece.ratio_movement_2) value += 2.5 * boardScale;
-  if (piece.step_movement_value) value += Math.abs(piece.step_movement_value) * 0.8;
-  if (piece.can_capture_enemy_via_range) value += 2;
-  if (piece.can_hop_over_allies || piece.can_hop_over_enemies) value += 1;
+  if (piece.ratio_movement_1 && piece.ratio_movement_2) {
+    const r1 = Math.abs(piece.ratio_movement_1), r2 = Math.abs(piece.ratio_movement_2);
+    const seen = new Set();
+    for (const [dx, dy] of [[r1,r2],[r1,-r2],[-r1,r2],[-r1,-r2],[r2,r1],[r2,-r1],[-r2,r1],[-r2,-r1]]) {
+      const nx = center + dx, ny = center + dy;
+      if (nx >= 0 && nx < bs && ny >= 0 && ny < bs) seen.add(`${nx},${ny}`);
+    }
+    coverage += seen.size * 1.3;
+  }
+  if (piece.step_movement_value) coverage += Math.abs(piece.step_movement_value) * 1.5;
+  let queenRef = 0;
+  for (const d of dirs) {
+    let steps = 0, x = center, y = center;
+    while (true) { x += d.dx; y += d.dy; if (x < 0 || x >= bs || y < 0 || y >= bs) break; steps++; }
+    queenRef += steps * (d.orth ? ORTH_WEIGHT : 1.0);
+  }
+  const divisor = Math.max(1, queenRef / 9);
+  let value = coverage / divisor;
+  if (piece.can_capture_enemy_via_range) value += 1.5;
+  if (piece.can_hop_over_allies || piece.can_hop_over_enemies) value += 0.5;
+  if (piece.can_control_squares) value += 1.0;
+  if (piece.can_promote) value += 0.5;
   const hp = piece.current_hp ?? piece.hit_points ?? 1;
   const maxHp = piece.hit_points || 1;
   if (maxHp > 1) value *= (0.5 + 0.5 * hp / maxHp);
-  return value;
+  return Math.max(0.5, value);
 }
 
 /**
- * Calculate the clock slowdown multiplier for a player based on material deficit.
- * Returns 1.0 (normal) to 3.0 (max slowdown).
- * Only applies when materialClockPenalty is enabled.
+ * Calculate material deficit between a player and their opponent.
+ * Returns a positive value when the player is behind in material.
  */
-function getMaterialClockMultiplier(gameState, playerId) {
-  if (!gameState.materialClockPenalty) return 1.0;
+function getMaterialDeficit(gameState, playerId) {
   const bs = Math.max(gameState.gameType?.board_width || 8, gameState.gameType?.board_height || 8);
   let myMaterial = 0, opMaterial = 0;
+  const player = gameState.players.find(p => p.id === playerId);
+  const myPos = player?.position;
   for (const piece of gameState.pieces) {
     if (piece.captured) continue;
     const owner = piece.team || piece.player_id;
-    const player = gameState.players.find(p => p.id === playerId);
-    const myPos = player?.position;
     const val = estimatePieceValue(piece, bs);
     if (owner === myPos) myMaterial += val;
     else opMaterial += val;
   }
-  const deficit = opMaterial - myMaterial; // positive means we're down material
-  if (deficit <= 0) return 1.0; // Ahead or equal — normal clock
-  // Scale: deficit of ~10 = 2x, deficit of ~20+ = 3x (capped)
-  // Use a smooth curve: 1 + min(2, deficit / 10)
-  return Math.min(3.0, 1.0 + deficit / 10);
+  return opMaterial - myMaterial; // positive = behind
+}
+
+/**
+ * Get effective clock multiplier for a player.
+ * - materialClockPenalty: losing player's clock ticks FASTER (1.0 to 3.0)
+ * - materialClockHandicap: losing player's clock ticks SLOWER (1.0 to 0.33)
+ * Returns the multiplier to apply to that player's time decrement.
+ */
+function getClockMultiplier(gameState, playerId) {
+  const hasPenalty = gameState.materialClockPenalty;
+  const hasHandicap = gameState.materialClockHandicap;
+  if (!hasPenalty && !hasHandicap) return 1.0;
+
+  const deficit = getMaterialDeficit(gameState, playerId);
+
+  if (hasPenalty && deficit > 0) {
+    // Down material → clock ticks faster. Scale: deficit of ~10 = 2×, ~20+ = 3× (capped)
+    return Math.min(3.0, 1.0 + deficit / 10);
+  }
+  if (hasHandicap && deficit > 0) {
+    // Down material → clock ticks slower. Scale: deficit of ~10 = 0.5×, ~20+ = 0.33× (capped)
+    return Math.max(1 / 3, 1.0 / (1.0 + deficit / 10));
+  }
+  return 1.0; // Ahead or equal — normal speed
 }
 
 function startGameTimer(io, gameId) {
@@ -4611,6 +4725,7 @@ function startGameTimer(io, gameId) {
   
   // Start a new timer that ticks every second
   const timer = setInterval(async () => {
+    try {
     const currentGameState = activeGames.get(gameIdStr);
     if (!currentGameState || currentGameState.status !== 'active') {
       stopGameTimer(gameId);
@@ -4626,9 +4741,9 @@ function startGameTimer(io, gameId) {
     
     // Decrement current player's time
     if (currentGameState.playerTimes[currentPlayer.id] !== null) {
-      // Material clock penalty: lose time faster when down material
-      const clockMultiplier = getMaterialClockMultiplier(currentGameState, currentPlayer.id);
-      // Accumulate fractional seconds for smooth sub-second penalties
+      // Material clock multiplier: penalty speeds up, handicap slows down
+      const clockMultiplier = getClockMultiplier(currentGameState, currentPlayer.id);
+      // Accumulate fractional seconds for smooth sub-second adjustments
       if (!currentGameState._clockAccumulator) currentGameState._clockAccumulator = {};
       if (!currentGameState._clockAccumulator[currentPlayer.id]) currentGameState._clockAccumulator[currentPlayer.id] = 0;
       currentGameState._clockAccumulator[currentPlayer.id] += clockMultiplier;
@@ -4672,13 +4787,28 @@ function startGameTimer(io, gameId) {
         return;
       }
       
+      // Build per-player multiplier info for frontend display
+      const hasClockMod = currentGameState.materialClockPenalty || currentGameState.materialClockHandicap;
+      let clockMultipliers;
+      if (hasClockMod) {
+        clockMultipliers = {};
+        for (const p of currentGameState.players) {
+          const m = getClockMultiplier(currentGameState, p.id);
+          if (m !== 1.0) clockMultipliers[p.id] = Math.round(m * 100) / 100;
+        }
+      }
+
       // Broadcast time update every second
       io.to(`game-${gameId}`).emit("timeUpdate", {
         gameId,
         playerTimes: currentGameState.playerTimes,
         currentTurn: currentGameState.currentTurn,
-        ...(currentGameState.materialClockPenalty ? { clockMultiplier: Math.round(clockMultiplier * 100) / 100 } : {})
+        ...(clockMultipliers && Object.keys(clockMultipliers).length > 0 ? { clockMultipliers } : {})
       });
+    }
+    } catch (err) {
+      console.error(`Timer error for game ${gameId}:`, err);
+      stopGameTimer(gameId);
     }
   }, 1000);
   
@@ -6289,8 +6419,13 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
   };
   
   for (const [direction, captureOptions] of Object.entries(additionalCaptures)) {
-    const [dirDx, dirDy] = directionMap[direction] || [0, 0];
+    let [dirDx, dirDy] = directionMap[direction] || [0, 0];
     if (dirDx === 0 && dirDy === 0) continue;
+    
+    // Flip vertical direction for Player 2 (same as standard directional captures)
+    if (isPlayer2) {
+      dirDy = -dirDy;
+    }
     
     // Check if this direction matches the target
     const expectedDx = dirDx * absDx;
@@ -6306,10 +6441,10 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
       let maxDist = captureOption.value || 0;
       if (captureOption.infinite) maxDist = 99;
       
-      // Check if direction and distance match
+      // Check if direction and distance match (verify sign matches direction)
       if (dirDx !== 0 && dirDy !== 0) {
-        // Diagonal
-        if (absDx === absDy) {
+        // Diagonal - check axis alignment AND direction sign
+        if (absDx === absDy && Math.sign(dx) === Math.sign(dirDx) && Math.sign(dy) === Math.sign(dirDy)) {
           const dist = absDx;
           if (captureOption.exact) {
             if (dist === maxDist) return true;
@@ -6318,8 +6453,8 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
           }
         }
       } else if (dirDx !== 0) {
-        // Horizontal
-        if (dy === 0) {
+        // Horizontal - check axis AND direction sign
+        if (dy === 0 && Math.sign(dx) === Math.sign(dirDx)) {
           if (captureOption.exact) {
             if (absDx === maxDist) return true;
           } else {
@@ -6327,8 +6462,8 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
           }
         }
       } else if (dirDy !== 0) {
-        // Vertical
-        if (dx === 0) {
+        // Vertical - check axis AND direction sign
+        if (dx === 0 && Math.sign(dy) === Math.sign(dirDy)) {
           if (captureOption.exact) {
             if (absDy === maxDist) return true;
           } else {
@@ -7410,8 +7545,13 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   };
   
   for (const [direction, movementOptions] of Object.entries(additionalMovements)) {
-    const [dx, dy] = directionMap[direction] || [0, 0];
+    let [dx, dy] = directionMap[direction] || [0, 0];
     if (dx === 0 && dy === 0) continue;
+    
+    // Flip vertical direction for Player 2 (same as standard directional moves)
+    if (isPlayer2) {
+      dy = -dy;
+    }
     
     for (const movementOption of movementOptions) {
       // Check if this movement has availableForMoves restriction
@@ -8374,26 +8514,26 @@ async function processBotTurn(io, gameId, gameState) {
       // blocks the event loop, so the setInterval timer ticks will be starved).
       const botTimeBeforeAI = gameState.playerTimes?.[botPlayer.id];
 
-      // Debug: log a sample of bot's pieces with move properties
+      // Debug: log pawn 2-square move availability (suppress inner logs)
       const botPieces = gameState.pieces.filter(p => (p.team || p.player_id) === botPlayer.position);
-      const samplePiece = botPieces[0];
-      if (samplePiece) {
-        console.log(`[Bot] Sample piece "${samplePiece.piece_name}" (id=${samplePiece.id}):`, {
-          moveCount: samplePiece.moveCount, hasMoved: samplePiece.hasMoved,
-          special_scenario_moves: samplePiece.special_scenario_moves ? 'present' : 'none',
-          ratio_movement_1: samplePiece.ratio_movement_1, ratio_movement_2: samplePiece.ratio_movement_2,
-          up_movement: samplePiece.up_movement, down_movement: samplePiece.down_movement,
-          up_movement_available_for: samplePiece.up_movement_available_for,
+      const unmovedPawn = botPieces.find(p => p.can_promote && (p.moveCount || 0) === 0 && !p.hasMoved);
+      if (unmovedPawn) {
+        const _origLog = console.log;
+        console.log = () => {};
+        let pawnMoves;
+        try {
+          pawnMoves = getPossibleMovesForPiece(unmovedPawn, gameState.pieces, gameState.gameType);
+        } finally {
+          console.log = _origLog;
+        }
+        const longMoves = pawnMoves.filter(m => Math.abs(m.y - unmovedPawn.y) >= 2);
+        console.log(`[Bot] Unmoved pawn "${unmovedPawn.piece_name}" at (${unmovedPawn.x},${unmovedPawn.y}): ${pawnMoves.length} moves, ${longMoves.length} are 2+ squares`, {
+          special_scenario_moves: unmovedPawn.special_scenario_moves ? 'present' : 'MISSING',
+          moveCount: unmovedPawn.moveCount
         });
-      }
-      // Debug: count legal moves
-      const debugLegalMoves = getAllLegalMovesForPlayer(gameState, botPlayer.position);
-      console.log(`[Bot] Legal moves available: ${debugLegalMoves.length}`);
-      if (debugLegalMoves.length <= 30) {
-        debugLegalMoves.forEach(m => {
-          const p = gameState.pieces.find(pp => pp.id === m.pieceId);
-          console.log(`  ${p?.piece_name || '?'} (${m.from.x},${m.from.y}) -> (${m.to.x},${m.to.y})`);
-        });
+        if (longMoves.length > 0) {
+          longMoves.forEach(m => console.log(`  -> (${m.x},${m.y})`));
+        }
       }
 
       try {
@@ -8403,8 +8543,11 @@ async function processBotTurn(io, gameId, gameState) {
         // Correct the bot's clock using wall-clock time, since the setInterval
         // couldn't fire while the event loop was blocked by minimax.
         if (gameState.playerTimes && botTimeBeforeAI != null && gameState.timeControl) {
-          const aiElapsedSec = Math.floor(aiElapsedMs / 1000);
-          gameState.playerTimes[botPlayer.id] = Math.max(0, botTimeBeforeAI - aiElapsedSec);
+          const aiElapsedSec = aiElapsedMs / 1000;
+          // Apply clock multiplier during AI thinking time (penalty = faster drain, handicap = slower)
+          const botMultiplier = getClockMultiplier(gameState, botPlayer.id);
+          const adjustedElapsed = Math.floor(aiElapsedSec * botMultiplier);
+          gameState.playerTimes[botPlayer.id] = Math.max(0, botTimeBeforeAI - adjustedElapsed);
           // Emit corrected time to clients
           io.to(`game-${gameId}`).emit("timeUpdate", {
             gameId,
@@ -8690,6 +8833,15 @@ async function processBotTurn(io, gameId, gameState) {
       );
 
       // 14. Broadcast the move
+      // Compute fresh clock multipliers after material change (matching human moveMade)
+      let botMoveClockMultipliers;
+      if (gameState.materialClockPenalty || gameState.materialClockHandicap) {
+        botMoveClockMultipliers = {};
+        for (const p of gameState.players) {
+          const m = getClockMultiplier(gameState, p.id);
+          if (Math.abs(m - 1) >= 0.1) botMoveClockMultipliers[p.id] = Math.round(m * 100) / 100;
+        }
+      }
       io.to(`game-${gameId}`).emit("moveMade", {
         gameId,
         move: moveRecord,
@@ -8705,6 +8857,7 @@ async function processBotTurn(io, gameId, gameState) {
           enPassantTarget: gameState.enPassantTarget,
           controlSquareTracking: gameState.controlSquareTracking
         },
+        ...(botMoveClockMultipliers && Object.keys(botMoveClockMultipliers).length > 0 ? { clockMultipliers: botMoveClockMultipliers } : { clockMultipliers: {} }),
         ...(regenPieces.length > 0 ? { regenPieces } : {}),
         ...(burnPieces.length > 0 ? { burnPieces } : {}),
         ...(burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
@@ -8760,9 +8913,48 @@ async function processBotTurn(io, gameId, gameState) {
 
             gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
 
-            // Apply regen/burn for premove
-            const pmRegenPieces = applyRegeneration(gameState);
-            const { burnPieces: pmBurnPieces, killedPieces: pmBurnKilled } = applyBurnDamage(gameState);
+            // Apply regen/burn for the new turn's player (inline, matching bot's normal turn processing)
+            const pmNewTurnPlayer = gameState.currentTurn;
+            const pmBurnPieces = [];
+            const pmBurnKilled = [];
+            gameState.pieces.forEach(p => {
+              const owner = p.team || p.player_id;
+              if (owner === pmNewTurnPlayer && p.burn_active_turns && p.burn_active_turns > 0 && p.burn_active_damage > 0) {
+                const currentHp = p.current_hp ?? p.hit_points ?? 1;
+                const burnDmg = Math.min(p.burn_active_damage, currentHp);
+                p.current_hp = Math.max(0, currentHp - p.burn_active_damage);
+                p.burn_active_turns--;
+                pmBurnPieces.push({ id: p.id, damage: burnDmg, previousHp: currentHp, currentHp: p.current_hp, turnsRemaining: p.burn_active_turns, x: p.x, y: p.y });
+                if (p.current_hp <= 0) pmBurnKilled.push(p);
+              }
+            });
+            for (const killed of pmBurnKilled) {
+              const idx = gameState.pieces.findIndex(p => p.id === killed.id);
+              if (idx !== -1) gameState.pieces.splice(idx, 1);
+            }
+            const pmRegenPieces = [];
+            gameState.pieces.forEach(p => {
+              const owner = p.team || p.player_id;
+              if (owner === pmNewTurnPlayer && p.hp_regen && p.hp_regen > 0) {
+                const maxHp = p.hit_points || 1;
+                const currentHp = p.current_hp ?? maxHp;
+                if (currentHp < maxHp) {
+                  const healed = Math.min(p.hp_regen, maxHp - currentHp);
+                  p.current_hp = Math.min(maxHp, currentHp + p.hp_regen);
+                  pmRegenPieces.push({ id: p.id, healed, previousHp: currentHp, currentHp: p.current_hp, x: p.x, y: p.y });
+                }
+              }
+            });
+
+            // Check burn-kill win condition
+            if (pmBurnKilled.length > 0) {
+              const pmBurnWin = checkWinCondition(gameState, pmBurnKilled);
+              if (pmBurnWin.gameOver) {
+                return await finishBotGame(io, gameId, gameState, pmBurnWin, pmRecord, {
+                  regenPieces: pmRegenPieces, burnPieces: pmBurnPieces, burnKilledPieces: pmBurnKilled
+                });
+              }
+            }
 
             // Check win conditions after premove
             const pmWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
@@ -8772,13 +8964,13 @@ async function processBotTurn(io, gameId, gameState) {
               });
             }
 
-            const pmCheckResult = checkForCheck(gameState);
+            const pmCheckResult = checkForCheck(gameState, gameState.currentTurn);
             gameState.inCheck = pmCheckResult.inCheck;
             gameState.checkedPieces = pmCheckResult.checkedPieces;
 
             if (pmCheckResult.inCheck) {
-              const mateResult = isCheckmate(gameState);
-              if (mateResult.isCheckmate) {
+              const mateResult = isCheckmate(gameState, gameState.currentTurn);
+              if (mateResult) {
                 const loser = gameState.players.find(p => p.position === gameState.currentTurn);
                 const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
                 return await finishBotGame(io, gameId, gameState, {

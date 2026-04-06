@@ -24,7 +24,7 @@ import {
   isDestinationClear,
   replayToMove
 } from "../../helpers/pieceMovementUtils";
-import { estimatePieceValue, totalMaterialValue } from "../../utils/pieceValueEstimator";
+import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -163,6 +163,10 @@ const LiveGame = () => {
   const [placementTarget, setPlacementTarget] = useState(null); // {x, y} where user wants to place
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
   const [windowHeight, setWindowHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 1080);
+  const [displayTimes, setDisplayTimes] = useState({}); // Locally interpolated clock times for sub-second display
+  const lastServerTickRef = useRef(null); // Timestamp of last server timeUpdate
+  const serverTimesRef = useRef({}); // Last raw server playerTimes
+  const activeClockPlayerRef = useRef(null); // Which player's clock is ticking
 
   const boardAnimationsEnabled = typeof window !== 'undefined' && localStorage.getItem('boardAnimations') !== 'false';
   const pieceShadowEnabled = typeof window !== 'undefined' && localStorage.getItem('pieceShadow') === 'true';
@@ -314,20 +318,26 @@ const LiveGame = () => {
     if (!botThinking || !gameState?.botPlayer || !gameState?.playerTimes) return;
     const botId = gameState.botPlayer.id || 'bot';
     if (gameState.playerTimes[botId] == null) return;
+    const multiplier = gameState?.clockMultipliers?.[botId] || 1;
     
     const interval = setInterval(() => {
       setGameState(prev => {
         if (!prev?.playerTimes || prev.playerTimes[botId] == null) return prev;
-        const newTime = Math.max(0, prev.playerTimes[botId] - 1);
+        const newTime = Math.max(0, prev.playerTimes[botId] - multiplier);
+        // Also update server refs so the interpolation effect picks up the new base
+        // (otherwise interpolation overwrites displayTimes with stale serverTimesRef)
+        const updatedTimes = { ...prev.playerTimes, [botId]: newTime };
+        serverTimesRef.current = updatedTimes;
+        lastServerTickRef.current = Date.now();
         return {
           ...prev,
-          playerTimes: { ...prev.playerTimes, [botId]: newTime }
+          playerTimes: updatedTimes
         };
       });
     }, 1000);
     
     return () => clearInterval(interval);
-  }, [botThinking, gameState?.botPlayer]);
+  }, [botThinking, gameState?.botPlayer, gameState?.clockMultipliers]);
 
   // Subscribe to game events
   useEffect(() => {
@@ -337,7 +347,7 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces }) => {
+    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces, clockMultipliers }) => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
         setBotThinking(false);
         console.log('moveMade received:', { 
@@ -358,7 +368,8 @@ const LiveGame = () => {
             ...newState,
             pieces: newState.pieces ? [...newState.pieces] : prev?.pieces,
             allowPremoves,
-            rated
+            rated,
+            ...(clockMultipliers !== undefined ? { clockMultipliers } : {})
           };
           
           console.log('Updated state pieces:', updatedState.pieces?.find(p => p.id === move.pieceId));
@@ -495,13 +506,17 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeTimeUpdate = onGameEvent("timeUpdate", ({ gameId: timerGameId, playerTimes, currentTurn, clockMultiplier }) => {
+    const unsubscribeTimeUpdate = onGameEvent("timeUpdate", ({ gameId: timerGameId, playerTimes, currentTurn, clockMultipliers }) => {
       if (parseInt(timerGameId) === parseInt(gameId)) {
+        serverTimesRef.current = playerTimes || {};
+        lastServerTickRef.current = Date.now();
+        const currentPlayer_ = gameState?.players?.find(p => p.position === currentTurn);
+        activeClockPlayerRef.current = currentPlayer_?.id || null;
         setGameState(prev => ({
           ...prev,
           playerTimes: playerTimes || prev.playerTimes,
           currentTurn: currentTurn || prev.currentTurn,
-          ...(clockMultiplier !== undefined ? { clockMultiplier } : {})
+          ...(clockMultipliers ? { clockMultipliers } : {})
         }));
       }
     });
@@ -775,20 +790,61 @@ const LiveGame = () => {
   }, [currentPlayer, gameState]);
 
   // Clear premove when it becomes your turn (premove didn't execute or was cancelled)
+  // In bot games, don't clear — premove persists until bot moves and server executes it
   useEffect(() => {
-    if (isMyTurn && premove) {
+    if (isMyTurn && premove && !gameState?.botPlayer) {
       console.log('Clearing premove because it\'s now your turn');
       setPremove(null);
     }
-  }, [isMyTurn, premove]);
+  }, [isMyTurn, premove, gameState?.botPlayer]);
 
-  // Format time display
+  // Format time display (supports fractional seconds)
   const formatTime = (seconds) => {
     if (!seconds && seconds !== 0) return "∞";
+    if (seconds < 0) seconds = 0;
     const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    if (seconds < 10) {
+      // Under 10s: show tenths (e.g. "0:05.2")
+      const wholeSecs = Math.floor(seconds % 60);
+      const tenths = Math.floor((seconds % 1) * 10);
+      return `${mins}:${wholeSecs.toString().padStart(2, '0')}.${tenths}`;
+    }
+    if (seconds < 60) {
+      // Under 1 min: show tenths (e.g. "0:34.5")
+      const wholeSecs = Math.floor(seconds % 60);
+      const tenths = Math.floor((seconds % 1) * 10);
+      return `${mins}:${wholeSecs.toString().padStart(2, '0')}.${tenths}`;
+    }
+    const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Local clock interpolation: smoothly count down between server ticks
+  // Applies clock multiplier so the visual tick rate matches the real server drain rate
+  useEffect(() => {
+    if (!gameState?.timeControl || gameState?.status !== 'active') return;
+    const interval = setInterval(() => {
+      if (!lastServerTickRef.current || !serverTimesRef.current) return;
+      const elapsed = (Date.now() - lastServerTickRef.current) / 1000;
+      const newTimes = {};
+      for (const [pid, srvTime] of Object.entries(serverTimesRef.current)) {
+        if (pid === String(activeClockPlayerRef.current)) {
+          const multiplier = gameState?.clockMultipliers?.[pid] || 1;
+          newTimes[pid] = Math.max(0, srvTime - elapsed * multiplier);
+        } else {
+          newTimes[pid] = srvTime;
+        }
+      }
+      setDisplayTimes(newTimes);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [gameState?.timeControl, gameState?.status, gameState?.clockMultipliers]);
+
+  // Get display time for a player (interpolated if available, else server time)
+  const getDisplayTime = useCallback((playerId) => {
+    if (displayTimes[playerId] !== undefined) return displayTimes[playerId];
+    return gameState?.playerTimes?.[playerId];
+  }, [displayTimes, gameState?.playerTimes]);
 
   // Format correspondence days remaining
   const formatCorrespondenceTime = (isCurrentTurnPlayer) => {
@@ -2108,7 +2164,9 @@ const LiveGame = () => {
     // In preview mode, allow selecting any piece to see its moves
     // In game mode, only allow selecting own pieces when it's your turn
     // OR allow selecting own pieces when it's opponent's turn for premoves
-    const canSelectForPremove = !isMyTurn && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && isOwnPiece;
+    // In bot games, also allow premove selection on your own turn since the bot responds quickly
+    const isBotGame = !!gameState.botPlayer;
+    const canSelectForPremove = ((!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && isOwnPiece);
     // If selected piece can capture allies and there's a valid capture move to this ally, skip re-selection
     const hasAllyCaptureMove = selectedPiece && isOwnPiece && clickedPiece && selectedPiece.can_capture_allies &&
       clickedPiece.id !== selectedPiece.id &&
@@ -2129,7 +2187,7 @@ const LiveGame = () => {
 
     // If piece is selected and clicking on valid move, make the move (during ready or active game)
     const canMakeMove = selectedPiece && isMyTurn && (gameState.status === 'active' || gameState.status === 'ready');
-    const canPremove = selectedPiece && !isMyTurn && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false;
+    const canPremove = selectedPiece && (!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false;
     
     if (canMakeMove) {
       // Find move: exact match first, then check multi-tile footprint overlap
@@ -2458,7 +2516,7 @@ const LiveGame = () => {
     if (validMove) {
       // Check if this is a regular move or premove
       const canMakeMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
-      const canMakePremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false;
+      const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false;
       
       if (canMakeMove) {
         const moveData = {
@@ -2539,6 +2597,7 @@ const LiveGame = () => {
     };
   }, [capturedPieces, gameState?.gameType?.board_width, gameState?.gameType?.board_height]);
 
+  /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // Convert display coordinates to game coordinates
   const toGameCoords = useCallback((displayX, displayY, boardWidth, boardHeight) => {
     if (shouldFlipBoard) {
@@ -2653,7 +2712,7 @@ const LiveGame = () => {
 
           if (validMove) {
             const canMakeMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
-            const canMakePremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false;
+            const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false;
 
             if (canMakeMove) {
               const moveData = {
@@ -2715,7 +2774,7 @@ const LiveGame = () => {
 
     // Activate right-click drag detection for own ranged pieces
     // Works for both regular moves (isMyTurn) and premoves (!isMyTurn with allowPremoves)
-    const canPremoveRanged = !isMyTurn && gameState.allowPremoves !== false;
+    const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
     if (isOwnPiece && clickedPiece?.can_capture_enemy_via_range && (isMyTurn || canPremoveRanged) &&
         (gameState?.status === 'active' || gameState?.status === 'ready')) {
       setIsRightClickActive(true);
@@ -2750,7 +2809,7 @@ const LiveGame = () => {
       // Check if this is a valid ranged attack target (or potential target for premoves)
       const isValidTarget = canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam);
       const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured;
-      const canPremoveRanged = !isMyTurn && gameState.allowPremoves !== false;
+      const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
 
       if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
         if (isMyTurn) {
@@ -2870,7 +2929,7 @@ const LiveGame = () => {
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           const isValidTarget = canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
           const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured;
-          const canPremoveRanged = !isMyTurn && gameState.allowPremoves !== false;
+          const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
 
           if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
             if (isMyTurn && isEnemyTarget) {
@@ -3078,6 +3137,7 @@ const LiveGame = () => {
         };
       });
   }, [gameState?.pieces, gameState?.gameType?.board_width]);
+  /* eslint-enable react-hooks/rules-of-hooks */
 
   // Render board
   const renderBoard = () => {
@@ -3728,11 +3788,9 @@ const LiveGame = () => {
               </div>
               {gameState.timeControl && (
                 <div className={styles["player-time"]}>
-                  <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id] < 60 ? styles["low-time"] : ''}`}>
-                    {formatTime(gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id])}
-                    {gameState.materialClockPenalty && gameState.clockMultiplier > 1 && (
-                      <span className={styles["clock-multiplier"]}> {gameState.clockMultiplier.toFixed(1)}×</span>
-                    )}
+                  <div className={`${styles["time-value"]} ${(getDisplayTime(currentPlayer?.position === 1 ? player2?.id : player1?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
+                    {formatTime(getDisplayTime(currentPlayer?.position === 1 ? player2?.id : player1?.id))}
+                    {(() => { const opId = currentPlayer?.position === 1 ? player2?.id : player1?.id; const m = gameState.clockMultipliers?.[opId]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
                   </div>
                 </div>
               )}
@@ -3769,11 +3827,9 @@ const LiveGame = () => {
                 </div>
                 {gameState.timeControl && (
                   <div className={styles["player-time"]}>
-                    <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id] < 60 ? styles["low-time"] : ''}`}>
-                      {formatTime(gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id])}
-                      {gameState.materialClockPenalty && gameState.clockMultiplier > 1 && (
-                        <span className={styles["clock-multiplier"]}> {gameState.clockMultiplier.toFixed(1)}×</span>
-                      )}
+                    <div className={`${styles["time-value"]} ${(getDisplayTime(currentPlayer?.position === 1 ? player2?.id : player1?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
+                      {formatTime(getDisplayTime(currentPlayer?.position === 1 ? player2?.id : player1?.id))}
+                      {(() => { const opId = currentPlayer?.position === 1 ? player2?.id : player1?.id; const m = gameState.clockMultipliers?.[opId]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
                     </div>
                   </div>
                 )}
@@ -3821,11 +3877,9 @@ const LiveGame = () => {
               <div className={styles["player-info"]}>
                 {gameState.timeControl && (
                   <div className={styles["player-time"]}>
-                    <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.id] < 60 ? styles["low-time"] : ''}`}>
-                      {formatTime(gameState.playerTimes?.[currentPlayer?.id])}
-                      {gameState.materialClockPenalty && gameState.clockMultiplier > 1 && isMyTurn && (
-                        <span className={styles["clock-multiplier"]}> {gameState.clockMultiplier.toFixed(1)}×</span>
-                      )}
+                    <div className={`${styles["time-value"]} ${(getDisplayTime(currentPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
+                      {formatTime(getDisplayTime(currentPlayer?.id))}
+                      {(() => { const m = gameState.clockMultipliers?.[currentPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
                     </div>
                   </div>
                 )}
@@ -4237,8 +4291,8 @@ const LiveGame = () => {
           <div className={styles["player-info"]}>
             {gameState.timeControl && (
               <div className={styles["player-time"]}>
-                <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.id] < 60 ? styles["low-time"] : ''}`}>
-                  {formatTime(gameState.playerTimes?.[currentPlayer?.id])}
+                <div className={`${styles["time-value"]} ${(getDisplayTime(currentPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
+                  {formatTime(getDisplayTime(currentPlayer?.id))}
                 </div>
               </div>
             )}

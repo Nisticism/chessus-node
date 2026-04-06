@@ -83,6 +83,7 @@ const Play = () => {
   const [vsComputer, setVsComputer] = useState(false);
   const [botDifficulty, setBotDifficulty] = useState("medium");
   const [materialClockPenalty, setMaterialClockPenalty] = useState(false);
+  const [materialClockHandicap, setMaterialClockHandicap] = useState(false);
   const [showAnonCreateModal, setShowAnonCreateModal] = useState(false);
   const [anonTimeControl, setAnonTimeControl] = useState("10");
   const [anonIncrement, setAnonIncrement] = useState("0");
@@ -459,14 +460,15 @@ const Play = () => {
         allowSpectators,
         showPieceHelpers,
         rated: vsComputer ? false : rated,
-        allowPremoves: vsComputer ? false : allowPremoves,
+        allowPremoves: allowPremoves,
         startingMode,
         playerSide,
         isCorrespondence,
         correspondenceDays: isCorrespondence ? parseInt(correspondenceDays) : null,
         vsComputer,
         botDifficulty: vsComputer ? botDifficulty : undefined,
-        materialClockPenalty: (timeControlMinutes && materialClockPenalty) ? true : undefined
+        materialClockPenalty: (timeControlMinutes && materialClockPenalty) ? true : undefined,
+        materialClockHandicap: (timeControlMinutes && materialClockHandicap) ? true : undefined
       };
 
       // Add challenge data if challenging a friend
@@ -1438,12 +1440,27 @@ const Play = () => {
                 <input
                   type="checkbox"
                   checked={materialClockPenalty}
-                  onChange={(e) => setMaterialClockPenalty(e.target.checked)}
+                  onChange={(e) => { setMaterialClockPenalty(e.target.checked); if (e.target.checked) setMaterialClockHandicap(false); }}
                 />
                 <span>Material Clock Penalty</span>
               </label>
               <div className={styles["input-hint"]}>
                 Players losing material have their clock tick faster — up to 3× when significantly behind
+              </div>
+            </div>
+            )}
+            {timeControl !== "0" && gameMode !== "correspondence" && (
+            <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={materialClockHandicap}
+                  onChange={(e) => { setMaterialClockHandicap(e.target.checked); if (e.target.checked) setMaterialClockPenalty(false); }}
+                />
+                <span>Material Clock Handicap</span>
+              </label>
+              <div className={styles["input-hint"]}>
+                Players losing material have their clock tick slower — gives the losing side more time to catch up
               </div>
             </div>
             )}

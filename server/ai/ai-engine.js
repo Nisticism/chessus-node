@@ -23,7 +23,7 @@ const SCORE_DRAW = 0;
 
 const DIFFICULTY = {
   easy:   { depth: 1, timeLimit: 1000,  randomness: 0.35, thinkDelay: 600, quiescenceDepth: 0 },
-  medium: { depth: 4, timeLimit: 6000, randomness: 0.03, thinkDelay: 400, quiescenceDepth: 3 },
+  medium: { depth: 4, timeLimit: 8000, randomness: 0.03, thinkDelay: 400, quiescenceDepth: 3 },
   hard:   { depth: 5, timeLimit: 12000, randomness: 0.00, thinkDelay: 200, quiescenceDepth: 5 }
 };
 
@@ -75,7 +75,8 @@ function cloneState(state) {
       : {},
     lastMovedPieceId: state.lastMovedPieceId || null,
     lastMoveFrom: state.lastMoveFrom || null,
-    lastMoveTo: state.lastMoveTo || null
+    lastMoveTo: state.lastMoveTo || null,
+    moveHistory: state.moveHistory || []
   };
 }
 
@@ -561,13 +562,45 @@ function evaluatePosition(state, perspective) {
   }
   
   // Penalize our threatened pieces heavily
+  // Also check if the piece is defended (another friendly piece can recapture)
   for (const myPiece of myPieces) {
     if (!threatenedByOpponent.has(myPiece.id)) continue;
     const myValue = getPieceValue(myPiece, bs);
     if (myPiece.is_royal || myPiece.ends_game_on_capture || myPiece.ends_game_on_checkmate) {
-      score -= 50; // Royal piece under attack
+      score -= 60; // Royal piece under attack
     } else {
-      score -= myValue * 6; // Piece under real attack — big penalty
+      // Check if the piece is defended by any ally
+      let isDefended = false;
+      for (const ally of myPieces) {
+        if (ally.id === myPiece.id) continue;
+        // Quick check: can this ally reach the threatened piece's square?
+        const adx = Math.abs(ally.x - myPiece.x);
+        const ady = Math.abs(ally.y - myPiece.y);
+        // Ratio movement (knight-like) defense
+        const ar1 = ally.ratio_capture_1 || ally.ratio_movement_1 || 0;
+        const ar2 = ally.ratio_capture_2 || ally.ratio_movement_2 || 0;
+        if (ar1 > 0 && ar2 > 0) {
+          if ((adx === ar1 && ady === ar2) || (adx === ar2 && ady === ar1)) {
+            isDefended = true; break;
+          }
+        }
+        // Directional defense (1-square check for simplicity)
+        if (adx <= 1 && ady <= 1 && (adx + ady) > 0) {
+          // Check if ally has a capture direction covering that offset
+          const hasCap = ally.up_capture || ally.down_capture || ally.left_capture ||
+            ally.right_capture || ally.up_left_capture || ally.up_right_capture ||
+            ally.down_left_capture || ally.down_right_capture ||
+            ally.can_capture_enemy_on_move;
+          if (hasCap) { isDefended = true; break; }
+        }
+      }
+      if (isDefended) {
+        // Defended but still bad if attacker is lower value (exchange is bad)
+        score -= myValue * 4;
+      } else {
+        // Undefended piece under attack — very severe
+        score -= myValue * 10;
+      }
     }
   }
   
@@ -645,22 +678,25 @@ function evaluatePosition(state, perspective) {
   }
 
   // --- Development: penalize moving same piece consecutively with no capture ---
-  // If the last move was by the perspective player and they moved the same piece
-  // that was just moved, apply a small penalty (encourages developing different pieces)
   if (state.lastMovedPieceId && state.movesWithoutCapture > 0) {
+    const lastPiece = pieces.find(p => p.id === state.lastMovedPieceId);
+    if (lastPiece && lastPiece.moveCount >= 2) {
+      const lastOwner = lastPiece.team || lastPiece.player_id;
+      const pValue = getPieceValue(lastPiece, bs);
+      // Stronger penalty for low-value pieces (pawns shuffling), smaller for high-value
+      const penalty = pValue < 5 ? 8 : 4;
+      score += (lastOwner === perspective ? -penalty : penalty);
+    }
+  }
+
+  // --- Back-and-forth detection: penalize pieces returning to recent positions ---
+  if (state.lastMovedPieceId && state.lastMoveFrom && state.lastMoveTo) {
     const lastPiece = pieces.find(p => p.id === state.lastMovedPieceId);
     if (lastPiece) {
       const lastOwner = lastPiece.team || lastPiece.player_id;
-      // Penalty applies to whichever side just moved the same piece twice
-      if (lastPiece.moveCount >= 2) {
-        // Could the piece have reached current position in fewer moves?
-        // Simple heuristic: penalize if piece has moved 2+ times in recent turns
-        // and isn't a high-value piece making tactical moves
-        const pValue = getPieceValue(lastPiece, bs);
-        if (pValue < 5) { // Mainly affects pawns and low-value pieces
-          const penalty = 3;
-          score += (lastOwner === perspective ? -penalty : penalty);
-        }
+      // Check if the piece just moved back to where it came from
+      if (lastPiece.x === state.lastMoveFrom.x && lastPiece.y === state.lastMoveFrom.y) {
+        score += (lastOwner === perspective ? -12 : 12);
       }
     }
   }
@@ -693,17 +729,64 @@ function evaluatePosition(state, perspective) {
   // --- Check awareness (reduced weight — only valuable when it restricts opponent) ---
   // Checking the opponent is worth a small bonus, but not enough to drive bad trades.
   // Being in check yourself is penalized more heavily.
+  // Checkmate threats are penalized/rewarded very heavily to ensure the AI prevents them.
   if (gameType?.mate_condition) {
     const { checkForCheck } = getGameSocket();
 
     const opponentCheck = silent(() => checkForCheck(state, opponentPos));
     if (opponentCheck.inCheck) {
-      score += 8;
+      // Check if this is actually checkmate for the opponent
+      const opMoves = getMovesForSearch(state, opponentPos);
+      if (opMoves.length === 0) {
+        score += SCORE_WIN / 2; // Near-win: opponent is in checkmate
+      } else {
+        score += 8;
+        // Fewer escape moves = stronger check
+        if (opMoves.length <= 2) score += 10;
+      }
     }
 
     const myCheck = silent(() => checkForCheck(state, perspective));
     if (myCheck.inCheck) {
-      score -= 15;
+      // Check if we're actually in checkmate
+      const myMoves = getMovesForSearch(state, perspective);
+      if (myMoves.length === 0) {
+        score += SCORE_LOSS / 2; // Near-loss: we're in checkmate
+      } else {
+        score -= 15;
+        // Fewer escape moves = more dangerous
+        if (myMoves.length <= 2) score -= 15;
+      }
+    }
+
+    // Detect opponent's checkmate-in-1 threat: if it were the opponent's turn,
+    // could they deliver checkmate? This catches positions where the opponent
+    // threatens forced mate that the search depth might not fully explore.
+    if (!myCheck.inCheck && state.currentTurn === perspective) {
+      // Simulate it being the opponent's turn and check if any move mates
+      const simState = { ...state, currentTurn: opponentPos };
+      const oppMoves = silent(() => getMovesForSearch(simState, opponentPos));
+      let mateThreats = 0;
+      for (let i = 0; i < oppMoves.length; i++) {
+        if (mateThreats >= 3) break; // Found enough threats
+        const om = oppMoves[i];
+        const child = cloneState(simState);
+        applyMove(child, om);
+        const childCheck = silent(() => checkForCheck(child, perspective));
+        if (childCheck.inCheck) {
+          const escapes = silent(() => getMovesForSearch(child, perspective));
+          if (escapes.length === 0) {
+            mateThreats++;
+          }
+        }
+      }
+      if (mateThreats >= 3) {
+        score -= 500; // Multiple mate threats — extremely dangerous
+      } else if (mateThreats >= 2) {
+        score -= 300; // Two mate threats — very dangerous
+      } else if (mateThreats >= 1) {
+        score -= 120; // Single mate threat — must address
+      }
     }
   }
 
@@ -810,6 +893,45 @@ function evaluatePosition(state, perspective) {
               if (pathClear) score -= 6;
             }
           }
+        }
+      }
+    }
+  }
+
+  // --- Opening development: penalize unmoved minor/pawn pieces in early game ---
+  // Encourage moving different pieces rather than shuffling the same few
+  const totalMoves = state.moveCount || 0;
+  if (totalMoves < 20) {
+    const openingWeight = Math.max(0, (20 - totalMoves) / 20);
+    for (const myPiece of myPieces) {
+      if (myPiece.ends_game_on_checkmate || myPiece.ends_game_on_capture || myPiece.is_royal) continue;
+      const pValue = getPieceValue(myPiece, bs);
+      if (pValue > 20) continue; // Skip very high-value pieces
+      if (!myPiece.hasMoved && (myPiece.moveCount || 0) === 0) {
+        // Undeveloped piece penalty: stronger in early game
+        score -= 3 * openingWeight;
+      }
+      // Bonus for pawns that advanced 2 squares in the opening (controlling center better)
+      if (myPiece.can_promote && (myPiece.moveCount || 0) === 1 && myPiece.hasMoved) {
+        const startRow = perspective === 1 ? bh - 2 : 1;
+        const distFromStart = Math.abs(myPiece.y - startRow);
+        if (distFromStart >= 2) {
+          score += 4 * openingWeight; // Double-pushed pawn bonus
+        }
+      }
+    }
+    for (const opPiece of opPieces) {
+      if (opPiece.ends_game_on_checkmate || opPiece.ends_game_on_capture || opPiece.is_royal) continue;
+      const pValue = getPieceValue(opPiece, bs);
+      if (pValue > 20) continue;
+      if (!opPiece.hasMoved && (opPiece.moveCount || 0) === 0) {
+        score += 3 * openingWeight;
+      }
+      if (opPiece.can_promote && (opPiece.moveCount || 0) === 1 && opPiece.hasMoved) {
+        const startRow = opponentPos === 1 ? bh - 2 : 1;
+        const distFromStart = Math.abs(opPiece.y - startRow);
+        if (distFromStart >= 2) {
+          score -= 4 * openingWeight;
         }
       }
     }
@@ -1007,12 +1129,21 @@ function getBestMove(gameState, botPosition, difficulty = 'medium') {
     return legalMoves[idx];
   }
 
-  // Detect if re-moving the same piece that was just moved (wasteful two-step)
-  // e.g. pawn moved 1 square last turn, now moving same pawn 1 more square
-  const lastBotMoveHistory = gameState.moveHistory?.filter(m => m.isBot);
-  const lastBotMove = lastBotMoveHistory?.length > 0
-    ? lastBotMoveHistory[lastBotMoveHistory.length - 1]
-    : null;
+  // Detect back-and-forth patterns from recent bot move history
+  const botMoveHistory = gameState.moveHistory?.filter(m => m.isBot) || [];
+  const lastBotMove = botMoveHistory.length > 0 ? botMoveHistory[botMoveHistory.length - 1] : null;
+  const secondLastBotMove = botMoveHistory.length > 1 ? botMoveHistory[botMoveHistory.length - 2] : null;
+
+  // Build a set of recent bot piece positions for reverse-move detection
+  // recentBotPositions[pieceId] = array of {x,y} positions the piece has been at recently
+  const recentBotPositions = {};
+  const lookback = Math.min(botMoveHistory.length, 6);
+  for (let i = botMoveHistory.length - lookback; i < botMoveHistory.length; i++) {
+    const m = botMoveHistory[i];
+    if (!m) continue;
+    if (!recentBotPositions[m.pieceId]) recentBotPositions[m.pieceId] = [];
+    recentBotPositions[m.pieceId].push({ x: m.from.x, y: m.from.y });
+  }
 
   // Iterative deepening with time limit
   let bestMove = legalMoves[0];
@@ -1043,21 +1174,34 @@ function getBestMove(gameState, botPosition, difficulty = 'medium') {
 
       let moveScore = result.score;
 
-      // Penalize moving the same piece twice when it could have been done in one move
-      // This catches the "pawn moves 1 square then 1 more square" pattern
+      // Penalize moving the same piece as last bot move (encourages developing different pieces)
       if (lastBotMove && move.pieceId === lastBotMove.pieceId && !lastBotMove.captured) {
-        // Check if the piece could have reached this destination from its ORIGINAL position
-        // (where it was before the last move) in a single move
         const piece = gameState.pieces.find(p => p.id === move.pieceId);
         if (piece) {
           const pValue = getPieceValue(piece, Math.max(
             gameState.gameType?.board_width || 8,
             gameState.gameType?.board_height || 8
           ));
-          // Bigger penalty for low-value pieces (pawns), smaller for high-value
-          const penalty = pValue < 5 ? 12 : 4;
+          const penalty = pValue < 5 ? 15 : 6;
           moveScore -= penalty;
         }
+      }
+
+      // Heavy penalty for moving a piece back to a position it was recently at (back-and-forth)
+      const positions = recentBotPositions[move.pieceId];
+      if (positions) {
+        for (const pos of positions) {
+          if (pos.x === move.to.x && pos.y === move.to.y) {
+            moveScore -= 25; // Strong penalty for reverting to a recent position
+            break;
+          }
+        }
+      }
+
+      // Extra penalty for undoing the last move exactly (A→B then B→A)
+      if (lastBotMove && move.pieceId === lastBotMove.pieceId &&
+          move.to.x === lastBotMove.from.x && move.to.y === lastBotMove.from.y) {
+        moveScore -= 30;
       }
 
       if (moveScore > depthBestScore) {
