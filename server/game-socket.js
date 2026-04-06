@@ -35,6 +35,7 @@ function buildOtherData(gameState, extraFields = {}) {
     allowPremoves: gameState.allowPremoves,
     ...(gameState.initialPieces ? { initialPieces: gameState.initialPieces } : {}),
     ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium' } : {}),
+    ...(gameState.materialClockPenalty ? { materialClockPenalty: true } : {}),
     ...extraFields
   });
 }
@@ -574,7 +575,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium' } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -879,7 +880,7 @@ function initializeSocket(server) {
         const [result] = await db_pool.query(
           `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id, is_correspondence, correspondence_days)
            VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?)`,
-          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
+          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode, materialClockPenalty: !!materialClockPenalty }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
         );
 
         const gameId = result.insertId;
@@ -921,7 +922,8 @@ function initializeSocket(server) {
           isChallenge: !!challengedUserId,
           challengedUserId,
           isCorrespondence: !!isCorrespondence,
-          correspondenceDays: correspondenceDays || null
+          correspondenceDays: correspondenceDays || null,
+          materialClockPenalty: !!materialClockPenalty
         };
 
         activeGames.set(gameId.toString(), gameState);
@@ -4004,7 +4006,8 @@ function initializeSocket(server) {
             premove: null,
             isCorrespondence: !!game.is_correspondence,
             correspondenceDays: game.correspondence_days || null,
-            lastMoveTime: otherData?.lastMoveTime || null
+            lastMoveTime: otherData?.lastMoveTime || null,
+            materialClockPenalty: !!otherData?.materialClockPenalty
           };
 
           // Check if current player is in check (if game is active)
@@ -4533,6 +4536,70 @@ async function getOngoingGames() {
 /**
  * Start the game timer for the current player
  */
+/**
+ * Estimate a piece's value based on movement/attack capabilities.
+ * Used for material clock slowdown calculations.
+ */
+function estimatePieceValue(piece, boardSize) {
+  if (!piece) return 0;
+  let value = piece.piece_value || 1;
+  if (piece.ends_game_on_checkmate) value += 100;
+  if (piece.ends_game_on_capture) value += 100;
+  const bs = boardSize || 8;
+  const boardScale = bs / 8;
+  const moveDirs = ['up_movement','down_movement','left_movement','right_movement','up_left_movement','up_right_movement','down_left_movement','down_right_movement'];
+  const capDirs = ['up_capture','down_capture','left_capture','right_capture','up_left_capture','up_right_capture','down_left_capture','down_right_capture'];
+  let moveDirections = 0;
+  for (const dir of moveDirs) {
+    if (piece[dir] && piece[dir] > 0) {
+      moveDirections++;
+      value += piece[dir] === 99 ? 1.5 * boardScale : Math.min(piece[dir], 8) * 0.3;
+    }
+  }
+  let captureDirections = 0;
+  for (const dir of capDirs) {
+    if (piece[dir] && piece[dir] > 0) {
+      captureDirections++;
+      value += piece[dir] === 99 ? 1.0 * boardScale : Math.min(piece[dir], 8) * 0.2;
+    }
+  }
+  value += moveDirections * 0.5 + captureDirections * 0.3;
+  if (moveDirections >= 4 && captureDirections >= 4) value += 2 * boardScale;
+  if (piece.ratio_movement_1 && piece.ratio_movement_2) value += 2.5 * boardScale;
+  if (piece.step_movement_value) value += Math.abs(piece.step_movement_value) * 0.8;
+  if (piece.can_capture_enemy_via_range) value += 2;
+  if (piece.can_hop_over_allies || piece.can_hop_over_enemies) value += 1;
+  const hp = piece.current_hp ?? piece.hit_points ?? 1;
+  const maxHp = piece.hit_points || 1;
+  if (maxHp > 1) value *= (0.5 + 0.5 * hp / maxHp);
+  return value;
+}
+
+/**
+ * Calculate the clock slowdown multiplier for a player based on material deficit.
+ * Returns 1.0 (normal) to 3.0 (max slowdown).
+ * Only applies when materialClockPenalty is enabled.
+ */
+function getMaterialClockMultiplier(gameState, playerId) {
+  if (!gameState.materialClockPenalty) return 1.0;
+  const bs = Math.max(gameState.gameType?.board_width || 8, gameState.gameType?.board_height || 8);
+  let myMaterial = 0, opMaterial = 0;
+  for (const piece of gameState.pieces) {
+    if (piece.captured) continue;
+    const owner = piece.team || piece.player_id;
+    const player = gameState.players.find(p => p.id === playerId);
+    const myPos = player?.position;
+    const val = estimatePieceValue(piece, bs);
+    if (owner === myPos) myMaterial += val;
+    else opMaterial += val;
+  }
+  const deficit = opMaterial - myMaterial; // positive means we're down material
+  if (deficit <= 0) return 1.0; // Ahead or equal — normal clock
+  // Scale: deficit of ~10 = 2x, deficit of ~20+ = 3x (capped)
+  // Use a smooth curve: 1 + min(2, deficit / 10)
+  return Math.min(3.0, 1.0 + deficit / 10);
+}
+
 function startGameTimer(io, gameId) {
   const gameIdStr = gameId.toString();
   const gameState = activeGames.get(gameIdStr);
@@ -4559,7 +4626,15 @@ function startGameTimer(io, gameId) {
     
     // Decrement current player's time
     if (currentGameState.playerTimes[currentPlayer.id] !== null) {
-      currentGameState.playerTimes[currentPlayer.id] -= 1;
+      // Material clock penalty: lose time faster when down material
+      const clockMultiplier = getMaterialClockMultiplier(currentGameState, currentPlayer.id);
+      // Accumulate fractional seconds for smooth sub-second penalties
+      if (!currentGameState._clockAccumulator) currentGameState._clockAccumulator = {};
+      if (!currentGameState._clockAccumulator[currentPlayer.id]) currentGameState._clockAccumulator[currentPlayer.id] = 0;
+      currentGameState._clockAccumulator[currentPlayer.id] += clockMultiplier;
+      const wholeSeconds = Math.floor(currentGameState._clockAccumulator[currentPlayer.id]);
+      currentGameState._clockAccumulator[currentPlayer.id] -= wholeSeconds;
+      currentGameState.playerTimes[currentPlayer.id] -= wholeSeconds;
       
       // Check for timeout
       if (currentGameState.playerTimes[currentPlayer.id] <= 0) {
@@ -4601,7 +4676,8 @@ function startGameTimer(io, gameId) {
       io.to(`game-${gameId}`).emit("timeUpdate", {
         gameId,
         playerTimes: currentGameState.playerTimes,
-        currentTurn: currentGameState.currentTurn
+        currentTurn: currentGameState.currentTurn,
+        ...(currentGameState.materialClockPenalty ? { clockMultiplier: Math.round(clockMultiplier * 100) / 100 } : {})
       });
     }
   }, 1000);

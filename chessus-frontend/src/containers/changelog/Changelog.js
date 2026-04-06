@@ -28,6 +28,9 @@ const changelogData = [
       "Bot opponent now shows as 'Computer (Easy/Medium/Hard)' in match history",
       "Premoves now work during computer games",
       "Computer now actively pushes promotable pieces toward promotion when the path is clear",
+      "Correspondence clocks now show hours alongside days (e.g., '3d 14h')",
+      "Captured pieces section now displays approximate material value with advantage indicator",
+      "New 'Material Clock Penalty' option — players behind in material have their clock tick up to 3× faster",
     ],
   },
   {

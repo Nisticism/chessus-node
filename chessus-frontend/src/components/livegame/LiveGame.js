@@ -24,6 +24,7 @@ import {
   isDestinationClear,
   replayToMove
 } from "../../helpers/pieceMovementUtils";
+import { estimatePieceValue, totalMaterialValue } from "../../utils/pieceValueEstimator";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -494,12 +495,13 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeTimeUpdate = onGameEvent("timeUpdate", ({ gameId: timerGameId, playerTimes, currentTurn }) => {
+    const unsubscribeTimeUpdate = onGameEvent("timeUpdate", ({ gameId: timerGameId, playerTimes, currentTurn, clockMultiplier }) => {
       if (parseInt(timerGameId) === parseInt(gameId)) {
         setGameState(prev => ({
           ...prev,
           playerTimes: playerTimes || prev.playerTimes,
-          currentTurn: currentTurn || prev.currentTurn
+          currentTurn: currentTurn || prev.currentTurn,
+          ...(clockMultiplier !== undefined ? { clockMultiplier } : {})
         }));
       }
     });
@@ -791,28 +793,24 @@ const LiveGame = () => {
   // Format correspondence days remaining
   const formatCorrespondenceTime = (isCurrentTurnPlayer) => {
     if (!gameState?.isCorrespondence || !gameState?.correspondenceDays) return null;
-    if (!isCurrentTurnPlayer) return `${gameState.correspondenceDays} days`;
+    if (!isCurrentTurnPlayer) return `${gameState.correspondenceDays}d`;
     const lastMoveTime = gameState.lastMoveTime;
-    if (!lastMoveTime) return `${gameState.correspondenceDays} days`;
+    if (!lastMoveTime) return `${gameState.correspondenceDays}d`;
     const elapsed = Date.now() - lastMoveTime;
     const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
     const remainingMs = Math.max(0, allowedMs - elapsed);
-    const remainingDays = remainingMs / (24 * 60 * 60 * 1000);
-    if (remainingDays >= 1) {
-      const d = Math.ceil(remainingDays);
-      return `${d} ${d === 1 ? 'day' : 'days'}`;
+    const totalHours = remainingMs / (60 * 60 * 1000);
+    const days = Math.floor(totalHours / 24);
+    const hours = Math.floor(totalHours % 24);
+    if (days >= 1) {
+      return `${days}d ${hours}h`;
     }
-    const remainingHours = remainingMs / (60 * 60 * 1000);
-    if (remainingHours >= 1) {
-      const h = Math.ceil(remainingHours);
-      return `${h} ${h === 1 ? 'hour' : 'hours'}`;
+    if (hours >= 1) {
+      const mins = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+      return `${hours}h ${mins}m`;
     }
-    const remainingMins = remainingMs / (60 * 1000);
-    if (remainingMins > 0) {
-      const m = Math.ceil(remainingMins);
-      return `${m} ${m === 1 ? 'min' : 'mins'}`;
-    }
-    return '0 mins';
+    const remainingMins = Math.ceil(remainingMs / (60 * 1000));
+    return remainingMins > 0 ? `${remainingMins}m` : '0m';
   };
 
   // Helper function to check if a value allows movement at a distance
@@ -2530,6 +2528,17 @@ const LiveGame = () => {
     return result;
   }, [gameState?.moveHistory]);
 
+  // Compute approximate total value of captured pieces for each player
+  const capturedValues = useMemo(() => {
+    const bs = Math.max(gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8);
+    const p1Val = totalMaterialValue(capturedPieces.player1, bs);
+    const p2Val = totalMaterialValue(capturedPieces.player2, bs);
+    return {
+      player1: Math.round(p1Val * 10) / 10,
+      player2: Math.round(p2Val * 10) / 10
+    };
+  }, [capturedPieces, gameState?.gameType?.board_width, gameState?.gameType?.board_height]);
+
   // Convert display coordinates to game coordinates
   const toGameCoords = useCallback((displayX, displayY, boardWidth, boardHeight) => {
     if (shouldFlipBoard) {
@@ -3721,6 +3730,9 @@ const LiveGame = () => {
                 <div className={styles["player-time"]}>
                   <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id] < 60 ? styles["low-time"] : ''}`}>
                     {formatTime(gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id])}
+                    {gameState.materialClockPenalty && gameState.clockMultiplier > 1 && (
+                      <span className={styles["clock-multiplier"]}> {gameState.clockMultiplier.toFixed(1)}×</span>
+                    )}
                   </div>
                 </div>
               )}
@@ -3759,6 +3771,9 @@ const LiveGame = () => {
                   <div className={styles["player-time"]}>
                     <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id] < 60 ? styles["low-time"] : ''}`}>
                       {formatTime(gameState.playerTimes?.[currentPlayer?.position === 1 ? player2?.id : player1?.id])}
+                      {gameState.materialClockPenalty && gameState.clockMultiplier > 1 && (
+                        <span className={styles["clock-multiplier"]}> {gameState.clockMultiplier.toFixed(1)}×</span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -3808,6 +3823,9 @@ const LiveGame = () => {
                   <div className={styles["player-time"]}>
                     <div className={`${styles["time-value"]} ${gameState.playerTimes?.[currentPlayer?.id] < 60 ? styles["low-time"] : ''}`}>
                       {formatTime(gameState.playerTimes?.[currentPlayer?.id])}
+                      {gameState.materialClockPenalty && gameState.clockMultiplier > 1 && isMyTurn && (
+                        <span className={styles["clock-multiplier"]}> {gameState.clockMultiplier.toFixed(1)}×</span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -4314,6 +4332,14 @@ const LiveGame = () => {
                 <div className={styles["captured-row"]}>
                   <span className={styles["captured-label"]}>
                     {gameState?.players?.find(p => p.position === 1)?.username || 'White'} captured:
+                    {capturedPieces.player1.length > 0 && (
+                      <span className={styles["captured-value"]}>
+                        {' '}≈{capturedValues.player1}
+                        {capturedValues.player1 > capturedValues.player2 && (
+                          <span className={styles["material-advantage"]}> (+{Math.round((capturedValues.player1 - capturedValues.player2) * 10) / 10})</span>
+                        )}
+                      </span>
+                    )}
                   </span>
                   <div className={styles["captured-pieces"]}>
                     {capturedPieces.player1.length > 0 ? (
@@ -4344,6 +4370,14 @@ const LiveGame = () => {
                 <div className={styles["captured-row"]}>
                   <span className={styles["captured-label"]}>
                     {gameState?.players?.find(p => p.position === 2)?.username || 'Black'} captured:
+                    {capturedPieces.player2.length > 0 && (
+                      <span className={styles["captured-value"]}>
+                        {' '}≈{capturedValues.player2}
+                        {capturedValues.player2 > capturedValues.player1 && (
+                          <span className={styles["material-advantage"]}> (+{Math.round((capturedValues.player2 - capturedValues.player1) * 10) / 10})</span>
+                        )}
+                      </span>
+                    )}
                   </span>
                   <div className={styles["captured-pieces"]}>
                     {capturedPieces.player2.length > 0 ? (

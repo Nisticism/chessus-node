@@ -82,6 +82,7 @@ const Play = () => {
   // Bot / Play vs Computer state
   const [vsComputer, setVsComputer] = useState(false);
   const [botDifficulty, setBotDifficulty] = useState("medium");
+  const [materialClockPenalty, setMaterialClockPenalty] = useState(false);
   const [showAnonCreateModal, setShowAnonCreateModal] = useState(false);
   const [anonTimeControl, setAnonTimeControl] = useState("10");
   const [anonIncrement, setAnonIncrement] = useState("0");
@@ -464,7 +465,8 @@ const Play = () => {
         isCorrespondence,
         correspondenceDays: isCorrespondence ? parseInt(correspondenceDays) : null,
         vsComputer,
-        botDifficulty: vsComputer ? botDifficulty : undefined
+        botDifficulty: vsComputer ? botDifficulty : undefined,
+        materialClockPenalty: (timeControlMinutes && materialClockPenalty) ? true : undefined
       };
 
       // Add challenge data if challenging a friend
@@ -1429,6 +1431,22 @@ const Play = () => {
                 Let other players watch this game
               </div>
             </div>
+
+            {timeControl !== "0" && gameMode !== "correspondence" && (
+            <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={materialClockPenalty}
+                  onChange={(e) => setMaterialClockPenalty(e.target.checked)}
+                />
+                <span>Material Clock Penalty</span>
+              </label>
+              <div className={styles["input-hint"]}>
+                Players losing material have their clock tick faster — up to 3× when significantly behind
+              </div>
+            </div>
+            )}
                 </div>
               )}
             </div>
