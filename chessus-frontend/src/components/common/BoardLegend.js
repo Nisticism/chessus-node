@@ -26,6 +26,8 @@ const LABELS = {
     moveAttack: 'Move + Attack',
     ranged: 'Ranged 💥',
     hopCapture: 'Capture on Hop',
+    customMove: 'Custom Move',
+    customAttack: 'Custom Attack',
     checkmate: 'Checkmate Piece',
     captureLoss: 'Capture-Loss Piece',
     promotion: 'Promotion',
@@ -42,6 +44,8 @@ const LABELS = {
     moveAttack: 'Move + Attack',
     ranged: 'Range',
     hopCapture: 'Hop Capture',
+    customMove: 'Custom Mv',
+    customAttack: 'Custom Atk',
     checkmate: 'Mate',
     captureLoss: 'Capture',
     promotion: 'Promo Sq',
@@ -58,6 +62,8 @@ const LABELS = {
     moveAttack: 'Move + Attack',
     ranged: 'Ranged Attack 💥',
     hopCapture: 'Capture on Hop',
+    customMove: 'Custom Movement',
+    customAttack: 'Custom Attack',
     checkmate: 'Checkmate Piece',
     captureLoss: 'Capture-Loss Piece',
     promotion: 'Promotion',
@@ -76,6 +82,8 @@ const BoardLegend = ({
   showMoveAttack = false,
   showRanged = true,
   showHopCapture = true,
+  showCustomMove = false,
+  showCustomAttack = false,
   showCheckmate = false,
   showCaptureLoss = false,
   players = null,
@@ -96,6 +104,8 @@ const BoardLegend = ({
   if (showMoveAttack) items.push({ key: 'moveAttack', type: 'moveAttack', label: labels.moveAttack });
   if (showRanged) items.push({ key: 'ranged', type: 'ranged', label: labels.ranged });
   if (showHopCapture) items.push({ key: 'hopCapture', type: 'hopCapture', label: labels.hopCapture });
+  if (showCustomMove) items.push({ key: 'customMove', type: 'customMove', label: labels.customMove });
+  if (showCustomAttack) items.push({ key: 'customAttack', type: 'customAttack', label: labels.customAttack });
 
   // Game condition items
   if (showCheckmate) items.push({ key: 'checkmate', type: 'checkmate', label: labels.checkmate });
@@ -144,6 +154,10 @@ const BoardLegend = ({
         return <div className={`${styles.swatch} ${styles.ranged}`} />;
       case 'hopCapture':
         return <div className={`${styles.swatch} ${styles.hopCapture}`} />;
+      case 'customMove':
+        return <div className={styles.swatch} style={{ outline: '3px solid rgba(0, 188, 150, 0.55)', outlineOffset: '-3px', background: 'rgba(0, 188, 150, 0.25)' }} />;
+      case 'customAttack':
+        return <div className={styles.swatch} style={{ outline: '3px solid rgba(255, 183, 77, 0.55)', outlineOffset: '-3px', background: 'rgba(255, 183, 77, 0.25)' }} />;
       case 'checkmate':
         return (
           <span className={styles.iconSwatch}>

@@ -370,13 +370,26 @@ export const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, player
     }
   }
 
+  // Check custom movement squares
+  if (pieceData.custom_movement_squares) {
+    try {
+      const customSquares = typeof pieceData.custom_movement_squares === 'string'
+        ? JSON.parse(pieceData.custom_movement_squares)
+        : pieceData.custom_movement_squares;
+      if (Array.isArray(customSquares)) {
+        for (const sq of customSquares) {
+          if (rowDiff === sq.row && colDiff === sq.col) {
+            return { allowed: true, isFirstMoveOnly: false, isCustomOnly: true };
+          }
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
   return { allowed: false, isFirstMoveOnly: false };
 };
 
 /**
- * Calculate if a piece can capture by moving to a target position
- * @param {number} fromRow - Starting row
- * @param {number} fromCol - Starting column
  * @param {number} toRow - Target row
  * @param {number} toCol - Target column
  * @param {Object} pieceData - The piece data
@@ -503,6 +516,22 @@ export const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, pl
         return { allowed: true, isFirstMoveOnly };
       }
     }
+  }
+
+  // Check custom attack squares
+  if (pieceData.custom_attack_squares) {
+    try {
+      const customSquares = typeof pieceData.custom_attack_squares === 'string'
+        ? JSON.parse(pieceData.custom_attack_squares)
+        : pieceData.custom_attack_squares;
+      if (Array.isArray(customSquares)) {
+        for (const sq of customSquares) {
+          if (rowDiff === sq.row && colDiff === sq.col) {
+            return { allowed: true, isFirstMoveOnly: false, isCustomOnly: true };
+          }
+        }
+      }
+    } catch { /* ignore parse errors */ }
   }
 
   return { allowed: false, isFirstMoveOnly: false };
@@ -684,7 +713,7 @@ export const canHopCaptureToUtil = (fromRow, fromCol, toRow, toCol, pieceData, p
  * @param {boolean} isLight - Whether this is a light square (for icon styling)
  * @returns {{ style: Object, icon: string|null }}
  */
-export const getSquareHighlightStyle = (canMove, isMoveFirstOnly, canCapture, isCaptureFirstOnly, canRangedAttack, isLight = true) => {
+export const getSquareHighlightStyle = (canMove, isMoveFirstOnly, canCapture, isCaptureFirstOnly, canRangedAttack, isLight = true, isCustomMove = false, isCustomAttack = false) => {
   let style = {};
   let icon = null;
 
@@ -693,10 +722,14 @@ export const getSquareHighlightStyle = (canMove, isMoveFirstOnly, canCapture, is
   // For combined move+capture, use diagonal split gradient like the piece wizard.
 
   // Color definitions (translucent)
-  const moveColor = isMoveFirstOnly ? 'rgba(156, 39, 176, 0.55)' : 'rgba(33, 150, 243, 0.55)';
-  const moveBg = isMoveFirstOnly ? 'rgba(156, 39, 176, 0.25)' : 'rgba(33, 150, 243, 0.25)';
-  const captureColor = isCaptureFirstOnly ? 'rgba(233, 30, 99, 0.55)' : 'rgba(255, 152, 0, 0.55)';
-  const captureBg = isCaptureFirstOnly ? 'rgba(233, 30, 99, 0.25)' : 'rgba(255, 152, 0, 0.25)';
+  const customMoveColor = 'rgba(0, 188, 150, 0.55)';
+  const customMoveBg = 'rgba(0, 188, 150, 0.25)';
+  const customAttackColor = 'rgba(255, 183, 77, 0.55)';
+  const customAttackBg = 'rgba(255, 183, 77, 0.25)';
+  const moveColor = isCustomMove ? customMoveColor : (isMoveFirstOnly ? 'rgba(156, 39, 176, 0.55)' : 'rgba(33, 150, 243, 0.55)');
+  const moveBg = isCustomMove ? customMoveBg : (isMoveFirstOnly ? 'rgba(156, 39, 176, 0.25)' : 'rgba(33, 150, 243, 0.25)');
+  const captureColor = isCustomAttack ? customAttackColor : (isCaptureFirstOnly ? 'rgba(233, 30, 99, 0.55)' : 'rgba(255, 152, 0, 0.55)');
+  const captureBg = isCustomAttack ? customAttackBg : (isCaptureFirstOnly ? 'rgba(233, 30, 99, 0.25)' : 'rgba(255, 152, 0, 0.25)');
   const rangedColor = 'rgba(244, 67, 54, 0.55)';
   const rangedBg = 'rgba(244, 67, 54, 0.25)';
 
