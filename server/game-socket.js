@@ -4686,6 +4686,7 @@ async function getOngoingGames() {
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
               g.allow_spectators, g.show_piece_helpers,
+              g.is_correspondence, g.correspondence_days,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
               GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids
