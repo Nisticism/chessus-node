@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
+import CustomSquareSelector from "./CustomSquareSelector";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
@@ -74,6 +75,8 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         max_ratio_capture_iterations: pieceData.ratio_movement_style ? pieceData.max_ratio_iterations : 0,
         // Copy additional movements to additional captures
         ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
+        // Copy custom movement squares to custom attack squares
+        custom_attack_squares: pieceData.custom_movement_squares,
         // Disable ranged by default when capturing on move
         can_capture_enemy_via_range: false
       });
@@ -333,6 +336,8 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         max_ratio_capture_iterations: pieceData.ratio_movement_style ? pieceData.max_ratio_iterations : 0,
         // Copy additional movements to additional captures
         ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
+        // Copy custom movement squares to custom attack squares
+        custom_attack_squares: pieceData.custom_movement_squares,
         // Disable ranged by default when capturing on move
         can_capture_enemy_via_range: false
       });
@@ -369,6 +374,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         step_by_step_capture: null,
         repeating_capture: false,
         special_scenario_capture: null,
+        custom_attack_squares: null,
       });
     }
   };
@@ -1460,6 +1466,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
             </div>
           </>
         )}
+      </div>
+
+      {/* Custom Square Attack */}
+      <div className={styles["condition-section"]}>
+        <h3>Custom Square Attack <InfoTooltip text="Click squares on the grid to define specific squares this piece can capture on, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other capture configured above." /></h3>
+        <CustomSquareSelector
+          squares={pieceData.custom_attack_squares}
+          onChange={(val) => updatePieceData({ custom_attack_squares: val })}
+          color="#d94a4a"
+        />
       </div>
 
       {/* Live Preview */}

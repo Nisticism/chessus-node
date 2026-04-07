@@ -1,6 +1,7 @@
 import React from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
+import CustomSquareSelector from "./CustomSquareSelector";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
@@ -872,6 +873,16 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             <InfoTooltip text="When enabled, hopping over pieces is disabled for non-exact directional (sliding) movements like rook or bishop movement. Hopping still works for exact directional movements, ratio (L-shape) movements, and step-by-step movements. Useful for hybrid pieces that should only hop with specific movement styles." />
           </label>
         )}
+      </div>
+
+      {/* Custom Square Movement */}
+      <div className={styles["condition-section"]}>
+        <h3>Custom Square Movement <InfoTooltip text="Click squares on the grid to define specific squares this piece can move to, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other movement configured above." /></h3>
+        <CustomSquareSelector
+          squares={pieceData.custom_movement_squares}
+          onChange={(val) => updatePieceData({ custom_movement_squares: val })}
+          color="#4a90d9"
+        />
       </div>
 
       {/* Live Preview */}

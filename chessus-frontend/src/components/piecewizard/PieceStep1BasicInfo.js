@@ -481,16 +481,14 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
         </p>
       )}
 
-      {/* Board Preview - Only show in edit mode */}
-      {isEditMode && (
-        <div className={styles["board-preview-section"]}>
-          <h3>Movement & Attack Preview</h3>
-          <p className={styles["field-hint"]}>
-            Hover over the piece to see movement (blue) and attack (red) patterns based on your settings.
-          </p>
-          <PieceBoardPreview pieceData={pieceData} />
-        </div>
-      )}
+      {/* Board Preview */}
+      <div className={styles["board-preview-section"]}>
+        <h3>Movement & Attack Preview</h3>
+        <p className={styles["field-hint"]}>
+          Hover over the piece to see movement (blue) and attack (red) patterns based on your settings.
+        </p>
+        <PieceBoardPreview pieceData={pieceData} />
+      </div>
 
       {/* Library Modal */}
       {showLibraryModal && (

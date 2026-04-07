@@ -179,6 +179,9 @@ const PieceWizard = ({ editPieceId = null }) => {
     can_capture_allies: false,
     // Cannot be captured
     cannot_be_captured: false,
+    // Custom movement/attack squares (JSON array of {row, col} offsets)
+    custom_movement_squares: null,
+    custom_attack_squares: null,
   });
 
   // Load existing piece data when in edit mode
@@ -395,6 +398,8 @@ const PieceWizard = ({ editPieceId = null }) => {
             promotion_pieces_ids: piece.promotion_pieces_ids || null,
             can_capture_allies: !!piece.can_capture_allies,
             cannot_be_captured: !!piece.cannot_be_captured,
+            custom_movement_squares: piece.custom_movement_squares || null,
+            custom_attack_squares: piece.custom_attack_squares || null,
           });
           
           setIsEditMode(true);
@@ -434,8 +439,10 @@ const PieceWizard = ({ editPieceId = null }) => {
       pieceData.ratio_two_movement != null;
     
     const hasStepByStepMovement = pieceData.step_by_step_movement_value != null;
+
+    const hasCustomMovement = pieceData.custom_movement_squares != null && pieceData.custom_movement_squares !== '[]';
     
-    const hasAnyMovement = hasDirectionalMovement || hasRatioMovement || hasStepByStepMovement;
+    const hasAnyMovement = hasDirectionalMovement || hasRatioMovement || hasStepByStepMovement || hasCustomMovement;
     
     // Helper to convert additionalMovements to additionalCaptures format
     const convertMovementsToCaptures = (specialScenarioMoves) => {
@@ -498,7 +505,9 @@ const PieceWizard = ({ editPieceId = null }) => {
           // Copy repeating movement setting
           repeating_capture: prev.repeating_movement,
           // Copy additional movements to additional captures
-          ...(convertedCaptures && { special_scenario_capture: convertedCaptures })
+          ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
+          // Copy custom movement squares to custom attack squares
+          custom_attack_squares: prev.custom_movement_squares,
         };
       });
     }
@@ -515,6 +524,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     pieceData.ratio_two_movement,
     pieceData.step_by_step_movement_value,
     pieceData.repeating_movement,
+    pieceData.custom_movement_squares,
     pieceData.attacks_like_movement,
     isEditMode
   ]);
