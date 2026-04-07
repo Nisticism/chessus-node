@@ -916,6 +916,25 @@
     box-shadow: inset 0 0 0 3px rgba(255, 140, 0, 0.7);
   }
 
+  // Custom movement squares (teal)
+  &.valid-move-custom {
+    &::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: rgba(0, 188, 150, 0.5);
+      border-radius: 50%;
+      z-index: 2;
+      pointer-events: none;
+    }
+  }
+
+  // Custom attack squares (warm orange)
+  &.valid-capture-custom {
+    box-shadow: inset 0 0 0 3px rgba(255, 183, 77, 0.6);
+  }
+
   &.hover-move {
     &::after {
       content: '';
@@ -950,6 +969,25 @@
   // First-move-only hover captures
   &.hover-capture-first-only {
     box-shadow: inset 0 0 0 3px rgba(255, 140, 0, 0.6);
+  }
+
+  // Custom movement hover (teal)
+  &.hover-move-custom {
+    &::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: rgba(0, 188, 150, 0.4);
+      border-radius: 50%;
+      z-index: 2;
+      pointer-events: none;
+    }
+  }
+
+  // Custom attack hover (warm orange)
+  &.hover-capture-custom {
+    box-shadow: inset 0 0 0 3px rgba(255, 183, 77, 0.5);
   }
 
   &.last-move {

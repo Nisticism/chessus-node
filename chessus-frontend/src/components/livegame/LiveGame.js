@@ -1001,13 +1001,13 @@ const LiveGame = () => {
 
   // Check if piece can move to a square (not capturing)
   // skipExactRatio: when true, skip exact directional and ratio checks (for hop-only validation)
-  const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false) => {
+  const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false, skipCustom = false) => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
     if (!skipExactRatio) {
     const utilResult = canPieceMoveToUtil(fromY, fromX, toY, toX, pieceData, playerPosition);
-    if (utilResult.allowed) {
+    if (utilResult.allowed && !(skipCustom && utilResult.isCustomOnly)) {
       return true;
     }
     }
@@ -1129,18 +1129,34 @@ const LiveGame = () => {
       }
     }
 
+    // Check custom movement squares
+    if (!skipCustom && pieceData.custom_movement_squares) {
+      try {
+        const customSquares = typeof pieceData.custom_movement_squares === 'string'
+          ? JSON.parse(pieceData.custom_movement_squares)
+          : pieceData.custom_movement_squares;
+        if (Array.isArray(customSquares)) {
+          for (const sq of customSquares) {
+            if (rowDiff === sq.row && colDiff === sq.col) {
+              return true;
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
     return false;
   }, []);
 
   // Check if piece can capture on a square
   // skipExactRatio: when true, skip exact directional and ratio checks (for hop-only validation)
-  const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false) => {
+  const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false, skipCustom = false) => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
     if (!skipExactRatio) {
     const utilCaptureResult = canCaptureOnMoveToUtil(fromY, fromX, toY, toX, pieceData, playerPosition);
-    if (utilCaptureResult.allowed) {
+    if (utilCaptureResult.allowed && !(skipCustom && utilCaptureResult.isCustomOnly)) {
       return true;
     }
     }
@@ -1270,7 +1286,23 @@ const LiveGame = () => {
 
     // If piece can capture where it moves AND has no separate capture fields, also check movement as fallback
     if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
-      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
+      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio, skipCustom);
+    }
+
+    // Check custom attack squares
+    if (!skipCustom && pieceData.custom_attack_squares) {
+      try {
+        const customSquares = typeof pieceData.custom_attack_squares === 'string'
+          ? JSON.parse(pieceData.custom_attack_squares)
+          : pieceData.custom_attack_squares;
+        if (Array.isArray(customSquares)) {
+          for (const sq of customSquares) {
+            if (rowDiff === sq.row && colDiff === sq.col) {
+              return true;
+            }
+          }
+        }
+      } catch { /* ignore */ }
     }
 
     return false;
@@ -1723,6 +1755,18 @@ const LiveGame = () => {
           }
         }
 
+        // Check if this is a custom-square-only move (direct jump, no path check needed)
+        let isCustomSquareMove = false;
+        if (isValidMove) {
+          const hasCustom = isCapture ? piece.custom_attack_squares : piece.custom_movement_squares;
+          if (hasCustom) {
+            const standardValid = isCapture
+              ? canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam, false, true)
+              : canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam, false, true);
+            if (!standardValid) isCustomSquareMove = true;
+          }
+        }
+
         // If move is valid, check if path is clear
         // For ratio movements (L-shape), use special path checking
         const ratio1m = piece.ratio_movement_1 || 0;
@@ -1767,7 +1811,10 @@ const LiveGame = () => {
         const isStepMove = isStepByStepTarget(piece, piece.x, piece.y, toX, toY);
 
         let pathClear = false;
-        if (isRatioMove) {
+        if (isCustomSquareMove) {
+          // Custom square moves are direct jumps — no path obstruction
+          pathClear = true;
+        } else if (isRatioMove) {
           // Check L-shape paths with hopping abilities
           pathClear = checkRatioPathClear(piece, toX, toY, pieces);
         } else if (isStepMove) {
@@ -1917,6 +1964,10 @@ const LiveGame = () => {
             }
           }
           
+          // Use already-computed custom square detection
+          const isCustomMove = !isCapture && !isPotentialCapture && !isHopCapture && isCustomSquareMove;
+          const isCustomAttack = (isCapture || isPotentialCapture || isHopCapture) && isCustomSquareMove;
+          
           moves.push({
             x: toX,
             y: toY,
@@ -1924,6 +1975,8 @@ const LiveGame = () => {
             isHopCapture,
             hopCapturedPieceIds,
             isFirstMoveOnly: firstMovesRequired > 0,
+            isCustomMove,
+            isCustomAttack,
             isPotentialCapture
           });
         }
@@ -3290,15 +3343,19 @@ const LiveGame = () => {
               ${styles["board-square"]}
               ${isLight ? styles.light : styles.dark}
               ${isSelected ? styles.selected : ''}
-              ${regularMove && !regularMove.isCapture && !regularMove.isFirstMoveOnly ? styles["valid-move"] : ''}
-              ${regularMove && !regularMove.isCapture && regularMove.isFirstMoveOnly ? styles["valid-move-first-only"] : ''}
-              ${regularMove && regularMove.isCapture && !regularMove.isFirstMoveOnly ? styles["valid-capture"] : ''}
-              ${regularMove && regularMove.isCapture && regularMove.isFirstMoveOnly ? styles["valid-capture-first-only"] : ''}
+              ${regularMove && !regularMove.isCapture && !regularMove.isFirstMoveOnly && !regularMove.isCustomMove ? styles["valid-move"] : ''}
+              ${regularMove && !regularMove.isCapture && regularMove.isFirstMoveOnly && !regularMove.isCustomMove ? styles["valid-move-first-only"] : ''}
+              ${regularMove && !regularMove.isCapture && regularMove.isCustomMove ? styles["valid-move-custom"] : ''}
+              ${regularMove && regularMove.isCapture && !regularMove.isFirstMoveOnly && !regularMove.isCustomAttack ? styles["valid-capture"] : ''}
+              ${regularMove && regularMove.isCapture && regularMove.isFirstMoveOnly && !regularMove.isCustomAttack ? styles["valid-capture-first-only"] : ''}
+              ${regularMove && regularMove.isCapture && regularMove.isCustomAttack ? styles["valid-capture-custom"] : ''}
               ${isRangedMove ? styles["ranged-attack"] : ''}
-              ${hoveredRegularMove && !hoveredRegularMove.isCapture && !hoveredRegularMove.isFirstMoveOnly ? styles["hover-move"] : ''}
-              ${hoveredRegularMove && !hoveredRegularMove.isCapture && hoveredRegularMove.isFirstMoveOnly ? styles["hover-move-first-only"] : ''}
-              ${hoveredRegularMove && hoveredRegularMove.isCapture && !hoveredRegularMove.isFirstMoveOnly ? styles["hover-capture"] : ''}
-              ${hoveredRegularMove && hoveredRegularMove.isCapture && hoveredRegularMove.isFirstMoveOnly ? styles["hover-capture-first-only"] : ''}
+              ${hoveredRegularMove && !hoveredRegularMove.isCapture && !hoveredRegularMove.isFirstMoveOnly && !hoveredRegularMove.isCustomMove ? styles["hover-move"] : ''}
+              ${hoveredRegularMove && !hoveredRegularMove.isCapture && hoveredRegularMove.isFirstMoveOnly && !hoveredRegularMove.isCustomMove ? styles["hover-move-first-only"] : ''}
+              ${hoveredRegularMove && !hoveredRegularMove.isCapture && hoveredRegularMove.isCustomMove ? styles["hover-move-custom"] : ''}
+              ${hoveredRegularMove && hoveredRegularMove.isCapture && !hoveredRegularMove.isFirstMoveOnly && !hoveredRegularMove.isCustomAttack ? styles["hover-capture"] : ''}
+              ${hoveredRegularMove && hoveredRegularMove.isCapture && hoveredRegularMove.isFirstMoveOnly && !hoveredRegularMove.isCustomAttack ? styles["hover-capture-first-only"] : ''}
+              ${hoveredRegularMove && hoveredRegularMove.isCapture && hoveredRegularMove.isCustomAttack ? styles["hover-capture-custom"] : ''}
               ${isRangedHover ? styles["hover-ranged"] : ''}
               ${isRangedDragTarget || isRangedSelectedTarget ? styles["ranged-drag-target"] : ''}
               ${isRangedSelectedSource ? styles["selected"] : ''}
@@ -3844,7 +3901,7 @@ const LiveGame = () => {
             </div>
 
             {/* In-Game Chat */}
-            <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} />
+            <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} isPlayer={isPlayer} onUpdatePreference={updateUserPreference} />
 
             {/* Spectator List - Desktop */}
             {gameState.allowSpectators && spectators.length > 0 && (
@@ -4316,7 +4373,7 @@ const LiveGame = () => {
 
       {/* Mobile Chat - Only visible on small screens, below bottom clock */}
       <div className={styles["layout-row-mobile-chat"]}>
-        <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} />
+        <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} isPlayer={isPlayer} onUpdatePreference={updateUserPreference} />
         {/* Spectator List - Mobile */}
         {gameState.allowSpectators && spectators.length > 0 && (
           <div className={styles["spectator-section-mobile"]}>

@@ -7,12 +7,14 @@ const formatTime = (dateStr) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
-const GameChat = ({ gameId, currentUser, gameState }) => {
+const GameChat = ({ gameId, currentUser, gameState, isPlayer, onUpdatePreference }) => {
   const { socket } = useSocket();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [opponentDisabledBy, setOpponentDisabledBy] = useState(null);
+  const [chatPublic, setChatPublic] = useState({});
+  const [bothPublic, setBothPublic] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -27,6 +29,9 @@ const GameChat = ({ gameId, currentUser, gameState }) => {
     : opponentDisabledBy
     ? `Chat disabled by ${opponentDisabledBy}'s settings`
     : null;
+
+  // Whether this player has chat set to public
+  const myPublic = isPlayer && currentUser ? !!chatPublic[currentUser.id] : false;
 
   // Load chat history when component mounts or when user re-enables chat
   useEffect(() => {
@@ -46,25 +51,40 @@ const GameChat = ({ gameId, currentUser, gameState }) => {
       }
     };
 
-    const handleHistory = ({ gameId: gId, messages: history, chatDisabledBy }) => {
+    const handleHistory = ({ gameId: gId, messages: history, chatDisabledBy, chatPublic: cp, bothPublic: bp }) => {
       if (parseInt(gId) === parseInt(gameId)) {
         setMessages(history);
         setOpponentDisabledBy(chatDisabledBy || null);
+        if (cp !== undefined) setChatPublic(cp);
+        if (bp !== undefined) setBothPublic(bp);
       }
     };
 
     const handleChatError = () => {};
 
+    const handleChatPublicUpdate = ({ gameId: gId, chatPublic: cp, bothPublic: bp }) => {
+      if (parseInt(gId) === parseInt(gameId)) {
+        setChatPublic(cp);
+        setBothPublic(bp);
+        // If spectator and chat just became public, re-fetch history
+        if (!isPlayer && bp) {
+          socket.emit("getGameChatHistory", { gameId });
+        }
+      }
+    };
+
     socket.on("gameChatMessage", handleMessage);
     socket.on("gameChatHistory", handleHistory);
     socket.on("gameChatError", handleChatError);
+    socket.on("chatPublicUpdate", handleChatPublicUpdate);
 
     return () => {
       socket.off("gameChatMessage", handleMessage);
       socket.off("gameChatHistory", handleHistory);
       socket.off("gameChatError", handleChatError);
+      socket.off("chatPublicUpdate", handleChatPublicUpdate);
     };
-  }, [socket, gameId]);
+  }, [socket, gameId, isPlayer]);
 
   // Auto-scroll to bottom within chat container only
   useEffect(() => {
@@ -89,11 +109,51 @@ const GameChat = ({ gameId, currentUser, gameState }) => {
     [input, socket, gameId, disabled]
   );
 
+  const handleTogglePublic = useCallback((e) => {
+    e.stopPropagation();
+    if (!socket || !isPlayer) return;
+    const newValue = !myPublic;
+    socket.emit("toggleChatPublic", { gameId, isPublic: newValue });
+    // Also persist to user preferences for future games
+    if (onUpdatePreference) {
+      onUpdatePreference('chat_public_for_spectators', newValue);
+    }
+  }, [socket, gameId, isPlayer, myPublic, onUpdatePreference]);
+
+  // Spectator view when chat is not public
+  if (!isPlayer && !bothPublic) {
+    return (
+      <div className={styles["game-chat"]}>
+        <div className={styles["chat-header"]}>
+          <span>💬 Chat</span>
+        </div>
+        <div className={styles["chat-disabled-msg"]}>
+          Chat is private between players
+        </div>
+      </div>
+    );
+  }
+
   if (disabled) {
     return (
       <div className={styles["game-chat"]}>
         <div className={styles["chat-header"]}>
           <span>💬 Chat</span>
+          {isPlayer && (
+            <div className={styles["chat-header-right"]}>
+              <span
+                className={`${styles["chat-public-toggle"]} ${myPublic ? styles["public-on"] : ""}`}
+                onClick={handleTogglePublic}
+                role="button"
+                tabIndex={0}
+              >
+                👁
+                <span className={styles["chat-tooltip"]}>
+                  {myPublic ? "Spectators can see chat. Both players must enable this. Click to disable." : "Spectators cannot see chat. Click to allow spectators to view chat."}
+                </span>
+              </span>
+            </div>
+          )}
         </div>
         <div className={styles["chat-disabled-msg"]}>
           {disabledReason || "Chat is disabled"}
@@ -109,7 +169,25 @@ const GameChat = ({ gameId, currentUser, gameState }) => {
         onClick={() => setCollapsed(!collapsed)}
       >
         <span>💬 Chat</span>
-        <span className={styles["chat-toggle"]}>{collapsed ? "▼" : "▲"}</span>
+        <div className={styles["chat-header-right"]}>
+          {isPlayer && (
+            <span
+              className={`${styles["chat-public-toggle"]} ${myPublic ? styles["public-on"] : ""}`}
+              onClick={handleTogglePublic}
+              role="button"
+              tabIndex={0}
+            >
+              👁
+              <span className={styles["chat-tooltip"]}>
+                {myPublic ? "Spectators can see chat. Both players must enable this. Click to disable." : "Spectators cannot see chat. Click to allow spectators to view chat."}
+              </span>
+            </span>
+          )}
+          {isPlayer && bothPublic && (
+            <span className={styles["chat-public-badge"]}>Public</span>
+          )}
+          <span className={styles["chat-toggle"]}>{collapsed ? "▼" : "▲"}</span>
+        </div>
       </div>
       {!collapsed && (
         <>
@@ -132,7 +210,7 @@ const GameChat = ({ gameId, currentUser, gameState }) => {
             ))}
             <div ref={messagesEndRef} />
           </div>
-          {currentUser && (
+          {currentUser && isPlayer && (
             <form className={styles["chat-input-form"]} onSubmit={handleSend}>
               <input
                 ref={inputRef}
