@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { getSquareHighlightStyle } from "../../helpers/pieceMovementUtils";
@@ -7,6 +7,21 @@ import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
 const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) => {
   const [isHovering, setIsHovering] = useState(false);
+  // Animation state: null = idle, 'moving' = piece sliding, 'paused' = landed, 'recentering' = board shifting back
+  const [animState, setAnimState] = useState(null);
+  // The target square the piece is moving to (grid row/col)
+  const [moveTarget, setMoveTarget] = useState(null);
+  // Offset applied to the grid during the re-center phase
+  const [gridOffset, setGridOffset] = useState(null);
+  const gridRef = useRef(null);
+  // Track mouse position to re-enable hover after animation ends
+  const mouseInsideRef = useRef(false);
+  // Store measured pixel positions for animation
+  const animDataRef = useRef(null);
+  // Drag state: track whether user is dragging from the piece
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPos, setDragPos] = useState(null);
+  const dragStartRef = useRef(null);
   
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -218,6 +233,21 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     }
 
     maxRange = Math.max(maxRange, repeatingExtension);
+
+    // Check custom squares for board size
+    const checkCustomSquares = (json) => {
+      if (!json) return;
+      try {
+        const arr = typeof json === 'string' ? JSON.parse(json) : json;
+        if (Array.isArray(arr)) {
+          arr.forEach(sq => {
+            maxRange = Math.max(maxRange, Math.abs(sq.row), Math.abs(sq.col));
+          });
+        }
+      } catch { /* ignore */ }
+    };
+    checkCustomSquares(pieceData.custom_movement_squares);
+    checkCustomSquares(pieceData.custom_attack_squares);
     
     // Padding: at least 4 squares on every side of the piece, or enough for max range
     const padding = Math.max(4, maxRange);
@@ -475,7 +505,24 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         if (result.allowed) return result;
       }
     }
-    return { allowed: false, isFirstMoveOnly: false };
+
+    // Check custom movement squares
+    if (pieceData.custom_movement_squares) {
+      try {
+        const customSquares = typeof pieceData.custom_movement_squares === 'string'
+          ? JSON.parse(pieceData.custom_movement_squares)
+          : pieceData.custom_movement_squares;
+        if (Array.isArray(customSquares)) {
+          for (const sq of customSquares) {
+            if (row === anchorRow + sq.row && col === anchorCol + sq.col) {
+              return { allowed: true, isFirstMoveOnly: false, isCustomOnly: true };
+            }
+          }
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
+    return { allowed: false, isFirstMoveOnly: false, isCustomOnly: false };
   };
 
   // Calculate which squares the piece can capture on move (by moving to them)
@@ -668,7 +715,24 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         if (result.allowed) return result;
       }
     }
-    return { allowed: false, isFirstMoveOnly: false };
+
+    // Check custom attack squares
+    if (pieceData.custom_attack_squares) {
+      try {
+        const customSquares = typeof pieceData.custom_attack_squares === 'string'
+          ? JSON.parse(pieceData.custom_attack_squares)
+          : pieceData.custom_attack_squares;
+        if (Array.isArray(customSquares)) {
+          for (const sq of customSquares) {
+            if (row === anchorRow + sq.row && col === anchorCol + sq.col) {
+              return { allowed: true, isFirstMoveOnly: false, isCustomOnly: true };
+            }
+          }
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
+    return { allowed: false, isFirstMoveOnly: false, isCustomOnly: false };
   };
 
   // Calculate which squares the piece can attack via range (without moving)
@@ -842,12 +906,156 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     return false;
   };
 
+  // Handle clicking a highlighted square to animate piece moving there
+  const handleSquareClick = useCallback((row, col) => {
+    if (animState) return; // Already animating
+    if (isPieceSquare(row, col)) return;
+    // Check if this square is a valid move or capture target
+    const moveInfo = canMoveTo(row, col);
+    const captureInfo = showAttack ? canCaptureOnMoveTo(row, col) : { allowed: false };
+    if (!moveInfo.allowed && !captureInfo.allowed) return;
+
+    // Measure actual square pixel sizes from the DOM for pixel-perfect positioning
+    if (gridRef.current) {
+      const squares = gridRef.current.querySelectorAll(`.${styles["board-square"]}`);
+      if (squares.length > 0) {
+        const gridRect = gridRef.current.getBoundingClientRect();
+        const anchorIdx = anchorRow * boardWidth + anchorCol;
+        const targetIdx = row * boardWidth + col;
+        const anchorRect = squares[anchorIdx].getBoundingClientRect();
+        const targetRect = squares[targetIdx].getBoundingClientRect();
+        animDataRef.current = {
+          targetLeft: targetRect.left - gridRect.left,
+          targetTop: targetRect.top - gridRect.top,
+          squareWidth: anchorRect.width,
+          squareHeight: anchorRect.height,
+          shiftX: targetRect.left - anchorRect.left,
+          shiftY: targetRect.top - anchorRect.top,
+        };
+      }
+    }
+
+    setIsHovering(false);
+    setIsDragging(false);
+    setDragPos(null);
+    dragStartRef.current = null;
+    setMoveTarget({ row, col });
+    // Skip slide animation — piece appears at target immediately (drag provides the visual)
+    setAnimState('paused');
+
+    const deltaRow = row - anchorRow;
+    const deltaCol = col - anchorCol;
+    // 0.75 second pause so the piece visually "lands" before the board shifts
+    setTimeout(() => {
+      // First: apply the grid shift instantly (no animation) — removes overlay, shows piece at anchor
+      // The grid transform makes the anchor appear at the target's position
+      setGridOffset({ row: deltaRow, col: deltaCol });
+      setAnimState('shifted');
+      setMoveTarget(null);
+    }, 750);
+  }, [animState, showAttack, anchorRow, anchorCol, boardWidth]);
+
+  // Transition from 'shifted' → 'recentering' after the shifted frame is painted
+  useEffect(() => {
+    if (animState !== 'shifted') return;
+    // Double rAF: first rAF queues after layout, second ensures the shifted
+    // transform has actually been painted before we start the CSS animation
+    const rafId = requestAnimationFrame(() => {
+      const rafId2 = requestAnimationFrame(() => {
+        setAnimState('recentering');
+      });
+      innerRafRef.current = rafId2;
+    });
+    const innerRafRef = { current: null };
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (innerRafRef.current) cancelAnimationFrame(innerRafRef.current);
+    };
+  }, [animState]);
+
+  // Called when the re-center animation finishes
+  const handleRecenterEnd = useCallback(() => {
+    setAnimState(null);
+    setGridOffset(null);
+    animDataRef.current = null;
+    // Re-enable hover if mouse is still inside the board
+    if (mouseInsideRef.current) {
+      setIsHovering(true);
+    }
+  }, []);
+
+  // --- Drag-to-move handlers ---
+  const handlePieceMouseDown = useCallback((e) => {
+    if (animState) return;
+    e.preventDefault();
+    const gridRect = gridRef.current?.getBoundingClientRect();
+    if (!gridRect) return;
+    // Measure anchor square for centering the drag image
+    const squares = gridRef.current.querySelectorAll(`.${styles["board-square"]}`);
+    const anchorIdx = anchorRow * boardWidth + anchorCol;
+    const anchorRect = squares[anchorIdx]?.getBoundingClientRect();
+    if (!anchorRect) return;
+    dragStartRef.current = {
+      gridRect,
+      anchorRect,
+      squareWidth: anchorRect.width,
+      squareHeight: anchorRect.height,
+    };
+    setDragPos({ x: e.clientX - gridRect.left, y: e.clientY - gridRect.top });
+    setIsDragging(true);
+    setIsHovering(true);
+  }, [animState, anchorRow, anchorCol, boardWidth]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e) => {
+      const gridRect = gridRef.current?.getBoundingClientRect();
+      if (!gridRect) return;
+      setDragPos({ x: e.clientX - gridRect.left, y: e.clientY - gridRect.top });
+    };
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      setDragPos(null);
+      dragStartRef.current = null;
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
   // Render the board
+  // Extra rows/columns rendered outside the real board during animation.
+  // Hidden by the wrapper's overflow:hidden at rest; slide into view when the grid translates.
+  const phantomPad = (animState === 'shifted' || animState === 'recentering') && gridOffset
+    ? Math.max(Math.abs(gridOffset.row), Math.abs(gridOffset.col))
+    : 0;
+
   const renderBoard = () => {
     const squares = [];
+    const isAnimating = !!animState;
+    // During paused animation or dragging, hide piece from anchor; show on overlay instead
+    const hidePieceOnAnchor = animState === 'paused' || isDragging;
     
-    for (let row = 0; row < boardHeight; row++) {
-      for (let col = 0; col < boardWidth; col++) {
+    for (let row = -phantomPad; row < boardHeight + phantomPad; row++) {
+      for (let col = -phantomPad; col < boardWidth + phantomPad; col++) {
+        const isPhantom = row < 0 || row >= boardHeight || col < 0 || col >= boardWidth;
+        
+        // Phantom squares are just colored divs continuing the checkerboard
+        if (isPhantom) {
+          const isLight = ((row % 2) + 2) % 2 === ((col % 2) + 2) % 2; // handles negatives
+          squares.push(
+            <div
+              key={`${row}-${col}`}
+              className={`${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}`}
+              style={{ backgroundColor: isLight ? lightSquareColor : darkSquareColor }}
+            />
+          );
+          continue;
+        }
+        
         const isAnchor = row === anchorRow && col === anchorCol;
         const isExtension = !isAnchor && isPieceSquare(row, col);
         const isCenter = isAnchor || isExtension;
@@ -862,18 +1070,25 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         // Destructure for clearer code
         const canMove = moveInfo.allowed;
         const isMoveFirstOnly = moveInfo.isFirstMoveOnly;
+        const isCustomMove = moveInfo.isCustomOnly || false;
         const canCaptureOnMove = captureInfo.allowed;
         const isCaptureFirstOnly = captureInfo.isFirstMoveOnly;
+        const isCustomAttack = captureInfo.isCustomOnly || false;
+        
+        const isClickable = !isAnimating && !isCenter && (canMove || canCaptureOnMove);
         
         let squareClass = `${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}`;
         
         if (isCenter) {
           squareClass += ` ${styles["center-piece"]}`;
         }
+        if (isClickable) {
+          squareClass += ` ${styles["clickable-square"]}`;
+        }
         
         // Use shared highlight style utility
         const { style: highlightStyle, icon: highlightIcon } = (!isCenter)
-          ? getSquareHighlightStyle(canMove, isMoveFirstOnly, canCaptureOnMove, isCaptureFirstOnly, canRangedAttack, isLight)
+          ? getSquareHighlightStyle(canMove, isMoveFirstOnly, canCaptureOnMove, isCaptureFirstOnly, canRangedAttack, isLight, isCustomMove, isCustomAttack)
           : { style: {}, icon: null };
         
         // Inline styles for user color preferences
@@ -888,9 +1103,16 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         const isMultiTile = pw > 1 || ph > 1;
         const isNonSquareMultiTile = isMultiTile && pw !== ph;
         const imgSrc = pieceData.piece_image_previews?.[0];
+        const showPiece = isAnchor && !hidePieceOnAnchor;
         
         squares.push(
-          <div key={`${row}-${col}`} className={squareClass} style={squareStyle}>
+          <div
+            key={`${row}-${col}`}
+            className={squareClass}
+            style={squareStyle}
+            onClick={isClickable ? () => handleSquareClick(row, col) : undefined}
+            onMouseUp={isClickable ? () => handleSquareClick(row, col) : undefined}
+          >
             <SquareHighlightOverlay
               highlightStyle={highlightStyle}
               highlightIcon={highlightIcon}
@@ -898,7 +1120,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
               squareSize={40}
               isLight={isLight}
             />
-            {isAnchor && imgSrc && (
+            {showPiece && imgSrc && (
               isNonSquareMultiTile ? (
                 <div
                   ref={(el) => applySvgStretchBackground(el, imgSrc)}
@@ -927,10 +1149,10 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
                   }}
                 />
               ) : (
-                <img src={imgSrc} alt="Piece" />
+                <img src={imgSrc} alt="Piece" draggable="false" onDragStart={(e) => e.preventDefault()} onMouseDown={handlePieceMouseDown} style={{ cursor: 'grab' }} />
               )
             )}
-            {isAnchor && !imgSrc && "?"}
+            {showPiece && !imgSrc && "?"}
           </div>
         );
       }
@@ -939,6 +1161,94 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     return squares;
   };
 
+  // Render piece at target square during the paused state
+  const renderPieceAnimOverlay = () => {
+    if (animState !== 'paused' || !moveTarget) return null;
+    const imgSrc = pieceData.piece_image_previews?.[0];
+    if (!imgSrc) return null;
+    const anim = animDataRef.current;
+    if (!anim) return null;
+
+    // Size the piece image to 80% of the square, centered
+    const pieceW = anim.squareWidth * (pw > 1 ? pw : 0.8);
+    const pieceH = anim.squareHeight * (ph > 1 ? ph : 0.8);
+    const offsetX = (anim.squareWidth - pieceW) / 2;
+    const offsetY = (anim.squareHeight - pieceH) / 2;
+
+    return (
+      <div
+        className={styles["piece-anim-overlay-landed"]}
+        style={{
+          left: anim.targetLeft + offsetX,
+          top: anim.targetTop + offsetY,
+          width: pieceW,
+          height: pieceH,
+          zIndex: 20,
+        }}
+      >
+        <img src={imgSrc} alt="Piece" draggable="false" style={{ width: '100%', height: '100%', objectFit: 'fill' }} />
+      </div>
+    );
+  };
+
+  // Compute grid inline styles — during recenter phase, offset then animate back
+  const getGridStyle = () => {
+    const totalW = boardWidth + 2 * phantomPad;
+    const totalH = boardHeight + 2 * phantomPad;
+    const base = {
+      gridTemplateColumns: `repeat(${totalW}, 1fr)`,
+      gridTemplateRows: `repeat(${totalH}, 1fr)`,
+    };
+    // Expand the grid and offset so the real board stays aligned with the wrapper
+    if (phantomPad > 0) {
+      base.width = `${(totalW / boardWidth) * 100}%`;
+      base.marginLeft = `${(-phantomPad / boardWidth) * 100}%`;
+      const sh = animDataRef.current?.squareHeight || 0;
+      base.marginTop = `${-phantomPad * sh}px`;
+      base.marginBottom = `${-phantomPad * sh}px`;
+    }
+    if ((animState === 'shifted' || animState === 'recentering') && gridOffset) {
+      const anim = animDataRef.current;
+      if (anim) {
+        base['--shift-x'] = `${anim.shiftX ?? (gridOffset.col * anim.squareWidth)}px`;
+        base['--shift-y'] = `${anim.shiftY ?? (gridOffset.row * anim.squareHeight)}px`;
+      }
+    }
+    // During 'shifted', apply the transform directly (no animation) to pre-position the grid
+    if (animState === 'shifted') {
+      base.transform = `translate(var(--shift-x, 0), var(--shift-y, 0))`;
+    }
+    return base;
+  };
+
+  // Render drag ghost — piece image following the mouse cursor
+  const renderDragGhost = () => {
+    if (!isDragging || !dragPos) return null;
+    const imgSrc = pieceData.piece_image_previews?.[0];
+    if (!imgSrc) return null;
+    const ds = dragStartRef.current;
+    if (!ds) return null;
+    const size = ds.squareWidth * 0.8;
+    return (
+      <div
+        className={styles["piece-drag-ghost"]}
+        style={{
+          left: dragPos.x - size / 2,
+          top: dragPos.y - size / 2,
+          width: size,
+          height: size,
+        }}
+      >
+        <img src={imgSrc} alt="Piece" draggable="false" style={{ width: '100%', height: '100%', objectFit: 'fill' }} />
+      </div>
+    );
+  };
+
+  const gridClasses = [
+    styles["board-grid"],
+    animState === 'recentering' ? styles["board-grid-recentering"] : '',
+  ].filter(Boolean).join(' ');
+
   return (
     <div className={styles["board-preview"]}>
       {exceedsBoard && (
@@ -946,23 +1256,31 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
           ⚠️ This piece can move beyond this {boardWidth}x{boardHeight} board when playing on larger boards
         </div>
       )}
-      <div 
-        className={styles["board-grid"]} 
-        style={{
-          gridTemplateColumns: `repeat(${boardWidth}, 1fr)`,
-          gridTemplateRows: `repeat(${boardHeight}, 1fr)`
-        }}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
-      >
-        {renderBoard()}
+      <div className={styles["board-grid-wrapper"]}>
+        <div 
+          ref={gridRef}
+          className={gridClasses}
+          style={getGridStyle()}
+          onMouseEnter={() => { mouseInsideRef.current = true; if (!animState) setIsHovering(true); }}
+          onMouseLeave={() => { mouseInsideRef.current = false; setIsHovering(false); }}
+          onAnimationEnd={animState === 'recentering' ? handleRecenterEnd : undefined}
+        >
+          {renderBoard()}
+          {renderPieceAnimOverlay()}
+          {renderDragGhost()}
+        </div>
       </div>
+      {!animState && (
+        <p className={styles["board-click-hint"]}>Click a highlighted square to see the piece move</p>
+      )}
       {showLegend && (
         <BoardLegend
           showAttack={showAttack}
           showFirstAttack={showAttack}
           showRanged={showAttack && !!pieceData.can_capture_enemy_via_range}
           showHopCapture={showAttack && !!pieceData.capture_on_hop}
+          showCustomMove={!!pieceData.custom_movement_squares}
+          showCustomAttack={showAttack && !!pieceData.custom_attack_squares}
           labelStyle="descriptive"
           title="Legend (hover over piece to see):"
         />
