@@ -5,6 +5,30 @@ import API_URL from "../../global/global";
 
 const changelogData = [
   {
+    date: "April 7, 2026",
+    title: "Custom Square Movement & Attack in Piece Wizard",
+    items: [
+      "New feature: Click squares on a grid to define custom movement and attack patterns for your pieces",
+      "Custom square selection available in both Step 2 (Movement) and Step 3 (Attack) of the piece wizard",
+      "Click or drag to paint multiple squares at once — click again to remove",
+      "Custom squares work alongside existing directional, ratio, and step-by-step movement",
+      "'Attacks like movement' automatically copies custom movement squares to attack",
+      "Custom movement squares shown in teal, custom attack squares in warm orange on the preview board",
+      "Custom square legend entries added to the board preview",
+      "Full game engine support — custom squares work in live games, sandbox, piece detail, game detail, and AI matches",
+      "Interactive preview boards: click any highlighted square to watch the piece move there, then the board smoothly re-centers",
+      "Move animation works in piece wizard steps 2 & 3, edit piece wizard, and piece detail page",
+      "Drag-to-move support: click and drag the piece to a highlighted square for a more natural feel",
+      "Piece now pauses briefly on the destination square before the board re-centers",
+      "Movement & Attack preview now shows on Step 1 of piece creation, not just when editing",
+      "Custom square selector grid is now larger and easier to use",
+      "Fixed custom square movement not working in sandbox when placing pieces from the library",
+      "Smoother board re-center animation — fixed jerkiness on short and long moves",
+      "Board now shows phantom edge squares during re-center animation for an infinite board illusion",
+      "Changelog page now paginates after 5 entries to keep the page manageable",
+    ]
+  },
+  {
     date: "April 6, 2026",
     title: "AI Improvements & UI Fixes",
     items: [
@@ -48,6 +72,9 @@ const changelogData = [
       "Computer no longer shuffles the same piece back and forth — prefers developing new pieces",
       "Computer plays stronger openings — favors advancing center pawns two squares and developing pieces",
       "Computer better protects high-value pieces from low-value attackers",
+      "In-game chat is now private between players by default — spectators cannot see messages unless both players enable the public chat toggle",
+      "Chat visibility preference (public/private for spectators) is now saved to your account and remembered for future games",
+      "New 'Allow spectators to view chat' toggle in Preferences under Messaging & Chat",
     ],
   },
   {
@@ -118,9 +145,15 @@ const changelogData = [
   },
 ];
 
+const ENTRIES_PER_PAGE = 5;
+
 const Changelog = () => {
   const [disabled, setDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+
+  const totalPages = Math.ceil(changelogData.length / ENTRIES_PER_PAGE);
+  const pageEntries = changelogData.slice(page * ENTRIES_PER_PAGE, (page + 1) * ENTRIES_PER_PAGE);
 
   useEffect(() => {
     const checkEnabled = async () => {
@@ -166,7 +199,7 @@ const Changelog = () => {
         <p className={styles["subtitle"]}>Recent updates and improvements to GridGrove</p>
       </div>
 
-      {changelogData.map((entry, i) => (
+      {pageEntries.map((entry, i) => (
         <div key={i} className={styles["changelog-entry"]}>
           <div className={styles["entry-date"]}>{entry.date}</div>
           <div className={styles["entry-title"]}>{entry.title}</div>
@@ -177,6 +210,28 @@ const Changelog = () => {
           </ul>
         </div>
       ))}
+
+      {totalPages > 1 && (
+        <div className={styles["pagination"]}>
+          <button
+            className={styles["page-btn"]}
+            disabled={page === 0}
+            onClick={() => setPage(p => p - 1)}
+          >
+            ← Newer
+          </button>
+          <span className={styles["page-info"]}>
+            Page {page + 1} of {totalPages}
+          </span>
+          <button
+            className={styles["page-btn"]}
+            disabled={page >= totalPages - 1}
+            onClick={() => setPage(p => p + 1)}
+          >
+            Older →
+          </button>
+        </div>
+      )}
     </div>
   );
 };
