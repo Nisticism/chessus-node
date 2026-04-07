@@ -2409,6 +2409,48 @@ Join us in revolutionizing chess, one variant at a time.
       console.error('Error adding sound_enabled column:', err.message);
     }
 
+    // Add chat_public_for_spectators column to users (default 0 = private)
+    try {
+      const chatPublicCol = await columnExists('users', 'chat_public_for_spectators');
+      if (!chatPublicCol) {
+        await runMigration(
+          "ALTER TABLE users ADD COLUMN chat_public_for_spectators TINYINT(1) DEFAULT 0 COMMENT 'If true, game chat is visible to spectators by default'",
+          "Add chat_public_for_spectators column to users table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding chat_public_for_spectators column:', err.message);
+    }
+
+    // Add custom_movement_squares column to pieces (JSON for click-to-select custom movement)
+    try {
+      const customMoveCol = await columnExists('pieces', 'custom_movement_squares');
+      if (!customMoveCol) {
+        await runMigration(
+          "ALTER TABLE pieces ADD COLUMN custom_movement_squares TEXT DEFAULT NULL COMMENT 'JSON array of custom movement square offsets [{row,col}]'",
+          "Add custom_movement_squares column to pieces table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding custom_movement_squares column:', err.message);
+    }
+
+    // Add custom_attack_squares column to pieces (JSON for click-to-select custom attack)
+    try {
+      const customAttackCol = await columnExists('pieces', 'custom_attack_squares');
+      if (!customAttackCol) {
+        await runMigration(
+          "ALTER TABLE pieces ADD COLUMN custom_attack_squares TEXT DEFAULT NULL COMMENT 'JSON array of custom attack square offsets [{row,col}]'",
+          "Add custom_attack_squares column to pieces table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding custom_attack_squares column:', err.message);
+    }
+
     // Add parent_id column to comments for threaded replies
     try {
       const parentIdCol = await columnExists('comments', 'parent_id');

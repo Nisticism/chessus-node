@@ -827,7 +827,9 @@ function initializeSocket(server) {
               // Trample & Ghostwalk - junction table values (per-placement overrides)
               trample: piece.trample || fullPieceData.trample,
               trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
-              ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk
+              ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
+              custom_movement_squares: fullPieceData.custom_movement_squares,
+              custom_attack_squares: fullPieceData.custom_attack_squares
             };
           }
           return piece;
@@ -1267,6 +1269,8 @@ function initializeSocket(server) {
               trample: piece.trample || fullPieceData.trample,
               trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
               ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
+              custom_movement_squares: fullPieceData.custom_movement_squares,
+              custom_attack_squares: fullPieceData.custom_attack_squares,
             };
           }
           return piece;
@@ -1646,7 +1650,9 @@ function initializeSocket(server) {
                   // Trample & Ghostwalk - junction table values (per-placement overrides)
                   trample: piece.trample || fullPieceData.trample,
                   trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
-                  ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk
+                  ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
+                  custom_movement_squares: fullPieceData.custom_movement_squares,
+                  custom_attack_squares: fullPieceData.custom_attack_squares
                 };
               }
               return piece;
@@ -3469,6 +3475,8 @@ function initializeSocket(server) {
           trample: fullPieceData.trample,
           trample_radius: fullPieceData.trample_radius,
           ghostwalk: fullPieceData.ghostwalk,
+          custom_movement_squares: fullPieceData.custom_movement_squares,
+          custom_attack_squares: fullPieceData.custom_attack_squares,
           // Reset move tracking for the new piece type
           moveCount: 0,
           hasMoved: false
@@ -3976,7 +3984,9 @@ function initializeSocket(server) {
                     // Trample & Ghostwalk - junction table values (per-placement overrides)
                     trample: piece.trample || fullPieceData.trample,
                     trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
-                    ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk
+                    ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
+                    custom_movement_squares: fullPieceData.custom_movement_squares,
+                    custom_attack_squares: fullPieceData.custom_attack_squares
                   };
                 }
                 return piece;
@@ -4319,6 +4329,42 @@ function initializeSocket(server) {
 
     // ===================== IN-GAME CHAT =====================
 
+    // Toggle chat public visibility for spectators
+    socket.on("toggleChatPublic", async ({ gameId, isPublic }) => {
+      try {
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return;
+
+        const player = gameState.players.find(p => p.id === socket.userId);
+        if (!player) return; // Only players can toggle
+
+        if (!gameState.chatPublic) gameState.chatPublic = {};
+        gameState.chatPublic[socket.userId] = !!isPublic;
+
+        // Persist to user preferences for future games
+        try {
+          await db_pool.query(
+            "UPDATE users SET chat_public_for_spectators = ? WHERE id = ?",
+            [isPublic ? 1 : 0, socket.userId]
+          );
+        } catch (dbErr) {
+          console.error("Error persisting chat_public_for_spectators:", dbErr);
+        }
+
+        // Broadcast the updated chat public state to all in the room
+        const bothPublic = gameState.players.length === 2 &&
+          gameState.players.every(p => gameState.chatPublic[p.id]);
+        io.to(`game-${gameIdStr}`).emit("chatPublicUpdate", {
+          gameId: parseInt(gameId),
+          chatPublic: gameState.chatPublic,
+          bothPublic
+        });
+      } catch (error) {
+        console.error("Error in toggleChatPublic:", error);
+      }
+    });
+
     // Send a chat message in a game
     socket.on("sendGameChat", async ({ gameId, content }) => {
       try {
@@ -4337,8 +4383,8 @@ function initializeSocket(server) {
 
         // Check if either player has chat disabled
         const player = gameState.players.find(p => p.id === socket.userId);
-        if (!player && !gameState.allowSpectators) {
-          return; // Spectators can't chat if spectating isn't allowed
+        if (!player) {
+          return; // Only players can send chat messages
         }
 
         // Check game-level chat disabled (stored in other_data)
@@ -4372,8 +4418,23 @@ function initializeSocket(server) {
           console.error("Error persisting game chat:", dbErr);
         }
 
-        // Broadcast to all in the game room
-        io.to(`game-${gameIdStr}`).emit("gameChatMessage", chatMessage);
+        // Broadcast chat message - only to players unless both have chat public
+        const bothPublic = gameState.chatPublic &&
+          gameState.players.length === 2 &&
+          gameState.players.every(p => gameState.chatPublic[p.id]);
+
+        if (bothPublic) {
+          // Both players opted in - broadcast to everyone in the room
+          io.to(`game-${gameIdStr}`).emit("gameChatMessage", chatMessage);
+        } else {
+          // Send only to player sockets
+          for (const p of gameState.players) {
+            const pSocketId = userSockets.get(p.id?.toString?.() || p.id);
+            if (pSocketId) {
+              io.to(pSocketId).emit("gameChatMessage", chatMessage);
+            }
+          }
+        }
 
         // Notify opponent if they're not in the game room
         if (player) {
@@ -4443,6 +4504,44 @@ function initializeSocket(server) {
     // Request game chat history when joining a game
     socket.on("getGameChatHistory", async ({ gameId }) => {
       try {
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+
+        // Check if spectator and chat is not public
+        if (gameState) {
+          // Auto-initialize chatPublic from user preference if not yet set
+          if (!gameState.chatPublic) gameState.chatPublic = {};
+          const isPlayerInGame = gameState.players.some(p => p.id === socket.userId);
+          if (isPlayerInGame && gameState.chatPublic[socket.userId] === undefined) {
+            try {
+              const [prefRows] = await db_pool.query(
+                "SELECT chat_public_for_spectators FROM users WHERE id = ?",
+                [socket.userId]
+              );
+              if (prefRows && prefRows[0]) {
+                gameState.chatPublic[socket.userId] = !!prefRows[0].chat_public_for_spectators;
+              }
+            } catch (e) { /* default to false */ }
+          }
+
+          if (!isPlayerInGame) {
+            const bothPublic = gameState.chatPublic &&
+              gameState.players.length === 2 &&
+              gameState.players.every(p => gameState.chatPublic[p.id]);
+            if (!bothPublic) {
+              // Spectator and chat not public - send empty history with public state info
+              socket.emit("gameChatHistory", {
+                gameId,
+                messages: [],
+                chatDisabledBy: null,
+                chatPublic: gameState.chatPublic || {},
+                bothPublic: false
+              });
+              return;
+            }
+          }
+        }
+
         const dbHelpers = require("./db-helpers");
         const messages = await dbHelpers.getGameChatMessages(parseInt(gameId));
         const formatted = messages.map(m => ({
@@ -4457,8 +4556,6 @@ function initializeSocket(server) {
 
         // Check if either player has chat disabled
         let chatDisabledBy = null;
-        const gameIdStr = gameId.toString();
-        const gameState = activeGames.get(gameIdStr);
         if (gameState && gameState.players) {
           const playerIds = gameState.players.map(p => p.id).filter(Boolean);
           if (playerIds.length > 0) {
@@ -4475,7 +4572,11 @@ function initializeSocket(server) {
           }
         }
 
-        socket.emit("gameChatHistory", { gameId, messages: formatted, chatDisabledBy });
+        const chatPublicState = gameState?.chatPublic || {};
+        const bothPublicState = gameState && gameState.players.length === 2 &&
+          gameState.players.every(p => chatPublicState[p.id]);
+
+        socket.emit("gameChatHistory", { gameId, messages: formatted, chatDisabledBy, chatPublic: chatPublicState, bothPublic: !!bothPublicState });
       } catch (error) {
         console.error("Error fetching game chat history:", error);
       }
@@ -6934,6 +7035,24 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
     }
   }
 
+  // Custom attack squares
+  if (piece.custom_attack_squares) {
+    try {
+      const customSquares = typeof piece.custom_attack_squares === 'string'
+        ? JSON.parse(piece.custom_attack_squares)
+        : piece.custom_attack_squares;
+      if (Array.isArray(customSquares)) {
+        for (const sq of customSquares) {
+          const offsetX = isPlayer2 ? -sq.col : sq.col;
+          const offsetY = isPlayer2 ? -sq.row : sq.row;
+          if (dx === offsetX && dy === offsetY) {
+            return true;
+          }
+        }
+      }
+    } catch (e) { /* ignore parse errors */ }
+  }
+
   return false;
 }
 
@@ -7315,6 +7434,26 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
         }
       }
     }
+  }
+
+  // Custom movement squares
+  if (piece.custom_movement_squares) {
+    try {
+      const customSquares = typeof piece.custom_movement_squares === 'string'
+        ? JSON.parse(piece.custom_movement_squares)
+        : piece.custom_movement_squares;
+      if (Array.isArray(customSquares)) {
+        // Custom squares are stored as offsets relative to the piece (player 1 perspective)
+        // For player 2, flip the offsets
+        for (const sq of customSquares) {
+          const offsetX = isPlayer2 ? -sq.col : sq.col;
+          const offsetY = isPlayer2 ? -sq.row : sq.row;
+          if (dx === offsetX && dy === offsetY) {
+            return true;
+          }
+        }
+      }
+    } catch (e) { /* ignore parse errors */ }
   }
 
   return false;
@@ -7940,6 +8079,65 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         }
       }
     }
+  }
+  
+  // Custom movement squares
+  if (piece.custom_movement_squares) {
+    try {
+      const customSquares = typeof piece.custom_movement_squares === 'string'
+        ? JSON.parse(piece.custom_movement_squares)
+        : piece.custom_movement_squares;
+      if (Array.isArray(customSquares)) {
+        for (const sq of customSquares) {
+          const offsetX = isPlayer2 ? -sq.col : sq.col;
+          const offsetY = isPlayer2 ? -sq.row : sq.row;
+          const targetX = piece.x + offsetX;
+          const targetY = piece.y + offsetY;
+          if (!isValidSquare(targetX, targetY)) continue;
+          // Check if already in moves
+          if (moves.some(m => m.x === targetX && m.y === targetY)) continue;
+          const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
+          if (targetPiece) {
+            const targetOwner = targetPiece.team || targetPiece.player_id;
+            if (!targetPiece.cannot_be_captured) {
+              if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
+                moves.push({ x: targetX, y: targetY });
+              } else if (targetOwner === pieceOwner && piece.can_capture_allies) {
+                moves.push({ x: targetX, y: targetY });
+              }
+            }
+          } else {
+            moves.push({ x: targetX, y: targetY });
+          }
+        }
+      }
+    } catch (e) { /* ignore parse errors */ }
+  }
+
+  // Custom attack squares (for capture-only custom squares)
+  if (piece.custom_attack_squares) {
+    try {
+      const customSquares = typeof piece.custom_attack_squares === 'string'
+        ? JSON.parse(piece.custom_attack_squares)
+        : piece.custom_attack_squares;
+      if (Array.isArray(customSquares)) {
+        for (const sq of customSquares) {
+          const offsetX = isPlayer2 ? -sq.col : sq.col;
+          const offsetY = isPlayer2 ? -sq.row : sq.row;
+          const targetX = piece.x + offsetX;
+          const targetY = piece.y + offsetY;
+          if (!isValidSquare(targetX, targetY)) continue;
+          if (moves.some(m => m.x === targetX && m.y === targetY)) continue;
+          const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
+          if (targetPiece) {
+            const targetOwner = targetPiece.team || targetPiece.player_id;
+            if (!targetPiece.cannot_be_captured && targetOwner !== pieceOwner) {
+              moves.push({ x: targetX, y: targetY });
+            }
+          }
+        }
+      }
+    } catch (e) { /* ignore parse errors */ }
   }
   
   // Filter out moves where multi-tile piece doesn't fit or overlaps friendly pieces
@@ -8687,6 +8885,8 @@ async function processBotTurn(io, gameId, gameState) {
                   special_scenario_captures: fullPieceData.special_scenario_captures,
                   capture_on_hop: fullPieceData.capture_on_hop,
                   chain_capture_enabled: fullPieceData.chain_capture_enabled,
+                  custom_movement_squares: fullPieceData.custom_movement_squares,
+                  custom_attack_squares: fullPieceData.custom_attack_squares,
                   ends_game_on_checkmate: piece.ends_game_on_checkmate,
                   ends_game_on_capture: piece.ends_game_on_capture,
                   moveCount: 0,

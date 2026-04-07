@@ -4081,8 +4081,9 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
         capture_on_hop, chain_capture_enabled, free_move_after_promotion, promotion_pieces_ids,
         can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies,
         can_capture_allies, cannot_be_captured, max_chain_hops,
+        custom_movement_squares, custom_attack_squares,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceValues = [
@@ -4242,6 +4243,9 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
       parseBooleanField(pieceData.cannot_be_captured),
       // Max chain hops
       pieceData.max_chain_hops != null ? parseInt(pieceData.max_chain_hops) : null,
+      // Custom movement/attack squares
+      pieceData.custom_movement_squares || null,
+      pieceData.custom_attack_squares || null,
       // Created at
       new Date().toISOString().slice(0, 19).replace('T', ' ')
     ];
@@ -4483,7 +4487,9 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
         chain_hop_allies = ?,
         can_capture_allies = ?,
         cannot_be_captured = ?,
-        max_chain_hops = ?
+        max_chain_hops = ?,
+        custom_movement_squares = ?,
+        custom_attack_squares = ?
       WHERE id = ?
     `;
 
@@ -4641,6 +4647,9 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       parseBooleanField(pieceData.cannot_be_captured),
       // Max chain hops
       pieceData.max_chain_hops != null ? parseInt(pieceData.max_chain_hops) : null,
+      // Custom movement/attack squares
+      pieceData.custom_movement_squares || null,
+      pieceData.custom_attack_squares || null,
       pieceId
     ];
 
@@ -5833,7 +5842,7 @@ app.put("/api/users/:userId/messaging-preferences", authenticateToken, async (re
     if (req.user.id !== userId) {
       return res.status(403).json({ error: "Unauthorized" });
     }
-    const { allow_non_friend_dms, disable_game_chat, sound_enabled } = req.body;
+    const { allow_non_friend_dms, disable_game_chat, sound_enabled, chat_public_for_spectators } = req.body;
     const updates = [];
     const values = [];
     if (allow_non_friend_dms !== undefined) {
@@ -5847,6 +5856,10 @@ app.put("/api/users/:userId/messaging-preferences", authenticateToken, async (re
     if (sound_enabled !== undefined) {
       updates.push("sound_enabled = ?");
       values.push(sound_enabled ? 1 : 0);
+    }
+    if (chat_public_for_spectators !== undefined) {
+      updates.push("chat_public_for_spectators = ?");
+      values.push(chat_public_for_spectators ? 1 : 0);
     }
     if (updates.length === 0) {
       return res.status(400).json({ error: "No preferences to update" });

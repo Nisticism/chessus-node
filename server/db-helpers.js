@@ -292,7 +292,9 @@ const getAllPiecesWithMovement = async () => {
       p.can_fire_over_allies,
       p.can_fire_over_enemies,
       p.can_capture_allies,
-      p.cannot_be_captured
+      p.cannot_be_captured,
+      p.custom_movement_squares,
+      p.custom_attack_squares
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     ORDER BY p.id DESC
@@ -451,6 +453,8 @@ const getPieceById = async (pieceId) => {
       p.promotion_pieces_ids,
       p.can_capture_allies,
       p.cannot_be_captured,
+      p.custom_movement_squares,
+      p.custom_attack_squares,
       p.created_at
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
