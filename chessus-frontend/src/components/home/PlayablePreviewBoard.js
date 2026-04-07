@@ -142,6 +142,7 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
           pieceData, playerPosition, boardHeight, false
         );
         const canMove = moveResult?.allowed || moveResult === true;
+        const isMoveCustomOnly = canMove && !!moveResult?.isCustomOnly;
         
         // Check if can capture there
         const captureResult = canCaptureOnMoveToUtil(
@@ -149,12 +150,14 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
           pieceData, playerPosition, boardHeight, false
         );
         const canCapture = captureResult?.allowed || captureResult === true;
+        const isCaptureCustomOnly = canCapture && !!captureResult?.isCustomOnly;
         
         // Can move to empty square, or capture enemy piece
         if ((canMove && !targetPiece) || (canCapture && targetPiece)) {
-          // Check if path is clear (for sliding pieces)
-          if (isPathClear(piece.y, piece.x, row, col)) {
-            moves.push({ row, col, isCapture: !!targetPiece });
+          // Custom square moves are direct jumps — skip path check
+          const isCustomOnly = (canMove && !targetPiece) ? isMoveCustomOnly : isCaptureCustomOnly;
+          if (isCustomOnly || isPathClear(piece.y, piece.x, row, col)) {
+            moves.push({ row, col, isCapture: !!targetPiece, isCustomMove: isMoveCustomOnly, isCustomAttack: isCaptureCustomOnly });
           }
         }
       }
@@ -338,8 +341,11 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
         
         // Add highlight for valid moves
         if (isValidMove) {
+          const moveObj = validMoves.find(m => m.row === row && m.col === col) || dragValidMoves.find(m => m.row === row && m.col === col);
+          const isCustomMove = !isCaptureMove && !!moveObj?.isCustomMove;
+          const isCustomAttack = isCaptureMove && !!moveObj?.isCustomAttack;
           const { style } = getSquareHighlightStyle(
-            true, false, isCaptureMove, false, false, isLight
+            true, false, isCaptureMove, false, false, isLight, isCustomMove, isCustomAttack
           );
           squareStyle = { ...squareStyle, ...style };
         }

@@ -830,7 +830,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           captureInfo.allowed,
           captureInfo.isFirstMoveOnly,
           canRanged,
-          isLight
+          isLight,
+          moveInfo.isCustomOnly || false,
+          captureInfo.isCustomOnly || false
         );
         
         // Highlight is rendered as a separate overlay via SquareHighlightOverlay

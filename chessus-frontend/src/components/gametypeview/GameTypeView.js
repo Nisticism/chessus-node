@@ -1172,7 +1172,9 @@ const GameTypeView = () => {
           captureInfo.allowed,
           captureInfo.isFirstMoveOnly,
           canRanged,
-          isLight
+          isLight,
+          moveInfo.isCustomOnly || false,
+          captureInfo.isCustomOnly || false
         );
         
         board.push(

@@ -162,6 +162,10 @@ const Preferences = () => {
     return currentUser?.sound_enabled === 1 || currentUser?.sound_enabled === true;
   });
 
+  const [chatPublicForSpectators, setChatPublicForSpectators] = useState(() => {
+    return currentUser?.chat_public_for_spectators === 1 || currentUser?.chat_public_for_spectators === true;
+  });
+
   const [pieceShadow, setPieceShadow] = useState(() => {
     return localStorage.getItem('pieceShadow') === 'true';
   });
@@ -233,6 +237,7 @@ const Preferences = () => {
           allow_non_friend_dms: allowNonFriendDMs,
           disable_game_chat: disableGameChat,
           sound_enabled: soundEnabled,
+          chat_public_for_spectators: chatPublicForSpectators,
         },
         { headers: authHeader() }
       );
@@ -246,6 +251,7 @@ const Preferences = () => {
         allow_non_friend_dms: allowNonFriendDMs ? 1 : 0,
         disable_game_chat: disableGameChat ? 1 : 0,
         sound_enabled: soundEnabled ? 1 : 0,
+        chat_public_for_spectators: chatPublicForSpectators ? 1 : 0,
       };
       localStorage.setItem("user", JSON.stringify(updatedUser));
       
@@ -616,6 +622,17 @@ const Preferences = () => {
                   type="checkbox"
                   checked={disableGameChat}
                   onChange={(e) => setDisableGameChat(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Allow spectators to view chat <InfoTooltip text="When enabled, spectators can see your in-game chat messages. Both players must enable this for spectators to see the chat." /></span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={chatPublicForSpectators}
+                  onChange={(e) => setChatPublicForSpectators(e.target.checked)}
                 />
                 <span className={styles["toggle-slider"]} />
               </div>

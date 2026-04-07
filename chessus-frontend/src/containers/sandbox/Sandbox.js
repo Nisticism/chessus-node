@@ -595,6 +595,9 @@ const Sandbox = () => {
       free_move_after_promotion: pieceData.free_move_after_promotion,
       can_capture_allies: pieceData.can_capture_allies,
       cannot_be_captured: pieceData.cannot_be_captured,
+      // Custom square movement/attack
+      custom_movement_squares: pieceData.custom_movement_squares,
+      custom_attack_squares: pieceData.custom_attack_squares,
     };
 
     setSandboxes(prev => prev.map(s => {
@@ -952,7 +955,7 @@ const Sandbox = () => {
 
   // Check if piece can move to a square
   // skipExactRatio: when true, skip exact directional and ratio checks (for hop-only validation)
-  const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false) => {
+  const canPieceMoveTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false, skipCustom = false) => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
@@ -1068,12 +1071,28 @@ const Sandbox = () => {
       }
     }
 
+    // Check custom movement squares
+    if (!skipCustom && pieceData.custom_movement_squares) {
+      try {
+        const customSquares = typeof pieceData.custom_movement_squares === 'string'
+          ? JSON.parse(pieceData.custom_movement_squares)
+          : pieceData.custom_movement_squares;
+        if (Array.isArray(customSquares)) {
+          for (const sq of customSquares) {
+            if (rowDiff === sq.row && colDiff === sq.col) {
+              return true;
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
     return false;
   }, []);
 
   // Check if piece can capture on a square
   // skipExactRatio: when true, skip exact directional and ratio checks (for hop-only validation)
-  const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false) => {
+  const canPieceCaptureTo = useCallback((fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio = false, skipCustom = false) => {
     if (!pieceData) return false;
     if (fromX === toX && fromY === toY) return false;
 
@@ -1198,7 +1217,23 @@ const Sandbox = () => {
 
     // If piece can capture where it moves AND has no separate capture fields, also check movement as fallback
     if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
-      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
+      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio, skipCustom);
+    }
+
+    // Check custom attack squares
+    if (!skipCustom && pieceData.custom_attack_squares) {
+      try {
+        const customSquares = typeof pieceData.custom_attack_squares === 'string'
+          ? JSON.parse(pieceData.custom_attack_squares)
+          : pieceData.custom_attack_squares;
+        if (Array.isArray(customSquares)) {
+          for (const sq of customSquares) {
+            if (rowDiff === sq.row && colDiff === sq.col) {
+              return true;
+            }
+          }
+        }
+      } catch { /* ignore */ }
     }
 
     return false;
@@ -1363,6 +1398,18 @@ const Sandbox = () => {
           }
         }
 
+        // Check if this is a custom-square-only move (direct jump, no path check needed)
+        let isCustomSquareMove = false;
+        if (isValidMove) {
+          const hasCustom = isCapture ? piece.custom_attack_squares : piece.custom_movement_squares;
+          if (hasCustom) {
+            const standardValid = isCapture
+              ? canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam, false, true)
+              : canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam, false, true);
+            if (!standardValid) isCustomSquareMove = true;
+          }
+        }
+
         const isStepMove = isMultiTile
           ? (() => {
               for (let dy = 0; dy < ph; dy++) {
@@ -1441,7 +1488,10 @@ const Sandbox = () => {
         })();
 
         let pathClear = false;
-        if (isStepMove) {
+        if (isCustomSquareMove) {
+          // Custom square moves are direct jumps — no path obstruction
+          pathClear = true;
+        } else if (isStepMove) {
           pathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, isCapture);
         } else if (isMultiTile) {
           // For multi-tile, check path from ALL sub-squares to their destination sub-squares
@@ -1587,7 +1637,11 @@ const Sandbox = () => {
             ? checkIfFirstMoveOnlyCapture(piece, piece.x, piece.y, toX, toY, pieceTeam)
             : checkIfFirstMoveOnlyMove(piece, piece.x, piece.y, toX, toY, pieceTeam);
           
-          moves.push({ x: toX, y: toY, isCapture: isCapture || isHopCapture, isHopCapture, hopCapturedPieceIds, isFirstMoveOnly, isRangedAttack: false });
+          // Use already-computed custom square detection
+          const isCustomMove = !isCapture && !isHopCapture && isCustomSquareMove;
+          const isCustomAttack = (isCapture || isHopCapture) && isCustomSquareMove;
+          
+          moves.push({ x: toX, y: toY, isCapture: isCapture || isHopCapture, isHopCapture, hopCapturedPieceIds, isFirstMoveOnly, isCustomMove, isCustomAttack, isRangedAttack: false });
         }
       }
     }
@@ -2051,15 +2105,36 @@ const Sandbox = () => {
         if (tx >= piece.x && tx < piece.x + hpw && ty >= piece.y && ty < piece.y + hph) continue;
 
         let canMove = false, canCapture = false, canRanged = false, canHopCapture = false;
+        let isCustomMove = false, isCustomAttack = false;
         for (let dr = 0; dr < hph && !canMove; dr++) {
           for (let dc = 0; dc < hpw && !canMove; dc++) {
             if (canPieceMoveTo(piece.x + dc, piece.y + dr, tx, ty, piece, hTeam)) canMove = true;
           }
         }
+        // Check if move is custom-only (not reachable by standard movement)
+        if (canMove && piece.custom_movement_squares) {
+          let standardMove = false;
+          for (let dr = 0; dr < hph && !standardMove; dr++) {
+            for (let dc = 0; dc < hpw && !standardMove; dc++) {
+              if (canPieceMoveTo(piece.x + dc, piece.y + dr, tx, ty, piece, hTeam, false, true)) standardMove = true;
+            }
+          }
+          if (!standardMove) isCustomMove = true;
+        }
         for (let dr = 0; dr < hph && !canCapture; dr++) {
           for (let dc = 0; dc < hpw && !canCapture; dc++) {
             if (canPieceCaptureTo(piece.x + dc, piece.y + dr, tx, ty, piece, hTeam)) canCapture = true;
           }
+        }
+        // Check if capture is custom-only
+        if (canCapture && piece.custom_attack_squares) {
+          let standardCapture = false;
+          for (let dr = 0; dr < hph && !standardCapture; dr++) {
+            for (let dc = 0; dc < hpw && !standardCapture; dc++) {
+              if (canPieceCaptureTo(piece.x + dc, piece.y + dr, tx, ty, piece, hTeam, false, true)) standardCapture = true;
+            }
+          }
+          if (!standardCapture) isCustomAttack = true;
         }
         if (piece.can_capture_enemy_via_range) {
           for (let dr = 0; dr < hph && !canRanged; dr++) {
@@ -2077,7 +2152,7 @@ const Sandbox = () => {
         }
 
         if (canMove || canCapture || canRanged || canHopCapture) {
-          highlights[`${tx},${ty}`] = { canMove, canCapture, canRanged, canHopCapture };
+          highlights[`${tx},${ty}`] = { canMove, canCapture, canRanged, canHopCapture, isCustomMove, isCustomAttack };
         }
       }
     }
@@ -2392,9 +2467,11 @@ const Sandbox = () => {
         const selMoveFirstOnly = selCanMove && !!regularMove.isFirstMoveOnly;
         const selCanCapture = !!(regularMove && regularMove.isCapture);
         const selCaptureFirstOnly = selCanCapture && !!regularMove.isFirstMoveOnly;
+        const selIsCustomMove = selCanMove && !!regularMove.isCustomMove;
+        const selIsCustomAttack = selCanCapture && !!regularMove.isCustomAttack;
         const selCanRanged = isRangedMove || isRangedDragTarget;
         const { style: selHighlightStyle, icon: selHighlightIcon } = (selCanMove || selCanCapture || selCanRanged)
-          ? getSquareHighlightStyle(selCanMove, selMoveFirstOnly, selCanCapture, selCaptureFirstOnly, selCanRanged, isLight)
+          ? getSquareHighlightStyle(selCanMove, selMoveFirstOnly, selCanCapture, selCaptureFirstOnly, selCanRanged, isLight, selIsCustomMove, selIsCustomAttack)
           : { style: {}, icon: null };
 
         // Compute overlay highlight style for hovered piece (independent per-square checks, like GameTypeView)
@@ -2402,8 +2479,10 @@ const Sandbox = () => {
         const hovCanCapture = !!hovHighlight?.canCapture;
         const hovCanRanged = !!hovHighlight?.canRanged;
         const hovCanHopCapture = !!hovHighlight?.canHopCapture;
+        const hovIsCustomMove = !!hovHighlight?.isCustomMove;
+        const hovIsCustomAttack = !!hovHighlight?.isCustomAttack;
         const { style: hovHighlightStyle, icon: hovHighlightIcon } = (hovCanMove || hovCanCapture || hovCanRanged)
-          ? getSquareHighlightStyle(hovCanMove, false, hovCanCapture, false, hovCanRanged, isLight)
+          ? getSquareHighlightStyle(hovCanMove, false, hovCanCapture, false, hovCanRanged, isLight, hovIsCustomMove, hovIsCustomAttack)
           : { style: {}, icon: null };
 
         // Use selected piece highlights if active, otherwise use hovered piece highlights
