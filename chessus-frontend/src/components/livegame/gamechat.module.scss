@@ -11,8 +11,8 @@
   border: 1px solid var(--border-subtle, #1a3d2b);
   border-radius: 8px;
   background: var(--bg-card, #0f261a);
-  overflow: hidden;
   cursor: text;
+  position: relative;
 }
 
 .chat-header {
@@ -28,6 +28,9 @@
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 10;
 
   &:hover {
     background: var(--bg-hover, #142e1f);
@@ -76,7 +79,9 @@
   padding: 6px 10px;
   font-size: 0.68rem;
   font-weight: 400;
-  white-space: nowrap;
+  white-space: normal;
+  width: max-content;
+  max-width: 220px;
   z-index: 100;
   pointer-events: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);

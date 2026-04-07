@@ -146,6 +146,7 @@ const GameChat = ({ gameId, currentUser, gameState, isPlayer, onUpdatePreference
                 onClick={handleTogglePublic}
                 role="button"
                 tabIndex={0}
+                title={myPublic ? "Spectators can see your chat. Click to disable." : "Spectators cannot see chat. Click to allow."}
               >
                 👁
                 <span className={styles["chat-tooltip"]}>
@@ -176,6 +177,7 @@ const GameChat = ({ gameId, currentUser, gameState, isPlayer, onUpdatePreference
               onClick={handleTogglePublic}
               role="button"
               tabIndex={0}
+              title={myPublic ? "Spectators can see your chat. Click to disable." : "Spectators cannot see chat. Click to allow."}
             >
               👁
               <span className={styles["chat-tooltip"]}>
