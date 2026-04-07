@@ -4509,10 +4509,11 @@ function initializeSocket(server) {
 
         // Check if spectator and chat is not public
         if (gameState) {
-          // Auto-initialize chatPublic from user preference if not yet set
+          // Always refresh chatPublic from user preference in DB
+          // so changes made on the Preferences page take effect immediately
           if (!gameState.chatPublic) gameState.chatPublic = {};
           const isPlayerInGame = gameState.players.some(p => p.id === socket.userId);
-          if (isPlayerInGame && gameState.chatPublic[socket.userId] === undefined) {
+          if (isPlayerInGame) {
             try {
               const [prefRows] = await db_pool.query(
                 "SELECT chat_public_for_spectators FROM users WHERE id = ?",
@@ -4521,7 +4522,16 @@ function initializeSocket(server) {
               if (prefRows && prefRows[0]) {
                 gameState.chatPublic[socket.userId] = !!prefRows[0].chat_public_for_spectators;
               }
-            } catch (e) { /* default to false */ }
+            } catch (e) { /* default to existing value */ }
+
+            // Broadcast updated state so the other player sees the change too
+            const bp = gameState.players.length === 2 &&
+              gameState.players.every(p => gameState.chatPublic[p.id]);
+            io.to(`game-${gameIdStr}`).emit("chatPublicUpdate", {
+              gameId: parseInt(gameId),
+              chatPublic: gameState.chatPublic,
+              bothPublic: !!bp
+            });
           }
 
           if (!isPlayerInGame) {
