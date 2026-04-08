@@ -1,4 +1,24 @@
 /**
+ * Parse a date string from the server, treating timezone-naive strings as UTC.
+ * MySQL with dateStrings:true returns dates like "2026-04-08 00:30:00" which
+ * JavaScript's Date constructor would incorrectly parse as local time.
+ * This ensures they're treated as UTC so toLocaleString() converts correctly.
+ * @param {string|Date} dateStr - The date string or Date object
+ * @returns {Date|null} A Date object, or null if input is falsy
+ */
+export function parseServerDate(dateStr) {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
+  const trimmed = String(dateStr).trim();
+  // If already has timezone info (ends with Z, or has +/- offset), parse as-is
+  if (/Z$/i.test(trimmed) || /[+-]\d{2}:\d{2}$/.test(trimmed)) {
+    return new Date(trimmed);
+  }
+  // Treat as UTC by replacing space with T and appending Z
+  return new Date(trimmed.replace(' ', 'T') + 'Z');
+}
+
+/**
  * Formats a date string or Date object to the user's local time
  * @param {string|Date} date - The date to format (can be ISO string, date string, or Date object)
  * @param {Object} options - Formatting options
@@ -16,8 +36,8 @@ export function formatDate(date, options = {}) {
 
   if (!date) return '';
 
-  // Convert to Date object if it's a string
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  // Convert to Date object, treating server strings as UTC
+  const dateObj = parseServerDate(date);
 
   // Check if valid date
   if (isNaN(dateObj.getTime())) {
@@ -93,7 +113,7 @@ function formatRelativeTime(date) {
 export function formatDateLegacy(date) {
   if (!date) return '';
 
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  const dateObj = parseServerDate(date);
   
   if (isNaN(dateObj.getTime())) {
     return 'Invalid Date';
@@ -137,12 +157,12 @@ export function formatDateTime(date) {
  */
 export function getCurrentMySQLDateTime() {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(now.getUTCDate()).padStart(2, '0');
+  const hours = String(now.getUTCHours()).padStart(2, '0');
+  const minutes = String(now.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(now.getUTCSeconds()).padStart(2, '0');
   
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }

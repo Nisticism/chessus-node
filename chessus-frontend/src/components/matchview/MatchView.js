@@ -7,6 +7,7 @@ import API_URL from "../../global/global";
 import { colToFile, rowToRank, formatMoveNotation, replayToMove } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import { parseServerDate } from "../../helpers/date-formatter";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 
@@ -71,7 +72,7 @@ const MatchView = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    const date = new Date(dateString);
+    const date = parseServerDate(dateString);
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
       month: 'long',
@@ -494,7 +495,7 @@ const MatchView = () => {
                   <span className={styles["chat-history-sender"]}>{msg.sender_username}:</span>
                   <span className={styles["chat-history-text"]}>{msg.content}</span>
                   <span className={styles["chat-history-time"]}>
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {parseServerDate(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </div>
               ))}

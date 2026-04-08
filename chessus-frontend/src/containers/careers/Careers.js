@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import styles from './careers.module.scss';
 import StandardButton from '../../components/standardbutton/StandardButton';
 import API_URL from '../../global/global';
+import { parseServerDate } from '../../helpers/date-formatter';
 
 const Careers = () => {
   const [jobs, setJobs] = useState([]);
@@ -71,7 +72,7 @@ const Careers = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return parseServerDate(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'

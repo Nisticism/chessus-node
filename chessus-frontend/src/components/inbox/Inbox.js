@@ -13,12 +13,14 @@ import { useSocket } from "../../contexts/SocketContext";
 import axios from "axios";
 import authHeader from "../../services/auth-header";
 import styles from "./inbox.module.scss";
+import { parseServerDate } from "../../helpers/date-formatter";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 
 const formatTimeAgo = (dateStr) => {
-  const date = new Date(dateStr);
+  const date = parseServerDate(dateStr);
+  if (!date) return '';
   const now = new Date();
   const seconds = Math.floor((now - date) / 1000);
   if (seconds < 60) return "just now";

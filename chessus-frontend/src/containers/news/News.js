@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import styles from "./news.module.scss";
 import { news, deleteNews } from "../../actions/news";
+import { parseServerDate } from "../../helpers/date-formatter";
 const News = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allNews = useSelector((state) => state.news);
@@ -71,7 +72,7 @@ const News = () => {
                     </h2>
                     <div className={styles["article-meta"]}>
                       <span className={styles["article-date"]}>
-                        Posted {new Date(newsItem.date_published).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} by{' '}
+                        Posted {parseServerDate(newsItem.date_published).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} by{' '}
                         <Link to={`/profile/${newsItem.author}`} className={styles["author-link"]}>{newsItem.author}</Link>
                       </span>
                       {newsItem.source_name && (

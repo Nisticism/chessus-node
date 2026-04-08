@@ -13,6 +13,7 @@ import {
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import { parseServerDate } from "../../helpers/date-formatter";
 import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
@@ -1426,7 +1427,7 @@ const GameTypeView = () => {
         {game.creator_username && (
           <p className={styles["creator"]}>
             Created by {game.creator_username === 'Anonymous' ? 'Anonymous' : <Link to={`/profile/${game.creator_username}`}>{game.creator_username}</Link>}
-            {game.created_at && ` on ${new Date(game.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`}
+            {game.created_at && ` on ${parseServerDate(game.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`}
           </p>
         )}
         

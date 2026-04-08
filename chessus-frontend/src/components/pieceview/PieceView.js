@@ -6,6 +6,7 @@ import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import Pagination from "../pagination/Pagination";
 import styles from "./pieceview.module.scss";
+import { parseServerDate } from "../../helpers/date-formatter";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -530,7 +531,7 @@ const PieceView = () => {
               <p className={styles["creator"]}>
                 Created by {pieceToDisplay.creator_username === 'Anonymous' ? 'Anonymous' : <Link to={`/profile/${pieceToDisplay.creator_username}`}>{pieceToDisplay.creator_username}</Link>}
                 {pieceToDisplay.created_at && (
-                  <> on {new Date(pieceToDisplay.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</>
+                  <> on {parseServerDate(pieceToDisplay.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</>
                 )}
               </p>
             )}

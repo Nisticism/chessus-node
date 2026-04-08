@@ -8,6 +8,7 @@ import {
   updateTournamentPlaceholder
 } from "../../services/tournament-service";
 import styles from "./tournaments.module.scss";
+import { parseServerDate } from "../../helpers/date-formatter";
 
 const FORMATS = [
   { value: "single_elimination", label: "Single Elimination" },
@@ -59,7 +60,7 @@ const formatDateTime = (value) => {
     return "Not scheduled";
   }
 
-  const parsed = new Date(value);
+  const parsed = parseServerDate(value);
   if (Number.isNaN(parsed.getTime())) {
     return "Not scheduled";
   }
@@ -72,7 +73,7 @@ const toDateTimeLocalValue = (value) => {
     return "";
   }
 
-  const parsed = new Date(value);
+  const parsed = parseServerDate(value);
   if (Number.isNaN(parsed.getTime())) {
     return "";
   }

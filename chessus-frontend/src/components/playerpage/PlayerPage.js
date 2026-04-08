@@ -13,6 +13,7 @@ import Divider from "../Divider/Divider";
 import DonorBadge from "../DonorBadge/DonorBadge";
 import MatchHistory from "../matchhistory/MatchHistory";
 import OngoingGames from "../ongoinggames/OngoingGames";
+import { parseServerDate } from "../../helpers/date-formatter";
 import FriendsList from "../friendslist/FriendsList";
 import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests } from "../../actions/friends";
 import { useSocket } from "../../contexts/SocketContext";
@@ -629,7 +630,7 @@ const PlayerPage = (props) => {
                 <div className={styles["last-active-display"]}>
                   <span className={styles["last-active-label"]}>Last Active:</span>
                   <span className={styles["last-active-value"]}>
-                    {new Date(playerPageUser.last_active_at).toLocaleDateString(undefined, {
+                    {parseServerDate(playerPageUser.last_active_at).toLocaleDateString(undefined, {
                       year: 'numeric',
                       month: 'short',
                       day: 'numeric'
@@ -667,7 +668,7 @@ const PlayerPage = (props) => {
                       <span className={styles["info-label"]}>Last Active</span>
                       <span className={styles["info-value"]}>
                         {currentUser.last_active_at 
-                          ? new Date(currentUser.last_active_at).toLocaleDateString(undefined, {
+                          ? parseServerDate(currentUser.last_active_at).toLocaleDateString(undefined, {
                               year: 'numeric',
                               month: 'short',
                               day: 'numeric',

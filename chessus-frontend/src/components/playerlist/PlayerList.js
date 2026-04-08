@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { users } from "../../actions/users";
 import Pagination from "../pagination/Pagination";
 import styles from "../../styles/list-view.module.scss";
+import { parseServerDate } from "../../helpers/date-formatter";
 
 const getRoleBadge = (role) => {
   const roleLower = role?.toLowerCase();
@@ -219,7 +220,7 @@ const PlayerList = () => {
                   <div className={styles["meta-row"]}>
                     <span className={styles["label"]}>Last Active:</span>
                     <span style={{ color: '#888' }}>
-                      {new Date(user.last_active_at).toLocaleDateString()}
+                      {parseServerDate(user.last_active_at).toLocaleDateString()}
                     </span>
                   </div>
                 )}

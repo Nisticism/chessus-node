@@ -10,6 +10,7 @@ import {
 } from "../../actions/notifications";
 import { acceptFriendRequest, declineFriendRequest } from "../../actions/friends";
 import styles from "./notifications.module.scss";
+import { parseServerDate } from "../../helpers/date-formatter";
 
 const NOTIFICATION_ICONS = {
   friend_request: "👥",
@@ -21,7 +22,8 @@ const NOTIFICATION_ICONS = {
 };
 
 const formatTimeAgo = (dateStr) => {
-  const date = new Date(dateStr);
+  const date = parseServerDate(dateStr);
+  if (!date) return '';
   const now = new Date();
   const seconds = Math.floor((now - date) / 1000);
 

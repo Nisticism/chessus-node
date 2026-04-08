@@ -6,7 +6,7 @@ import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import styles from "./admin-dashboard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
-import { formatDateTime } from "../../helpers/date-formatter";
+import { formatDateTime, parseServerDate } from "../../helpers/date-formatter";
 
 const AdminDashboard = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -563,7 +563,7 @@ const AdminDashboard = () => {
                     BANNED
                     {user.ban_expires_at && (
                       <span style={{ fontSize: '0.8em', display: 'block' }}>
-                        Until {new Date(user.ban_expires_at).toLocaleDateString()}
+                        Until {parseServerDate(user.ban_expires_at).toLocaleDateString()}
                       </span>
                     )}
                   </span>

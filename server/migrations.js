@@ -50,7 +50,7 @@ const getColumnType = async (tableName, columnName) => {
 const runMigration = async (sql, description) => {
   try {
     await db_pool.query(sql);
-    console.log(`âœ“ ${description}`);
+    console.log(`✓ ${description}`);
   } catch (err) {
     console.error(`Migration failed: ${description}`, err.message);
     throw err;
@@ -532,7 +532,7 @@ const migrations = [
  * Run all pending migrations
  */
 const runMigrations = async () => {
-  console.log('\nðŸ” Checking for pending migrations...\n');
+  console.log('\n🔍 Checking for pending migrations...\n');
   
   let migrationsRun = 0;
   
@@ -820,7 +820,7 @@ const runMigrations = async () => {
 
 What is GridGrove?
 
-GridGrove is not just another chess platformâ€”it\\'s a complete chess variant creation and playing system that puts the power of game design in your hands. Whether you\\'re a chess enthusiast looking to explore new strategic possibilities or a game designer wanting to experiment with novel mechanics, GridGrove provides the tools you need.
+GridGrove is not just another chess platform—it\\'s a complete chess variant creation and playing system that puts the power of game design in your hands. Whether you\\'re a chess enthusiast looking to explore new strategic possibilities or a game designer wanting to experiment with novel mechanics, GridGrove provides the tools you need.
 
 Key Features:
 
@@ -860,7 +860,7 @@ Ready to explore the world of chess variants? Create your account, design your f
 
 Join us in revolutionizing chess, one variant at a time.
 
-â€” The GridGrove Team',
+— The GridGrove Team',
             NOW(),
             'Announcement',
             1,
@@ -891,7 +891,7 @@ Join us in revolutionizing chess, one variant at a time.
       await db_pool.query(
         `ALTER TABLE piece_movement ADD COLUMN first_move_only TINYINT(1) DEFAULT 0 AFTER repeating_movement`
       );
-      console.log('âœ“ Added first_move_only column to piece_movement table');
+      console.log('✓ Added first_move_only column to piece_movement table');
       migrationsRun++;
     }
   } catch (err) {
@@ -911,7 +911,7 @@ Join us in revolutionizing chess, one variant at a time.
       await db_pool.query(
         `ALTER TABLE piece_capture ADD COLUMN first_move_only_capture TINYINT(1) DEFAULT 0 AFTER can_attack_on_iteration`
       );
-      console.log('âœ“ Added first_move_only_capture column to piece_capture table');
+      console.log('✓ Added first_move_only_capture column to piece_capture table');
       migrationsRun++;
     }
   } catch (err) {
@@ -944,7 +944,7 @@ Join us in revolutionizing chess, one variant at a time.
         await db_pool.query(
           `ALTER TABLE piece_movement ADD COLUMN ${colName} TINYINT(1) DEFAULT 0`
         );
-        console.log(`âœ“ Added ${colName} column to piece_movement table`);
+        console.log(`✓ Added ${colName} column to piece_movement table`);
         migrationsRun++;
       }
     } catch (err) {
@@ -978,7 +978,7 @@ Join us in revolutionizing chess, one variant at a time.
         await db_pool.query(
           `ALTER TABLE piece_movement ADD COLUMN ${colName} INT UNSIGNED NULL`
         );
-        console.log(`âœ“ Added ${colName} column to piece_movement table`);
+        console.log(`✓ Added ${colName} column to piece_movement table`);
         migrationsRun++;
       }
     } catch (err) {
@@ -1012,7 +1012,7 @@ Join us in revolutionizing chess, one variant at a time.
         await db_pool.query(
           `ALTER TABLE piece_capture ADD COLUMN ${colName} TINYINT(1) DEFAULT 0`
         );
-        console.log(`âœ“ Added ${colName} column to piece_capture table`);
+        console.log(`✓ Added ${colName} column to piece_capture table`);
         migrationsRun++;
       }
     } catch (err) {
@@ -1046,7 +1046,7 @@ Join us in revolutionizing chess, one variant at a time.
         await db_pool.query(
           `ALTER TABLE piece_capture ADD COLUMN ${colName} INT UNSIGNED NULL`
         );
-        console.log(`âœ“ Added ${colName} column to piece_capture table`);
+        console.log(`✓ Added ${colName} column to piece_capture table`);
         migrationsRun++;
       }
     } catch (err) {
@@ -1068,7 +1068,7 @@ Join us in revolutionizing chess, one variant at a time.
       await db_pool.query(
         `ALTER TABLE pieces ADD COLUMN can_castle TINYINT(1) DEFAULT 0`
       );
-      console.log('âœ“ Added can_castle column to pieces table');
+      console.log('✓ Added can_castle column to pieces table');
       migrationsRun++;
     }
   } catch (err) {
@@ -1178,7 +1178,7 @@ Join us in revolutionizing chess, one variant at a time.
             ${authorUser.id},
             'Software Developer - Full Stack',
             'Join our team building the future of strategic board games. Work with React, Node.js, and SQL to create an innovative chess variant platform.',
-            '**Position: Software Developer - Full Stack**\\n\\n**Location:** Remote\\n\\n**About GridGrove**\\n\\nGridGrove is revolutionizing the world of strategic board games by creating a platform where players can design, share, and play custom chess variants with unlimited possibilities. We\\'re building more than just a chess platformâ€”we\\'re creating a complete game design ecosystem.\\n\\n**The Role**\\n\\nWe\\'re looking for a passionate full-stack developer to join our team and help shape the future of GridGrove. You\\'ll work on both frontend and backend features, implement complex game logic, and help build tools that empower game designers and players worldwide.\\n\\n**Required Skills & Technologies**\\n\\n- **Frontend:** React 18+, Redux, HTML5, CSS3/SCSS\\n- **Backend:** Node.js, Express\\n- **Database:** MySQL, SQL query optimization\\n- **Real-time:** Socket.io for live multiplayer functionality\\n- **Version Control:** Git\\n\\n**Nice to Have**\\n\\n- Experience with AI-assisted coding tools (GitHub Copilot, ChatGPT, Claude, etc.)\\n- Passion for chess, board games, or strategic games\\n- Experience with game development or complex state management\\n- Understanding of ELO rating systems\\n- Payment integration experience (Stripe, PayPal)\\n- Analytics implementation (Google Analytics)\\n\\n**What You\\'ll Work On**\\n\\n- Implementing new game mechanics and piece abilities\\n- Building intuitive game creation and editing tools\\n- Developing real-time multiplayer features\\n- Optimizing game state management and performance\\n- Creating responsive, accessible UI components\\n- Writing clean, maintainable, well-documented code\\n\\n**What We Offer**\\n\\n- Fully remote work\\n- Flexible hours\\n- Work on innovative, challenging problems\\n- Opportunity to shape the product direction\\n- Collaborative, learning-focused environment\\n- Competitive compensation\\n\\n**About You**\\n\\nYou\\'re a developer who loves solving complex problems and building elegant solutions. You enjoy working with modern web technologies and aren\\'t afraid to dive into challenging codebases. You appreciate clean code, good architecture, and understand the balance between perfection and shipping features.\\n\\nMost importantly, you\\'re excited about creating tools that empower creativity and bring people together through strategic games.\\n\\n**How to Apply**\\n\\nSend your resume, portfolio, and a brief note about why you\\'re interested in GridGrove to **fosterhans@gmail.com**\\n\\nPlease include:\\n- Your GitHub profile or code samples\\n- Any relevant projects you\\'ve built\\n- What excites you most about this role\\n\\nWe look forward to hearing from you!',
+            '**Position: Software Developer - Full Stack**\\n\\n**Location:** Remote\\n\\n**About GridGrove**\\n\\nGridGrove is revolutionizing the world of strategic board games by creating a platform where players can design, share, and play custom chess variants with unlimited possibilities. We\\'re building more than just a chess platform—we\\'re creating a complete game design ecosystem.\\n\\n**The Role**\\n\\nWe\\'re looking for a passionate full-stack developer to join our team and help shape the future of GridGrove. You\\'ll work on both frontend and backend features, implement complex game logic, and help build tools that empower game designers and players worldwide.\\n\\n**Required Skills & Technologies**\\n\\n- **Frontend:** React 18+, Redux, HTML5, CSS3/SCSS\\n- **Backend:** Node.js, Express\\n- **Database:** MySQL, SQL query optimization\\n- **Real-time:** Socket.io for live multiplayer functionality\\n- **Version Control:** Git\\n\\n**Nice to Have**\\n\\n- Experience with AI-assisted coding tools (GitHub Copilot, ChatGPT, Claude, etc.)\\n- Passion for chess, board games, or strategic games\\n- Experience with game development or complex state management\\n- Understanding of ELO rating systems\\n- Payment integration experience (Stripe, PayPal)\\n- Analytics implementation (Google Analytics)\\n\\n**What You\\'ll Work On**\\n\\n- Implementing new game mechanics and piece abilities\\n- Building intuitive game creation and editing tools\\n- Developing real-time multiplayer features\\n- Optimizing game state management and performance\\n- Creating responsive, accessible UI components\\n- Writing clean, maintainable, well-documented code\\n\\n**What We Offer**\\n\\n- Fully remote work\\n- Flexible hours\\n- Work on innovative, challenging problems\\n- Opportunity to shape the product direction\\n- Collaborative, learning-focused environment\\n- Competitive compensation\\n\\n**About You**\\n\\nYou\\'re a developer who loves solving complex problems and building elegant solutions. You enjoy working with modern web technologies and aren\\'t afraid to dive into challenging codebases. You appreciate clean code, good architecture, and understand the balance between perfection and shipping features.\\n\\nMost importantly, you\\'re excited about creating tools that empower creativity and bring people together through strategic games.\\n\\n**How to Apply**\\n\\nSend your resume, portfolio, and a brief note about why you\\'re interested in GridGrove to **fosterhans@gmail.com**\\n\\nPlease include:\\n- Your GitHub profile or code samples\\n- Any relevant projects you\\'ve built\\n- What excites you most about this role\\n\\nWe look forward to hearing from you!',
             NOW(),
             1,
             1,
@@ -1188,7 +1188,7 @@ Join us in revolutionizing chess, one variant at a time.
         );
         migrationsRun++;
       } else {
-        console.log('â„¹ No owner or admin user found - skipping job posting creation');
+        console.log('ℹ No owner or admin user found - skipping job posting creation');
       }
     }
   } catch (err) {
@@ -1240,7 +1240,7 @@ Join us in revolutionizing chess, one variant at a time.
     
     if (nisticismUser.length > 0 && nisticismUser[0].role !== 'owner') {
       await db_pool.query("UPDATE users SET role = 'owner' WHERE username = 'Nisticism'");
-      console.log(`âœ“ Set Nisticism (ID: ${nisticismUser[0].id}) as owner`);
+      console.log(`✓ Set Nisticism (ID: ${nisticismUser[0].id}) as owner`);
       migrationsRun++;
     }
     // Silent if already owner - no need to log every startup
@@ -1356,7 +1356,7 @@ Join us in revolutionizing chess, one variant at a time.
         }
         
         if (totalPiecesInserted > 0) {
-          console.log(`âœ“ Migrated ${totalPiecesInserted} pieces from ${gameTypes.length} game types`);
+          console.log(`✓ Migrated ${totalPiecesInserted} pieces from ${gameTypes.length} game types`);
           migrationsRun++;
         }
       }
@@ -1385,7 +1385,7 @@ Join us in revolutionizing chess, one variant at a time.
       );
       
       if (result.affectedRows > 0) {
-        console.log(`âœ“ Populated special_scenario_moves for ${result.affectedRows} pawns`);
+        console.log(`✓ Populated special_scenario_moves for ${result.affectedRows} pawns`);
         migrationsRun++;
       }
     }
@@ -1407,12 +1407,12 @@ Join us in revolutionizing chess, one variant at a time.
       const exists = await columnExists('pieces', colName);
       if (!exists) {
         await db_pool.query(`ALTER TABLE pieces ADD COLUMN ${colName} ${colDef}`);
-        console.log(`âœ“ Added ${colName} column to pieces table`);
+        console.log(`✓ Added ${colName} column to pieces table`);
         migrationsRun++;
       }
     }
   } catch (err) {
-    console.error('âŒ Error adding missing piece columns:', err.message);
+    console.error('❌ Error adding missing piece columns:', err.message);
   }
 
   // Add attack range exact columns to pieces table (these were missing from initial consolidation)
@@ -1432,12 +1432,12 @@ Join us in revolutionizing chess, one variant at a time.
       const exists = await columnExists('pieces', colName);
       if (!exists) {
         await db_pool.query(`ALTER TABLE pieces ADD COLUMN ${colName} TINYINT(1) DEFAULT 0`);
-        console.log(`âœ“ Added ${colName} column to pieces table`);
+        console.log(`✓ Added ${colName} column to pieces table`);
         migrationsRun++;
       }
     }
   } catch (err) {
-    console.error('âŒ Error adding attack_range exact columns:', err.message);
+    console.error('❌ Error adding attack_range exact columns:', err.message);
   }
 
   // Add attack range available_for columns to pieces table
@@ -1457,12 +1457,12 @@ Join us in revolutionizing chess, one variant at a time.
       const exists = await columnExists('pieces', colName);
       if (!exists) {
         await db_pool.query(`ALTER TABLE pieces ADD COLUMN ${colName} INT UNSIGNED NULL`);
-        console.log(`âœ“ Added ${colName} column to pieces table`);
+        console.log(`✓ Added ${colName} column to pieces table`);
         migrationsRun++;
       }
     }
   } catch (err) {
-    console.error('âŒ Error adding attack_range available_for columns:', err.message);
+    console.error('❌ Error adding attack_range available_for columns:', err.message);
   }
 
   // Consolidate piece_movement and piece_capture tables into pieces table
@@ -1680,10 +1680,10 @@ Join us in revolutionizing chess, one variant at a time.
             SET ${setClauses.join(',\n                ')}
           `;
           await db_pool.query(updateSql);
-          console.log(`  âœ“ Copied ${setClauses.length} columns from piece_movement`);
+          console.log(`  ✓ Copied ${setClauses.length} columns from piece_movement`);
         }
       } else {
-        console.log('  â„¹ piece_movement table not found, skipping data copy');
+        console.log('  ℹ piece_movement table not found, skipping data copy');
       }
       
       // Copy data from piece_capture to pieces (dynamically check which columns exist)
@@ -1778,17 +1778,17 @@ Join us in revolutionizing chess, one variant at a time.
             SET ${setClauses.join(',\n                ')}
           `;
           await db_pool.query(updateSql);
-          console.log(`  âœ“ Copied ${setClauses.length} columns from piece_capture`);
+          console.log(`  ✓ Copied ${setClauses.length} columns from piece_capture`);
         }
       } else {
-        console.log('  â„¹ piece_capture table not found, skipping data copy');
+        console.log('  ℹ piece_capture table not found, skipping data copy');
       }
       
-      console.log('âœ“ Consolidated piece tables into single pieces table');
+      console.log('✓ Consolidated piece tables into single pieces table');
       migrationsRun++;
     }
   } catch (err) {
-    console.error('âŒ Error consolidating piece tables:', err.message);
+    console.error('❌ Error consolidating piece tables:', err.message);
   }
 
   // Convert special_scenario_moves and special_scenario_captures to TEXT type for larger JSON storage
@@ -2546,9 +2546,9 @@ Join us in revolutionizing chess, one variant at a time.
     }
 
   if (migrationsRun === 0) {
-    console.log('âœ“ All migrations up to date\n');
+    console.log('✓ All migrations up to date\n');
   } else {
-    console.log(`\nâœ“ Applied ${migrationsRun} migration(s)\n`);
+    console.log(`\n✓ Applied ${migrationsRun} migration(s)\n`);
   }
 };
 

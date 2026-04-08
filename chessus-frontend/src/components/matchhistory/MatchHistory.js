@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import styles from "./matchhistory.module.scss";
 import API_URL from "../../global/global";
+import { parseServerDate } from "../../helpers/date-formatter";
 
 const MatchHistory = ({ userId, username }) => {
   const [games, setGames] = useState([]);
@@ -37,7 +38,7 @@ const MatchHistory = ({ userId, username }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    const date = new Date(dateString);
+    const date = parseServerDate(dateString);
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',

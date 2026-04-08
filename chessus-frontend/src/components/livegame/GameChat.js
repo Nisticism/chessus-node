@@ -2,8 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useSocket } from "../../contexts/SocketContext";
 import styles from "./gamechat.module.scss";
 
+import { parseServerDate } from "../../helpers/date-formatter";
+
 const formatTime = (dateStr) => {
-  const date = new Date(dateStr);
+  const date = parseServerDate(dateStr);
+  if (!date) return '';
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
