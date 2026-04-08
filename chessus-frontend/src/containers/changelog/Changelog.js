@@ -5,9 +5,18 @@ import API_URL from "../../global/global";
 
 const changelogData = [
   {
+    date: "April 8, 2026",
+    title: "License & Housekeeping",
+    items: [
+      "Added a license for public repository — source is viewable for educational purposes only",
+      "Fixed garbled characters appearing in various pages and emails",
+    ]
+  },
+  {
     date: "April 7, 2026",
     title: "Custom Square Movement & Attack in Piece Wizard",
     items: [
+      "Fixed dates showing as one day ahead — all dates now correctly display in your local timezone",
       "New feature: Click squares on a grid to define custom movement and attack patterns for your pieces",
       "Custom square selection available in both Step 2 (Movement) and Step 3 (Attack) of the piece wizard",
       "Click or drag to paint multiple squares at once — click again to remove",
