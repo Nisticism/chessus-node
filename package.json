@@ -19,7 +19,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
     "@aws-sdk/client-ses": "^3.975.0",
     "bcrypt": "^5.0.1",
