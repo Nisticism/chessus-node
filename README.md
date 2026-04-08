@@ -1,8 +1,8 @@
-﻿# GRIDGROVE
+# GRIDGROVE
 
 A full-stack chess variant platform that allows users to create custom chess games, share them with the community, and engage in forums.
 
-## ðŸ“‹ Prerequisites
+## 📋 Prerequisites
 
 Before you begin, ensure you have the following installed:
 
@@ -11,7 +11,7 @@ Before you begin, ensure you have the following installed:
 - **MySQL** v5.7 or higher
 - **Git** (for cloning the repository)
 
-## ðŸš€ Quick Start
+## 🚀 Quick Start
 
 ### 1. Clone the Repository
 ```bash
@@ -85,7 +85,7 @@ start.bat
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:3001
 
-## ðŸ“¦ Available Commands
+## 📦 Available Commands
 
 ### Root Directory Commands
 
@@ -110,32 +110,32 @@ cd chessus-frontend
 | `npm run build` | Create production build |
 | `npm test` | Run test suite |
 
-## ðŸ—‚ï¸ Project Structure
+## 🗂️ Project Structure
 
 ```
 chessus-node/
-â”œâ”€â”€ server/              # Backend Express server
-â”‚   â”œâ”€â”€ index.js        # Main server file with API routes
-â”‚   â””â”€â”€ db-helpers.js   # Database helper functions
-â”œâ”€â”€ configs/            # Configuration files
-â”‚   â””â”€â”€ db.js          # MySQL database connection
-â”œâ”€â”€ db/                # Database scripts
-â”‚   â””â”€â”€ tables-seed.sql # Database schema
-â”œâ”€â”€ GRIDGROVE-frontend/  # React frontend application
-â”‚   â”œâ”€â”€ src/
-â”‚   â”‚   â”œâ”€â”€ actions/   # Redux actions
-â”‚   â”‚   â”œâ”€â”€ reducers/  # Redux reducers
-â”‚   â”‚   â”œâ”€â”€ services/  # API service layer
-â”‚   â”‚   â”œâ”€â”€ components/ # React components
-â”‚   â”‚   â””â”€â”€ containers/ # Page containers
-â”‚   â””â”€â”€ public/
-â”œâ”€â”€ start.sh           # Unix startup script
-â”œâ”€â”€ start.bat          # Windows startup script
-â”œâ”€â”€ cleanup.sh         # Kill processes on Unix
-â””â”€â”€ cleanup.bat        # Kill processes on Windows
+├── server/              # Backend Express server
+│   ├── index.js        # Main server file with API routes
+│   └── db-helpers.js   # Database helper functions
+├── configs/            # Configuration files
+│   └── db.js          # MySQL database connection
+├── db/                # Database scripts
+│   └── tables-seed.sql # Database schema
+├── GRIDGROVE-frontend/  # React frontend application
+│   ├── src/
+│   │   ├── actions/   # Redux actions
+│   │   ├── reducers/  # Redux reducers
+│   │   ├── services/  # API service layer
+│   │   ├── components/ # React components
+│   │   └── containers/ # Page containers
+│   └── public/
+├── start.sh           # Unix startup script
+├── start.bat          # Windows startup script
+├── cleanup.sh         # Kill processes on Unix
+└── cleanup.bat        # Kill processes on Windows
 ```
 
-## ðŸ› ï¸ Development Workflow
+## 🛠️ Development Workflow
 
 ### Hot Reloading
 - **Backend**: Uses `nodemon` to automatically restart on file changes
@@ -158,7 +158,7 @@ The backend provides RESTful API endpoints for:
 - News articles (`/news`)
 - Custom chess pieces and game types
 
-## ðŸ”§ Troubleshooting
+## 🔧 Troubleshooting
 
 ### Port Already in Use
 If you see "Port 3000/3001 already in use", kill existing processes:
@@ -213,7 +213,7 @@ ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'password
 FLUSH PRIVILEGES;
 ```
 
-## ðŸŽ¨ Frontend Styling
+## 🎨 Frontend Styling
 
 The project uses:
 - **SCSS Modules** for component-scoped styling
@@ -229,7 +229,7 @@ To customize colors, edit CSS variables in `GRIDGROVE-frontend/src/index.css`:
 }
 ```
 
-## ðŸ¤ Contributing
+## 🤝 Contributing
 
 1. Create a feature branch: `git checkout -b feature/my-feature`
 2. Make your changes
@@ -237,6 +237,8 @@ To customize colors, edit CSS variables in `GRIDGROVE-frontend/src/index.css`:
 4. Push: `git push origin feature/my-feature`
 5. Open a Pull Request
 
-## ðŸ“„ License
+## 📄 License
 
-ISC
+All rights reserved. See [LICENSE](LICENSE) for details.
+
+This project is source-available for educational and private viewing purposes only. You may not modify, redistribute, or use it for any purpose beyond private study.

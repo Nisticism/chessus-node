@@ -1,8 +1,8 @@
-﻿# GRIDGROVE Frontend
+# GRIDGROVE Frontend
 
 React-based frontend for the GRIDGROVE chess variant platform.
 
-## ðŸš€ Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js v17.9.0 or higher
@@ -25,51 +25,51 @@ npm run build
 ```
 Creates an optimized production build in the `build` folder.
 
-## ðŸ“¦ Available Commands
+## 📦 Available Commands
 
 | Command | Description |
 |---------|-------------|
 | `npm start` | Start development server (port 3000) |
 | `npm run build` | Create production build |
 | `npm test` | Run tests in interactive watch mode |
-| `npm run eject` | Eject from Create React App (âš ï¸ irreversible) |
+| `npm run eject` | Eject from Create React App (⚠️ irreversible) |
 
-## ðŸ—ï¸ Project Structure
+## 🏗️ Project Structure
 
 ```
 src/
-â”œâ”€â”€ actions/           # Redux action creators
-â”‚   â”œâ”€â”€ auth.js       # Authentication actions
-â”‚   â”œâ”€â”€ forums.js     # Forum CRUD actions
-â”‚   â”œâ”€â”€ news.js       # News article actions
-â”‚   â””â”€â”€ users.js      # User management actions
-â”œâ”€â”€ reducers/         # Redux reducers
-â”‚   â”œâ”€â”€ authReducer.js
-â”‚   â”œâ”€â”€ forums.js
-â”‚   â”œâ”€â”€ news.js
-â”‚   â””â”€â”€ users.js
-â”œâ”€â”€ services/         # API service layer
-â”‚   â”œâ”€â”€ auth.service.js
-â”‚   â”œâ”€â”€ forums.service.js
-â”‚   â”œâ”€â”€ news.service.js
-â”‚   â””â”€â”€ user.service.js
-â”œâ”€â”€ components/       # Reusable UI components
-â”‚   â”œâ”€â”€ navbar/
-â”‚   â”œâ”€â”€ forum/
-â”‚   â”œâ”€â”€ chess/
-â”‚   â””â”€â”€ ...
-â”œâ”€â”€ containers/       # Page-level components
-â”‚   â”œâ”€â”€ news/
-â”‚   â”œâ”€â”€ forums/
-â”‚   â”œâ”€â”€ gamecreate/
-â”‚   â””â”€â”€ ...
-â”œâ”€â”€ assets/          # Static assets (images, sounds)
-â”œâ”€â”€ index.css        # Global styles & CSS variables
-â”œâ”€â”€ store.js         # Redux store configuration
-â””â”€â”€ App.js           # Main app component with routing
+├── actions/           # Redux action creators
+│   ├── auth.js       # Authentication actions
+│   ├── forums.js     # Forum CRUD actions
+│   ├── news.js       # News article actions
+│   └── users.js      # User management actions
+├── reducers/         # Redux reducers
+│   ├── authReducer.js
+│   ├── forums.js
+│   ├── news.js
+│   └── users.js
+├── services/         # API service layer
+│   ├── auth.service.js
+│   ├── forums.service.js
+│   ├── news.service.js
+│   └── user.service.js
+├── components/       # Reusable UI components
+│   ├── navbar/
+│   ├── forum/
+│   ├── chess/
+│   └── ...
+├── containers/       # Page-level components
+│   ├── news/
+│   ├── forums/
+│   ├── gamecreate/
+│   └── ...
+├── assets/          # Static assets (images, sounds)
+├── index.css        # Global styles & CSS variables
+├── store.js         # Redux store configuration
+└── App.js           # Main app component with routing
 ```
 
-## ðŸŽ¨ Styling
+## 🎨 Styling
 
 ### CSS Variables
 Global colors are defined in `src/index.css` using CSS custom properties:
@@ -110,7 +110,7 @@ Components use SCSS modules for scoped styling. Import and use variables:
 }
 ```
 
-## ðŸ”Œ API Integration
+## 🔌 API Integration
 
 ### Base URL
 The frontend connects to the backend at `http://localhost:3001`.
@@ -154,7 +154,7 @@ export const login = (username, password) => async (dispatch) => {
 };
 ```
 
-## ðŸ›¡ï¸ Authentication
+## 🛡️ Authentication
 
 ### Protected Routes
 Pages requiring authentication redirect to `/login`:
@@ -168,7 +168,7 @@ if (!currentUser) {
 ### Token Storage
 JWT tokens are stored in `localStorage` and attached to requests via auth headers.
 
-## ðŸ§ª Testing
+## 🧪 Testing
 
 Run the test suite:
 ```bash
@@ -178,11 +178,11 @@ npm test
 Create tests alongside components:
 ```
 components/
-â”œâ”€â”€ MyComponent.js
-â””â”€â”€ MyComponent.test.js
+├── MyComponent.js
+└── MyComponent.test.js
 ```
 
-## ðŸ“± Features
+## 📱 Features
 
 ### User Features
 - User registration and authentication
@@ -199,7 +199,7 @@ components/
 - Responsive design
 - SCSS module styling with CSS variables
 
-## ðŸ”§ Configuration
+## 🔧 Configuration
 
 ### Proxy (if needed)
 Add to `package.json` to proxy API requests:
@@ -213,7 +213,7 @@ Create `.env` file for custom configuration:
 REACT_APP_API_URL=http://localhost:3001
 ```
 
-## ðŸ› Troubleshooting
+## 🐛 Troubleshooting
 
 ### Port 3000 in Use
 ```bash
@@ -244,7 +244,7 @@ npm run build
 ### CORS Errors
 Ensure backend has CORS enabled for `http://localhost:3000`.
 
-## ðŸ“¦ Dependencies
+## 📦 Dependencies
 
 ### Core
 - **React 18.0** - UI framework
@@ -261,7 +261,7 @@ Ensure backend has CORS enabled for `http://localhost:3000`.
 - **React Scripts 5.0** - Build tooling (Create React App)
 - **Redux DevTools Extension** - State debugging
 
-## ðŸš€ Deployment
+## 🚀 Deployment
 
 ### Build
 ```bash
@@ -288,7 +288,7 @@ npx serve -s build
 - [ ] Enable gzip compression
 - [ ] Configure caching headers
 
-## ðŸ¤ Contributing
+## 🤝 Contributing
 
 1. Follow the existing code style (SCSS modules + CSS variables)
 2. Update tests for new features
@@ -296,7 +296,7 @@ npx serve -s build
 4. Keep components small and focused
 5. Document complex logic with comments
 
-## ðŸ“š Learn More
+## 📚 Learn More
 
 - [React Documentation](https://reactjs.org/)
 - [Create React App](https://create-react-app.dev/)
