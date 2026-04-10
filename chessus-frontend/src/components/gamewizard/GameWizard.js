@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./gamewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import Divider from "../Divider/Divider";
 import { createGame, getGameById, updateGame } from "../../actions/games";
 import { trackGameCreation, trackEvent } from "../../analytics/GoogleAnalytics";
+import { validateContent } from "../../utils/contentModeration";
 import Step1BasicInfo from "./Step1BasicInfo";
 import Step2WinConditions from "./Step2WinConditions";
 import Step3BoardSpecialSquares from "./Step3BoardSpecialSquares";
@@ -174,6 +175,27 @@ const GameWizard = ({ editGameId }) => {
   };
 
   const handleSubmit = async (skipWarning = false) => {
+    // Content moderation validation
+    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 50 });
+    if (!nameCheck.isValid) {
+      alert(nameCheck.errors[0]);
+      return;
+    }
+    if (gameData.descript) {
+      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000 });
+      if (!descCheck.isValid) {
+        alert(descCheck.errors[0]);
+        return;
+      }
+    }
+    if (gameData.rules) {
+      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000 });
+      if (!rulesCheck.isValid) {
+        alert(rulesCheck.errors[0]);
+        return;
+      }
+    }
+
     // Check for checkmate warning
     if (!skipWarning && gameData.mate_condition) {
       try {
@@ -243,6 +265,20 @@ const GameWizard = ({ editGameId }) => {
         return null;
     }
   };
+
+  if (!currentUser && !editGameId) {
+    return (
+      <div className={styles["wizard-container"]}>
+        <div className={styles["wizard-header"]}>
+          <h1>Create New Game</h1>
+        </div>
+        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <p style={{ fontSize: '1.1rem', marginBottom: '20px', color: 'var(--text-muted)' }}>You need to be logged in to create games.</p>
+          <Link to="/login" style={{ color: 'var(--accent-primary)', fontSize: '1.1rem' }}>Log in to get started</Link>
+        </div>
+      </div>
+    );
+  }
 
   // Show loading state
   if (isLoading) {

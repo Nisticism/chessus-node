@@ -6,8 +6,17 @@ import API_URL from "../../global/global";
 const changelogData = [
   {
     date: "April 10, 2026",
-    title: "Bug Fixes & Owner Notifications",
+    title: "Content Moderation, Security & Bug Fixes",
     items: [
+      "Added content moderation — offensive usernames are now blocked during registration and profile edits (Scunthorpe-safe: innocent words like 'Scunthorpe' won't be rejected)",
+      "Game names, descriptions, rules, and piece descriptions are now checked for inappropriate language with real-time warnings",
+      "Links and URLs are no longer allowed in game or piece descriptions",
+      "Forum posts and comments are checked for offensive language before posting",
+      "Maximum actions per turn is now capped at 8",
+      "Uploaded piece images and profile pictures are now automatically scanned for inappropriate content",
+      "Images that need manual review are queued — you'll see an 'Under Review' badge until approved",
+      "Creating pieces and games now requires being logged in",
+      "Fixed multi-tile pieces allowing sizes larger than 4×4",
       "Fixed games against the computer getting stuck when a player runs out of time",
       "Fixed match history not showing the computer opponent or difficulty level in some games",
       "Fixed ongoing games list not displaying the computer opponent's name correctly",

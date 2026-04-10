@@ -4,6 +4,7 @@ import PieceBoardPreview from "./PieceBoardPreview";
 import InfoTooltip from "./InfoTooltip";
 import NumberInput from "../common/NumberInput";
 import { pieceImageLibrary } from "../../assets/piece-images";
+import { validateContent, checkForLinks, checkOffensiveContent } from "../../utils/contentModeration";
 
 // Compute average perceived brightness (0-255) of an image from its data URL
 const computeImageBrightness = (dataUrl) => {
@@ -83,8 +84,25 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
     checkBrightness();
   }, [checkBrightness]);
 
+  const [contentWarnings, setContentWarnings] = useState({});
+
   const handleChange = (field, value) => {
     updatePieceData({ [field]: value });
+
+    // Real-time content validation for text fields
+    if (['piece_name', 'piece_description'].includes(field) && value) {
+      const warnings = {};
+      const offCheck = checkOffensiveContent(value);
+      if (!offCheck.isClean) {
+        warnings[field] = 'This text contains inappropriate language. Please revise before submitting.';
+      } else {
+        const linkCheck = checkForLinks(value);
+        if (linkCheck.hasLinks) {
+          warnings[field] = 'Links and URLs are not allowed in this field. Please remove any links.';
+        }
+      }
+      setContentWarnings(prev => ({ ...prev, [field]: warnings[field] || null }));
+    }
   };
 
   const handleImageUpload = (e, index) => {
@@ -101,6 +119,12 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
         alert('Image size must be less than 5MB');
         return;
       }
+
+      // Require login to upload custom images
+      if (!currentUser) {
+        alert('You must be logged in to upload custom images. Please use the image library instead.');
+        return;
+      }
       
       // If in edit mode and replacing an existing image, remove it from existingImages
       if (isEditMode && setExistingImages && existingImages.length > 0 && index < existingImages.length) {
@@ -114,12 +138,15 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
       reader.onloadend = () => {
         const newImages = [...(pieceData.piece_images || [])];
         const newPreviews = [...(pieceData.piece_image_previews || [])];
+        const newSources = [...(pieceData.piece_image_sources || [])];
         newImages[index] = file;
         newPreviews[index] = reader.result;
+        newSources[index] = 'upload';
         
         updatePieceData({
           piece_images: newImages,
-          piece_image_previews: newPreviews
+          piece_image_previews: newPreviews,
+          piece_image_sources: newSources
         });
       };
       reader.readAsDataURL(file);
@@ -207,12 +234,15 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
       
       const newImages = [...(pieceData.piece_images || [])];
       const newPreviews = [...(pieceData.piece_image_previews || [])];
+      const newSources = [...(pieceData.piece_image_sources || [])];
       newImages[libraryTargetIndex] = file;
       newPreviews[libraryTargetIndex] = libraryImage.src;
+      newSources[libraryTargetIndex] = 'library';
       
       updatePieceData({
         piece_images: newImages,
-        piece_image_previews: newPreviews
+        piece_image_previews: newPreviews,
+        piece_image_sources: newSources
       });
       
       setShowLibraryModal(false);
@@ -286,6 +316,11 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
             Piece name must be at least 2 characters
           </p>
         )}
+        {contentWarnings.piece_name && (
+          <p className={styles["validation-error"]}>
+            {contentWarnings.piece_name}
+          </p>
+        )}
       </div>
 
       <div className={styles["form-group"]}>
@@ -303,6 +338,11 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
         <div className={styles["char-count"]}>
           {pieceData.piece_description.length} / 1000 characters
         </div>
+        {contentWarnings.piece_description && (
+          <p className={styles["validation-error"]}>
+            {contentWarnings.piece_description}
+          </p>
+        )}
       </div>
 
       <div className={styles["form-group"]}>

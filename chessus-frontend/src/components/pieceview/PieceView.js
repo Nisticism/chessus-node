@@ -527,6 +527,12 @@ const PieceView = () => {
           )}
           <div>
             <h1>{pieceToDisplay.piece_name}</h1>
+            {pieceToDisplay.moderation_status && pieceToDisplay.moderation_status !== 'approved' && 
+             (currentUser && (Number(currentUser.id) === Number(pieceToDisplay.creator_id) || currentUser.role === 'admin' || currentUser.role === 'owner')) && (
+              <span className={styles[`moderation-badge-${pieceToDisplay.moderation_status}`]}>
+                {pieceToDisplay.moderation_status === 'pending_review' ? '⏳ Images Under Review' : '❌ Images Rejected'}
+              </span>
+            )}
             {pieceToDisplay.creator_username && (
               <p className={styles["creator"]}>
                 Created by {pieceToDisplay.creator_username === 'Anonymous' ? 'Anonymous' : <Link to={`/profile/${pieceToDisplay.creator_username}`}>{pieceToDisplay.creator_username}</Link>}

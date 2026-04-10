@@ -231,6 +231,13 @@ const PieceList = () => {
           <div className={styles["piece-content"]}>
             <h3 className={styles["piece-name"]}>{piece.piece_name || 'Unnamed Piece'}</h3>
             
+            {piece.moderation_status && piece.moderation_status !== 'approved' && 
+             (currentUser && (currentUser.id === piece.creator_id || currentUser.role === 'admin' || currentUser.role === 'owner')) && (
+              <span className={styles[`moderation-badge-${piece.moderation_status}`]}>
+                {piece.moderation_status === 'pending_review' ? '⏳ Under Review' : '❌ Rejected'}
+              </span>
+            )}
+
             <p className={styles["piece-description"]}>
               {piece.piece_description || 'No description available'}
             </p>

@@ -50,7 +50,8 @@ const NumberInput = ({ value, onChange, options = {} }) => {
         value={displayValue}
         onChange={(e) => {
           if (e.target.value === "∞") return;
-          onChange(parseInt(e.target.value) || 0);
+          const parsed = parseInt(e.target.value) || 0;
+          onChange(Math.min(max, Math.max(min, parsed)));
         }}
         onFocus={handleFocus}
         disabled={disabled}

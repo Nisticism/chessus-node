@@ -137,6 +137,7 @@ const getAllPieces = async () => {
       p.image_location,
       p.creator_id,
       p.is_anonymous_creator,
+      p.moderation_status,
       CASE WHEN p.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END as creator_username,
       gt.game_name as game_type_name
     FROM chessusnode.pieces p
@@ -455,6 +456,7 @@ const getPieceById = async (pieceId) => {
       p.cannot_be_captured,
       p.custom_movement_squares,
       p.custom_attack_squares,
+      p.moderation_status,
       p.created_at
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id

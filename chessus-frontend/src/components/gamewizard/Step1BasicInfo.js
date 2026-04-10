@@ -1,11 +1,29 @@
-import React from "react";
+import React, { useState } from "react";
 import styles from "./gamewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import { validateContent, checkForLinks, checkOffensiveContent } from "../../utils/contentModeration";
 
 const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
+  const [contentWarnings, setContentWarnings] = useState({});
+
   const handleChange = (field, value) => {
     updateGameData({ [field]: value });
+
+    // Real-time content validation for text fields
+    if (['game_name', 'descript', 'rules'].includes(field) && value) {
+      const warnings = {};
+      const offCheck = checkOffensiveContent(value);
+      if (!offCheck.isClean) {
+        warnings[field] = 'This text contains inappropriate language. Please revise before submitting.';
+      } else {
+        const linkCheck = checkForLinks(value);
+        if (linkCheck.hasLinks) {
+          warnings[field] = 'Links and URLs are not allowed in this field. Please remove any links.';
+        }
+      }
+      setContentWarnings(prev => ({ ...prev, [field]: warnings[field] || null }));
+    }
   };
 
   return (
@@ -32,6 +50,11 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
             Game name must be at least 3 characters
           </p>
         )}
+        {contentWarnings.game_name && (
+          <p className={styles["validation-error"]}>
+            {contentWarnings.game_name}
+          </p>
+        )}
       </div>
 
       <div className={styles["form-group"]}>
@@ -49,6 +72,11 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
         <div className={styles["char-count"]}>
           {gameData.descript.length} / 8000 characters
         </div>
+        {contentWarnings.descript && (
+          <p className={styles["validation-error"]}>
+            {contentWarnings.descript}
+          </p>
+        )}
       </div>
 
       {/* Player count hidden - currently only 2-player games supported */}
@@ -80,12 +108,12 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
 
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
-          Actions Per Turn <InfoTooltip text="How many moves or actions each player can make during a single turn. In standard chess this is 1. Increase for games where players can move multiple pieces per turn." />
+          Actions Per Turn <InfoTooltip text="How many moves or actions each player can make during a single turn. In standard chess this is 1. Increase for games where players can move multiple pieces per turn. Maximum of 8 actions per turn." />
         </label>
         <NumberInput
           value={gameData.actions_per_turn || 1}
-          onChange={(val) => handleChange("actions_per_turn", Math.max(1, val))}
-          options={{ min: 1, placeholder: "1", className: styles["form-input-small"] }}
+          onChange={(val) => handleChange("actions_per_turn", Math.min(8, Math.max(1, val)))}
+          options={{ min: 1, max: 8, placeholder: "1", className: styles["form-input-small"] }}
         />
       </div>
 

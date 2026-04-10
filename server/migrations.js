@@ -247,6 +247,29 @@ const tableMigrations = [
       INDEX idx_streams_featured (is_featured)
     )`,
     description: "Create streams table"
+  },
+  {
+    table: 'image_moderation_queue',
+    sql: `CREATE TABLE IF NOT EXISTS image_moderation_queue (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      piece_id INT UNSIGNED,
+      uploader_id INT UNSIGNED,
+      image_path VARCHAR(500) NOT NULL,
+      status ENUM('pending_review', 'approved', 'rejected') DEFAULT 'pending_review',
+      nsfw_scores JSON,
+      auto_reason VARCHAR(500),
+      reviewer_id INT UNSIGNED,
+      review_note VARCHAR(500),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at DATETIME,
+      FOREIGN KEY (piece_id) REFERENCES pieces(id) ON DELETE CASCADE,
+      FOREIGN KEY (uploader_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (reviewer_id) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_moderation_status (status),
+      INDEX idx_moderation_piece (piece_id),
+      INDEX idx_moderation_uploader (uploader_id)
+    )`,
+    description: "Create image moderation queue table"
   }
 ];
 
@@ -525,6 +548,12 @@ const migrations = [
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`,
     description: "Create site_settings table for admin-configurable site options"
+  },
+  {
+    table: 'pieces',
+    column: 'moderation_status',
+    sql: "ALTER TABLE pieces ADD COLUMN moderation_status ENUM('approved', 'pending_review', 'rejected') DEFAULT 'approved'",
+    description: "Add moderation_status column to pieces for image moderation tracking"
   }
 ];
 

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useSelector } from "react-redux";
 import styles from "./piecewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import Divider from "../Divider/Divider";
 import { createPiece, updatePiece, getPieceById } from "../../actions/pieces";
 import { trackPieceCreation, trackEvent } from "../../analytics/GoogleAnalytics";
+import { validateContent } from "../../utils/contentModeration";
 import PieceStep1BasicInfo from "./PieceStep1BasicInfo";
 import PieceStep2Movement from "./PieceStep2Movement";
 import PieceStep3Attack from "./PieceStep3Attack";
@@ -37,6 +38,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     piece_category: "",
     piece_images: [],
     piece_image_previews: [],
+    piece_image_sources: [],
     piece_width: 1,
     piece_height: 1,
     is_anonymous_creator: !currentUser,
@@ -596,6 +598,22 @@ const PieceWizard = ({ editPieceId = null }) => {
       return;
     }
 
+    // Content moderation validation
+    if (pieceData.piece_name) {
+      const nameCheck = validateContent(pieceData.piece_name, { fieldName: 'Piece name', maxLength: 50 });
+      if (!nameCheck.isValid) {
+        alert(nameCheck.errors[0]);
+        return;
+      }
+    }
+    if (pieceData.piece_description) {
+      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000 });
+      if (!descCheck.isValid) {
+        alert(descCheck.errors[0]);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     
     try {
@@ -607,6 +625,10 @@ const PieceWizard = ({ editPieceId = null }) => {
       images.forEach(image => {
         formData.append('piece_images', image);
       });
+
+      // Send image source tracking (library vs upload) for moderation
+      const sources = (pieceData.piece_image_sources || []).filter((_, i) => pieceData.piece_images[i] != null);
+      formData.append('image_sources', JSON.stringify(sources));
       
       // If editing, preserve existing images
       if (isEditMode && existingImages.length > 0) {
@@ -629,7 +651,7 @@ const PieceWizard = ({ editPieceId = null }) => {
                           'has_check_rule', 'has_lose_on_capture_rule', 'min_turns_per_move'];
       
       Object.keys(pieceData).forEach(key => {
-        if (key !== 'piece_images' && key !== 'piece_image_previews' && key !== 'is_anonymous_creator' && !skipFields.includes(key)) {
+        if (key !== 'piece_images' && key !== 'piece_image_previews' && key !== 'piece_image_sources' && key !== 'is_anonymous_creator' && !skipFields.includes(key)) {
           const value = pieceData[key];
           const dbFieldName = fieldMapping[key] || key;
           
@@ -678,6 +700,20 @@ const PieceWizard = ({ editPieceId = null }) => {
         return null;
     }
   };
+
+  if (!currentUser && !editPieceId) {
+    return (
+      <div className={styles["wizard-container"]}>
+        <div className={styles["wizard-header"]}>
+          <h1>Create New Piece</h1>
+        </div>
+        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <p style={{ fontSize: '1.1rem', marginBottom: '20px', color: 'var(--text-muted)' }}>You need to be logged in to create pieces.</p>
+          <Link to="/login" style={{ color: 'var(--accent-primary)', fontSize: '1.1rem' }}>Log in to get started</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

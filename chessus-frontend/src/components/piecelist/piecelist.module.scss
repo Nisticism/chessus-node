@@ -260,6 +260,28 @@
   font-weight: 600;
 }
 
+.moderation-badge-pending_review {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  margin-bottom: 8px;
+}
+
+.moderation-badge-rejected {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(244, 67, 54, 0.15);
+  color: #f44336;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  margin-bottom: 8px;
+}
+
 .piece-description {
   color: var(--text-muted);
   font-size: 0.95rem;

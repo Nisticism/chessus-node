@@ -5,6 +5,7 @@ import { isEmail } from "validator";
 import { register, login, googleLogin } from "../../actions/auth";
 import { GoogleLogin } from "@react-oauth/google";
 import { trackRegistration } from "../../analytics/GoogleAnalytics";
+import { checkUsername } from "../../utils/contentModeration";
 import styles from "./register.module.scss";
 
 const required = (value) => {
@@ -77,6 +78,15 @@ const Register = () => {
   const handleRegister = (e) => {
     e.preventDefault();
     setSuccessful(false);
+
+    // Client-side username content check
+    const usernameContentCheck = checkUsername(username);
+    if (!usernameContentCheck.isClean) {
+      setMessageDisplay(true);
+      dispatch({ type: "SET_MESSAGE", payload: "This username contains inappropriate language. Please choose a different username." });
+      return;
+    }
+
     //form.current.validateAll();
     // if (checkBtn.current.context._errors.length === 0) {
     dispatch(register(username, password, email))

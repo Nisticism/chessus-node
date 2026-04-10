@@ -180,6 +180,11 @@ app.use((req, res, next) => {
 // const path = require('path');
 const db_pool = require("../configs/db");
 const dbHelpers = require("./db-helpers");
+const { checkUsername, validateContent } = require("./content-moderation");
+const imageModeration = require("./image-moderation");
+
+// Pre-load the NSFW model (non-blocking, runs in background)
+imageModeration.initialize();
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -2014,6 +2019,35 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(403).send({ message: "You can only edit your own games" });
     }
 
+    // Content moderation: Check game name
+    if (gameData.game_name) {
+      const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 50 });
+      if (!nameCheck.isValid) {
+        return res.status(400).send({ message: nameCheck.errors[0] });
+      }
+    }
+
+    // Content moderation: Check description
+    if (gameData.descript) {
+      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000 });
+      if (!descCheck.isValid) {
+        return res.status(400).send({ message: descCheck.errors[0] });
+      }
+    }
+
+    // Content moderation: Check rules
+    if (gameData.rules) {
+      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000 });
+      if (!rulesCheck.isValid) {
+        return res.status(400).send({ message: rulesCheck.errors[0] });
+      }
+    }
+
+    // Validate actions_per_turn range
+    if (gameData.actions_per_turn && (gameData.actions_per_turn < 1 || gameData.actions_per_turn > 8)) {
+      return res.status(400).send({ message: "Actions per turn must be between 1 and 8" });
+    }
+
     // Force player_count to 2 (only 2-player games currently supported)
     gameData.player_count = 2;
     
@@ -2210,6 +2244,12 @@ app.post("/api/register", registerLimiter, async (req, res) => {
       return res.status(400).send({ message: "This username is reserved and cannot be used" });
     }
 
+    // Content moderation: Check username for offensive content
+    const usernameCheck = checkUsername(username);
+    if (!usernameCheck.isClean) {
+      return res.status(400).send({ message: "This username contains inappropriate language. Please choose a different username." });
+    }
+
     // Security: Password validation
     if (!password || password.length < 8) {
       return res.status(400).send({ message: "Password must be at least 8 characters long" });
@@ -2311,6 +2351,20 @@ app.post("/api/profile/edit", async (req, res) => {
       return res.status(500).send({ message: "Username must be between 1 and 20 characters" });
     }
 
+    // Content moderation: Check username for offensive content
+    const usernameContentCheck = checkUsername(username);
+    if (!usernameContentCheck.isClean) {
+      return res.status(400).send({ message: "This username contains inappropriate language. Please choose a different username." });
+    }
+
+    // Content moderation: Check bio for offensive content and links
+    if (bio) {
+      const bioCheck = validateContent(bio, { fieldName: 'Bio', maxLength: 500 });
+      if (!bioCheck.isValid) {
+        return res.status(400).send({ message: bioCheck.errors[0] });
+      }
+    }
+
     // Check if new email is already taken by another user
     const emailCheck = await dbHelpers.findUserByEmail(email);
     if (emailCheck && emailCheck.email !== logged_in_email) {
@@ -2389,6 +2443,17 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
       return res.status(400).send({ message: "User ID is required" });
     }
 
+    // NSFW scan on profile picture
+    const filePath = path.join(imageFile.destination, imageFile.filename);
+    const scanResult = await imageModeration.classifyImage(filePath);
+    if (scanResult.status === 'rejected') {
+      try { fs.unlinkSync(filePath); } catch (e) {}
+      return res.status(400).send({
+        message: "Your profile picture was rejected by our content filter. Please use an appropriate image.",
+        details: [scanResult.reason]
+      });
+    }
+
     // Get user's current profile picture before updating
     const currentUser = await dbHelpers.findUserById(userId);
     const oldPicturePath = currentUser?.profile_picture;
@@ -2425,7 +2490,9 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
       success: true, 
       profile_picture: imagePath,
       user: updatedUser,
-      message: "Profile picture uploaded successfully" 
+      message: scanResult.status === 'pending_review'
+        ? "Profile picture uploaded! It's being reviewed and may take a short time to appear publicly."
+        : "Profile picture uploaded successfully"
     });
   } catch (err) {
     console.error("Error uploading profile picture:", err);
@@ -3134,7 +3201,21 @@ const posts = [{
 app.post("/api/articles/new", async (req, res) => {
   try {
     const { title, genre, content, created_at, author_id, game_type_id, public_setting, description } = req.body;
-    
+
+    // Content moderation
+    if (title) {
+      const titleCheck = validateContent(title, { fieldName: 'Title', maxLength: 200 });
+      if (!titleCheck.isValid) return res.status(400).send({ message: titleCheck.errors[0] });
+    }
+    if (content) {
+      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: true });
+      if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
+    }
+    if (description) {
+      const descCheck = validateContent(description, { fieldName: 'Description', maxLength: 500 });
+      if (!descCheck.isValid) return res.status(400).send({ message: descCheck.errors[0] });
+    }
+
     const article = {
       game_type_id,
       author_id,
@@ -3190,6 +3271,16 @@ app.post("/api/forums/new", async (req, res) => {
   try {
     const { title, content, created_at, author_id, game_type_id } = req.body;
     console.log(content);
+
+    // Content moderation
+    if (title) {
+      const titleCheck = validateContent(title, { fieldName: 'Title', maxLength: 200 });
+      if (!titleCheck.isValid) return res.status(400).send({ message: titleCheck.errors[0] });
+    }
+    if (content) {
+      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: true });
+      if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
+    }
     
     // If this is a game forum, check if one already exists
     if (game_type_id) {
@@ -3437,6 +3528,12 @@ app.post("/api/forums/delete", authenticateToken, async (req, res) => {
 app.post("/api/comments/new", async (req, res) => {
   try {
     const { author_id, forum_id, content, created_at, author_name, parent_id } = req.body;
+
+    // Content moderation
+    if (content) {
+      const contentCheck = validateContent(content, { fieldName: 'Comment', maxLength: 10000, allowLinks: true });
+      if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
+    }
     
     const comment = await dbHelpers.createComment({
       author_id,
@@ -3554,6 +3651,12 @@ app.post("/api/delete-comment", async (req, res) => {
 app.put("/api/comments/edit", async (req, res) => {
   try {
     const { id, content, last_updated_at } = req.body;
+
+    // Content moderation
+    if (content) {
+      const contentCheck = validateContent(content, { fieldName: 'Comment', maxLength: 10000, allowLinks: true });
+      if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
+    }
     
     const comment_update = await dbHelpers.updateComment({ id, content, last_updated_at });
     res.json({ result: comment_update });
@@ -3889,15 +3992,42 @@ app.post('/api/token', async (req, res) => {
 
 // ----------------------- Games/Game Types ------------------------------
 
-app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
+app.post("/api/games/create", authenticateToken, async (req, res) => {
   try {
     const gameData = req.body;
-    const creator_id = req.user ? req.user.id : null;
+    const creator_id = req.user.id;
     const is_anonymous_creator = gameData.is_anonymous_creator ? 1 : 0;
 
     // Validate required fields
     if (!gameData.game_name || gameData.game_name.length < 3) {
       return res.status(400).send({ message: "Game name must be at least 3 characters" });
+    }
+
+    // Content moderation: Check game name
+    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 50 });
+    if (!nameCheck.isValid) {
+      return res.status(400).send({ message: nameCheck.errors[0] });
+    }
+
+    // Content moderation: Check description
+    if (gameData.descript) {
+      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000 });
+      if (!descCheck.isValid) {
+        return res.status(400).send({ message: descCheck.errors[0] });
+      }
+    }
+
+    // Content moderation: Check rules
+    if (gameData.rules) {
+      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000 });
+      if (!rulesCheck.isValid) {
+        return res.status(400).send({ message: rulesCheck.errors[0] });
+      }
+    }
+
+    // Validate actions_per_turn range
+    if (gameData.actions_per_turn && (gameData.actions_per_turn < 1 || gameData.actions_per_turn > 8)) {
+      return res.status(400).send({ message: "Actions per turn must be between 1 and 8" });
     }
 
     // Force player_count to 2 (only 2-player games currently supported)
@@ -4102,16 +4232,32 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
 
 const parseBooleanField = (value) => value === true || value === 'true' || value === 1 || value === '1';
 
-app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_images', 8), async (req, res) => {
+app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_images', 8), async (req, res) => {
   try {
     const pieceData = req.body;
-    const creator_id = req.user ? req.user.id : null;
+    const creator_id = req.user.id;
     const rawAnonCreator = Array.isArray(pieceData.is_anonymous_creator) ? pieceData.is_anonymous_creator[0] : pieceData.is_anonymous_creator;
     const is_anonymous_creator = rawAnonCreator === 'true' || rawAnonCreator === true ? 1 : 0;
     const imageFiles = Array.isArray(req.files) ? req.files : [];
 
     if (!imageFiles || imageFiles.length < 2) {
       return res.status(400).send({ message: "At least two piece images are required (Player 1 light and Player 2 dark)" });
+    }
+
+    // Content moderation: Check piece name
+    if (pieceData.piece_name) {
+      const nameCheck = validateContent(pieceData.piece_name, { fieldName: 'Piece name', maxLength: 50 });
+      if (!nameCheck.isValid) {
+        return res.status(400).send({ message: nameCheck.errors[0] });
+      }
+    }
+
+    // Content moderation: Check piece description
+    if (pieceData.piece_description) {
+      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000 });
+      if (!descCheck.isValid) {
+        return res.status(400).send({ message: descCheck.errors[0] });
+      }
     }
 
     // Rename with color suffix when exactly 2 images: first = -w (white/light), second = -b (black/dark)
@@ -4134,6 +4280,54 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
     const imagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
     const imagesJSON = JSON.stringify(imagePaths);
     const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
+
+    // Image moderation: Determine which images are custom uploads vs library images
+    let imageSources = [];
+    try {
+      imageSources = JSON.parse(pieceData.image_sources || '[]');
+    } catch (e) { /* default to empty */ }
+
+    // Check if any images are custom uploads (not from the library)
+    const hasCustomUploads = imageSources.some(s => s === 'upload') || imageSources.length === 0;
+
+    // Require authentication for custom image uploads
+    if (hasCustomUploads && !creator_id) {
+      // Clean up uploaded files
+      for (const file of imageFiles) {
+        try { fs.unlinkSync(path.join(file.destination, file.filename)); } catch (e) {}
+      }
+      return res.status(401).send({ message: "You must be logged in to upload custom images. Please use the image library or sign in." });
+    }
+
+    // Run NSFW scan on custom-uploaded images only (library images are pre-approved)
+    let moderationStatus = 'approved';
+    let scanResults = [];
+    const customUploadPaths = imageFiles
+      .filter((_, i) => !imageSources[i] || imageSources[i] === 'upload')
+      .map(file => path.join(file.destination, file.filename));
+
+    if (customUploadPaths.length > 0) {
+      const scanResult = await imageModeration.classifyImages(customUploadPaths);
+      scanResults = scanResult.results;
+
+      if (scanResult.overall === 'rejected') {
+        // Delete all uploaded files
+        for (const file of imageFiles) {
+          try { fs.unlinkSync(path.join(file.destination, file.filename)); } catch (e) {}
+        }
+        const rejectedReasons = scanResult.results
+          .filter(r => r.status === 'rejected')
+          .map(r => r.reason);
+        return res.status(400).send({
+          message: "One or more images were rejected by our content filter. Please use appropriate images.",
+          details: rejectedReasons
+        });
+      }
+
+      if (scanResult.overall === 'pending_review') {
+        moderationStatus = 'pending_review';
+      }
+    }
 
     // Insert into consolidated pieces table (all fields in one table now)
     const pieceSql = `
@@ -4176,11 +4370,14 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
+    const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
+    const pieceHeight = Math.min(4, Math.max(1, parseInt(pieceData.piece_height) || 1));
+
     const pieceValues = [
       pieceData.piece_name,
       imagesJSON,
-      parseInt(pieceData.piece_width) || 1,
-      parseInt(pieceData.piece_height) || 1,
+      pieceWidth,
+      pieceHeight,
       creator_id,
       is_anonymous_creator,
       pieceData.piece_description || null,
@@ -4343,6 +4540,26 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
     const [result] = await db_pool.query(pieceSql, pieceValues);
     const pieceId = result.insertId;
 
+    // Update moderation status if images need review
+    if (moderationStatus !== 'approved') {
+      await db_pool.query(
+        "UPDATE pieces SET moderation_status = ? WHERE id = ?",
+        [moderationStatus, pieceId]
+      );
+
+      // Add entries to moderation queue for images that need review
+      for (const scanRes of scanResults) {
+        if (scanRes.status === 'pending_review') {
+          const relPath = scanRes.filePath.replace(path.join(__dirname, '..'), '').replace(/\\/g, '/');
+          await db_pool.query(
+            `INSERT INTO image_moderation_queue (piece_id, uploader_id, image_path, status, nsfw_scores, auto_reason)
+             VALUES (?, ?, ?, 'pending_review', ?, ?)`,
+            [pieceId, creator_id, relPath, JSON.stringify(scanRes.predictions), scanRes.reason]
+          );
+        }
+      }
+    }
+
     // Notify owner of new piece creation (non-blocking)
     dbHelpers.getOwnerUserId().then(async (ownerId) => {
       if (ownerId && ownerId !== creator_id) {
@@ -4369,11 +4586,14 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
     }).catch(() => {});
 
     res.status(201).send({
-      message: "Piece created successfully!",
+      message: moderationStatus === 'pending_review'
+        ? "Piece created! Your custom images are being reviewed and may take a short time to appear publicly."
+        : "Piece created successfully!",
       result: {
         id: pieceId,
         piece_name: pieceData.piece_name,
-        piece_images: imagePaths
+        piece_images: imagePaths,
+        moderation_status: moderationStatus
       }
     });
 
@@ -4400,6 +4620,22 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
     // Verify ownership (creator_id check)
     if (existingPiece.creator_id !== parseInt(pieceData.creator_id) && pieceData.user_role !== 'admin' && pieceData.user_role !== 'owner') {
       return res.status(403).send({ message: "You don't have permission to edit this piece" });
+    }
+
+    // Content moderation: Check piece name
+    if (pieceData.piece_name) {
+      const nameCheck = validateContent(pieceData.piece_name, { fieldName: 'Piece name', maxLength: 50 });
+      if (!nameCheck.isValid) {
+        return res.status(400).send({ message: nameCheck.errors[0] });
+      }
+    }
+
+    // Content moderation: Check piece description
+    if (pieceData.piece_description) {
+      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000 });
+      if (!descCheck.isValid) {
+        return res.status(400).send({ message: descCheck.errors[0] });
+      }
     }
 
     // Handle images
@@ -4464,7 +4700,55 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
     if (allImagePaths.length < 2) {
       return res.status(400).send({ message: "At least two piece images are required (Player 1 light and Player 2 dark)" });
     }
-    
+
+    // Image moderation: scan new custom uploads
+    let imageSources = [];
+    try {
+      imageSources = JSON.parse(pieceData.image_sources || '[]');
+    } catch (e) { /* default to empty */ }
+
+    const hasCustomUploads = imageFiles && imageFiles.length > 0 &&
+      (imageSources.some(s => s === 'upload') || imageSources.length === 0);
+
+    // Require authentication for custom image uploads
+    if (hasCustomUploads && !existingPiece.creator_id) {
+      for (const file of imageFiles) {
+        try { fs.unlinkSync(path.join(file.destination, file.filename)); } catch (e) {}
+      }
+      return res.status(401).send({ message: "You must be logged in to upload custom images. Please use the image library or sign in." });
+    }
+
+    let moderationStatus = existingPiece.moderation_status || 'approved';
+    let scanResults = [];
+
+    if (hasCustomUploads) {
+      const customUploadPaths = imageFiles
+        .filter((_, i) => !imageSources[i] || imageSources[i] === 'upload')
+        .map(file => path.join(file.destination, file.filename));
+
+      if (customUploadPaths.length > 0) {
+        const scanResult = await imageModeration.classifyImages(customUploadPaths);
+        scanResults = scanResult.results;
+
+        if (scanResult.overall === 'rejected') {
+          for (const file of imageFiles) {
+            try { fs.unlinkSync(path.join(file.destination, file.filename)); } catch (e) {}
+          }
+          const rejectedReasons = scanResult.results
+            .filter(r => r.status === 'rejected')
+            .map(r => r.reason);
+          return res.status(400).send({
+            message: "One or more images were rejected by our content filter. Please use appropriate images.",
+            details: rejectedReasons
+          });
+        }
+
+        if (scanResult.overall === 'pending_review') {
+          moderationStatus = 'pending_review';
+        }
+      }
+    }
+
     imagesJSON = JSON.stringify(allImagePaths);
 
     const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
@@ -4608,11 +4892,14 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       WHERE id = ?
     `;
 
+    const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
+    const pieceHeight = Math.min(4, Math.max(1, parseInt(pieceData.piece_height) || 1));
+
     const pieceValues = [
       pieceData.piece_name,
       imagesJSON,
-      parseInt(pieceData.piece_width) || 1,
-      parseInt(pieceData.piece_height) || 1,
+      pieceWidth,
+      pieceHeight,
       pieceData.piece_description || null,
       pieceData.piece_category || null,
       pieceData.has_checkmate_rule === 'true',
@@ -4770,11 +5057,33 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
 
     await db_pool.query(pieceSql, pieceValues);
 
+    // Update moderation status if new images need review
+    if (moderationStatus !== (existingPiece.moderation_status || 'approved')) {
+      await db_pool.query(
+        "UPDATE pieces SET moderation_status = ? WHERE id = ?",
+        [moderationStatus, pieceId]
+      );
+
+      for (const scanRes of scanResults) {
+        if (scanRes.status === 'pending_review') {
+          const relPath = scanRes.filePath.replace(path.join(__dirname, '..'), '').replace(/\\/g, '/');
+          await db_pool.query(
+            `INSERT INTO image_moderation_queue (piece_id, uploader_id, image_path, status, nsfw_scores, auto_reason)
+             VALUES (?, ?, ?, 'pending_review', ?, ?)`,
+            [pieceId, existingPiece.creator_id, relPath, JSON.stringify(scanRes.predictions), scanRes.reason]
+          );
+        }
+      }
+    }
+
     res.status(200).send({
-      message: "Piece updated successfully!",
+      message: moderationStatus === 'pending_review'
+        ? "Piece updated! Your new images are being reviewed and may take a short time to appear publicly."
+        : "Piece updated successfully!",
       result: {
         id: pieceId,
-        piece_name: pieceData.piece_name
+        piece_name: pieceData.piece_name,
+        moderation_status: moderationStatus
       }
     });
 
@@ -4817,6 +5126,98 @@ app.delete("/api/pieces/:pieceId", authenticateToken, async (req, res) => {
   } catch (err) {
     console.error("Error in /api/pieces/:pieceId (DELETE):", err);
     res.status(500).send({ message: "Failed to delete piece", err: err.message });
+  }
+});
+
+// ----------------------- Image Moderation Queue (Admin) ------------------------------
+
+// List pending moderation items
+app.get("/api/admin/moderation-queue", authenticateAdmin, async (req, res) => {
+  try {
+    const status = req.query.status || 'pending_review';
+    const [rows] = await db_pool.query(
+      `SELECT q.*, p.piece_name, u.username as uploader_username
+       FROM image_moderation_queue q
+       LEFT JOIN pieces p ON q.piece_id = p.id
+       LEFT JOIN users u ON q.uploader_id = u.id
+       WHERE q.status = ?
+       ORDER BY q.created_at DESC`,
+      [status]
+    );
+    res.json({ items: rows });
+  } catch (err) {
+    console.error("Error fetching moderation queue:", err);
+    res.status(500).send({ message: "Failed to fetch moderation queue" });
+  }
+});
+
+// Approve a moderation queue item
+app.post("/api/admin/moderation-queue/:id/approve", authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reviewerId = req.user.id;
+    const { review_note } = req.body;
+
+    const [item] = await db_pool.query("SELECT * FROM image_moderation_queue WHERE id = ?", [id]);
+    if (item.length === 0) {
+      return res.status(404).send({ message: "Queue item not found" });
+    }
+
+    await db_pool.query(
+      `UPDATE image_moderation_queue SET status = 'approved', reviewer_id = ?, review_note = ?, reviewed_at = NOW() WHERE id = ?`,
+      [reviewerId, review_note || null, id]
+    );
+
+    // Check if all images for this piece are now approved
+    const pieceId = item[0].piece_id;
+    const [pending] = await db_pool.query(
+      "SELECT COUNT(*) as cnt FROM image_moderation_queue WHERE piece_id = ? AND status = 'pending_review'",
+      [pieceId]
+    );
+
+    if (pending[0].cnt === 0) {
+      await db_pool.query("UPDATE pieces SET moderation_status = 'approved' WHERE id = ?", [pieceId]);
+    }
+
+    res.json({ message: "Image approved" });
+  } catch (err) {
+    console.error("Error approving moderation item:", err);
+    res.status(500).send({ message: "Failed to approve item" });
+  }
+});
+
+// Reject a moderation queue item
+app.post("/api/admin/moderation-queue/:id/reject", authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reviewerId = req.user.id;
+    const { review_note } = req.body;
+
+    const [item] = await db_pool.query("SELECT * FROM image_moderation_queue WHERE id = ?", [id]);
+    if (item.length === 0) {
+      return res.status(404).send({ message: "Queue item not found" });
+    }
+
+    await db_pool.query(
+      `UPDATE image_moderation_queue SET status = 'rejected', reviewer_id = ?, review_note = ?, reviewed_at = NOW() WHERE id = ?`,
+      [reviewerId, review_note || null, id]
+    );
+
+    // Delete the rejected image file
+    try {
+      const fullPath = path.join(__dirname, '..', item[0].image_path);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+      }
+    } catch (e) { console.error("Error deleting rejected image:", e.message); }
+
+    // Update piece moderation status to rejected
+    await db_pool.query("UPDATE pieces SET moderation_status = 'rejected' WHERE id = ?", [item[0].piece_id]);
+
+    res.json({ message: "Image rejected and removed" });
+  } catch (err) {
+    console.error("Error rejecting moderation item:", err);
+    res.status(500).send({ message: "Failed to reject item" });
   }
 });
 
