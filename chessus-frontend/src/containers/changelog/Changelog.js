@@ -5,6 +5,17 @@ import API_URL from "../../global/global";
 
 const changelogData = [
   {
+    date: "April 10, 2026",
+    title: "Bug Fixes & Owner Notifications",
+    items: [
+      "Fixed games against the computer getting stuck when a player runs out of time",
+      "Fixed match history not showing the computer opponent or difficulty level in some games",
+      "Fixed ongoing games list not displaying the computer opponent's name correctly",
+      "The site owner now receives notifications for every new game, new piece, and new user registration",
+      "Updated YouTube channel link",
+    ]
+  },
+  {
     date: "April 8, 2026",
     title: "License & Housekeeping",
     items: [
