@@ -21,7 +21,7 @@ const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grac
  * Anonymous player IDs are strings like "anon_xxx" which can't go into the INT winner_id column.
  */
 function sanitizeWinnerId(id) {
-  if (typeof id === 'string' && id.startsWith('anon_')) return null;
+  if (typeof id === 'string' && (id.startsWith('anon_') || id === 'bot')) return null;
   return id;
 }
 
@@ -67,6 +67,35 @@ function getImageUrlForPlayer(imageLocation, playerNumber) {
   }
   
   return null;
+}
+
+/**
+ * Notify the site owner when a new game is created (non-blocking).
+ */
+async function notifyOwnerOfGameCreation(io, gameId, hostId, hostUsername, gameState) {
+  try {
+    const dbHelpers = require("./db-helpers");
+    const ownerId = await dbHelpers.getOwnerUserId();
+    if (!ownerId || ownerId === hostId) return;
+    const gameName = gameState.gameType?.game_name || 'Custom Game';
+    await dbHelpers.createNotification({
+      user_id: ownerId,
+      sender_id: hostId,
+      type: 'system',
+      title: `New game started: ${gameName}`,
+      content: `${hostUsername} created a new "${gameName}" game.`,
+      related_id: gameId,
+      action_url: `/play/${gameId}`
+    });
+    const ownerSocketId = userSockets.get(ownerId.toString());
+    if (ownerSocketId && io) {
+      const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
+      io.to(ownerSocketId).emit('newNotification', { type: 'system', title: `New game started: ${gameName}` });
+      io.to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
+    }
+  } catch (err) {
+    console.error('Owner notification (new game) failed:', err.message);
+  }
 }
 
 /**
@@ -988,6 +1017,9 @@ function initializeSocket(server) {
 
           console.log(`[Bot] Game ${gameId} created vs ${botInfo.username} by ${hostUsername}`);
 
+          // Notify owner of new game (non-blocking)
+          notifyOwnerOfGameCreation(io, gameId, hostId, hostUsername, gameState);
+
           // If bot is Player 1, it moves first — start the game and trigger bot turn
           if (botPosition === 1) {
             gameState.status = 'active';
@@ -1016,6 +1048,9 @@ function initializeSocket(server) {
 
         // Emit game created event
         socket.emit("gameCreated", { gameId, gameState });
+
+        // Notify owner of new game (non-blocking)
+        notifyOwnerOfGameCreation(io, gameId, hostId, hostUsername, gameState);
 
         // For challenge games, notify only the challenged user
         // For regular games, broadcast to all users
@@ -4696,7 +4731,7 @@ async function getOngoingGames() {
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
               g.allow_spectators, g.show_piece_helpers,
-              g.is_correspondence, g.correspondence_days,
+              g.is_correspondence, g.correspondence_days, g.other_data,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
               GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids
@@ -4709,10 +4744,23 @@ async function getOngoingGames() {
        ORDER BY g.start_time DESC, g.created_at DESC`
     );
     // Convert player_ids from comma-separated string to array of numbers
-    return games.map(g => ({
-      ...g,
-      player_ids: g.player_ids ? g.player_ids.split(',').map(id => parseInt(id)) : []
-    }));
+    // For bot games, append bot username to player_names
+    return games.map(g => {
+      let otherData = {};
+      try { otherData = JSON.parse(g.other_data || '{}'); } catch (e) {}
+      let playerNames = g.player_names;
+      if (otherData.isBotGame && otherData.botDifficulty) {
+        const botUsername = `Computer (${otherData.botDifficulty.charAt(0).toUpperCase() + otherData.botDifficulty.slice(1)})`;
+        playerNames = otherData.botPosition === 1
+          ? `${botUsername} vs ${g.player_names}`
+          : `${g.player_names} vs ${botUsername}`;
+      }
+      return {
+        ...g,
+        player_names: playerNames,
+        player_ids: g.player_ids ? g.player_ids.split(',').map(id => parseInt(id)) : []
+      };
+    });
   } catch (error) {
     console.error("Error getting ongoing games:", error);
     return [];
