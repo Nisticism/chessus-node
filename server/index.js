@@ -1064,7 +1064,9 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
 
       // Use winner_id column, fall back to other_data.winner for older games
       const winnerId = game.winner_id || otherData.winner || null;
-      const isWinner = winnerId && winnerId === parseInt(userId);
+      const isWinner = winnerId && (winnerId === parseInt(userId) || winnerId === userId);
+      // In bot games, if winner is 'bot', the human lost
+      const isBotWin = otherData.isBotGame && (winnerId === 'bot' || (!game.winner_id && otherData.winner === 'bot'));
       const isDraw = !winnerId;
 
       return {
@@ -1074,7 +1076,7 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
         endTime: game.end_time,
         status: game.status,
         winnerId: winnerId,
-        result: isDraw ? 'draw' : (isWinner ? 'win' : 'loss'),
+        result: isDraw ? 'draw' : (isBotWin ? 'loss' : (isWinner ? 'win' : 'loss')),
         reason: otherData.reason || 'unknown',
         eloChanges: otherData.eloChanges || null,
         isBotGame: !!otherData.isBotGame,
@@ -1084,25 +1086,23 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
         boardHeight: game.board_height,
         timeControl: game.turn_length,
         increment: game.increment,
-        players: [
-          {
-            id: game.player1_id,
-            username: game.player1_username,
-            elo: game.player1_elo,
-            position: game.player1_position
-          },
-          game.player2_id ? {
-            id: game.player2_id,
-            username: game.player2_username,
-            elo: game.player2_elo,
-            position: game.player2_position
-          } : (otherData.isBotGame ? {
-            id: 'bot',
-            username: `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`,
-            elo: null,
-            position: 2
-          } : null)
-        ].filter(Boolean)
+        players: (() => {
+          const botUsername = otherData.isBotGame
+            ? `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`
+            : null;
+          const botPosition = otherData.botPosition || 2;
+          const p1 = game.player1_id
+            ? { id: game.player1_id, username: game.player1_username, elo: game.player1_elo, position: game.player1_position }
+            : (otherData.isBotGame && botPosition === 1
+              ? { id: 'bot', username: botUsername, elo: null, position: 1 }
+              : null);
+          const p2 = game.player2_id
+            ? { id: game.player2_id, username: game.player2_username, elo: game.player2_elo, position: game.player2_position }
+            : (otherData.isBotGame && botPosition === 2
+              ? { id: 'bot', username: botUsername, elo: null, position: 2 }
+              : null);
+          return [p1, p2].filter(Boolean);
+        })()
       };
     });
 
@@ -1136,6 +1136,7 @@ app.get("/api/users/:userId/ongoing-games", async (req, res) => {
         g.increment,
         g.is_correspondence,
         g.correspondence_days,
+        g.other_data,
         gt.game_name as game_type_name,
         gt.board_width,
         gt.board_height,
@@ -1156,23 +1157,40 @@ app.get("/api/users/:userId/ongoing-games", async (req, res) => {
       ORDER BY g.start_time DESC, g.created_at DESC
     `, [userId, userId]);
 
-    const formattedGames = games.map(game => ({
-      id: game.id,
-      createdAt: game.created_at,
-      startTime: game.start_time,
-      status: game.status,
-      gameTypeName: game.game_type_name,
-      boardWidth: game.board_width,
-      boardHeight: game.board_height,
-      timeControl: game.turn_length,
-      increment: game.increment,
-      isCorrespondence: !!game.is_correspondence,
-      correspondenceDays: game.correspondence_days,
-      players: [
-        { id: game.player1_id, username: game.player1_username, elo: game.player1_elo },
-        { id: game.player2_id, username: game.player2_username, elo: game.player2_elo }
-      ].filter(p => p.id)
-    }));
+    const formattedGames = games.map(game => {
+      let otherData = {};
+      try {
+        otherData = JSON.parse(game.other_data || '{}');
+      } catch (e) {}
+
+      const isBotGame = !!otherData.isBotGame;
+      const botPosition = otherData.botPosition || 2;
+      const botUsername = isBotGame
+        ? `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`
+        : null;
+
+      const p1 = game.player1_id
+        ? { id: game.player1_id, username: game.player1_username, elo: game.player1_elo }
+        : (isBotGame && botPosition === 1 ? { id: 'bot', username: botUsername, elo: null } : null);
+      const p2 = game.player2_id
+        ? { id: game.player2_id, username: game.player2_username, elo: game.player2_elo }
+        : (isBotGame && botPosition === 2 ? { id: 'bot', username: botUsername, elo: null } : null);
+
+      return {
+        id: game.id,
+        createdAt: game.created_at,
+        startTime: game.start_time,
+        status: game.status,
+        gameTypeName: game.game_type_name,
+        boardWidth: game.board_width,
+        boardHeight: game.board_height,
+        timeControl: game.turn_length,
+        increment: game.increment,
+        isCorrespondence: !!game.is_correspondence,
+        correspondenceDays: game.correspondence_days,
+        players: [p1, p2].filter(Boolean)
+      };
+    });
 
     res.json({ games: formattedGames });
   } catch (err) {
@@ -2006,7 +2024,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         mate_condition = ?, mate_piece = ?, capture_condition = ?, capture_piece = ?,
         value_condition = ?, value_piece = ?, value_max = ?, value_title = ?,
         squares_condition = ?, squares_count = ?, hill_condition = ?, hill_x = ?, hill_y = ?, hill_turns = ?,
-        actions_per_turn = ?, simultaneous_turns = ?, board_width = ?, board_height = ?, player_count = ?,,
+        actions_per_turn = ?, simultaneous_turns = ?, board_width = ?, board_height = ?, player_count = ?,
         starting_piece_count = ?, pieces_string = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
         randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?,
@@ -2221,6 +2239,30 @@ app.post("/api/register", registerLimiter, async (req, res) => {
     const hashedPassword = bcrypt.hashSync(password, BCRYPT_ROUNDS);
     const user = await dbHelpers.createUser(username, hashedPassword, email);
     
+    // Notify owner of new user registration (non-blocking)
+    dbHelpers.getOwnerUserId().then(async (ownerId) => {
+      if (ownerId && ownerId !== user.id) {
+        try {
+          await dbHelpers.createNotification({
+            user_id: ownerId,
+            sender_id: user.id,
+            type: 'system',
+            title: `New user registered: ${username}`,
+            content: `A new user "${username}" has joined the site.`,
+            action_url: `/profile/${user.id}`
+          });
+          // Push real-time notification if owner is online
+          const gameSocket = require("./game-socket");
+          const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
+          if (ownerSocketId && gameSocket.getIO()) {
+            const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
+            gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New user registered: ${username}` });
+            gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
+          }
+        } catch (err) { console.error('Owner notification (new user) failed:', err.message); }
+      }
+    }).catch(() => {});
+
     // Send welcome email (non-blocking, won't fail registration if SendGrid not configured)
     sendWelcomeEmail(email, username)
       .then(result => {
@@ -2565,6 +2607,29 @@ app.post("/api/auth/google", async (req, res) => {
         );
 
         user = await dbHelpers.findUserByEmail(email);
+
+        // Notify owner of new user registration via Google (non-blocking)
+        dbHelpers.getOwnerUserId().then(async (ownerId) => {
+          if (ownerId && ownerId !== user.id) {
+            try {
+              await dbHelpers.createNotification({
+                user_id: ownerId,
+                sender_id: user.id,
+                type: 'system',
+                title: `New user registered: ${username}`,
+                content: `A new user "${username}" has joined via Google sign-in.`,
+                action_url: `/profile/${user.id}`
+              });
+              const gameSocket = require("./game-socket");
+              const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
+              if (ownerSocketId && gameSocket.getIO()) {
+                const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
+                gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New user registered: ${username}` });
+                gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
+              }
+            } catch (err) { console.error('Owner notification (new Google user) failed:', err.message); }
+          }
+        }).catch(() => {});
 
         // Send welcome email (non-blocking)
         sendWelcomeEmail(email, username).catch(err => {
@@ -3984,6 +4049,31 @@ app.post("/api/games/create", optionalAuthenticate, async (req, res) => {
     
     await db_pool.query(forumSql, [forumAuthorId, gameId, forumTitle, forumContent, currentTime, true]);
 
+    // Notify owner of new game type creation (non-blocking)
+    dbHelpers.getOwnerUserId().then(async (ownerId) => {
+      if (ownerId && ownerId !== creator_id) {
+        try {
+          const creatorName = creator_id ? (await dbHelpers.findUserById(creator_id))?.username || 'Anonymous' : 'Anonymous';
+          await dbHelpers.createNotification({
+            user_id: ownerId,
+            sender_id: creator_id,
+            type: 'system',
+            title: `New game type created: ${gameData.game_name}`,
+            content: `${creatorName} created a new game type "${gameData.game_name}".`,
+            related_id: gameId,
+            action_url: `/games/${gameId}`
+          });
+          const gameSocket = require("./game-socket");
+          const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
+          if (ownerSocketId && gameSocket.getIO()) {
+            const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
+            gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New game type created: ${gameData.game_name}` });
+            gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
+          }
+        } catch (err) { console.error('Owner notification (new game type) failed:', err.message); }
+      }
+    }).catch(() => {});
+
     res.status(201).send({
       message: "Game created successfully!",
       result: {
@@ -4252,6 +4342,31 @@ app.post("/api/pieces/create", optionalAuthenticate, pieceUpload.array('piece_im
 
     const [result] = await db_pool.query(pieceSql, pieceValues);
     const pieceId = result.insertId;
+
+    // Notify owner of new piece creation (non-blocking)
+    dbHelpers.getOwnerUserId().then(async (ownerId) => {
+      if (ownerId && ownerId !== creator_id) {
+        try {
+          const creatorName = creator_id ? (await dbHelpers.findUserById(creator_id))?.username || 'Anonymous' : 'Anonymous';
+          await dbHelpers.createNotification({
+            user_id: ownerId,
+            sender_id: creator_id,
+            type: 'system',
+            title: `New piece created: ${pieceData.piece_name}`,
+            content: `${creatorName} created a new piece "${pieceData.piece_name}".`,
+            related_id: pieceId,
+            action_url: `/pieces/${pieceId}`
+          });
+          const gameSocket = require("./game-socket");
+          const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
+          if (ownerSocketId && gameSocket.getIO()) {
+            const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
+            gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New piece created: ${pieceData.piece_name}` });
+            gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
+          }
+        } catch (err) { console.error('Owner notification (new piece) failed:', err.message); }
+      }
+    }).catch(() => {});
 
     res.status(201).send({
       message: "Piece created successfully!",
