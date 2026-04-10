@@ -975,6 +975,19 @@ const hasEmailBeenSentForWeek = async (userId, weekStart) => {
   return result[0].count > 0;
 };
 
+// ----------------------- Owner Helper ---------------------------
+
+let cachedOwnerId = null;
+const getOwnerUserId = async () => {
+  if (cachedOwnerId) return cachedOwnerId;
+  const rows = await query("SELECT id FROM users WHERE role = 'owner' LIMIT 1");
+  if (rows.length > 0) {
+    cachedOwnerId = rows[0].id;
+    return cachedOwnerId;
+  }
+  return null;
+};
+
 // ----------------------- Direct Messages ---------------------------
 
 const sendDirectMessage = async (senderId, recipientId, content) => {
@@ -1126,6 +1139,7 @@ module.exports = {
   getNotificationSummaryForUser,
   logNotificationEmail,
   hasEmailBeenSentForWeek,
+  getOwnerUserId,
   // Direct Messages
   sendDirectMessage,
   getConversations,
