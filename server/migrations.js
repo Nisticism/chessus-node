@@ -2545,6 +2545,24 @@ Join us in revolutionizing chess, one variant at a time.
       console.error('Error adding simultaneous_turns column:', err.message);
     }
 
+    // Upgrade pieces_string to MEDIUMTEXT for large game boards
+    try {
+      const [columns] = await db_pool.query(
+        `SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'game_types' AND COLUMN_NAME = 'pieces_string'`,
+        [process.env.DB_NAME || 'chessusnode']
+      );
+      if (columns.length > 0 && columns[0].DATA_TYPE !== 'mediumtext') {
+        await runMigration(
+          "ALTER TABLE game_types MODIFY COLUMN pieces_string MEDIUMTEXT",
+          "Increase game_types.pieces_string to MEDIUMTEXT for large boards"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error upgrading pieces_string to MEDIUMTEXT:', err.message);
+    }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {
