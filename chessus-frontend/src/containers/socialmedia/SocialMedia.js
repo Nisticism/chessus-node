@@ -23,7 +23,7 @@ const SocialMedia = () => {
       name: "YouTube",
       handle: "GridGrove Official",
       icon: "▶️",
-      url: "https://youtube.com/gridgrove",
+      url: "https://www.youtube.com/@GridGrove",
       description: "Watch tutorials, gameplay videos, and tournament highlights",
       buttonText: "Subscribe",
     },
