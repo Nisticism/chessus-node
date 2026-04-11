@@ -168,6 +168,17 @@ const LiveGame = () => {
   const serverTimesRef = useRef({}); // Last raw server playerTimes
   const activeClockPlayerRef = useRef(null); // Which player's clock is ticking
 
+  // Turn confirmation for correspondence games
+  const [turnConfirmEnabled, setTurnConfirmEnabled] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem('turnConfirmEnabled');
+    return saved === null ? true : saved === 'true';
+  });
+  const [pendingMove, setPendingMove] = useState(null); // {gameId, moveData} awaiting confirmation
+
+  // Options menu collapse state
+  const [optionsCollapsed, setOptionsCollapsed] = useState(false);
+
   const boardAnimationsEnabled = typeof window !== 'undefined' && localStorage.getItem('boardAnimations') !== 'false';
   const pieceShadowEnabled = typeof window !== 'undefined' && localStorage.getItem('pieceShadow') === 'true';
 
@@ -205,6 +216,26 @@ const LiveGame = () => {
       console.error(`Error saving ${key} preference:`, err);
     }
   }, [currentUser, dispatch]);
+
+  // Wrapper for makeMove that supports turn confirmation in correspondence games
+  const submitMove = useCallback((gId, moveData) => {
+    if (turnConfirmEnabled && gameState?.isCorrespondence && !gameState?.timeControl) {
+      setPendingMove({ gameId: gId, moveData });
+    } else {
+      makeMove(gId, moveData);
+    }
+  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, makeMove]);
+
+  const confirmPendingMove = useCallback(() => {
+    if (pendingMove) {
+      makeMove(pendingMove.gameId, pendingMove.moveData);
+      setPendingMove(null);
+    }
+  }, [pendingMove, makeMove]);
+
+  const cancelPendingMove = useCallback(() => {
+    setPendingMove(null);
+  }, []);
 
   // Track window size for responsive board sizing
   useEffect(() => {
@@ -2303,7 +2334,7 @@ const LiveGame = () => {
           moveData.isHopCapture = true;
           moveData.hopCapturedPieceIds = move.hopCapturedPieceIds;
         }
-        makeMove(parseInt(gameId), moveData);
+        submitMove(parseInt(gameId), moveData);
         setSelectedPiece(null);
         setValidMoves([]);
       } else {
@@ -2363,7 +2394,7 @@ const LiveGame = () => {
         const placeablePieces = otherData.placeable_pieces || [];
         if (placeablePieces.length === 1) {
           // Single piece type — place directly without modal
-          makeMove(parseInt(gameId), {
+          submitMove(parseInt(gameId), {
             type: 'place',
             to: { x, y },
             placePieceId: placeablePieces[0].piece_id
@@ -2386,7 +2417,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, makeMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget]);
 
   // Handle piece hover for movement helpers
   const handlePieceHover = useCallback((piece) => {
@@ -2588,7 +2619,7 @@ const LiveGame = () => {
           moveData.isHopCapture = true;
           moveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
         }
-        makeMove(parseInt(gameId), moveData);
+        submitMove(parseInt(gameId), moveData);
       } else if (canMakePremove) {
         const premoveData = {
           from: { x: draggedPiece.x, y: draggedPiece.y },
@@ -2606,7 +2637,7 @@ const LiveGame = () => {
     setValidMoves([]);
     setDraggedPiece(null);
     setDragValidMoves([]);
-  }, [draggedPiece, dragValidMoves, isMyTurn, gameState, makeMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
+  }, [draggedPiece, dragValidMoves, isMyTurn, gameState, submitMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
 
   // Check if board should be flipped (player 2 sees board from their perspective)
   const shouldFlipBoard = useMemo(() => {
@@ -2782,7 +2813,7 @@ const LiveGame = () => {
                 moveData.isHopCapture = true;
                 moveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
               }
-              makeMove(parseInt(gameId), moveData);
+              submitMove(parseInt(gameId), moveData);
             } else if (canMakePremove) {
               const premoveData = {
                 from: { x: piece.x, y: piece.y },
@@ -2807,7 +2838,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [gameState, shouldFlipBoard, isMyTurn, makeMove, sendPremove, gameId]);
+  }, [gameState, shouldFlipBoard, isMyTurn, submitMove, sendPremove, gameId]);
 
   // Handle right-click mousedown for ranged attack drag detection
   const handleSquareMouseDown = useCallback((e, x, y) => {
@@ -2868,7 +2899,7 @@ const LiveGame = () => {
         if (isMyTurn) {
           // Execute ranged attack immediately
           if (isEnemyTarget) {
-            makeMove(parseInt(gameId), {
+            submitMove(parseInt(gameId), {
               from: { x: rangedSelectedPiece.x, y: rangedSelectedPiece.y },
               to: { x, y },
               pieceId: rangedSelectedPiece.id,
@@ -2909,7 +2940,7 @@ const LiveGame = () => {
           moveData.castlingWith = move.castlingWith;
           moveData.castlingDirection = move.castlingDirection;
         }
-        makeMove(parseInt(gameId), moveData);
+        submitMove(parseInt(gameId), moveData);
         setSelectedPiece(null);
         setValidMoves([]);
       }
@@ -2918,7 +2949,7 @@ const LiveGame = () => {
       setValidMoves([]);
     }
     rightClickDataRef.current = null;
-  }, [selectedPiece, validMoves, isMyTurn, gameState, makeMove, gameId, premove, sendClearPremove, currentPlayer, rangedSelectedPiece, sendPremove]);
+  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, currentPlayer, rangedSelectedPiece, sendPremove]);
 
   // Global listeners for ranged right-click drag detection
   useEffect(() => {
@@ -2987,7 +3018,7 @@ const LiveGame = () => {
           if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
             if (isMyTurn && isEnemyTarget) {
               // Execute ranged attack immediately
-              makeMove(parseInt(gameId), {
+              submitMove(parseInt(gameId), {
                 from: { x: data.piece.x, y: data.piece.y },
                 to: { x: target.x, y: target.y },
                 pieceId: data.piece.id,
@@ -3045,7 +3076,7 @@ const LiveGame = () => {
       window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
       window.removeEventListener('resize', handleResize);
     };
-  }, [isRightClickActive, gameState, currentPlayer, makeMove, gameId, isMyTurn, sendPremove, setPremove]);
+  }, [isRightClickActive, gameState, currentPlayer, submitMove, gameId, isMyTurn, sendPremove, setPremove]);
 
   // Handle resign
   const handleResign = () => {
@@ -3074,14 +3105,14 @@ const LiveGame = () => {
   // Handle piece placement selection from modal
   const handlePlacementSelect = useCallback((piece) => {
     if (!placementTarget) return;
-    makeMove(parseInt(gameId), {
+    submitMove(parseInt(gameId), {
       type: 'place',
       to: { x: placementTarget.x, y: placementTarget.y },
       placePieceId: piece.piece_id
     });
     setShowPlacementModal(false);
     setPlacementTarget(null);
-  }, [gameId, makeMove, placementTarget]);
+  }, [gameId, submitMove, placementTarget]);
 
   const handlePlacementCancel = useCallback(() => {
     setShowPlacementModal(false);
@@ -3838,7 +3869,13 @@ const LiveGame = () => {
             <div className={styles["player-info"]}>
               <div className={styles["player-header"]}>
                 <span className={styles["player-name"]}>
-                  {currentPlayer?.position === 1 ? player2?.username : player1?.username}
+                  {(currentPlayer?.position === 1 ? player2?.id : player1?.id) === 'bot' ? (
+                    currentPlayer?.position === 1 ? player2?.username : player1?.username
+                  ) : (
+                    <Link to={`/profile/${currentPlayer?.position === 1 ? player2?.username : player1?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+                      {currentPlayer?.position === 1 ? player2?.username : player1?.username}
+                    </Link>
+                  )}
                   {(currentPlayer?.position === 1 ? player2?.id : player1?.id) === currentUser?.id && ' (You)'}
                 </span>
                 <span className={`${styles["player-indicator"]} ${((!currentPlayer && gameState.currentTurn === (currentPlayer?.position === 1 ? 2 : 1)) || (currentPlayer?.position === 2 && gameState.currentTurn === 1) || (currentPlayer?.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>
@@ -3877,7 +3914,13 @@ const LiveGame = () => {
               <div className={styles["player-info"]}>
                 <div className={styles["player-header"]}>
                   <span className={styles["player-name"]}>
-                    {currentPlayer?.position === 1 ? player2?.username : player1?.username}
+                    {(currentPlayer?.position === 1 ? player2?.id : player1?.id) === 'bot' ? (
+                      currentPlayer?.position === 1 ? player2?.username : player1?.username
+                    ) : (
+                      <Link to={`/profile/${currentPlayer?.position === 1 ? player2?.username : player1?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+                        {currentPlayer?.position === 1 ? player2?.username : player1?.username}
+                      </Link>
+                    )}
                     {(currentPlayer?.position === 1 ? player2?.id : player1?.id) === currentUser?.id && ' (You)'}
                   </span>
                   <span className={`${styles["player-indicator"]} ${((!currentPlayer && gameState.currentTurn === (currentPlayer?.position === 1 ? 2 : 1)) || (currentPlayer?.position === 2 && gameState.currentTurn === 1) || (currentPlayer?.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>
@@ -3949,7 +3992,9 @@ const LiveGame = () => {
                 )}
                 <div className={styles["player-header"]}>
                   <span className={styles["player-name"]}>
-                    {currentPlayer?.username}
+                    <Link to={`/profile/${currentPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+                      {currentPlayer?.username}
+                    </Link>
                     {' (You)'}
                   </span>
                   <span className={`${styles["player-indicator"]} ${currentPlayer && ((currentPlayer.position === 1 && gameState.currentTurn === 1) || (currentPlayer.position === 2 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>
@@ -4117,19 +4162,29 @@ const LiveGame = () => {
             <div className={styles["game-options"]}>
               <div className={styles["options-header"]}>
                 <h3>Options</h3>
-                <button
-                  className={`${styles["sound-toggle-btn"]} ${soundEnabled ? styles["sound-on"] : styles["sound-off"]}`}
-                  onClick={() => {
-                    const enabled = !soundEnabled;
-                    setSoundEnabled(enabled);
-                    soundEnabledRef.current = enabled;
-                    updateUserPreference('sound_enabled', enabled);
-                  }}
-                  title={soundEnabled ? 'Mute sound effects' : 'Unmute sound effects'}
-                >
-                  {soundEnabled ? '🔊' : '🔇'}
-                </button>
+                <div className={styles["options-header-buttons"]}>
+                  <button
+                    className={`${styles["sound-toggle-btn"]} ${soundEnabled ? styles["sound-on"] : styles["sound-off"]}`}
+                    onClick={() => {
+                      const enabled = !soundEnabled;
+                      setSoundEnabled(enabled);
+                      soundEnabledRef.current = enabled;
+                      updateUserPreference('sound_enabled', enabled);
+                    }}
+                    title={soundEnabled ? 'Mute sound effects' : 'Unmute sound effects'}
+                  >
+                    {soundEnabled ? '🔊' : '🔇'}
+                  </button>
+                  <button
+                    className={styles["options-collapse-btn"]}
+                    onClick={() => setOptionsCollapsed(!optionsCollapsed)}
+                    title={optionsCollapsed ? 'Show options' : 'Hide options'}
+                  >
+                    {optionsCollapsed ? '☰' : '✕'}
+                  </button>
+                </div>
               </div>
+            {!optionsCollapsed && (<>
             <label className={styles["option-toggle"]}>
               <span>Show movable pieces</span>
               <div className={styles["toggle-switch"]}>
@@ -4229,6 +4284,35 @@ const LiveGame = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {gameState?.isCorrespondence && !gameState?.timeControl && (
+              <label className={styles["option-toggle"]}>
+                <span>Confirm moves</span>
+                <div className={styles["toggle-switch"]}>
+                  <input
+                    type="checkbox"
+                    checked={turnConfirmEnabled}
+                    onChange={(e) => {
+                      setTurnConfirmEnabled(e.target.checked);
+                      localStorage.setItem('turnConfirmEnabled', e.target.checked);
+                      if (!e.target.checked) setPendingMove(null);
+                    }}
+                  />
+                  <span className={styles["toggle-slider"]} />
+                </div>
+              </label>
+            )}
+            </>)}
+
+            {/* Turn Confirmation */}
+            {pendingMove && (
+              <div className={styles["move-confirm-section"]}>
+                <span className={styles["move-confirm-label"]}>Confirm your move?</span>
+                <div className={styles["move-confirm-buttons"]}>
+                  <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
+                  <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
+                </div>
               </div>
             )}
 
@@ -4338,6 +4422,17 @@ const LiveGame = () => {
         </div>
       )}
 
+      {/* Mobile Turn Confirmation - Only visible on small screens */}
+      {pendingMove && (
+        <div className={styles["layout-row-move-confirm"]}>
+          <span className={styles["move-confirm-label"]}>Confirm your move?</span>
+          <div className={styles["move-confirm-buttons"]}>
+            <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
+            <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Clock Row - Only visible on small screens */}
       <div className={styles["layout-row-bottom-clock"]}>
         <div className={`
@@ -4362,7 +4457,9 @@ const LiveGame = () => {
             )}
             <div className={styles["player-header"]}>
               <span className={styles["player-name"]}>
-                {currentPlayer?.username}
+                <Link to={`/profile/${currentPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+                  {currentPlayer?.username}
+                </Link>
                 {' (You)'}
               </span>
               <span className={`${styles["player-indicator"]} ${currentPlayer && ((currentPlayer.position === 1 && gameState.currentTurn === 1) || (currentPlayer.position === 2 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>

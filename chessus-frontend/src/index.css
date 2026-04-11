@@ -211,7 +211,7 @@ code {
   --text-main: #c8e6d0;
 
   /* Last-move highlight colors */
-  --last-move-from: rgba(200, 170, 80, 0.3);
+  --last-move-from: rgba(180, 160, 120, 0.55);
   --last-move-to: rgba(80, 180, 140, 0.4);
 }
 
@@ -302,7 +302,7 @@ code {
   --text-main: #c8d6e8;
 
   /* Last-move highlight colors */
-  --last-move-from: rgba(140, 130, 200, 0.3);
+  --last-move-from: rgba(140, 130, 200, 0.55);
   --last-move-to: rgba(80, 150, 210, 0.35);
 }
 
@@ -325,6 +325,35 @@ button, .btn, a.btn {
 /* Prevent horizontal scrolling on mobile */
 body {
   overflow-x: hidden;
+}
+
+/* Global themed scrollbars */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--bg-dark, #1a1a2e);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-background, #285c94);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-color, #6cacd4);
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--bg-dark, #1a1a2e);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-background, #285c94) var(--bg-dark, #1a1a2e);
 }
 
 /* Mobile responsive font sizes */

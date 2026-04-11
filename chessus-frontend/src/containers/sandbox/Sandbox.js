@@ -76,7 +76,28 @@ const Sandbox = () => {
   const [searchGameTerm, setSearchGameTerm] = useState("");
   const [searchPieceTerm, setSearchPieceTerm] = useState("");
   const [showHighlights, setShowHighlights] = useState(true);
+  const [boardFlipped, setBoardFlipped] = useState(false);
+  const [playingAs, setPlayingAs] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Pagination for sidebars
+  const ITEMS_PER_PAGE = 20;
+  const [gameTypePage, setGameTypePage] = useState(1);
+  const [piecePage, setPiecePage] = useState(1);
+
+  // Game rules state (under construction)
+  const [sandboxRules, setSandboxRules] = useState({
+    mate_condition: true,
+    capture_condition: false,
+    squares_condition: false,
+    piece_count_condition: false,
+    actions_per_turn: 1,
+    simultaneous_turns: false,
+    draw_move_limit: null,
+    repetition_draw_count: null,
+    flanking_captures: false,
+    place_pieces_action: false,
+  });
   
   // Initialize sidebarPlayerView from localStorage
   const getInitialSidebarPlayerView = () => {
@@ -2377,11 +2398,13 @@ const Sandbox = () => {
   const filteredGameTypes = gamesList.filter(game =>
     game.game_name?.toLowerCase().includes(searchGameTerm.toLowerCase())
   );
+  const pagedGameTypes = filteredGameTypes.slice(0, gameTypePage * ITEMS_PER_PAGE);
 
   // Filter pieces
   const filteredPieces = fullPiecesList.filter(piece =>
     piece.piece_name?.toLowerCase().includes(searchPieceTerm.toLowerCase())
   );
+  const pagedPieces = filteredPieces.slice(0, piecePage * ITEMS_PER_PAGE);
 
   // Render the board
   const renderBoard = () => {
@@ -2401,15 +2424,17 @@ const Sandbox = () => {
     const boardHeight = activeSandbox.gameType.board_height || 8;
     // Calculate square size to fit within max dimensions while keeping squares square
     // Account for layout: stacked (≤900px) vs sidebar (>900px), plus board border/padding
-    const maxBoardSize = Math.min(600, windowWidth <= 1200 ? windowWidth - 90 : windowWidth - 650);
-    const squareSize = Math.min(60, maxBoardSize / Math.max(boardWidth, boardHeight));
+    const maxBoardSize = Math.min(windowWidth >= 1600 ? 900 : 750, windowWidth <= 1200 ? windowWidth - 90 : windowWidth - 660);
+    const squareSize = Math.min(windowWidth >= 1600 ? 90 : 75, maxBoardSize / Math.max(boardWidth, boardHeight));
     const pieces = activeSandbox.pieces;
     const specialSquares = activeSandbox.specialSquares || {};
 
     const squares = [];
 
-    for (let y = 0; y < boardHeight; y++) {
-      for (let x = 0; x < boardWidth; x++) {
+    for (let row = 0; row < boardHeight; row++) {
+      for (let col = 0; col < boardWidth; col++) {
+        const x = boardFlipped ? (boardWidth - 1 - col) : col;
+        const y = boardFlipped ? (boardHeight - 1 - row) : row;
         const isLight = (x + y) % 2 === 0;
         // Multi-tile aware: find piece whose footprint covers this square
         const piece = pieces.find(p => {
@@ -2498,7 +2523,7 @@ const Sandbox = () => {
               ${styles["board-square"]}
               ${isLight ? styles.light : styles.dark}
               ${isSelected ? styles.selected : ''}
-              ${isLastMoveFrom ? styles["last-move-from"] : ''}
+              ${isLastMoveFrom ? (isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]) : ''}
               ${isLastMoveTo ? styles["last-move-to"] : ''}
             `}
             onClick={() => handleSquareClick(x, y)}
@@ -2604,30 +2629,43 @@ const Sandbox = () => {
               />
               <span>Show move highlights</span>
             </label>
-            <div className={styles["turn-indicator"]}>
-              Turn: Player {activeSandbox.currentTurn}
-            </div>
           </div>
         </div>
-        <div
-          ref={boardRef}
-          className={styles.board}
-          style={{
-            gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
-            gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
-            width: 'fit-content',
-            maxWidth: 'none',
-            maxHeight: 'none',
-            aspectRatio: 'unset'
-          }}
-        >
+        <div className={styles["turn-banner"]}>
+          {activeSandbox.currentTurn === playingAs
+            ? `Your turn (Player ${playingAs})`
+            : `Opponent's turn (Player ${activeSandbox.currentTurn === 1 ? 1 : 2})`}
+        </div>
+        <div className={styles["board-with-notation"]}>
+          {/* Rank labels (left side) */}
+          <div className={styles["rank-labels"]} style={{ gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)` }}>
+            {Array.from({ length: boardHeight }, (_, row) => {
+              const rank = boardFlipped ? row + 1 : boardHeight - row;
+              return <div key={row} className={styles["rank-label"]}>{rank}</div>;
+            })}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div
+              ref={boardRef}
+              className={styles.board}
+              style={{
+                gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
+                gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
+                width: 'fit-content',
+                maxWidth: 'none',
+                maxHeight: 'none',
+                aspectRatio: 'unset'
+              }}
+            >
           {squares}
           {rangedAttackSource && rangedMousePos && boardRef.current && (() => {
             const boardRect = boardRef.current.getBoundingClientRect();
             const squareWidth = boardRect.width / boardWidth;
             const squareHeight = boardRect.height / boardHeight;
-            const startX = (rangedAttackSource.x + 0.5) * squareWidth;
-            const startY = (rangedAttackSource.y + 0.5) * squareHeight;
+            const visualX = boardFlipped ? (boardWidth - 1 - rangedAttackSource.x) : rangedAttackSource.x;
+            const visualY = boardFlipped ? (boardHeight - 1 - rangedAttackSource.y) : rangedAttackSource.y;
+            const startX = (visualX + 0.5) * squareWidth;
+            const startY = (visualY + 0.5) * squareHeight;
             const endX = rangedMousePos.x - boardRect.left;
             const endY = rangedMousePos.y - boardRect.top;
             return (
@@ -2669,8 +2707,27 @@ const Sandbox = () => {
               </svg>
             );
           })()}
+            </div>
+            {/* File labels (bottom) */}
+            <div className={styles["file-labels"]} style={{ gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)` }}>
+              {Array.from({ length: boardWidth }, (_, col) => {
+                const fileIndex = boardFlipped ? (boardWidth - 1 - col) : col;
+                return <div key={col} className={styles["file-label"]}>{String.fromCharCode(97 + fileIndex)}</div>;
+              })}
+            </div>
+          </div>
         </div>
         <div className={styles["board-controls"]}>
+          <button
+            onClick={() => {
+              setBoardFlipped(f => !f);
+              setPlayingAs(p => p === 1 ? 2 : 1);
+            }}
+            className={styles["btn-secondary"]}
+            title="Flip the board perspective"
+          >
+            🔄 Flip Board
+          </button>
           <button
             onClick={() => {
               setSandboxes(prev => prev.map(s =>
@@ -2880,52 +2937,120 @@ const Sandbox = () => {
     <div className={styles["sandbox-container"]}>
       {/* Left Sidebar - Game Types */}
       <div className={`${styles.sidebar} ${styles.left}`}>
-        <div className={styles["sidebar-header"]}>
-          <h3>Game Types</h3>
-          <button
-            onClick={() => setShowGameTypes(!showGameTypes)}
-            className={styles["toggle-btn"]}
-            title={showGameTypes ? "Collapse" : "Expand"}
-          >
-            {showGameTypes ? '▼' : '▶'}
-          </button>
-        </div>
+        <div className={styles["sidebar-section"]}>
+          <div className={styles["sidebar-header"]}>
+            <h3>Game Types</h3>
+            <button
+              onClick={() => setShowGameTypes(!showGameTypes)}
+              className={styles["toggle-btn"]}
+              title={showGameTypes ? "Collapse" : "Expand"}
+            >
+              {showGameTypes ? '▼' : '▶'}
+            </button>
+          </div>
 
-        {showGameTypes && (
-          <>
-            <div className={styles["search-box"]}>
-              <input
-                type="text"
-                placeholder="Search games..."
-                value={searchGameTerm}
-                onChange={(e) => setSearchGameTerm(e.target.value)}
-              />
-            </div>
+          {showGameTypes && (
+            <>
+              <div className={styles["search-box"]}>
+                <input
+                  type="text"
+                  placeholder="Search games..."
+                  value={searchGameTerm}
+                  onChange={(e) => { setSearchGameTerm(e.target.value); setGameTypePage(1); }}
+                />
+              </div>
 
-            <div className={styles["item-list"]}>
-              <button
-                onClick={createBlankSandbox}
-                className={`${styles["list-item"]} ${styles["blank-board-btn"]}`}
-                disabled={sandboxes.length >= MAX_SANDBOXES}
-              >
-                <strong>✦ Blank Board</strong>
-                <span>8×8 empty board</span>
-              </button>
-
-              {filteredGameTypes.map((game) => (
+              {filteredGameTypes.length > ITEMS_PER_PAGE && (
+                <div className={styles["pagination-bar"]}>
+                  <span>{pagedGameTypes.length} of {filteredGameTypes.length}</span>
+                  {pagedGameTypes.length < filteredGameTypes.length && (
+                    <button onClick={() => setGameTypePage(p => p + 1)}>Load More</button>
+                  )}
+                </div>
+              )}
+              <div className={styles["item-list"]}>
                 <button
-                  key={game.id}
-                  onClick={() => loadGameType(game)}
-                  className={styles["list-item"]}
+                  onClick={createBlankSandbox}
+                  className={`${styles["list-item"]} ${styles["blank-board-btn"]}`}
                   disabled={sandboxes.length >= MAX_SANDBOXES}
                 >
-                  <strong>{game.game_name}</strong>
-                  <span>{game.board_width}×{game.board_height}</span>
+                  <strong>✦ Blank Board</strong>
+                  <span>8×8 empty board</span>
                 </button>
-              ))}
-            </div>
-          </>
-        )}
+
+                {pagedGameTypes.map((game) => (
+                  <button
+                    key={game.id}
+                    onClick={() => loadGameType(game)}
+                    className={styles["list-item"]}
+                    disabled={sandboxes.length >= MAX_SANDBOXES}
+                  >
+                    <strong>{game.game_name}</strong>
+                    <span>{game.board_width}×{game.board_height}</span>
+                  </button>
+                ))}
+              </div>
+              {pagedGameTypes.length < filteredGameTypes.length && (
+                <button
+                  className={styles["load-more-btn"]}
+                  onClick={() => setGameTypePage(p => p + 1)}
+                >
+                  Load More ({filteredGameTypes.length - pagedGameTypes.length} remaining)
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Game Rules Section */}
+        <div className={styles["sidebar-section"]}>
+          <div className={styles["sidebar-header"]}>
+            <h3>Game Rules</h3>
+          </div>
+          <div className={styles["game-rules"]}>
+            <div className={styles["rules-notice"]}>🚧 Under Construction — more settings coming soon</div>
+            <label className={styles["rule-toggle"]}>
+              <span>Checkmate</span>
+              <input type="checkbox" checked={sandboxRules.mate_condition} onChange={(e) => setSandboxRules(r => ({ ...r, mate_condition: e.target.checked }))} />
+            </label>
+            <label className={styles["rule-toggle"]}>
+              <span>Capture to win</span>
+              <input type="checkbox" checked={sandboxRules.capture_condition} onChange={(e) => setSandboxRules(r => ({ ...r, capture_condition: e.target.checked }))} />
+            </label>
+            <label className={styles["rule-toggle"]}>
+              <span>Control squares</span>
+              <input type="checkbox" checked={sandboxRules.squares_condition} onChange={(e) => setSandboxRules(r => ({ ...r, squares_condition: e.target.checked }))} />
+            </label>
+            <label className={styles["rule-toggle"]}>
+              <span>Piece count wins</span>
+              <input type="checkbox" checked={sandboxRules.piece_count_condition} onChange={(e) => setSandboxRules(r => ({ ...r, piece_count_condition: e.target.checked }))} />
+            </label>
+            <label className={styles["rule-toggle"]}>
+              <span>Flanking captures</span>
+              <input type="checkbox" checked={sandboxRules.flanking_captures} onChange={(e) => setSandboxRules(r => ({ ...r, flanking_captures: e.target.checked }))} />
+            </label>
+            <label className={styles["rule-toggle"]}>
+              <span>Place pieces</span>
+              <input type="checkbox" checked={sandboxRules.place_pieces_action} onChange={(e) => setSandboxRules(r => ({ ...r, place_pieces_action: e.target.checked }))} />
+            </label>
+            <label className={styles["rule-toggle"]}>
+              <span>Simultaneous turns</span>
+              <input type="checkbox" checked={sandboxRules.simultaneous_turns} onChange={(e) => setSandboxRules(r => ({ ...r, simultaneous_turns: e.target.checked }))} />
+            </label>
+            <label className={styles["rule-input"]}>
+              <span>Actions per turn</span>
+              <input type="number" min="1" max="8" value={sandboxRules.actions_per_turn} onChange={(e) => setSandboxRules(r => ({ ...r, actions_per_turn: Math.max(1, Math.min(8, parseInt(e.target.value) || 1)) }))} />
+            </label>
+            <label className={styles["rule-input"]}>
+              <span>Draw move limit</span>
+              <input type="number" min="1" max="500" value={sandboxRules.draw_move_limit || ''} placeholder="Off" onChange={(e) => setSandboxRules(r => ({ ...r, draw_move_limit: e.target.value ? Math.max(1, Math.min(500, parseInt(e.target.value) || null)) : null }))} />
+            </label>
+            <label className={styles["rule-input"]}>
+              <span>Repetition draw</span>
+              <input type="number" min="2" max="9" value={sandboxRules.repetition_draw_count || ''} placeholder="Off" onChange={(e) => setSandboxRules(r => ({ ...r, repetition_draw_count: e.target.value ? Math.max(2, Math.min(9, parseInt(e.target.value) || null)) : null }))} />
+            </label>
+          </div>
+        </div>
       </div>
 
       {/* Center - Board */}
@@ -2987,7 +3112,7 @@ const Sandbox = () => {
                 type="text"
                 placeholder="Search pieces..."
                 value={searchPieceTerm}
-                onChange={(e) => setSearchPieceTerm(e.target.value)}
+                onChange={(e) => { setSearchPieceTerm(e.target.value); setPiecePage(1); }}
               />
             </div>
 
@@ -3016,8 +3141,17 @@ const Sandbox = () => {
             {piecesLoading ? (
               <div className={styles["loading"]}>Loading pieces...</div>
             ) : (
+              <>
+              {filteredPieces.length > ITEMS_PER_PAGE && (
+                <div className={styles["pagination-bar"]}>
+                  <span>{pagedPieces.length} of {filteredPieces.length}</span>
+                  {pagedPieces.length < filteredPieces.length && (
+                    <button onClick={() => setPiecePage(p => p + 1)}>Load More</button>
+                  )}
+                </div>
+              )}
               <div className={styles["piece-grid"]}>
-                {filteredPieces.map((piece) => {
+                {pagedPieces.map((piece) => {
                   const imageUrl = getPieceImage(piece.image_location, sidebarPlayerView - 1);
                   if (!imageUrl) {
                     console.warn('Missing image for piece:', piece.piece_name, piece);
@@ -3048,6 +3182,15 @@ const Sandbox = () => {
                   );
                 })}
               </div>
+              {pagedPieces.length < filteredPieces.length && (
+                <button
+                  className={styles["load-more-btn"]}
+                  onClick={() => setPiecePage(p => p + 1)}
+                >
+                  Load More ({filteredPieces.length - pagedPieces.length} remaining)
+                </button>
+              )}
+              </>
             )}
           </>
         )}

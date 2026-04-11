@@ -57,7 +57,6 @@ const Footer = () => {
             <li><Link to="/community/about">About Us</Link></li>
             <li><Link to="/contact">Contact</Link></li>
             <li><Link to="/donate">Support GridGrove</Link></li>
-            {showChangelog && <li><Link to="/changelog">Changelog</Link></li>}
           </ul>
         </div>
 
@@ -67,6 +66,7 @@ const Footer = () => {
       <div className={styles.footerLegal}>
         <Link to="/careers">Careers</Link>
         <Link to="/privacy">Privacy Policy</Link>
+        {showChangelog && <Link to="/changelog">Changelog</Link>}
       </div>
 
       <div className={styles.footerBottom}>

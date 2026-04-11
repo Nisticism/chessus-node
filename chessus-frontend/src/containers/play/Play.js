@@ -1173,20 +1173,18 @@ const Play = () => {
 
             {/* Play vs Computer Option */}
             {!challengedUserId && (
-              <div className={styles["form-group"]}>
-                <div className={`${styles["checkbox-group"]}`}>
-                  <label className={styles["checkbox-label"]}>
+              <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
+                <label className={styles["toggle-label-row"]}>
+                  <span>Play vs Computer</span>
+                  <div className={styles["toggle-switch"]}>
                     <input
                       type="checkbox"
                       checked={vsComputer}
                       onChange={(e) => setVsComputer(e.target.checked)}
                     />
-                    <span>Play vs Computer</span>
-                  </label>
-                  <div className={styles["input-hint"]}>
-                    Play against an AI opponent instead of waiting for a player
+                    <span className={styles["toggle-slider"]} />
                   </div>
-                </div>
+                </label>
                 {vsComputer && (
                   <div className={styles["difficulty-selector"]}>
                     <label>AI Difficulty</label>
@@ -1303,9 +1301,6 @@ const Play = () => {
                   Player 2
                 </button>
               </div>
-              <div className={styles["input-hint"]}>
-                Choose which side you want to play, or let the system decide randomly
-              </div>
             </div>
             
             {gameMode === "live" ? (
@@ -1341,9 +1336,6 @@ const Play = () => {
                       <option value="5">+5 seconds</option>
                       <option value="10">+10 seconds</option>
                     </select>
-                    <div className={styles["input-hint"]}>
-                      Time added to your clock after each move
-                    </div>
                   </div>
                 )}
               </>
@@ -1361,24 +1353,22 @@ const Play = () => {
                   <option value="7">7 days per move (1 week)</option>
                   <option value="14">14 days per move (2 weeks)</option>
                 </select>
-                <div className={styles["input-hint"]}>
-                  Each player has this many days to make their move. No live timer — play at your own pace.
-                </div>
               </div>
             )}
 
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={rated}
-                  onChange={(e) => setRated(e.target.checked)}
-                />
+              <label className={`${styles["toggle-label-row"]}${vsComputer ? ` ${styles["disabled"]}` : ''}`}>
                 <span>Rated Game</span>
+                <div className={styles["toggle-switch"]}>
+                  <input
+                    type="checkbox"
+                    checked={rated && !vsComputer}
+                    onChange={(e) => setRated(e.target.checked)}
+                    disabled={vsComputer}
+                  />
+                  <span className={styles["toggle-slider"]} />
+                </div>
               </label>
-              <div className={styles["input-hint"]}>
-                Game results will affect player ELO ratings
-              </div>
             </div>
 
             <div className={styles["additional-options-section"]}>
@@ -1401,9 +1391,6 @@ const Play = () => {
                 />
                 <span>Allow Premoves</span>
               </label>
-              <div className={styles["input-hint"]}>
-                Players can queue moves during opponent's turn
-              </div>
             </div>
 
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
@@ -1415,9 +1402,6 @@ const Play = () => {
                 />
                 <span>Show Movement Helpers</span>
               </label>
-              <div className={styles["input-hint"]}>
-                Display movement and attack highlighting when selecting pieces
-              </div>
             </div>
 
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
@@ -1429,9 +1413,6 @@ const Play = () => {
                 />
                 <span>Allow Spectators</span>
               </label>
-              <div className={styles["input-hint"]}>
-                Let other players watch this game
-              </div>
             </div>
 
             {timeControl !== "0" && gameMode !== "correspondence" && (
@@ -1444,9 +1425,6 @@ const Play = () => {
                 />
                 <span>Material Clock Penalty</span>
               </label>
-              <div className={styles["input-hint"]}>
-                Players losing material have their clock tick faster — up to 3× when significantly behind
-              </div>
             </div>
             )}
             {timeControl !== "0" && gameMode !== "correspondence" && (
@@ -1459,9 +1437,6 @@ const Play = () => {
                 />
                 <span>Material Clock Handicap</span>
               </label>
-              <div className={styles["input-hint"]}>
-                Players losing material have their clock tick slower — gives the losing side more time to catch up
-              </div>
             </div>
             )}
                 </div>
@@ -1471,7 +1446,7 @@ const Play = () => {
             {/* Starting Position Mode Selection */}
 
             {allowedStartingModes.length === 1 ? (
-              <div className={styles["form-group"]}>
+              <div className={`${styles["form-group"]} ${styles["starting-position-group"]}`}>
                 <label>Starting Position Mode</label>
                 <div className={styles["starting-mode-badge"]}>
                   {{
@@ -1485,7 +1460,7 @@ const Play = () => {
                 </div>
               </div>
             ) : allowedStartingModes.length > 1 && (
-              <div className={styles["form-group"]}>
+              <div className={`${styles["form-group"]} ${styles["starting-position-group"]}`}>
                 <label>Starting Position Mode</label>
                 <select
                   value={startingMode}

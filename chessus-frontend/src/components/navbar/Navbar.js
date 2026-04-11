@@ -148,9 +148,6 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
         <Link as="div" className="inner-menu-item" to="/donate">
           Support GridGrove
         </Link>
-        {showChangelog && <Link as="div" className="inner-menu-item" to="/changelog">
-          Changelog
-        </Link>}
       </div>
     </div>
 

@@ -6,7 +6,7 @@ import API_URL from "../../global/global";
 const changelogData = [
   {
     date: "April 10, 2026",
-    title: "Content Moderation, Security & Bug Fixes",
+    title: "Sandbox Rules, Turn Confirmation & UI Polish",
     items: [
       "Added content moderation — offensive usernames are now blocked during registration and profile edits (Scunthorpe-safe: innocent words like 'Scunthorpe' won't be rejected)",
       "Game names, descriptions, rules, and piece descriptions are now checked for inappropriate language with real-time warnings",
@@ -22,6 +22,23 @@ const changelogData = [
       "Fixed ongoing games list not displaying the computer opponent's name correctly",
       "The site owner now receives notifications for every new game, new piece, and new user registration",
       "Updated YouTube channel link",
+      "Correspondence games now have a turn confirmation step — review your move before submitting, with a toggle in game options",
+      "Game options menu can now be collapsed with a hamburger button to save screen space",
+      "Computer player names are no longer clickable links",
+      "Sandbox now has a Game Rules section below Game Types for configuring win conditions, draw rules, and gameplay mechanics (more settings coming soon)",
+      "Sandbox sidebars now paginate long lists for better performance",
+      "Sandbox board is now larger on desktop screens",
+      "Host Game modal: 'Play vs Computer' and 'Rated Game' are now toggle switches instead of checkboxes",
+      "Host Game modal: rated games are automatically disabled when playing against the computer",
+      "Host Game modal: removed redundant description text for cleaner layout",
+      "Maximum board size is now enforced at 48×48 on both frontend and backend",
+      "Scrollbars across the site now match the current theme",
+      "Sandbox sections on mobile are now a consistent 250px height with vertical scrolling",
+      "Host Game modal: labels are now left-aligned with better spacing",
+      "Scrollbars are now slightly darker and wider for better visibility",
+      "Sandbox piece library on mobile is now taller for easier browsing",
+      "Sandbox piece library and game types now show pagination info at the top of the list",
+      "Sandbox piece library on desktop is now capped at 400px with scrolling",
     ]
   },
   {

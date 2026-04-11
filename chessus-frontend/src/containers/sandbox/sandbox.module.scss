@@ -11,7 +11,7 @@
   border: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
 
   &.left {
     width: 280px;
@@ -20,7 +20,20 @@
 
   &.right {
     width: 320px;
+    max-height: calc(100vh - 80px);
     border-left: 2px solid var(--border-subtle);
+  }
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  max-height: 400px;
+  overflow: hidden;
+
+  .item-list,
+  .piece-grid {
+    overflow-y: auto;
   }
 }
 
@@ -207,6 +220,7 @@
   gap: 10px;
   padding: 12px;
   overflow-y: auto;
+  max-height: 400px;
 }
 
 .piece-item {
@@ -242,6 +256,119 @@
     font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     text-align: center;
     word-wrap: break-word;
+  }
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.8rem;
+  color: #999;
+
+  button {
+    background: var(--border-subtle);
+    border: 1px solid var(--border-medium);
+    border-radius: 4px;
+    color: #aaa;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+      background: var(--border-medium);
+      color: #fff;
+    }
+  }
+}
+
+.load-more-btn {
+  width: 100%;
+  padding: 10px;
+  background: var(--border-subtle);
+  border: 1px dashed var(--border-medium);
+  border-radius: 6px;
+  color: #aaa;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: var(--border-medium);
+    color: #fff;
+  }
+}
+
+// Game Rules section
+.game-rules {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.rules-notice {
+  color: #ffa500;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 6px 8px;
+  background: rgba(255, 165, 0, 0.08);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.rule-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #ccc;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 4px 0;
+
+  &:hover {
+    color: #fff;
+  }
+
+  input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-secondary);
+    cursor: pointer;
+  }
+}
+
+.rule-input {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #ccc;
+  font-size: 0.85rem;
+  padding: 4px 0;
+
+  input[type="number"] {
+    width: 60px;
+    padding: 4px 6px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.85rem;
+    text-align: center;
+
+    &:focus {
+      outline: none;
+      border-color: var(--border-medium);
+    }
+
+    &::placeholder {
+      color: #555;
+    }
   }
 }
 
@@ -417,6 +544,58 @@
   width: 100%;
 }
 
+.turn-banner {
+  text-align: center;
+  padding: 10px 20px;
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--border-medium) 0%, var(--panel-bg-end) 100%);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(var(--panel-border-rgb), 0.3);
+  align-self: center;
+}
+
+.board-with-notation {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+}
+
+.rank-labels {
+  display: grid;
+  align-items: center;
+  padding-right: 4px;
+}
+
+.rank-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+  user-select: none;
+}
+
+.file-labels {
+  display: grid;
+  padding-top: 2px;
+}
+
+.file-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+  user-select: none;
+}
+
 .board {
   display: grid;
   gap: 0;
@@ -548,8 +727,14 @@
     box-shadow: inset 0 0 0 3px rgba(255, 140, 0, 0.7);
   }
 
-  &.last-move-from {
-    background: var(--last-move-from) !important;
+  &.last-move-from-light {
+    outline: 2px dashed rgba(120, 100, 60, 0.7);
+    outline-offset: -4px;
+  }
+
+  &.last-move-from-dark {
+    outline: 2px dashed rgba(200, 180, 120, 0.65);
+    outline-offset: -4px;
   }
 
   &.last-move-to {
@@ -1144,6 +1329,16 @@
     &.right {
       max-height: none;
     }
+  }
+
+  .sidebar-section {
+    max-height: 250px;
+    overflow-y: auto;
+  }
+
+  .sidebar.right {
+    max-height: 325px;
+    overflow-y: auto;
   }
 
   .sidebar-header {

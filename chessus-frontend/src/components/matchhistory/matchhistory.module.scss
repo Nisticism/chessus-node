@@ -118,6 +118,16 @@
   color: #fff;
 }
 
+.opponent-name-link {
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
 .opponent-elo {
   color: rgba(255, 255, 255, 0.5);
   font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);

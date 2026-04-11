@@ -2048,6 +2048,10 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(400).send({ message: "Actions per turn must be between 1 and 8" });
     }
 
+    // Validate board size (max 48x48)
+    if (gameData.board_width) gameData.board_width = Math.max(1, Math.min(48, parseInt(gameData.board_width) || 8));
+    if (gameData.board_height) gameData.board_height = Math.max(1, Math.min(48, parseInt(gameData.board_height) || 8));
+
     // Force player_count to 2 (only 2-player games currently supported)
     gameData.player_count = 2;
     
@@ -4029,6 +4033,10 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     if (gameData.actions_per_turn && (gameData.actions_per_turn < 1 || gameData.actions_per_turn > 8)) {
       return res.status(400).send({ message: "Actions per turn must be between 1 and 8" });
     }
+
+    // Validate board size (max 48x48)
+    if (gameData.board_width) gameData.board_width = Math.max(1, Math.min(48, parseInt(gameData.board_width) || 8));
+    if (gameData.board_height) gameData.board_height = Math.max(1, Math.min(48, parseInt(gameData.board_height) || 8));
 
     // Force player_count to 2 (only 2-player games currently supported)
     gameData.player_count = 2;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import styles from "./matchhistory.module.scss";
 import API_URL from "../../global/global";
@@ -152,7 +152,13 @@ const MatchHistory = ({ userId, username }) => {
               <div className={styles["game-info"]}>
                 <div className={styles["opponent-info"]}>
                   <span className={styles["vs-text"]}>vs</span>
-                  <span className={styles["opponent-name"]}>{opponent.username}</span>
+                  {!opponent.isBot ? (
+                    <Link to={`/profile/${opponent.username}`} className={styles["opponent-name-link"]} onClick={(e) => e.stopPropagation()}>
+                      {opponent.username}
+                    </Link>
+                  ) : (
+                    <span className={styles["opponent-name"]}>{opponent.username}</span>
+                  )}
                   {!opponent.isBot && (
                     <span className={styles["opponent-elo"]}>({opponent.elo || "?"})</span>
                   )}
