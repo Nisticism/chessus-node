@@ -723,6 +723,12 @@
       padding-left: 28px; // Align with checkbox text
       text-align: left;
     }
+
+    // Override .form-group label { display: block } for toggle rows
+    label.toggle-label-row {
+      display: flex;
+      margin-bottom: 0;
+    }
   }
 }
 

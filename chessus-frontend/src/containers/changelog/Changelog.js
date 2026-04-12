@@ -10,8 +10,12 @@ const changelogData = [
     items: [
       "Actions per turn now works — games with multiple actions per turn let you move or place pieces multiple times before your turn ends",
       "Correspondence move confirmation now shows your move on the board before you confirm, and reverts if you cancel",
-      "Confirm/cancel move buttons no longer have text wrapping issues",
-      "Host Game modal toggle switches are now larger and have better spacing",
+      "Confirm/cancel move buttons no longer overflow the sidebar — text stays on one line while buttons wrap to fit",
+      "Host Game modal toggle switches now properly display inline with their labels",
+      "In checkmate-only games with multiple actions per turn, you can no longer capture the checkmate piece directly — it must be checkmated",
+      "Mid-turn checkmate detection: if checkmate is detected before all actions are used, a message is shown and the player must complete their remaining actions",
+      "Game detail page and tooltips now explain how checkmate works in multi-action games",
+      "Fixed checkmate icon alignment on the game detail board",
     ]
   },
   {

@@ -1649,13 +1649,11 @@
 
 .move-confirm-section {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 0;
   border-top: 1px solid var(--border-subtle);
   margin-top: 4px;
-  flex-wrap: nowrap;
 }
 
 .move-confirm-label {
@@ -1667,6 +1665,7 @@
 
 .move-confirm-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 
   button {
@@ -1674,6 +1673,8 @@
     font-size: 0.85rem;
     border-radius: 6px;
     white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 }
 

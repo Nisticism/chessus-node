@@ -521,7 +521,7 @@ const GameTypeView = () => {
     // Basic game info
     rules.push({
       title: "Overview",
-      content: `This is a ${game.player_count}-player strategy game played on a ${game.board_width}×${game.board_height} board. Players take turns moving their pieces, with each player able to make ${game.actions_per_turn || 1} action${(game.actions_per_turn || 1) > 1 ? 's' : ''} per turn.`
+      content: `This is a ${game.player_count}-player strategy game played on a ${game.board_width}×${game.board_height} board. Players take turns moving their pieces, with each player able to make ${game.actions_per_turn || 1} action${(game.actions_per_turn || 1) > 1 ? 's' : ''} per turn.${(game.actions_per_turn || 1) > 1 ? `\n\n⚠️ **Multi-Action Turns**: Each player must use all ${game.actions_per_turn} actions per turn.${game.mate_condition ? ' Checkmate is only evaluated at the end of a turn (after all actions are used). You cannot capture a checkmate piece directly — it must be checkmated.' : ''}` : ''}`
     });
 
     // Analyze pieces by player
@@ -942,7 +942,7 @@ const GameTypeView = () => {
     if (game.mate_condition) {
       const matePieceData = game.mate_piece ? pieceDataMap[game.mate_piece] : null;
       const matePieceName = matePieceData ? `**${matePieceData.piece_name}**` : 'the designated piece';
-      winConditions.push(`• **Checkmate**: A player wins by checkmating their opponent's ${matePieceName}. When ${matePieceName} is in check and cannot escape, the game is over.`);
+      winConditions.push(`• **Checkmate**: A player wins by checkmating their opponent's ${matePieceName}. When ${matePieceName} is in check and cannot escape, the game is over.${(game.actions_per_turn || 1) > 1 ? ` In multi-action games, checkmate is evaluated at the end of a turn after all ${game.actions_per_turn} actions are completed. You cannot capture ${matePieceName} directly — it must be checkmated${game.capture_condition ? ' (unless the capture win condition is also enabled)' : ''}.` : ''}`);
     }
 
     if (game.capture_condition) {
@@ -1078,7 +1078,7 @@ const GameTypeView = () => {
 • You can only move your own pieces.
 • Pieces capture enemy pieces by moving to their square (unless the piece has different capture rules).
 • A piece cannot move through other pieces unless it has jumping ability.
-• The game continues until a win condition is met or players agree to a draw.`
+• The game continues until a win condition is met or players agree to a draw.${(game.actions_per_turn || 1) > 1 && game.mate_condition ? `\n• **Important**: In this multi-action game, checkmate is evaluated after all ${game.actions_per_turn} actions are completed. You cannot capture a checkmate piece — it must be checkmated.` : ''}`
     });
 
     // Add the combined Special Rules section if any content exists
@@ -1314,9 +1314,10 @@ const GameTypeView = () => {
                 {placement.ends_game_on_checkmate && (
                   <div style={{
                     position: 'absolute',
-                    top: '2px',
+                    top: '1px',
                     right: '2px',
                     fontSize: `${squareSize * 0.25}px`,
+                    lineHeight: 1,
                     pointerEvents: 'none',
                     zIndex: 3,
                     color: Number(placement.player_id) === 1 ? 'white' : 'black'
@@ -1502,7 +1503,7 @@ const GameTypeView = () => {
           <div className={styles["stat-card"]}>
             <div className={styles["stat-header"]}>
               <span className={styles["stat-label"]}>Actions per Turn</span>
-              <InfoTooltip text="How many actions each player can take on their turn (moves, captures, or ranged attacks)" />
+              <InfoTooltip text={`How many actions each player can take on their turn (moves, captures, or ranged attacks)${(game.actions_per_turn || 1) > 1 ? `. In multi-action games, checkmate is only evaluated after all ${game.actions_per_turn} actions are completed. Checkmate pieces cannot be captured directly — they must be checkmated.` : ''}`} />
             </div>
             <span className={styles["stat-value"]}>{game.actions_per_turn || 1}</span>
           </div>

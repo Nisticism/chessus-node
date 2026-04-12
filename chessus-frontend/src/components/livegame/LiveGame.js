@@ -417,7 +417,7 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces, clockMultipliers }) => {
+    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces, clockMultipliers, midTurnCheckmate }) => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
         setBotThinking(false);
         console.log('moveMade received:', { 
@@ -451,6 +451,12 @@ const LiveGame = () => {
         setGhostMoveIndex(null); // Exit ghost review when a new move arrives
         setInCheck(newState.inCheck || false);
         setCheckedPieces(newState.checkedPieces || []);
+
+        // Show mid-turn checkmate message if detected
+        if (midTurnCheckmate) {
+          setMoveError(midTurnCheckmate.message);
+          setTimeout(() => setMoveError(null), 6000);
+        }
         
         // Play sound based on move type - prioritize check > capture > move
         if (soundEnabledRef.current) {

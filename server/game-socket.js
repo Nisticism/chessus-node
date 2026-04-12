@@ -2336,6 +2336,24 @@ function initializeSocket(server) {
           gameState.actionsThisTurn = 0;
         }
 
+        // Mid-turn checkmate detection for multi-action games
+        let midTurnCheckmate = null;
+        if (!moveTurnSwitched && actionsPerTurnMove > 1 && gameState.gameType?.mate_condition) {
+          const opponentPosition = gameState.currentTurn === 1 ? 2 : 1;
+          const midCheckResult = checkForCheck(gameState, opponentPosition);
+          if (midCheckResult.inCheck) {
+            const midIsCheckmate = isCheckmate(gameState, opponentPosition);
+            if (midIsCheckmate) {
+              const remaining = actionsPerTurnMove - gameState.actionsThisTurn;
+              midTurnCheckmate = {
+                message: `Checkmate detected! You must still complete your remaining ${remaining} action${remaining > 1 ? 's' : ''} to finish your turn.`,
+                actionsRemaining: remaining
+              };
+              console.log(`Mid-turn checkmate detected in game ${gameId} - player must complete ${remaining} more action(s)`);
+            }
+          }
+        }
+
         // Track last move time for correspondence games
         if (gameState.isCorrespondence) {
           gameState.lastMoveTime = Date.now();
@@ -3242,7 +3260,8 @@ function initializeSocket(server) {
             ...(moveClockMultipliers && Object.keys(moveClockMultipliers).length > 0 ? { clockMultipliers: moveClockMultipliers } : { clockMultipliers: {} }),
             ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
             ...(burnPieces && burnPieces.length > 0 ? { burnPieces } : {}),
-            ...(burnKilledPieces && burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
+            ...(burnKilledPieces && burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {}),
+            ...(midTurnCheckmate ? { midTurnCheckmate } : {})
           });
 
           // Send notification for correspondence or no-time-limit games
@@ -5394,6 +5413,14 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       }
     }
   }
+
+  // Prevent capturing checkmate pieces in checkmate-only games (multi-tile multi-capture)
+  if (allCapturedPieces.length > 0 && gameState.gameType?.mate_condition && !gameState.gameType?.capture_condition) {
+    const checkmateVictim = allCapturedPieces.find(p => p.ends_game_on_checkmate && !p.ends_game_on_capture);
+    if (checkmateVictim) {
+      return { valid: false, reason: "That piece must be checkmated, not captured. Put it in checkmate instead!" };
+    }
+  }
   
   // Handle ranged attacks - piece stays in place, target is captured at range
   const isRangedAttack = move.isRangedAttack === true;
@@ -5417,6 +5444,10 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     // Cannot capture pieces with cannot_be_captured flag
     if (destPiece.cannot_be_captured) {
       return { valid: false, reason: "That piece cannot be captured" };
+    }
+    // Prevent ranged-capturing checkmate pieces in checkmate-only games
+    if (destPiece.ends_game_on_checkmate && gameState.gameType?.mate_condition && !destPiece.ends_game_on_capture && !gameState.gameType?.capture_condition) {
+      return { valid: false, reason: "That piece must be checkmated, not captured. Put it in checkmate instead!" };
     }
     
     // Check if path is clear for ranged attack (unless piece can fire over)
@@ -5468,6 +5499,10 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     // Check if it's an enemy piece (different owner position)
     if (destPieceOwnerPosition === pieceOwnerPosition && !piece.can_capture_allies) {
       return { valid: false, reason: "Cannot capture your own piece" };
+    }
+    // Prevent capturing checkmate pieces in checkmate-only games (must be checkmated, not captured)
+    if (destPiece.ends_game_on_checkmate && gameState.gameType?.mate_condition && !destPiece.ends_game_on_capture && !gameState.gameType?.capture_condition) {
+      return { valid: false, reason: "That piece must be checkmated, not captured. Put it in checkmate instead!" };
     }
     capturedPiece = destPiece;
     
@@ -8992,6 +9027,24 @@ async function processBotTurn(io, gameId, gameState) {
         gameState.actionsThisTurn = 0;
       }
 
+      // Mid-turn checkmate detection for multi-action bot games
+      let botMidTurnCheckmate = null;
+      if (!botTurnSwitched && botActionsPerTurn > 1 && gameState.gameType?.mate_condition) {
+        const opponentPosition = gameState.currentTurn === 1 ? 2 : 1;
+        const midCheckResult = checkForCheck(gameState, opponentPosition);
+        if (midCheckResult.inCheck) {
+          const midIsCheckmate = isCheckmate(gameState, opponentPosition);
+          if (midIsCheckmate) {
+            const remaining = botActionsPerTurn - gameState.actionsThisTurn;
+            botMidTurnCheckmate = {
+              message: `Checkmate detected! The computer must complete its remaining ${remaining} action${remaining > 1 ? 's' : ''} to finish its turn.`,
+              actionsRemaining: remaining
+            };
+            console.log(`[Bot] Mid-turn checkmate detected in game ${gameId}`);
+          }
+        }
+      }
+
       // 7. Burn/regen processing for the next player's turn (only on turn switch)
       const newTurnPlayer = gameState.currentTurn;
       const burnPieces = [];
@@ -9145,7 +9198,8 @@ async function processBotTurn(io, gameId, gameState) {
         ...(botMoveClockMultipliers && Object.keys(botMoveClockMultipliers).length > 0 ? { clockMultipliers: botMoveClockMultipliers } : { clockMultipliers: {} }),
         ...(regenPieces.length > 0 ? { regenPieces } : {}),
         ...(burnPieces.length > 0 ? { burnPieces } : {}),
-        ...(burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
+        ...(burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {}),
+        ...(botMidTurnCheckmate ? { midTurnCheckmate: botMidTurnCheckmate } : {})
       });
 
       if (checkResult.inCheck) {
