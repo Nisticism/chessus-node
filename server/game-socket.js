@@ -5535,17 +5535,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       // Use canPieceMoveToSquare which checks movement rules only (not capture rules)
       const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces);
       if (!canMove) {
-        // For premoves: the player may have queued a capture premove, but the target moved away.
-        // If the piece's capture rules allow reaching this square, execute as a regular (non-capture) move.
-        if (options.isPremove) {
-          const canCaptureToSquare = canPieceAttackSquare(piece, to.x, to.y, pieces);
-          if (!canCaptureToSquare) {
-            return { valid: false, reason: "Piece cannot move to that square" };
-          }
-          // Capture rules allow reaching here — proceed as a regular move to the empty square
-        } else {
-          return { valid: false, reason: "Piece cannot move to that square" };
-        }
+        return { valid: false, reason: "Piece cannot move to that square" };
       }
     }
   }
