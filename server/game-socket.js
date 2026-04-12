@@ -8983,13 +8983,20 @@ async function processBotTurn(io, gameId, gameState) {
         gameState.chainCaptureHopCount = 0;
       }
 
-      // 6. Switch turns
-      gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+      // 6. Actions per turn: increment counter and switch only if limit reached
+      const botActionsPerTurn = gameState.gameType?.actions_per_turn || 1;
+      gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+      const botTurnSwitched = gameState.actionsThisTurn >= botActionsPerTurn;
+      if (botTurnSwitched) {
+        gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+        gameState.actionsThisTurn = 0;
+      }
 
-      // 7. Burn/regen processing for the next player's turn
+      // 7. Burn/regen processing for the next player's turn (only on turn switch)
       const newTurnPlayer = gameState.currentTurn;
       const burnPieces = [];
       const burnKilledPieces = [];
+      if (botTurnSwitched) {
       gameState.pieces.forEach(p => {
         const owner = p.team || p.player_id;
         if (owner === newTurnPlayer && p.burn_active_turns && p.burn_active_turns > 0 && p.burn_active_damage > 0) {
@@ -9005,8 +9012,10 @@ async function processBotTurn(io, gameId, gameState) {
         const idx = gameState.pieces.findIndex(p => p.id === killed.id);
         if (idx !== -1) gameState.pieces.splice(idx, 1);
       }
+      }
 
       const regenPieces = [];
+      if (botTurnSwitched) {
       gameState.pieces.forEach(p => {
         const owner = p.team || p.player_id;
         if (owner === newTurnPlayer && p.hp_regen && p.hp_regen > 0) {
@@ -9019,6 +9028,7 @@ async function processBotTurn(io, gameId, gameState) {
           }
         }
       });
+      }
 
       // 8. Check burn-kill win condition
       if (burnKilledPieces.length > 0) {
@@ -9040,8 +9050,8 @@ async function processBotTurn(io, gameId, gameState) {
         return await finishBotGame(io, gameId, gameState, winResult, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
       }
 
-      // 11. Check/checkmate/stalemate detection
-      const checkResult = checkForCheck(gameState, gameState.currentTurn);
+      // 11. Check/checkmate/stalemate detection (only after turn switch)
+      const checkResult = botTurnSwitched ? checkForCheck(gameState, gameState.currentTurn) : { inCheck: false, checkedPieces: [] };
       gameState.inCheck = checkResult.inCheck;
       gameState.checkedPieces = checkResult.checkedPieces;
 
@@ -9128,7 +9138,9 @@ async function processBotTurn(io, gameId, gameState) {
           allowPremoves: gameState.allowPremoves,
           rated: gameState.rated,
           enPassantTarget: gameState.enPassantTarget,
-          controlSquareTracking: gameState.controlSquareTracking
+          controlSquareTracking: gameState.controlSquareTracking,
+          actionsThisTurn: gameState.actionsThisTurn || 0,
+          actionsPerTurn: gameState.gameType?.actions_per_turn || 1
         },
         ...(botMoveClockMultipliers && Object.keys(botMoveClockMultipliers).length > 0 ? { clockMultipliers: botMoveClockMultipliers } : { clockMultipliers: {} }),
         ...(regenPieces.length > 0 ? { regenPieces } : {}),
@@ -9146,6 +9158,13 @@ async function processBotTurn(io, gameId, gameState) {
 
       console.log(`[Bot] Move made in game ${gameId}: piece ${bestMove.pieceId} to (${bestMove.to.x},${bestMove.to.y})`);
       clearTimeout(safetyTimer);
+
+      // If bot still has actions remaining this turn, make another move
+      if (!botTurnSwitched && gameState.status !== 'completed' &&
+          gameState.currentTurn === botPlayer.position) {
+        console.log(`[Bot] Bot has more actions in game ${gameId} (${gameState.actionsThisTurn}/${botActionsPerTurn})`);
+        return processBotTurn(io, gameId, gameState);
+      }
 
       // Check if human has a premove queued after bot's move
       if (gameState.allowPremoves && gameState.premove && gameState.status !== 'completed') {

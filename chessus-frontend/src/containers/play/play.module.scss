@@ -757,6 +757,8 @@
   color: #ccc;
   font-size: 0.95rem;
   width: 100%;
+  gap: 16px;
+  padding: 8px 0;
 
   &.disabled {
     opacity: 0.4;
