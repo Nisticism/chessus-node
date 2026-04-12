@@ -16,6 +16,8 @@ const changelogData = [
       "Mid-turn checkmate detection: if checkmate is detected before all actions are used, a message is shown and the player must complete their remaining actions",
       "Game detail page and tooltips now explain how checkmate works in multi-action games",
       "Fixed checkmate icon alignment on the game detail board",
+      "Fixed multi-action correspondence games allowing unlimited moves before confirming — confirmation now happens per action",
+      "Match review page now shows the computer difficulty level and no longer links to a profile for computer players",
     ]
   },
   {

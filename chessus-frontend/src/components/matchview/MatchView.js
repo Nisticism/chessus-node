@@ -345,18 +345,26 @@ const MatchView = () => {
           {/* Player 1 */}
           <div className={`${styles["player-card"]} ${match.winnerId === player1?.id ? styles["winner"] : ""}`}>
             <div className={styles["player-avatar"]}>
-              {player1?.profilePicture ? (
+              {player1?.id === 'bot' ? (
+                <span>🤖</span>
+              ) : player1?.profilePicture ? (
                 <img src={`${ASSET_URL}${player1.profilePicture}`} alt={player1.username} />
               ) : (
                 <span>{player1?.username?.charAt(0).toUpperCase() || "?"}</span>
               )}
             </div>
             <div className={styles["player-info"]}>
-              <Link to={`/profile/${player1?.username}`} className={styles["player-name"]}>
-                {player1?.username || "Player 1"}
-              </Link>
-              <span className={styles["player-elo"]}>ELO: {player1?.elo || "?"}</span>
-              {match.eloChanges && player1 && (
+              {player1?.id === 'bot' ? (
+                <span className={styles["player-name"]}>{player1?.username || "Computer"}</span>
+              ) : (
+                <Link to={`/profile/${player1?.username}`} className={styles["player-name"]}>
+                  {player1?.username || "Player 1"}
+                </Link>
+              )}
+              {player1?.id !== 'bot' && (
+                <span className={styles["player-elo"]}>ELO: {player1?.elo || "?"}</span>
+              )}
+              {player1?.id !== 'bot' && match.eloChanges && player1 && (
                 <span className={`${styles["elo-change"]} ${match.winnerId === player1.id ? styles["positive"] : styles["negative"]}`}>
                   {match.winnerId === player1.id 
                     ? `+${match.eloChanges.winner?.change || 0}` 
@@ -374,18 +382,26 @@ const MatchView = () => {
           {/* Player 2 */}
           <div className={`${styles["player-card"]} ${match.winnerId === player2?.id ? styles["winner"] : ""}`}>
             <div className={styles["player-avatar"]}>
-              {player2?.profilePicture ? (
+              {player2?.id === 'bot' ? (
+                <span>🤖</span>
+              ) : player2?.profilePicture ? (
                 <img src={`${ASSET_URL}${player2.profilePicture}`} alt={player2.username} />
               ) : (
                 <span>{player2?.username?.charAt(0).toUpperCase() || "?"}</span>
               )}
             </div>
             <div className={styles["player-info"]}>
-              <Link to={`/profile/${player2?.username}`} className={styles["player-name"]}>
-                {player2?.username || "Player 2"}
-              </Link>
-              <span className={styles["player-elo"]}>ELO: {player2?.elo || "?"}</span>
-              {match.eloChanges && player2 && (
+              {player2?.id === 'bot' ? (
+                <span className={styles["player-name"]}>{player2?.username || "Computer"}</span>
+              ) : (
+                <Link to={`/profile/${player2?.username}`} className={styles["player-name"]}>
+                  {player2?.username || "Player 2"}
+                </Link>
+              )}
+              {player2?.id !== 'bot' && (
+                <span className={styles["player-elo"]}>ELO: {player2?.elo || "?"}</span>
+              )}
+              {player2?.id !== 'bot' && match.eloChanges && player2 && (
                 <span className={`${styles["elo-change"]} ${match.winnerId === player2.id ? styles["positive"] : styles["negative"]}`}>
                   {match.winnerId === player2.id 
                     ? `+${match.eloChanges.winner?.change || 0}` 

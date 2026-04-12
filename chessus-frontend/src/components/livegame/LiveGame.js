@@ -2244,6 +2244,9 @@ const LiveGame = () => {
 
   // Handle square click
   const handleSquareClick = useCallback((x, y) => {
+    // Block interactions while a move is pending confirmation
+    if (pendingMove) return;
+
     // Clear ranged-twice selection on any left click
     if (rangedSelectedPiece) {
       setRangedSelectedPiece(null);
@@ -2462,7 +2465,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove]);
 
   // Handle piece hover for movement helpers
   const handlePieceHover = useCallback((piece) => {
@@ -2486,6 +2489,12 @@ const LiveGame = () => {
 
   // Drag and drop handlers
   const handleDragStart = useCallback((e, piece) => {
+    // Block dragging while a move is pending confirmation
+    if (pendingMove) {
+      e.preventDefault();
+      return;
+    }
+
     const pieceTeam = piece.player_id || piece.team;
     const isOwnPiece = currentPlayer && pieceTeam === currentPlayer.position;
     
@@ -2541,7 +2550,7 @@ const LiveGame = () => {
     e.dataTransfer.setDragImage(pieceEl, rect.width / 2, rect.height / 2);
     
     e.currentTarget.style.opacity = '0.5';
-  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves]);
+  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove]);
 
   const handleDragEnd = useCallback((e) => {
     e.currentTarget.style.opacity = '1';
