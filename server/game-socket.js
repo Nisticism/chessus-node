@@ -37,6 +37,7 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium', botPosition: gameState.botPlayer.position } : {}),
     ...(gameState.materialClockPenalty ? { materialClockPenalty: true } : {}),
     ...(gameState.materialClockHandicap ? { materialClockHandicap: true } : {}),
+    ...(gameState.actionsThisTurn ? { actionsThisTurn: gameState.actionsThisTurn } : {}),
     ...extraFields
   });
 }
@@ -956,7 +957,8 @@ function initializeSocket(server) {
           isCorrespondence: !!isCorrespondence,
           correspondenceDays: correspondenceDays || null,
           materialClockPenalty: !!materialClockPenalty,
-          materialClockHandicap: !!materialClockHandicap
+          materialClockHandicap: !!materialClockHandicap,
+          actionsThisTurn: 0
         };
 
         activeGames.set(gameId.toString(), gameState);
@@ -2022,12 +2024,18 @@ function initializeSocket(server) {
           };
           gameState.moveHistory.push(placeMoveRecord);
 
-          // Switch turns
-          gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+          // Actions per turn: increment counter and switch only if limit reached
+          const actionsPerTurn = gameState.gameType?.actions_per_turn || 1;
+          gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+          const turnSwitched = gameState.actionsThisTurn >= actionsPerTurn;
+          if (turnSwitched) {
+            gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+            gameState.actionsThisTurn = 0;
+          }
 
           // Check if next player must skip (no valid flanking placements)
           let skippedTurn = false;
-          if (otherData.flanking_captures && otherData.must_flank && otherData.skip_turn_no_flank) {
+          if (turnSwitched && otherData.flanking_captures && otherData.must_flank && otherData.skip_turn_no_flank) {
             const nextValidPlacements = getValidFlankingPlacements(gameState, gameState.currentTurn);
             if (nextValidPlacements.length === 0) {
               // Next player has no valid placements — skip their turn
@@ -2169,7 +2177,9 @@ function initializeSocket(server) {
               pieces: gameState.pieces,
               currentTurn: gameState.currentTurn,
               playerTimes: gameState.playerTimes,
-              moveHistory: gameState.moveHistory
+              moveHistory: gameState.moveHistory,
+              actionsThisTurn: gameState.actionsThisTurn || 0,
+              actionsPerTurn: gameState.gameType?.actions_per_turn || 1
             },
             flipped: flippedPieces.length > 0 ? flippedPieces : undefined,
             skippedTurn: skippedTurn || undefined
@@ -2317,8 +2327,14 @@ function initializeSocket(server) {
         gameState.chainCapturePlayerId = null;
         gameState.chainCaptureHopCount = 0;
 
-        // Switch turns
-        gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+        // Actions per turn: increment counter and switch only if limit reached
+        const actionsPerTurnMove = gameState.gameType?.actions_per_turn || 1;
+        gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+        const moveTurnSwitched = gameState.actionsThisTurn >= actionsPerTurnMove;
+        if (moveTurnSwitched) {
+          gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+          gameState.actionsThisTurn = 0;
+        }
 
         // Track last move time for correspondence games
         if (gameState.isCorrespondence) {
@@ -2329,6 +2345,7 @@ function initializeSocket(server) {
         const newTurnPlayer = gameState.currentTurn;
         const burnPieces = [];
         const burnKilledPieces = [];
+        if (moveTurnSwitched) {
         gameState.pieces.forEach(p => {
           const owner = p.team || p.player_id;
           if (owner === newTurnPlayer && p.burn_active_turns && p.burn_active_turns > 0 && p.burn_active_damage > 0) {
@@ -2349,9 +2366,11 @@ function initializeSocket(server) {
             gameState.pieces.splice(idx, 1);
           }
         }
+        } // end moveTurnSwitched burn block
 
         // HP/AD system: Apply HP regeneration at the start of the new player's turn (AFTER burn)
         const regenPieces = [];
+        if (moveTurnSwitched) {
         gameState.pieces.forEach(p => {
           const owner = p.team || p.player_id;
           if (owner === newTurnPlayer && p.hp_regen && p.hp_regen > 0) {
@@ -2364,6 +2383,7 @@ function initializeSocket(server) {
             }
           }
         });
+        } // end moveTurnSwitched regen block
 
         // Initialize premove property if it doesn't exist (for backwards compatibility)
         if (gameState.premove === undefined) {
@@ -2838,7 +2858,8 @@ function initializeSocket(server) {
           });
         } else {
           // Check if the current player (whose turn it now is) is in check
-          const checkResult = checkForCheck(gameState, gameState.currentTurn);
+          // Only check after a turn switch (not mid-turn in multi-action games)
+          const checkResult = moveTurnSwitched ? checkForCheck(gameState, gameState.currentTurn) : { inCheck: false, checkedPieces: [] };
           
           console.log('After move - checking for check:', {
             currentTurn: gameState.currentTurn,
@@ -3214,7 +3235,9 @@ function initializeSocket(server) {
               allowPremoves: gameState.allowPremoves,
               rated: gameState.rated,
               enPassantTarget: gameState.enPassantTarget,
-              controlSquareTracking: gameState.controlSquareTracking
+              controlSquareTracking: gameState.controlSquareTracking,
+              actionsThisTurn: gameState.actionsThisTurn || 0,
+              actionsPerTurn: gameState.gameType?.actions_per_turn || 1
             },
             ...(moveClockMultipliers && Object.keys(moveClockMultipliers).length > 0 ? { clockMultipliers: moveClockMultipliers } : { clockMultipliers: {} }),
             ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
@@ -4105,7 +4128,8 @@ function initializeSocket(server) {
             correspondenceDays: game.correspondence_days || null,
             lastMoveTime: otherData?.lastMoveTime || null,
             materialClockPenalty: !!otherData?.materialClockPenalty,
-            materialClockHandicap: !!otherData?.materialClockHandicap
+            materialClockHandicap: !!otherData?.materialClockHandicap,
+            actionsThisTurn: otherData?.actionsThisTurn || 0
           };
 
           // Check if current player is in check (if game is active)

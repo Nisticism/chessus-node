@@ -175,6 +175,7 @@ const LiveGame = () => {
     return saved === null ? true : saved === 'true';
   });
   const [pendingMove, setPendingMove] = useState(null); // {gameId, moveData} awaiting confirmation
+  const [preConfirmState, setPreConfirmState] = useState(null); // snapshot of gameState before visual preview
 
   // Options menu collapse state
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
@@ -220,22 +221,60 @@ const LiveGame = () => {
   // Wrapper for makeMove that supports turn confirmation in correspondence games
   const submitMove = useCallback((gId, moveData) => {
     if (turnConfirmEnabled && gameState?.isCorrespondence && !gameState?.timeControl) {
+      // Save current state for revert on cancel
+      setPreConfirmState({
+        pieces: JSON.parse(JSON.stringify(gameState.pieces)),
+        currentTurn: gameState.currentTurn
+      });
+      // Apply move visually (optimistic preview)
+      if (moveData.type === 'place') {
+        // For placement moves, we don't preview visually (complex piece creation)
+      } else {
+        setGameState(prev => {
+          const newPieces = prev.pieces.map(p => ({ ...p }));
+          // Move the piece
+          const movingIdx = newPieces.findIndex(p => p.id === moveData.pieceId);
+          if (movingIdx !== -1) {
+            // Remove captured piece at destination
+            const capturedIdx = newPieces.findIndex(p =>
+              p.x === moveData.to.x && p.y === moveData.to.y && p.id !== moveData.pieceId
+            );
+            if (capturedIdx !== -1) newPieces.splice(capturedIdx, 1);
+            // Update position
+            const mi = newPieces.findIndex(p => p.id === moveData.pieceId);
+            if (mi !== -1) {
+              newPieces[mi].x = moveData.to.x;
+              newPieces[mi].y = moveData.to.y;
+            }
+          }
+          return { ...prev, pieces: newPieces };
+        });
+      }
       setPendingMove({ gameId: gId, moveData });
     } else {
       makeMove(gId, moveData);
     }
-  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, makeMove]);
+  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, makeMove]);
 
   const confirmPendingMove = useCallback(() => {
     if (pendingMove) {
       makeMove(pendingMove.gameId, pendingMove.moveData);
       setPendingMove(null);
+      setPreConfirmState(null);
     }
   }, [pendingMove, makeMove]);
 
   const cancelPendingMove = useCallback(() => {
+    if (preConfirmState) {
+      setGameState(prev => ({
+        ...prev,
+        pieces: preConfirmState.pieces,
+        currentTurn: preConfirmState.currentTurn
+      }));
+    }
     setPendingMove(null);
-  }, []);
+    setPreConfirmState(null);
+  }, [preConfirmState]);
 
   // Track window size for responsive board sizing
   useEffect(() => {

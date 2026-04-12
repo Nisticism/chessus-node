@@ -5,6 +5,16 @@ import API_URL from "../../global/global";
 
 const changelogData = [
   {
+    date: "April 11, 2026",
+    title: "Multi-Action Turns, Move Confirmation Preview & Toggle Improvements",
+    items: [
+      "Actions per turn now works — games with multiple actions per turn let you move or place pieces multiple times before your turn ends",
+      "Correspondence move confirmation now shows your move on the board before you confirm, and reverts if you cancel",
+      "Confirm/cancel move buttons no longer have text wrapping issues",
+      "Host Game modal toggle switches are now larger and have better spacing",
+    ]
+  },
+  {
     date: "April 10, 2026",
     title: "Sandbox Rules, Turn Confirmation & UI Polish",
     items: [
