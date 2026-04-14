@@ -16,7 +16,7 @@ code {
 
 :root {
   /* Base colors */
-  color: white;
+  color: var(--text-heading);
   background-color: #2a2e38;
   
   --font-family: 'Manrope', sans-serif;
@@ -50,7 +50,8 @@ code {
   --button-border-alt: rgb(81, 107, 192);
 
   /* Text colors */
-  --text-white: #ffffff;
+  --text-white: #d0ddd4;
+  --text-heading: #d0ddd4;
   --text-dark: rgb(54, 54, 54);
   --text-gray: rgb(128, 128, 128);
   --text-light-gray: rgb(211, 211, 211);
@@ -82,6 +83,7 @@ code {
 
   /* Theme-aware accent colors */
   --accent-primary: #439157;
+  --accent-primary-text: #5a9068;
   --accent-primary-hover: #387a4a;
   --accent-highlight: #81c784;
   --accent-bright: #66bb6a;
@@ -181,6 +183,7 @@ code {
   --nav-menu-bg: rgb(200, 230, 210);
 
   --accent-primary: #439157;
+  --accent-primary-text: #5a9068;
   --accent-primary-hover: #387a4a;
   --accent-highlight: #81c784;
   --accent-bright: #66bb6a;
@@ -272,6 +275,7 @@ code {
   --nav-menu-bg: rgb(202, 213, 232);
 
   --accent-primary: #4a90e2;
+  --accent-primary-text: #6a9cd4;
   --accent-primary-hover: #357abd;
   --accent-highlight: #64b5f6;
   --accent-bright: #60a5fa;
@@ -290,6 +294,8 @@ code {
   --border-bright: #2a5b8d;
 
   /* Themed text colors */
+  --text-heading: #d0d8e0;
+  --text-white: #d0d8e0;
   --text-muted: #a0b8d0;
   --text-dim: #6b8ba8;
   --text-info: #5cb3e8;
