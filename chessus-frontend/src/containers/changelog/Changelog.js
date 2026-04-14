@@ -5,6 +5,75 @@ import API_URL from "../../global/global";
 
 const changelogData = [
   {
+    date: "April 15, 2026",
+    title: "Home Board Revamp & Visual Tweaks",
+    items: [
+      "Home page board now features turn-based play — alternate between your pieces and the opponent's",
+      "Turn indicator in the lower-left shows whose turn it is with a colored dot",
+      "Hovering a piece on the home board now previews its available moves and captures with distinct colors",
+      "Gold dots and orange borders indicate moves that are only available on the piece's first move",
+      "Last-move highlights now use a subtle dashed outline (matching sandbox style) instead of permanent colors",
+      "Clicking a different piece properly clears the previous piece's highlights",
+      "First N moves restrictions are now respected on the home page board",
+      "Home board panel border width now matches other panels on the page",
+      "Green theme header and footer gradients are slightly more green again while staying lighter than original",
+    ]
+  },
+  {
+    date: "April 14, 2026",
+    title: "Notifications, Theme Consistency & Inline Style Cleanup",
+    items: [
+      "Clicking a 'new user joined' notification now leads to that user's profile page",
+      "Footer top border now matches the header bottom border color for visual consistency",
+      "Green theme header and footer gradients are now more gray and slightly lighter",
+      "Standard buttons no longer use gradients — flat, muted backgrounds with theme-aware borders",
+      "Removed high-contrast gradients from game mode tabs, fill-row switches, and progress bars",
+      "Replaced hardcoded hex colors across 10+ files with reusable CSS theme variables",
+      "Special square colors (range, promotion, control, custom) are now centralized as CSS custom properties",
+      "Role badges (Owner, Admin) now use shared CSS variables for consistent styling",
+      "Player list avatar, rating, and link colors now use theme variables instead of hardcoded values",
+      "Admin dashboard empty-state text colors replaced with theme variables",
+    ]
+  },
+  {
+    date: "April 13, 2026",
+    title: "Die on Capture, Attack Radius & UI Polish",
+    items: [
+      "New piece ability: Die on Capture — a piece is destroyed after it captures an enemy piece",
+      "New piece ability: Attack Radius — when capturing, the piece damages all enemies within a radius of the landing square (up to 4)",
+      "Attack Radius is mutually exclusive with Trample Radius — you can set one but not both",
+      "Checkmate-immune pieces (e.g. kings) are immune to Attack Radius splash damage",
+      "Attack Radius splash zones are highlighted when hovering a piece with the ability in game detail, live game, and game wizard",
+      "Both new abilities are available in the Piece Wizard under Special Abilities with tooltips",
+      "Game detail page now displays Die on Capture and Attack Radius in the Special Rules section",
+      "Reduced gradient contrast across all panels and cards for a more muted look",
+      "More muted hover borders across the site — less aggressive accent color on hover",
+      "Navigation header is now shorter (7vh) with a subtle reverse gradient (darker at bottom)",
+      "Green theme header is now darker than the page background",
+      "Line under the header is now dark gray instead of the theme color",
+      "Home page buttons have reduced border-radius and more muted borders",
+    ]
+  },
+  {
+    date: "April 13, 2026",
+    title: "Win on Promotion, Upvotes & Range Squares",
+    items: [
+      "New win condition: Win on Promotion — when enabled, a player instantly wins when their promotable piece reaches a promotion square",
+      "Win on Promotion works with bot games as well",
+      "Fixed image moderation model failing to load on startup",
+      "Game library now displays all win conditions including No Legal Moves and Win on Promotion",
+      "New filter options for No Legal Moves and Win on Promotion in the game library",
+      "Upvote system: upvote your favorite games in the library and on game detail pages",
+      "New 'Most Upvoted' sort option in the game library",
+      "Range squares now grant a +1 bonus to all movement, capture, and attack ranges for pieces standing on them (previously visual-only)",
+      "Range square bonus applies to directional, step, ratio, and additional scenario movements",
+      "Match history now shows all win reasons including promotion, piece count, move limit, repetition, and agreement",
+      "Upvote button moved to upper-right corner of game cards and game detail header for easier access",
+      "Game cards now feature a play button that takes you directly to the play screen with that game selected",
+      "Visual refresh: reduced border-radius, removed color transition animations, and dimmed overly bright borders across the site",
+    ]
+  },
+  {
     date: "April 11, 2026",
     title: "Multi-Action Turns, Move Confirmation Preview & Toggle Improvements",
     items: [
