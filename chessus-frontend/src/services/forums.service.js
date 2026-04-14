@@ -49,6 +49,7 @@ const editForum = async (title, content, last_updated_at, id) => {
     content, 
     last_updated_at,
     id,
+  }, {
     headers: authHeader(),
   });
   console.log(response.data);
@@ -90,6 +91,7 @@ const editComment = async (id, content, last_updated_at) => {
     id,
     content,
     last_updated_at,
+  }, {
     headers: authHeader(),
   });
   return response.data;
@@ -99,6 +101,7 @@ const deleteComment = async (id) => {
   console.log("delete comment post request");
   const response = await axios.post(API_URL + "delete-comment", {
     id,
+  }, {
     headers: authHeader(),
   });
   return response.data;

@@ -5,6 +5,7 @@ import styles from "./edit-forum.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import { getForum, editForum } from "../../actions/forums";
 import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
+import EmojiPickerButton from "../common/EmojiPickerButton";
 
 const EditForum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -66,7 +67,7 @@ const EditForum = () => {
     return <Navigate to="/login" state={{ message: "Please log in to edit forum posts." }} />;
   }
 
-  if (currentUser && currentForum && (currentForum.author_id !== currentUser.id && currentUser.role !== "Admin")) {
+  if (currentUser && currentForum && (currentForum.author_id !== currentUser.id && !['admin', 'owner'].includes(currentUser.role?.toLowerCase()))) {
     return <Navigate to="/" />;
   }
 
@@ -111,6 +112,20 @@ const EditForum = () => {
                   defaultValue={currentForum ? currentForum.content : content}
                   onChange={onChangeContent}
                 />
+                <div className={styles["emoji-row"]}>
+                  <EmojiPickerButton onEmojiSelect={(emoji) => {
+                    const textarea = document.querySelector(`textarea[name="content"]`);
+                    if (textarea) {
+                      const start = textarea.selectionStart;
+                      const end = textarea.selectionEnd;
+                      const val = textarea.value;
+                      textarea.value = val.substring(0, start) + emoji + val.substring(end);
+                      const event = new Event('input', { bubbles: true });
+                      textarea.dispatchEvent(event);
+                      onChangeContent({ target: { value: textarea.value } });
+                    }
+                  }} />
+                </div>
               </div>
               <div className="form-group">
                 <StandardButton buttonText={"Update Post"} onClick={handleEditPost}></StandardButton>

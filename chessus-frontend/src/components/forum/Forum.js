@@ -9,7 +9,9 @@ import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-fo
 import { FaEdit } from "react-icons/fa";
 import { FaTrash } from "react-icons/fa";
 import { FaReply } from "react-icons/fa";
+import { FaArrowLeft } from "react-icons/fa";
 import LikesModule from "./LikesModule";
+import EmojiPickerButton from "../common/EmojiPickerButton";
 
 const Forum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -148,6 +150,9 @@ const Forum = () => {
         <>
       { currentForum ? 
           <div className={styles["forum-container"]}>
+            <Link to="/forums" className={styles["back-to-forums"]}>
+              <FaArrowLeft /> Back to Forums
+            </Link>
             
             <div className={styles["forum-title-container"]}>
               <div className={styles["forum-title"]}>{currentForum.title}</div>
@@ -218,14 +223,14 @@ const Forum = () => {
                           </div>
                         }
                         <div className={styles["comment-edit-button"]}>
-                          { currentUser && (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
+                          { currentUser && (comment.author_id === currentUser.id || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner") ?
                             <div>
                               <div onClick={(event) => handleEdit(event, comment.id + "edit", comment.id)}><FaEdit/></div>
                             </div>
                           : "" }
                         </div>
                         <div className={styles["comment-delete"]}>
-                          { currentUser && (comment.author_id === currentUser.id || currentUser.role === "Admin") ?
+                          { currentUser && (comment.author_id === currentUser.id || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner") ?
                             <div>
                               <div onClick={(event) => handleDelete(event, comment.id)}><FaTrash/></div>
                             </div>
@@ -248,6 +253,9 @@ const Forum = () => {
                           value={replyContent}
                           onChange={(e) => setReplyContent(e.target.value)}
                         />
+                        <div className={styles["emoji-row"]}>
+                          <EmojiPickerButton onEmojiSelect={(emoji) => setReplyContent(prev => prev + emoji)} />
+                        </div>
                         <div className={styles["reply-form-buttons"]}>
                           <StandardButton buttonText={"Reply"} onClick={(e) => handleReply(e, comment.id)}/>
                           <StandardButton buttonText={"Cancel"} onClick={() => { setReplyingTo(null); setReplyContent(""); }}/>
@@ -268,6 +276,11 @@ const Forum = () => {
           }
           <div className={styles["new-comment"]}>
             <textarea className={styles["comment-field"]} id="comment-field" disabled={!currentUser} value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)}></textarea>
+            {currentUser && (
+              <div className={styles["emoji-row"]}>
+                <EmojiPickerButton onEmojiSelect={(emoji) => setNewCommentText(prev => prev + emoji)} />
+              </div>
+            )}
           </div>
           <div className={styles["submit-comment-button"]}>
             {currentUser ? (

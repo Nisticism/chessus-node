@@ -95,22 +95,33 @@ const deleteUser = async (username) => {
   const userId = user[0].id;
   
   // Clean up tables that have strict FK constraints (non-content tables)
-  await query("DELETE FROM notifications WHERE user_id = ? OR sender_id = ?", [userId, userId]);
-  await query("DELETE FROM friends WHERE user_id = ? OR friend_id = ?", [userId, userId]);
-  await query("DELETE FROM friend_requests WHERE sender_id = ? OR receiver_id = ?", [userId, userId]);
-  await query("DELETE FROM players WHERE user_id = ?", [userId]);
-  await query("DELETE FROM liked_articles WHERE user_id = ?", [userId]);
+  // Use try/catch per table to handle tables that may not exist in all environments
+  const cleanupQueries = [
+    ["DELETE FROM notifications WHERE user_id = ? OR sender_id = ?", [userId, userId]],
+    ["DELETE FROM friends WHERE user_id = ? OR friend_id = ?", [userId, userId]],
+    ["DELETE FROM friend_requests WHERE sender_id = ? OR receiver_id = ?", [userId, userId]],
+    ["DELETE FROM players WHERE user_id = ?", [userId]],
+    ["DELETE FROM liked_articles WHERE user_id = ?", [userId]],
+  ];
+  for (const [sql, params] of cleanupQueries) {
+    try {
+      await query(sql, params);
+    } catch (err) {
+      if (err.code !== 'ER_NO_SUCH_TABLE') throw err;
+    }
+  }
   
-  // Disable FK checks to allow user deletion while preserving author_id
-  // references in articles/comments (so they display as "User Deleted")
-  await query("SET FOREIGN_KEY_CHECKS = 0");
+  // Use a single connection for FK checks + delete to avoid pool connection mismatch
+  const conn = await db.getConnection();
   try {
-    const result = await query("DELETE FROM chessusnode.users WHERE username = ?", [username]);
-    await query("SET FOREIGN_KEY_CHECKS = 1");
-    return result;
+    await conn.query("SET FOREIGN_KEY_CHECKS = 0");
+    await conn.query("DELETE FROM chessusnode.users WHERE username = ?", [username]);
+    await conn.query("SET FOREIGN_KEY_CHECKS = 1");
   } catch (err) {
-    await query("SET FOREIGN_KEY_CHECKS = 1");
+    await conn.query("SET FOREIGN_KEY_CHECKS = 1").catch(() => {});
     throw err;
+  } finally {
+    conn.release();
   }
 };
 

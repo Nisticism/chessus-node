@@ -48,6 +48,10 @@ const PlayerPage = (props) => {
   const [friendshipStatus, setFriendshipStatus] = useState({ status: 'none', areFriends: false });
   const [checkingFriendship, setCheckingFriendship] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState([]);
+  const [createdGames, setCreatedGames] = useState([]);
+  const [createdPieces, setCreatedPieces] = useState([]);
+  const [gamesCollapsed, setGamesCollapsed] = useState(true);
+  const [piecesCollapsed, setPiecesCollapsed] = useState(true);
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
   const playerPageUser = useSelector((state) => state.authReducer.playerPage);
   
@@ -154,6 +158,28 @@ const PlayerPage = (props) => {
       fetchIncomingRequests();
     }
   }, [currentUser, playerPageUser, loading, dispatch]);
+
+  // Fetch created games and pieces for this user's profile
+  useEffect(() => {
+    const fetchCreatedContent = async () => {
+      if (playerPageUser?.id) {
+        try {
+          const [gamesRes, piecesRes] = await Promise.all([
+            axios.get(`${API_URL}games?creatorId=${playerPageUser.id}&limit=50`),
+            axios.get(`${API_URL}pieces?creatorId=${playerPageUser.id}&limit=50`)
+          ]);
+          setCreatedGames(gamesRes.data.games || []);
+          setCreatedPieces(piecesRes.data.pieces || []);
+        } catch (error) {
+          console.error("Error fetching created content:", error);
+        }
+      }
+    };
+
+    if (!loading && playerPageUser) {
+      fetchCreatedContent();
+    }
+  }, [playerPageUser, loading]);
 
 
   useEffect(() => {
@@ -403,8 +429,10 @@ const PlayerPage = (props) => {
       console.log('Upload response:', response.data);
       
       if (response.data.success && response.data.user) {
-        // Update user in localStorage with full user object from backend
-        localStorage.setItem('user', JSON.stringify(response.data.user));
+        // Merge updated user data with existing localStorage to preserve auth tokens
+        const existingUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const mergedUser = { ...existingUser, ...response.data.user };
+        localStorage.setItem('user', JSON.stringify(mergedUser));
         
         // Update Redux state with new user data
         dispatch({
@@ -482,6 +510,16 @@ const PlayerPage = (props) => {
           {realUser ? 
           <div className={styles["player-page-container"]}>
             <div className={styles["profile-header"]}>
+              {currentUser && username === currentUser.username && (
+                <div className={styles["profile-quick-actions"]}>
+                  <Link to="/preferences" className={styles["quick-action-btn"]} title="Preferences">
+                    ⚙️
+                  </Link>
+                  <Link to="/profile/edit" className={styles["quick-action-btn"]} title="Edit Account">
+                    ✏️
+                  </Link>
+                </div>
+              )}
               <div 
                 className={styles["profile-avatar"]}
                 onClick={handleProfilePictureClick}
@@ -708,7 +746,60 @@ const PlayerPage = (props) => {
                 bio={playerPageUser?.bio}
                 isEditable={false}
                 emptyMessage={currentUser && username === currentUser.username ? "No bio yet. Tell the community about yourself!" : "This user hasn't written a bio yet."}
+                wrapperClassName={styles["info-card"]}
               />
+
+              {/* My Games - show if user has created any game types */}
+              {createdGames.length > 0 && (
+                <div className={styles["info-card"]}>
+                  <h2 className={styles["card-title"]} onClick={() => setGamesCollapsed(!gamesCollapsed)} style={{ cursor: 'pointer' }}>
+                    My Games
+                    <span className={`${styles["collapse-arrow"]} ${gamesCollapsed ? styles["collapsed"] : ''}`}>▼</span>
+                  </h2>
+                  {!gamesCollapsed && (
+                    <div className={styles["created-content-list"]}>
+                      {createdGames.map((game) => (
+                        <Link
+                          key={game.id}
+                          to={`/create/games/${game.id}`}
+                          className={styles["created-content-item"]}
+                        >
+                          <span className={styles["content-name"]}>{game.game_name}</span>
+                          {game.board_width && game.board_height && (
+                            <span className={styles["content-detail"]}>{game.board_width}×{game.board_height}</span>
+                          )}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* My Pieces - show if user has created any pieces */}
+              {createdPieces.length > 0 && (
+                <div className={styles["info-card"]}>
+                  <h2 className={styles["card-title"]} onClick={() => setPiecesCollapsed(!piecesCollapsed)} style={{ cursor: 'pointer' }}>
+                    My Pieces
+                    <span className={`${styles["collapse-arrow"]} ${piecesCollapsed ? styles["collapsed"] : ''}`}>▼</span>
+                  </h2>
+                  {!piecesCollapsed && (
+                    <div className={styles["created-content-list"]}>
+                      {createdPieces.map((piece) => (
+                        <Link
+                          key={piece.id}
+                          to={`/create/pieces/${piece.id}`}
+                          className={styles["created-content-item"]}
+                        >
+                          <span className={styles["content-name"]}>{piece.piece_name}</span>
+                          {piece.piece_category && (
+                            <span className={styles["content-detail"]}>{piece.piece_category}</span>
+                          )}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Friend Requests - only show on own profile */}
               {currentUser && playerPageUser && currentUser.id === playerPageUser.id && incomingRequests.length > 0 && (
@@ -790,21 +881,35 @@ const PlayerPage = (props) => {
               </strong>
            </div>}
            <Divider />
-      {(currentUser && (currentUser.username === username || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner") && realUser) ?
+      {(() => {
+        if (!currentUser || !realUser) return "";
+        const isOwn = currentUser.username === username;
+        const myRole = currentUser.role?.toLowerCase();
+        const targetRole = playerPageUser?.role?.toLowerCase();
+        const isOwner = myRole === "owner";
+        const isAdmin = myRole === "admin";
+        const canModerate = isOwner || (isAdmin && targetRole !== "admin" && targetRole !== "owner");
+        if (!isOwn && !canModerate) return "";
+        return (
             <div className={styles["profile-buttons"]}>
-              <div className={styles["profile-button"]}>
-                <StandardButton buttonText={"Delete Account"} onClick={handleDelete} />
-              </div>
-              <div className={styles["profile-button"]}>
-                <StandardButton buttonText={"Edit Account"} onClick={handleEdit} />
-              </div>
-              {currentUser && currentUser.username === username && (
+              {(isOwn || canModerate) && (
+                <div className={styles["profile-button"]}>
+                  <StandardButton buttonText={"Delete Account"} onClick={handleDelete} />
+                </div>
+              )}
+              {(isOwn || canModerate) && (
+                <div className={styles["profile-button"]}>
+                  <StandardButton buttonText={"Edit Account"} onClick={handleEdit} />
+                </div>
+              )}
+              {isOwn && (
                 <div className={styles["profile-button"]}>
                   <StandardButton buttonText={"Preferences"} onClick={handlePreferences} />
                 </div>
               )}
             </div>
-            : "" }
+        );
+      })()}
             {}
           </>
       )}

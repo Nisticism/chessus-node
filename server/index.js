@@ -1706,11 +1706,17 @@ app.get("/api/pieces", async (req, res) => {
     const offset = (page - 1) * limit;
     const sort = req.query.sort || 'newest';
     const search = req.query.search || '';
+    const creatorId = req.query.creatorId ? parseInt(req.query.creatorId) : null;
 
     // Build WHERE clause
     let whereClause = '';
     const whereParams = [];
     const conditions = [];
+
+    if (creatorId) {
+      conditions.push('p.creator_id = ?');
+      whereParams.push(creatorId);
+    }
 
     if (search) {
       conditions.push('p.piece_name LIKE ?');
@@ -1886,11 +1892,17 @@ app.get("/api/games", async (req, res) => {
     const sort = req.query.sort || 'newest';
     const winCondition = req.query.winCondition || '';
     const search = req.query.search || '';
+    const creatorId = req.query.creatorId ? parseInt(req.query.creatorId) : null;
 
     // Build WHERE clause
     let whereClause = '';
     const whereParams = [];
     const conditions = [];
+
+    if (creatorId) {
+      conditions.push('gt.creator_id = ?');
+      whereParams.push(creatorId);
+    }
 
     if (winCondition) {
       const condMap = {
@@ -2101,9 +2113,14 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       match: existingGame.creator_id === userId
     });
     
-    // Verify ownership (creator or Admin/Owner)
-    if (existingGame.creator_id !== userId && userRole !== "admin" && userRole !== "owner") {
-      return res.status(403).send({ message: "You can only edit your own games" });
+    // Verify ownership (creator or moderation rights)
+    if (existingGame.creator_id !== userId) {
+      // Look up the game creator's role
+      const creator = await dbHelpers.findUserById(existingGame.creator_id);
+      const creatorRole = creator?.role || 'user';
+      if (!canModerate(userRole, creatorRole)) {
+        return res.status(403).send({ message: "You can only edit your own games" });
+      }
     }
 
     // Content moderation: Check game name
@@ -2287,10 +2304,11 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(404).send({ message: "Game not found" });
     }
     
-    // Verify ownership or admin role
+    // Verify ownership or moderation rights
     if (existingGame.creator_id !== userId) {
-      const userRole = req.user.role?.toLowerCase();
-      if (userRole !== 'admin' && userRole !== 'owner') {
+      const creator = await dbHelpers.findUserById(existingGame.creator_id);
+      const creatorRole = creator?.role || 'user';
+      if (!canModerate(req.user.role, creatorRole)) {
         return res.status(403).send({ message: "You can only delete your own games" });
       }
     }
@@ -2417,11 +2435,12 @@ app.post("/api/register", registerLimiter, async (req, res) => {
   }
 });
 
-app.post("/api/profile/edit", async (req, res) => {
+app.post("/api/profile/edit", authenticateToken, async (req, res) => {
   try {
     const { username, current_user, password, oldPassword, bio, email, first_name, last_name, id, show_display_name } = req.body;
     const logged_in_username = current_user.username;
     const logged_in_email = current_user.email;
+    const requesterRole = req.user.role?.toLowerCase();
 
     console.log("in the edit backend");
     console.log("username: " + username + " id: " + id);
@@ -2432,6 +2451,17 @@ app.post("/api/profile/edit", async (req, res) => {
     const currentUser = await dbHelpers.findUserByUsername(logged_in_username);
     if (!currentUser) {
       return res.status(404).send({ message: "User no longer exists" });
+    }
+
+    // If editing another user's profile, check moderation rights
+    if (req.user.id !== parseInt(id)) {
+      const targetUser = await dbHelpers.findUserById(id);
+      if (!targetUser) {
+        return res.status(404).send({ message: "Target user not found" });
+      }
+      if (!canModerate(requesterRole, targetUser.role)) {
+        return res.status(403).send({ message: "Not authorized to edit this account" });
+      }
     }
 
     // Check if new username is already taken by another user
@@ -2483,7 +2513,7 @@ app.post("/api/profile/edit", async (req, res) => {
     // Hash password if provided
     if (password && password.length > 0) {
       // Require old password verification for non-admin users
-      if (current_user.role !== "admin" && current_user.role !== "owner") {
+      if (requesterRole !== "admin" && requesterRole !== "owner") {
         if (!oldPassword) {
           return res.status(400).send({ message: "Current password is required to change password" });
         }
@@ -2972,11 +3002,16 @@ app.post("/api/delete", authenticateToken, async (req, res) => {
     const { username } = req.body;
     const requestingUser = req.user;
     
-    // Security: Only allow users to delete their own account, or admins/owners to delete any account
-    if (requestingUser.username !== username && 
-        requestingUser.role !== 'admin' && 
-        requestingUser.role !== 'owner') {
-      return res.status(403).send({ message: "Not authorized to delete this account" });
+    // Security: Only allow users to delete their own account, or authorized admins/owners
+    if (requestingUser.username !== username) {
+      // Look up target user's role
+      const [[targetUser]] = await db_pool.query("SELECT role FROM users WHERE username = ?", [username]);
+      if (!targetUser) {
+        return res.status(404).send({ message: "User not found" });
+      }
+      if (!canModerate(requestingUser.role, targetUser.role)) {
+        return res.status(403).send({ message: "Not authorized to delete this account" });
+      }
     }
     
     console.log(`User ${requestingUser.username} (role: ${requestingUser.role}) deleting account: ${username}`);
@@ -3562,17 +3597,30 @@ app.get("/api/forum", async (params, res) => {
   }
 });
 
-app.put("/api/forums/edit", async (req, res) => {
+app.put("/api/forums/edit", authenticateToken, async (req, res) => {
   try {
     const { title, id, content, last_updated_at } = req.body;
+    const userId = req.user.id;
+    const userRole = req.user.role?.toLowerCase();
     console.log(content);
     console.log("in edit forum route");
+
+    // Check ownership or moderation rights
+    const [[forum]] = await db_pool.query("SELECT a.*, u.role as author_role FROM articles a LEFT JOIN users u ON a.author_id = u.id WHERE a.id = ?", [id]);
+    if (!forum) {
+      return res.status(404).send({ message: "Forum not found" });
+    }
+    if (forum.author_id !== userId) {
+      if (!canModerate(userRole, forum.author_role)) {
+        return res.status(403).send({ message: "You don't have permission to edit this forum" });
+      }
+    }
     
     await dbHelpers.updateForum({ title, content, last_updated_at, id });
     
-    const forum = { title, content, last_updated_at, id };
-    console.log("forum: " + forum.title + "content: " + forum.content + "last updated: " + forum.last_updated_at + ", id: " + id);
-    res.json({ result: forum });
+    const result = { title, content, last_updated_at, id };
+    console.log("forum: " + result.title + "content: " + result.content + "last updated: " + result.last_updated_at + ", id: " + id);
+    res.json({ result });
   } catch (err) {
     console.error("Error in /api/forums/edit:", err);
     res.status(500).send({ message: "Forum edit failed", err: err.message });
@@ -3586,14 +3634,16 @@ app.post("/api/forums/delete", authenticateToken, async (req, res) => {
     const userRole = req.user.role?.toLowerCase();
 
     // Check if forum exists
-    const [[forum]] = await db_pool.query("SELECT * FROM articles WHERE id = ?", [id]);
+    const [[forum]] = await db_pool.query("SELECT a.*, u.role as author_role FROM articles a LEFT JOIN users u ON a.author_id = u.id WHERE a.id = ?", [id]);
     if (!forum) {
       return res.status(404).send({ message: "Forum not found" });
     }
 
-    // Verify ownership or admin role
-    if (forum.author_id !== userId && userRole !== 'admin' && userRole !== 'owner') {
-      return res.status(403).send({ message: "You don't have permission to delete this forum" });
+    // Verify ownership or moderation rights
+    if (forum.author_id !== userId) {
+      if (!canModerate(userRole, forum.author_role)) {
+        return res.status(403).send({ message: "You don't have permission to delete this forum" });
+      }
     }
 
     // Check if this forum is associated with a game that still exists
@@ -3729,11 +3779,25 @@ app.post("/api/comments/new", async (req, res) => {
   }
 });
 
-app.post("/api/delete-comment", async (req, res) => {
+app.post("/api/delete-comment", authenticateToken, async (req, res) => {
   try {
     console.log("in delete comment route");
     const id = req.body.id;
-    
+    const userId = req.user.id;
+    const userRole = req.user.role?.toLowerCase();
+
+    // Look up the comment to verify ownership or moderation rights
+    const [[comment]] = await db_pool.query("SELECT c.*, u.role as author_role FROM comments c LEFT JOIN users u ON c.author_id = u.id WHERE c.id = ?", [id]);
+    if (!comment) {
+      return res.status(404).send({ message: "Comment not found" });
+    }
+
+    if (comment.author_id !== userId) {
+      if (!canModerate(userRole, comment.author_role)) {
+        return res.status(403).send({ message: "You don't have permission to delete this comment" });
+      }
+    }
+
     await dbHelpers.deleteComment(id);
     res.json({ message: "Comment deleted" });
   } catch (err) {
@@ -3742,9 +3806,23 @@ app.post("/api/delete-comment", async (req, res) => {
   }
 });
 
-app.put("/api/comments/edit", async (req, res) => {
+app.put("/api/comments/edit", authenticateToken, async (req, res) => {
   try {
     const { id, content, last_updated_at } = req.body;
+    const userId = req.user.id;
+    const userRole = req.user.role?.toLowerCase();
+
+    // Look up the comment to verify ownership or moderation rights
+    const [[comment]] = await db_pool.query("SELECT c.*, u.role as author_role FROM comments c LEFT JOIN users u ON c.author_id = u.id WHERE c.id = ?", [id]);
+    if (!comment) {
+      return res.status(404).send({ message: "Comment not found" });
+    }
+
+    if (comment.author_id !== userId) {
+      if (!canModerate(userRole, comment.author_role)) {
+        return res.status(403).send({ message: "You don't have permission to edit this comment" });
+      }
+    }
 
     // Content moderation
     if (content) {
@@ -4706,11 +4784,13 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
 
 // ----------------------- Pieces Update ------------------------------
 
-app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req, res) => {
+app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_images', 8), async (req, res) => {
   try {
     const { pieceId } = req.params;
     const pieceData = req.body;
     const imageFiles = req.files;
+    const userId = req.user.id;
+    const userRole = req.user.role;
 
     // Check if piece exists and user is creator
     const existingPiece = await dbHelpers.getPieceById(pieceId);
@@ -4718,9 +4798,13 @@ app.put("/api/pieces/:pieceId", pieceUpload.array('piece_images', 8), async (req
       return res.status(404).send({ message: "Piece not found" });
     }
 
-    // Verify ownership (creator_id check)
-    if (existingPiece.creator_id !== parseInt(pieceData.creator_id) && pieceData.user_role !== 'admin' && pieceData.user_role !== 'owner') {
-      return res.status(403).send({ message: "You don't have permission to edit this piece" });
+    // Verify ownership or moderation rights (use server-side role, not client-sent)
+    if (existingPiece.creator_id !== parseInt(userId)) {
+      const creator = await dbHelpers.findUserById(existingPiece.creator_id);
+      const creatorRole = creator?.role || 'user';
+      if (!canModerate(userRole, creatorRole)) {
+        return res.status(403).send({ message: "You don't have permission to edit this piece" });
+      }
     }
 
     // Content moderation: Check piece name
@@ -5214,9 +5298,13 @@ app.delete("/api/pieces/:pieceId", authenticateToken, async (req, res) => {
     
     const existingPiece = existingPieceRows[0];
 
-    // Verify ownership
-    if (existingPiece.creator_id !== parseInt(userId) && userRole !== 'admin' && userRole !== 'owner') {
-      return res.status(403).send({ message: "You don't have permission to delete this piece" });
+    // Verify ownership or moderation rights
+    if (existingPiece.creator_id !== parseInt(userId)) {
+      const creator = await dbHelpers.findUserById(existingPiece.creator_id);
+      const creatorRole = creator?.role || 'user';
+      if (!canModerate(userRole, creatorRole)) {
+        return res.status(403).send({ message: "You don't have permission to delete this piece" });
+      }
     }
 
     // Delete the piece (CASCADE will handle related tables)
@@ -5365,6 +5453,21 @@ function authenticateAdmin(req, res, next) {
     }
     next();
   });
+}
+
+/**
+ * Check if requester can moderate content created by a target user.
+ * Owner can moderate anyone. Admin can moderate non-admin/non-owner users.
+ * @param {string} requesterRole - Role of the user performing the action
+ * @param {string} targetRole - Role of the user whose content is being acted upon
+ * @returns {boolean}
+ */
+function canModerate(requesterRole, targetRole) {
+  const rRole = (requesterRole || '').toLowerCase();
+  const tRole = (targetRole || '').toLowerCase();
+  if (rRole === 'owner') return true;
+  if (rRole === 'admin' && tRole !== 'admin' && tRole !== 'owner') return true;
+  return false;
 }
 
 function generateAccessToken(user) {
@@ -5647,6 +5750,26 @@ app.get("/api/admin/news/:newsId", authenticateAdmin, async (req, res) => {
   } catch (err) {
     console.error("Error in /api/admin/news/:newsId:", err);
     res.status(500).send({ message: "Failed to fetch news article", err: err.message });
+  }
+});
+
+// Get all currently online players (admin only)
+app.get("/api/admin/online-players", authenticateAdmin, async (req, res) => {
+  try {
+    const onlineIds = Array.from(onlineUsers);
+    if (onlineIds.length === 0) {
+      return res.json({ data: [], total: 0 });
+    }
+    const [users] = await db_pool.query(
+      `SELECT id, username, role, elo, profile_picture, last_active_at
+       FROM users WHERE id IN (?)
+       ORDER BY username ASC`,
+      [onlineIds]
+    );
+    res.json({ data: users, total: users.length });
+  } catch (err) {
+    console.error("Error in /api/admin/online-players:", err);
+    res.status(500).send({ message: "Failed to fetch online players", err: err.message });
   }
 });
 
