@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { getGameById, deleteGame, toggleUpvote, getUpvoteStatus } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
@@ -293,6 +293,7 @@ const describePieceCapture = (pieceData) => {
 const GameTypeView = () => {
   const { gameId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const [game, setGame] = useState(null);
@@ -436,7 +437,7 @@ const GameTypeView = () => {
     if (gameId) {
       loadGame();
     }
-  }, [gameId, dispatch]);
+  }, [gameId, dispatch, location.key]);
 
   const handleUpvote = async () => {
     if (!currentUser) return;
@@ -995,8 +996,15 @@ const GameTypeView = () => {
     const winConditions = [];
 
     if (game.mate_condition) {
+      // Determine checkmate target piece name: prefer game-level mate_piece, then fall back to pieces marked ends_game_on_checkmate
+      let matePieceName = 'the designated piece';
       const matePieceData = game.mate_piece ? pieceDataMap[game.mate_piece] : null;
-      const matePieceName = matePieceData ? `**${matePieceData.piece_name}**` : 'the designated piece';
+      if (matePieceData) {
+        matePieceName = `**${matePieceData.piece_name}**`;
+      } else if (checkmatePieces.length > 0) {
+        const uniqueNames = [...new Set(checkmatePieces.map(p => p.pieceData?.piece_name || p.piece_name).filter(Boolean))];
+        matePieceName = uniqueNames.map(n => `**${n}**`).join(' or ');
+      }
       winConditions.push(`• **Checkmate**: A player wins by checkmating their opponent's ${matePieceName}. When ${matePieceName} is in check and cannot escape, the game is over.${(game.actions_per_turn || 1) > 1 ? ` In multi-action games, checkmate is evaluated at the end of a turn after all ${game.actions_per_turn} actions are completed. You cannot capture ${matePieceName} directly — it must be checkmated${game.capture_condition ? ' (unless the capture win condition is also enabled)' : ''}.` : ''}`);
     }
 
@@ -1043,6 +1051,16 @@ const GameTypeView = () => {
       const winPieceLinks = [];
       if (game.mate_piece && pieceDataMap[game.mate_piece]) {
         winPieceLinks.push({ name: pieceDataMap[game.mate_piece].piece_name, id: game.mate_piece });
+      } else if (game.mate_condition && checkmatePieces.length > 0) {
+        const seen = new Set();
+        checkmatePieces.forEach(p => {
+          const pieceId = p.piece_id;
+          const name = p.pieceData?.piece_name || p.piece_name;
+          if (pieceId && name && !seen.has(pieceId)) {
+            seen.add(pieceId);
+            winPieceLinks.push({ name, id: pieceId });
+          }
+        });
       }
       if (game.capture_piece && pieceDataMap[game.capture_piece]) {
         winPieceLinks.push({ name: pieceDataMap[game.capture_piece].piece_name, id: game.capture_piece });
@@ -1079,6 +1097,16 @@ const GameTypeView = () => {
 
     if (otherData.equal_piece_count_draw) {
       drawConditions.push(`• **Equal Piece Count Draw**: If both players have the same number of pieces when the game ends by piece count, it is a draw.`);
+    }
+
+    if (game.mate_condition) {
+      drawConditions.push(`• **Stalemate**: If a player is not in check but has no legal moves on their turn, the game is declared a draw.`);
+    }
+
+    // Insufficient material draw: only when both sides have at least one checkmatable piece
+    const checkmatePlayerIds = new Set(checkmatePieces.map(p => p.player_id));
+    if (checkmatePlayerIds.size >= 2) {
+      drawConditions.push(`• **Insufficient Material**: If only the two checkmatable pieces remain on the board (one per player) with no other pieces, the game is immediately declared a draw.`);
     }
 
     if (drawConditions.length > 0) {

@@ -64,6 +64,11 @@ const changelogData = [
       "Role badges (Owner, Admin) now use shared CSS variables for consistent styling",
       "Player list avatar, rating, and link colors now use theme variables instead of hardcoded values",
       "Admin dashboard empty-state text colors replaced with theme variables",
+      "Game rules now show stalemate as a draw condition when checkmate is enabled",
+      "Game rules now show an insufficient material draw condition when both sides have checkmatable pieces",
+      "Win conditions section now names the specific piece that must be checkmated",
+      "Game rules automatically refresh when returning from editing a game type",
+      "Insufficient material draw now triggers in live games when only checkmatable pieces remain",
     ]
   },
   {
