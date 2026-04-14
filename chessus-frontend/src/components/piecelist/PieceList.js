@@ -25,8 +25,10 @@ const PieceList = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    dispatch(getPieces(currentPage, 20, sortBy, searchQuery));
-  }, [currentPage, sortBy, searchQuery, dispatch]);
+    const creatorId = sortBy === 'my_pieces' && currentUser ? currentUser.id : '';
+    const actualSort = sortBy === 'my_pieces' ? 'newest' : sortBy;
+    dispatch(getPieces(currentPage, 20, actualSort, searchQuery, creatorId));
+  }, [currentPage, sortBy, searchQuery, currentUser, dispatch]);
 
   const handleSortChange = (e) => {
     setSortBy(e.target.value);
@@ -89,14 +91,9 @@ const PieceList = () => {
     return null;
   };
 
-  // Separate pieces into user's pieces and other pieces
   // Filter out any pieces without valid IDs
-  const myPieces = allPieces.piecesList 
-    ? allPieces.piecesList.filter(piece => piece.id && currentUser && piece.creator_id === currentUser.id)
-    : [];
-  
-  const otherPieces = allPieces.piecesList 
-    ? allPieces.piecesList.filter(piece => piece.id && (!currentUser || piece.creator_id !== currentUser.id))
+  const pieces = allPieces.piecesList 
+    ? allPieces.piecesList.filter(piece => piece.id)
     : [];
 
   const pagination = allPieces.pagination;
@@ -131,7 +128,9 @@ const PieceList = () => {
       setShowAlert(true);
       // Force a fresh fetch after delete
       setTimeout(() => {
-        dispatch(getPieces(currentPage, 20, sortBy, searchQuery));
+        const creatorId = sortBy === 'my_pieces' && currentUser ? currentUser.id : '';
+        const actualSort = sortBy === 'my_pieces' ? 'newest' : sortBy;
+        dispatch(getPieces(currentPage, 20, actualSort, searchQuery, creatorId));
       }, 100);
     } catch (error) {
       console.error("Error deleting piece:", error);
@@ -318,14 +317,15 @@ const PieceList = () => {
   return (
     <div className={styles["pieces-container"]}>
       <div className={styles["page-header"]}>
-        <h1>Piece Library</h1>
+        <div className={styles["header-row"]}>
+          <h1>Piece Library</h1>
+          <Link to="/create/piece" className={styles["create-button"]}>
+            + Create New Piece
+          </Link>
+        </div>
         <p className={styles["subtitle"]}>
           Browse and manage custom pieces for your games
         </p>
-        
-        <Link to="/create/piece" className={styles["create-button"]}>
-          + Create New Piece
-        </Link>
 
         <div className={styles["filter-controls"]}>
           <form className={styles["search-form"]} onSubmit={handleSearch}>
@@ -345,69 +345,53 @@ const PieceList = () => {
                 <option value="newest">Newest</option>
                 <option value="most_used">Most Used in Games</option>
                 <option value="alphabetical">Alphabetical</option>
+                {currentUser && <option value="my_pieces">My Pieces</option>}
               </select>
             </div>
           </div>
-        </div>
 
-        <div className={styles["color-toggle"]}>
-          <span className={styles["toggle-label"]}>Show pieces as</span>
-          <div className={styles["toggle-group"]}>
-            <button
-              className={`${styles["toggle-btn"]} ${displayColor === 'p1' ? styles["active"] : ''}`}
-              onClick={() => setDisplayColor('p1')}
-            >
-              Light
-            </button>
-            <button
-              className={`${styles["toggle-btn"]} ${displayColor === 'p2' ? styles["active"] : ''}`}
-              onClick={() => setDisplayColor('p2')}
-            >
-              Dark
-            </button>
+          <div className={styles["color-toggle"]}>
+            <span className={styles["toggle-label"]}>Show pieces as</span>
+            <div className={styles["toggle-group"]}>
+              <button
+                className={`${styles["toggle-btn"]} ${displayColor === 'p1' ? styles["active"] : ''}`}
+                onClick={() => setDisplayColor('p1')}
+              >
+                Light
+              </button>
+              <button
+                className={`${styles["toggle-btn"]} ${displayColor === 'p2' ? styles["active"] : ''}`}
+                onClick={() => setDisplayColor('p2')}
+              >
+                Dark
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* My Pieces Section */}
-      {myPieces.length > 0 && (
-        <section className={styles["pieces-section"]}>
-          <div className={styles["section-header"]}>
-            <h2>🎨 My Pieces</h2>
-            <span className={styles["piece-count"]}>{myPieces.length} on this page</span>
-          </div>
-          <div className={styles["pieces-grid"]}>
-            {myPieces.map(piece => (
-              <React.Fragment key={piece.id}>
-                {renderPieceCard(piece, true)}
-              </React.Fragment>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Community Pieces Section */}
+      {/* Pieces Section */}
       <section className={styles["pieces-section"]}>
         <div className={styles["section-header"]}>
-          <h2>🌍 All Pieces</h2>
+          <h2>{sortBy === 'my_pieces' ? '🎨 My Pieces' : '🌍 All Pieces'}</h2>
           <span className={styles["piece-count"]}>
             {totalCount} total piece{totalCount !== 1 ? 's' : ''}
           </span>
         </div>
         
-        {otherPieces.length > 0 ? (
+        {pieces.length > 0 ? (
           <div className={styles["pieces-grid"]}>
-            {otherPieces.map(piece => (
+            {pieces.map(piece => (
               <React.Fragment key={piece.id}>
-                {renderPieceCard(piece, isAdmin)}
+                {renderPieceCard(piece, true)}
               </React.Fragment>
             ))}
           </div>
-        ) : myPieces.length === 0 ? (
+        ) : (
           <div className={styles["empty-section"]}>
-            <p>No pieces found.</p>
+            <p>{sortBy === 'my_pieces' ? 'You haven\'t created any pieces yet.' : 'No pieces found.'}</p>
           </div>
-        ) : null}
+        )}
       </section>
 
       {pagination && (
@@ -419,7 +403,7 @@ const PieceList = () => {
       )}
 
       {/* All Pieces Empty State */}
-      {(!allPieces.piecesList || allPieces.piecesList.length === 0) && (
+      {(!allPieces.piecesList || allPieces.piecesList.length === 0) && sortBy !== 'my_pieces' && (
         <div className={styles["empty-state"]}>
           <div className={styles["empty-icon"]}>🧩</div>
           <h3>No Pieces Yet</h3>

@@ -5,9 +5,9 @@ import {
   LIST_PIECES_FAIL,
 } from "./types";
 
-export const getPieces = (page = 1, limit = 20, sort = 'newest', search = '') => async (dispatch) => {
+export const getPieces = (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '') => async (dispatch) => {
   try {
-    const response = await PiecesService.getPieces(page, limit, sort, search);
+    const response = await PiecesService.getPieces(page, limit, sort, search, creatorId);
     console.log("pieces action");
     dispatch({
       type: LIST_PIECES,

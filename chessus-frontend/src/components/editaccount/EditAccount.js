@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, Navigate, useParams } from "react-router-dom";
-import { edit } from "../../actions/auth";
+import { edit, deleteUser } from "../../actions/auth";
 import styles from "./edit-account.module.scss";
 import NotFound from "../notfound/NotFound";
 import axios from "axios";
@@ -49,15 +49,17 @@ const EditAccount = (props) => {
   const { profileUsername } = useParams();
   
   // Initialize editAuth based on initial permissions to prevent NotFound flash
+  const isAdminOrOwner = ['admin', 'owner'].includes(currentUser.role?.toLowerCase());
+
   const [editAuth, setEditAuth] = useState(
-    currentUser.role === "Admin" || 
+    isAdminOrOwner || 
     (profileUsername && profileUsername === username) || 
     !profileUsername
   );
 
   useEffect(() => {
     if (!firstRender) {
-      if (currentUser.role === "Admin" || (profileUsername && profileUsername === username)
+      if (isAdminOrOwner || (profileUsername && profileUsername === username)
       || !profileUsername) {
         setEditAuth(true);
       } else {
@@ -177,10 +179,10 @@ const EditAccount = (props) => {
     axios.get(API_URL + 'user', 
      {params: { username: username}})
     .then (res => {
-      if (res.data.result.id !== currentUser.id && currentUser.role !== "Admin") {
+      if (res.data.result.id !== currentUser.id && !isAdminOrOwner) {
         console.log("not admin or authorized");
       } else {
-        if (currentUser.role === "Admin") {
+        if (isAdminOrOwner) {
           console.log("admin logged in, setting up editable user")
           setUserInfo(res.data.result);
           setUsername(res.data.result.username);
@@ -200,10 +202,10 @@ const EditAccount = (props) => {
   }
 
   const handleViewProfile = () => {
-    if (currentUser.role === "Admin" && (editSuccess && currentUser.username !== playerPageNav)) {
+    if (isAdminOrOwner && (editSuccess && currentUser.username !== playerPageNav)) {
       navigate(`/profile/${playerPageNav}`);
       console.log("1");
-    } else if (currentUser.role === "Admin" && !editSuccess) {
+    } else if (isAdminOrOwner && !editSuccess) {
       navigate(`/profile/${profileUsername}`);
       console.log("2")
     }
@@ -213,6 +215,33 @@ const EditAccount = (props) => {
     }
   }
 
+  const handleDeleteAccount = async () => {
+    const targetUsername = profileUsername || currentUser.username;
+    const isAdminDeletingOther = ['admin', 'owner'].includes(currentUser.role?.toLowerCase()) && targetUsername !== currentUser.username;
+
+    const confirmed = window.confirm(
+      isAdminDeletingOther
+        ? `Are you sure you want to delete the account for ${targetUsername}? This action cannot be undone.`
+        : "Are you sure you want to delete your account? This action cannot be undone."
+    );
+    if (!confirmed) return;
+
+    try {
+      if (isAdminDeletingOther) {
+        await dispatch(deleteUser(targetUsername, currentUser.id));
+        setBannerMessage(`Account for ${targetUsername} has been deleted.`);
+        setBannerType("success");
+        setTimeout(() => navigate('/admin/dashboard'), 2000);
+      } else {
+        await dispatch(deleteUser(currentUser.username));
+        navigate('/register');
+      }
+    } catch {
+      setBannerMessage("Failed to delete account.");
+      setBannerType("error");
+    }
+  };
+
   const handleAccountUpdate = async(e) => {
     e.preventDefault();
     console.log("edit submit clicked");
@@ -220,7 +249,7 @@ const EditAccount = (props) => {
     // if (checkBtn.current.context._errors.length === 0) {
       console.log("old password: " + oldPassword + " new password: " + password);
       console.log("logged in password: " + currentUser.password);
-    if (currentUser.role === "Admin") {
+    if (isAdminOrOwner) {
     dispatch(edit(userInfo, username, password, email, firstName, lastName, bio, userInfo.id, currentUser.id, null, showDisplayName))
       .then(() => {
         console.log("user updated by adimn from the editaccount.js page")
@@ -287,7 +316,7 @@ const EditAccount = (props) => {
           </div>
         )}
         <div className={styles["edit-account-header"]}>
-          {currentUser.role === "Admin" ?
+          {isAdminOrOwner ?
             <h1>Edit Account: {userInfo && userInfo.username ? userInfo.username : ""}</h1>
             :
             <h1>Edit Your Account</h1>
@@ -495,6 +524,13 @@ const EditAccount = (props) => {
               </div>
 
               <div className={styles["form-actions"]}>
+                <button
+                  type="button"
+                  className={styles["delete-account-btn"]}
+                  onClick={handleDeleteAccount}
+                >
+                  Delete Account
+                </button>
                 <StandardButton buttonType="submit" buttonText="Update Account" />
                 <StandardButton buttonType="button" buttonText="View Profile" onClick={handleViewProfile} />
               </div>

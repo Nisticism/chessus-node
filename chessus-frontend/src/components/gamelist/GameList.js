@@ -24,8 +24,10 @@ const GameList = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    dispatch(getGames(currentPage, 20, sortBy, winConditionFilter, searchQuery));
-  }, [currentPage, sortBy, winConditionFilter, searchQuery, dispatch]);
+    const creatorId = sortBy === 'my_games' && currentUser ? currentUser.id : '';
+    const actualSort = sortBy === 'my_games' ? 'newest' : sortBy;
+    dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId));
+  }, [currentPage, sortBy, winConditionFilter, searchQuery, currentUser, dispatch]);
 
   const handleSortChange = (e) => {
     setSortBy(e.target.value);
@@ -69,14 +71,9 @@ const GameList = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Separate games into user's games and other games
   // Filter out any games without valid IDs
-  const myGames = allGames.gamesList 
-    ? allGames.gamesList.filter(game => game.id && currentUser && game.creator_id === currentUser.id)
-    : [];
-  
-  const otherGames = allGames.gamesList 
-    ? allGames.gamesList.filter(game => game.id && (!currentUser || game.creator_id !== currentUser.id))
+  const games = allGames.gamesList 
+    ? allGames.gamesList.filter(game => game.id)
     : [];
 
   const pagination = allGames.pagination;
@@ -111,7 +108,9 @@ const GameList = () => {
       setShowAlert(true);
       // Force a fresh fetch after delete
       setTimeout(() => {
-        dispatch(getGames(currentPage, 20, sortBy, winConditionFilter, searchQuery));
+        const creatorId = sortBy === 'my_games' && currentUser ? currentUser.id : '';
+        const actualSort = sortBy === 'my_games' ? 'newest' : sortBy;
+        dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId));
       }, 100);
     } catch (error) {
       console.error("Error deleting game:", error);
@@ -136,7 +135,9 @@ const GameList = () => {
       const result = await toggleUpvote(gameId);
       setUpvotedGames(prev => ({ ...prev, [gameId]: result.upvoted }));
       // Update the count in the redux store games list
-      dispatch(getGames(currentPage, 20, sortBy, winConditionFilter, searchQuery));
+      const creatorId = sortBy === 'my_games' && currentUser ? currentUser.id : '';
+      const actualSort = sortBy === 'my_games' ? 'newest' : sortBy;
+      dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId));
     } catch (err) {
       console.error("Error toggling upvote:", err);
     }
@@ -297,13 +298,15 @@ const GameList = () => {
       )}
       
       <div className={styles["page-header"]}>
-        <h1>Game Library</h1>
+        <div className={styles["header-row"]}>
+          <h1>Game Library</h1>
+          <Link to="/create/game" className={styles["create-button"]}>
+            + Create New Game
+          </Link>
+        </div>
         <p className={styles["subtitle"]}>
           Browse and manage custom game types
         </p>
-        <Link to="/create/game" className={styles["create-button"]}>
-          + Create New Game
-        </Link>
 
         <div className={styles["filter-controls"]}>
           <form className={styles["search-form"]} onSubmit={handleSearch}>
@@ -325,6 +328,7 @@ const GameList = () => {
                 <option value="most_upvoted">Most Upvoted</option>
                 <option value="last_played">Recently Played</option>
                 <option value="alphabetical">Alphabetical</option>
+                {currentUser && <option value="my_games">My Games</option>}
               </select>
             </div>
             <div className={styles["filter-group"]}>
@@ -344,37 +348,24 @@ const GameList = () => {
         </div>
       </div>
 
-      {/* My Games Section */}
-      {myGames.length > 0 && (
-        <section className={styles["games-section"]}>
-          <div className={styles["section-header"]}>
-            <h2>♟️ My Games</h2>
-            <span className={styles["game-count"]}>{myGames.length} on this page</span>
-          </div>
-          <div className={styles["games-grid"]}>
-            {myGames.map(game => renderGameCard(game, true))}
-          </div>
-        </section>
-      )}
-
-      {/* Community Games Section */}
+      {/* Games Section */}
       <section className={styles["games-section"]}>
         <div className={styles["section-header"]}>
-          <h2>🌍 All Games</h2>
+          <h2>{sortBy === 'my_games' ? '♟️ My Games' : '🌍 All Games'}</h2>
           <span className={styles["game-count"]}>
             {totalCount} total game{totalCount !== 1 ? 's' : ''}
           </span>
         </div>
         
-        {otherGames.length > 0 ? (
+        {games.length > 0 ? (
           <div className={styles["games-grid"]}>
-            {otherGames.map(game => renderGameCard(game, isAdmin))}
+            {games.map(game => renderGameCard(game, true))}
           </div>
-        ) : myGames.length === 0 ? (
+        ) : (
           <div className={styles["empty-section"]}>
-            <p>No games found.</p>
+            <p>{sortBy === 'my_games' ? 'You haven\'t created any games yet.' : 'No games found.'}</p>
           </div>
-        ) : null}
+        )}
       </section>
 
       {pagination && (
@@ -386,7 +377,7 @@ const GameList = () => {
       )}
 
       {/* All Games Empty State */}
-      {(!allGames.gamesList || allGames.gamesList.length === 0) && (
+      {(!allGames.gamesList || allGames.gamesList.length === 0) && sortBy !== 'my_games' && (
         <div className={styles["empty-state"]}>
           <div className={styles["empty-icon"]}>🎲</div>
           <h3>No Games Yet</h3>
