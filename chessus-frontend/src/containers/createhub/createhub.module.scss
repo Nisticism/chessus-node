@@ -10,7 +10,7 @@
 
   h1 {
     font-size: 3.5rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 15px;
   }
 
@@ -51,13 +51,13 @@
   min-height: 280px;
 
   &:hover {
-    transform: translateY(-5px);
+    transform: translateY(-4px);
     border-color: var(--border-bright);
-    box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.3);
+    box-shadow: 0 15px 40px rgba(var(--accent-rgb), 0.15);
     
     .option-link {
       color: var(--text-info);
-      transform: translateX(5px);
+      transform: translateX(3px);
     }
   }
 }
@@ -69,7 +69,7 @@
 
 .option-title {
   font-size: 1.5rem;
-  color: #ffffff;
+  color: var(--text-heading);
   margin-bottom: 15px;
   font-weight: 600;
 }
@@ -82,7 +82,7 @@
 }
 
 .option-link {
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   font-weight: 600;
   font-size: 1.1rem;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
