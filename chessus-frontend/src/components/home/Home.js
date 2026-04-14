@@ -486,22 +486,22 @@ const Home = () => {
       {/* Stats Section */}
       <section className={styles["stats-section"]}>
         <div className={styles["stats-grid"]}>
-          <div className={styles["stat-item"]}>
+          <Link to="/games" className={styles["stat-item"]}>
             <div className={styles["stat-value"]}>{gamesCount}</div>
             <div className={styles["stat-label"]}>Custom Games</div>
-          </div>
-          <div className={styles["stat-item"]}>
+          </Link>
+          <Link to="/pieces" className={styles["stat-item"]}>
             <div className={styles["stat-value"]}>{piecesCount}</div>
             <div className={styles["stat-label"]}>Unique Pieces</div>
-          </div>
-          <div className={styles["stat-item"]}>
+          </Link>
+          <Link to="/community/players" className={styles["stat-item"]}>
             <div className={styles["stat-value"]}>{usersCount}</div>
             <div className={styles["stat-label"]}>Players</div>
-          </div>
-          <div className={styles["stat-item"]}>
+          </Link>
+          <Link to="/create" className={styles["stat-item"]}>
             <div className={styles["stat-value"]}>∞</div>
             <div className={styles["stat-label"]}>Possibilities</div>
-          </div>
+          </Link>
         </div>
       </section>
 
