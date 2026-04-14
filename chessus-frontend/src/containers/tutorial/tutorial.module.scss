@@ -32,13 +32,13 @@
   border: 2px solid var(--panel-border);
   color: var(--text-muted);
   padding: 8px 18px;
-  border-radius: 20px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &:hover {
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     color: #ffffff;
   }
 }
@@ -52,16 +52,16 @@
 .step {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &:hover {
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
   }
 
   &.open {
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     box-shadow: 0 4px 15px rgba(var(--accent-rgb), 0.2);
   }
 }
@@ -80,7 +80,6 @@
   cursor: pointer;
   text-align: left;
   gap: 15px;
-  transition: color 0.3s ease;
 
   &:hover {
     color: var(--accent-primary);
@@ -229,7 +228,7 @@
   padding: 30px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
 
   p {
     color: var(--text-muted);
@@ -252,8 +251,8 @@
   font-weight: 600;
   padding: 8px 20px;
   border: 2px solid var(--text-info);
-  border-radius: 20px;
-  transition: all 0.3s ease;
+  border-radius: 8px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &:hover {
     background: var(--text-info);

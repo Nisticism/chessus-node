@@ -37,7 +37,7 @@
   font-size: 1.1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &:hover {
     background: rgba(var(--panel-border-rgb), 0.5);
@@ -56,7 +56,7 @@
 .content {
   background: rgba(var(--panel-bg-start-rgb), 0.6);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 30px;
   margin: 0 20px;
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
@@ -92,7 +92,6 @@
 
   tbody {
     tr {
-      transition: background 0.2s ease;
       border-bottom: 1px solid rgba(var(--panel-border-rgb), 0.3);
 
       &:hover {
@@ -147,7 +146,7 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 3px 10px rgba(0, 123, 255, 0.3);
 
   &:hover {
@@ -168,7 +167,7 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 3px 10px rgba(220, 53, 69, 0.3);
 
   &:hover:not(:disabled) {
@@ -194,7 +193,7 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 3px 10px rgba(40, 167, 69, 0.3);
 
   &:hover {
@@ -215,7 +214,7 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 3px 10px rgba(23, 162, 184, 0.3);
 
   &:hover {
@@ -236,7 +235,7 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 3px 10px rgba(255, 193, 7, 0.3);
 
   &:hover {
@@ -257,7 +256,7 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 3px 10px rgba(139, 0, 0, 0.35);
 
   &:hover {
@@ -276,7 +275,7 @@
   background: rgba(40, 167, 69, 0.2);
   color: #28a745;
   border: 1px solid #28a745;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 0.85em;
   font-weight: 600;
 }
@@ -287,7 +286,7 @@
   background: rgba(220, 53, 69, 0.2);
   color: #dc3545;
   border: 1px solid #dc3545;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 0.85em;
   font-weight: 600;
 }
@@ -297,7 +296,7 @@
   padding: 4px 12px;
   background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
   color: #333;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 0.85em;
   font-weight: 700;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -310,7 +309,7 @@
   background: rgba(23, 162, 184, 0.2);
   color: #17a2b8;
   border: 1px solid #17a2b8;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 0.85em;
   font-weight: 600;
 }
@@ -321,7 +320,7 @@
   background: rgba(var(--accent-highlight-rgb), 0.2);
   color: var(--text-muted);
   border: 1px solid var(--text-muted);
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 0.85em;
   font-weight: 600;
 }
@@ -343,7 +342,7 @@
   color: var(--text-muted);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &:hover:not(:disabled) {
     background: rgba(var(--panel-border-rgb), 0.5);
@@ -394,7 +393,7 @@
 .modal-content {
   background: linear-gradient(135deg, var(--panel-bg-end) 0%, var(--panel-bg-start) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   max-width: 700px;
   width: 100%;
   max-height: 85vh;
@@ -429,7 +428,7 @@
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 
     &:hover {
       background: rgba(220, 53, 69, 0.2);
@@ -467,7 +466,7 @@
     border-radius: 8px;
     color: #ffffff;
     font-size: 1rem;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 
     &:focus {
       outline: none;
@@ -504,7 +503,7 @@
   color: #ffffff;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &:hover {
     background: rgba(108, 117, 125, 0.5);
@@ -520,7 +519,7 @@
   color: white;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
 
   &:hover {
@@ -554,7 +553,7 @@
 
 .alert-style {
   padding: 20px 30px;
-  border-radius: 12px;
+  border-radius: 6px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
   font-weight: 600;
   font-size: 1.1rem;
@@ -629,7 +628,7 @@
 // Featured games section
 .featured-container {
   background: rgba(var(--panel-border-rgb), 0.2);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 30px;
   border: 1px solid var(--panel-border);
 }
@@ -667,7 +666,7 @@
 
   &:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
   }
 
   option {
@@ -760,7 +759,7 @@
   right: 0;
   bottom: 0;
   background: rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
+  border-radius: 6px;
   transition: 0.2s;
 
   &::before {

@@ -32,7 +32,7 @@
   border-radius: 8px;
   color: var(--text-bright);
   font-size: 16px;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &::placeholder {
     color: var(--text-dim);
@@ -40,7 +40,7 @@
 
   &:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2);
   }
 }
@@ -50,7 +50,7 @@
   margin-bottom: 30px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -101,14 +101,13 @@
   font-size: 1.5rem;
   color: var(--accent-primary);
   margin: 0;
-  transition: color 0.2s ease;
 }
 
 .section-count {
   background: var(--accent-primary);
   color: #ffffff;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 0.85rem;
   font-weight: 700;
   min-width: 28px;
@@ -167,7 +166,7 @@
 
 .forum-row {
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:hover td {
     background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
@@ -183,7 +182,6 @@
     color: #ffffff;
     text-decoration: none;
     display: flex;
-    transition: color 0.2s ease;
 
     &:hover {
       color: var(--text-info);
@@ -202,7 +200,6 @@
   font-size: 17px;
   font-weight: 600;
   color: #ffffff;
-  transition: color 0.2s ease;
 }
 
 .forums-username {
@@ -250,7 +247,6 @@
   font-size: 15px;
   font-weight: 500;
   color: var(--text-info);
-  transition: color 0.2s ease;
 
   &:hover {
     color: var(--accent-primary);

@@ -18,7 +18,7 @@
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   backdrop-filter: blur(10px);
 
   &:hover:not(:disabled) {
@@ -40,7 +40,7 @@
 
   &.active {
     background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover));
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
     cursor: default;
   }

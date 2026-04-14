@@ -33,17 +33,17 @@
 .platform-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 25px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: flex;
   flex-direction: column;
 
   &:hover {
     transform: translateY(-5px);
-    border-color: var(--accent-primary);
-    box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.3);
+    border-color: var(--border-bright);
+    box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.2);
 
     .follow-button {
       background: linear-gradient(135deg, var(--text-info) 0%, var(--accent-primary) 100%);
@@ -96,10 +96,10 @@
       background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
       color: #ffffff;
       padding: 8px 20px;
-      border-radius: 20px;
+      border-radius: 8px;
       font-weight: 600;
       font-size: 0.9rem;
-      transition: all 0.3s ease;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
   }
 }
@@ -107,7 +107,7 @@
 .community-section {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 40px;
   text-align: center;
 

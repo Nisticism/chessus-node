@@ -1,4 +1,4 @@
-$nav-height: calc(9vh + 2px);
+$nav-height: calc(7vh + 2px);
 $nav-hover-color: var(--nav-hover);
 $nav-background: var(--bg-card);
 $lighter-hover: var(--nav-light-hover);
@@ -8,12 +8,13 @@ $lighter-hover: var(--nav-light-hover);
   justify-content: space-between;
   align-items: center;
   height: $nav-height;
+  min-height: 50px;
   position: relative;
   z-index: 999;
 }
 
 .navbar-border {
-  background: var(--nav-menu-bg);
+  background: #3a3d42;
   height: 2px;
   display: flex;
   width: 100%;
@@ -42,7 +43,6 @@ p {
   margin-right: 20px;
   margin-left: 25px;
   text-decoration: none;
-  height: $nav-height;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -305,7 +305,6 @@ p {
     text-decoration: none;
     font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
     min-height: 45px;
-    transition: background 0.2s;
 
     &:hover {
       background: $nav-hover-color;
@@ -579,7 +578,7 @@ p {
   text-decoration: none;
   padding: 6px;
   border-radius: 50%;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   cursor: pointer;
 
   &:hover {

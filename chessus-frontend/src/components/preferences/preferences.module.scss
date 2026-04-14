@@ -88,7 +88,7 @@
   margin: 30px 0;
   padding: 25px;
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 12px;
+  border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -117,7 +117,7 @@
   border: 2px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   position: relative;
 
   &:hover {
@@ -371,8 +371,7 @@
   position: absolute;
   inset: 0;
   background-color: rgba(255, 255, 255, 0.15);
-  border-radius: 26px;
-  transition: background-color 0.25s;
+  border-radius: 10px;
   cursor: pointer;
 
   &::before {
@@ -519,7 +518,7 @@
   border: 2px solid transparent;
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   position: relative;
   color: var(--text-white, #fff);
 

@@ -25,7 +25,7 @@
     align-items: center;
     background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
     border: 2px solid var(--panel-border);
-    border-radius: 25px;
+    border-radius: 10px;
     padding: 10px 20px;
     font-size: 1rem;
     color: #ffffff;
@@ -64,13 +64,13 @@
 .category-button {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 25px;
+  border-radius: 10px;
   padding: 12px 25px;
   color: var(--text-muted);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -80,7 +80,7 @@
   }
 
   &:hover {
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     color: #ffffff;
     transform: translateY(-2px);
   }
@@ -102,15 +102,15 @@
 .stream-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   position: relative;
 
   &:hover {
     transform: translateY(-5px);
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.3);
   }
 
@@ -121,7 +121,7 @@
     background: #ff4444;
     color: #ffffff;
     padding: 6px 15px;
-    border-radius: 20px;
+    border-radius: 8px;
     font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     font-weight: 700;
     display: flex;
@@ -164,7 +164,7 @@
       background: rgba(0, 0, 0, 0.8);
       color: #ffffff;
       padding: 6px 12px;
-      border-radius: 15px;
+      border-radius: 8px;
       font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       font-weight: 600;
     }
@@ -203,7 +203,7 @@
   color: var(--text-dim);
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
 
   .no-streams-icon {
     font-size: 4rem;
@@ -227,13 +227,13 @@
     margin-top: 25px;
     background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
     border: none;
-    border-radius: 25px;
+    border-radius: 10px;
     padding: 12px 30px;
     color: #ffffff;
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 
     &:hover {
       transform: translateY(-2px);
@@ -256,7 +256,7 @@
   background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
   color: #ffffff;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 600;
   margin-top: 8px;
@@ -267,7 +267,7 @@
 .streaming-info {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 40px;
   text-align: center;
 
@@ -292,7 +292,6 @@
       color: var(--text-info);
       text-decoration: none;
       font-weight: 600;
-      transition: color 0.2s ease;
 
       &:hover {
         color: var(--accent-primary);

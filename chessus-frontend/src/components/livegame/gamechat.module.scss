@@ -53,7 +53,7 @@
   line-height: 1;
   color: var(--text-dim, #5a7a63);
   opacity: 0.35;
-  transition: opacity 0.2s, color 0.2s;
+  transition: opacity 0.2s;
   position: relative;
 
   &:hover {
@@ -191,7 +191,6 @@
   border-radius: 4px;
   font-size: 0.82rem;
   cursor: pointer;
-  transition: background 0.2s;
 
   &:hover:not(:disabled) {
     background: var(--accent-hover, #5ab56a);

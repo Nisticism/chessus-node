@@ -6,9 +6,9 @@
 }
 
 .app-header {
-  background-color: var(--bg-card);
-  min-height: 3vh;
-  max-height: 10vh;
+  background: linear-gradient(180deg, var(--bg-deeper) 0%, var(--bg-dark) 100%);
+  min-height: 50px;
+  max-height: 7vh;
   color: white;
 }
 

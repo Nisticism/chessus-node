@@ -2,7 +2,7 @@
   margin-top: 24px;
   padding: 20px;
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
+  border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -45,7 +45,7 @@
   border-radius: 8px;
   border-left: 4px solid transparent;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   gap: 20px;
 }
 
@@ -187,7 +187,6 @@
 .view-arrow {
   color: rgba(255, 255, 255, 0.3);
   font-size: 1.2rem;
-  transition: color 0.2s ease;
 }
 
 .game-card:hover .view-arrow {
@@ -211,7 +210,7 @@
   border-radius: 6px;
   color: #fff;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .page-btn:hover:not(:disabled) {

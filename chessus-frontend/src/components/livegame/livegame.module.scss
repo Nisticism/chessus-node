@@ -25,7 +25,6 @@
     .game-type-link {
       color: #fff;
       text-decoration: none;
-      transition: color 0.2s;
 
       &:hover {
         color: var(--accent-highlight, #7fdfff);
@@ -316,7 +315,7 @@
 
 .move-history-header {
   background: var(--bg-dark);
-  border-radius: 12px 12px 0 0;
+  border-radius: 6px 6px 0 0;
   padding: 16px;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
@@ -337,7 +336,7 @@
 
 .move-history {
   background: var(--bg-dark);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -386,7 +385,6 @@
   gap: 8px;
   padding: 4px 8px;
   border-radius: 4px;
-  transition: background 0.2s;
 
   &:hover {
     background: var(--bg-dark);
@@ -514,7 +512,7 @@
 
 .player-card {
   background: var(--bg-dark);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 16px;
   border: 2px solid transparent;
 
@@ -669,7 +667,7 @@
 // Game settings
 .game-settings {
   background: var(--bg-dark);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 20px;
   max-width: 700px;
   width: 100%;
@@ -715,7 +713,7 @@
 .waiting-banner {
   background: linear-gradient(135deg, var(--bg-dark), var(--border-subtle));
   border: 1px solid var(--color-teal);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 16px 24px;
   margin-bottom: 16px;
   width: fit-content;
@@ -775,7 +773,7 @@
 
 .game-board-wrapper {
   background: var(--bg-dark);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 16px;
   display: flex;
   justify-content: center;
@@ -891,7 +889,7 @@
   justify-content: center;
   position: relative;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 
   &.light {
     background: #cad5e8;
@@ -1065,6 +1063,19 @@
       inset: 0;
       background: rgba(255, 34, 34, 0.1);
       border: 2px solid rgba(255, 34, 34, 0.35);
+      pointer-events: none;
+      z-index: 1;
+    }
+  }
+
+  // Attack radius splash zone highlight
+  &.hover-attack-radius {
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 193, 7, 0.18);
+      border: 2px solid rgba(255, 193, 7, 0.5);
       pointer-events: none;
       z-index: 1;
     }
@@ -1284,7 +1295,7 @@
   }
   25% {
     opacity: 0.8;
-    border-radius: 8px 4px 12px 4px;
+    border-radius: 8px 4px 6px 4px;
     transform: rotate(0.5deg);
   }
   50% {
@@ -1317,7 +1328,7 @@
   }
   70% {
     opacity: 0.7;
-    border-radius: 4px 8px 6px 12px;
+    border-radius: 4px 8px 6px 6px;
     transform: rotate(-0.2deg) scale(1.02);
   }
 }
@@ -1336,7 +1347,7 @@
 
 .move-history {
   background: var(--bg-dark);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 12px;
   flex: 1;
   max-height: 400px;
@@ -1408,7 +1419,7 @@
 
 .game-options {
   background: var(--bg-dark);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -1436,7 +1447,7 @@
     padding: 4px 8px;
     line-height: 1;
     color: #ccc;
-    transition: background 0.15s, border-color 0.15s;
+    /* transition removed */
 
     &:hover {
       background: rgba(255, 255, 255, 0.08);
@@ -1458,7 +1469,7 @@
     cursor: pointer;
     padding: 4px 8px;
     line-height: 1;
-    transition: background 0.15s, border-color 0.15s;
+    /* transition removed */
 
     &.sound-on {
       border-color: var(--accent-secondary);
@@ -1510,9 +1521,8 @@
       right: 0;
       bottom: 0;
       background: #444;
-      border-radius: 20px;
+      border-radius: 8px;
       cursor: pointer;
-      transition: background 0.2s;
 
       &::before {
         content: "";
@@ -1561,7 +1571,7 @@
 
 .game-controls {
   background: var(--bg-dark);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 16px;
 
   h3 {
@@ -1585,7 +1595,7 @@
   font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:disabled {
     opacity: 0.5;
@@ -1723,7 +1733,7 @@
 
 .error-container {
   background: var(--bg-dark);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 40px;
   text-align: center;
 
@@ -1760,7 +1770,7 @@
 
 .game-over-modal {
   background: var(--bg-dark);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 32px;
   text-align: center;
   max-width: 400px;
@@ -1867,7 +1877,7 @@
   padding: 4px 8px;
   line-height: 1;
   border-radius: 4px;
-  transition: color 0.2s, background 0.2s;
+  /* transition removed */
 
   &:hover {
     color: #fff;
@@ -1891,7 +1901,7 @@
 
 .waiting-modal {
   background: var(--bg-dark);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 32px;
   text-align: center;
   max-width: 500px;
@@ -2197,7 +2207,7 @@
 .promotion-modal {
   background: linear-gradient(135deg, #1a2a4a 0%, var(--bg-deep) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 24px;
   max-width: 400px;
   width: 90%;
@@ -2233,9 +2243,9 @@
   padding: 12px;
   background: rgba(255, 255, 255, 0.05);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:hover {
     background: rgba(255, 255, 255, 0.15);
@@ -2272,7 +2282,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.9rem;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
@@ -2499,7 +2509,7 @@
     width: 100%;
     height: 24px;
     background: rgba(0, 0, 0, 0.4);
-    border-radius: 12px;
+    border-radius: 6px;
     overflow: hidden;
   }
 
@@ -2508,8 +2518,8 @@
     top: 0;
     left: 0;
     height: 100%;
-    background: linear-gradient(90deg, #228B22, #32CD32);
-    border-radius: 12px;
+    background: var(--accent-primary);
+    border-radius: 6px;
     transition: width 0.5s ease-out;
   }
 
@@ -2646,7 +2656,7 @@
 // Captured Pieces Section
 .captured-pieces-section {
   background: var(--bg-dark);
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
   width: 100%;
   max-width: 700px;
@@ -2659,7 +2669,6 @@
   padding: 12px 16px;
   background: var(--border-subtle);
   cursor: pointer;
-  transition: background 0.2s;
   user-select: none;
 
   &:hover {
@@ -2938,7 +2947,7 @@
     padding: 4px 10px;
     cursor: pointer;
     font-size: 0.85rem;
-    transition: background 0.15s, color 0.15s;
+    /* transition removed */
 
     &:hover:not(:disabled) {
       background: rgba(255, 255, 255, 0.18);

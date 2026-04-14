@@ -3,11 +3,11 @@
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: 600;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   cursor: help;
 
   &:hover {

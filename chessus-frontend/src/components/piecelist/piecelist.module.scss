@@ -29,7 +29,7 @@
     border-radius: 8px;
     font-weight: 600;
     font-size: 1.1rem;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 
     &:hover {
       transform: translateY(-2px);
@@ -62,7 +62,7 @@
   
   &:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
   }
   
   &::placeholder {
@@ -78,7 +78,7 @@
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   
   &:hover {
     background: var(--accent-primary-hover);
@@ -117,7 +117,7 @@
   
   &:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
   }
 }
 
@@ -152,7 +152,7 @@
   color: var(--text-dim);
   font-size: 0.85rem;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:not(:last-child) {
     border-right: 1px solid rgba(255, 255, 255, 0.08);
@@ -193,7 +193,7 @@
     color: var(--text-dim);
     background: rgba(var(--accent-rgb), 0.15);
     padding: 6px 14px;
-    border-radius: 20px;
+    border-radius: 8px;
   }
 }
 
@@ -213,16 +213,16 @@
 .piece-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid #2a4d6c;
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: flex;
   flex-direction: column;
 
   &:hover {
     transform: translateY(-5px);
-    border-color: var(--accent-primary);
-    box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.25);
+    border-color: var(--border-bright);
+    box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.15);
   }
 }
 
@@ -328,7 +328,6 @@
 .creator-link {
   color: var(--text-info);
   text-decoration: none;
-  transition: color 0.2s;
 
   &:hover {
     color: var(--text-info-hover);
@@ -355,7 +354,7 @@
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .edit-button {
@@ -384,7 +383,7 @@
   padding: 50px 20px;
   background: rgba(var(--panel-border-rgb), 0.2);
   border: 2px dashed #2a4d6c;
-  border-radius: 12px;
+  border-radius: 6px;
 
   p {
     color: var(--text-dim);
@@ -432,7 +431,7 @@
 .modal-content {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid #2a4d6c;
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 30px;
   max-width: 450px;
   width: 90%;
@@ -471,7 +470,7 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:hover:not(:disabled) {
     background: rgba(var(--panel-border-rgb), 0.6);
@@ -492,7 +491,7 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
@@ -526,7 +525,7 @@
 
 .alert-style {
   padding: 20px 30px;
-  border-radius: 12px;
+  border-radius: 6px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
   font-weight: 600;
   font-size: 1.1rem;

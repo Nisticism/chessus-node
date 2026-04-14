@@ -1,7 +1,7 @@
 .bio-section {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 24px;
   margin-bottom: 24px;
 }
@@ -80,7 +80,7 @@
 
   &:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.3);
   }
 }
@@ -98,7 +98,7 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   font-size: 0.95rem;
 }
 

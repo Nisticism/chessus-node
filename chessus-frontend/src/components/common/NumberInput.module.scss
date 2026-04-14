@@ -47,7 +47,7 @@
     align-items: center;
     justify-content: center;
     min-width: 36px;
-    transition: all 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s;
     user-select: none;
     flex-shrink: 0;
 

@@ -30,11 +30,11 @@
 .info-option-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 40px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -42,7 +42,7 @@
 
   &:hover {
     transform: translateY(-8px);
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     box-shadow: 0 12px 35px rgba(var(--accent-rgb), 0.4);
 
     .explore-button {
@@ -75,10 +75,10 @@
     background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
     color: #ffffff;
     padding: 12px 35px;
-    border-radius: 25px;
+    border-radius: 10px;
     font-weight: 600;
     font-size: 1rem;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
     text-transform: uppercase;
     letter-spacing: 1px;
   }

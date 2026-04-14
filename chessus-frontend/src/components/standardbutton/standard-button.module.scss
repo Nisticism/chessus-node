@@ -1,20 +1,20 @@
 .standard-button {
-  background: linear-gradient(135deg, var(--border-medium) 0%, var(--panel-bg-end) 100%);
+  background: var(--panel-bg-end);
   color: #ffffff;
   font-weight: 600;
   font-size: 16px;
   padding: 12px 28px;
   border-radius: 8px;
-  border: 2px solid transparent;
+  border: 2px solid var(--border-subtle);
   min-width: 180px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 4px 12px rgba(var(--panel-border-rgb), 0.2);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   
   &:hover {
-    background: linear-gradient(135deg, var(--accent-primary-hover) 0%, var(--border-medium) 100%);
+    background: var(--border-medium);
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(var(--panel-border-rgb), 0.3);
   }
@@ -30,7 +30,7 @@
   }
   
   &:disabled {
-    background: linear-gradient(135deg, var(--panel-border) 0%, var(--panel-bg-end) 100%);
+    background: var(--panel-bg-start);
     cursor: not-allowed;
     opacity: 0.6;
     transform: none;

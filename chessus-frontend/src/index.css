@@ -81,23 +81,23 @@ code {
   --accent-orange: rgb(237, 93, 45);
 
   /* Theme-aware accent colors */
-  --accent-primary: #4a9e5a;
-  --accent-primary-hover: #3d8a4d;
+  --accent-primary: #439157;
+  --accent-primary-hover: #387a4a;
   --accent-highlight: #81c784;
   --accent-bright: #66bb6a;
   --accent-muted: #4caf50;
 
   /* Panel/Card themed colors */
-  --panel-bg-start: #0d2817;
-  --panel-bg-end: #1a3d2c;
-  --panel-border: #2a6b4c;
+  --panel-bg-start: #112e1d;
+  --panel-bg-end: #173526;
+  --panel-border: #1f4f3b;
 
   /* Deep backgrounds (sandbox, dense UIs) */
   --bg-deep: #0a1e12;
   --bg-deeper: #081a0e;
   --border-subtle: #1a3d2b;
-  --border-medium: #2a8b5d;
-  --border-bright: #3ab878;
+  --border-medium: #1f6b47;
+  --border-bright: #237a50;
 
   /* Themed text colors */
   --text-muted: #a0d0b8;
@@ -108,12 +108,12 @@ code {
   --text-bright: #e0f0e8;
 
   /* RGB components for rgba() usage */
-  --accent-rgb: 74, 158, 90;
+  --accent-rgb: 67, 145, 87;
   --accent-highlight-rgb: 129, 199, 132;
   --accent-muted-rgb: 76, 175, 80;
   --panel-bg-start-rgb: 13, 40, 23;
   --panel-bg-end-rgb: 26, 61, 44;
-  --panel-border-rgb: 42, 107, 76;
+  --panel-border-rgb: 31, 79, 59;
 
   /* Secondary accent (decorative) */
   --accent-secondary: #4caf50;
@@ -121,6 +121,26 @@ code {
 
   /* Teal/highlight accent */
   --color-teal: #2ecc71;
+
+  /* Special square colors (consistent across themes) */
+  --sq-range: #ff8c00;
+  --sq-range-bg: rgba(255, 140, 0, 0.2);
+  --sq-range-swatch: rgba(255, 140, 0, 0.3);
+  --sq-promotion: #4b0082;
+  --sq-promotion-bg: rgba(75, 0, 130, 0.2);
+  --sq-promotion-swatch: rgba(75, 0, 130, 0.3);
+  --sq-control: #32CD32;
+  --sq-control-bg: rgba(50, 205, 50, 0.2);
+  --sq-control-swatch: rgba(50, 205, 50, 0.3);
+  --sq-custom: #ffd700;
+  --sq-custom-bg: rgba(255, 215, 0, 0.2);
+  --sq-custom-swatch: rgba(255, 215, 0, 0.3);
+
+  /* Role badge colors */
+  --badge-owner-bg: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
+  --badge-owner-text: #1a1a2e;
+  --badge-admin-bg: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  --badge-admin-text: #ffffff;
   
 }
 
@@ -147,8 +167,8 @@ code {
   --button-border: rgb(102, 187, 106);
   --button-border-alt: rgb(76, 160, 90);
 
-  --bg-dark: #222524;
-  --bg-card: #262a28;
+  --bg-dark: #212423;
+  --bg-card: #252826;
   background-color: #2a2d2b;
 
   --board-bg: rgb(62, 94, 72);
@@ -160,23 +180,23 @@ code {
   --nav-light-hover: rgb(102, 187, 106);
   --nav-menu-bg: rgb(200, 230, 210);
 
-  --accent-primary: #4a9e5a;
-  --accent-primary-hover: #3d8a4d;
+  --accent-primary: #439157;
+  --accent-primary-hover: #387a4a;
   --accent-highlight: #81c784;
   --accent-bright: #66bb6a;
   --accent-muted: #4caf50;
 
   /* Panel/Card themed colors */
-  --panel-bg-start: #0d2817;
-  --panel-bg-end: #1a3d2c;
-  --panel-border: #2a6b4c;
+  --panel-bg-start: #112e1d;
+  --panel-bg-end: #173526;
+  --panel-border: #1f4f3b;
 
   /* Deep backgrounds */
-  --bg-deep: #0a1e12;
-  --bg-deeper: #081a0e;
+  --bg-deep: #121c16;
+  --bg-deeper: #121d17;
   --border-subtle: #1a3d2b;
-  --border-medium: #2a8b5d;
-  --border-bright: #3ab878;
+  --border-medium: #1f6b47;
+  --border-bright: #237a50;
 
   /* Themed text colors */
   --text-muted: #a0d0b8;
@@ -187,12 +207,12 @@ code {
   --text-bright: #e0f0e8;
 
   /* RGB components */
-  --accent-rgb: 74, 158, 90;
+  --accent-rgb: 67, 145, 87;
   --accent-highlight-rgb: 129, 199, 132;
   --accent-muted-rgb: 76, 175, 80;
-  --panel-bg-start-rgb: 13, 40, 23;
-  --panel-bg-end-rgb: 26, 61, 44;
-  --panel-border-rgb: 42, 107, 76;
+  --panel-bg-start-rgb: 17, 46, 29;
+  --panel-bg-end-rgb: 23, 53, 38;
+  --panel-border-rgb: 31, 79, 59;
 
   /* Secondary accent */
   --accent-secondary: #4caf50;
@@ -258,16 +278,16 @@ code {
   --accent-muted: #1565c0;
 
   /* Panel/Card themed colors */
-  --panel-bg-start: #0d2847;
-  --panel-bg-end: #1a3d5c;
-  --panel-border: #2a4d6c;
+  --panel-bg-start: #122e4e;
+  --panel-bg-end: #173556;
+  --panel-border: #244362;
 
   /* Deep backgrounds */
   --bg-deep: #0a1628;
   --bg-deeper: #081220;
   --border-subtle: #1a2b3d;
-  --border-medium: #2a5b8d;
-  --border-bright: #3a7bb8;
+  --border-medium: #1f4a73;
+  --border-bright: #2a5b8d;
 
   /* Themed text colors */
   --text-muted: #a0b8d0;
@@ -281,8 +301,8 @@ code {
   --accent-rgb: 74, 144, 226;
   --accent-highlight-rgb: 100, 181, 246;
   --accent-muted-rgb: 21, 101, 192;
-  --panel-bg-start-rgb: 13, 40, 71;
-  --panel-bg-end-rgb: 26, 61, 92;
+  --panel-bg-start-rgb: 18, 46, 78;
+  --panel-bg-end-rgb: 23, 53, 86;
   --panel-border-rgb: 42, 77, 108;
 
   /* Secondary accent */

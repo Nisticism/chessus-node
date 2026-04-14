@@ -42,17 +42,17 @@
 .option-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 30px;
   text-decoration: none;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: flex;
   flex-direction: column;
   min-height: 280px;
 
   &:hover {
     transform: translateY(-5px);
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.3);
     
     .option-link {
@@ -85,7 +85,7 @@
   color: var(--accent-primary);
   font-weight: 600;
   font-size: 1.1rem;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: inline-block;
 }
 

@@ -75,7 +75,7 @@
 .profile-header {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 40px;
   display: flex;
   align-items: center;
@@ -99,7 +99,7 @@
   flex-shrink: 0;
   overflow: hidden;
   position: relative;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   z-index: 1;
 
   &:hover .view-icon {
@@ -171,7 +171,7 @@
     font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
     box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
 
     &:hover:not(:disabled) {
@@ -242,7 +242,7 @@
     background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
     color: #ffffff;
     padding: 8px 20px;
-    border-radius: 20px;
+    border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -254,7 +254,7 @@
     background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
     color: #333;
     padding: 8px 20px;
-    border-radius: 20px;
+    border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -268,7 +268,7 @@
     background: linear-gradient(135deg, #17a2b8 0%, #117a8b 100%);
     color: #ffffff;
     padding: 8px 20px;
-    border-radius: 20px;
+    border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -281,7 +281,7 @@
   text-align: center;
   background: rgba(var(--accent-rgb), 0.1);
   border: 2px solid var(--accent-primary);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 20px 30px;
   min-width: 160px;
 
@@ -333,7 +333,7 @@
 .info-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 30px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 
@@ -353,7 +353,7 @@
       color: #fff;
       font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
       padding: 4px 12px;
-      border-radius: 12px;
+      border-radius: 6px;
       font-weight: 600;
     }
   }
@@ -374,7 +374,7 @@
   background: rgba(var(--panel-border-rgb), 0.3);
   border-radius: 10px;
   border: 1px solid rgba(var(--accent-rgb), 0.2);
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:hover {
     border-color: rgba(var(--accent-rgb), 0.4);
@@ -406,7 +406,6 @@
   color: #fff;
   font-weight: 600;
   cursor: pointer;
-  transition: color 0.2s ease;
 
   &:hover {
     color: var(--accent-primary);
@@ -432,7 +431,7 @@
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:hover {
     transform: translateY(-1px);
@@ -449,7 +448,7 @@
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:hover {
     background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
@@ -506,7 +505,7 @@
   padding: 60px 20px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   margin: 40px auto;
   max-width: 600px;
 
@@ -535,7 +534,7 @@
   background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
   color: white;
   padding: 20px 30px;
-  border-radius: 12px;
+  border-radius: 6px;
   box-shadow: 0 6px 20px rgba(var(--accent-rgb), 0.4);
   font-weight: 600;
   font-size: 1.1rem;
@@ -610,7 +609,6 @@
   text-decoration: none;
   font-size: 16px;
   font-weight: 600;
-  transition: color 0.3s;
 
   &:hover {
     color: var(--text-info);
@@ -665,7 +663,7 @@
 .modal-content {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 16px;
+  border-radius: 8px;
   width: 90%;
   max-width: 600px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -704,7 +702,6 @@
     font-size: 2.5rem;
     cursor: pointer;
     line-height: 1;
-    transition: color 0.2s ease;
     padding: 0;
     width: 40px;
     height: 40px;
@@ -739,7 +736,7 @@
   max-height: 400px;
   width: auto;
   height: auto;
-  border-radius: 12px;
+  border-radius: 6px;
   border: 3px solid var(--panel-border);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   object-fit: contain;
@@ -766,7 +763,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   backdrop-filter: blur(4px);
   
   &:hover {
@@ -845,7 +842,7 @@
     border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 
@@ -878,7 +875,7 @@
     font-weight: 600;
     font-size: 1rem;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
     border: 2px solid transparent;
     text-transform: uppercase;
     letter-spacing: 0.5px;

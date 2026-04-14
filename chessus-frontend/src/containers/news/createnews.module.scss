@@ -7,7 +7,7 @@
 
 .create-news-card {
   background: linear-gradient(135deg, rgba(32, 36, 46, 0.95) 0%, rgba(30, 33, 41, 0.95) 100%);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 40px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   border: 2px solid rgba(var(--accent-rgb), 0.2);
@@ -72,12 +72,12 @@
   color: var(--text-white);
   font-size: 1rem;
   font-family: inherit;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   resize: vertical;
 
   &:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     background: rgba(20, 24, 34, 0.8);
     box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.15);
   }
@@ -135,7 +135,7 @@
   font-weight: 600;
   border: none;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   font-family: inherit;
 
   &:disabled {

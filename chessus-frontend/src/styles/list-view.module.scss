@@ -30,16 +30,16 @@
 .item-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 25px;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: flex;
   flex-direction: column;
   
   &:hover {
     transform: translateY(-5px);
-    border-color: var(--accent-primary);
-    box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.3);
+    border-color: var(--border-bright);
+    box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.2);
   }
 }
 
@@ -95,7 +95,6 @@
   a {
     color: var(--text-info);
     text-decoration: none;
-    transition: color 0.2s;
     
     &:hover {
       color: var(--text-info-hover);
@@ -150,7 +149,7 @@
   transition: border-color 0.2s;
 
   &:focus {
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
   }
 
   &::placeholder {
@@ -187,11 +186,11 @@
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s;
   white-space: nowrap;
 
   &:hover {
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     color: var(--text-bright);
   }
 }
@@ -199,7 +198,7 @@
 .filter-toggle-btn {
   &.active {
     background: linear-gradient(135deg, var(--border-medium) 0%, var(--border-medium) 100%);
-    border-color: var(--accent-primary);
+    border-color: var(--border-bright);
     color: #ffffff;
   }
 }
