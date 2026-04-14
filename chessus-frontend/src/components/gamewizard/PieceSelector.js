@@ -64,6 +64,8 @@ const PieceSelector = ({
   const [trample, setTrample] = useState(currentPlacement?.trample || false);
   const [trampleRadius, setTrampleRadius] = useState(currentPlacement?.trample_radius ?? 0);
   const [ghostwalk, setGhostwalk] = useState(currentPlacement?.ghostwalk || false);
+  const [dieOnCapture, setDieOnCapture] = useState(currentPlacement?.die_on_capture || false);
+  const [attackRadius, setAttackRadius] = useState(currentPlacement?.attack_radius ?? 0);
   
   // Burn/DOT system state
   const [burnDamage, setBurnDamage] = useState(currentPlacement?.burn_damage ?? 0);
@@ -84,7 +86,7 @@ const PieceSelector = ({
     (currentPlacement?.hit_points ?? 1) > 1 || (currentPlacement?.attack_damage ?? 1) > 1 || (currentPlacement?.hp_regen ?? 0) > 0 || (currentPlacement?.burn_damage ?? 0) > 0
   );
   const [additionalSettingsOpen, setAdditionalSettingsOpen] = useState(
-    currentPlacement?.cannot_be_captured || currentPlacement?.trample || currentPlacement?.ghostwalk || false
+    currentPlacement?.cannot_be_captured || currentPlacement?.trample || currentPlacement?.ghostwalk || currentPlacement?.die_on_capture || (currentPlacement?.attack_radius > 0) || false
   );
   
   // Update selectedPlayerId when currentPlacement changes (e.g., when opening modal for different piece)
@@ -263,7 +265,10 @@ const PieceSelector = ({
       // Trample & Ghostwalk
       trample: trample,
       trample_radius: trampleRadius,
-      ghostwalk: ghostwalk
+      ghostwalk: ghostwalk,
+      // Die on capture & Attack radius
+      die_on_capture: dieOnCapture,
+      attack_radius: attackRadius
     });
   };
 
@@ -666,10 +671,10 @@ const PieceSelector = ({
                   <label style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Trample Radius:</label>
                   <NumberInput
                     value={trampleRadius}
-                    onChange={(val) => setTrampleRadius(val)}
+                    onChange={(val) => { setTrampleRadius(val); if (val > 0) { setAttackRadius(0); } }}
                     options={{ min: 0, max: 4 }}
                   />
-                  <InfoTooltip text="0 = only pieces directly in path. 1+ = also affects surrounding squares at each step along the path. Checkmateable pieces (e.g. kings) are immune to trample radius splash damage." />
+                  <InfoTooltip text="0 = only pieces directly in path. 1+ = also affects surrounding squares at each step along the path. Checkmateable pieces (e.g. kings) are immune to trample radius splash damage. Cannot be combined with attack radius." />
                 </div>
               )}
               <label className={styles["checkbox-label"]}>
@@ -680,6 +685,25 @@ const PieceSelector = ({
                 />
                 <span>Ghostwalk <InfoTooltip text="This piece can pass through any piece (ally or enemy) during movement." /></span>
               </label>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={dieOnCapture}
+                  onChange={(e) => setDieOnCapture(e.target.checked)}
+                />
+                <span>Die on Capture <InfoTooltip text="This piece is also removed from the board when it captures another piece. Useful for explosive or kamikaze-style pieces." /></span>
+              </label>
+              <div style={{ marginTop: '8px' }}>
+                <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  Attack Radius:
+                  <NumberInput
+                    value={attackRadius}
+                    onChange={(val) => { setAttackRadius(val); if (val > 0) { setTrampleRadius(0); } }}
+                    options={{ min: 0, max: 4 }}
+                  />
+                  <InfoTooltip text="When this piece captures, it also damages all enemy pieces within this radius of the landing square. Unlike trample radius, attack radius does not require trample and only fires at the destination. Checkmateable pieces (e.g. kings) are immune to splash damage. Cannot be combined with trample radius." />
+                </label>
+              </div>
             </div>
               </>
             )}

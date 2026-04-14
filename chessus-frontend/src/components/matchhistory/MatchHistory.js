@@ -82,6 +82,13 @@ const MatchHistory = ({ userId, username }) => {
       case 'resignation': return 'by resignation';
       case 'timeout': return 'by timeout';
       case 'stalemate': return 'by stalemate';
+      case 'promotion': return 'by promotion';
+      case 'piece_count': return 'by piece count';
+      case 'draw_move_limit': return 'by move limit';
+      case 'repetition': return 'by repetition';
+      case 'agreement': return 'by agreement';
+      case 'equal_piece_count': return 'by equal piece count';
+      case 'no_legal_moves': return 'by no legal moves';
       default: return '';
     }
   };

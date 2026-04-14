@@ -120,11 +120,11 @@ const BoardLegend = ({
 
   // Special square items
   if (specialSquares) {
-    if (specialSquares.promotion) items.push({ key: 'promotion', type: 'specialSq', color: '#4b0082', bg: 'rgba(75, 0, 130, 0.3)', label: labels.promotion });
-    if (specialSquares.range) items.push({ key: 'range', type: 'specialSq', color: '#ff8c00', bg: 'rgba(255, 140, 0, 0.3)', label: labels.range });
-    if (specialSquares.control) items.push({ key: 'control', type: 'specialSq', color: '#32CD32', bg: 'rgba(50, 205, 50, 0.3)', label: labels.control });
-    if (specialSquares.special) items.push({ key: 'special', type: 'specialSq', color: '#ffd700', bg: 'rgba(255, 215, 0, 0.3)', label: labels.special });
-    if (specialSquares.custom) items.push({ key: 'custom', type: 'specialSq', color: '#ffd700', bg: 'rgba(255, 215, 0, 0.3)', label: labels.custom });
+    if (specialSquares.promotion) items.push({ key: 'promotion', type: 'specialSq', color: 'var(--sq-promotion)', bg: 'var(--sq-promotion-swatch)', label: labels.promotion });
+    if (specialSquares.range) items.push({ key: 'range', type: 'specialSq', color: 'var(--sq-range)', bg: 'var(--sq-range-swatch)', label: labels.range });
+    if (specialSquares.control) items.push({ key: 'control', type: 'specialSq', color: 'var(--sq-control)', bg: 'var(--sq-control-swatch)', label: labels.control });
+    if (specialSquares.special) items.push({ key: 'special', type: 'specialSq', color: 'var(--sq-custom)', bg: 'var(--sq-custom-swatch)', label: labels.special });
+    if (specialSquares.custom) items.push({ key: 'custom', type: 'specialSq', color: 'var(--sq-custom)', bg: 'var(--sq-custom-swatch)', label: labels.custom });
   }
 
   if (items.length === 0) return null;

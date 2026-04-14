@@ -357,13 +357,13 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
       </p>
 
       <div className={styles["special-square-stats"]}>
-        <div className={styles["stat-item"]} style={{ background: 'rgba(255, 140, 0, 0.2)' }}>
+        <div className={styles["stat-item"]} style={{ background: 'var(--sq-range-bg)' }}>
           <strong>Range Squares:</strong> {counts.range}
         </div>
-        <div className={styles["stat-item"]} style={{ background: 'rgba(75, 0, 130, 0.2)' }}>
+        <div className={styles["stat-item"]} style={{ background: 'var(--sq-promotion-bg)' }}>
           <strong>Promotion Squares:</strong> {counts.promotion}
         </div>
-        <div className={styles["stat-item"]} style={{ background: 'rgba(255, 215, 0, 0.2)' }}>
+        <div className={styles["stat-item"]} style={{ background: 'var(--sq-custom-bg)' }}>
           <strong>Special Squares:</strong> {counts.special}
         </div>
       </div>
@@ -375,7 +375,7 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
             display: 'grid',
             gridTemplateRows: `repeat(${gameData.board_height}, ${Math.min(60, Math.min(480, windowWidth - 60 - 4) / Math.max(gameData.board_width, gameData.board_height))}px)`,
             gridTemplateColumns: `repeat(${gameData.board_width}, ${Math.min(60, Math.min(480, windowWidth - 60 - 4) / Math.max(gameData.board_width, gameData.board_height))}px)`,
-            border: '2px solid #ccc',
+            border: '2px solid var(--border-subtle)',
             width: 'fit-content',
             margin: '20px auto',
             aspectRatio: 'unset'
@@ -388,9 +388,9 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
       <div className={styles["placement-instructions"]}>
         <h3>Square Types:</h3>
         <ul>
-          <li><strong style={{ color: '#ff8c00' }}>Range Squares (R):</strong> Increase the attack/movement range of pieces on this square</li>
-          <li><strong style={{ color: '#4b0082' }}>Promotion Squares (P):</strong> Pieces can be promoted to different types on this square</li>
-          <li><strong style={{ color: '#ffd700' }}>Special Squares (S):</strong> Custom effects to be defined later</li>
+          <li><strong style={{ color: 'var(--sq-range)' }}>Range Squares (R):</strong> Increase the attack/movement range of pieces on this square</li>
+          <li><strong style={{ color: 'var(--sq-promotion)' }}>Promotion Squares (P):</strong> Pieces can be promoted to different types on this square</li>
+          <li><strong style={{ color: 'var(--sq-custom)' }}>Special Squares (S):</strong> Custom effects to be defined later</li>
         </ul>
         <p style={{ marginTop: '10px', fontStyle: 'italic' }}>
           Right-click any square to add a special square type. Click a special square to edit or remove it. 

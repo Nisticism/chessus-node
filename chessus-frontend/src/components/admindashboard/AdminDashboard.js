@@ -541,7 +541,7 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No users found'}
               </td>
             </tr>
@@ -652,7 +652,7 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+              <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No pieces found'}
               </td>
             </tr>
@@ -701,7 +701,7 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No games found'}
               </td>
             </tr>
@@ -747,7 +747,7 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No anonymous games found'}
               </td>
             </tr>
@@ -788,7 +788,7 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="4" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+              <td colSpan="4" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No forum posts found'}
               </td>
             </tr>
@@ -834,7 +834,7 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+              <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No news articles found'}
               </td>
             </tr>
@@ -861,8 +861,8 @@ const AdminDashboard = () => {
 
   const renderFeaturedTab = () => (
     <div className={styles["featured-container"]}>
-      <h2 style={{ marginBottom: '20px', color: '#4a90e2' }}>Featured Games on Homepage</h2>
-      <p style={{ marginBottom: '30px', color: '#6b8ba8' }}>
+      <h2 style={{ marginBottom: '20px', color: 'var(--accent-primary)' }}>Featured Games on Homepage</h2>
+      <p style={{ marginBottom: '30px', color: 'var(--text-dim)' }}>
         Select up to 3 games to feature on the homepage. These games will be displayed in the "Explore the Grove" section.
         Leave a slot empty to fall back to popular games.
       </p>
@@ -1017,7 +1017,7 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b8ba8' }}>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No streams found. Click "Add New Stream" to create one.'}
               </td>
             </tr>

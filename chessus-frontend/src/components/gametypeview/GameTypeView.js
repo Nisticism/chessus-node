@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { getGameById, deleteGame } from "../../actions/games";
+import { getGameById, deleteGame, toggleUpvote, getUpvoteStatus } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import styles from "./gametypeview.module.scss";
 import {
@@ -309,6 +309,8 @@ const GameTypeView = () => {
   });
   const [boardContainerWidth, setBoardContainerWidth] = useState(0);
   const boardContainerRef = useRef(null);
+  const [upvoteCount, setUpvoteCount] = useState(0);
+  const [hasUpvoted, setHasUpvoted] = useState(false);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -415,6 +417,15 @@ const GameTypeView = () => {
         }
 
         setLoading(false);
+
+        // Load upvote status
+        try {
+          const upvoteData = await getUpvoteStatus(gameId);
+          setUpvoteCount(upvoteData.upvote_count);
+          setHasUpvoted(upvoteData.upvoted);
+        } catch (e) {
+          // Upvote status non-critical
+        }
       } catch (err) {
         console.error("Error loading game:", err);
         setError("Failed to load game");
@@ -426,6 +437,17 @@ const GameTypeView = () => {
       loadGame();
     }
   }, [gameId, dispatch]);
+
+  const handleUpvote = async () => {
+    if (!currentUser) return;
+    try {
+      const result = await toggleUpvote(gameId);
+      setUpvoteCount(result.upvote_count);
+      setHasUpvoted(result.upvoted);
+    } catch (err) {
+      console.error("Error toggling upvote:", err);
+    }
+  };
 
   const getPlayerColor = (playerId) => {
     // Use chess-standard colors: Player 1 = White, Player 2 = Black
@@ -888,6 +910,39 @@ const GameTypeView = () => {
       specialRulesContent.push(`**Ghostwalk**\nSome pieces can pass through any other piece during movement.\n\n${ghostDesc}\n\n**Ghostwalk Rules:**\n• The piece ignores all pieces in its path — nothing can block it\n• The piece can still capture normally at its destination\n• Combined with Trample, the piece damages every piece it passes through`);
     }
 
+    // Die on Capture ability
+    const dieOnCapturePieces = Object.values(uniquePieces).filter(piece => {
+      const pieceData = pieceDataMap[piece.id] || piece;
+      return pieceData.die_on_capture;
+    });
+
+    if (dieOnCapturePieces.length > 0) {
+      const dieDesc = dieOnCapturePieces.map(piece => {
+        const pieceData = pieceDataMap[piece.id] || piece;
+        const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+        return `• **${pieceName}**`;
+      }).join('\n');
+
+      specialRulesContent.push(`**Die on Capture**\nSome pieces are destroyed when they capture another piece.\n\n${dieDesc}\n\n**Die on Capture Rules:**\n• When this piece captures an enemy, it is also removed from the board\n• Both the captured piece and the capturing piece are eliminated`);
+    }
+
+    // Attack Radius ability
+    const attackRadiusPieces = Object.values(uniquePieces).filter(piece => {
+      const pieceData = pieceDataMap[piece.id] || piece;
+      return (pieceData.attack_radius || 0) > 0;
+    });
+
+    if (attackRadiusPieces.length > 0) {
+      const atkDesc = attackRadiusPieces.map(piece => {
+        const pieceData = pieceDataMap[piece.id] || piece;
+        const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
+        const radius = pieceData.attack_radius || 0;
+        return `• **${pieceName}** — radius ${radius}`;
+      }).join('\n');
+
+      specialRulesContent.push(`**Attack Radius**\nSome pieces deal area-of-effect damage around their landing square when they capture.\n\n${atkDesc}\n\n**Attack Radius Rules:**\n• When capturing, the piece also damages all enemy pieces within the radius of the landing square\n• Only triggers on capture — regular movement does not cause splash damage\n• Checkmate-immune pieces (e.g. kings) are immune to attack radius splash damage\n• Each piece can only be damaged once per attack\n• Unlike Trample Radius, does not require Trample and does not damage pieces along the movement path`);
+    }
+
     // Promotion squares information
     if (Object.keys(specialSquares.promotion).length > 0) {
       // Find pieces that can promote
@@ -977,6 +1032,10 @@ const GameTypeView = () => {
 
     if (game.piece_count_condition) {
       winConditions.push(`• **Piece Count**: When no more valid moves remain or the board is full, the player with the most pieces wins (Othello-style).`);
+    }
+
+    if (game.promotion_condition) {
+      winConditions.push(`• **Win on Promotion**: A player instantly wins by moving a promotable piece onto a promotion square.`);
     }
 
     if (winConditions.length > 0) {
@@ -1104,6 +1163,51 @@ const GameTypeView = () => {
 
     const board = [];
 
+    // Pre-compute attack radius splash squares for the hovered piece
+    const attackRadiusSplashSquares = new Set();
+    if (hoveredPiecePosition) {
+      const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
+      if (pieceData && (pieceData.attack_radius || 0) > 0) {
+        const radius = pieceData.attack_radius;
+        const hpw = pieceData.piece_width || 1;
+        const hph = pieceData.piece_height || 1;
+        // Find all capture target squares
+        for (let r = 0; r < game.board_height; r++) {
+          for (let c = 0; c < game.board_width; c++) {
+            const isWithinFootprint = r >= hoveredPiecePosition.row && r < hoveredPiecePosition.row + hph &&
+              c >= hoveredPiecePosition.col && c < hoveredPiecePosition.col + hpw;
+            if (isWithinFootprint) continue;
+            let canCapture = false;
+            for (let dr = 0; dr < hph && !canCapture; dr++) {
+              for (let dc = 0; dc < hpw && !canCapture; dc++) {
+                const info = getCaptureInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, r, c, pieceData, hoveredPiecePosition.playerId);
+                if (info.allowed) canCapture = true;
+              }
+            }
+            if (!canCapture) {
+              for (let dr = 0; dr < hph && !canCapture; dr++) {
+                for (let dc = 0; dc < hpw && !canCapture; dc++) {
+                  canCapture = canRangedAttackTo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, r, c, pieceData, hoveredPiecePosition.playerId);
+                }
+              }
+            }
+            if (canCapture) {
+              // Add all squares within attack radius of this capture target
+              for (let sr = r - radius; sr <= r + radius; sr++) {
+                for (let sc = c - radius; sc <= c + radius; sc++) {
+                  if (sr >= 0 && sr < game.board_height && sc >= 0 && sc < game.board_width) {
+                    if (sr !== r || sc !== c) {
+                      attackRadiusSplashSquares.add(`${sr},${sc}`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     for (let row = 0; row < game.board_height; row++) {
       for (let col = 0; col < game.board_width; col++) {
         const isLight = (row + col) % 2 === 0;
@@ -1202,6 +1306,7 @@ const GameTypeView = () => {
               highlightStyle={highlightStyle}
               highlightIcon={highlightIcon}
               canHopCapture={canHopCapture}
+              isAttackRadiusSplash={attackRadiusSplashSquares.has(key)}
               squareSize={squareSize}
               isLight={isLight}
             />
@@ -1398,6 +1503,13 @@ const GameTypeView = () => {
           ← Back to Games
         </button>
         <div className={styles["header-actions"]}>
+          <button
+            className={`${styles["upvote-btn"]} ${hasUpvoted ? styles["upvoted"] : ''}`}
+            onClick={handleUpvote}
+            title={currentUser ? (hasUpvoted ? "Remove upvote" : "Upvote this game") : "Log in to upvote"}
+          >
+            {hasUpvoted ? '▲' : '△'} {upvoteCount}
+          </button>
           <button 
             onClick={() => navigate(`/play?gameTypeId=${gameId}`)} 
             className={styles["play-button"]}
@@ -1464,7 +1576,7 @@ const GameTypeView = () => {
               special: Object.keys(specialSquares.special).length > 0,
             }}
           />
-          <p style={{ textAlign: 'center', fontSize: '0.85rem', color: '#888', marginBottom: '10px' }}>
+          <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '10px' }}>
             Hover over a piece to see where it can move and attack
           </p>
           <div className={styles["board-container"]} ref={boardContainerRef}>
@@ -1474,7 +1586,7 @@ const GameTypeView = () => {
                 display: 'grid',
                 gridTemplateRows: `repeat(${game.board_height}, ${squareSize}px)`,
                 gridTemplateColumns: `repeat(${game.board_width}, ${squareSize}px)`,
-                border: '2px solid #ccc',
+                border: '2px solid var(--border-subtle)',
                 width: 'fit-content',
                 margin: '0 auto',
                 aspectRatio: 'unset'
@@ -1524,7 +1636,7 @@ const GameTypeView = () => {
           return (
             <div className={styles["section"]}>
               <h2>♟ Placeable Pieces</h2>
-              <p style={{ color: '#aac', marginBottom: '12px' }}>These pieces can be placed onto the board during gameplay.</p>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '12px' }}>These pieces can be placed onto the board during gameplay.</p>
               <div className={styles["placeable-pieces-grid"]}>
                 {od.placeable_pieces.map((pp, idx) => {
                   const imgUrl = pp.image_url ? getImageUrl(pp.image_url) : null;

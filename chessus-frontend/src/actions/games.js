@@ -54,6 +54,22 @@ export const getGameById = (gameId) => async () => {
   }
 };
 
+export const toggleUpvote = async (gameId) => {
+  const response = await axios.post(
+    API_URL + "games/" + gameId + "/upvote",
+    {},
+    { headers: authHeader() }
+  );
+  return response.data;
+};
+
+export const getUpvoteStatus = async (gameId) => {
+  const response = await axios.get(API_URL + "games/" + gameId + "/upvote", {
+    headers: authHeader()
+  });
+  return response.data;
+};
+
 export const createGame = (gameData) => async (dispatch) => {
   try {
     const response = await axios.post(

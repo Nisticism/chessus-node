@@ -265,6 +265,20 @@ const NotificationsPage = () => {
                       </button>
                     </div>
                   )}
+
+                  {notification.type === "system" && notification.action_url && (
+                    <div className={styles["notification-actions-row"]}>
+                      <button
+                        className={`${styles["notification-action-btn"]} ${styles.view}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNotificationClick(notification);
+                        }}
+                      >
+                        {notification.action_url.startsWith('/profile') ? 'View Profile' : 'View'}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <button

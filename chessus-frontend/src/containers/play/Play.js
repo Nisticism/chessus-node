@@ -356,6 +356,7 @@ const Play = () => {
     if (gameType.hill_condition) conditions.push("King of the Hill");
     if (gameType.no_moves_condition) conditions.push("No Legal Moves");
     if (gameType.piece_count_condition) conditions.push("Piece Count");
+    if (gameType.promotion_condition) conditions.push("Win on Promotion");
     return conditions.length > 0 ? conditions.join(" / ") : "Capture (default)";
   };
 

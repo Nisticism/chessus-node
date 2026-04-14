@@ -240,6 +240,33 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
       </div>
 
+      {/* Win on Promotion Condition */}
+      <div className={styles["condition-section"]}>
+        <h3>Win on Promotion <InfoTooltip text="When enabled, a player instantly wins the game when they move a promotable piece onto a promotion square. The piece does not actually promote — reaching the square is enough to win. Requires promotion squares to be set in Step 3 and at least one piece with 'can promote' enabled." /></h3>
+        <div className={styles["radio-group"]}>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="promotion_condition"
+              value="true"
+              checked={gameData.promotion_condition === true}
+              onChange={(e) => handleBooleanChange("promotion_condition", e.target.value)}
+            />
+            <span>Win by reaching a promotion square</span>
+          </label>
+          <label className={styles["radio-label"]}>
+            <input
+              type="radio"
+              name="promotion_condition"
+              value="false"
+              checked={gameData.promotion_condition === false}
+              onChange={(e) => handleBooleanChange("promotion_condition", e.target.value)}
+            />
+            <span>Disable</span>
+          </label>
+        </div>
+      </div>
+
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>Optional Condition ID <InfoTooltip text="Reference to a custom win condition defined externally. Leave empty unless you have a custom condition system set up." /></label>
         <NumberInput

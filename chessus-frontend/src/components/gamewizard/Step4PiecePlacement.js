@@ -353,6 +353,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               trample: pieceData.trample || false,
               trample_radius: pieceData.trample_radius ?? 0,
               ghostwalk: pieceData.ghostwalk || false,
+              die_on_capture: pieceData.die_on_capture || false,
+              attack_radius: pieceData.attack_radius ?? 0,
               // Castling override data
               manual_castling_partners: pieceData.manual_castling_partners || false,
               castling_partner_left_key: pieceData.castling_partner_left_key || null,
@@ -417,6 +419,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
             trample: pieceData.trample || false,
             trample_radius: pieceData.trample_radius ?? 0,
             ghostwalk: pieceData.ghostwalk || false,
+            die_on_capture: pieceData.die_on_capture || false,
+            attack_radius: pieceData.attack_radius ?? 0,
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
             castling_partner_right_key: pieceData.castling_partner_right_key || null,
@@ -717,6 +721,49 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const renderBoard = useMemo(() => {
     const board = [];
     const squareSize = boardDimensions.squareSize;
+
+    // Pre-compute attack radius splash squares for the hovered piece
+    const attackRadiusSplashSquares = new Set();
+    if (hoveredPiecePosition && !draggedPiece) {
+      const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
+      if (pieceData && (pieceData.attack_radius || 0) > 0) {
+        const radius = pieceData.attack_radius;
+        const hpw = pieceData.piece_width || 1;
+        const hph = pieceData.piece_height || 1;
+        for (let r = 0; r < gameData.board_height; r++) {
+          for (let c = 0; c < gameData.board_width; c++) {
+            const isWithinFootprint = r >= hoveredPiecePosition.row && r < hoveredPiecePosition.row + hph &&
+              c >= hoveredPiecePosition.col && c < hoveredPiecePosition.col + hpw;
+            if (isWithinFootprint) continue;
+            let canCapture = false;
+            for (let dr = 0; dr < hph && !canCapture; dr++) {
+              for (let dc = 0; dc < hpw && !canCapture; dc++) {
+                const info = getCaptureInfo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, r, c, pieceData, hoveredPiecePosition.playerId);
+                if (info.allowed) canCapture = true;
+              }
+            }
+            if (!canCapture) {
+              for (let dr = 0; dr < hph && !canCapture; dr++) {
+                for (let dc = 0; dc < hpw && !canCapture; dc++) {
+                  canCapture = canRangedAttackTo(hoveredPiecePosition.row + dr, hoveredPiecePosition.col + dc, r, c, pieceData, hoveredPiecePosition.playerId);
+                }
+              }
+            }
+            if (canCapture) {
+              for (let sr = r - radius; sr <= r + radius; sr++) {
+                for (let sc = c - radius; sc <= c + radius; sc++) {
+                  if (sr >= 0 && sr < gameData.board_height && sc >= 0 && sc < gameData.board_width) {
+                    if (sr !== r || sc !== c) {
+                      attackRadiusSplashSquares.add(`${sr},${sc}`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
     
     for (let row = 0; row < gameData.board_height; row++) {
       for (let col = 0; col < gameData.board_width; col++) {
@@ -890,6 +937,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                 highlightStyle={highlightStyle}
                 highlightIcon={highlightIcon}
                 canHopCapture={canHopCapture}
+                isAttackRadiusSplash={attackRadiusSplashSquares.has(key)}
                 squareSize={squareSize}
                 isLight={isLight}
               />
@@ -1119,6 +1167,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         trample: sourcePiece.trample ?? false,
         trample_radius: sourcePiece.trample_radius ?? 0,
         ghostwalk: sourcePiece.ghostwalk ?? false,
+        die_on_capture: sourcePiece.die_on_capture ?? false,
+        attack_radius: sourcePiece.attack_radius ?? 0,
         piece_width: pw,
         piece_height: ph,
         player_id: targetPlayerId,
@@ -1165,7 +1215,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       <p className={styles["step-description"]}>
         Right-click on any square to add or remove pieces. Drag pieces to move them. Assign pieces to players and choose their images.
       </p>
-      <p className={styles["step-description"]} style={{ marginTop: '10px', fontSize: '14px', fontStyle: 'italic', color: '#aaa' }}>
+      <p className={styles["step-description"]} style={{ marginTop: '10px', fontSize: '14px', fontStyle: 'italic', color: 'var(--text-dim)' }}>
         {isMobile ? '💡 Long press on any square to add/remove pieces on mobile' : '💡 Right-click or drag and drop to manage pieces'}
       </p>
 
@@ -1318,7 +1368,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         >
           <span className={styles["collapse-chevron"]} style={{ transform: randomizationOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
           Allowed Starting Position Modes
-          <span style={{ marginLeft: '10px', fontSize: '12px', color: '#888', fontWeight: 400 }}>
+          <span style={{ marginLeft: '10px', fontSize: '12px', color: 'var(--text-dim)', fontWeight: 400 }}>
             (Board symmetric: {isBoardSymmetric ? 'Yes ✓' : 'No ✗'})
           </span>
         </h3>

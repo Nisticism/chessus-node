@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
-import { getGames, deleteGame } from "../../actions/games";
+import { getGames, deleteGame, toggleUpvote } from "../../actions/games";
 import Pagination from "../pagination/Pagination";
 import styles from "./gamelist.module.scss";
 
@@ -19,6 +19,7 @@ const GameList = () => {
   const [winConditionFilter, setWinConditionFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [upvotedGames, setUpvotedGames] = useState({});
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -127,6 +128,20 @@ const GameList = () => {
     return `${count} players`;
   };
 
+  const handleUpvote = async (e, gameId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!currentUser) return;
+    try {
+      const result = await toggleUpvote(gameId);
+      setUpvotedGames(prev => ({ ...prev, [gameId]: result.upvoted }));
+      // Update the count in the redux store games list
+      dispatch(getGames(currentPage, 20, sortBy, winConditionFilter, searchQuery));
+    } catch (err) {
+      console.error("Error toggling upvote:", err);
+    }
+  };
+
   const formatBoardSize = (width, height) => {
     if (!width || !height) return "Standard";
     return `${width}×${height}`;
@@ -140,6 +155,8 @@ const GameList = () => {
     if (game.squares_condition) conditions.push("Territory");
     if (game.hill_condition) conditions.push("King of the Hill");
     if (game.piece_count_condition) conditions.push("Piece Count");
+    if (game.no_moves_condition) conditions.push("No Legal Moves");
+    if (game.promotion_condition) conditions.push("Win on Promotion");
     return conditions.length > 0 ? conditions.join(", ") : "Capture (default)";
   };
 
@@ -169,12 +186,28 @@ const GameList = () => {
       <div key={game.id} className={styles["game-card"]}>
         <Link to={`/games/${game.id}`} className={styles["game-link"]}>
           <div className={styles["game-header"]}>
-            <div className={styles["game-icon"]}>♟️</div>
+            <div
+              className={styles["game-icon"]}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigate(`/play?gameTypeId=${game.id}`);
+              }}
+              title="Play this game"
+            >▶</div>
             <div className={styles["game-title-area"]}>
               <h3 className={styles["game-name"]}>{game.game_name || 'Unnamed Game'}</h3>
               <span className={styles["game-board-info"]}>
                 {formatBoardSize(game.board_width, game.board_height)} board
               </span>
+            </div>
+            <div
+              className={`${styles["upvote-btn"]} ${upvotedGames[game.id] ? styles["upvoted"] : ''}`}
+              onClick={(e) => handleUpvote(e, game.id)}
+              title={currentUser ? "Upvote this game" : "Log in to upvote"}
+            >
+              <span className={styles["upvote-icon"]}>{upvotedGames[game.id] ? '▲' : '△'}</span>
+              <span>{game.upvote_count || 0}</span>
             </div>
           </div>
           
@@ -289,6 +322,7 @@ const GameList = () => {
               <select className={styles["filter-select"]} value={sortBy} onChange={handleSortChange}>
                 <option value="newest">Newest</option>
                 <option value="popular">Most Popular</option>
+                <option value="most_upvoted">Most Upvoted</option>
                 <option value="last_played">Recently Played</option>
                 <option value="alphabetical">Alphabetical</option>
               </select>
@@ -302,6 +336,8 @@ const GameList = () => {
                 <option value="points">Points</option>
                 <option value="territory">Territory</option>
                 <option value="piece_count">Piece Count</option>
+                <option value="no_moves">No Legal Moves</option>
+                <option value="promotion">Win on Promotion</option>
               </select>
             </div>
           </div>

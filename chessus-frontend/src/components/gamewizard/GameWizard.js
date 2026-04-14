@@ -23,6 +23,7 @@ const GameWizard = ({ editGameId }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [showCheckmateWarning, setShowCheckmateWarning] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   
   // Game data state - all fields from game_types table
   const [gameData, setGameData] = useState({
@@ -47,8 +48,9 @@ const GameWizard = ({ editGameId }) => {
     hill_x: null,
     hill_y: null,
     hill_turns: null,
-    no_moves_condition: false, // Disabled by default like other win conditions
+    no_moves_condition: false,
     piece_count_condition: false,
+    promotion_condition: false,
     optional_condition: null,
     draw_move_limit: null,
     repetition_draw_count: null,
@@ -121,6 +123,7 @@ const GameWizard = ({ editGameId }) => {
             hill_turns: existingGame.hill_turns || null,
             no_moves_condition: Boolean(existingGame.no_moves_condition),
             piece_count_condition: Boolean(existingGame.piece_count_condition),
+            promotion_condition: Boolean(existingGame.promotion_condition),
             optional_condition: existingGame.optional_condition || null,
             draw_move_limit: existingGame.draw_move_limit != null ? existingGame.draw_move_limit : null,
             repetition_draw_count: existingGame.repetition_draw_count != null ? existingGame.repetition_draw_count : null,
@@ -175,23 +178,48 @@ const GameWizard = ({ editGameId }) => {
   };
 
   const handleSubmit = async (skipWarning = false) => {
+    setSaveError(null);
+
+    // Required field validation
+    if (!gameData.game_name || gameData.game_name.trim().length < 3) {
+      setSaveError('Game name is required and must be at least 3 characters.');
+      goToStep(1);
+      return;
+    }
+
     // Content moderation validation
     const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 50 });
     if (!nameCheck.isValid) {
-      alert(nameCheck.errors[0]);
+      setSaveError(nameCheck.errors[0]);
+      goToStep(1);
       return;
     }
     if (gameData.descript) {
       const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000 });
       if (!descCheck.isValid) {
-        alert(descCheck.errors[0]);
+        setSaveError(descCheck.errors[0]);
+        goToStep(1);
         return;
       }
     }
     if (gameData.rules) {
       const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000 });
       if (!rulesCheck.isValid) {
-        alert(rulesCheck.errors[0]);
+        setSaveError(rulesCheck.errors[0]);
+        goToStep(1);
+        return;
+      }
+    }
+
+    // Warn if promotion condition is enabled but no promotion squares are set
+    if (gameData.promotion_condition) {
+      let hasPromotionSquares = false;
+      try {
+        const promoSquares = JSON.parse(gameData.promotion_squares_string || '{}');
+        hasPromotionSquares = Object.keys(promoSquares).length > 0;
+      } catch { /* ignore */ }
+      if (!hasPromotionSquares) {
+        setSaveError('Win on Promotion is enabled but no promotion squares are defined. Add promotion squares in Step 3 (Board & Squares).');
         return;
       }
     }
@@ -245,6 +273,8 @@ const GameWizard = ({ editGameId }) => {
       // Navigate to success page or game list
       navigate("/create/games");
     } catch (error) {
+      const msg = error?.response?.data?.message || error?.message || 'An unexpected error occurred while saving.';
+      setSaveError(msg);
       console.error("Error saving game:", error);
     } finally {
       setIsSubmitting(false);
@@ -289,7 +319,7 @@ const GameWizard = ({ editGameId }) => {
         </div>
         <Divider />
         <div className={styles["wizard-content"]}>
-          <p style={{ textAlign: 'center', color: '#a0b8d0' }}>Please wait while we load the game data...</p>
+          <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Please wait while we load the game data...</p>
         </div>
       </div>
     );
@@ -304,7 +334,7 @@ const GameWizard = ({ editGameId }) => {
         </div>
         <Divider />
         <div className={styles["wizard-content"]}>
-          <p style={{ textAlign: 'center', color: '#ff6b6b' }}>{loadError}</p>
+          <p style={{ textAlign: 'center', color: '#ef4444' }}>{loadError}</p>
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <StandardButton 
               buttonText="Back to Games" 
@@ -378,6 +408,11 @@ const GameWizard = ({ editGameId }) => {
             />
           )}
         </div>
+        {saveError && (
+          <p className={styles["validation-error"]} style={{ marginTop: '12px', textAlign: 'center' }}>
+            {saveError}
+          </p>
+        )}
       </div>
 
       {showCheckmateWarning && (

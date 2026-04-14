@@ -16,7 +16,7 @@ import React from 'react';
  *   squareSize     — number (px), scales the ranged icon
  *   isLight        — boolean, toggles icon background for contrast
  */
-const SquareHighlightOverlay = ({ highlightStyle, highlightIcon, canHopCapture, squareSize = 50, isLight = true }) => {
+const SquareHighlightOverlay = ({ highlightStyle, highlightIcon, canHopCapture, isAttackRadiusSplash, squareSize = 50, isLight = true }) => {
   const hasHighlight = highlightStyle && (highlightStyle.outline || highlightStyle.borderTop);
 
   return (
@@ -61,6 +61,19 @@ const SquareHighlightOverlay = ({ highlightStyle, highlightIcon, canHopCapture, 
           outline: '3px solid rgba(76, 175, 80, 0.7)',
           outlineOffset: '-3px',
           boxShadow: 'inset 0 0 0 100px rgba(76, 175, 80, 0.2)',
+          boxSizing: 'border-box',
+          zIndex: 9,
+          pointerEvents: 'none',
+          borderRadius: '2px',
+        }} />
+      )}
+      {isAttackRadiusSplash && (
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          outline: '3px solid rgba(255, 193, 7, 0.6)',
+          outlineOffset: '-3px',
+          boxShadow: 'inset 0 0 0 100px rgba(255, 193, 7, 0.18)',
           boxSizing: 'border-box',
           zIndex: 9,
           pointerEvents: 'none',

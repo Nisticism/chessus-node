@@ -11,8 +11,8 @@ const getRoleBadge = (role) => {
   if (roleLower === 'owner') {
     return (
       <span style={{
-        background: 'linear-gradient(135deg, #ffd700 0%, #ff8c00 100%)',
-        color: '#1a1a2e',
+        background: 'var(--badge-owner-bg)',
+        color: 'var(--badge-owner-text)',
         padding: '3px 8px',
         borderRadius: '4px',
         fontSize: '0.7rem',
@@ -27,8 +27,8 @@ const getRoleBadge = (role) => {
   } else if (roleLower === 'admin') {
     return (
       <span style={{
-        background: 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)',
-        color: '#ffffff',
+        background: 'var(--badge-admin-bg)',
+        color: 'var(--badge-admin-text)',
         padding: '3px 8px',
         borderRadius: '4px',
         fontSize: '0.7rem',
@@ -179,14 +179,14 @@ const PlayerList = () => {
                   borderRadius: '50%',
                   overflow: 'hidden',
                   flexShrink: 0,
-                  background: 'linear-gradient(135deg, #4a90e2 0%, #357abd 100%)',
+                  background: 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '1.5rem',
                   fontWeight: '700',
-                  color: '#ffffff',
-                  border: '2px solid #2a4d6c'
+                  color: 'var(--text-white)',
+                  border: '2px solid var(--border-subtle)'
                 }}>
                   {user.profile_picture ? (
                     <img 
@@ -201,7 +201,7 @@ const PlayerList = () => {
                 </div>
                 <div style={{ flex: 1 }}>
                   <h2 className={styles["item-title"]} style={{ margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Link to={"/profile/" + user.username} style={{color: '#ffffff', textDecoration: 'none'}}>
+                    <Link to={"/profile/" + user.username} style={{color: 'var(--text-white)', textDecoration: 'none'}}>
                       {user.username}
                     </Link>
                     {getRoleBadge(user.role)}
@@ -213,13 +213,13 @@ const PlayerList = () => {
                 {user.elo !== undefined && user.elo !== null && (
                   <div className={styles["meta-row"]}>
                     <span className={styles["label"]}>Rating:</span>
-                    <span style={{ fontWeight: '600', color: '#4a90e2' }}>{user.elo}</span>
+                    <span style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{user.elo}</span>
                   </div>
                 )}
                 {user.last_active_at && (
                   <div className={styles["meta-row"]}>
                     <span className={styles["label"]}>Last Active:</span>
-                    <span style={{ color: '#888' }}>
+                    <span style={{ color: 'var(--text-dim)' }}>
                       {parseServerDate(user.last_active_at).toLocaleDateString()}
                     </span>
                   </div>

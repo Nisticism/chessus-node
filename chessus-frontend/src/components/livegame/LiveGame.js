@@ -1621,6 +1621,75 @@ const LiveGame = () => {
     return false;
   }, [getStepMovementConfig]);
 
+  // Apply range square bonus to a piece: +1 to all non-infinite, non-zero movement/capture/attack values
+  const applyRangeSquareBonus = useCallback((piece) => {
+    const rangeSquares = specialSquares?.range;
+    if (!rangeSquares || Object.keys(rangeSquares).length === 0) return piece;
+
+    const key = `${piece.y},${piece.x}`;
+    if (!rangeSquares[key]) return piece;
+
+    const bonus = rangeSquares[key].rangeBonus || 1;
+    const boosted = { ...piece };
+
+    const boost = (val) => {
+      if (!val || val === 0 || val === 99) return val;
+      if (val < 0) return val - bonus;
+      return val + bonus;
+    };
+
+    const directions = ['up', 'down', 'left', 'right', 'up_left', 'up_right', 'down_left', 'down_right'];
+    for (const dir of directions) {
+      if (boosted[`${dir}_movement`]) boosted[`${dir}_movement`] = boost(boosted[`${dir}_movement`]);
+      if (boosted[`${dir}_capture`]) boosted[`${dir}_capture`] = boost(boosted[`${dir}_capture`]);
+      if (boosted[`${dir}_attack_range`]) boosted[`${dir}_attack_range`] = boost(boosted[`${dir}_attack_range`]);
+    }
+
+    if (boosted.step_by_step_movement_value) boosted.step_by_step_movement_value = boost(boosted.step_by_step_movement_value);
+    if (boosted.step_movement_value) boosted.step_movement_value = boost(boosted.step_movement_value);
+    if (boosted.step_capture_value) boosted.step_capture_value = boost(boosted.step_capture_value);
+    if (boosted.step_by_step_attack_range) boosted.step_by_step_attack_range = boost(boosted.step_by_step_attack_range);
+
+    if (boosted.ratio_movement_1) boosted.ratio_movement_1 = boost(boosted.ratio_movement_1);
+    if (boosted.ratio_movement_2) boosted.ratio_movement_2 = boost(boosted.ratio_movement_2);
+    if (boosted.ratio_one_attack_range) boosted.ratio_one_attack_range = boost(boosted.ratio_one_attack_range);
+    if (boosted.ratio_two_attack_range) boosted.ratio_two_attack_range = boost(boosted.ratio_two_attack_range);
+
+    if (boosted.special_scenario_moves) {
+      try {
+        const parsed = typeof boosted.special_scenario_moves === 'string'
+          ? JSON.parse(boosted.special_scenario_moves)
+          : { ...boosted.special_scenario_moves };
+        if (parsed.additionalMovements) {
+          const boostedMoves = {};
+          for (const [dir, moveOptions] of Object.entries(parsed.additionalMovements)) {
+            boostedMoves[dir] = moveOptions.map(opt => {
+              if (opt.infinite || !opt.value) return opt;
+              return { ...opt, value: opt.value + bonus };
+            });
+          }
+          parsed.additionalMovements = boostedMoves;
+        }
+        if (parsed.additionalCaptures) {
+          const boostedCaptures = {};
+          for (const [dir, captureOptions] of Object.entries(parsed.additionalCaptures)) {
+            boostedCaptures[dir] = captureOptions.map(opt => {
+              if (opt.infinite || !opt.value) return opt;
+              return { ...opt, value: opt.value + bonus };
+            });
+          }
+          parsed.additionalCaptures = boostedCaptures;
+        }
+        boosted.special_scenario_moves = typeof piece.special_scenario_moves === 'string'
+          ? JSON.stringify(parsed) : parsed;
+        boosted.special_scenario_captures = typeof piece.special_scenario_captures === 'string'
+          ? JSON.stringify(parsed) : parsed;
+      } catch (e) { /* ignore */ }
+    }
+
+    return boosted;
+  }, [specialSquares]);
+
   // Check if a specific piece is under attack by any enemy piece
   const isPieceUnderAttack = useCallback((targetPiece, pieces, boardWidth, boardHeight) => {
     if (targetPiece.cannot_be_captured) return false;
@@ -1629,9 +1698,12 @@ const LiveGame = () => {
     const th = targetPiece.piece_height || 1;
     
     // Check all enemy pieces against ALL occupied squares of the target
-    for (const enemyPiece of pieces) {
+    for (let enemyPiece of pieces) {
       const enemyTeam = enemyPiece.player_id || enemyPiece.team;
       if (enemyTeam === targetTeam) continue; // Skip friendly pieces
+      
+      // Apply range square bonus to attacking piece
+      enemyPiece = applyRangeSquareBonus(enemyPiece);
       
       const ew = enemyPiece.piece_width || 1;
       const eh = enemyPiece.piece_height || 1;
@@ -1679,7 +1751,7 @@ const LiveGame = () => {
       }
     }
     return false;
-  }, [canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep]);
+  }, [canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep, applyRangeSquareBonus]);
 
   // Check if a player is in check (any piece with ends_game_on_checkmate is under attack)
   const checkForCheck = useCallback((pieces, playerPosition, boardWidth, boardHeight) => {
@@ -1757,6 +1829,9 @@ const LiveGame = () => {
   // Calculate valid moves for a piece using actual piece movement data
   // forPremove: when true, includes potential capture squares even when empty (for premove highlighting)
   const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false) => {
+    // Apply range square bonus
+    piece = applyRangeSquareBonus(piece);
+
     const moves = [];
     const pieceTeam = piece.player_id || piece.team;
     const pw = piece.piece_width || 1;
@@ -2240,7 +2315,7 @@ const LiveGame = () => {
     }
     
     return moves;
-  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep, gameState, currentPlayer, wouldMoveResolveCheck]);
+  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep, gameState, currentPlayer, wouldMoveResolveCheck, applyRangeSquareBonus]);
 
   // Handle square click
   const handleSquareClick = useCallback((x, y) => {
@@ -3344,6 +3419,24 @@ const LiveGame = () => {
 
     const squares = [];
 
+    // Pre-compute attack radius splash squares for the hovered piece
+    const attackRadiusSplashSquares = new Set();
+    if (hoveredPiece && (hoveredPiece.attack_radius || 0) > 0 && hoveredMoves.length > 0) {
+      const radius = hoveredPiece.attack_radius;
+      const captureTargets = hoveredMoves.filter(m => m.isCapture || m.isRangedAttack);
+      for (const target of captureTargets) {
+        for (let sr = target.y - radius; sr <= target.y + radius; sr++) {
+          for (let sc = target.x - radius; sc <= target.x + radius; sc++) {
+            if (sr >= 0 && sr < boardHeight && sc >= 0 && sc < boardWidth) {
+              if (sr !== target.y || sc !== target.x) {
+                attackRadiusSplashSquares.add(`${sc},${sr}`);
+              }
+            }
+          }
+        }
+      }
+    }
+
     for (let displayY = 0; displayY < boardHeight; displayY++) {
       for (let displayX = 0; displayX < boardWidth; displayX++) {
         // Convert display position to actual game coordinates
@@ -3442,6 +3535,7 @@ const LiveGame = () => {
               ${hoveredRegularMove && hoveredRegularMove.isCapture && hoveredRegularMove.isFirstMoveOnly && !hoveredRegularMove.isCustomAttack ? styles["hover-capture-first-only"] : ''}
               ${hoveredRegularMove && hoveredRegularMove.isCapture && hoveredRegularMove.isCustomAttack ? styles["hover-capture-custom"] : ''}
               ${isRangedHover ? styles["hover-ranged"] : ''}
+              ${attackRadiusSplashSquares.has(`${gameX},${gameY}`) ? styles["hover-attack-radius"] : ''}
               ${isRangedDragTarget || isRangedSelectedTarget ? styles["ranged-drag-target"] : ''}
               ${isRangedSelectedSource ? styles["selected"] : ''}
               ${isLastMove ? styles["last-move"] : ''}
@@ -4197,7 +4291,7 @@ const LiveGame = () => {
                   return rows;
                 })()}
                 {(!gameState.moveHistory || gameState.moveHistory.length === 0) && (
-                  <div style={{ color: '#666', textAlign: 'center', padding: '12px' }}>
+                  <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '12px' }}>
                     No moves yet
                   </div>
                 )}
@@ -4937,6 +5031,7 @@ const LiveGame = () => {
                gameOverData.reason === 'timeout' ? 'By Timeout' :
                gameOverData.reason === 'piece_count' ? 'By Piece Count' :
                gameOverData.reason === 'equal_piece_count' ? 'Equal Piece Count - Draw' :
+               gameOverData.reason === 'promotion' ? 'By Promotion' :
                gameOverData.reason}
             </div>
             {(gameOverData.reason === 'piece_count' || gameOverData.reason === 'equal_piece_count') && 

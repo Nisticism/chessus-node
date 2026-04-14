@@ -179,7 +179,7 @@ const Register = () => {
                 <hr style={{ flex: 1 }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
-                <div style={{ border: '1px solid #ccc', borderRadius: '4px', overflow: 'hidden', display: 'inline-block' }}>
+                <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '4px', overflow: 'hidden', display: 'inline-block' }}>
                   <GoogleLogin
                     onSuccess={handleGoogleSuccess}
                     onError={handleGoogleError}

@@ -37,10 +37,10 @@ const SpecialSquareSelector = ({
   }, [currentType, currentConfig]);
   
   const squareTypes = [
-    { id: 'range', name: 'Range Square', color: '#ff8c00', description: 'Increases attack/movement range of pieces' },
-    { id: 'promotion', name: 'Promotion Square', color: '#4b0082', description: 'Allows piece promotion' },
-    { id: 'control', name: 'Control Square', color: '#32CD32', description: 'Players must control to win (if enabled)' },
-    { id: 'custom', name: 'Custom Square', color: '#ffd700', description: 'Custom effects (define later)' }
+    { id: 'range', name: 'Range Square', color: 'var(--sq-range)', description: 'Increases attack/movement range of pieces' },
+    { id: 'promotion', name: 'Promotion Square', color: 'var(--sq-promotion)', description: 'Allows piece promotion' },
+    { id: 'control', name: 'Control Square', color: 'var(--sq-control)', description: 'Players must control to win (if enabled)' },
+    { id: 'custom', name: 'Custom Square', color: 'var(--sq-custom)', description: 'Custom effects (define later)' }
   ];
 
   const handleTypeClick = (typeId) => {

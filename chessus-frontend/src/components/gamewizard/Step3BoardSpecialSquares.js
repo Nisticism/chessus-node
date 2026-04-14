@@ -533,16 +533,16 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           Clear All Special Squares
         </button>
         <div className={styles["special-square-stats"]}>
-          <div className={styles["stat-item"]} style={{ background: 'rgba(255, 140, 0, 0.2)' }}>
+          <div className={styles["stat-item"]} style={{ background: 'var(--sq-range-bg)' }}>
             <strong>Range:</strong> {counts.range}
           </div>
-          <div className={styles["stat-item"]} style={{ background: 'rgba(75, 0, 130, 0.2)' }}>
+          <div className={styles["stat-item"]} style={{ background: 'var(--sq-promotion-bg)' }}>
             <strong>Promotion:</strong> {counts.promotion}
           </div>
-          <div className={styles["stat-item"]} style={{ background: 'rgba(50, 205, 50, 0.2)' }}>
+          <div className={styles["stat-item"]} style={{ background: 'var(--sq-control-bg)' }}>
             <strong>Control:</strong> {counts.control}
           </div>
-          <div className={styles["stat-item"]} style={{ background: 'rgba(255, 215, 0, 0.2)' }}>
+          <div className={styles["stat-item"]} style={{ background: 'var(--sq-custom-bg)' }}>
             <strong>Custom:</strong> {counts.custom}
           </div>
         </div>
@@ -551,7 +551,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       {/* Control Squares General Settings */}
       {gameData.squares_condition && counts.control > 0 && (
         <div className={styles["control-settings-section"]}>
-          <h4 style={{ color: '#32CD32', marginBottom: '16px' }}>
+          <h4 style={{ color: 'var(--sq-control)', marginBottom: '16px' }}>
             🎯 Control Squares Win Settings
           </h4>
           <div className={styles["form-row"]}>
@@ -605,10 +605,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       <div className={styles["placement-instructions"]}>
         <h3>Square Types:</h3>
         <ul>
-          <li><strong style={{ color: '#ff8c00' }}>Range Squares (R):</strong> Increase the attack/movement range of pieces on this square</li>
-          <li><strong style={{ color: '#4b0082' }}>Promotion Squares (P):</strong> Pieces can be promoted to different types on this square</li>
-          <li><strong style={{ color: '#32CD32' }}>Control Squares (C):</strong> Players must control these squares to win (if control squares win condition is enabled)</li>
-          <li><strong style={{ color: '#ffd700' }}>Custom Squares (X):</strong> Custom effects to be defined later</li>
+          <li><strong style={{ color: 'var(--sq-range)' }}>Range Squares (R):</strong> Increase the attack/movement range of pieces on this square</li>
+          <li><strong style={{ color: 'var(--sq-promotion)' }}>Promotion Squares (P):</strong> Pieces can be promoted to different types on this square</li>
+          <li><strong style={{ color: 'var(--sq-control)' }}>Control Squares (C):</strong> Players must control these squares to win (if control squares win condition is enabled)</li>
+          <li><strong style={{ color: 'var(--sq-custom)' }}>Custom Squares (X):</strong> Custom effects to be defined later</li>
         </ul>
         <p style={{ marginTop: '10px', fontStyle: 'italic' }}>
           Right-click any square to add a special square type. Click a special square to edit or remove it. 
