@@ -5,6 +5,37 @@ import API_URL from "../../global/global";
 
 const changelogData = [
   {
+    date: "April 13, 2026",
+    title: "Library UX, Profile Sections & Emoji Improvements",
+    items: [
+      "Create New Game and Create New Piece buttons now appear in the header row next to the page title",
+      "On smaller screens, the create button moves to its own centered row below the header",
+      "My Games and My Pieces filter buttons replaced with options in the Sort By dropdown",
+      "Show Pieces As toggle moved into the filter controls area on the Piece Library page",
+      "My Games and My Pieces sections on profiles are now collapsible with a toggle arrow",
+      "Match History section on profiles is now collapsible and no longer has extra top margin",
+      "Long-pressing piece images on mobile no longer triggers the browser context menu",
+      "Touch-action fixes applied to boards across home, sandbox, game wizard, match view, and game type view",
+      "Emoji picker now lazy-loads emojis for faster opening and smoother scrolling",
+      "Emoji category headers removed from the picker grid for a cleaner layout",
+      "Admin and Owner roles can now properly edit other users' profiles",
+      "Admin and Owner roles can now properly edit forum posts they didn't create",
+      "Every forum post page now has a 'Back to Forums' arrow link at the top",
+      "Game links in the Game Forums table no longer show underlines and have proper hover styling",
+      "Create New Game and Create New Piece buttons are now anchored to the upper right with the title centered",
+      "Match History section on profiles now uses the same panel styling as Ongoing Games",
+      "Fixed piece drag and drop on the home page boards that stopped working on desktop",
+      "Admins can now only moderate content from regular users; Owners can moderate all content including admin content",
+      "Profile Bio section now uses the same card styling as other profile sections",
+      "Profile card sections have tighter padding for a more compact layout",
+      "My Games, My Pieces, and Match History sections are now collapsed by default on profiles",
+      "Reduced spacing in friends list and ongoing games sections on profiles",
+      "Create button padding and game/piece library title margins adjusted for a cleaner header",
+      "Filter controls on Game Library and Piece Library pages now fit content width on larger screens",
+      "Accent text color is slightly lighter across both green and blue themes for better readability",
+    ]
+  },
+  {
     date: "April 15, 2026",
     title: "Home Board Revamp & Visual Tweaks",
     items: [

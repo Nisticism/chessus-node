@@ -83,7 +83,7 @@ code {
 
   /* Theme-aware accent colors */
   --accent-primary: #439157;
-  --accent-primary-text: #5a9068;
+  --accent-primary-text: #6fad7d;
   --accent-primary-hover: #387a4a;
   --accent-highlight: #81c784;
   --accent-bright: #66bb6a;
@@ -183,7 +183,7 @@ code {
   --nav-menu-bg: rgb(200, 230, 210);
 
   --accent-primary: #439157;
-  --accent-primary-text: #5a9068;
+  --accent-primary-text: #6fad7d;
   --accent-primary-hover: #387a4a;
   --accent-highlight: #81c784;
   --accent-bright: #66bb6a;
@@ -275,7 +275,7 @@ code {
   --nav-menu-bg: rgb(202, 213, 232);
 
   --accent-primary: #4a90e2;
-  --accent-primary-text: #6a9cd4;
+  --accent-primary-text: #7fb3e8;
   --accent-primary-hover: #357abd;
   --accent-highlight: #64b5f6;
   --accent-bright: #60a5fa;
