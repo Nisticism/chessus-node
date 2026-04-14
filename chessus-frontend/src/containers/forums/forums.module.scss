@@ -12,7 +12,7 @@
 
   th {
     background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     padding: 16px 20px;
     text-align: left;
     font-size: 14px;
@@ -74,7 +74,7 @@
 .forum-page-title {
   font-size: 3rem;
   font-weight: 700;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   margin-bottom: 30px;
   text-align: center;
 }
@@ -108,7 +108,7 @@
 
 .forums-link {
   a {
-    color: #ffffff;
+    color: var(--text-heading);
     text-decoration: none;
     display: flex;
     
@@ -154,13 +154,13 @@
 .forum-title {
   font-size: 18px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-heading);
 }
 
 .forums-username {
   font-size: 16px;
   font-weight: 500;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   
   &:hover {
     color: var(--text-info);
@@ -218,5 +218,5 @@
 // .forum-row {
 //   margin-top: 20px;
 //   border-radius: 5px;
-//   border: 2px solid white;
+//   border: 2px solid var(--text-heading);
 // }

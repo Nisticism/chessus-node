@@ -9,7 +9,7 @@
   background: linear-gradient(180deg, var(--bg-deeper) 0%, var(--bg-dark) 100%);
   min-height: 50px;
   max-height: 7vh;
-  color: white;
+  color: var(--text-heading);
 }
 
 .content {
@@ -26,7 +26,7 @@ h1 {
 }
 
 a {
-  color: white;
+  color: var(--text-heading);
 }
 
 .center {

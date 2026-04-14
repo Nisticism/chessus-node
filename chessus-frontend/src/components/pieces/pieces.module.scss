@@ -16,11 +16,11 @@
   th {
     height: 40px;
     padding: 4px 12px;
-    border: 1px solid white;
+    border: 1px solid var(--text-heading);
   }
   td {
     padding: 4px 12px;
-    border: 1px solid white;
+    border: 1px solid var(--text-heading);
     max-width: 400px;
   }
 }
