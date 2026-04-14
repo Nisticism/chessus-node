@@ -554,6 +554,21 @@ const migrations = [
     column: 'moderation_status',
     sql: "ALTER TABLE pieces ADD COLUMN moderation_status ENUM('approved', 'pending_review', 'rejected') DEFAULT 'approved'",
     description: "Add moderation_status column to pieces for image moderation tracking"
+  },
+  {
+    table: 'game_type_upvotes',
+    sql: `CREATE TABLE IF NOT EXISTS game_type_upvotes (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      game_type_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE KEY unique_upvote (game_type_id, user_id),
+      INDEX idx_upvotes_game_type_id (game_type_id),
+      INDEX idx_upvotes_user_id (user_id)
+    )`,
+    description: "Create game_type_upvotes table for game upvote system"
   }
 ];
 
@@ -2212,6 +2227,62 @@ const runMigrations = async () => {
   }
 
   
+  // Add die_on_capture column to pieces table
+  try {
+    const piecesDieOnCapture = await columnExists('pieces', 'die_on_capture');
+    if (!piecesDieOnCapture) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN die_on_capture TINYINT(1) DEFAULT 0 COMMENT 'If true, this piece is also removed when it captures another piece'`,
+        "Add die_on_capture column to pieces table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding die_on_capture to pieces:', err.message);
+  }
+
+  // Add attack_radius column to pieces table
+  try {
+    const piecesAttackRadius = await columnExists('pieces', 'attack_radius');
+    if (!piecesAttackRadius) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN attack_radius INT DEFAULT 0 COMMENT 'Radius of area-of-effect damage around landing square on capture (like trample radius but independent of trample)'`,
+        "Add attack_radius column to pieces table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding attack_radius to pieces:', err.message);
+  }
+
+  // Add die_on_capture column to game_type_pieces for per-placement overrides
+  try {
+    const gtpDieOnCapture = await columnExists('game_type_pieces', 'die_on_capture');
+    if (!gtpDieOnCapture) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN die_on_capture TINYINT(1) DEFAULT 0 COMMENT 'Per-placement die_on_capture override'`,
+        "Add die_on_capture column to game_type_pieces for per-placement override"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding die_on_capture to game_type_pieces:', err.message);
+  }
+
+  // Add attack_radius column to game_type_pieces for per-placement overrides
+  try {
+    const gtpAttackRadius = await columnExists('game_type_pieces', 'attack_radius');
+    if (!gtpAttackRadius) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN attack_radius INT DEFAULT 0 COMMENT 'Per-placement attack_radius override'`,
+        "Add attack_radius column to game_type_pieces for per-placement override"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding attack_radius to game_type_pieces:', err.message);
+  }
+
   // ===================== MESSAGING SYSTEM MIGRATIONS =====================
   
     // Create direct_messages table for private messaging
@@ -2440,6 +2511,20 @@ const runMigrations = async () => {
       }
     } catch (err) {
       console.error('Error adding simultaneous_turns column:', err.message);
+    }
+
+    // Add promotion_condition column to game_types (win when a promotable piece reaches a promotion square)
+    try {
+      const promotionConditionCol = await columnExists('game_types', 'promotion_condition');
+      if (!promotionConditionCol) {
+        await runMigration(
+          `ALTER TABLE game_types ADD COLUMN promotion_condition BOOLEAN DEFAULT FALSE COMMENT 'If true, a player instantly wins when their promotable piece reaches a promotion square'`,
+          "Add promotion_condition column to game_types table for win-on-promotion condition"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding promotion_condition column:', err.message);
     }
 
     // Upgrade pieces_string to MEDIUMTEXT for large game boards

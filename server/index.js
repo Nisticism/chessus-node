@@ -1900,6 +1900,8 @@ app.get("/api/games", async (req, res) => {
         'territory': 'gt.squares_condition = 1',
         'hill': 'gt.hill_condition = 1',
         'piece_count': 'gt.piece_count_condition = 1',
+        'no_moves': 'gt.no_moves_condition = 1',
+        'promotion': 'gt.promotion_condition = 1',
       };
       if (condMap[winCondition]) {
         conditions.push(condMap[winCondition]);
@@ -1920,11 +1922,18 @@ app.get("/api/games", async (req, res) => {
     let joinClause = '';
     let selectExtra = '';
 
+    // Always include upvote count
+    joinClause = 'LEFT JOIN game_type_upvotes gu ON gt.id = gu.game_type_id';
+    selectExtra = ', COUNT(DISTINCT gu.id) as upvote_count';
+
     switch (sort) {
       case 'popular':
-        joinClause = 'LEFT JOIN games g ON gt.id = g.game_type_id';
-        selectExtra = ', COUNT(g.id) as play_count';
+        joinClause += ' LEFT JOIN games g ON gt.id = g.game_type_id';
+        selectExtra += ', COUNT(DISTINCT g.id) as play_count';
         orderClause = 'ORDER BY play_count DESC, gt.id DESC';
+        break;
+      case 'most_upvoted':
+        orderClause = 'ORDER BY upvote_count DESC, gt.id DESC';
         break;
       case 'last_played':
         orderClause = 'ORDER BY gt.last_played_at DESC NULLS LAST, gt.id DESC';
@@ -1944,8 +1953,7 @@ app.get("/api/games", async (req, res) => {
     const total = countResult[0].total;
 
     // Get paginated games
-    const groupBy = joinClause ? 'GROUP BY gt.id' : '';
-    const dataQuery = `SELECT gt.*${selectExtra} FROM game_types gt ${joinClause} ${whereClause} ${groupBy} ${orderClause} LIMIT ? OFFSET ?`;
+    const dataQuery = `SELECT gt.*${selectExtra} FROM game_types gt ${joinClause} ${whereClause} GROUP BY gt.id ${orderClause} LIMIT ? OFFSET ?`;
     const [games] = await db_pool.query(dataQuery, [...whereParams, limit, offset]);
     
     res.json({
@@ -1981,10 +1989,89 @@ app.get("/api/games/:gameId", async (req, res) => {
     if (forumRows.length > 0) {
       game.article_id = forumRows[0].id;
     }
+
+    // Get upvote count
+    const [upvoteResult] = await db_pool.query(
+      'SELECT COUNT(*) as count FROM game_type_upvotes WHERE game_type_id = ?',
+      [gameId]
+    );
+    game.upvote_count = upvoteResult[0].count;
     
     res.json(game);
   } catch (err) {
     console.error("Error in GET /api/games/:gameId:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Toggle upvote on a game type
+app.post("/api/games/:gameId/upvote", authenticateToken, async (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.gameId);
+    const userId = req.user.id;
+
+    // Check if already upvoted
+    const [existing] = await db_pool.query(
+      'SELECT id FROM game_type_upvotes WHERE game_type_id = ? AND user_id = ?',
+      [gameTypeId, userId]
+    );
+
+    if (existing.length > 0) {
+      // Remove upvote
+      await db_pool.query(
+        'DELETE FROM game_type_upvotes WHERE game_type_id = ? AND user_id = ?',
+        [gameTypeId, userId]
+      );
+    } else {
+      // Add upvote
+      await db_pool.query(
+        'INSERT INTO game_type_upvotes (game_type_id, user_id) VALUES (?, ?)',
+        [gameTypeId, userId]
+      );
+    }
+
+    // Return updated count
+    const [countResult] = await db_pool.query(
+      'SELECT COUNT(*) as count FROM game_type_upvotes WHERE game_type_id = ?',
+      [gameTypeId]
+    );
+
+    res.json({
+      upvoted: existing.length === 0,
+      upvote_count: countResult[0].count
+    });
+  } catch (err) {
+    console.error("Error in POST /api/games/:gameId/upvote:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Get upvote status for a game (requires auth to know if user upvoted)
+app.get("/api/games/:gameId/upvote", optionalAuthenticate, async (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.gameId);
+    const userId = req.user?.id;
+
+    const [countResult] = await db_pool.query(
+      'SELECT COUNT(*) as count FROM game_type_upvotes WHERE game_type_id = ?',
+      [gameTypeId]
+    );
+
+    let upvoted = false;
+    if (userId) {
+      const [existing] = await db_pool.query(
+        'SELECT id FROM game_type_upvotes WHERE game_type_id = ? AND user_id = ?',
+        [gameTypeId, userId]
+      );
+      upvoted = existing.length > 0;
+    }
+
+    res.json({
+      upvoted,
+      upvote_count: countResult[0].count
+    });
+  } catch (err) {
+    console.error("Error in GET /api/games/:gameId/upvote:", err);
     res.status(500).send({ err: err.message });
   }
 });
@@ -2066,7 +2153,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         starting_piece_count = ?, pieces_string = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
         randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?,
-        no_moves_condition = ?, piece_count_condition = ?
+        no_moves_condition = ?, piece_count_condition = ?, promotion_condition = ?
       WHERE id = ?
     `;
     
@@ -2106,6 +2193,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.repetition_draw_count != null && gameData.repetition_draw_count >= 2 && gameData.repetition_draw_count <= 9 ? gameData.repetition_draw_count : null,
       gameData.no_moves_condition || false,
       gameData.piece_count_condition || false,
+      gameData.promotion_condition || false,
       gameId
     ];
     
@@ -2166,7 +2254,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.show_burn ?? false,
               piece.trample || false,
               piece.trample_radius ?? 0,
-              piece.ghostwalk || false
+              piece.ghostwalk || false,
+              piece.die_on_capture || false,
+              piece.attack_radius ?? 0
             );
           }
         }
@@ -4065,9 +4155,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         starting_piece_count, range_squares_string,
         promotion_squares_string, special_squares_string, control_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
-        no_moves_condition, piece_count_condition,
+        no_moves_condition, piece_count_condition, promotion_condition,
         pieces_string, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -4107,6 +4197,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.repetition_draw_count != null && gameData.repetition_draw_count >= 2 && gameData.repetition_draw_count <= 9 ? gameData.repetition_draw_count : null,
       gameData.no_moves_condition || false,
       gameData.piece_count_condition || false,
+      gameData.promotion_condition || false,
       gameData.pieces_string || '{}',
       new Date().toISOString().slice(0, 19).replace('T', ' ')
     ];
@@ -4165,7 +4256,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.show_burn ?? false,
               piece.trample || false,
               piece.trample_radius ?? 0,
-              piece.ghostwalk || false
+              piece.ghostwalk || false,
+              piece.die_on_capture || false,
+              piece.attack_radius ?? 0
             );
           }
         }

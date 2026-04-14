@@ -858,6 +858,9 @@ function initializeSocket(server) {
               trample: piece.trample || fullPieceData.trample,
               trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
               ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
+              // Die on capture & attack radius
+              die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
+              attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
               custom_movement_squares: fullPieceData.custom_movement_squares,
               custom_attack_squares: fullPieceData.custom_attack_squares
             };
@@ -1306,6 +1309,8 @@ function initializeSocket(server) {
               trample: piece.trample || fullPieceData.trample,
               trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
               ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
+              die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
+              attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
               custom_movement_squares: fullPieceData.custom_movement_squares,
               custom_attack_squares: fullPieceData.custom_attack_squares,
             };
@@ -1688,6 +1693,8 @@ function initializeSocket(server) {
                   trample: piece.trample || fullPieceData.trample,
                   trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
                   ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
+                  die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
+                  attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
                   custom_movement_squares: fullPieceData.custom_movement_squares,
                   custom_attack_squares: fullPieceData.custom_attack_squares
                 };
@@ -2237,6 +2244,40 @@ function initializeSocket(server) {
 
         // Check if promotion is required (only if there are valid options)
         if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
+
+          // Win on promotion: if enabled, reaching a promotion square instantly wins
+          if (gameState.gameType?.promotion_condition) {
+            stopGameTimer(gameId);
+            gameState.status = 'completed';
+            gameState.winner = userId;
+            gameState.winReason = 'promotion';
+
+            const loser = gameState.players.find(p => p.id !== userId);
+            let eloChanges = null;
+            if (gameState.rated !== false && userId && loser) {
+              eloChanges = await updateEloRatings(userId, loser.id);
+            }
+
+            const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            await db_pool.query(
+              `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+               pieces = ?, other_data = ? WHERE id = ?`,
+              [endTime, sanitizeWinnerId(userId), JSON.stringify(gameState.pieces),
+               buildOtherData(gameState, { winner: userId, reason: 'promotion', eloChanges }),
+               gameId]
+            );
+
+            io.to(`game-${gameId}`).emit("gameOver", {
+              gameId,
+              winner: userId,
+              reason: 'promotion',
+              move: moveRecord,
+              finalState: gameState,
+              eloChanges
+            });
+            return;
+          }
+
           // Store pending promotion
           gameState.pendingPromotion = {
             pieceId: moveResult.promotionEligible.pieceId,
@@ -3552,6 +3593,8 @@ function initializeSocket(server) {
           trample: fullPieceData.trample,
           trample_radius: fullPieceData.trample_radius,
           ghostwalk: fullPieceData.ghostwalk,
+          die_on_capture: fullPieceData.die_on_capture,
+          attack_radius: fullPieceData.attack_radius,
           custom_movement_squares: fullPieceData.custom_movement_squares,
           custom_attack_squares: fullPieceData.custom_attack_squares,
           // Reset move tracking for the new piece type
@@ -4062,6 +4105,8 @@ function initializeSocket(server) {
                     trample: piece.trample || fullPieceData.trample,
                     trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
                     ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
+                    die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
+                    attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
                     custom_movement_squares: fullPieceData.custom_movement_squares,
                     custom_attack_squares: fullPieceData.custom_attack_squares
                   };
@@ -5322,7 +5367,8 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     return { valid: false, reason: "Piece not found" };
   }
 
-  const piece = pieces[pieceIndex];
+  const piece = applyRangeSquareBonus(pieces[pieceIndex], gameState.gameType);
+  const originalPiece = pieces[pieceIndex]; // Keep reference to original in array
 
   // Verify the piece is at the 'from' position
   if (piece.x !== from.x || piece.y !== from.y) {
@@ -5976,6 +6022,67 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       }
     }
 
+    // Handle attack radius ability - area-of-effect damage around landing square when capturing
+    // Unlike trample radius, this doesn't require trample and only fires at the destination
+    // If piece has ghostwalk (without trample), it does NOT attack pieces it moved through
+    const attackRadiusVal = movingPiece.attack_radius || 0;
+    if (attackRadiusVal > 0 && (capturedPiece !== null || hoppedCaptures.length > 0)) {
+      const attackDmg = movingPiece.attack_damage || 1;
+      const pieceOwner = movingPiece.team || movingPiece.player_id;
+      const attackedPieceIds = new Set();
+      // Don't re-damage pieces already hit by trample or hop
+      hoppedCaptures.forEach(p => attackedPieceIds.add(p.id));
+      damagedPieces.forEach(d => attackedPieceIds.add(d.id));
+      if (capturedPiece) attackedPieceIds.add(capturedPiece.id);
+
+      // Collect squares within attack radius of landing square
+      for (let ry = -attackRadiusVal; ry <= attackRadiusVal; ry++) {
+        for (let rx = -attackRadiusVal; rx <= attackRadiusVal; rx++) {
+          if (rx === 0 && ry === 0) continue; // Skip landing square itself (already handled by normal capture)
+          const tx = to.x + rx;
+          const ty = to.y + ry;
+          const targetPiece = findPieceAtSquare(pieces, tx, ty);
+          if (!targetPiece) continue;
+          if (targetPiece.id === movingPiece.id) continue;
+          if (attackedPieceIds.has(targetPiece.id)) continue;
+          if (targetPiece.cannot_be_captured) continue;
+          // Checkmateable pieces are immune to attack radius splash
+          if (targetPiece.ends_game_on_checkmate) continue;
+          // Only damage enemies (unless can_capture_allies)
+          const targetOwner = targetPiece.team || targetPiece.player_id;
+          if (targetOwner === pieceOwner && !(movingPiece.can_capture_allies === 1 || movingPiece.can_capture_allies === true)) continue;
+
+          attackedPieceIds.add(targetPiece.id);
+          const prevHp = targetPiece.current_hp ?? targetPiece.hit_points ?? 1;
+          targetPiece.current_hp = Math.max(0, prevHp - attackDmg);
+
+          if (targetPiece.current_hp <= 0) {
+            const idx = pieces.findIndex(p => p.id === targetPiece.id);
+            if (idx !== -1) {
+              pieces.splice(idx, 1);
+              hoppedCaptures.push(targetPiece);
+            }
+          } else {
+            if (movingPiece.burn_damage > 0 && movingPiece.burn_duration > 0) {
+              targetPiece.burn_active_damage = movingPiece.burn_damage;
+              targetPiece.burn_active_turns = movingPiece.burn_duration;
+            }
+            damagedPieces.push({ id: targetPiece.id, damageDealt: attackDmg, previousHp: prevHp, remainingHp: targetPiece.current_hp });
+          }
+        }
+      }
+    }
+
+    // Handle die_on_capture - piece is also removed when it captures
+    const hasDieOnCapture = movingPiece.die_on_capture === 1 || movingPiece.die_on_capture === true;
+    if (hasDieOnCapture && (capturedPiece !== null || hoppedCaptures.length > 0)) {
+      const selfIndex = pieces.findIndex(p => p.id === movingPiece.id);
+      if (selfIndex !== -1) {
+        pieces.splice(selfIndex, 1);
+        hoppedCaptures.push(movingPiece);
+      }
+    }
+
     // Check for chain capture ability (can continue capturing after a capture)
     const hasChainCapture = movingPiece.chain_capture_enabled === 1 || movingPiece.chain_capture_enabled === true;
     const didCapture = capturedPiece !== null || hoppedCaptures.length > 0;
@@ -6340,6 +6447,7 @@ function isDestinationClearServer(movingPiece, toX, toY, allPieces, capturedPiec
  */
 function isPieceUnderAttack(gameState, targetPiece) {
   const { pieces } = gameState;
+  const gameType = gameState.gameType;
   const targetOwnerPosition = targetPiece.team || targetPiece.player_id;
   
   // Get all enemy pieces
@@ -6363,14 +6471,14 @@ function isPieceUnderAttack(gameState, targetPiece) {
           let canAttack = false;
           for (let edy = 0; edy < eh && !canAttack; edy++) {
             for (let edx = 0; edx < ew && !canAttack; edx++) {
-              if (canPieceAttackSquare(enemyPiece, sx - edx, sy - edy, pieces)) {
+              if (canPieceAttackSquare(enemyPiece, sx - edx, sy - edy, pieces, gameType)) {
                 canAttack = true;
               }
             }
           }
           if (canAttack) return true;
         } else {
-          if (canPieceAttackSquare(enemyPiece, sx, sy, pieces)) {
+          if (canPieceAttackSquare(enemyPiece, sx, sy, pieces, gameType)) {
             return true;
           }
         }
@@ -6390,6 +6498,7 @@ function isPieceUnderAttack(gameState, targetPiece) {
  */
 function isPieceUnderLethalAttack(gameState, targetPiece) {
   const { pieces } = gameState;
+  const gameType = gameState.gameType;
   const targetOwnerPosition = targetPiece.team || targetPiece.player_id;
   const targetHp = targetPiece.current_hp ?? targetPiece.hit_points ?? 1;
   
@@ -6417,14 +6526,14 @@ function isPieceUnderLethalAttack(gameState, targetPiece) {
           let canAttack = false;
           for (let edy = 0; edy < eh && !canAttack; edy++) {
             for (let edx = 0; edx < ew && !canAttack; edx++) {
-              if (canPieceAttackSquare(enemyPiece, sx - edx, sy - edy, pieces)) {
+              if (canPieceAttackSquare(enemyPiece, sx - edx, sy - edy, pieces, gameType)) {
                 canAttack = true;
               }
             }
           }
           if (canAttack) return true;
         } else {
-          if (canPieceAttackSquare(enemyPiece, sx, sy, pieces)) {
+          if (canPieceAttackSquare(enemyPiece, sx, sy, pieces, gameType)) {
             return true;
           }
         }
@@ -6531,10 +6640,13 @@ function isRangedPathClear(fromX, fromY, toX, toY, piece, allPieces, pieceOwnerP
  * Check if a piece can perform a ranged attack to a target position
  * Server-side mirror of client's canRangedAttackTo from pieceMovementUtils.js
  */
-function canRangedAttackTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosition) {
+function canRangedAttackTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosition, gameType) {
   if (!pieceData) return false;
   if (fromRow === toRow && fromCol === toCol) return false;
   if (!pieceData.can_capture_enemy_via_range) return false;
+
+  // Apply range square bonus
+  if (gameType) pieceData = applyRangeSquareBonus(pieceData, gameType);
 
   const rowDiff = playerPosition === 2 ? (fromRow - toRow) : (toRow - fromRow);
   const colDiff = playerPosition === 2 ? (fromCol - toCol) : (toCol - fromCol);
@@ -6584,7 +6696,10 @@ function canRangedAttackTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosi
  * Check if a piece can attack a specific square
  * This is a simplified version - ideally should use full piece movement data
  */
-function canPieceAttackSquare(piece, targetX, targetY, allPieces) {
+function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
+  // Apply range square bonus
+  if (gameType) piece = applyRangeSquareBonus(piece, gameType);
+
   const dx = targetX - piece.x;
   const dy = targetY - piece.y;
   const absDx = Math.abs(dx);
@@ -7602,6 +7717,100 @@ function checkForCheck(gameState, playerPosition) {
 }
 
 /**
+ * Apply range square bonus: +1 to all non-infinite, non-zero, non-custom movement/capture/attack values.
+ * Returns a shallow copy of the piece with boosted stats if on a range square, or the original piece if not.
+ */
+function applyRangeSquareBonus(piece, gameType) {
+  if (!gameType || !gameType.range_squares_string) return piece;
+  
+  let rangeSquares;
+  try {
+    rangeSquares = typeof gameType.range_squares_string === 'string'
+      ? JSON.parse(gameType.range_squares_string)
+      : gameType.range_squares_string;
+  } catch (e) {
+    return piece;
+  }
+  
+  if (!rangeSquares || typeof rangeSquares !== 'object') return piece;
+  
+  // Range squares use "row,col" format where row = y, col = x
+  const key = `${piece.y},${piece.x}`;
+  if (!rangeSquares[key]) return piece;
+  
+  const bonus = rangeSquares[key].rangeBonus || 1;
+  const boosted = { ...piece };
+  
+  // Helper: add bonus to a value (skip 0, null, undefined, and 99/infinite)
+  const boost = (val) => {
+    if (!val || val === 0 || val === 99) return val;
+    // For step values, negative means orthogonal-only; preserve sign, boost absolute
+    if (val < 0) return val - bonus;
+    return val + bonus;
+  };
+  
+  // Directional movement fields
+  const directions = ['up', 'down', 'left', 'right', 'up_left', 'up_right', 'down_left', 'down_right'];
+  for (const dir of directions) {
+    if (boosted[`${dir}_movement`]) boosted[`${dir}_movement`] = boost(boosted[`${dir}_movement`]);
+    if (boosted[`${dir}_capture`]) boosted[`${dir}_capture`] = boost(boosted[`${dir}_capture`]);
+    if (boosted[`${dir}_attack_range`]) boosted[`${dir}_attack_range`] = boost(boosted[`${dir}_attack_range`]);
+  }
+  
+  // Step movement/capture/attack
+  if (boosted.step_by_step_movement_value) boosted.step_by_step_movement_value = boost(boosted.step_by_step_movement_value);
+  if (boosted.step_movement_value) boosted.step_movement_value = boost(boosted.step_movement_value);
+  if (boosted.step_capture_value) boosted.step_capture_value = boost(boosted.step_capture_value);
+  if (boosted.step_by_step_attack_range) boosted.step_by_step_attack_range = boost(boosted.step_by_step_attack_range);
+  
+  // Ratio movement/attack
+  if (boosted.ratio_movement_1) boosted.ratio_movement_1 = boost(boosted.ratio_movement_1);
+  if (boosted.ratio_movement_2) boosted.ratio_movement_2 = boost(boosted.ratio_movement_2);
+  if (boosted.ratio_one_attack_range) boosted.ratio_one_attack_range = boost(boosted.ratio_one_attack_range);
+  if (boosted.ratio_two_attack_range) boosted.ratio_two_attack_range = boost(boosted.ratio_two_attack_range);
+  
+  // Boost additional movements in special_scenario_moves
+  if (boosted.special_scenario_moves) {
+    try {
+      const parsed = typeof boosted.special_scenario_moves === 'string'
+        ? JSON.parse(boosted.special_scenario_moves)
+        : { ...boosted.special_scenario_moves };
+      
+      if (parsed.additionalMovements) {
+        const boostedMoves = {};
+        for (const [dir, moveOptions] of Object.entries(parsed.additionalMovements)) {
+          boostedMoves[dir] = moveOptions.map(opt => {
+            if (opt.infinite || !opt.value) return opt;
+            return { ...opt, value: opt.value + bonus };
+          });
+        }
+        parsed.additionalMovements = boostedMoves;
+      }
+      
+      if (parsed.additionalCaptures) {
+        const boostedCaptures = {};
+        for (const [dir, captureOptions] of Object.entries(parsed.additionalCaptures)) {
+          boostedCaptures[dir] = captureOptions.map(opt => {
+            if (opt.infinite || !opt.value) return opt;
+            return { ...opt, value: opt.value + bonus };
+          });
+        }
+        parsed.additionalCaptures = boostedCaptures;
+      }
+      
+      boosted.special_scenario_moves = typeof piece.special_scenario_moves === 'string'
+        ? JSON.stringify(parsed) : parsed;
+      boosted.special_scenario_captures = typeof piece.special_scenario_captures === 'string'
+        ? JSON.stringify(parsed) : parsed;
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
+  
+  return boosted;
+}
+
+/**
  * Get all possible moves for a piece
  * @param {Object} piece - The piece to get moves for
  * @param {Array} allPieces - All pieces on the board
@@ -7612,6 +7821,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   const moves = [];
   const boardWidth = gameType.board_width || 8;
   const boardHeight = gameType.board_height || 8;
+  
+  // Apply range square bonus if piece is on a range square
+  piece = applyRangeSquareBonus(piece, gameType);
   
   // Initialize moveCount if not present
   if (piece.moveCount === undefined) {
@@ -8740,7 +8952,8 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
   // This provides a reasonable default so games without explicit win conditions can still end
   const hasAnyWinCondition = gameType.mate_condition || gameType.capture_condition || 
                               gameType.value_condition || gameType.squares_condition || 
-                              gameType.hill_condition || gameType.no_moves_condition;
+                              gameType.hill_condition || gameType.no_moves_condition ||
+                              gameType.promotion_condition;
   
   if (!hasAnyWinCondition) {
     for (const player of players) {
@@ -8952,6 +9165,14 @@ async function processBotTurn(io, gameId, gameState) {
 
       // 4. Handle promotion (auto-select best option)
       if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
+
+        // Win on promotion: if enabled, reaching a promotion square instantly wins for the bot
+        if (gameState.gameType?.promotion_condition) {
+          return await finishBotGame(io, gameId, gameState, {
+            gameOver: true, winner: botPlayer.id, reason: 'promotion'
+          }, moveRecord, {});
+        }
+
         const bestPromo = aiEngine.chooseBestPromotion(moveResult.promotionEligible.options);
         if (bestPromo && bestPromo.piece_id) {
           const pieceIndex = gameState.pieces.findIndex(p => p.id === moveResult.promotionEligible.pieceId);
