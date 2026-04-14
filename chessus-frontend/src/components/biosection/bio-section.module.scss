@@ -1,9 +1,5 @@
 .bio-section {
-  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
-  border-radius: 6px;
-  padding: 24px;
-  margin-bottom: 24px;
+  // Inherits panel styles from parent wrapperClassName (e.g. info-card)
 }
 
 .bio-header {

@@ -11,6 +11,7 @@ const MatchHistory = ({ userId, username }) => {
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({});
+  const [collapsed, setCollapsed] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -111,8 +112,11 @@ const MatchHistory = ({ userId, username }) => {
   if (loading && games.length === 0) {
     return (
       <div className={styles["match-history"]}>
-        <h2 className={styles["section-title"]}>Match History</h2>
-        <div className={styles["loading"]}>Loading match history...</div>
+        <h2 className={styles["section-title"]} onClick={() => setCollapsed(!collapsed)}>
+          Match History
+          <span className={`${styles["collapse-arrow"]} ${collapsed ? styles["collapsed"] : ''}`}>▼</span>
+        </h2>
+        {!collapsed && <div className={styles["loading"]}>Loading match history...</div>}
       </div>
     );
   }
@@ -120,8 +124,11 @@ const MatchHistory = ({ userId, username }) => {
   if (error) {
     return (
       <div className={styles["match-history"]}>
-        <h2 className={styles["section-title"]}>Match History</h2>
-        <div className={styles["error"]}>{error}</div>
+        <h2 className={styles["section-title"]} onClick={() => setCollapsed(!collapsed)}>
+          Match History
+          <span className={`${styles["collapse-arrow"]} ${collapsed ? styles["collapsed"] : ''}`}>▼</span>
+        </h2>
+        {!collapsed && <div className={styles["error"]}>{error}</div>}
       </div>
     );
   }
@@ -129,19 +136,29 @@ const MatchHistory = ({ userId, username }) => {
   if (games.length === 0) {
     return (
       <div className={styles["match-history"]}>
-        <h2 className={styles["section-title"]}>Match History</h2>
-        <div className={styles["empty-state"]}>
-          <p>No completed games yet.</p>
-          <p className={styles["empty-hint"]}>Play some games to build your match history!</p>
-        </div>
+        <h2 className={styles["section-title"]} onClick={() => setCollapsed(!collapsed)}>
+          Match History
+          <span className={`${styles["collapse-arrow"]} ${collapsed ? styles["collapsed"] : ''}`}>▼</span>
+        </h2>
+        {!collapsed && (
+          <div className={styles["empty-state"]}>
+            <p>No completed games yet.</p>
+            <p className={styles["empty-hint"]}>Play some games to build your match history!</p>
+          </div>
+        )}
       </div>
     );
   }
 
   return (
     <div className={styles["match-history"]}>
-      <h2 className={styles["section-title"]}>Match History</h2>
+      <h2 className={styles["section-title"]} onClick={() => setCollapsed(!collapsed)}>
+        Match History
+        <span className={`${styles["collapse-arrow"]} ${collapsed ? styles["collapsed"] : ''}`}>▼</span>
+      </h2>
       
+      {!collapsed && (
+        <>
       <div className={styles["games-list"]}>
         {games.map((game) => {
           const opponent = getOpponent(game);
@@ -216,6 +233,8 @@ const MatchHistory = ({ userId, username }) => {
             Next →
           </button>
         </div>
+      )}
+        </>
       )}
     </div>
   );
