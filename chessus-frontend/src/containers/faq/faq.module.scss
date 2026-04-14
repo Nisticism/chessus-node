@@ -10,7 +10,7 @@
 
   h1 {
     font-size: 3.5rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 15px;
   }
 
@@ -41,13 +41,13 @@
 
   &:hover {
     border-color: var(--border-bright);
-    color: #ffffff;
+    color: var(--text-heading);
   }
 
   &.active {
     background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
     border-color: var(--border-bright);
-    color: #ffffff;
+    color: var(--text-heading);
     font-weight: 600;
   }
 }
@@ -61,7 +61,7 @@
 .faq-category {
   .category-title {
     font-size: 1.8rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 20px;
     padding-bottom: 10px;
     border-bottom: 2px solid var(--panel-border);
@@ -99,7 +99,7 @@
   padding: 18px 24px;
   background: none;
   border: none;
-  color: #ffffff;
+  color: var(--text-heading);
   font-size: 1.1rem;
   font-weight: 500;
   cursor: pointer;
@@ -107,14 +107,14 @@
   gap: 15px;
 
   &:hover {
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
   }
 }
 
 .toggle-icon {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   flex-shrink: 0;
   width: 24px;
   text-align: center;
@@ -148,7 +148,7 @@
   font-weight: 600;
 
   &:hover {
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     text-decoration: underline;
   }
 }

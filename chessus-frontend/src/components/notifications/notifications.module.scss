@@ -38,7 +38,7 @@
 
   &:hover:not(:disabled) {
     background: var(--accent-primary, #4a9e5a);
-    color: #fff;
+    color: var(--text-heading);
   }
 
   &:disabled {
@@ -176,7 +176,7 @@
 
   &.accept {
     background: var(--accent-primary, #4a9e5a);
-    color: #fff;
+    color: var(--text-heading);
 
     &:hover {
       background: var(--accent-primary-hover, #3d8a4d);
@@ -322,7 +322,7 @@
 
     &:hover:not(:disabled) {
       background: var(--accent-primary, #4a9e5a);
-      color: #fff;
+      color: var(--text-heading);
     }
 
     &:disabled {

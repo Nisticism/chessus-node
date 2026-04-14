@@ -38,7 +38,7 @@
 
   &:hover {
     background: var(--accent-primary, #4a9e5a);
-    color: #fff;
+    color: var(--text-heading);
   }
 }
 
@@ -142,7 +142,7 @@
 .new-conversation-submit {
   padding: 8px 16px;
   background: var(--accent-primary, #4a9e5a);
-  color: #fff;
+  color: var(--text-heading);
   border: none;
   border-radius: 6px;
   font-size: 0.85rem;
@@ -250,7 +250,7 @@
 
 .unread-badge {
   background: var(--accent-primary, #4a9e5a);
-  color: #fff;
+  color: var(--text-heading);
   font-size: 0.7rem;
   font-weight: 700;
   padding: 1px 6px;
@@ -320,7 +320,7 @@
   &.sent {
     align-self: flex-end;
     background: var(--accent-primary, #4a9e5a);
-    color: #fff;
+    color: var(--text-heading);
     border-bottom-right-radius: 4px;
   }
 
@@ -374,7 +374,7 @@
 .send-btn {
   padding: 8px 20px;
   background: var(--accent-primary, #4a9e5a);
-  color: #fff;
+  color: var(--text-heading);
   border: none;
   border-radius: 6px;
   font-size: 0.85rem;

@@ -2,7 +2,7 @@
   min-height: 100vh;
   background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-dark) 100%);
   padding: 40px 20px;
-  color: #ffffff;
+  color: var(--text-heading);
 }
 
 .dashboard-header {
@@ -14,7 +14,7 @@
 
   h1 {
     font-size: 2.5rem;
-    color: #ffffff;
+    color: var(--text-heading);
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
     margin: 0;
   }
@@ -48,7 +48,7 @@
   &.active {
     background: linear-gradient(135deg, var(--panel-border) 0%, var(--panel-bg-end) 100%);
     border-color: var(--text-dim);
-    color: #ffffff;
+    color: var(--text-heading);
     box-shadow: 0 4px 15px rgba(var(--panel-border-rgb), 0.4);
   }
 }
@@ -85,7 +85,7 @@
       font-size: 0.95rem;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      color: #ffffff;
+      color: var(--text-heading);
       border-bottom: 2px solid var(--panel-border);
     }
   }
@@ -110,7 +110,7 @@
 
 .role-admin {
   background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-  color: white;
+  color: var(--text-heading);
   padding: 4px 12px;
   border-radius: 6px;
   font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
@@ -130,7 +130,7 @@
 
 .role-user {
   background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
-  color: white;
+  color: var(--text-heading);
   padding: 4px 12px;
   border-radius: 6px;
   font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
@@ -140,7 +140,7 @@
 
 .edit-btn {
   background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
-  color: white;
+  color: var(--text-heading);
   padding: 8px 20px;
   border: none;
   border-radius: 6px;
@@ -161,7 +161,7 @@
 
 .ban-btn {
   background: linear-gradient(135deg, #dc3545 0%, #bd2130 100%);
-  color: white;
+  color: var(--text-heading);
   padding: 8px 20px;
   border: none;
   border-radius: 6px;
@@ -187,7 +187,7 @@
 
 .unban-btn {
   background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
-  color: white;
+  color: var(--text-heading);
   padding: 8px 20px;
   border: none;
   border-radius: 6px;
@@ -208,7 +208,7 @@
 
 .promote-btn {
   background: linear-gradient(135deg, #17a2b8 0%, #117a8b 100%);
-  color: white;
+  color: var(--text-heading);
   padding: 8px 20px;
   border: none;
   border-radius: 6px;
@@ -250,7 +250,7 @@
 
 .delete-btn {
   background: linear-gradient(135deg, #8b0000 0%, #5c0000 100%);
-  color: white;
+  color: var(--text-heading);
   padding: 8px 20px;
   border: none;
   border-radius: 6px;
@@ -353,7 +353,7 @@
   &.active {
     background: linear-gradient(135deg, var(--panel-border) 0%, var(--panel-bg-end) 100%);
     border-color: var(--text-dim);
-    color: #ffffff;
+    color: var(--text-heading);
     box-shadow: 0 4px 15px rgba(var(--panel-border-rgb), 0.4);
   }
 
@@ -411,7 +411,7 @@
 
   h2 {
     margin: 0;
-    color: #ffffff;
+    color: var(--text-heading);
     font-size: 1.8rem;
   }
 
@@ -449,7 +449,7 @@
   label {
     display: block;
     margin-bottom: 8px;
-    color: #ffffff;
+    color: var(--text-heading);
     font-weight: 600;
     font-size: 1rem;
   }
@@ -464,7 +464,7 @@
     background: rgba(var(--panel-bg-start-rgb), 0.6);
     border: 2px solid var(--panel-border);
     border-radius: 8px;
-    color: #ffffff;
+    color: var(--text-heading);
     font-size: 1rem;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
 
@@ -500,7 +500,7 @@
   background: rgba(108, 117, 125, 0.3);
   border: 2px solid #6c757d;
   border-radius: 8px;
-  color: #ffffff;
+  color: var(--text-heading);
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -516,7 +516,7 @@
   background: linear-gradient(135deg, #28a745 0%, #20803a 100%);
   border: none;
   border-radius: 8px;
-  color: white;
+  color: var(--text-heading);
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -563,13 +563,13 @@
 
 .alert-success {
   background: linear-gradient(135deg, #28a745 0%, #20803a 100%);
-  color: white;
+  color: var(--text-heading);
   box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
 }
 
 .alert-error {
   background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-  color: white;
+  color: var(--text-heading);
   box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
 }
 
@@ -649,7 +649,7 @@
     display: block;
     font-size: 1.1rem;
     font-weight: 600;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 10px;
   }
 }
@@ -660,7 +660,7 @@
   background: rgba(var(--panel-border-rgb), 0.3);
   border: 1px solid var(--panel-border);
   border-radius: 6px;
-  color: #ffffff;
+  color: var(--text-heading);
   font-size: 1rem;
   cursor: pointer;
 
@@ -671,7 +671,7 @@
 
   option {
     background: var(--bg-dark);
-    color: #ffffff;
+    color: var(--text-heading);
   }
 }
 
@@ -685,7 +685,7 @@
   gap: 5px;
 
   strong {
-    color: #ffffff;
+    color: var(--text-heading);
     font-size: 1rem;
   }
 
@@ -697,7 +697,7 @@
 
 .settings-section {
   h3 {
-    color: #fff;
+    color: var(--text-heading);
     font-size: 1.1rem;
     margin-bottom: 20px;
   }

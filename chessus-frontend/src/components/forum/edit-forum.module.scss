@@ -62,12 +62,12 @@
 }
 
 .comments-container {
-  color: white;
+  color: var(--text-heading);
   margin-left: 5%;
   margin-right: 5%;
   .comment-container {
     a {
-      color: white;
+      color: var(--text-heading);
     }
     a:hover {
       color: var(--text-light-gray);
@@ -138,7 +138,7 @@
 }
 
 .edit-forum-title {
-  color: white;
+  color: var(--text-heading);
 }
 
 .loading-container {

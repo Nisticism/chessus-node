@@ -17,13 +17,13 @@
 
   .game-title {
     h1 {
-      color: #fff;
+      color: var(--text-heading);
       font-size: 1.5rem;
       margin: 0;
     }
 
     .game-type-link {
-      color: #fff;
+      color: var(--text-heading);
       text-decoration: none;
 
       &:hover {
@@ -323,7 +323,7 @@
   h3 {
     margin: 0;
     font-size: 1.2rem;
-    color: #fff;
+    color: var(--text-heading);
   }
 }
 
@@ -345,7 +345,7 @@
   h3 {
     margin: 0;
     font-size: 1.2rem;
-    color: #fff;
+    color: var(--text-heading);
   }
 }
 
@@ -399,7 +399,7 @@
 
 .move-white,
 .move-black {
-  color: #fff;
+  color: var(--text-heading);
   font-family: 'Courier New', monospace;
 }
 
@@ -467,7 +467,7 @@
   .player-name {
     font-size: 1.15rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-heading);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -499,7 +499,7 @@
     .time-value {
       font-size: 1.5rem;
       font-weight: bold;
-      color: #fff;
+      color: var(--text-heading);
       font-family: 'Courier New', monospace;
 
       &.low-time {
@@ -553,7 +553,7 @@
   .player-name {
     font-size: 1.3rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-heading);
     margin-bottom: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -583,7 +583,7 @@
       font-size: 1.5rem;
       font-weight: 700;
       font-family: monospace;
-      color: #fff;
+      color: var(--text-heading);
 
       &.low-time {
         color: #ff4444;
@@ -651,7 +651,7 @@
   .piece-count-tracker-value {
     font-size: 1.4rem;
     font-weight: 700;
-    color: #fff;
+    color: var(--text-heading);
     font-family: 'Courier New', monospace;
     min-width: 28px;
     text-align: center;
@@ -675,7 +675,7 @@
   h3 {
     margin: 0 0 16px 0;
     font-size: 1.2rem;
-    color: #fff;
+    color: var(--text-heading);
     text-align: center;
   }
 
@@ -702,7 +702,7 @@
   }
   
   .setting-value {
-    color: #fff;
+    color: var(--text-heading);
     font-size: 0.9rem;
     font-weight: 600;
     text-align: right;
@@ -730,7 +730,7 @@
     align-items: center;
     justify-content: center;
     gap: 16px;
-    color: #fff;
+    color: var(--text-heading);
     font-size: 0.95rem;
   }
 
@@ -1359,7 +1359,7 @@
   }
 
   h3 {
-    color: #fff;
+    color: var(--text-heading);
     font-size: 0.95rem;
     margin: 0 0 8px 0;
   }
@@ -1451,12 +1451,12 @@
 
     &:hover {
       background: rgba(255, 255, 255, 0.08);
-      color: #fff;
+      color: var(--text-heading);
     }
   }
 
   h3, h4 {
-    color: #fff;
+    color: var(--text-heading);
     font-size: 1rem;
     margin: 0;
   }
@@ -1498,7 +1498,7 @@
     }
 
     &:hover {
-      color: #fff;
+      color: var(--text-heading);
     }
   }
 
@@ -1553,7 +1553,7 @@
   border-top: 1px solid var(--border-subtle);
 
   h4 {
-    color: #fff;
+    color: var(--text-heading);
     font-size: 0.9rem;
     margin: 0 0 8px 0;
   }
@@ -1575,7 +1575,7 @@
   padding: 16px;
 
   h3 {
-    color: #fff;
+    color: var(--text-heading);
     font-size: 1rem;
     margin: 0 0 12px 0;
   }
@@ -1605,7 +1605,7 @@
 
 .btn-primary {
   background: var(--accent-secondary);
-  color: #fff;
+  color: var(--text-heading);
 
   &:hover:not(:disabled) {
     background: var(--accent-secondary);
@@ -1614,7 +1614,7 @@
 
 .btn-secondary {
   background: var(--panel-border);
-  color: #fff;
+  color: var(--text-heading);
 
   &:hover:not(:disabled) {
     background: var(--panel-border);
@@ -1623,7 +1623,7 @@
 
 .btn-danger {
   background: #aa4444;
-  color: #fff;
+  color: var(--text-heading);
 
   &:hover:not(:disabled) {
     background: #883333;
@@ -1632,7 +1632,7 @@
 
 .btn-success {
   background: #44aa44;
-  color: #fff;
+  color: var(--text-heading);
 
   &:hover:not(:disabled) {
     background: #338833;
@@ -1641,7 +1641,7 @@
 
 .btn-confirm {
   background: var(--accent-secondary);
-  color: #fff;
+  color: var(--text-heading);
 
   &:hover:not(:disabled) {
     background: #3a8a3a;
@@ -1650,7 +1650,7 @@
 
 .btn-cancel {
   background: #555;
-  color: #fff;
+  color: var(--text-heading);
 
   &:hover:not(:disabled) {
     background: #444;
@@ -1778,7 +1778,7 @@
   position: relative;
 
   h2 {
-    color: #fff;
+    color: var(--text-heading);
     font-size: 1.8rem;
     margin: 0 0 8px 0;
   }
@@ -1820,7 +1820,7 @@
     .piece-count-value {
       font-size: 1.2rem;
       font-weight: 700;
-      color: #fff;
+      color: var(--text-heading);
       font-family: 'Courier New', monospace;
     }
   }
@@ -1880,7 +1880,7 @@
   /* transition removed */
 
   &:hover {
-    color: #fff;
+    color: var(--text-heading);
     background: rgba(255, 255, 255, 0.1);
   }
 }
@@ -1908,7 +1908,7 @@
   width: 90%;
 
   h2 {
-    color: #fff;
+    color: var(--text-heading);
     margin: 0 0 24px 0;
   }
 
@@ -2216,7 +2216,7 @@
   animation: slideIn 0.3s ease-out;
 
   h3 {
-    color: #fff;
+    color: var(--text-heading);
     margin: 0 0 8px 0;
     font-size: 1.5rem;
   }
@@ -2261,7 +2261,7 @@
 
   .piece-name {
     font-size: 2rem;
-    color: #fff;
+    color: var(--text-heading);
   }
 
   .piece-label {
@@ -2286,7 +2286,7 @@
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    color: var(--text-heading);
     border-color: #888;
   }
 }
@@ -2305,7 +2305,7 @@
   right: 2px;
   font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   font-weight: bold;
-  color: #fff;
+  color: var(--text-heading);
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -2500,7 +2500,7 @@
   }
 
   .control-player-name {
-    color: #fff;
+    color: var(--text-heading);
     font-weight: 500;
   }
 
@@ -2528,7 +2528,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    color: #fff;
+    color: var(--text-heading);
     font-size: 0.8rem;
     font-weight: 600;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
@@ -2575,7 +2575,7 @@
   }
   
   span {
-    color: #fff;
+    color: var(--text-heading);
     font-weight: 500;
     font-size: 1rem;
   }
@@ -2622,7 +2622,7 @@
 
   .piece-name {
     font-weight: 600;
-    color: #fff;
+    color: var(--text-heading);
     font-size: 0.95rem;
   }
 
@@ -2679,7 +2679,7 @@
 .captured-title {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--text-heading);
 }
 
 .captured-toggle {
@@ -2760,7 +2760,7 @@
 
   .piece-symbol {
     font-size: 1.2rem;
-    color: #fff;
+    color: var(--text-heading);
   }
 }
 
@@ -2951,7 +2951,7 @@
 
     &:hover:not(:disabled) {
       background: rgba(255, 255, 255, 0.18);
-      color: #fff;
+      color: var(--text-heading);
     }
 
     &:disabled {
@@ -2985,7 +2985,7 @@
 
     &:hover {
       background: rgba(255, 255, 255, 0.2);
-      color: #fff;
+      color: var(--text-heading);
     }
   }
 }
@@ -2993,7 +2993,7 @@
 .active-move {
   background: rgba(100, 180, 255, 0.3) !important;
   border-radius: 3px;
-  color: #fff !important;
+  color: var(--text-heading) !important;
 }
 
 .move-white,

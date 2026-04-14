@@ -10,7 +10,7 @@
 
   h1 {
     font-size: 3.5rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 15px;
   }
 
@@ -28,7 +28,7 @@
     border-radius: 10px;
     padding: 10px 20px;
     font-size: 1rem;
-    color: #ffffff;
+    color: var(--text-heading);
     font-weight: 600;
 
     .live-dot {
@@ -81,14 +81,14 @@
 
   &:hover {
     border-color: var(--border-bright);
-    color: #ffffff;
+    color: var(--text-heading);
     transform: translateY(-2px);
   }
 
   &.active {
     background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
     border-color: var(--text-info);
-    color: #ffffff;
+    color: var(--text-heading);
   }
 }
 
@@ -119,7 +119,7 @@
     top: 15px;
     left: 15px;
     background: #ff4444;
-    color: #ffffff;
+    color: var(--text-heading);
     padding: 6px 15px;
     border-radius: 8px;
     font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
@@ -133,7 +133,7 @@
     .pulse-dot {
       width: 8px;
       height: 8px;
-      background-color: #ffffff;
+      background-color: var(--text-heading);
       border-radius: 50%;
       animation: pulse 1.5s infinite;
     }
@@ -162,7 +162,7 @@
       bottom: 10px;
       right: 10px;
       background: rgba(0, 0, 0, 0.8);
-      color: #ffffff;
+      color: var(--text-heading);
       padding: 6px 12px;
       border-radius: 8px;
       font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
@@ -175,7 +175,7 @@
 
     .stream-title {
       font-size: 1.2rem;
-      color: #ffffff;
+      color: var(--text-heading);
       margin: 0 0 10px 0;
       font-weight: 600;
       line-height: 1.4;
@@ -212,7 +212,7 @@
 
   h3 {
     font-size: 1.8rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 15px;
   }
 
@@ -229,7 +229,7 @@
     border: none;
     border-radius: 10px;
     padding: 12px 30px;
-    color: #ffffff;
+    color: var(--text-heading);
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
@@ -254,7 +254,7 @@
 .platform-badge {
   display: inline-block;
   background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-  color: #ffffff;
+  color: var(--text-heading);
   padding: 4px 12px;
   border-radius: 6px;
   font-size: 0.75rem;
@@ -273,7 +273,7 @@
 
   h2 {
     font-size: 2rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 20px;
   }
 
@@ -294,7 +294,7 @@
       font-weight: 600;
 
       &:hover {
-        color: var(--accent-primary);
+        color: var(--accent-primary-text);
       }
     }
   }

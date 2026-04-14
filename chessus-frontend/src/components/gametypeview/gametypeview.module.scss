@@ -31,7 +31,7 @@
   background: rgba(var(--accent-rgb), 0.2);
   border: 2px solid var(--accent-primary);
   border-radius: 5px;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -48,7 +48,7 @@
   background: var(--accent-primary);
   border: none;
   border-radius: 5px;
-  color: white;
+  color: var(--text-heading);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -65,7 +65,7 @@
   background: var(--accent-primary);
   border: none;
   border-radius: 5px;
-  color: white;
+  color: var(--text-heading);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -82,7 +82,7 @@
   background: #dc3545;
   border: none;
   border-radius: 5px;
-  color: white;
+  color: var(--text-heading);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -104,7 +104,7 @@
   h2 {
     font-size: 24px;
     margin-bottom: 15px;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     border-bottom: 2px solid rgba(var(--accent-rgb), 0.3);
     padding-bottom: 10px;
   }
@@ -116,7 +116,7 @@
   margin-bottom: 30px;
 
   a {
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     text-decoration: none;
     
     &:hover {
@@ -130,7 +130,7 @@
   margin-bottom: 30px;
 
   a {
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     text-decoration: none;
     display: inline-flex;
     align-items: center;
@@ -187,7 +187,7 @@
   }
 
   &.upvoted {
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     border-color: var(--border-bright);
     background: rgba(var(--accent-rgb), 0.2);
   }
@@ -202,7 +202,7 @@
   }
 
   &.upvoted {
-    border-color: var(--accent-primary);
+    border-color: var(--accent-primary-text);
     background: rgba(var(--accent-rgb), 0.2);
   }
 }
@@ -224,7 +224,7 @@
 .stat-value {
   font-size: 18px;
   font-weight: 700;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   text-align: center;
 }
 
@@ -316,7 +316,7 @@
 .rule-title {
   font-size: 18px;
   font-weight: 600;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   margin-bottom: 15px;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
@@ -377,7 +377,7 @@
   background: rgba(var(--accent-rgb), 0.15);
   border: 1px solid rgba(var(--accent-rgb), 0.3);
   border-radius: 4px;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   text-decoration: none;
   font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
   transition: transform 0.2s, box-shadow 0.2s;

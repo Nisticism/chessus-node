@@ -10,7 +10,7 @@
   
   h1 {
     font-size: 2.5rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 10px;
   }
   
@@ -55,7 +55,7 @@
 
 .item-title {
   font-size: 1.4rem;
-  color: #ffffff;
+  color: var(--text-heading);
   margin-bottom: 10px;
   font-weight: 600;
 }
@@ -89,7 +89,7 @@
   
   .label {
     font-weight: 600;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
   }
   
   a {
@@ -132,7 +132,7 @@
 .filter-label {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -199,7 +199,7 @@
   &.active {
     background: linear-gradient(135deg, var(--border-medium) 0%, var(--border-medium) 100%);
     border-color: var(--border-bright);
-    color: #ffffff;
+    color: var(--text-heading);
   }
 }
 

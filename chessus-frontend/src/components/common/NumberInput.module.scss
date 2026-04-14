@@ -53,7 +53,7 @@
 
     &:hover:not(:disabled) {
       background: rgba(42, 91, 141, 0.5);
-      color: #fff;
+      color: var(--text-heading);
       border-color: rgba(138, 180, 232, 0.6);
     }
 

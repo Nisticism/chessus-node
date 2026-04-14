@@ -16,7 +16,7 @@
 .card-title {
   font-size: 1.3rem;
   font-weight: 600;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   margin: 0;
 }
 
@@ -104,7 +104,7 @@
 
 .save-button {
   background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
-  color: #ffffff;
+  color: var(--text-heading);
 
   &:hover {
     transform: translateY(-2px);
@@ -123,6 +123,6 @@
 
   &:hover {
     background: rgba(var(--panel-border-rgb), 0.6);
-    color: #ffffff;
+    color: var(--text-heading);
   }
 }

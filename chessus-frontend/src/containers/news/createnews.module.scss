@@ -146,7 +146,7 @@
 
 .submit-button {
   background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
-  color: white;
+  color: var(--text-heading);
   box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.3);
 
   &:hover:not(:disabled) {

@@ -10,7 +10,7 @@
 
   h1 {
     font-size: 2.8rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 15px;
   }
 
@@ -39,7 +39,7 @@
 
   &:hover {
     border-color: var(--border-bright);
-    color: #ffffff;
+    color: var(--text-heading);
   }
 }
 
@@ -74,7 +74,7 @@
   padding: 18px 24px;
   background: none;
   border: none;
-  color: #ffffff;
+  color: var(--text-heading);
   font-size: 1.2rem;
   font-weight: 600;
   cursor: pointer;
@@ -82,14 +82,14 @@
   gap: 15px;
 
   &:hover {
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
   }
 }
 
 .toggle-icon {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   flex-shrink: 0;
   width: 24px;
   text-align: center;
@@ -123,7 +123,7 @@
 
 .piece-name {
   font-size: 1.15rem;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   margin: 0 0 6px 0;
 }
 
@@ -159,7 +159,7 @@
 
   h4 {
     font-size: 1.1rem;
-    color: #ffffff;
+    color: var(--text-heading);
     margin: 0 0 8px 0;
   }
 
@@ -195,7 +195,7 @@
 
   th {
     background: rgba(var(--accent-rgb), 0.15);
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     font-weight: 600;
   }
 

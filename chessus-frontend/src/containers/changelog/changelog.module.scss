@@ -9,7 +9,7 @@
 
   h1 {
     font-size: 2.2rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 8px;
   }
 
@@ -30,7 +30,7 @@
 
 .entry-date {
   font-size: 0.8rem;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -63,7 +63,7 @@
       content: '•';
       position: absolute;
       left: 0;
-      color: var(--accent-primary);
+      color: var(--accent-primary-text);
     }
   }
 }
@@ -96,7 +96,7 @@
 .page-btn {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   padding: 8px 18px;
   border-radius: 6px;
   font-size: 0.9rem;

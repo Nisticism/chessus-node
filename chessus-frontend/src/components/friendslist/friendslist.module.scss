@@ -78,7 +78,7 @@
 .friend-username {
   font-weight: 600;
   font-size: 16px;
-  color: #fff;
+  color: var(--text-heading);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -107,7 +107,7 @@
   &:hover {
     background: #f44336;
     border-color: #f44336;
-    color: #fff;
+    color: var(--text-heading);
   }
 }
 
@@ -121,7 +121,7 @@
 .challenge-button {
   background: transparent;
   border: 1px solid var(--accent-primary);
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -135,7 +135,7 @@
 
   &:hover {
     background: var(--accent-primary);
-    color: #fff;
+    color: var(--text-heading);
     transform: scale(1.1);
   }
 }

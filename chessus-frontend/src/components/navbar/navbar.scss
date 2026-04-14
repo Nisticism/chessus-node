@@ -550,7 +550,7 @@ p {
     
     &:hover {
       background: $nav-hover-color;
-      color: #ffffff;
+      color: var(--text-heading);
     }
 
     &:last-child {
@@ -582,7 +582,7 @@ p {
   cursor: pointer;
 
   &:hover {
-    color: #ffffff;
+    color: var(--text-heading);
     background: rgba(255, 255, 255, 0.1);
   }
 }
@@ -592,7 +592,7 @@ p {
   top: -2px;
   right: -4px;
   background: #e85c5c;
-  color: #ffffff;
+  color: var(--text-heading);
   font-size: 0.65rem;
   font-weight: 700;
   min-width: 16px;

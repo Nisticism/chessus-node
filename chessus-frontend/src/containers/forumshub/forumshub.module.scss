@@ -10,7 +10,7 @@
 
   h1 {
     font-size: 3.5rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 15px;
   }
 
@@ -75,7 +75,7 @@
 
 .chevron {
   font-size: 1rem;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   transition: transform 0.3s ease;
   display: inline-block;
 
@@ -99,13 +99,13 @@
 
 .section-title {
   font-size: 1.5rem;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
   margin: 0;
 }
 
 .section-count {
   background: var(--accent-primary);
-  color: #ffffff;
+  color: var(--text-heading);
   padding: 4px 12px;
   border-radius: 6px;
   font-size: 0.85rem;
@@ -145,7 +145,7 @@
 
   thead tr th {
     background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     padding: 14px 18px;
     text-align: left;
     font-size: 13px;
@@ -179,7 +179,7 @@
 
 .forums-link {
   a {
-    color: #ffffff;
+    color: var(--text-heading);
     text-decoration: none;
     display: flex;
 
@@ -199,13 +199,13 @@
 .forum-title {
   font-size: 17px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-heading);
 }
 
 .forums-username {
   font-size: 15px;
   font-weight: 500;
-  color: var(--accent-primary);
+  color: var(--accent-primary-text);
 
   &:hover {
     color: var(--text-info);
@@ -249,7 +249,7 @@
   color: var(--text-info);
 
   &:hover {
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     text-decoration: underline;
   }
 }

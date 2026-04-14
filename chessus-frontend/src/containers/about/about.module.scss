@@ -10,7 +10,7 @@
 
   h1 {
     font-size: 3.5rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 15px;
   }
 
@@ -25,7 +25,7 @@
 
   h2 {
     font-size: 2rem;
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     margin-bottom: 20px;
     padding-bottom: 10px;
     border-bottom: 2px solid var(--panel-border);
@@ -53,11 +53,11 @@
 }
 
 .profile-link {
-  color: #ffffff;
+  color: var(--text-heading);
   text-decoration: none;
 
   &:hover {
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
   }
 }
 
@@ -84,12 +84,12 @@
 
   h3 {
     font-size: 1.5rem;
-    color: #ffffff;
+    color: var(--text-heading);
     margin-bottom: 5px;
   }
 
   .member-role {
-    color: var(--accent-primary);
+    color: var(--accent-primary-text);
     font-weight: 600;
     font-size: 1rem;
     margin-bottom: 12px;
