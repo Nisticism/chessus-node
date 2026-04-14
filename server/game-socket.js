@@ -6856,7 +6856,13 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   // Check if path is blocked (for sliding pieces)
   // For multi-tile pieces, checks all sub-square parallel paths
   // Ghostwalk: piece can pass through any piece
+  // Hopping: piece can pass through allies/enemies depending on flags
   const hasGhostwalk = piece.ghostwalk === 1 || piece.ghostwalk === true;
+  const canHopAlliesAtk = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true ||
+                          piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true ||
+                          piece.chain_hop_allies === 1 || piece.chain_hop_allies === true;
+  const canHopEnemiesAtk = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true ||
+                           piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
   const isPathClear = (fromX, fromY, toX, toY) => {
     if (hasGhostwalk) return true; // Ghostwalk ignores all blocking
     const pw = piece.piece_width || 1;
@@ -6870,7 +6876,11 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         while (x !== toX + sdx || y !== toY + sdy) {
           const blocking = findPieceAtSquare(allPieces, x, y);
           if (blocking && blocking.id !== piece.id) {
-            return false; // Path blocked
+            const blockingOwner = blocking.team || blocking.player_id;
+            const isAlly = blockingOwner === pieceOwner;
+            if (!(isAlly ? canHopAlliesAtk : canHopEnemiesAtk)) {
+              return false; // Path blocked
+            }
           }
           x += stepX;
           y += stepY;
