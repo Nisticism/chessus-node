@@ -18,7 +18,7 @@
 .title {
   font-size: 2.5rem;
   text-align: center;
-  color: #fff;
+  color: var(--text-heading);
   margin-bottom: 1rem;
   font-weight: 700;
 }
@@ -28,7 +28,7 @@
   line-height: 1.6;
   
   p {
-    color: #fff;
+    color: var(--text-muted);
     font-size: 1.1rem;
     margin-bottom: 1rem;
     text-align: center;
@@ -41,7 +41,7 @@
 
 .sectionTitle {
   font-size: 1.8rem;
-  color: #fff;
+  color: var(--text-heading);
   margin-bottom: 1.5rem;
   text-align: center;
   font-weight: 600;
@@ -82,13 +82,13 @@
   background: rgba(var(--panel-bg-start-rgb), 0.6);
   border: 2px solid rgba(var(--accent-highlight-rgb), 0.3);
   border-radius: 8px;
-  color: #fff;
+  color: var(--text-heading);
   font-size: 1rem;
   font-family: inherit;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &::placeholder {
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-dim);
   }
 
   &:focus {
@@ -124,13 +124,13 @@
 .successMessage {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   border: 2px solid #047857;
-  color: #ffffff;
+  color: var(--text-heading);
 }
 
 .errorMessage {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   border: 2px solid #b91c1c;
-  color: #ffffff;
+  color: var(--text-heading);
 }
 
 .successIcon,
@@ -214,7 +214,7 @@
   margin-top: 2rem;
 
   p {
-    color: #e0e0e0;
+    color: var(--text-muted);
     font-size: 0.95rem;
     margin: 0;
     line-height: 1.6;
