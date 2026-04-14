@@ -1,0 +1,49 @@
+.emoji-picker-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.emoji-toggle-btn {
+  background: rgba(var(--accent-rgb), 0.1);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  line-height: 1;
+
+  &:hover {
+    background: rgba(var(--accent-rgb), 0.2);
+    border-color: var(--border-bright);
+  }
+}
+
+.emoji-picker-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 1000;
+  margin-bottom: 8px;
+
+  // Override emoji-picker-react styles to match site theme
+  :global(.EmojiPickerReact) {
+    --epr-bg-color: var(--panel-bg-start) !important;
+    --epr-category-label-bg-color: var(--panel-bg-end) !important;
+    --epr-hover-bg-color: rgba(var(--accent-rgb), 0.2) !important;
+    --epr-search-input-bg-color: var(--bg-deep) !important;
+    --epr-text-color: var(--text-muted) !important;
+    border: 1px solid var(--panel-border) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  // Hide category header labels in the emoji grid but keep the category filter nav
+  :global(.EmojiPickerReact .epr-category-nav) {
+    // Keep category navigation icons visible
+  }
+
+  :global(.EmojiPickerReact .epr-emoji-category-label) {
+    display: none !important;
+  }
+}

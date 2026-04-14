@@ -172,6 +172,26 @@
   white-space: nowrap;
 }
 
+.game-link {
+  a {
+    text-decoration: none;
+    color: var(--text-info);
+
+    &:hover {
+      color: var(--accent-primary-text);
+    }
+  }
+}
+
+.game-name {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.no-game {
+  color: var(--text-dim);
+}
+
 @media (max-width: 1200px) {
   .forum-content {
     max-width: 250px;

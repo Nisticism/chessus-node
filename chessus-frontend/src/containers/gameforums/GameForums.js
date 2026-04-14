@@ -89,9 +89,11 @@ const GameForums = () => {
                     </td>
                     <td>
                       {forum.game_type_id && forum.game_name ? (
-                        <Link to={`/games/${forum.game_type_id}`} onClick={(e) => e.stopPropagation()}>
-                          <div className={styles["game-name"]}>{ forum.game_name }</div>
-                        </Link>
+                        <div className={styles["game-link"]}>
+                          <Link to={`/games/${forum.game_type_id}`} onClick={(e) => e.stopPropagation()}>
+                            <div className={styles["game-name"]}>{ forum.game_name }</div>
+                          </Link>
+                        </div>
                       ) : (
                         <div className={styles["no-game"]}>General</div>
                       )}

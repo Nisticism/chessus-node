@@ -1,3 +1,19 @@
+.back-to-forums {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-info);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin-bottom: 20px;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--accent-primary-text);
+  }
+}
+
 .forum-title-container {
   display: flex;
   align-items: center;
@@ -236,6 +252,11 @@
       color: var(--text-dim);
     }
   }
+}
+
+.emoji-row {
+  display: flex;
+  margin-top: 8px;
 }
 
 .submit-comment-button {

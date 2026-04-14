@@ -179,14 +179,14 @@ const PlayerList = () => {
                   borderRadius: '50%',
                   overflow: 'hidden',
                   flexShrink: 0,
-                  background: 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%)',
+                  background: 'linear-gradient(135deg, var(--border-subtle) 0%, var(--panel-bg-start) 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '1.5rem',
                   fontWeight: '700',
                   color: 'var(--text-white)',
-                  border: '2px solid var(--border-subtle)'
+                  border: '2px solid var(--accent-primary)'
                 }}>
                   {user.profile_picture ? (
                     <img 

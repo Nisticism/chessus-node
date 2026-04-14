@@ -172,6 +172,23 @@
   font-style: italic;
 }
 
+.delete-account-btn {
+  background: transparent;
+  color: #dc3545;
+  border: 2px solid #dc3545;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+
+  &:hover {
+    background: #dc3545;
+    color: var(--text-heading);
+  }
+}
+
 .form-actions {
   display: flex;
   gap: 15px;
@@ -225,8 +242,8 @@
   height: 150px;
   border-radius: 50%;
   overflow: hidden;
-  border: 4px solid var(--panel-border);
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+  border: 4px solid var(--accent-primary);
+  background: linear-gradient(135deg, var(--border-subtle) 0%, var(--panel-bg-start) 100%);
 
   img {
     width: 100%;

@@ -695,6 +695,16 @@
   }
 }
 
+.online-count {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  padding: 6px 14px;
+  background: rgba(var(--accent-rgb), 0.15);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+}
+
 .settings-section {
   h3 {
     color: var(--text-heading);

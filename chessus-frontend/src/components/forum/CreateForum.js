@@ -5,6 +5,7 @@ import { newForum } from "../../actions/forums";
 import styles from "./create-forum.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
+import EmojiPickerButton from "../common/EmojiPickerButton";
 
 import { forums } from "../../actions/forums";
 
@@ -87,6 +88,9 @@ const CreateForum = () => {
                   onChange={onChangeContent}
                   // validations={[required, validContent]}
                 />
+                <div className={styles["emoji-row"]}>
+                  <EmojiPickerButton onEmojiSelect={(emoji) => setContent(prev => prev + emoji)} />
+                </div>
               </div>
               {/* <div className="form-group">
                 <label htmlFor="password" className={styles["field-label"]}>Password</label>

@@ -155,8 +155,10 @@ p {
 
 .user-info {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   flex-shrink: 0;
+  height: 100%;
 }
 
 .user-info .nav-item-inner,

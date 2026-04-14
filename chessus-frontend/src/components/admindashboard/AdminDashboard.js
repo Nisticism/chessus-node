@@ -55,6 +55,10 @@ const AdminDashboard = () => {
   const [siteSettings, setSiteSettings] = useState({});
   const [settingsLoading, setSettingsLoading] = useState(false);
 
+  // Online players state
+  const [onlinePlayers, setOnlinePlayers] = useState([]);
+  const [onlineLoading, setOnlineLoading] = useState(false);
+
   // Auto-hide alert after 2 seconds
   useEffect(() => {
     let timer;
@@ -106,6 +110,8 @@ const AdminDashboard = () => {
       fetchAnonymousGames(1);
     } else if (activeTab === 'settings') {
       fetchSiteSettings();
+    } else if (activeTab === 'online') {
+      fetchOnlinePlayers();
     } else {
       fetchData(activeTab, 1);
     }
@@ -145,6 +151,21 @@ const AdminDashboard = () => {
       console.error("Error fetching site settings:", error);
     } finally {
       setSettingsLoading(false);
+    }
+  };
+
+  const fetchOnlinePlayers = async () => {
+    setOnlineLoading(true);
+    try {
+      const response = await axios.get(
+        `${API_URL}admin/online-players`,
+        { headers: authHeader() }
+      );
+      setOnlinePlayers(response.data.data || []);
+    } catch (error) {
+      console.error("Error fetching online players:", error);
+    } finally {
+      setOnlineLoading(false);
     }
   };
 
@@ -996,6 +1017,51 @@ const AdminDashboard = () => {
     }
   };
 
+  const renderOnlinePlayersTab = () => (
+    <div className={styles["table-container"]}>
+      <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span className={styles["online-count"]}>{onlinePlayers.length} player{onlinePlayers.length !== 1 ? 's' : ''} online</span>
+        <StandardButton onClick={fetchOnlinePlayers} buttonText="Refresh" />
+      </div>
+      {onlinePlayers.length === 0 ? (
+        <p style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '30px 0' }}>
+          No players currently online.
+        </p>
+      ) : (
+        <table className={styles["data-table"]}>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Username</th>
+              <th>Role</th>
+              <th>ELO</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {onlinePlayers.map((user) => (
+              <tr key={user.id}>
+                <td>{user.id}</td>
+                <td>
+                  <Link to={`/profile/${user.username}`} style={{ color: 'var(--text-info)', textDecoration: 'none' }}>
+                    {user.username}
+                  </Link>
+                </td>
+                <td>
+                  <span className={styles[`role-${user.role}`]}>{user.role}</span>
+                </td>
+                <td>{user.elo}</td>
+                <td>
+                  <Link to={`/profile/${user.username}`} className={styles["edit-btn"]}>View</Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
   const renderStreamsTab = () => (
     <div className={styles["table-container"]}>
       <div className={styles["table-header"]} style={{ marginBottom: '15px' }}>
@@ -1451,6 +1517,12 @@ const AdminDashboard = () => {
           Streams
         </button>
         <button
+          className={`${styles["tab"]} ${activeTab === "online" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("online")}
+        >
+          Online Players
+        </button>
+        <button
           className={`${styles["tab"]} ${activeTab === "anonymous-games" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("anonymous-games")}
         >
@@ -1465,7 +1537,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className={styles["content"]}>
-        {loading || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {loading || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) || (activeTab === 'online' && onlineLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -1476,6 +1548,7 @@ const AdminDashboard = () => {
             {activeTab === "news" && renderNewsTable()}
             {activeTab === "featured" && renderFeaturedTab()}
             {activeTab === "streams" && renderStreamsTab()}
+            {activeTab === "online" && renderOnlinePlayersTab()}
             {activeTab === "anonymous-games" && renderAnonymousGamesTable()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
@@ -1496,7 +1569,7 @@ const AdminDashboard = () => {
                 </div>
               </div>
             )}
-            {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && renderPagination()}
+            {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && renderPagination()}
             {activeTab === "streams" && renderPagination()}
           </>
         )}

@@ -603,6 +603,7 @@
   cursor: grab;
   transition: filter 0.15s ease, box-shadow 0.15s ease;
   border-radius: 4px;
+  -webkit-touch-callout: none;
 
   &:hover {
     filter: brightness(1.15);
@@ -1629,6 +1630,7 @@
 .placement-board {
   background: var(--board-bg, transparent);
   box-sizing: border-box;
+  touch-action: none;
   
   .board-square {
     aspect-ratio: 1;
