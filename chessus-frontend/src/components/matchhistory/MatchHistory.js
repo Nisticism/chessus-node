@@ -90,6 +90,7 @@ const MatchHistory = ({ userId, username }) => {
       case 'agreement': return 'by agreement';
       case 'equal_piece_count': return 'by equal piece count';
       case 'no_legal_moves': return 'by no legal moves';
+      case 'insufficient_material': return 'by insufficient material';
       default: return '';
     }
   };

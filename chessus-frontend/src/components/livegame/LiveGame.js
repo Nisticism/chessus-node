@@ -594,8 +594,8 @@ const LiveGame = () => {
         if (soundEnabledRef.current) {
           if (reason === 'checkmate') {
             soundManager.playCheckmate();
-          } else if (reason === 'stalemate') {
-            // For stalemate, play a neutral sound (move sound)
+          } else if (reason === 'stalemate' || reason === 'insufficient_material') {
+            // For stalemate/insufficient material, play a neutral sound (move sound)
             soundManager.playMove();
           }
         }
@@ -5046,6 +5046,7 @@ const LiveGame = () => {
                gameOverData.reason === 'stalemate' ? 'By Stalemate' :
                gameOverData.reason === 'draw_move_limit' ? 'By Move Limit (No Captures)' :
                gameOverData.reason === 'repetition' ? 'By Repetition' :
+               gameOverData.reason === 'insufficient_material' ? 'Insufficient Material' :
                gameOverData.reason === 'agreement' ? 'By Agreement' :
                gameOverData.reason === 'resignation' ? 'By Resignation' :
                gameOverData.reason === 'timeout' ? 'By Timeout' :

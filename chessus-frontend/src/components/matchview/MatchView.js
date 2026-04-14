@@ -109,6 +109,7 @@ const MatchView = () => {
       case 'resignation': return 'Resignation';
       case 'timeout': return 'Time ran out';
       case 'stalemate': return 'Stalemate';
+      case 'insufficient_material': return 'Insufficient Material';
       default: return 'Game completed';
     }
   };
