@@ -252,6 +252,26 @@ const LiveGame = () => {
       }
       setPendingMove({ gameId: gId, moveData });
     } else {
+      // Optimistic position update: move piece visually before server confirms
+      if (moveData.type !== 'place') {
+        setGameState(prev => {
+          if (!prev?.pieces) return prev;
+          const newPieces = prev.pieces.map(p => ({ ...p }));
+          const movingIdx = newPieces.findIndex(p => p.id === moveData.pieceId);
+          if (movingIdx !== -1) {
+            const capturedIdx = newPieces.findIndex(p =>
+              p.x === moveData.to.x && p.y === moveData.to.y && p.id !== moveData.pieceId
+            );
+            if (capturedIdx !== -1) newPieces.splice(capturedIdx, 1);
+            const mi = newPieces.findIndex(p => p.id === moveData.pieceId);
+            if (mi !== -1) {
+              newPieces[mi].x = moveData.to.x;
+              newPieces[mi].y = moveData.to.y;
+            }
+          }
+          return { ...prev, pieces: newPieces };
+        });
+      }
       makeMove(gId, moveData);
     }
   }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, makeMove]);
