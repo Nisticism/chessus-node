@@ -1010,8 +1010,18 @@ const GameTypeView = () => {
 
     if (game.capture_condition) {
       const capPieceData = game.capture_piece ? pieceDataMap[game.capture_piece] : null;
-      const capPieceName = capPieceData ? `**${capPieceData.piece_name}**` : 'the designated piece';
-      winConditions.push(`• **Capture**: A player wins by capturing their opponent's ${capPieceName}.`);
+      // Check per-placement capture pieces if no game-level capture_piece
+      const placementCapturePieces = capturePieces.length > 0
+        ? [...new Set(capturePieces.map(p => p.pieceData?.piece_name || p.piece_name).filter(Boolean))]
+        : [];
+      if (capPieceData) {
+        winConditions.push(`• **Capture**: A player wins by capturing their opponent's **${capPieceData.piece_name}**.`);
+      } else if (placementCapturePieces.length > 0) {
+        const capNames = placementCapturePieces.map(n => `**${n}**`).join(' or ');
+        winConditions.push(`• **Capture**: A player wins by capturing their opponent's ${capNames}.`);
+      } else {
+        winConditions.push(`• **Capture**: A player wins by capturing all of their opponent's pieces.`);
+      }
     }
 
     if (game.value_condition) {
