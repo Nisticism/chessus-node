@@ -2596,6 +2596,17 @@ function initializeSocket(server) {
               let eloChanges = null;
               if (gameState.rated !== false && premoveWinResult.winner && loser) {
                 eloChanges = await updateEloRatings(premoveWinResult.winner, loser.id);
+              } else if (gameState.rated !== false && !premoveWinResult.winner) {
+                // Draw — split ELO
+                const player1 = gameState.players[0];
+                const player2 = gameState.players[1];
+                if (player1?.id && player2?.id) {
+                  const p1Elo = player1.elo || 1000;
+                  const p2Elo = player2.elo || 1000;
+                  const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+                  const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+                  eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+                }
               }
 
               const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -2897,6 +2908,17 @@ function initializeSocket(server) {
           let eloChanges = null;
           if (gameState.rated !== false && winResult.winner && loser) {
             eloChanges = await updateEloRatings(winResult.winner, loser.id);
+          } else if (gameState.rated !== false && !winResult.winner) {
+            // Draw — split ELO
+            const player1 = gameState.players[0];
+            const player2 = gameState.players[1];
+            if (player1?.id && player2?.id) {
+              const p1Elo = player1.elo || 1000;
+              const p2Elo = player2.elo || 1000;
+              const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+              const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+              eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+            }
           }
 
           const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -8972,6 +8994,22 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
           gameOver: true,
           winner: winner?.id,
           reason: 'elimination'
+        };
+      }
+    }
+  }
+
+  // Insufficient material draw: only checkmatable pieces remain (one per player, no other pieces)
+  if (capturedPieces.length > 0) {
+    const checkmatablePieces = pieces.filter(p => p.ends_game_on_checkmate);
+    if (checkmatablePieces.length > 0 && checkmatablePieces.length === pieces.length) {
+      // Every remaining piece is a checkmatable piece — check that at least 2 players are represented
+      const playerIds = new Set(checkmatablePieces.map(p => p.team || p.player_id));
+      if (playerIds.size >= 2) {
+        return {
+          gameOver: true,
+          winner: null,
+          reason: 'insufficient_material'
         };
       }
     }
