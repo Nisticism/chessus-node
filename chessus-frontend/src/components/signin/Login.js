@@ -4,6 +4,7 @@ import { Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { login, googleLogin } from "../../actions/auth";
 import { GoogleLogin } from "@react-oauth/google";
 import { trackLogin } from "../../analytics/GoogleAnalytics";
+import { startLichessOAuth } from "../../utils/lichessAuth";
 import styles from "./login.module.scss";
 
 const required = (value) => {
@@ -76,6 +77,14 @@ const Login = (props) => {
 
   const handleGoogleError = () => {
     setMessageDisplay(true);
+  };
+
+  const handleLichessLogin = () => {
+    try {
+      startLichessOAuth();
+    } catch (err) {
+      setMessageDisplay(true);
+    }
   };
 
   if (isLoggedIn) {
@@ -155,6 +164,32 @@ const Login = (props) => {
               />
             </div>
           </div>
+          {process.env.REACT_APP_LICHESS_CLIENT_ID && (
+            <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+              <button
+                type="button"
+                onClick={handleLichessLogin}
+                style={{
+                  width: '320px',
+                  padding: '10px 16px',
+                  backgroundColor: '#fff',
+                  color: '#333',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                }}
+              >
+                <img src="https://lichess.org/assets/logo/lichess-favicon-32.png" alt="Lichess" style={{ width: '20px', height: '20px' }} />
+                Sign in with Lichess
+              </button>
+            </div>
+          )}
           {message && messageDisplay && (
             <div className={styles["form-group"]}>
               <div className="alert alert-danger" role="alert">

@@ -176,6 +176,8 @@
   border-radius: 8px;
   overflow: hidden;
   box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.3);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .square {
@@ -184,6 +186,7 @@
   align-items: center;
   justify-content: center;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  -webkit-user-drag: none;
 
   &.light {
     background: #cad5e8;

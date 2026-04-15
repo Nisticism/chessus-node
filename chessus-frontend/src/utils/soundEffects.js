@@ -3,11 +3,12 @@
 // Import sound files
 import moveSound from '../assets/sounds/game/move.wav';
 import captureSound from '../assets/sounds/game/capture.wav';
-import checkSound from '../assets/sounds/check.wav';
+import checkSound from '../assets/sounds/game/check.wav';
 import checkmateSound from '../assets/sounds/game/checkmate.wav';
 import gameStartSound from '../assets/sounds/game/gameStart.wav';
 import premoveSound from '../assets/sounds/game/premove.wav';
 import illegalMoveSound from '../assets/sounds/game/illegalMove.wav';
+import hitSound from '../assets/sounds/game/hit.wav';
 
 class SoundManager {
   constructor() {
@@ -18,7 +19,8 @@ class SoundManager {
       checkmate: new Audio(checkmateSound),
       gameStart: new Audio(gameStartSound),
       premove: new Audio(premoveSound),
-      illegalMove: new Audio(illegalMoveSound)
+      illegalMove: new Audio(illegalMoveSound),
+      hit: new Audio(hitSound)
     };
 
     // Set default volume
@@ -29,6 +31,8 @@ class SoundManager {
 
     this.enabled = true;
     this.unlocked = false;
+    this.currentSound = null;
+    this.currentStopTimer = null;
 
     // Unlock audio on first user interaction (bypasses browser autoplay policy)
     const unlock = () => {
@@ -49,24 +53,54 @@ class SoundManager {
     document.addEventListener('click', unlock, { once: false });
     document.addEventListener('keydown', unlock, { once: false });
     document.addEventListener('touchstart', unlock, { once: false });
+
+    // Re-prime audio when tab becomes visible again (browser may suspend audio in background)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && this.unlocked) {
+        Object.values(this.sounds).forEach(sound => {
+          sound.load();
+        });
+      }
+    });
   }
 
   play(soundName) {
     if (!this.enabled || !this.sounds[soundName]) return;
 
     try {
+      // Stop any currently playing sound to prevent overlap/throttling
+      if (this.currentSound) {
+        try {
+          this.currentSound.pause();
+          this.currentSound.currentTime = 0;
+        } catch (e) { /* ignore */ }
+      }
+      if (this.currentStopTimer) {
+        clearTimeout(this.currentStopTimer);
+        this.currentStopTimer = null;
+      }
+
       const source = this.sounds[soundName];
       // Clone the audio node so the unlock prime cycle can't interfere
       const sound = source.cloneNode();
       sound.volume = source.volume;
+      this.currentSound = sound;
 
-      // Stop playback after 0.5 seconds
-      const stopTimer = setTimeout(() => {
+      // Stop playback after 0.6 seconds
+      this.currentStopTimer = setTimeout(() => {
         sound.pause();
-      }, 500);
+        if (this.currentSound === sound) {
+          this.currentSound = null;
+          this.currentStopTimer = null;
+        }
+      }, 600);
 
       sound.play().catch(err => {
-        clearTimeout(stopTimer);
+        clearTimeout(this.currentStopTimer);
+        if (this.currentSound === sound) {
+          this.currentSound = null;
+          this.currentStopTimer = null;
+        }
         // Ignore errors (e.g., user hasn't interacted with page yet)
         console.debug('Sound play prevented:', err.message);
       });
@@ -101,6 +135,10 @@ class SoundManager {
 
   playIllegalMove() {
     this.play('illegalMove');
+  }
+
+  playHit() {
+    this.play('hit');
   }
 
   setVolume(volume) {

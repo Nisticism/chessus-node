@@ -70,9 +70,11 @@ const ForumsHub = () => {
       {showGame && (
         <td>
           {forum.game_type_id && forum.game_name ? (
-            <Link to={`/games/${forum.game_type_id}`} onClick={(e) => e.stopPropagation()}>
-              <div className={styles["game-name"]}>{forum.game_name}</div>
-            </Link>
+            <div className={styles["game-name"]}>
+              <Link to={`/games/${forum.game_type_id}`} onClick={(e) => e.stopPropagation()}>
+                {forum.game_name}
+              </Link>
+            </div>
           ) : (
             <div className={styles["no-game"]}>—</div>
           )}

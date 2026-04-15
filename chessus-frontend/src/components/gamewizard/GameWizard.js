@@ -24,6 +24,7 @@ const GameWizard = ({ editGameId }) => {
   const [loadError, setLoadError] = useState(null);
   const [showCheckmateWarning, setShowCheckmateWarning] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [missingFields, setMissingFields] = useState(null);
   
   // Game data state - all fields from game_types table
   const [gameData, setGameData] = useState({
@@ -180,10 +181,15 @@ const GameWizard = ({ editGameId }) => {
   const handleSubmit = async (skipWarning = false) => {
     setSaveError(null);
 
-    // Required field validation
+    // Collect all missing required fields
+    const missing = [];
+    
     if (!gameData.game_name || gameData.game_name.trim().length < 3) {
-      setSaveError('Game name is required and must be at least 3 characters.');
-      goToStep(1);
+      missing.push({ field: 'Game Name (at least 3 characters)', step: 1 });
+    }
+    
+    if (missing.length > 0) {
+      setMissingFields(missing);
       return;
     }
 
@@ -428,6 +434,28 @@ const GameWizard = ({ editGameId }) => {
               <StandardButton 
                 buttonText="Create Anyway" 
                 onClick={() => { setShowCheckmateWarning(false); handleSubmit(true); }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {missingFields && (
+        <div className={styles["warning-overlay"]}>
+          <div className={styles["warning-modal"]}>
+            <h3>⚠️ Required Fields Missing</h3>
+            <p>Please fill in the following required fields before submitting:</p>
+            <ul className={styles["missing-fields-list"]}>
+              {missingFields.map((item, i) => (
+                <li key={i}>
+                  <strong>{item.field}</strong> <span className={styles["step-ref"]}>(Step {item.step}: {stepLabels[item.step - 1].label})</span>
+                </li>
+              ))}
+            </ul>
+            <div className={styles["warning-buttons"]}>
+              <StandardButton 
+                buttonText="OK" 
+                onClick={() => setMissingFields(null)}
               />
             </div>
           </div>

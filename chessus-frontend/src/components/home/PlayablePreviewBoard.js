@@ -540,6 +540,7 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
                   draggable={piece.player_number === currentTurn}
                   onDragStart={(e) => handleDragStart(e, piece)}
                   onDragEnd={handleDragEnd}
+                  onContextMenu={(e) => e.preventDefault()}
                 />
               ) : (
                 <img
@@ -553,6 +554,7 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
                   draggable={piece.player_number === currentTurn}
                   onDragStart={(e) => handleDragStart(e, piece)}
                   onDragEnd={handleDragEnd}
+                  onContextMenu={(e) => e.preventDefault()}
                 />
               );
             })()}

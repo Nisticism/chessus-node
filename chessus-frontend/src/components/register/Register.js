@@ -6,6 +6,7 @@ import { register, login, googleLogin } from "../../actions/auth";
 import { GoogleLogin } from "@react-oauth/google";
 import { trackRegistration } from "../../analytics/GoogleAnalytics";
 import { checkUsername } from "../../utils/contentModeration";
+import { startLichessOAuth } from "../../utils/lichessAuth";
 import styles from "./register.module.scss";
 
 const required = (value) => {
@@ -120,6 +121,14 @@ const Register = () => {
     setMessageDisplay(true);
   };
 
+  const handleLichessSignup = () => {
+    try {
+      startLichessOAuth();
+    } catch (err) {
+      setMessageDisplay(true);
+    }
+  };
+
   return (
     <div className={styles["container"]}>
       <div className={styles["wrapper"]}>
@@ -190,6 +199,32 @@ const Register = () => {
                   />
                 </div>
               </div>
+              {process.env.REACT_APP_LICHESS_CLIENT_ID && (
+                <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+                  <button
+                    type="button"
+                    onClick={handleLichessSignup}
+                    style={{
+                      width: '320px',
+                      padding: '10px 16px',
+                      backgroundColor: '#fff',
+                      color: '#333',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '10px',
+                    }}
+                  >
+                    <img src="https://lichess.org/assets/logo/lichess-favicon-32.png" alt="Lichess" style={{ width: '20px', height: '20px' }} />
+                    Sign up with Lichess
+                  </button>
+                </div>
+              )}
             </div>
           )}
           {message && messageDisplay && (

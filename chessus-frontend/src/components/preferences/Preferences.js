@@ -159,7 +159,8 @@ const Preferences = () => {
   });
 
   const [soundEnabled, setSoundEnabled] = useState(() => {
-    return currentUser?.sound_enabled === 1 || currentUser?.sound_enabled === true;
+    if (!currentUser) return true;
+    return currentUser.sound_enabled === 1 || currentUser.sound_enabled === true;
   });
 
   const [chatPublicForSpectators, setChatPublicForSpectators] = useState(() => {

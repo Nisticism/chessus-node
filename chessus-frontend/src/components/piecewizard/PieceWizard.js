@@ -21,6 +21,7 @@ const PieceWizard = ({ editPieceId = null }) => {
   const [isLoading, setIsLoading] = useState(!!editPieceId);
   const [isEditMode, setIsEditMode] = useState(!!editPieceId);
   const [existingImages, setExistingImages] = useState([]);
+  const [missingFields, setMissingFields] = useState(null);
   
   // Track if user has manually interacted with attacks_like_movement checkbox
   const hasManuallySetAttackStyle = useRef(false);
@@ -541,20 +542,6 @@ const PieceWizard = ({ editPieceId = null }) => {
   ];
 
   const goToStep = (step) => {
-    // Validate Step 1 before leaving it
-    if (currentStep === 1 && step > 1) {
-      if (!pieceData.piece_name || pieceData.piece_name.trim().length < 2) {
-        alert('Please enter a piece name (at least 2 characters) before continuing.');
-        return;
-      }
-      // Validate 2 required images
-      const hasP1 = pieceData.piece_image_previews?.[0] || (isEditMode && existingImages[0]);
-      const hasP2 = pieceData.piece_image_previews?.[1] || (isEditMode && existingImages[1]);
-      if (!hasP1 || !hasP2) {
-        alert('Please upload images for both Player 1 (light) and Player 2 (dark).');
-        return;
-      }
-    }
     setCurrentStep(step);
   };
 
@@ -563,21 +550,6 @@ const PieceWizard = ({ editPieceId = null }) => {
   };
 
   const nextStep = () => {
-    // Validate Step 1: piece_name is required
-    if (currentStep === 1) {
-      if (!pieceData.piece_name || pieceData.piece_name.trim().length < 2) {
-        alert('Please enter a piece name (at least 2 characters) before continuing.');
-        return;
-      }
-      // Validate 2 required images
-      const hasP1 = pieceData.piece_image_previews?.[0] || (isEditMode && existingImages[0]);
-      const hasP2 = pieceData.piece_image_previews?.[1] || (isEditMode && existingImages[1]);
-      if (!hasP1 || !hasP2) {
-        alert('Please upload images for both Player 1 (light) and Player 2 (dark).');
-        return;
-      }
-    }
-    
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     }
@@ -590,11 +562,24 @@ const PieceWizard = ({ editPieceId = null }) => {
   };
 
   const handleSubmit = async () => {
-    // Validate 2 required images before submitting
+    // Collect all missing required fields
+    const missing = [];
+    
+    if (!pieceData.piece_name || pieceData.piece_name.trim().length < 2) {
+      missing.push({ field: 'Piece Name (at least 2 characters)', step: 1 });
+    }
+    
     const hasP1 = pieceData.piece_image_previews?.[0] || (isEditMode && existingImages[0]);
     const hasP2 = pieceData.piece_image_previews?.[1] || (isEditMode && existingImages[1]);
-    if (!hasP1 || !hasP2) {
-      alert('Please upload images for both Player 1 (light) and Player 2 (dark).');
+    if (!hasP1) {
+      missing.push({ field: 'Player 1 (light) image', step: 1 });
+    }
+    if (!hasP2) {
+      missing.push({ field: 'Player 2 (dark) image', step: 1 });
+    }
+    
+    if (missing.length > 0) {
+      setMissingFields(missing);
       return;
     }
 
@@ -788,6 +773,28 @@ const PieceWizard = ({ editPieceId = null }) => {
           )}
         </div>
       </div>
+
+      {missingFields && (
+        <div className={styles["warning-overlay"]}>
+          <div className={styles["warning-modal"]}>
+            <h3>⚠️ Required Fields Missing</h3>
+            <p>Please fill in the following required fields before submitting:</p>
+            <ul className={styles["missing-fields-list"]}>
+              {missingFields.map((item, i) => (
+                <li key={i}>
+                  <strong>{item.field}</strong> <span className={styles["step-ref"]}>(Step {item.step}: {stepLabels[item.step - 1].label})</span>
+                </li>
+              ))}
+            </ul>
+            <div className={styles["warning-buttons"]}>
+              <StandardButton 
+                buttonText="OK" 
+                onClick={() => setMissingFields(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

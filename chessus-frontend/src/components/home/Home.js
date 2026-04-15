@@ -188,6 +188,9 @@ const Home = () => {
   const handleDragStart = (e, piece, index) => {
     setDraggedPiece({ piece, index });
     e.dataTransfer.effectAllowed = 'move';
+    // Use only the piece image as the drag ghost so the whole row isn't captured
+    const img = e.currentTarget;
+    e.dataTransfer.setDragImage(img, img.width / 2, img.height / 2);
   };
 
   const handleDragOver = (e) => {
@@ -248,6 +251,7 @@ const Home = () => {
                 draggable
                 onDragStart={(e) => handleDragStart(e, piece, pieceIndex)}
                 onDragEnd={handleDragEnd}
+                onContextMenu={(e) => e.preventDefault()}
               />
             )}
           </div>

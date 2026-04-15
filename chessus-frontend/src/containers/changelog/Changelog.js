@@ -5,6 +5,45 @@ import API_URL from "../../global/global";
 
 const changelogData = [
   {
+    date: "April 15, 2026",
+    title: "Sound Effects, AI & Home Board Fixes",
+    items: [
+      "Fixed dragging pieces on the home page sometimes picking up the entire row as a chunk",
+      "AI difficulty buttons in the host game modal now spread evenly across their row",
+      "New distinct sound effect plays when a piece is hit but survives (HP/AD system)",
+      "Sound playback length reduced to 0.6s for snappier feedback",
+      "Computer opponent now values piece exchanges more aggressively — trading a lower-value piece for a higher-value one is prioritized",
+      "Sound effects now reliably play after switching back to the browser tab",
+      "The last move of a game now plays its sound (capture, move, etc.) even when the game ends in checkmate",
+    ],
+  },
+  {
+    date: "April 14, 2026",
+    title: "Lichess Login, Spectator Fixes, Wizard & Sound Improvements",
+    items: [
+      "You can now sign in or register with your Lichess account",
+      "Lichess login button appears on both the Login and Register pages",
+      "Spectators now see both players' actual names on the chess clocks instead of '(You)'",
+      "Spectators no longer see a green highlight border on the clocks",
+      "The active turn indicator now correctly highlights the current player's clock for spectators",
+      "Spectators can no longer click on pieces or set premoves",
+      "Spectator list now properly displays when others are watching a game",
+      "You can now skip steps freely in the game and piece creation wizards",
+      "Clicking Create/Save with missing required fields now shows a clear prompt listing what still needs to be filled in",
+      "New check sound effect for a more distinct alert",
+      "Sound effects now play longer (0.8s) for better clarity",
+      "Fixed a rare issue where capture sounds could be skipped during rapid play",
+      "Pieces with separate attack patterns (like pawns) can now properly premove their attack squares",
+      "Sound effects are now enabled by default for new visitors",
+      "In-game options panel now uses a collapsible arrow instead of an X button",
+      "Sound playback length reduced to 0.7s for snappier feedback",
+      "Admin portal links no longer show underlines",
+      "Long-pressing pieces on the home page no longer triggers the browser image menu on mobile",
+      "Touch drag on mobile now shows check error messages and plays illegal move sounds, matching desktop behavior",
+      "Touch drag now properly handles multi-tile piece grab offset on mobile",
+    ],
+  },
+  {
     date: "April 13, 2026",
     title: "Library UX, Profile Sections & Emoji Improvements",
     items: [

@@ -2995,10 +2995,10 @@ function initializeSocket(server) {
                 gameId,
                 winner: winner?.id,
                 reason: 'checkmate',
+                move: moveRecord,
                 finalState: gameState,
                 eloChanges
               });
-              console.log('gameOver event emitted to room game-' + gameId);
               
               console.log(`CHECKMATE! Player ${checkmatedPlayer?.username} is checkmated in game ${gameId}`);
               return; // Exit early since game is over
@@ -3051,10 +3051,10 @@ function initializeSocket(server) {
                 gameId,
                 winner: null,
                 reason: 'stalemate',
+                move: moveRecord,
                 finalState: gameState,
                 eloChanges
               });
-              console.log('gameOver event emitted for stalemate in game-' + gameId);
               
               const stalematedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
               console.log(`STALEMATE! Player ${stalematedPlayer?.username} has no legal moves in game ${gameId}`);
@@ -3103,10 +3103,10 @@ function initializeSocket(server) {
                 gameId,
                 winner: winner?.id,
                 reason: 'no_moves',
+                move: moveRecord,
                 finalState: gameState,
                 eloChanges
               });
-              console.log('gameOver event emitted for no_moves win in game-' + gameId);
               
               console.log(`NO LEGAL MOVES! Player ${losingPlayer?.username} loses in game ${gameId}`);
               return; // Exit early since game is over
@@ -3166,6 +3166,7 @@ function initializeSocket(server) {
                 reason,
                 player1Count,
                 player2Count,
+                move: moveRecord,
                 finalState: gameState,
                 eloChanges
               });
@@ -3223,10 +3224,10 @@ function initializeSocket(server) {
               gameId,
               winner: null,
               reason: 'draw_move_limit',
+              move: moveRecord,
               finalState: gameState,
               eloChanges
             });
-            console.log('gameOver event emitted for draw by move limit in game-' + gameId);
             return; // Exit early since game is over
           }
 
@@ -3272,10 +3273,10 @@ function initializeSocket(server) {
               gameId,
               winner: null,
               reason: 'repetition',
+              move: moveRecord,
               finalState: gameState,
               eloChanges
             });
-            console.log('gameOver event emitted for draw by repetition in game-' + gameId);
             return; // Exit early since game is over
           }
 

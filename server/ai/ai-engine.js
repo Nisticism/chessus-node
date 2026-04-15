@@ -389,9 +389,18 @@ function orderMoves(moves, state) {
     const bCap = targetB ? 1 : 0;
     if (aCap !== bCap) return bCap - aCap;
 
-    // Among captures, prefer high-value victims
+    // Among captures, use MVV-LVA: prefer capturing high-value targets with low-value attackers
     if (aCap && bCap) {
-      return getPieceValue(targetB, bs) - getPieceValue(targetA, bs);
+      const attackerA = posMap.get(`${a.from.x},${a.from.y}`);
+      const attackerB = posMap.get(`${b.from.x},${b.from.y}`);
+      const victimValA = getPieceValue(targetA, bs);
+      const victimValB = getPieceValue(targetB, bs);
+      const attackerValA = attackerA ? getPieceValue(attackerA, bs) : 0;
+      const attackerValB = attackerB ? getPieceValue(attackerB, bs) : 0;
+      // MVV-LVA: maximize (victim value - attacker value)
+      const scoreA = victimValA - attackerValA;
+      const scoreB = victimValB - attackerValB;
+      return scoreB - scoreA;
     }
 
     // Among non-captures, prefer moves toward center
@@ -455,7 +464,7 @@ function evaluatePosition(state, perspective) {
       opPieces.push(piece);
     }
   }
-  score += (myMaterial - opponentMaterial) * 10;
+  score += (myMaterial - opponentMaterial) * 15;
 
   // --- Piece count ---
   score += (myPieces.length - opPieces.length) * 5;
@@ -495,8 +504,10 @@ function evaluatePosition(state, perspective) {
   
   // For each opponent piece, look at what they could plausibly threaten
   // using their movement/capture directions (fast approximation)
-  const threatenedByOpponent = new Set();
+  // Map: threatened piece id -> minimum attacker value (for exchange evaluation)
+  const threatenedByOpponent = new Map();
   for (const opPiece of opPieces) {
+    const opAttackerValue = getPieceValue(opPiece, bs);
     const capDirs = [];
     // Collect capture directions with their range
     if (opPiece.up_capture) capDirs.push([0, -1, opPiece.up_capture]);
@@ -533,7 +544,10 @@ function evaluatePosition(state, perspective) {
         if (target) {
           const targetOwner = target.team || target.player_id;
           if (targetOwner === perspective) {
-            threatenedByOpponent.add(target.id);
+            const existing = threatenedByOpponent.get(target.id);
+            if (existing === undefined || opAttackerValue < existing) {
+              threatenedByOpponent.set(target.id, opAttackerValue);
+            }
           }
           // Path blocked (unless hopping)
           if (!opPiece.can_hop_over_allies && !opPiece.can_hop_over_enemies && !opPiece.ghostwalk) break;
@@ -554,7 +568,10 @@ function evaluatePosition(state, perspective) {
         if (tx >= 0 && tx < bw && ty >= 0 && ty < bh) {
           const target = pieceAtSquare.get(`${tx},${ty}`);
           if (target && (target.team || target.player_id) === perspective) {
-            threatenedByOpponent.add(target.id);
+            const existing = threatenedByOpponent.get(target.id);
+            if (existing === undefined || opAttackerValue < existing) {
+              threatenedByOpponent.set(target.id, opAttackerValue);
+            }
           }
         }
       }
@@ -595,18 +612,29 @@ function evaluatePosition(state, perspective) {
         }
       }
       if (isDefended) {
-        // Defended but still bad if attacker is lower value (exchange is bad)
-        score -= myValue * 4;
+        // Defended: evaluate the exchange quality
+        // If attacker is lower value, we lose the value difference in a trade
+        const attackerValue = threatenedByOpponent.get(myPiece.id) || 0;
+        const exchangeLoss = myValue - attackerValue;
+        if (exchangeLoss > 0) {
+          // Bad trade — we'd lose more material. Penalize proportional to loss.
+          score -= exchangeLoss * 8 + myValue * 2;
+        } else {
+          // Favorable or equal trade — mild penalty for being under attack
+          score -= myValue * 2;
+        }
       } else {
         // Undefended piece under attack — very severe
-        score -= myValue * 10;
+        score -= myValue * 12;
       }
     }
   }
   
   // Repeat for our attacks on opponent
-  const threatenedByUs = new Set();
+  // Map: threatened piece id -> minimum attacker value (for exchange evaluation)
+  const threatenedByUs = new Map();
   for (const myPiece of myPieces) {
+    const myAttackerValue = getPieceValue(myPiece, bs);
     const capDirs = [];
     if (myPiece.up_capture) capDirs.push([0, -1, myPiece.up_capture]);
     if (myPiece.down_capture) capDirs.push([0, 1, myPiece.down_capture]);
@@ -640,7 +668,10 @@ function evaluatePosition(state, perspective) {
         if (target) {
           const targetOwner = target.team || target.player_id;
           if (targetOwner === opponentPos) {
-            threatenedByUs.add(target.id);
+            const existing = threatenedByUs.get(target.id);
+            if (existing === undefined || myAttackerValue < existing) {
+              threatenedByUs.set(target.id, myAttackerValue);
+            }
           }
           if (!myPiece.can_hop_over_allies && !myPiece.can_hop_over_enemies && !myPiece.ghostwalk) break;
         }
@@ -659,7 +690,10 @@ function evaluatePosition(state, perspective) {
         if (tx >= 0 && tx < bw && ty >= 0 && ty < bh) {
           const target = pieceAtSquare.get(`${tx},${ty}`);
           if (target && (target.team || target.player_id) === opponentPos) {
-            threatenedByUs.add(target.id);
+            const existing = threatenedByUs.get(target.id);
+            if (existing === undefined || myAttackerValue < existing) {
+              threatenedByUs.set(target.id, myAttackerValue);
+            }
           }
         }
       }
@@ -673,7 +707,15 @@ function evaluatePosition(state, perspective) {
     if (opPiece.is_royal || opPiece.ends_game_on_capture || opPiece.ends_game_on_checkmate) {
       score += 30;
     } else {
-      score += opValue * 2;
+      // Factor in exchange quality: trading a low-value piece for a high-value one is great
+      const ourAttackerValue = threatenedByUs.get(opPiece.id) || 0;
+      const tradeAdvantage = opValue - ourAttackerValue;
+      if (tradeAdvantage > 0) {
+        // We can trade up — big bonus proportional to the gain
+        score += opValue * 2 + tradeAdvantage * 6;
+      } else {
+        score += opValue * 2;
+      }
     }
   }
 

@@ -2545,6 +2545,20 @@ const runMigrations = async () => {
       console.error('Error upgrading pieces_string to MEDIUMTEXT:', err.message);
     }
 
+  // Add lichess_id column to users for Lichess OAuth login
+  try {
+    const lichessIdCol = await columnExists('users', 'lichess_id');
+    if (!lichessIdCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN lichess_id VARCHAR(255) DEFAULT NULL COMMENT 'Lichess username for Lichess OAuth login'`,
+        "Add lichess_id column to users table for Lichess OAuth login"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding lichess_id column:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

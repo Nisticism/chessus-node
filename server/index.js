@@ -2871,6 +2871,197 @@ app.post("/api/auth/google", async (req, res) => {
   }
 });
 
+// Lichess OAuth Login
+app.post("/api/auth/lichess", async (req, res) => {
+  try {
+    const { code, codeVerifier, redirectUri } = req.body;
+    if (!code || !codeVerifier || !redirectUri) {
+      return res.status(400).send({ auth: false, message: "Lichess authorization code, code verifier, and redirect URI are required" });
+    }
+
+    const lichessClientId = process.env.LICHESS_CLIENT_ID;
+    if (!lichessClientId) {
+      return res.status(500).send({ auth: false, message: "Lichess OAuth is not configured on the server" });
+    }
+
+    // Exchange authorization code for access token
+    let tokenResponse;
+    try {
+      tokenResponse = await fetch("https://lichess.org/api/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          code_verifier: codeVerifier,
+          redirect_uri: redirectUri,
+          client_id: lichessClientId,
+        }),
+      });
+    } catch (fetchErr) {
+      return res.status(502).send({ auth: false, message: "Failed to connect to Lichess" });
+    }
+
+    if (!tokenResponse.ok) {
+      return res.status(401).send({ auth: false, message: "Invalid Lichess authorization code" });
+    }
+
+    const tokenData = await tokenResponse.json();
+    const lichessAccessToken = tokenData.access_token;
+
+    if (!lichessAccessToken) {
+      return res.status(401).send({ auth: false, message: "Failed to obtain Lichess access token" });
+    }
+
+    // Fetch the Lichess user profile
+    let profileResponse;
+    try {
+      profileResponse = await fetch("https://lichess.org/api/account", {
+        headers: { Authorization: `Bearer ${lichessAccessToken}` },
+      });
+    } catch (fetchErr) {
+      return res.status(502).send({ auth: false, message: "Failed to fetch Lichess profile" });
+    }
+
+    if (!profileResponse.ok) {
+      return res.status(401).send({ auth: false, message: "Failed to verify Lichess account" });
+    }
+
+    const lichessProfile = await profileResponse.json();
+    const lichessId = lichessProfile.id; // lowercase username
+    const lichessUsername = lichessProfile.username;
+
+    if (!lichessId) {
+      return res.status(400).send({ auth: false, message: "Could not retrieve Lichess user ID" });
+    }
+
+    // Check if a user with this lichess_id already exists
+    let user;
+    const [lichessUsers] = await db_pool.query(
+      "SELECT * FROM chessusnode.users WHERE lichess_id = ?", [lichessId]
+    );
+
+    if (lichessUsers.length > 0) {
+      user = lichessUsers[0];
+    } else {
+      // Check if a user with the same username exists (try to link)
+      const existingUser = await dbHelpers.findUserByUsername(lichessUsername);
+
+      if (existingUser && existingUser.lichess_id) {
+        // Username taken by someone with a different lichess account
+        // Create a new account with a suffixed username
+        let username = lichessUsername;
+        let suffix = 1;
+        while (await dbHelpers.findUserByUsername(username)) {
+          username = `${lichessUsername.substring(0, 16)}${suffix}`;
+          suffix++;
+        }
+
+        const defaultLightColor = '#e3d4bf';
+        const defaultDarkColor = '#64472b';
+        await db_pool.query(
+          "INSERT INTO chessusnode.users (username, password, lichess_id, light_square_color, dark_square_color, allow_non_friend_dms, sound_enabled) VALUES (?,?,?,?,?,1,1)",
+          [username, "", lichessId, defaultLightColor, defaultDarkColor]
+        );
+
+        user = await dbHelpers.findUserByUsername(username);
+      } else if (existingUser) {
+        // Link existing account to Lichess
+        await db_pool.query(
+          "UPDATE chessusnode.users SET lichess_id = ? WHERE id = ?",
+          [lichessId, existingUser.id]
+        );
+        user = existingUser;
+      } else {
+        // Create a new account
+        let baseUsername = lichessUsername
+          .replace(/[^a-zA-Z0-9_-]/g, "")
+          .substring(0, 20);
+        if (baseUsername.length < 3) baseUsername = "user";
+
+        let username = baseUsername;
+        let suffix = 1;
+        while (await dbHelpers.findUserByUsername(username)) {
+          username = `${baseUsername.substring(0, 16)}${suffix}`;
+          suffix++;
+        }
+
+        const defaultLightColor = '#e3d4bf';
+        const defaultDarkColor = '#64472b';
+        await db_pool.query(
+          "INSERT INTO chessusnode.users (username, password, lichess_id, light_square_color, dark_square_color, allow_non_friend_dms, sound_enabled) VALUES (?,?,?,?,?,1,1)",
+          [username, "", lichessId, defaultLightColor, defaultDarkColor]
+        );
+
+        user = await dbHelpers.findUserByUsername(username);
+
+        // Notify owner of new user registration via Lichess (non-blocking)
+        dbHelpers.getOwnerUserId().then(async (ownerId) => {
+          if (ownerId && ownerId !== user.id) {
+            try {
+              await dbHelpers.createNotification({
+                user_id: ownerId,
+                sender_id: user.id,
+                type: 'system',
+                title: `New user registered: ${username}`,
+                content: `A new user "${username}" has joined via Lichess sign-in.`,
+                action_url: `/profile/${user.id}`
+              });
+              const gameSocket = require("./game-socket");
+              const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
+              if (ownerSocketId && gameSocket.getIO()) {
+                const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
+                gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New user registered: ${username}` });
+                gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
+              }
+            } catch (err) { console.error('Owner notification (new Lichess user) failed:', err.message); }
+          }
+        }).catch(() => {});
+      }
+    }
+
+    // Check if user is banned
+    if (user.banned) {
+      if (user.ban_expires_at && new Date(user.ban_expires_at) < new Date()) {
+        await db_pool.query(
+          "UPDATE users SET banned = 0, ban_reason = NULL, banned_at = NULL, banned_by = NULL, ban_expires_at = NULL WHERE id = ?",
+          [user.id]
+        );
+      } else {
+        const banMessage = user.ban_expires_at
+          ? `Your account is temporarily banned until ${new Date(user.ban_expires_at).toLocaleString()}.`
+          : 'Your account has been permanently banned.';
+        return res.status(403).send({ auth: false, message: banMessage, banned: true });
+      }
+    }
+
+    // Generate tokens
+    const userPayload = { id: user.id, username: user.username, role: user.role };
+    const accessToken = generateAccessToken(userPayload);
+    const refreshToken = generateRefreshToken(userPayload);
+
+    await db_pool.query(
+      "UPDATE users SET refresh_token = ?, last_active_at = NOW() WHERE id = ?",
+      [refreshToken, user.id]
+    );
+
+    user.accessToken = accessToken;
+    user.refreshToken = refreshToken;
+    delete user.password;
+    delete user.refresh_token;
+    delete user.banned;
+    delete user.ban_reason;
+    delete user.banned_at;
+    delete user.banned_by;
+    delete user.ban_expires_at;
+
+    res.json({ auth: true, result: user });
+  } catch (err) {
+    console.error("Error in /api/auth/lichess:", err);
+    res.status(500).send({ auth: false, message: "Lichess Sign-In failed", err: err.message });
+  }
+});
+
 app.post("/api/logout", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;

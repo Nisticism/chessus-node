@@ -3,6 +3,10 @@
   background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-dark) 100%);
   padding: 40px 20px;
   color: var(--text-heading);
+
+  a {
+    text-decoration: none;
+  }
 }
 
 .dashboard-header {

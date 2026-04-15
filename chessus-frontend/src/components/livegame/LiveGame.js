@@ -119,7 +119,8 @@ const LiveGame = () => {
     setPremove: sendPremove,
     clearPremove: sendClearPremove,
     promotePiece,
-    onGameEvent
+    onGameEvent,
+    spectateGame
   } = useSocket();
 
   const [gameState, setGameState] = useState(null);
@@ -149,9 +150,10 @@ const LiveGame = () => {
   const [showBoardNotation, setShowBoardNotation] = useState(true);
   const [showBadges, setShowBadges] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(() => {
-    return currentUser?.sound_enabled === 1 || currentUser?.sound_enabled === true;
+    if (!currentUser) return true;
+    return currentUser.sound_enabled === 1 || currentUser.sound_enabled === true;
   });
-  const soundEnabledRef = useRef(currentUser?.sound_enabled === 1 || currentUser?.sound_enabled === true);
+  const soundEnabledRef = useRef(!currentUser || currentUser.sound_enabled === 1 || currentUser.sound_enabled === true);
   const [premove, setPremove] = useState(null); // Store premove {from, to, pieceId}
   const [showPromotionModal, setShowPromotionModal] = useState(false);
   const [promotionData, setPromotionData] = useState(null); // {pieceId, options, promotingPiece}
@@ -393,6 +395,14 @@ const LiveGame = () => {
     loadGame();
   }, [gameId, connected, getGameState]);
 
+  // When not a player, register as a spectator
+  const isSpectator = !!(gameState && !gameState.players?.some(p => p.id === currentUser?.id || (socket?.id && p.id === `anon_${socket.id}`)));
+  useEffect(() => {
+    if (isSpectator && connected && gameId && spectateGame) {
+      spectateGame(parseInt(gameId));
+    }
+  }, [isSpectator, connected, gameId, spectateGame]);
+
   // Leave game room on unmount so notifications can be sent
   useEffect(() => {
     return () => {
@@ -485,8 +495,8 @@ const LiveGame = () => {
           } else if (move.captured) {
             soundManager.playCapture();
           } else if (move.damagedPieces && move.damagedPieces.length > 0) {
-            // HP/AD: play capture sound for damage hits too
-            soundManager.playCapture();
+            // HP/AD: play hit sound for damage that didn't kill
+            soundManager.playHit();
           } else {
             soundManager.playMove();
           }
@@ -574,7 +584,7 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges, player1Count, player2Count }) => {
+    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges, player1Count, player2Count, move }) => {
       if (parseInt(overGameId) === parseInt(gameId)) {
         setGameOverData({ winner, winnerUsername, reason, eloChanges, player1Count, player2Count });
         setShowGameOver(true);
@@ -590,14 +600,27 @@ const LiveGame = () => {
         }));
         setInCheck(false);
         setCheckedPieces([]);
-        // Play appropriate sound based on game end reason
+        // Play sound for the final move, then the game-ending sound
         if (soundEnabledRef.current) {
-          if (reason === 'checkmate') {
-            soundManager.playCheckmate();
-          } else if (reason === 'stalemate' || reason === 'insufficient_material') {
-            // For stalemate/insufficient material, play a neutral sound (move sound)
-            soundManager.playMove();
+          // First play the move sound (capture/hit/move) for the last move
+          if (move) {
+            if (move.captured) {
+              soundManager.playCapture();
+            } else if (move.damagedPieces && move.damagedPieces.length > 0) {
+              soundManager.playHit();
+            } else {
+              soundManager.playMove();
+            }
           }
+          // Then play the game-ending sound after a short delay so both are audible
+          const endSoundDelay = move ? 300 : 0;
+          setTimeout(() => {
+            if (reason === 'checkmate') {
+              soundManager.playCheckmate();
+            } else if (reason === 'stalemate' || reason === 'insufficient_material') {
+              if (!move) soundManager.playMove();
+            }
+          }, endSoundDelay);
         }
       }
     });
@@ -743,7 +766,7 @@ const LiveGame = () => {
           if (move.captured) {
             soundManager.playCapture();
           } else if (move.damagedPieces && move.damagedPieces.length > 0) {
-            soundManager.playCapture();
+            soundManager.playHit();
           } else {
             soundManager.playMove();
           }
@@ -2342,6 +2365,9 @@ const LiveGame = () => {
     // Block interactions while a move is pending confirmation
     if (pendingMove) return;
 
+    // Block all interactions for spectators
+    if (!currentPlayer) return;
+
     // Clear ranged-twice selection on any left click
     if (rangedSelectedPiece) {
       setRangedSelectedPiece(null);
@@ -2405,7 +2431,7 @@ const LiveGame = () => {
         pieces, 
         gameState.gameType?.board_width || 8, 
         gameState.gameType?.board_height || 8,
-        false, // skipCheckFilter
+        canSelectForPremove, // skipCheckFilter - premoves skip check filter since board state will change
         canSelectForPremove // forPremove - include potential capture squares
       );
       setValidMoves(moves);
@@ -2629,7 +2655,7 @@ const LiveGame = () => {
       pieces,
       gameState.gameType?.board_width || 8,
       gameState.gameType?.board_height || 8,
-      false, // skipCheckFilter
+      canDragForPremove, // skipCheckFilter - premoves skip check filter since board state will change
       canDragForPremove // forPremove - include potential capture squares for premoves
     );
     setDragValidMoves(moves);
@@ -2844,6 +2870,9 @@ const LiveGame = () => {
 
   // Touch event handlers for mobile drag support
   const handleTouchStart = useCallback((e, piece) => {
+    // Block dragging while a move is pending confirmation
+    if (pendingMove) return;
+
     const pieceTeam = piece.player_id || piece.team;
     const isOwnPiece = currentPlayer && pieceTeam === currentPlayer.position;
     const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
@@ -2852,19 +2881,36 @@ const LiveGame = () => {
     if (!canDragForMove && !canDragForPremove) return;
 
     const touch = e.touches[0];
+
+    // Calculate grab offset within the piece footprint for multi-tile pieces
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
+    let grabOffset = { x: 0, y: 0 };
+    if ((pw > 1 || ph > 1) && e.currentTarget) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const relX = touch.clientX - rect.left;
+      const relY = touch.clientY - rect.top;
+      const cellWidth = rect.width / pw;
+      const cellHeight = rect.height / ph;
+      grabOffset = {
+        x: Math.floor(relX / cellWidth),
+        y: Math.floor(relY / cellHeight)
+      };
+    }
+
     const pieces = parsePieces(gameState.pieces);
     const moves = calculateValidMoves(
       piece, pieces,
       gameState.gameType?.board_width || 8,
       gameState.gameType?.board_height || 8,
-      false,
+      canDragForPremove, // skipCheckFilter - premoves skip check filter since board state will change
       canDragForPremove
     );
 
-    touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false };
+    touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
     setSelectedPiece(piece);
     setValidMoves(moves);
-  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves]);
+  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove]);
 
   const handleTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -2903,33 +2949,37 @@ const LiveGame = () => {
       let displayRow = Math.floor(relY / (boardRect.height / boardHeight));
 
       // Convert from display coordinates to game coordinates (account for flip)
-      let gameX = shouldFlipBoard ? (boardWidth - 1 - displayCol) : displayCol;
-      let gameY = shouldFlipBoard ? (boardHeight - 1 - displayRow) : displayRow;
+      let targetX = shouldFlipBoard ? (boardWidth - 1 - displayCol) : displayCol;
+      let targetY = shouldFlipBoard ? (boardHeight - 1 - displayRow) : displayRow;
+
+      // Adjust for multi-tile grab offset
+      const grabOffset = td.grabOffset || { x: 0, y: 0 };
+      const anchorX = targetX - (grabOffset.x || 0);
+      const anchorY = targetY - (grabOffset.y || 0);
 
       // Bounds check
-      if (gameX >= 0 && gameX < boardWidth && gameY >= 0 && gameY < boardHeight) {
+      if (anchorX >= 0 && anchorX < boardWidth && anchorY >= 0 && anchorY < boardHeight) {
         const piece = td.piece;
         const moves = td.moves;
 
-        // Same as handleDrop logic
         const pw = piece.piece_width || 1;
         const ph = piece.piece_height || 1;
 
         // Don't move if dropping within the piece's own footprint
-        if (!(gameX >= piece.x && gameX < piece.x + pw && gameY >= piece.y && gameY < piece.y + ph)) {
-          let validMove = moves.find(m => m.x === gameX && m.y === gameY);
+        if (!(anchorX >= piece.x && anchorX < piece.x + pw && anchorY >= piece.y && anchorY < piece.y + ph)) {
+          let validMove = moves.find(m => m.x === anchorX && m.y === anchorY);
 
           // Multi-tile footprint overlap
           if (!validMove && (pw > 1 || ph > 1)) {
             validMove = moves.find(m => !m.isRangedAttack &&
-              gameX >= m.x && gameX < m.x + pw && gameY >= m.y && gameY < m.y + ph
+              anchorX >= m.x && anchorX < m.x + pw && anchorY >= m.y && anchorY < m.y + ph
             );
           }
 
           // Multi-tile enemy fallback
           if (!validMove) {
             const pieces = parsePieces(gameState?.pieces);
-            const targetPiece = findPieceAtSquare(pieces, gameX, gameY);
+            const targetPiece = findPieceAtSquare(pieces, anchorX, anchorY);
             if (targetPiece && targetPiece.id !== piece.id) {
               validMove = moves.find(m => {
                 if (!m.isCapture) return false;
@@ -2974,20 +3024,43 @@ const LiveGame = () => {
               setPremove(premoveData);
               sendPremove(parseInt(gameId), premoveData);
             }
+          } else {
+            // Check if the move was blocked by check restrictions
+            if (piece && gameState?.gameType?.mate_condition && gameState?.pieces) {
+              const movesWithoutCheckFilter = calculateValidMoves(
+                piece,
+                gameState.pieces,
+                gameState?.gameType?.board_width || 8,
+                gameState?.gameType?.board_height || 8,
+                true // Skip check filter
+              );
+              const moveWithoutCheckFilter = movesWithoutCheckFilter.find(m => m.x === anchorX && m.y === anchorY);
+              if (moveWithoutCheckFilter) {
+                if (inCheck && currentPlayer?.position === gameState?.currentTurn) {
+                  setMoveError("You must get out of check");
+                } else {
+                  setMoveError("This move would put you in check");
+                }
+                setTimeout(() => setMoveError(null), 3000);
+                if (soundEnabledRef.current) {
+                  soundManager.playIllegalMove();
+                }
+              }
+            }
           }
         }
       }
     }
     // If not dragging, let onClick handle the tap
 
-    touchDragRef.current = { piece: null, moves: [], startX: 0, startY: 0, isDragging: false };
+    touchDragRef.current = { piece: null, moves: [], startX: 0, startY: 0, isDragging: false, grabOffset: { x: 0, y: 0 } };
     setTouchDragPiece(null);
     setTouchDragPos(null);
     if (td.isDragging) {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [gameState, shouldFlipBoard, isMyTurn, submitMove, sendPremove, gameId]);
+  }, [gameState, shouldFlipBoard, isMyTurn, submitMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
 
   // Handle right-click mousedown for ranged attack drag detection
   const handleSquareMouseDown = useCallback((e, x, y) => {
@@ -3970,6 +4043,10 @@ const LiveGame = () => {
   const player1 = gameState.players?.find(p => p.position === 1);
   const player2 = gameState.players?.find(p => p.position === 2);
 
+  // For spectators (no currentPlayer), show player1 on bottom and player2 on top
+  const topPlayer = currentPlayer ? (currentPlayer.position === 1 ? player2 : player1) : player2;
+  const bottomPlayer = currentPlayer ? currentPlayer : player1;
+
   return (
     <div className={styles["live-game-container"]}>
       <div className={styles["game-header"]}>
@@ -4030,36 +4107,36 @@ const LiveGame = () => {
         <div className={styles["layout-row-top-clock"]}>
           <div className={`
             ${styles["player-clock"]} 
-            ${currentPlayer?.position === 1 ? styles["player-2-color"] : styles["player-1-color"]}
-            ${(!currentPlayer || (currentPlayer.position === 2 && gameState.currentTurn === 1) || (currentPlayer.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles["current-turn"] : ''}
-            ${gameState.winner === (currentPlayer?.position === 1 ? player2?.id : player1?.id) ? styles.winner : ''}
+            ${topPlayer?.position === 1 ? styles["player-1-color"] : styles["player-2-color"]}
+            ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles["current-turn"] : ''}
+            ${gameState.winner === topPlayer?.id ? styles.winner : ''}
           `}>
             <div className={styles["player-info"]}>
               <div className={styles["player-header"]}>
                 <span className={styles["player-name"]}>
-                  {(currentPlayer?.position === 1 ? player2?.id : player1?.id) === 'bot' ? (
-                    currentPlayer?.position === 1 ? player2?.username : player1?.username
+                  {topPlayer?.id === 'bot' ? (
+                    topPlayer?.username
                   ) : (
-                    <Link to={`/profile/${currentPlayer?.position === 1 ? player2?.username : player1?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
-                      {currentPlayer?.position === 1 ? player2?.username : player1?.username}
+                    <Link to={`/profile/${topPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+                      {topPlayer?.username}
                     </Link>
                   )}
-                  {(currentPlayer?.position === 1 ? player2?.id : player1?.id) === currentUser?.id && ' (You)'}
+                  {topPlayer?.id === currentUser?.id && ' (You)'}
                 </span>
-                <span className={`${styles["player-indicator"]} ${((!currentPlayer && gameState.currentTurn === (currentPlayer?.position === 1 ? 2 : 1)) || (currentPlayer?.position === 2 && gameState.currentTurn === 1) || (currentPlayer?.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>
+                <span className={`${styles["player-indicator"]} ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
               </div>
               {gameState.timeControl && (
                 <div className={styles["player-time"]}>
-                  <div className={`${styles["time-value"]} ${(getDisplayTime(currentPlayer?.position === 1 ? player2?.id : player1?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
-                    {formatTime(getDisplayTime(currentPlayer?.position === 1 ? player2?.id : player1?.id))}
-                    {(() => { const opId = currentPlayer?.position === 1 ? player2?.id : player1?.id; const m = gameState.clockMultipliers?.[opId]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
+                  <div className={`${styles["time-value"]} ${(getDisplayTime(topPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
+                    {formatTime(getDisplayTime(topPlayer?.id))}
+                    {(() => { const m = gameState.clockMultipliers?.[topPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
                   </div>
                 </div>
               )}
               {!gameState.timeControl && gameState.isCorrespondence && (
                 <div className={styles["player-time"]}>
                   <div className={styles["time-value"]}>
-                    {formatCorrespondenceTime((currentPlayer?.position === 1 && gameState.currentTurn === 2) || (currentPlayer?.position === 2 && gameState.currentTurn === 1))}
+                    {formatCorrespondenceTime(topPlayer && gameState.currentTurn === topPlayer.position)}
                   </div>
                 </div>
               )}
@@ -4075,36 +4152,36 @@ const LiveGame = () => {
             <div className={`
               ${styles["player-clock"]} 
               ${styles["top-clock"]}
-              ${currentPlayer?.position === 1 ? styles["player-2-color"] : styles["player-1-color"]}
-              ${(!currentPlayer || (currentPlayer.position === 2 && gameState.currentTurn === 1) || (currentPlayer.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles["current-turn"] : ''}
-              ${gameState.winner === (currentPlayer?.position === 1 ? player2?.id : player1?.id) ? styles.winner : ''}
+              ${topPlayer?.position === 1 ? styles["player-1-color"] : styles["player-2-color"]}
+              ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles["current-turn"] : ''}
+              ${gameState.winner === topPlayer?.id ? styles.winner : ''}
             `}>
               <div className={styles["player-info"]}>
                 <div className={styles["player-header"]}>
                   <span className={styles["player-name"]}>
-                    {(currentPlayer?.position === 1 ? player2?.id : player1?.id) === 'bot' ? (
-                      currentPlayer?.position === 1 ? player2?.username : player1?.username
+                    {topPlayer?.id === 'bot' ? (
+                      topPlayer?.username
                     ) : (
-                      <Link to={`/profile/${currentPlayer?.position === 1 ? player2?.username : player1?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
-                        {currentPlayer?.position === 1 ? player2?.username : player1?.username}
+                      <Link to={`/profile/${topPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+                        {topPlayer?.username}
                       </Link>
                     )}
-                    {(currentPlayer?.position === 1 ? player2?.id : player1?.id) === currentUser?.id && ' (You)'}
+                    {topPlayer?.id === currentUser?.id && ' (You)'}
                   </span>
-                  <span className={`${styles["player-indicator"]} ${((!currentPlayer && gameState.currentTurn === (currentPlayer?.position === 1 ? 2 : 1)) || (currentPlayer?.position === 2 && gameState.currentTurn === 1) || (currentPlayer?.position === 1 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>
+                  <span className={`${styles["player-indicator"]} ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
                 </div>
                 {gameState.timeControl && (
                   <div className={styles["player-time"]}>
-                    <div className={`${styles["time-value"]} ${(getDisplayTime(currentPlayer?.position === 1 ? player2?.id : player1?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
-                      {formatTime(getDisplayTime(currentPlayer?.position === 1 ? player2?.id : player1?.id))}
-                      {(() => { const opId = currentPlayer?.position === 1 ? player2?.id : player1?.id; const m = gameState.clockMultipliers?.[opId]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
+                    <div className={`${styles["time-value"]} ${(getDisplayTime(topPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
+                      {formatTime(getDisplayTime(topPlayer?.id))}
+                      {(() => { const m = gameState.clockMultipliers?.[topPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
                     </div>
                   </div>
                 )}
                 {!gameState.timeControl && gameState.isCorrespondence && (
                   <div className={styles["player-time"]}>
                     <div className={styles["time-value"]}>
-                      {formatCorrespondenceTime((currentPlayer?.position === 1 && gameState.currentTurn === 2) || (currentPlayer?.position === 2 && gameState.currentTurn === 1))}
+                      {formatCorrespondenceTime(topPlayer && gameState.currentTurn === topPlayer.position)}
                     </div>
                   </div>
                 )}
@@ -4138,34 +4215,38 @@ const LiveGame = () => {
             <div className={`
               ${styles["player-clock"]} 
               ${styles["bottom-clock"]}
-              ${currentPlayer?.position === 1 ? styles["player-1-color"] : styles["player-2-color"]}
-              ${(currentPlayer && ((currentPlayer.position === 1 && gameState.currentTurn === 1) || (currentPlayer.position === 2 && gameState.currentTurn === 2))) && gameState.status === 'active' ? styles["current-turn"] : ''}
-              ${gameState.winner === currentPlayer?.id ? styles.winner : ''}
+              ${bottomPlayer?.position === 1 ? styles["player-1-color"] : styles["player-2-color"]}
+              ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles["current-turn"] : ''}
+              ${gameState.winner === bottomPlayer?.id ? styles.winner : ''}
             `}>
               <div className={styles["player-info"]}>
                 {gameState.timeControl && (
                   <div className={styles["player-time"]}>
-                    <div className={`${styles["time-value"]} ${(getDisplayTime(currentPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
-                      {formatTime(getDisplayTime(currentPlayer?.id))}
-                      {(() => { const m = gameState.clockMultipliers?.[currentPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
+                    <div className={`${styles["time-value"]} ${(getDisplayTime(bottomPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
+                      {formatTime(getDisplayTime(bottomPlayer?.id))}
+                      {(() => { const m = gameState.clockMultipliers?.[bottomPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
                     </div>
                   </div>
                 )}
                 {!gameState.timeControl && gameState.isCorrespondence && (
                   <div className={styles["player-time"]}>
                     <div className={styles["time-value"]}>
-                      {formatCorrespondenceTime((currentPlayer?.position === 1 && gameState.currentTurn === 1) || (currentPlayer?.position === 2 && gameState.currentTurn === 2))}
+                      {formatCorrespondenceTime(bottomPlayer && gameState.currentTurn === bottomPlayer.position)}
                     </div>
                   </div>
                 )}
                 <div className={styles["player-header"]}>
                   <span className={styles["player-name"]}>
-                    <Link to={`/profile/${currentPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
-                      {currentPlayer?.username}
-                    </Link>
-                    {' (You)'}
+                    {bottomPlayer?.id === 'bot' ? (
+                      bottomPlayer?.username
+                    ) : (
+                      <Link to={`/profile/${bottomPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+                        {bottomPlayer?.username}
+                      </Link>
+                    )}
+                    {currentPlayer && bottomPlayer?.id === currentUser?.id && ' (You)'}
                   </span>
-                  <span className={`${styles["player-indicator"]} ${currentPlayer && ((currentPlayer.position === 1 && gameState.currentTurn === 1) || (currentPlayer.position === 2 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>
+                  <span className={`${styles["player-indicator"]} ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
                 </div>
               </div>
             </div>
@@ -4348,7 +4429,7 @@ const LiveGame = () => {
                     onClick={() => setOptionsCollapsed(!optionsCollapsed)}
                     title={optionsCollapsed ? 'Show options' : 'Hide options'}
                   >
-                    {optionsCollapsed ? '☰' : '✕'}
+                    {optionsCollapsed ? '▶' : '▼'}
                   </button>
                 </div>
               </div>
@@ -4605,32 +4686,36 @@ const LiveGame = () => {
       <div className={styles["layout-row-bottom-clock"]}>
         <div className={`
           ${styles["player-clock"]} 
-          ${(currentPlayer && ((currentPlayer.position === 1 && gameState.currentTurn === 1) || (currentPlayer.position === 2 && gameState.currentTurn === 2))) && gameState.status === 'active' ? styles["current-turn"] : ''}
-          ${gameState.winner === currentPlayer?.id ? styles.winner : ''}
+          ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles["current-turn"] : ''}
+          ${gameState.winner === bottomPlayer?.id ? styles.winner : ''}
         `}>
           <div className={styles["player-info"]}>
             {gameState.timeControl && (
               <div className={styles["player-time"]}>
-                <div className={`${styles["time-value"]} ${(getDisplayTime(currentPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
-                  {formatTime(getDisplayTime(currentPlayer?.id))}
+                <div className={`${styles["time-value"]} ${(getDisplayTime(bottomPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
+                  {formatTime(getDisplayTime(bottomPlayer?.id))}
                 </div>
               </div>
             )}
             {!gameState.timeControl && gameState.isCorrespondence && (
               <div className={styles["player-time"]}>
                 <div className={styles["time-value"]}>
-                  {formatCorrespondenceTime((currentPlayer?.position === 1 && gameState.currentTurn === 1) || (currentPlayer?.position === 2 && gameState.currentTurn === 2))}
+                  {formatCorrespondenceTime(bottomPlayer && gameState.currentTurn === bottomPlayer.position)}
                 </div>
               </div>
             )}
             <div className={styles["player-header"]}>
               <span className={styles["player-name"]}>
-                <Link to={`/profile/${currentPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
-                  {currentPlayer?.username}
-                </Link>
-                {' (You)'}
+                {bottomPlayer?.id === 'bot' ? (
+                  bottomPlayer?.username
+                ) : (
+                  <Link to={`/profile/${bottomPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+                    {bottomPlayer?.username}
+                  </Link>
+                )}
+                {currentPlayer && bottomPlayer?.id === currentUser?.id && ' (You)'}
               </span>
-              <span className={`${styles["player-indicator"]} ${currentPlayer && ((currentPlayer.position === 1 && gameState.currentTurn === 1) || (currentPlayer.position === 2 && gameState.currentTurn === 2)) && gameState.status === 'active' ? styles.active : ''}`}></span>
+              <span className={`${styles["player-indicator"]} ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
             </div>
           </div>
         </div>
@@ -4665,10 +4750,7 @@ const LiveGame = () => {
         <div className={styles["piece-count-tracker"]}>
           <div className={styles["piece-count-tracker-row"]}>
             <span className={`${styles["piece-count-tracker-player"]} ${styles["player-white"]}`}>
-              {(() => {
-                const p1 = currentPlayer?.position === 1 ? currentPlayer : (player1 || player2);
-                return p1?.username || 'Player 1';
-              })()}
+              {player1?.username || 'Player 1'}
             </span>
             <span className={styles["piece-count-tracker-value"]}>
               {gameState.pieces.filter(p => (p.team || p.player_id) === 1).length}
@@ -4680,10 +4762,7 @@ const LiveGame = () => {
               {gameState.pieces.filter(p => (p.team || p.player_id) === 2).length}
             </span>
             <span className={`${styles["piece-count-tracker-player"]} ${styles["player-black"]}`}>
-              {(() => {
-                const p2 = currentPlayer?.position === 1 ? (player2 || player1) : currentPlayer;
-                return p2?.username || 'Player 2';
-              })()}
+              {player2?.username || 'Player 2'}
             </span>
           </div>
         </div>
