@@ -6,6 +6,10 @@ import StandardButton from "../standardbutton/StandardButton";
 import { getForum, editForum } from "../../actions/forums";
 import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 import EmojiPickerButton from "../common/EmojiPickerButton";
+import ValidationWarningModal from "../common/ValidationWarningModal";
+
+const TITLE_MAX = 200;
+const CONTENT_MAX = 50000;
 
 const EditForum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -14,6 +18,7 @@ const EditForum = () => {
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [successful] = useState(false);
+  const [validationWarnings, setValidationWarnings] = useState(null);
   const { message } = useSelector(state => state.message);
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -56,6 +61,13 @@ const EditForum = () => {
       inputContent = currentForum.content;
       console.log(content);
     }
+    const warnings = [];
+    if (!inputTitle || !inputTitle.trim()) warnings.push("Post Subject is required");
+    else if (inputTitle.length > TITLE_MAX) warnings.push(`Post Subject exceeds ${TITLE_MAX} character limit (currently ${inputTitle.length})`);
+    if (!inputContent || !inputContent.trim()) warnings.push("Content is required");
+    else if (inputContent.length > CONTENT_MAX) warnings.push(`Content exceeds ${CONTENT_MAX.toLocaleString()} character limit (currently ${inputContent.length.toLocaleString()})`);
+    if (warnings.length > 0) { setValidationWarnings(warnings); return; }
+
     console.log("title: " + title, "content: " + content);
     dispatch(editForum(inputTitle, inputContent, last_updated_at, forumId))
       .then(() => {
@@ -101,6 +113,7 @@ const EditForum = () => {
                   defaultValue={currentForum ? currentForum.title : title}
                   // value = {title}
                   onChange={onChangeTitle}
+                  maxLength={TITLE_MAX}
                 />
               </div>
               <div className={styles["form-group"]}>
@@ -111,6 +124,7 @@ const EditForum = () => {
                   name="content"
                   defaultValue={currentForum ? currentForum.content : content}
                   onChange={onChangeContent}
+                  maxLength={CONTENT_MAX}
                 />
                 <div className={styles["emoji-row"]}>
                   <EmojiPickerButton onEmojiSelect={(emoji) => {
@@ -170,6 +184,7 @@ const EditForum = () => {
         </div>
       </div>
       )}
+      <ValidationWarningModal warnings={validationWarnings} onClose={() => setValidationWarnings(null)} />
     </div>
   );
 };

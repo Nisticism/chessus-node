@@ -33,6 +33,7 @@ function buildOtherData(gameState, extraFields = {}) {
     moves: gameState.moveHistory,
     rated: gameState.rated,
     allowPremoves: gameState.allowPremoves,
+    ...(gameState.premoveTimeCost ? { premoveTimeCost: gameState.premoveTimeCost } : {}),
     ...(gameState.initialPieces ? { initialPieces: gameState.initialPieces } : {}),
     ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium', botPosition: gameState.botPlayer.position } : {}),
     ...(gameState.materialClockPenalty ? { materialClockPenalty: true } : {}),
@@ -606,7 +607,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random' } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random' } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -916,7 +917,7 @@ function initializeSocket(server) {
         const [result] = await db_pool.query(
           `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id, is_correspondence, correspondence_days)
            VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?)`,
-          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, startingMode, materialClockPenalty: !!materialClockPenalty, materialClockHandicap: !!materialClockHandicap }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
+          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, premoveTimeCost: allowPremoves ? (parseFloat(premoveTimeCost) || 0) : 0, startingMode, materialClockPenalty: !!materialClockPenalty, materialClockHandicap: !!materialClockHandicap }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
         );
 
         const gameId = result.insertId;
@@ -953,6 +954,7 @@ function initializeSocket(server) {
           showPieceHelpers,
           rated,
           allowPremoves,
+          premoveTimeCost: allowPremoves ? (parseFloat(premoveTimeCost) || 0) : 0,
           startingMode,
           premove: null,
           isChallenge: !!challengedUserId,
@@ -2242,6 +2244,16 @@ function initializeSocket(server) {
           gameState.playerTimes[userId] += gameState.increment;
         }
 
+        // Notify player if promotion was skipped (piece reached promotion square but no valid options)
+        if (moveResult.promotionEligible && moveResult.promotionEligible.skipped) {
+          socket.emit('promotionSkipped', {
+            gameId,
+            pieceId: moveResult.promotionEligible.pieceId,
+            pieceName: moveResult.promotionEligible.pieceName,
+            message: `Your ${moveResult.promotionEligible.pieceName} reached a promotion square, but there are no valid pieces to promote to.`
+          });
+        }
+
         // Check if promotion is required (only if there are valid options)
         if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
 
@@ -2286,6 +2298,95 @@ function initializeSocket(server) {
             capturedPiece: moveResult.captured,
             allCapturedPieces: moveResult.allCaptured
           };
+
+          // Auto-promote if only 1 option (skip the modal)
+          if (moveResult.promotionEligible.options.length === 1) {
+            const autoChoice = moveResult.promotionEligible.options[0];
+            console.log(`Auto-promoting piece ${moveResult.promotionEligible.pieceId} to ${autoChoice.piece_name} (only 1 option)`);
+
+            const promotedPiece = await applyPromotionToPiece(gameState, moveResult.promotionEligible.pieceId, autoChoice.piece_id);
+            gameState.pendingPromotion = null;
+
+            if (promotedPiece) {
+              const hasFreeMoveAfterPromotion = promotedPiece.free_move_after_promotion === 1 || promotedPiece.free_move_after_promotion === true;
+              if (!hasFreeMoveAfterPromotion) {
+                gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+              } else {
+                gameState.freeMovePieceId = promotedPiece.id;
+                gameState.freeMovePlayerId = userId;
+              }
+
+              // Broadcast promotion
+              io.to(`game-${gameId}`).emit("piecePromoted", {
+                gameId,
+                pieceId: moveResult.promotionEligible.pieceId,
+                newPieceId: promotedPiece.piece_id,
+                newPieceName: promotedPiece.piece_name,
+                promotedPiece: promotedPiece,
+                gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn }
+              });
+
+              // Check win conditions
+              const promoWinResult = checkWinCondition(gameState, moveResult.allCaptured || moveResult.captured);
+              if (promoWinResult.gameOver) {
+                stopGameTimer(gameId);
+                gameState.status = 'completed';
+                gameState.winner = promoWinResult.winner;
+                gameState.winReason = promoWinResult.reason;
+                const loser = gameState.players.find(p => p.id !== promoWinResult.winner);
+                let eloChanges = null;
+                if (gameState.rated !== false && promoWinResult.winner && loser) { eloChanges = await updateEloRatings(promoWinResult.winner, loser.id); }
+                const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, sanitizeWinnerId(promoWinResult.winner), JSON.stringify(gameState.pieces),
+                   buildOtherData(gameState, { winner: promoWinResult.winner, reason: promoWinResult.reason, eloChanges }), gameId]
+                );
+                io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: promoWinResult.winner, reason: promoWinResult.reason, finalState: gameState, eloChanges });
+                return;
+              }
+
+              // Check/checkmate
+              const promoCheckResult = checkForCheck(gameState, gameState.currentTurn);
+              gameState.inCheck = promoCheckResult.inCheck;
+              gameState.checkedPieces = promoCheckResult.checkedPieces;
+              if (promoCheckResult.inCheck && gameState.gameType?.mate_condition) {
+                if (isCheckmate(gameState, gameState.currentTurn)) {
+                  stopGameTimer(gameId);
+                  gameState.status = 'completed';
+                  const checkmatedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+                  const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+                  gameState.winner = winner?.id;
+                  gameState.winReason = 'checkmate';
+                  let eloChanges = null;
+                  if (gameState.rated !== false && winner?.id && checkmatedPlayer?.id) { eloChanges = await updateEloRatings(winner.id, checkmatedPlayer.id); }
+                  const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                  await db_pool.query(
+                    `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+                    [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces),
+                     buildOtherData(gameState, { winner: winner?.id, reason: 'checkmate', eloChanges }), gameId]
+                  );
+                  io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: winner?.id, reason: 'checkmate', finalState: gameState, eloChanges });
+                  return;
+                }
+              }
+              if (promoCheckResult.inCheck) {
+                io.to(`game-${gameId}`).emit("check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: promoCheckResult.checkedPieces });
+              }
+
+              // Update DB
+              await db_pool.query(
+                "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+                [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+              );
+
+              // Trigger bot turn if applicable
+              if (gameState.status !== 'completed' && gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position) {
+                processBotTurn(io, gameId, gameState);
+              }
+            }
+            return;
+          }
 
           // Update database with current state (before turn switch)
           await db_pool.query(
@@ -2379,10 +2480,14 @@ function initializeSocket(server) {
 
         // Mid-turn checkmate detection for multi-action games
         let midTurnCheckmate = null;
+        let midTurnInCheck = false;
+        let midTurnCheckedPieces = [];
         if (!moveTurnSwitched && actionsPerTurnMove > 1 && gameState.gameType?.mate_condition) {
           const opponentPosition = gameState.currentTurn === 1 ? 2 : 1;
           const midCheckResult = checkForCheck(gameState, opponentPosition);
           if (midCheckResult.inCheck) {
+            midTurnInCheck = true;
+            midTurnCheckedPieces = midCheckResult.checkedPieces;
             const midIsCheckmate = isCheckmate(gameState, opponentPosition);
             if (midIsCheckmate) {
               const remaining = actionsPerTurnMove - gameState.actionsThisTurn;
@@ -2470,7 +2575,7 @@ function initializeSocket(server) {
                buildOtherData(gameState, { winner: burnWinResult.winner, reason: burnWinResult.reason, eloChanges }),
                gameId]
             );
-            io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: burnWinResult.winner, reason: burnWinResult.reason, finalState: gameState, eloChanges });
+            io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: burnWinResult.winner, reason: burnWinResult.reason, move: moveRecord, finalState: gameState, eloChanges });
             return;
           }
         }
@@ -2515,17 +2620,232 @@ function initializeSocket(server) {
             } else {
               gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
             }
-            
-            // Apply increment to player's time
-            if (gameState.increment && gameState.playerTimes[nextPlayer.id]) {
-              gameState.playerTimes[nextPlayer.id] += gameState.increment;
+
+            // Check for promotion on premove (piece reached a promotion square)
+            if (premoveResult.promotionEligible && premoveResult.promotionEligible.skipped) {
+              // No valid promotion options — notify the player
+              const nextPlayerSocketId = userSockets.get(nextPlayer.id.toString());
+              if (nextPlayerSocketId) {
+                io.to(nextPlayerSocketId).emit('promotionSkipped', {
+                  gameId,
+                  pieceId: premoveResult.promotionEligible.pieceId,
+                  pieceName: premoveResult.promotionEligible.pieceName,
+                  message: `Your ${premoveResult.promotionEligible.pieceName} reached a promotion square, but there are no valid pieces to promote to.`
+                });
+              }
+            } else if (premoveResult.promotionEligible && premoveResult.promotionEligible.options && premoveResult.promotionEligible.options.length > 0) {
+              // Win on promotion: if enabled, reaching a promotion square instantly wins
+              if (gameState.gameType?.promotion_condition) {
+                stopGameTimer(gameId);
+                gameState.status = 'completed';
+                gameState.winner = nextPlayer.id;
+                gameState.winReason = 'promotion';
+
+                const loser = gameState.players.find(p => p.id !== nextPlayer.id);
+                let eloChanges = null;
+                if (gameState.rated !== false && nextPlayer.id && loser) {
+                  eloChanges = await updateEloRatings(nextPlayer.id, loser.id);
+                }
+
+                const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, sanitizeWinnerId(nextPlayer.id), JSON.stringify(gameState.pieces),
+                   buildOtherData(gameState, { winner: nextPlayer.id, reason: 'promotion', eloChanges }),
+                   gameId]
+                );
+
+                // Broadcast premove execution before game over
+                io.to(`game-${gameId}`).emit("premoveExecuted", {
+                  gameId, move: premoveRecord,
+                  gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory }
+                });
+
+                io.to(`game-${gameId}`).emit("gameOver", {
+                  gameId, winner: nextPlayer.id, reason: 'promotion', move: premoveRecord, finalState: gameState, eloChanges
+                });
+                return;
+              }
+
+              // Store pending promotion (turn switch happens after promotion is chosen)
+              gameState.pendingPromotion = {
+                pieceId: premoveResult.promotionEligible.pieceId,
+                options: premoveResult.promotionEligible.options,
+                userId: nextPlayer.id,
+                capturedPiece: premoveResult.captured,
+                allCapturedPieces: premoveResult.allCaptured,
+                isPremove: true
+              };
+
+              // Auto-promote if only 1 option (skip the modal)
+              if (premoveResult.promotionEligible.options.length === 1) {
+                const autoChoice = premoveResult.promotionEligible.options[0];
+                console.log(`Auto-promoting premove piece ${premoveResult.promotionEligible.pieceId} to ${autoChoice.piece_name} (only 1 option)`);
+
+                // Apply the promotion inline
+                const promotedPiece = await applyPromotionToPiece(gameState, premoveResult.promotionEligible.pieceId, autoChoice.piece_id);
+                gameState.pendingPromotion = null;
+
+                if (promotedPiece) {
+                  // Check free_move_after_promotion
+                  const hasFreeMoveAfterPromotion = promotedPiece.free_move_after_promotion === 1 || promotedPiece.free_move_after_promotion === true;
+                  if (!hasFreeMoveAfterPromotion) {
+                    // Normal: switch turns
+                    if (gameState.increment && gameState.playerTimes[nextPlayer.id]) {
+                      gameState.playerTimes[nextPlayer.id] += gameState.increment;
+                    }
+                    gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+                  } else {
+                    gameState.freeMovePieceId = promotedPiece.id;
+                    gameState.freeMovePlayerId = nextPlayer.id;
+                  }
+
+                  // Broadcast premove + promotion
+                  io.to(`game-${gameId}`).emit("premoveExecuted", {
+                    gameId, move: premoveRecord,
+                    gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory },
+                    ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
+                    ...(burnPieces && burnPieces.length > 0 ? { burnPieces } : {})
+                  });
+                  io.to(`game-${gameId}`).emit("piecePromoted", {
+                    gameId,
+                    pieceId: premoveResult.promotionEligible.pieceId,
+                    newPieceId: promotedPiece.piece_id,
+                    newPieceName: promotedPiece.piece_name,
+                    promotedPiece: promotedPiece,
+                    gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn }
+                  });
+
+                  // Check win conditions after promotion
+                  const promoWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+                  if (promoWinResult.gameOver) {
+                    stopGameTimer(gameId);
+                    gameState.status = 'completed';
+                    gameState.winner = promoWinResult.winner;
+                    gameState.winReason = promoWinResult.reason;
+                    const loser = gameState.players.find(p => p.id !== promoWinResult.winner);
+                    let eloChanges = null;
+                    if (gameState.rated !== false && promoWinResult.winner && loser) {
+                      eloChanges = await updateEloRatings(promoWinResult.winner, loser.id);
+                    }
+                    const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                    await db_pool.query(
+                      `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+                      [endTime, sanitizeWinnerId(promoWinResult.winner), JSON.stringify(gameState.pieces),
+                       buildOtherData(gameState, { winner: promoWinResult.winner, reason: promoWinResult.reason, eloChanges }), gameId]
+                    );
+                    io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: promoWinResult.winner, reason: promoWinResult.reason, finalState: gameState, eloChanges });
+                    return;
+                  }
+
+                  // Check/checkmate after promotion
+                  const promoCheckResult = checkForCheck(gameState, gameState.currentTurn);
+                  gameState.inCheck = promoCheckResult.inCheck;
+                  gameState.checkedPieces = promoCheckResult.checkedPieces;
+                  if (promoCheckResult.inCheck && gameState.gameType?.mate_condition) {
+                    if (isCheckmate(gameState, gameState.currentTurn)) {
+                      stopGameTimer(gameId);
+                      gameState.status = 'completed';
+                      const checkmatedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
+                      const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
+                      gameState.winner = winner?.id;
+                      gameState.winReason = 'checkmate';
+                      let eloChanges = null;
+                      if (gameState.rated !== false && winner?.id && checkmatedPlayer?.id) { eloChanges = await updateEloRatings(winner.id, checkmatedPlayer.id); }
+                      const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                      await db_pool.query(
+                        `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+                        [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces),
+                         buildOtherData(gameState, { winner: winner?.id, reason: 'checkmate', eloChanges }), gameId]
+                      );
+                      io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: winner?.id, reason: 'checkmate', finalState: gameState, eloChanges });
+                      return;
+                    }
+                  }
+                  if (promoCheckResult.inCheck) {
+                    io.to(`game-${gameId}`).emit("check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: promoCheckResult.checkedPieces });
+                  }
+
+                  // Update DB and continue
+                  await db_pool.query(
+                    "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+                    [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+                  );
+
+                  // Trigger bot turn if applicable
+                  if (gameState.status !== 'completed' && gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position) {
+                    processBotTurn(io, gameId, gameState);
+                  }
+                }
+                return;
+              }
+
+              // 2+ options: pause for player to choose
+              // Broadcast premove execution first (so board updates)
+              io.to(`game-${gameId}`).emit("premoveExecuted", {
+                gameId, move: premoveRecord,
+                gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory },
+                ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
+                ...(burnPieces && burnPieces.length > 0 ? { burnPieces } : {})
+              });
+
+              // Update database with pending promotion state
+              await db_pool.query(
+                "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+                [JSON.stringify(gameState.pieces),
+                 buildOtherData(gameState, { pendingPromotion: gameState.pendingPromotion }), gameId]
+              );
+
+              // Emit promotion required to the premoving player
+              const promotingPiece = gameState.pieces.find(p => p.id === premoveResult.promotionEligible.pieceId);
+              const nextPlayerSocketId = userSockets.get(nextPlayer.id.toString());
+              if (nextPlayerSocketId) {
+                io.to(nextPlayerSocketId).emit("promotionRequired", {
+                  gameId,
+                  pieceId: premoveResult.promotionEligible.pieceId,
+                  pieceName: promotingPiece?.piece_name || 'Unknown',
+                  options: premoveResult.promotionEligible.options,
+                  move: premoveRecord,
+                  gameState: {
+                    pieces: gameState.pieces,
+                    currentTurn: gameState.currentTurn,
+                    playerTimes: gameState.playerTimes,
+                    moveHistory: gameState.moveHistory
+                  }
+                });
+              }
+
+              console.log(`Premove promotion required in game ${gameId} for piece ${premoveResult.promotionEligible.pieceId}`);
+              return; // Wait for promotion choice
             }
             
-            // Switch turns back
-            gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+            // Deduct premove time cost (if configured)
+            if (gameState.premoveTimeCost && gameState.playerTimes[nextPlayer.id] != null) {
+              gameState.playerTimes[nextPlayer.id] = Math.max(0, gameState.playerTimes[nextPlayer.id] - gameState.premoveTimeCost);
+            }
+
+            // Apply increment to player's time (only on turn switch)
+            const premoveActionsPerTurn = gameState.gameType?.actions_per_turn || 1;
+            gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+            const premoveTurnSwitched = gameState.actionsThisTurn >= premoveActionsPerTurn;
+            if (premoveTurnSwitched) {
+              if (gameState.increment && gameState.playerTimes[nextPlayer.id]) {
+                gameState.playerTimes[nextPlayer.id] += gameState.increment;
+              }
+              gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+              gameState.actionsThisTurn = 0;
+            }
             premoveExecuted = true;
             
-            // Broadcast the premove execution
+            // Compute check status early so we can include it in the premoveExecuted event
+            const premoveCheckResult = premoveTurnSwitched
+              ? checkForCheck(gameState, gameState.currentTurn)
+              : { inCheck: false, checkedPieces: [] };
+            gameState.inCheck = premoveCheckResult.inCheck;
+            gameState.checkedPieces = premoveCheckResult.checkedPieces;
+            
+            // Broadcast the premove execution (includes check info for sound)
             io.to(`game-${gameId}`).emit("premoveExecuted", {
               gameId,
               move: premoveRecord,
@@ -2533,13 +2853,54 @@ function initializeSocket(server) {
                 pieces: gameState.pieces,
                 currentTurn: gameState.currentTurn,
                 playerTimes: gameState.playerTimes,
-                moveHistory: gameState.moveHistory
+                moveHistory: gameState.moveHistory,
+                inCheck: premoveCheckResult.inCheck,
+                checkedPieces: premoveCheckResult.checkedPieces,
+                actionsThisTurn: gameState.actionsThisTurn || 0,
+                actionsPerTurn: premoveActionsPerTurn
               },
               ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
               ...(burnPieces && burnPieces.length > 0 ? { burnPieces } : {}),
               ...(burnKilledPieces && burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
             });
             
+            // If multi-action turn and player has actions remaining, just update DB and return
+            if (!premoveTurnSwitched) {
+              // Win condition check still needed (capture win, etc.)
+              const premoveWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+              if (premoveWinResult.gameOver) {
+                stopGameTimer(gameId);
+                gameState.status = 'completed';
+                gameState.winner = premoveWinResult.winner;
+                gameState.winReason = premoveWinResult.reason;
+                const loser = gameState.players.find(p => p.id !== premoveWinResult.winner);
+                let eloChanges = null;
+                if (gameState.rated !== false && premoveWinResult.winner && loser) {
+                  eloChanges = await updateEloRatings(premoveWinResult.winner, loser.id);
+                }
+                const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, sanitizeWinnerId(premoveWinResult.winner), JSON.stringify(gameState.pieces),
+                   buildOtherData(gameState, { winner: premoveWinResult.winner, reason: premoveWinResult.reason, eloChanges }),
+                   gameId]
+                );
+                io.to(`game-${gameId}`).emit("gameOver", {
+                  gameId, winner: premoveWinResult.winner, reason: premoveWinResult.reason,
+                  move: premoveRecord, finalState: gameState, eloChanges
+                });
+                return;
+              }
+
+              // Update DB with current state (player still has actions)
+              await db_pool.query(
+                "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+                [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+              );
+              return;
+            }
+
             // Update control square tracking after premove
             const premoveControlWinResult = updateControlSquareTracking(gameState);
             if (premoveControlWinResult?.gameOver) {
@@ -2629,12 +2990,8 @@ function initializeSocket(server) {
               return; // Exit early since game is over
             }
             
-            // Check if the current player (after premove) is in check
-            const premoveCheckResult = checkForCheck(gameState, gameState.currentTurn);
-            
-            // Store check status in game state
-            gameState.inCheck = premoveCheckResult.inCheck;
-            gameState.checkedPieces = premoveCheckResult.checkedPieces;
+            // Check result already computed above (before premoveExecuted emit)
+            // premoveCheckResult, gameState.inCheck, gameState.checkedPieces are already set
 
             // If in check, also check for checkmate (only if mate_condition is enabled)
             if (premoveCheckResult.inCheck && gameState.gameType?.mate_condition) {
@@ -2838,6 +3195,24 @@ function initializeSocket(server) {
                 }
               });
             }
+
+            // Update the premoveExecuted event with check info (emit again with full state)
+            // This ensures the frontend can play the correct sound even if events arrive in separate batches
+            io.to(`game-${gameId}`).emit("premoveExecuted", {
+              gameId,
+              move: premoveRecord,
+              isCheckUpdate: true,
+              gameState: {
+                pieces: gameState.pieces,
+                currentTurn: gameState.currentTurn,
+                playerTimes: gameState.playerTimes,
+                moveHistory: gameState.moveHistory,
+                inCheck: premoveCheckResult.inCheck,
+                checkedPieces: premoveCheckResult.checkedPieces,
+                actionsThisTurn: gameState.actionsThisTurn || 0,
+                actionsPerTurn: premoveActionsPerTurn
+              }
+            });
             
             // After successful premove execution and checks, return to skip the regular flow
             return;
@@ -2885,6 +3260,7 @@ function initializeSocket(server) {
             gameId,
             winner: controlWinResult.winner,
             reason: controlWinResult.reason,
+            move: moveRecord,
             finalState: gameState,
             eloChanges
           });
@@ -2934,12 +3310,14 @@ function initializeSocket(server) {
             gameId,
             winner: winResult.winner,
             reason: winResult.reason,
+            move: moveRecord,
             finalState: gameState,
             eloChanges
           });
         } else {
           // Check if the current player (whose turn it now is) is in check
           // Only check after a turn switch (not mid-turn in multi-action games)
+          // Mid-turn check on the opponent is tracked separately for sound only
           const checkResult = moveTurnSwitched ? checkForCheck(gameState, gameState.currentTurn) : { inCheck: false, checkedPieces: [] };
           
           console.log('After move - checking for check:', {
@@ -3325,7 +3703,8 @@ function initializeSocket(server) {
             ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
             ...(burnPieces && burnPieces.length > 0 ? { burnPieces } : {}),
             ...(burnKilledPieces && burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {}),
-            ...(midTurnCheckmate ? { midTurnCheckmate } : {})
+            ...(midTurnCheckmate ? { midTurnCheckmate } : {}),
+            ...(midTurnInCheck ? { midTurnCheck: true } : {})
           });
 
           // Send notification for correspondence or no-time-limit games
@@ -4210,6 +4589,7 @@ function initializeSocket(server) {
             showPieceHelpers: game.show_piece_helpers === 1,
             rated: rated,
             allowPremoves: allowPremoves,
+            premoveTimeCost: otherData?.premoveTimeCost || 0,
             premove: null,
             isCorrespondence: !!game.is_correspondence,
             correspondenceDays: game.correspondence_days || null,
@@ -4335,6 +4715,38 @@ function initializeSocket(server) {
         };
 
         console.log(`Draw offered by ${gameState.players[playerIdx].username} in game ${gameId}`);
+
+        // If playing against a bot, auto-accept the draw immediately
+        if (gameState.botPlayer) {
+          console.log(`Auto-accepting draw offer against bot in game ${gameId}`);
+          stopGameTimer(gameId);
+          gameState.status = 'completed';
+          gameState.winner = null;
+          gameState.winReason = 'agreement';
+          gameState.pendingDrawOffer = null;
+
+          const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          try {
+            await db_pool.query(
+              `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+               pieces = ?, other_data = ? WHERE id = ?`,
+              [endTime, JSON.stringify(gameState.pieces),
+               buildOtherData(gameState, { reason: 'agreement' }),
+               gameId]
+            );
+          } catch (dbError) {
+            console.error('Failed to update database for bot draw:', dbError);
+          }
+
+          io.to(`game-${gameId}`).emit("gameOver", {
+            gameId,
+            winner: null,
+            reason: 'agreement',
+            finalState: gameState,
+            eloChanges: null
+          });
+          return;
+        }
 
         // Notify all players in the game
         io.to(`game-${gameId}`).emit("drawOffered", {
@@ -5485,7 +5897,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
 
   // Prevent capturing checkmate pieces in checkmate-only games (multi-tile multi-capture)
   if (allCapturedPieces.length > 0 && gameState.gameType?.mate_condition && !gameState.gameType?.capture_condition) {
-    const checkmateVictim = allCapturedPieces.find(p => p.ends_game_on_checkmate && !p.ends_game_on_capture);
+    const checkmateVictim = allCapturedPieces.find(p => p.ends_game_on_checkmate);
     if (checkmateVictim) {
       return { valid: false, reason: "That piece must be checkmated, not captured. Put it in checkmate instead!" };
     }
@@ -5515,7 +5927,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       return { valid: false, reason: "That piece cannot be captured" };
     }
     // Prevent ranged-capturing checkmate pieces in checkmate-only games
-    if (destPiece.ends_game_on_checkmate && gameState.gameType?.mate_condition && !destPiece.ends_game_on_capture && !gameState.gameType?.capture_condition) {
+    if (destPiece.ends_game_on_checkmate && gameState.gameType?.mate_condition && !gameState.gameType?.capture_condition) {
       return { valid: false, reason: "That piece must be checkmated, not captured. Put it in checkmate instead!" };
     }
     
@@ -5570,7 +5982,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       return { valid: false, reason: "Cannot capture your own piece" };
     }
     // Prevent capturing checkmate pieces in checkmate-only games (must be checkmated, not captured)
-    if (destPiece.ends_game_on_checkmate && gameState.gameType?.mate_condition && !destPiece.ends_game_on_capture && !gameState.gameType?.capture_condition) {
+    if (destPiece.ends_game_on_checkmate && gameState.gameType?.mate_condition && !gameState.gameType?.capture_condition) {
       return { valid: false, reason: "That piece must be checkmated, not captured. Put it in checkmate instead!" };
     }
     capturedPiece = destPiece;
@@ -5586,33 +5998,15 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     let isEnPassantCapture = false;
     if (piece.can_en_passant && gameState.enPassantTarget) {
       const ept = gameState.enPassantTarget;
-      console.log('[EN PASSANT DEBUG] Checking en passant opportunity:', {
-        pieceCanEnPassant: piece.can_en_passant,
-        moveTo: to,
-        captureSquare: ept.captureSquare,
-        victimPosition: ept.piecePosition,
-        piecePosition: { x: piece.x, y: piece.y }
-      });
       // Check if this move is to the en passant capture square
       if (to.x === ept.captureSquare.x && to.y === ept.captureSquare.y) {
-        console.log('[EN PASSANT DEBUG] Move is to capture square');
         // Find the enemy piece that is vulnerable to en passant
         const enPassantVictimIndex = pieces.findIndex(p => 
           p.id === ept.pieceId && p.x === ept.piecePosition.x && p.y === ept.piecePosition.y
         );
-        console.log('[EN PASSANT DEBUG] Victim index:', enPassantVictimIndex);
         if (enPassantVictimIndex !== -1) {
           const enPassantVictim = pieces[enPassantVictimIndex];
           const victimOwner = enPassantVictim.team || enPassantVictim.player_id;
-          console.log('[EN PASSANT DEBUG] Victim found:', {
-            victimOwner,
-            pieceOwnerPosition,
-            piecePieceId: piece.piece_id,
-            victimPieceId: enPassantVictim.piece_id,
-            pieceY: piece.y,
-            victimY: enPassantVictim.y,
-            xDiff: Math.abs(piece.x - enPassantVictim.x)
-          });
           // Must be enemy piece
           if (victimOwner !== pieceOwnerPosition) {
             // Must be same piece type (e.g., pawn can only en passant capture another pawn)
@@ -5621,11 +6015,9 @@ async function validateAndApplyMove(gameState, move, options = {}) {
               if (piece.y === enPassantVictim.y && Math.abs(piece.x - enPassantVictim.x) === 1) {
                 // Validate that the piece can actually capture diagonally to the capture square
                 const canAttackDiagonal = canPieceAttackSquare(piece, to.x, to.y, pieces);
-                console.log('[EN PASSANT DEBUG] Can attack diagonal to capture square:', canAttackDiagonal);
                 if (canAttackDiagonal) {
                   capturedPiece = enPassantVictim;
                   isEnPassantCapture = true;
-                  console.log('[EN PASSANT DEBUG] En passant capture VALID!');
                 }
               }
             }
@@ -6131,14 +6523,6 @@ async function validateAndApplyMove(gameState, move, options = {}) {
   // 1. It moved using a first-move-only movement (moveCount was 0 before this move)
   // 2. It has no backward movement (to be a valid en passant target)
   // 3. The movement was significant (more than 1 square so opponent could have captured in between)
-  console.log('[EN PASSANT DEBUG] Checking if move creates en passant opportunity:', {
-    pieceName: movingPiece?.piece_name,
-    moveCount: movingPiece?.moveCount,
-    from,
-    to,
-    dy: to.y - from.y,
-    dx: to.x - from.x
-  });
   if (movingPiece && movingPiece.moveCount === 1) {
     const dy = to.y - from.y;
     const dx = to.x - from.x;
@@ -6194,8 +6578,6 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       }
     }
     
-    console.log('[EN PASSANT DEBUG] wasFirstMoveOnly result:', wasFirstMoveOnly);
-    
     if (wasFirstMoveOnly) {
       // The en passant capture square is where the piece "passed through"
       // For a standard 2-square forward move, it's one square behind
@@ -6208,7 +6590,6 @@ async function validateAndApplyMove(gameState, move, options = {}) {
         captureSquare: { x: captureSquareX, y: captureSquareY },
         fromPosition: { x: from.x, y: from.y }
       };
-      console.log('[EN PASSANT DEBUG] En passant target SET:', gameState.enPassantTarget);
     }
   }
 
@@ -6229,6 +6610,127 @@ function getPositionHash(pieces, currentTurn) {
     .sort()
     .join('|');
   return `${currentTurn}:${sortedPieces}`;
+}
+
+/**
+ * Apply a promotion to a piece in the game state (shared by normal moves, premoves, and bot).
+ * Loads full piece data from DB, replaces the piece in gameState.pieces, returns the promoted piece.
+ * Does NOT handle turn switch, DB persistence, win checks, or event broadcasting — callers do that.
+ * @param {Object} gameState - The current game state
+ * @param {string|number} pieceId - The instance ID of the piece being promoted
+ * @param {string|number} promoteToPieceId - The piece type ID to promote to
+ * @returns {Object|null} - The promoted piece object, or null on failure
+ */
+async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {
+  const pieceIndex = gameState.pieces.findIndex(p => p.id === pieceId);
+  if (pieceIndex === -1) return null;
+
+  const piece = gameState.pieces[pieceIndex];
+
+  const [[fullPieceData]] = await db_pool.query(
+    `SELECT * FROM pieces WHERE id = ?`,
+    [promoteToPieceId]
+  );
+  if (!fullPieceData) return null;
+
+  let imageUrl = null;
+  if (fullPieceData.image_location) {
+    try {
+      const images = JSON.parse(fullPieceData.image_location);
+      if (Array.isArray(images) && images.length > 0) {
+        const playerIndex = (piece.player_id || piece.team || 1) - 1;
+        imageUrl = images[playerIndex] || images[0];
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  const promotedPiece = {
+    ...piece,
+    piece_id: fullPieceData.id,
+    piece_name: fullPieceData.piece_name,
+    image_location: fullPieceData.image_location,
+    image: imageUrl,
+    image_url: imageUrl,
+    directional_movement_style: fullPieceData.directional_movement_style,
+    up_movement: fullPieceData.up_movement,
+    down_movement: fullPieceData.down_movement,
+    left_movement: fullPieceData.left_movement,
+    right_movement: fullPieceData.right_movement,
+    up_left_movement: fullPieceData.up_left_movement,
+    up_right_movement: fullPieceData.up_right_movement,
+    down_left_movement: fullPieceData.down_left_movement,
+    down_right_movement: fullPieceData.down_right_movement,
+    ratio_movement_style: fullPieceData.ratio_movement_style,
+    ratio_movement_1: fullPieceData.ratio_one_movement,
+    ratio_movement_2: fullPieceData.ratio_two_movement,
+    step_movement_style: fullPieceData.step_by_step_movement_style,
+    step_movement_value: fullPieceData.step_by_step_movement_value,
+    can_hop_over_allies: fullPieceData.can_hop_over_allies,
+    can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+    can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
+    can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
+    can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
+    up_capture: fullPieceData.up_capture,
+    down_capture: fullPieceData.down_capture,
+    left_capture: fullPieceData.left_capture,
+    right_capture: fullPieceData.right_capture,
+    up_left_capture: fullPieceData.up_left_capture,
+    up_right_capture: fullPieceData.up_right_capture,
+    down_left_capture: fullPieceData.down_left_capture,
+    down_right_capture: fullPieceData.down_right_capture,
+    ratio_capture_1: fullPieceData.ratio_one_capture,
+    ratio_capture_2: fullPieceData.ratio_two_capture,
+    step_capture_value: fullPieceData.step_by_step_capture,
+    piece_value: fullPieceData.piece_value,
+    is_royal: fullPieceData.is_royal,
+    can_promote: fullPieceData.can_promote,
+    can_castle: fullPieceData.can_castle,
+    has_checkmate_rule: fullPieceData.has_checkmate_rule,
+    has_check_rule: fullPieceData.has_check_rule,
+    special_scenario_moves: fullPieceData.special_scenario_moves,
+    special_scenario_captures: fullPieceData.special_scenario_captures,
+    can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
+    up_attack_range: fullPieceData.up_attack_range,
+    down_attack_range: fullPieceData.down_attack_range,
+    left_attack_range: fullPieceData.left_attack_range,
+    right_attack_range: fullPieceData.right_attack_range,
+    up_left_attack_range: fullPieceData.up_left_attack_range,
+    up_right_attack_range: fullPieceData.up_right_attack_range,
+    down_left_attack_range: fullPieceData.down_left_attack_range,
+    down_right_attack_range: fullPieceData.down_right_attack_range,
+    up_attack_range_exact: fullPieceData.up_attack_range_exact,
+    down_attack_range_exact: fullPieceData.down_attack_range_exact,
+    left_attack_range_exact: fullPieceData.left_attack_range_exact,
+    right_attack_range_exact: fullPieceData.right_attack_range_exact,
+    up_left_attack_range_exact: fullPieceData.up_left_attack_range_exact,
+    up_right_attack_range_exact: fullPieceData.up_right_attack_range_exact,
+    down_left_attack_range_exact: fullPieceData.down_left_attack_range_exact,
+    down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
+    ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
+    ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+    step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
+    max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+    can_fire_over_allies: fullPieceData.can_fire_over_allies,
+    can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
+    can_en_passant: fullPieceData.can_en_passant,
+    capture_on_hop: fullPieceData.capture_on_hop,
+    chain_capture_enabled: fullPieceData.chain_capture_enabled,
+    chain_hop_allies: fullPieceData.chain_hop_allies,
+    free_move_after_promotion: fullPieceData.free_move_after_promotion,
+    promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
+    trample: fullPieceData.trample,
+    trample_radius: fullPieceData.trample_radius,
+    ghostwalk: fullPieceData.ghostwalk,
+    die_on_capture: fullPieceData.die_on_capture,
+    attack_radius: fullPieceData.attack_radius,
+    custom_movement_squares: fullPieceData.custom_movement_squares,
+    custom_attack_squares: fullPieceData.custom_attack_squares,
+    moveCount: 0,
+    hasMoved: false
+  };
+
+  gameState.pieces[pieceIndex] = promotedPiece;
+  return promotedPiece;
 }
 
 /**
@@ -6262,11 +6764,21 @@ async function checkPromotionEligibility(piece, targetSquare, gameState) {
   if (initialKey === squareKey) return null; // Can't promote on starting square
   
   // Get eligible pieces for promotion (all starting piece types except:
-  // - the piece being promoted
-  // - any piece with has_checkmate_rule (can be checkmated)
+  // - promotable pieces (pieces with can_promote flag)
+  // - any piece with checkmate rule or capture-loss rule
+  // Uses initialPieces so captured piece types still appear as options
+  // If 0 options remain, promotion is skipped but we return a marker so the client can be notified
   const eligiblePieces = await getPromotionOptions(gameState, piece);
   
-  if (eligiblePieces.length === 0) return null;
+  if (eligiblePieces.length === 0) {
+    return {
+      eligible: false,
+      skipped: true,
+      pieceId: piece.id,
+      pieceName: piece.piece_name,
+      options: []
+    };
+  }
   
   return {
     eligible: true,
@@ -6285,19 +6797,11 @@ async function getPromotionOptions(gameState, promotingPiece) {
   const pieces = gameState.pieces;
   const pieceOwner = promotingPiece.player_id || promotingPiece.team;
   
-  console.log('getPromotionOptions called:', {
-    promotingPieceId: promotingPiece.piece_id,
-    promotingPieceName: promotingPiece.piece_name,
-    hasCustomPromotionPieces: !!promotingPiece.promotion_pieces_ids
-  });
-  
   // Check if this piece has custom promotion pieces defined
   if (promotingPiece.promotion_pieces_ids) {
     try {
       const customPieceIds = JSON.parse(promotingPiece.promotion_pieces_ids);
       if (Array.isArray(customPieceIds) && customPieceIds.length > 0) {
-        console.log('Using custom promotion pieces:', customPieceIds);
-        
         // Load full piece data for the custom promotion pieces from database
         const eligiblePieces = [];
         for (const pieceId of customPieceIds) {
@@ -6333,7 +6837,6 @@ async function getPromotionOptions(gameState, promotingPiece) {
           }
         }
         
-        console.log(`Returning ${eligiblePieces.length} custom promotion pieces`);
         return eligiblePieces;
       }
     } catch (parseErr) {
@@ -6368,38 +6871,23 @@ async function getPromotionOptions(gameState, promotingPiece) {
     }
   }
   
-  console.log('Piece type map:', Array.from(pieceTypeMap.entries()).map(([id, p]) => ({
-    pieceId: id,
-    pieceName: p.piece_name,
-    hasCheckmateRule: p.hasCheckmateRule,
-    hasCaptureRule: p.hasCaptureRule
-  })));
-  
   // Filter out:
-  // 1. The piece type being promoted
+  // 1. Promotable pieces (pieces with can_promote flag) — you can't promote into another promotable piece
   // 2. Pieces that have ends_game_on_checkmate flag (can be checkmated)
   // 3. Pieces that have ends_game_on_capture flag (lose on capture)
+  // Uses initialPieces so captured piece types still appear as options
   const eligiblePieces = [];
   
   for (const [pieceId, pieceData] of pieceTypeMap) {
-    const pieceIdNum = parseInt(pieceId);
-    
-    // Skip the same piece type
-    if (pieceIdNum === parseInt(promotingPiece.piece_id)) continue;
+    // Skip promotable pieces (e.g. pawns — you can't promote a pawn into another pawn)
+    if (pieceData.can_promote) continue;
     
     // Skip pieces with checkmate rule
-    if (pieceData.hasCheckmateRule) {
-      console.log(`Filtering out piece ${pieceId} (${pieceData.piece_name}) - has checkmate rule`);
-      continue;
-    }
+    if (pieceData.hasCheckmateRule) continue;
     
     // Skip pieces with capture-loss rule
-    if (pieceData.hasCaptureRule) {
-      console.log(`Filtering out piece ${pieceId} (${pieceData.piece_name}) - has capture-loss rule`);
-      continue;
-    }
+    if (pieceData.hasCaptureRule) continue;
     
-    console.log(`Adding eligible piece: ${pieceId} (${pieceData.piece_name})`);
     eligiblePieces.push({
       piece_id: pieceData.piece_id,
       piece_name: pieceData.piece_name,
@@ -6409,7 +6897,6 @@ async function getPromotionOptions(gameState, promotingPiece) {
     });
   }
   
-  console.log(`Returning ${eligiblePieces.length} eligible pieces for promotion`);
   return eligiblePieces;
 }
 
@@ -6864,7 +7351,8 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
                           piece.chain_hop_allies === 1 || piece.chain_hop_allies === true;
   const canHopEnemiesAtk = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true ||
                            piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
-  const isPathClear = (fromX, fromY, toX, toY) => {
+  const dirHopDisabledAtk = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
+  const isPathClear = (fromX, fromY, toX, toY, allowHop = false) => {
     if (hasGhostwalk) return true; // Ghostwalk ignores all blocking
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
@@ -6877,6 +7365,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         while (x !== toX + sdx || y !== toY + sdy) {
           const blocking = findPieceAtSquare(allPieces, x, y);
           if (blocking && blocking.id !== piece.id) {
+            if (!allowHop) return false; // Path blocked
             const blockingOwner = blocking.team || blocking.player_id;
             const isAlly = blockingOwner === pieceOwner;
             if (!(isAlly ? canHopAlliesAtk : canHopEnemiesAtk)) {
@@ -6901,7 +7390,8 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     if (checkDirectional(captureVal, moveVal, exactFlag, repC)) {
       const maxDist = captureVal || (useMovementForCapture ? moveVal : 0);
       if (maxDist === 99 || exactFlag || absDy <= Math.abs(maxDist)) {
-        if (isPathClear(piece.x, piece.y, targetX, targetY)) {
+        const canHopDirAtk = (canHopAlliesAtk || canHopEnemiesAtk) && (!dirHopDisabledAtk || exactFlag);
+        if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
           return true;
         }
       }
@@ -6917,7 +7407,8 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     if (checkDirectional(captureVal, moveVal, exactFlag, repC)) {
       const maxDist = captureVal || (useMovementForCapture ? moveVal : 0);
       if (maxDist === 99 || exactFlag || absDx <= Math.abs(maxDist)) {
-        if (isPathClear(piece.x, piece.y, targetX, targetY)) {
+        const canHopDirAtk = (canHopAlliesAtk || canHopEnemiesAtk) && (!dirHopDisabledAtk || exactFlag);
+        if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
           return true;
         }
       }
@@ -6950,7 +7441,8 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     if (checkDirectional(captureVal, moveVal, exactFlag, repC)) {
       const maxDist = captureVal || (useMovementForCapture ? moveVal : 0);
       if (maxDist === 99 || exactFlag || absDx <= Math.abs(maxDist)) {
-        if (isPathClear(piece.x, piece.y, targetX, targetY)) {
+        const canHopDirAtk = (canHopAlliesAtk || canHopEnemiesAtk) && (!dirHopDisabledAtk || exactFlag);
+        if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
           return true;
         }
       }
@@ -9299,10 +9791,14 @@ async function processBotTurn(io, gameId, gameState) {
 
       // Mid-turn checkmate detection for multi-action bot games
       let botMidTurnCheckmate = null;
+      let botMidTurnInCheck = false;
+      let botMidTurnCheckedPieces = [];
       if (!botTurnSwitched && botActionsPerTurn > 1 && gameState.gameType?.mate_condition) {
         const opponentPosition = gameState.currentTurn === 1 ? 2 : 1;
         const midCheckResult = checkForCheck(gameState, opponentPosition);
         if (midCheckResult.inCheck) {
+          botMidTurnInCheck = true;
+          botMidTurnCheckedPieces = midCheckResult.checkedPieces;
           const midIsCheckmate = isCheckmate(gameState, opponentPosition);
           if (midIsCheckmate) {
             const remaining = botActionsPerTurn - gameState.actionsThisTurn;
@@ -9374,6 +9870,8 @@ async function processBotTurn(io, gameId, gameState) {
       }
 
       // 11. Check/checkmate/stalemate detection (only after turn switch)
+      // For mid-turn, use the check result from the mid-turn detection above
+      // Mid-turn check on the opponent is tracked separately for sound only
       const checkResult = botTurnSwitched ? checkForCheck(gameState, gameState.currentTurn) : { inCheck: false, checkedPieces: [] };
       gameState.inCheck = checkResult.inCheck;
       gameState.checkedPieces = checkResult.checkedPieces;
@@ -9469,7 +9967,8 @@ async function processBotTurn(io, gameId, gameState) {
         ...(regenPieces.length > 0 ? { regenPieces } : {}),
         ...(burnPieces.length > 0 ? { burnPieces } : {}),
         ...(burnKilledPieces.length > 0 ? { burnKilledPieces: burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {}),
-        ...(botMidTurnCheckmate ? { midTurnCheckmate: botMidTurnCheckmate } : {})
+        ...(botMidTurnCheckmate ? { midTurnCheckmate: botMidTurnCheckmate } : {}),
+        ...(botMidTurnInCheck ? { midTurnCheck: true } : {})
       });
 
       if (checkResult.inCheck) {
@@ -9523,11 +10022,179 @@ async function processBotTurn(io, gameId, gameState) {
               gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
             }
 
-            if (gameState.increment && gameState.playerTimes[humanPlayer.id]) {
-              gameState.playerTimes[humanPlayer.id] += gameState.increment;
+            // Check for promotion on premove (piece reached a promotion square)
+            if (premoveResult.promotionEligible && premoveResult.promotionEligible.skipped) {
+              // No valid promotion options — notify the player
+              const pmPromoteSocketId = userSockets.get(humanPlayer.id.toString());
+              if (pmPromoteSocketId) {
+                io.to(pmPromoteSocketId).emit('promotionSkipped', {
+                  gameId,
+                  pieceId: premoveResult.promotionEligible.pieceId,
+                  pieceName: premoveResult.promotionEligible.pieceName,
+                  message: `Your ${premoveResult.promotionEligible.pieceName} reached a promotion square, but there are no valid pieces to promote to.`
+                });
+              }
+            } else if (premoveResult.promotionEligible && premoveResult.promotionEligible.options && premoveResult.promotionEligible.options.length > 0) {
+              // Win on promotion: if enabled, reaching a promotion square instantly wins
+              if (gameState.gameType?.promotion_condition) {
+                return await finishBotGame(io, gameId, gameState, {
+                  gameOver: true, winner: humanPlayer.id, reason: 'promotion'
+                }, pmRecord, {});
+              }
+
+              // Store pending promotion
+              gameState.pendingPromotion = {
+                pieceId: premoveResult.promotionEligible.pieceId,
+                options: premoveResult.promotionEligible.options,
+                userId: humanPlayer.id,
+                capturedPiece: premoveResult.captured,
+                allCapturedPieces: premoveResult.allCaptured,
+                isPremove: true
+              };
+
+              // Auto-promote if only 1 option (skip the modal)
+              if (premoveResult.promotionEligible.options.length === 1) {
+                const pmAutoChoice = premoveResult.promotionEligible.options[0];
+                console.log(`[Bot] Auto-promoting premove piece ${premoveResult.promotionEligible.pieceId} to ${pmAutoChoice.piece_name} (only 1 option)`);
+
+                const pmPromotedPiece = await applyPromotionToPiece(gameState, premoveResult.promotionEligible.pieceId, pmAutoChoice.piece_id);
+                gameState.pendingPromotion = null;
+
+                if (pmPromotedPiece) {
+                  // Check free_move_after_promotion
+                  const pmHasFreeMove = pmPromotedPiece.free_move_after_promotion === 1 || pmPromotedPiece.free_move_after_promotion === true;
+                  if (!pmHasFreeMove) {
+                    if (gameState.increment && gameState.playerTimes[humanPlayer.id]) {
+                      gameState.playerTimes[humanPlayer.id] += gameState.increment;
+                    }
+                    gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+                  } else {
+                    gameState.freeMovePieceId = pmPromotedPiece.id;
+                    gameState.freeMovePlayerId = humanPlayer.id;
+                  }
+
+                  // Broadcast premove + promotion
+                  io.to(`game-${gameId}`).emit("premoveExecuted", {
+                    gameId, move: pmRecord,
+                    gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory }
+                  });
+                  io.to(`game-${gameId}`).emit("piecePromoted", {
+                    gameId,
+                    pieceId: premoveResult.promotionEligible.pieceId,
+                    newPieceId: pmPromotedPiece.piece_id,
+                    newPieceName: pmPromotedPiece.piece_name,
+                    promotedPiece: pmPromotedPiece,
+                    gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn }
+                  });
+
+                  // Check win conditions after promotion
+                  const pmPromoWin = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+                  if (pmPromoWin.gameOver) {
+                    return await finishBotGame(io, gameId, gameState, pmPromoWin, pmRecord, {});
+                  }
+
+                  // Check/checkmate after promotion
+                  const pmPromoCheck = checkForCheck(gameState, gameState.currentTurn);
+                  gameState.inCheck = pmPromoCheck.inCheck;
+                  gameState.checkedPieces = pmPromoCheck.checkedPieces;
+                  if (pmPromoCheck.inCheck && gameState.gameType?.mate_condition) {
+                    if (isCheckmate(gameState, gameState.currentTurn)) {
+                      const pmWinner = gameState.players.find(p => p.position !== gameState.currentTurn);
+                      return await finishBotGame(io, gameId, gameState, {
+                        gameOver: true, winner: pmWinner?.id, reason: 'checkmate'
+                      }, pmRecord, {});
+                    }
+                  }
+                  if (pmPromoCheck.inCheck) {
+                    io.to(`game-${gameId}`).emit("check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: pmPromoCheck.checkedPieces });
+                  }
+
+                  // Update DB and trigger bot turn
+                  await db_pool.query(
+                    "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+                    [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+                  );
+                  if (gameState.status !== 'completed' && gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position) {
+                    processBotTurn(io, gameId, gameState);
+                  }
+                }
+                return;
+              }
+
+              // 2+ options: pause for player to choose
+              io.to(`game-${gameId}`).emit("premoveExecuted", {
+                gameId, move: pmRecord,
+                gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory }
+              });
+
+              await db_pool.query(
+                "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+                [JSON.stringify(gameState.pieces),
+                 buildOtherData(gameState, { pendingPromotion: gameState.pendingPromotion }), gameId]
+              );
+
+              const pmPromotingPiece = gameState.pieces.find(p => p.id === premoveResult.promotionEligible.pieceId);
+              const pmPromoteSocketId2 = userSockets.get(humanPlayer.id.toString());
+              if (pmPromoteSocketId2) {
+                io.to(pmPromoteSocketId2).emit("promotionRequired", {
+                  gameId,
+                  pieceId: premoveResult.promotionEligible.pieceId,
+                  pieceName: pmPromotingPiece?.piece_name || 'Unknown',
+                  options: premoveResult.promotionEligible.options,
+                  move: pmRecord,
+                  gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory }
+                });
+              }
+
+              console.log(`[Bot] Premove promotion required in game ${gameId} for piece ${premoveResult.promotionEligible.pieceId}`);
+              return; // Wait for promotion choice
             }
 
-            gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+            // Deduct premove time cost (if configured)
+            if (gameState.premoveTimeCost && gameState.playerTimes[humanPlayer.id] != null) {
+              gameState.playerTimes[humanPlayer.id] = Math.max(0, gameState.playerTimes[humanPlayer.id] - gameState.premoveTimeCost);
+            }
+
+            // Respect actions_per_turn for premoves
+            const pmActionsPerTurn = gameState.gameType?.actions_per_turn || 1;
+            gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+            const pmTurnSwitched = gameState.actionsThisTurn >= pmActionsPerTurn;
+
+            if (pmTurnSwitched) {
+              if (gameState.increment && gameState.playerTimes[humanPlayer.id]) {
+                gameState.playerTimes[humanPlayer.id] += gameState.increment;
+              }
+              gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+              gameState.actionsThisTurn = 0;
+            }
+
+            // Check capture win condition (needed even without turn switch)
+            const pmWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+            if (pmWinResult.gameOver) {
+              return await finishBotGame(io, gameId, gameState, pmWinResult, pmRecord, {});
+            }
+
+            // If multi-action turn and player has actions remaining, just update DB and return
+            if (!pmTurnSwitched) {
+              await db_pool.query(
+                "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+                [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+              );
+              io.to(`game-${gameId}`).emit("premoveExecuted", {
+                gameId,
+                move: pmRecord,
+                gameState: {
+                  pieces: gameState.pieces,
+                  currentTurn: gameState.currentTurn,
+                  playerTimes: gameState.playerTimes,
+                  moveHistory: gameState.moveHistory,
+                  actionsThisTurn: gameState.actionsThisTurn || 0,
+                  actionsPerTurn: pmActionsPerTurn
+                }
+              });
+              console.log(`[Bot] Human premove executed in game ${gameId} (actions remaining)`);
+              return;
+            }
 
             // Apply regen/burn for the new turn's player (inline, matching bot's normal turn processing)
             const pmNewTurnPlayer = gameState.currentTurn;
@@ -9573,12 +10240,7 @@ async function processBotTurn(io, gameId, gameState) {
             }
 
             // Check win conditions after premove
-            const pmWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
-            if (pmWinResult.gameOver) {
-              return await finishBotGame(io, gameId, gameState, pmWinResult, pmRecord, {
-                regenPieces: pmRegenPieces, burnPieces: pmBurnPieces, burnKilledPieces: pmBurnKilled
-              });
-            }
+            // (capture win already checked before turn-switch guard above)
 
             const pmCheckResult = checkForCheck(gameState, gameState.currentTurn);
             gameState.inCheck = pmCheckResult.inCheck;
@@ -9614,7 +10276,9 @@ async function processBotTurn(io, gameId, gameState) {
                 checkedPieces: pmCheckResult.checkedPieces,
                 allowPremoves: gameState.allowPremoves,
                 rated: gameState.rated,
-                enPassantTarget: gameState.enPassantTarget
+                enPassantTarget: gameState.enPassantTarget,
+                actionsThisTurn: gameState.actionsThisTurn || 0,
+                actionsPerTurn: pmActionsPerTurn
               },
               ...(pmRegenPieces.length > 0 ? { regenPieces: pmRegenPieces } : {}),
               ...(pmBurnPieces.length > 0 ? { burnPieces: pmBurnPieces } : {}),
@@ -9690,6 +10354,7 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
     gameId,
     winner: winResult.winner,
     reason: winResult.reason,
+    move: moveRecord,
     finalState: gameState,
     eloChanges: null
   });

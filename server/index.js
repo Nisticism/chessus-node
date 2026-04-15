@@ -183,8 +183,8 @@ const dbHelpers = require("./db-helpers");
 const { checkUsername, validateContent } = require("./content-moderation");
 const imageModeration = require("./image-moderation");
 
-// Pre-load the NSFW model (non-blocking, runs in background)
-imageModeration.initialize();
+// NSFW model loads lazily on first image upload (avoids slow TensorFlow startup)
+// imageModeration.initialize();
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -1673,6 +1673,20 @@ app.get("/api/match/:gameId", async (req, res) => {
       boardHeight: game.board_height || 8,
       timeControl: game.turn_length,
       increment: game.increment,
+      settings: {
+        rated: otherData.rated !== false,
+        allowPremoves: otherData.allowPremoves !== false,
+        premoveTimeCost: otherData.premoveTimeCost || 0,
+        allowSpectators: game.allow_spectators !== 0,
+        showPieceHelpers: game.show_piece_helpers === 1,
+        materialClockPenalty: !!otherData.materialClockPenalty,
+        materialClockHandicap: !!otherData.materialClockHandicap,
+        startingMode: otherData.startingMode || 'none',
+        isBotGame: !!otherData.isBotGame,
+        botDifficulty: otherData.botDifficulty || null,
+        isCorrespondence: !!game.is_correspondence,
+        correspondenceDays: game.correspondence_days || null
+      },
       players: (() => {
         const mapped = players.map(p => ({
           id: p.user_id,
@@ -2123,12 +2137,15 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       }
     }
 
+    // Validate required fields (matching create validation)
+    if (!gameData.game_name || gameData.game_name.length < 3) {
+      return res.status(400).send({ message: "Game name must be at least 3 characters" });
+    }
+
     // Content moderation: Check game name
-    if (gameData.game_name) {
-      const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 50 });
-      if (!nameCheck.isValid) {
-        return res.status(400).send({ message: nameCheck.errors[0] });
-      }
+    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 50 });
+    if (!nameCheck.isValid) {
+      return res.status(400).send({ message: nameCheck.errors[0] });
     }
 
     // Content moderation: Check description
@@ -2155,6 +2172,16 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     // Validate board size (max 48x48)
     if (gameData.board_width) gameData.board_width = Math.max(1, Math.min(48, parseInt(gameData.board_width) || 8));
     if (gameData.board_height) gameData.board_height = Math.max(1, Math.min(48, parseInt(gameData.board_height) || 8));
+
+    // Validate randomized_starting_positions size (matching create validation)
+    if (gameData.randomized_starting_positions) {
+      if (gameData.randomized_starting_positions.length > 65000) {
+        return res.status(400).send({ 
+          message: "Randomized starting positions data is too large. Please simplify your game configuration.",
+          length: gameData.randomized_starting_positions.length 
+        });
+      }
+    }
 
     // Force player_count to 2 (only 2-player games currently supported)
     gameData.player_count = 2;
@@ -2401,7 +2428,7 @@ app.post("/api/register", registerLimiter, async (req, res) => {
             type: 'system',
             title: `New user registered: ${username}`,
             content: `A new user "${username}" has joined the site.`,
-            action_url: `/profile/${user.id}`
+            action_url: `/profile/${username}`
           });
           // Push real-time notification if owner is online
           const gameSocket = require("./game-socket");
@@ -2470,9 +2497,15 @@ app.post("/api/profile/edit", authenticateToken, async (req, res) => {
       return res.status(500).send({ message: "Username already taken" });
     }
 
-    // Check username length
-    if (!username || username.length < 1) {
-      return res.status(500).send({ message: "Username must be between 1 and 20 characters" });
+    // Check username length and format (matching registration validation)
+    if (!username || username.length < 3 || username.length > 20) {
+      return res.status(400).send({ message: "Username must be between 3 and 20 characters" });
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+      return res.status(400).send({ message: "Username can only contain letters, numbers, underscores, and hyphens" });
+    }
+    if (username.toLowerCase() === 'anonymous') {
+      return res.status(400).send({ message: "This username is reserved and cannot be used" });
     }
 
     // Content moderation: Check username for offensive content
@@ -2489,10 +2522,15 @@ app.post("/api/profile/edit", authenticateToken, async (req, res) => {
       }
     }
 
+    // Security: Email validation (matching registration validation)
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).send({ message: "Please provide a valid email address" });
+    }
+
     // Check if new email is already taken by another user
     const emailCheck = await dbHelpers.findUserByEmail(email);
     if (emailCheck && emailCheck.email !== logged_in_email) {
-      return res.status(500).send({ message: "Email already taken" });
+      return res.status(400).send({ message: "Email already taken" });
     }
 
     // Prepare user data
@@ -2809,7 +2847,7 @@ app.post("/api/auth/google", async (req, res) => {
                 type: 'system',
                 title: `New user registered: ${username}`,
                 content: `A new user "${username}" has joined via Google sign-in.`,
-                action_url: `/profile/${user.id}`
+                action_url: `/profile/${username}`
               });
               const gameSocket = require("./game-socket");
               const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
@@ -3005,7 +3043,7 @@ app.post("/api/auth/lichess", async (req, res) => {
                 type: 'system',
                 title: `New user registered: ${username}`,
                 content: `A new user "${username}" has joined via Lichess sign-in.`,
-                action_url: `/profile/${user.id}`
+                action_url: `/profile/${username}`
               });
               const gameSocket = require("./game-socket");
               const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
@@ -3796,6 +3834,20 @@ app.put("/api/forums/edit", authenticateToken, async (req, res) => {
     console.log(content);
     console.log("in edit forum route");
 
+    // Content validation
+    if (title) {
+      const titleCheck = validateContent(title, { fieldName: 'Title', maxLength: 200 });
+      if (!titleCheck.isValid) {
+        return res.status(400).send({ message: titleCheck.errors[0] });
+      }
+    }
+    if (content) {
+      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: true });
+      if (!contentCheck.isValid) {
+        return res.status(400).send({ message: contentCheck.errors[0] });
+      }
+    }
+
     // Check ownership or moderation rights
     const [[forum]] = await db_pool.query("SELECT a.*, u.role as author_role FROM articles a LEFT JOIN users u ON a.author_id = u.id WHERE a.id = ?", [id]);
     if (!forum) {
@@ -4536,18 +4588,22 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       }
     }
     
-    // Automatically create a forum for this game
-    const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const forumTitle = `${gameData.game_name} - Discussion`;
-    const forumContent = `Welcome to the ${gameData.game_name} discussion forum! Share strategies, ask questions, and connect with other players of this game.${gameData.descript ? '\n\n' + gameData.descript : ''}`;
-    
-    const forumAuthorId = is_anonymous_creator ? null : creator_id;
-    const forumSql = `
-      INSERT INTO articles (author_id, game_type_id, title, content, created_at, public)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `;
-    
-    await db_pool.query(forumSql, [forumAuthorId, gameId, forumTitle, forumContent, currentTime, true]);
+    // Automatically create a forum for this game (non-critical, don't fail the whole request)
+    try {
+      const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const forumTitle = `${gameData.game_name} - Discussion`;
+      const forumContent = `Welcome to the ${gameData.game_name} discussion forum! Share strategies, ask questions, and connect with other players of this game.${gameData.descript ? '\n\n' + gameData.descript : ''}`;
+      
+      const forumAuthorId = is_anonymous_creator ? null : creator_id;
+      const forumSql = `
+        INSERT INTO articles (author_id, game_type_id, title, content, created_at, public)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `;
+      
+      await db_pool.query(forumSql, [forumAuthorId, gameId, forumTitle, forumContent, currentTime, true]);
+    } catch (forumErr) {
+      console.error('Error creating forum for game type:', forumErr.message);
+    }
 
     // Notify owner of new game type creation (non-blocking)
     dbHelpers.getOwnerUserId().then(async (ownerId) => {

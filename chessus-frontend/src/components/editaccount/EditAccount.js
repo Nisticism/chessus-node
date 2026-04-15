@@ -9,6 +9,12 @@ import API_URL from "../../global/global";
 import StandardButton from "../standardbutton/StandardButton";
 import BioSection from "../biosection/BioSection";
 import AuthService from "../../services/auth.service";
+import ValidationWarningModal from "../common/ValidationWarningModal";
+
+const USERNAME_MAX = 20;
+const EMAIL_MAX = 50;
+const NAME_MAX = 50;
+const BIO_MAX = 500;
 
 const EditAccount = (props) => {
 
@@ -34,6 +40,7 @@ const EditAccount = (props) => {
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [sendingResetEmail, setSendingResetEmail] = useState(false);
+  const [validationWarnings, setValidationWarnings] = useState(null);
   const [showBanner, setShowBanner] = useState(false);
   const [bannerMessage, setBannerMessage] = useState("");
   const [bannerType, setBannerType] = useState("success"); // "success" or "error"
@@ -245,6 +252,23 @@ const EditAccount = (props) => {
   const handleAccountUpdate = async(e) => {
     e.preventDefault();
     console.log("edit submit clicked");
+
+    const warnings = [];
+    if (!username || username.trim().length === 0) warnings.push("Username is required.");
+    else if (username.length < 3) warnings.push("Username must be at least 3 characters.");
+    else if (username.length > USERNAME_MAX) warnings.push(`Username must be ${USERNAME_MAX} characters or fewer.`);
+    else if (!/^[a-zA-Z0-9_-]+$/.test(username)) warnings.push("Username can only contain letters, numbers, underscores, and hyphens.");
+    if (!email || email.trim().length === 0) warnings.push("Email is required.");
+    else if (email.length > EMAIL_MAX) warnings.push(`Email must be ${EMAIL_MAX} characters or fewer.`);
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) warnings.push("Please provide a valid email address.");
+    if (firstName && firstName.length > NAME_MAX) warnings.push(`First name must be ${NAME_MAX} characters or fewer.`);
+    if (lastName && lastName.length > NAME_MAX) warnings.push(`Last name must be ${NAME_MAX} characters or fewer.`);
+    if (bio && bio.length > BIO_MAX) warnings.push(`Bio must be ${BIO_MAX} characters or fewer.`);
+    if (warnings.length > 0) {
+      setValidationWarnings(warnings);
+      return;
+    }
+
     // form.current.validateAll();
     // if (checkBtn.current.context._errors.length === 0) {
       console.log("old password: " + oldPassword + " new password: " + password);
@@ -338,6 +362,7 @@ const EditAccount = (props) => {
                       value={username}
                       onChange={onChangeUsername}
                       placeholder="Enter username"
+                      maxLength={USERNAME_MAX}
                     />
                   </div>
                   <div className={styles["form-group-modern"]}>
@@ -348,6 +373,7 @@ const EditAccount = (props) => {
                       value={email}
                       onChange={onChangeEmail}
                       placeholder="Enter email"
+                      maxLength={EMAIL_MAX}
                     />
                   </div>
                   <div className={styles["form-group-modern"]}>
@@ -358,6 +384,7 @@ const EditAccount = (props) => {
                       value={firstName}
                       onChange={onChangeFirstName}
                       placeholder="Enter first name"
+                      maxLength={NAME_MAX}
                     />
                   </div>
                   <div className={styles["form-group-modern"]}>
@@ -368,6 +395,7 @@ const EditAccount = (props) => {
                       value={lastName}
                       onChange={onChangeLastName}
                       placeholder="Enter last name"
+                      maxLength={NAME_MAX}
                     />
                   </div>
                 </div>
@@ -548,6 +576,7 @@ const EditAccount = (props) => {
         </form>
       </div>
       : <NotFound/> }
+      <ValidationWarningModal warnings={validationWarnings} onClose={() => setValidationWarnings(null)} />
     </>
   );
 };

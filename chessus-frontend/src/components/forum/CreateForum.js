@@ -6,8 +6,12 @@ import styles from "./create-forum.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 import EmojiPickerButton from "../common/EmojiPickerButton";
+import ValidationWarningModal from "../common/ValidationWarningModal";
 
 import { forums } from "../../actions/forums";
+
+const TITLE_MAX = 200;
+const CONTENT_MAX = 50000;
 
 const CreateForum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -18,6 +22,7 @@ const CreateForum = () => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [successful] = useState(false);
+  const [validationWarnings, setValidationWarnings] = useState(null);
   const { message } = useSelector(state => state.message);
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -34,6 +39,13 @@ const CreateForum = () => {
 
   function handleCreatePost(e) {
     e.preventDefault();
+    const warnings = [];
+    if (!title.trim()) warnings.push("Post Subject is required");
+    else if (title.length > TITLE_MAX) warnings.push(`Post Subject exceeds ${TITLE_MAX} character limit (currently ${title.length})`);
+    if (!content.trim()) warnings.push("Content is required");
+    else if (content.length > CONTENT_MAX) warnings.push(`Content exceeds ${CONTENT_MAX.toLocaleString()} character limit (currently ${content.length.toLocaleString()})`);
+    if (warnings.length > 0) { setValidationWarnings(warnings); return; }
+
     const todaysDate = getCurrentMySQLDateTime();
     dispatch(newForum(currentUser.id, title, content, todaysDate, gameTypeId))
       //  Must run dispatch(forums()) to load the newly created forum into state, which is how /forums displays everything
@@ -75,8 +87,9 @@ const CreateForum = () => {
                   name="title"
                   value={title}
                   onChange={onChangeTitle}
-                  // validations={[required, validSubject]}
+                  maxLength={TITLE_MAX}
                 />
+                <div style={{ textAlign: 'right', fontSize: '0.8rem', color: title.length > TITLE_MAX * 0.9 ? '#ff6b6b' : '#8899aa', marginTop: '4px' }}>{title.length}/{TITLE_MAX}</div>
               </div>
               <div className={styles["form-group"]}>
                 <label htmlFor="email" className={styles["create-field-label"]}>Content</label>
@@ -86,7 +99,7 @@ const CreateForum = () => {
                   name="content"
                   value={content}
                   onChange={onChangeContent}
-                  // validations={[required, validContent]}
+                  maxLength={CONTENT_MAX}
                 />
                 <div className={styles["emoji-row"]}>
                   <EmojiPickerButton onEmojiSelect={(emoji) => setContent(prev => prev + emoji)} />
@@ -117,6 +130,7 @@ const CreateForum = () => {
           )}
         </form>
       </div>
+      <ValidationWarningModal warnings={validationWarnings} onClose={() => setValidationWarnings(null)} />
     </div>
   );
 };

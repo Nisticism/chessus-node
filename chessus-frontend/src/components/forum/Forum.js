@@ -12,6 +12,9 @@ import { FaReply } from "react-icons/fa";
 import { FaArrowLeft } from "react-icons/fa";
 import LikesModule from "./LikesModule";
 import EmojiPickerButton from "../common/EmojiPickerButton";
+import ValidationWarningModal from "../common/ValidationWarningModal";
+
+const COMMENT_MAX = 10000;
 
 const Forum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -25,6 +28,7 @@ const Forum = () => {
   const [newCommentText, setNewCommentText] = useState("");
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyContent, setReplyContent] = useState("");
+  const [validationWarnings, setValidationWarnings] = useState(null);
   
   const navigate = useNavigate();
 
@@ -65,6 +69,10 @@ const Forum = () => {
       return;
     }
     if (!newCommentText.trim()) return;
+    if (newCommentText.length > COMMENT_MAX) {
+      setValidationWarnings([`Comment exceeds ${COMMENT_MAX.toLocaleString()} character limit (currently ${newCommentText.length.toLocaleString()})`]);
+      return;
+    }
     const currentTime = getCurrentMySQLDateTime();
     console.log(newCommentText);
     dispatch(newComment(currentUser.id, currentForum.id, newCommentText, currentTime, currentUser.username));
@@ -78,6 +86,10 @@ const Forum = () => {
       return;
     }
     if (!replyContent.trim()) return;
+    if (replyContent.length > COMMENT_MAX) {
+      setValidationWarnings([`Reply exceeds ${COMMENT_MAX.toLocaleString()} character limit (currently ${replyContent.length.toLocaleString()})`]);
+      return;
+    }
     const currentTime = getCurrentMySQLDateTime();
     dispatch(newComment(currentUser.id, currentForum.id, replyContent, currentTime, currentUser.username, parentCommentId));
     setReplyingTo(null);
@@ -88,13 +100,17 @@ const Forum = () => {
     e.preventDefault();
     let commentEditBox = document.getElementById(elementId);
     let editField = document.getElementById(id + "edit");
-    editField.style.display = "none";
     let commentContentSubmit;
     if (commentContent) {
       commentContentSubmit = commentContent;
     } else {
       commentContentSubmit = commentEditBox.value;
     }
+    if (commentContentSubmit && commentContentSubmit.length > COMMENT_MAX) {
+      setValidationWarnings([`Comment exceeds ${COMMENT_MAX.toLocaleString()} character limit (currently ${commentContentSubmit.length.toLocaleString()})`]);
+      return;
+    }
+    editField.style.display = "none";
   
     const currentTime = getCurrentMySQLDateTime();
     console.log("comment content: " + commentContentSubmit, "element id: " + elementId, "id: " + id);
@@ -240,7 +256,7 @@ const Forum = () => {
                     </div>
                     <div className={styles["comment-content-container"]}> { comment.content }</div>
                     <div id={comment.id + "edit"} className={styles["comment-edit"]}>
-                      <textarea id={comment.id + "edit-field"} onChange={onChangeCommentContent} defaultValue={comment.content}></textarea>
+                      <textarea id={comment.id + "edit-field"} onChange={onChangeCommentContent} defaultValue={comment.content} maxLength={COMMENT_MAX}></textarea>
                       <div className={styles["submit-comment-button"]}>
                         <StandardButton buttonText={"Update Comment"} onClick={(event) => handleEditComment(event, comment.id + "edit-field", comment.id)}/>
                       </div>
@@ -251,8 +267,7 @@ const Forum = () => {
                           className={styles["reply-field"]} 
                           placeholder={`Reply to ${comment.author_name}...`}
                           value={replyContent}
-                          onChange={(e) => setReplyContent(e.target.value)}
-                        />
+                          onChange={(e) => setReplyContent(e.target.value)}                            maxLength={COMMENT_MAX}                        />
                         <div className={styles["emoji-row"]}>
                           <EmojiPickerButton onEmojiSelect={(emoji) => setReplyContent(prev => prev + emoji)} />
                         </div>
@@ -275,7 +290,7 @@ const Forum = () => {
             })() : "No comments so far"
           }
           <div className={styles["new-comment"]}>
-            <textarea className={styles["comment-field"]} id="comment-field" disabled={!currentUser} value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)}></textarea>
+            <textarea className={styles["comment-field"]} id="comment-field" disabled={!currentUser} value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} maxLength={COMMENT_MAX}></textarea>
             {currentUser && (
               <div className={styles["emoji-row"]}>
                 <EmojiPickerButton onEmojiSelect={(emoji) => setNewCommentText(prev => prev + emoji)} />
@@ -311,6 +326,7 @@ const Forum = () => {
               </div>
             </div>
             : ""} */}
+      <ValidationWarningModal warnings={validationWarnings} onClose={() => setValidationWarnings(null)} />
     </div>
   );
 };

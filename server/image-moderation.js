@@ -14,7 +14,8 @@ let model = null;
 let modelLoading = false;
 let modelReady = false;
 
-// Lazy-load TensorFlow to avoid slowing down server startup
+// Truly lazy-load TensorFlow — only load when first image needs classification
+// This avoids the ~10s TensorFlow native module load blocking server startup
 async function loadModel() {
   if (model) return model;
   if (modelLoading) {

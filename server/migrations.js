@@ -2559,6 +2559,34 @@ const runMigrations = async () => {
     console.error('Error adding lichess_id column:', err.message);
   }
 
+  // Expand articles.title from VARCHAR(50) to VARCHAR(200) to accommodate auto-generated forum titles
+  try {
+    const titleCol = await getColumnType('articles', 'title');
+    if (titleCol && titleCol.CHARACTER_MAXIMUM_LENGTH < 200) {
+      await runMigration(
+        `ALTER TABLE articles MODIFY COLUMN title VARCHAR(200)`,
+        "Expand articles.title to VARCHAR(200) for longer forum titles"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error expanding articles.title:', err.message);
+  }
+
+  // Expand comments.content from VARCHAR(1000) to TEXT to support longer comments
+  try {
+    const commentContentCol = await getColumnType('comments', 'content');
+    if (commentContentCol && commentContentCol.DATA_TYPE === 'varchar') {
+      await runMigration(
+        `ALTER TABLE comments MODIFY COLUMN content TEXT`,
+        "Expand comments.content from VARCHAR(1000) to TEXT for longer comments"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error expanding comments.content:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {
