@@ -59,7 +59,7 @@ const changelogData = [
       "Password requirements are now shown as a live checklist while typing your new password",
       "New site logo and favicon — updated across browser tabs, navbar, and PWA icons",
       "Dark-themed browsers now see a lighter favicon for better visibility",
-      "Navbar logo is now slightly larger with a subtle dark green glow on hover",
+      "Navbar logo is now slightly larger with a subtle warm glow on hover",
     ],
   },
   {
