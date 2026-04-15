@@ -467,13 +467,23 @@ const PieceSelector = ({
         </div>
 
         {/* Win Condition Checkboxes */}
-        {selectedPieceId && (captureCondition || (squaresCondition && requireSpecificPieceControl)) && (
+        {selectedPieceId && (mateCondition || captureCondition || (squaresCondition && requireSpecificPieceControl)) && (
           <div className={styles["win-condition-section"]}>
             <h3>End Game Conditions:</h3>
             <p className={styles["win-condition-note"]}>
               Check the boxes below to make this piece critical. The game will end if this piece meets the checked condition(s).
             </p>
             <div className={styles["checkbox-group"]}>
+              {mateCondition && (
+                <label key="checkmate" className={styles["checkbox-label"]}>
+                  <input
+                    type="checkbox"
+                    checked={endsGameOnCheckmate}
+                    onChange={(e) => setEndsGameOnCheckmate(e.target.checked)}
+                  />
+                  <span>Ends game on checkmate (this piece must be checkmated to win)</span>
+                </label>
+              )}
               {captureCondition && (
                 <label key="capture" className={styles["checkbox-label"]}>
                   <input

@@ -395,6 +395,7 @@ const LiveGame = () => {
     loadGame();
   }, [gameId, connected, getGameState]);
 
+  /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // When not a player, register as a spectator
   const isSpectator = !!(gameState && !gameState.players?.some(p => p.id === currentUser?.id || (socket?.id && p.id === `anon_${socket.id}`)));
   useEffect(() => {
@@ -447,15 +448,9 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces, clockMultipliers, midTurnCheckmate }) => {
+    const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces, clockMultipliers, midTurnCheckmate, midTurnCheck }) => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
         setBotThinking(false);
-        console.log('moveMade received:', { 
-          moveFrom: move.from, 
-          moveTo: move.to, 
-          pieceId: move.pieceId,
-          piecesCount: newState.pieces?.length 
-        });
         
         setGameState(prev => {
           // Ensure allowPremoves is set
@@ -472,8 +467,6 @@ const LiveGame = () => {
             ...(clockMultipliers !== undefined ? { clockMultipliers } : {})
           };
           
-          console.log('Updated state pieces:', updatedState.pieces?.find(p => p.id === move.pieceId));
-          
           return updatedState;
         });
         setSelectedPiece(null);
@@ -486,11 +479,14 @@ const LiveGame = () => {
         if (midTurnCheckmate) {
           setMoveError(midTurnCheckmate.message);
           setTimeout(() => setMoveError(null), 6000);
+        } else if (midTurnCheck) {
+          setMoveError('Opponent is in check! Try to checkmate them before your turn ends.');
+          setTimeout(() => setMoveError(null), 5000);
         }
         
         // Play sound based on move type - prioritize check > capture > move
         if (soundEnabledRef.current) {
-          if (newState.inCheck) {
+          if (newState.inCheck || midTurnCheck) {
             soundManager.playCheck();
           } else if (move.captured) {
             soundManager.playCapture();
@@ -711,6 +707,11 @@ const LiveGame = () => {
           playerTimes: newState.playerTimes,
           moveHistory: newState.moveHistory
         }));
+        // Update check state from premove result
+        if (newState.inCheck !== undefined) {
+          setInCheck(newState.inCheck);
+          setCheckedPieces(newState.checkedPieces || []);
+        }
         // HP/AD: Show floating damage numbers for damaged pieces from premove
         if (move.damagedPieces && move.damagedPieces.length > 0) {
           const newAnims = move.damagedPieces.map((dp, i) => {
@@ -761,9 +762,11 @@ const LiveGame = () => {
             }, 1200);
           }, 400);
         }
-        // Play sound for premove execution
+        // Play sound for premove execution - prioritize check > capture > hit > move
         if (soundEnabledRef.current) {
-          if (move.captured) {
+          if (newState.inCheck) {
+            soundManager.playCheck();
+          } else if (move.captured) {
             soundManager.playCapture();
           } else if (move.damagedPieces && move.damagedPieces.length > 0) {
             soundManager.playHit();
@@ -807,6 +810,14 @@ const LiveGame = () => {
         if (soundEnabledRef.current) {
           soundManager.playMove();
         }
+      }
+    });
+
+    // Promotion skipped (piece reached promotion square but no valid options)
+    const unsubscribePromotionSkipped = onGameEvent("promotionSkipped", ({ gameId: promoGameId, pieceName, message }) => {
+      if (parseInt(promoGameId) === parseInt(gameId)) {
+        setMoveError(message || `Your ${pieceName || 'piece'} reached a promotion square, but there are no valid pieces to promote to.`);
+        setTimeout(() => setMoveError(null), 4000);
       }
     });
 
@@ -881,6 +892,7 @@ const LiveGame = () => {
       unsubscribePremoveExecuted();
       unsubscribePremoveCleared();
       unsubscribePromotionRequired();
+      unsubscribePromotionSkipped();
       unsubscribePiecePromoted();
       unsubscribeDrawOffered();
       unsubscribeDrawDeclined();
@@ -1900,7 +1912,17 @@ const LiveGame = () => {
               );
               if (found) {
                 const foundTeam = found.player_id || found.team;
-                if (found.cannot_be_captured) {
+                const isFriendly = foundTeam === pieceTeam;
+                if (forPremove && isFriendly && !piece.can_capture_allies) {
+                  // For premoves: block only own checkmate piece, ignore other friendlies
+                  if (found.ends_game_on_checkmate) {
+                    blockedByInvincible = true;
+                  }
+                } else if (forPremove && !isFriendly && found.ends_game_on_checkmate) {
+                  // For premoves: allow targeting enemy checkmate pieces (they might move away)
+                  // but still block invincible pieces
+                  if (found.cannot_be_captured) blockedByInvincible = true;
+                } else if (found.cannot_be_captured || found.ends_game_on_checkmate) {
                   blockedByInvincible = true;
                 } else if ((foundTeam !== pieceTeam || piece.can_capture_allies) && !occupyingPiece) {
                   occupyingPiece = found; // Track first enemy for capture flag
@@ -1910,17 +1932,32 @@ const LiveGame = () => {
           }
           if (blockedByInvincible) continue;
           // Only friendly pieces should block the destination (enemies are captured)
-          if (!isDestinationClear(piece, toX, toY, pieces.filter(p => {
+          // For premoves, skip this check (friendly pieces might be captured before premove executes)
+          if (!forPremove && !isDestinationClear(piece, toX, toY, pieces.filter(p => {
             const pTeam = p.player_id || p.team;
             return pTeam === pieceTeam && p.id !== piece.id;
           }), null)) continue;
         } else {
           occupyingPiece = findPieceAtSquare(pieces, toX, toY);
           const occupyingTeam = occupyingPiece?.player_id || occupyingPiece?.team;
-          // Skip if target piece cannot be captured
-          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingPiece.cannot_be_captured) continue;
-          // Skip if a friendly piece occupies the target (unless can_capture_allies)
-          if (occupyingPiece && occupyingPiece.id !== piece.id && occupyingTeam === pieceTeam && !piece.can_capture_allies) continue;
+          const isFriendlyTarget = occupyingPiece && occupyingPiece.id !== piece.id && occupyingTeam === pieceTeam;
+          // Skip if enemy piece cannot be captured or is a checkmate piece
+          // For premoves: allow targeting enemy checkmate pieces (they might move away)
+          if (occupyingPiece && occupyingPiece.id !== piece.id && !isFriendlyTarget) {
+            if (occupyingPiece.cannot_be_captured) continue;
+            if (occupyingPiece.ends_game_on_checkmate && !forPremove) continue;
+          }
+          // Handle friendly pieces at target
+          if (isFriendlyTarget && !piece.can_capture_allies) {
+            if (forPremove) {
+              // Allow premove targeting friendly pieces (enemy might capture them first)
+              // Exception: never premove-target own checkmate piece (e.g. your king)
+              if (occupyingPiece.ends_game_on_checkmate) continue;
+              occupyingPiece = null; // Treat as potentially empty
+            } else {
+              continue;
+            }
+          }
           // Skip moves to squares within the piece's own footprint
           if (occupyingPiece && occupyingPiece.id === piece.id) continue;
         }
@@ -2005,7 +2042,10 @@ const LiveGame = () => {
         const isStepMove = isStepByStepTarget(piece, piece.x, piece.y, toX, toY);
 
         let pathClear = false;
-        if (isCustomSquareMove) {
+        if (forPremove) {
+          // Premoves skip path checking — pieces may move out of the way before execution
+          pathClear = true;
+        } else if (isCustomSquareMove) {
           // Custom square moves are direct jumps — no path obstruction
           pathClear = true;
         } else if (isRatioMove) {
@@ -2090,7 +2130,7 @@ const LiveGame = () => {
                 if (hopPiece && hopPiece.id !== piece.id) {
                   const hopTeam = hopPiece.player_id || hopPiece.team;
                   if (hopTeam !== pieceTeam) {
-                    if (hopPiece.cannot_be_captured) {
+                    if (hopPiece.cannot_be_captured || hopPiece.ends_game_on_checkmate) {
                       hopBlocked = true;
                     } else {
                       hopCapturedSet.add(hopPiece.id);
@@ -2115,7 +2155,8 @@ const LiveGame = () => {
         // Hop-only restriction: if exact_ratio_hop_only is set and no hop occurred,
         // re-validate excluding exact directional and ratio abilities.
         // If the move only works via exact/ratio, reject it (nothing was hopped over).
-        if (piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && !isStepMove && !isRatioMove) {
+        // Skip for premoves — the server validates the actual board state when the premove executes.
+        if (!forPremove && piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && !isStepMove && !isRatioMove) {
           const stillValid = isCapture
             ? canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true)
             : canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true);
@@ -2140,7 +2181,7 @@ const LiveGame = () => {
           }
         }
         // For ratio moves with hop-only: always require a hop
-        if (piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && isRatioMove) {
+        if (!forPremove && piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && isRatioMove) {
           isValidMove = false;
         }
         
@@ -2268,38 +2309,22 @@ const LiveGame = () => {
     }
     
     // Check for en passant capture
-    console.log('[EN PASSANT FE] Checking en passant:', {
-      pieceCanEnPassant: piece.can_en_passant,
-      hasEnPassantTarget: !!gameState?.enPassantTarget,
-      enPassantTarget: gameState?.enPassantTarget
-    });
     if (piece.can_en_passant && gameState?.enPassantTarget) {
       const ept = gameState.enPassantTarget;
       // Check if capturing piece is horizontally adjacent to the vulnerable piece
       const vulnerablePiece = pieces.find(p => 
         p.id === ept.pieceId && p.x === ept.piecePosition.x && p.y === ept.piecePosition.y
       );
-      console.log('[EN PASSANT FE] Vulnerable piece found:', vulnerablePiece);
       if (vulnerablePiece) {
         const vulnerableTeam = vulnerablePiece.player_id || vulnerablePiece.team;
-        console.log('[EN PASSANT FE] Check conditions:', {
-          vulnerableTeam,
-          pieceTeam,
-          piecePieceId: piece.piece_id,
-          vulnerablePieceId: vulnerablePiece.piece_id,
-          pieceY: piece.y,
-          vulnerableY: vulnerablePiece.y,
-          xDiff: Math.abs(piece.x - vulnerablePiece.x)
-        });
         // Must be enemy piece
-        if (vulnerableTeam !== pieceTeam && !vulnerablePiece.cannot_be_captured) {
+        if (vulnerableTeam !== pieceTeam && !vulnerablePiece.cannot_be_captured && !vulnerablePiece.ends_game_on_checkmate) {
           // Must be same piece type (e.g., pawn can only en passant capture another pawn)
           if (piece.piece_id === vulnerablePiece.piece_id) {
             // Check if current piece is horizontally adjacent to the vulnerable piece
             if (piece.y === vulnerablePiece.y && Math.abs(piece.x - vulnerablePiece.x) === 1) {
               // Check if capture square isn't already in moves
               const captureSquare = ept.captureSquare;
-              console.log('[EN PASSANT FE] Adding en passant move to:', captureSquare);
               if (!moves.some(m => m.x === captureSquare.x && m.y === captureSquare.y)) {
                 moves.push({
                   x: captureSquare.x,
@@ -2324,8 +2349,8 @@ const LiveGame = () => {
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           // Skip friendly pieces - show all other squares within range
           if (targetPiece && targetTeam === pieceTeam) continue;
-          // Skip pieces that cannot be captured
-          if (targetPiece && targetPiece.cannot_be_captured) continue;
+          // Skip pieces that cannot be captured or are checkmate pieces
+          if (targetPiece && (targetPiece.cannot_be_captured || targetPiece.ends_game_on_checkmate)) continue;
           // Already in moves as a regular capture? skip
           if (moves.some(m => m.x === toX && m.y === toY)) continue;
           if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
@@ -2426,13 +2451,14 @@ const LiveGame = () => {
       validMoves.some(m => m.isCapture && doesPieceOccupySquare(clickedPiece, m.x, m.y));
     if (clickedPiece && !hasAllyCaptureMove && (isPreviewMode || (isOwnPiece && isMyTurn) || canSelectForPremove)) {
       setSelectedPiece(clickedPiece);
+      const actuallyPremoving = canSelectForPremove && !isMyTurn;
       const moves = calculateValidMoves(
         clickedPiece, 
         pieces, 
         gameState.gameType?.board_width || 8, 
         gameState.gameType?.board_height || 8,
-        canSelectForPremove, // skipCheckFilter - premoves skip check filter since board state will change
-        canSelectForPremove // forPremove - include potential capture squares
+        actuallyPremoving, // skipCheckFilter - premoves skip check filter since board state will change
+        actuallyPremoving // forPremove - include potential capture squares
       );
       setValidMoves(moves);
       return;
@@ -2856,7 +2882,6 @@ const LiveGame = () => {
     };
   }, [capturedPieces, gameState?.gameType?.board_width, gameState?.gameType?.board_height]);
 
-  /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // Convert display coordinates to game coordinates
   const toGameCoords = useCallback((displayX, displayY, boardWidth, boardHeight) => {
     if (shouldFlipBoard) {
@@ -3114,7 +3139,7 @@ const LiveGame = () => {
       
       // Check if this is a valid ranged attack target (or potential target for premoves)
       const isValidTarget = canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam);
-      const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured;
+      const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
       const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
 
       if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
@@ -3234,7 +3259,7 @@ const LiveGame = () => {
           const sourceTeam = data.piece.player_id || data.piece.team;
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           const isValidTarget = canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
-          const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured;
+          const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
           const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
 
           if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
@@ -3599,11 +3624,13 @@ const LiveGame = () => {
         const isRangedDragTarget = rangedAttackSource
           && !(piece && ((piece.player_id || piece.team) === (rangedAttackSource.player_id || rangedAttackSource.team)))
           && !(piece?.cannot_be_captured)
+          && !(piece?.ends_game_on_checkmate)
           && canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, gameY, gameX, rangedAttackSource, rangedAttackSource.player_id || rangedAttackSource.team);
         // Right-click-twice mode: highlight all valid ranged squares (including empty)
         const isRangedSelectedTarget = !rangedAttackSource && rangedSelectedPiece
           && !(piece && ((piece.player_id || piece.team) === (rangedSelectedPiece.player_id || rangedSelectedPiece.team)))
           && !(piece?.cannot_be_captured)
+          && !(piece?.ends_game_on_checkmate)
           && canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, gameY, gameX, rangedSelectedPiece, rangedSelectedPiece.player_id || rangedSelectedPiece.team);
         const isRangedSelectedSource = rangedSelectedPiece && rangedSelectedPiece.x === gameX && rangedSelectedPiece.y === gameY;
 
@@ -4076,9 +4103,6 @@ const LiveGame = () => {
                 {inCheck && currentPlayer.position === gameState.currentTurn && (
                   <span className={styles["check-warning"]}>⚠️ You are in CHECK!</span>
                 )}
-                {moveError && (
-                  <span className={styles["move-error"]}>❌ {moveError}</span>
-                )}
               </>
             ) : (
               <>
@@ -4091,6 +4115,9 @@ const LiveGame = () => {
                   <span className={styles["check-info"]}>Opponent is in check</span>
                 )}
               </>
+            )}
+            {moveError && (
+              <span className={styles["move-error"]}>❌ {moveError}</span>
             )}
           </div>
         )}

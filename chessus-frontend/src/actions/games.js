@@ -29,7 +29,7 @@ export const getGames = (page = 1, limit = 20, sort = 'newest', winCondition = '
       payload: response.data,
     });
     
-    return Promise.resolve(response.data);
+    return response.data;
   } catch (error) {
     const message = getErrorMessage(error);
     
@@ -42,7 +42,7 @@ export const getGames = (page = 1, limit = 20, sort = 'newest', winCondition = '
       payload: message,
     });
     
-    return Promise.reject(error);
+    return null;
   }
 };
 

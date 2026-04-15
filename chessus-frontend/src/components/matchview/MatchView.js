@@ -463,6 +463,83 @@ const MatchView = () => {
           </div>
         </div>
 
+        {/* Game Settings */}
+        {match.settings && (
+          <div className={styles["game-details"]}>
+            <h3>Game Settings</h3>
+            <div className={styles["settings-grid"]}>
+              <div className={styles["setting-item"]}>
+                <span className={styles["setting-label"]}>Rated</span>
+                <span className={`${styles["setting-value"]} ${match.settings.rated ? styles["setting-on"] : styles["setting-off"]}`}>
+                  {match.settings.rated ? "Yes" : "No"}
+                </span>
+              </div>
+              <div className={styles["setting-item"]}>
+                <span className={styles["setting-label"]}>Premoves</span>
+                <span className={`${styles["setting-value"]} ${match.settings.allowPremoves ? styles["setting-on"] : styles["setting-off"]}`}>
+                  {match.settings.allowPremoves ? "Allowed" : "Disabled"}
+                </span>
+              </div>
+              {match.settings.allowPremoves && match.settings.premoveTimeCost > 0 && (
+                <div className={styles["setting-item"]}>
+                  <span className={styles["setting-label"]}>Premove Clock Cost</span>
+                  <span className={styles["setting-value"]}>{match.settings.premoveTimeCost}s per premove</span>
+                </div>
+              )}
+              <div className={styles["setting-item"]}>
+                <span className={styles["setting-label"]}>Spectators</span>
+                <span className={`${styles["setting-value"]} ${match.settings.allowSpectators ? styles["setting-on"] : styles["setting-off"]}`}>
+                  {match.settings.allowSpectators ? "Allowed" : "Disabled"}
+                </span>
+              </div>
+              <div className={styles["setting-item"]}>
+                <span className={styles["setting-label"]}>Movement Helpers</span>
+                <span className={`${styles["setting-value"]} ${match.settings.showPieceHelpers ? styles["setting-on"] : styles["setting-off"]}`}>
+                  {match.settings.showPieceHelpers ? "On" : "Off"}
+                </span>
+              </div>
+              <div className={styles["setting-item"]}>
+                <span className={styles["setting-label"]}>Starting Positions</span>
+                <span className={styles["setting-value"]}>
+                  {{
+                    'none': 'Fixed',
+                    'backrow': 'Back Row Random',
+                    'mirrored': 'Mirrored Random',
+                    'independent': 'Independent Random',
+                    'shared': 'Shared Random'
+                  }[match.settings.startingMode] || 'Fixed'}
+                </span>
+              </div>
+              {match.settings.materialClockPenalty && (
+                <div className={styles["setting-item"]}>
+                  <span className={styles["setting-label"]}>Material Clock Penalty</span>
+                  <span className={`${styles["setting-value"]} ${styles["setting-on"]}`}>On</span>
+                </div>
+              )}
+              {match.settings.materialClockHandicap && (
+                <div className={styles["setting-item"]}>
+                  <span className={styles["setting-label"]}>Material Clock Handicap</span>
+                  <span className={`${styles["setting-value"]} ${styles["setting-on"]}`}>On</span>
+                </div>
+              )}
+              {match.settings.isBotGame && (
+                <div className={styles["setting-item"]}>
+                  <span className={styles["setting-label"]}>Opponent</span>
+                  <span className={styles["setting-value"]}>
+                    Computer ({match.settings.botDifficulty ? match.settings.botDifficulty.charAt(0).toUpperCase() + match.settings.botDifficulty.slice(1) : 'Medium'})
+                  </span>
+                </div>
+              )}
+              {match.settings.isCorrespondence && (
+                <div className={styles["setting-item"]}>
+                  <span className={styles["setting-label"]}>Correspondence</span>
+                  <span className={styles["setting-value"]}>{match.settings.correspondenceDays || 1} day{match.settings.correspondenceDays !== 1 ? 's' : ''} per move</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Move History (optional, can be expanded later) */}
         {match.moveHistory && match.moveHistory.length > 0 && (
           <div className={styles["move-history"]}>

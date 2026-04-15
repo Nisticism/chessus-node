@@ -58,6 +58,26 @@ axios.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Retry on network errors (e.g. server restarting during development)
+    // Catches: Network Error, ECONNREFUSED, ECONNRESET, ETIMEDOUT, ERR_NETWORK
+    const isNetworkError = !error.response && (
+      error.message === 'Network Error' ||
+      error.code === 'ECONNREFUSED' ||
+      error.code === 'ECONNRESET' ||
+      error.code === 'ETIMEDOUT' ||
+      error.code === 'ERR_NETWORK'
+    );
+    if (isNetworkError && originalRequest) {
+      if (!originalRequest._networkRetry) originalRequest._networkRetry = 0;
+      if (originalRequest._networkRetry < 10) {
+        originalRequest._networkRetry++;
+        // Exponential backoff: 1s, 1.5s, 2.25s, ... capped at 5s
+        const delay = Math.min(1000 * Math.pow(1.5, originalRequest._networkRetry - 1), 5000);
+        await new Promise(r => setTimeout(r, delay));
+        return axios(originalRequest);
+      }
+    }
+
     // If error is 401 (unauthorized) or 403 (forbidden/expired token) and we haven't tried to refresh yet
     // Skip refresh attempts for login/register/token endpoints to avoid infinite loops
     const isAuthEndpoint = originalRequest?.url?.includes('/login') || 

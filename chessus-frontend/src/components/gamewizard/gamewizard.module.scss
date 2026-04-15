@@ -1077,9 +1077,6 @@
 }
 
 .win-condition-section {
-  max-width: 700px;
-  margin-left: auto;
-  margin-right: auto;
   margin-top: 20px;
   padding: 15px;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1671,7 +1668,7 @@
   width: 50px;
   height: 26px;
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  border-radius: 13px;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   flex-shrink: 0;
 
@@ -1724,9 +1721,6 @@
 
 /* HP/AD System Section */
 .hp-ad-section {
-  max-width: 700px;
-  margin-left: auto;
-  margin-right: auto;
   margin-top: 20px;
   padding: 15px;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1873,7 +1867,7 @@
     right: 0;
     bottom: 0;
     background: #444;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
 
     &::before {

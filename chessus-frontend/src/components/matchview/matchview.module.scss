@@ -339,6 +339,44 @@
   color: var(--text-heading);
 }
 
+/* Game Settings */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.setting-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.setting-value {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--text-heading);
+}
+
+.setting-on {
+  color: var(--accent-secondary, #6ecf6e);
+}
+
+.setting-off {
+  color: rgba(255, 255, 255, 0.35);
+}
+
 /* Move History */
 .move-history {
   background: rgba(255, 255, 255, 0.05);
@@ -527,6 +565,10 @@
   }
 
   .details-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .settings-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }

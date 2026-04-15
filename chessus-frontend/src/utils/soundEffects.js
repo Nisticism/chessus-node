@@ -38,11 +38,13 @@ class SoundManager {
     const unlock = () => {
       if (this.unlocked) return;
       this.unlocked = true;
-      // Play and immediately pause each sound to prime them
+      // Prime audio by playing silent clones (not the sources themselves,
+      // so source elements are never left in a playing state when a real play() clones them)
       Object.values(this.sounds).forEach(sound => {
-        sound.play().then(() => {
-          sound.pause();
-          sound.currentTime = 0;
+        const primer = sound.cloneNode();
+        primer.volume = 0;
+        primer.play().then(() => {
+          primer.pause();
         }).catch(() => {});
       });
       document.removeEventListener('click', unlock);
@@ -86,22 +88,24 @@ class SoundManager {
       sound.volume = source.volume;
       this.currentSound = sound;
 
-      // Stop playback after 0.6 seconds
-      this.currentStopTimer = setTimeout(() => {
-        sound.pause();
-        if (this.currentSound === sound) {
-          this.currentSound = null;
-          this.currentStopTimer = null;
-        }
-      }, 600);
+      // Per-sound duration: move 0.25s, check 0.3s, everything else 0.6s
+      const duration = soundName === 'move' ? 250 : soundName === 'check' ? 300 : 600;
 
-      sound.play().catch(err => {
-        clearTimeout(this.currentStopTimer);
+      sound.play().then(() => {
+        // Only set timer if this sound is still the active one
+        if (this.currentSound !== sound) return;
+        this.currentStopTimer = setTimeout(() => {
+          sound.pause();
+          if (this.currentSound === sound) {
+            this.currentSound = null;
+            this.currentStopTimer = null;
+          }
+        }, duration);
+      }).catch(err => {
         if (this.currentSound === sound) {
           this.currentSound = null;
           this.currentStopTimer = null;
         }
-        // Ignore errors (e.g., user hasn't interacted with page yet)
         console.debug('Sound play prevented:', err.message);
       });
     } catch (err) {

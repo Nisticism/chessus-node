@@ -234,13 +234,17 @@ const GameWizard = ({ editGameId }) => {
     if (!skipWarning && gameData.mate_condition) {
       try {
         const pieces = JSON.parse(gameData.pieces_string || '[]');
-        const piecesArr = Array.isArray(pieces) ? pieces : Object.values(pieces);
-        const hasCheckmateTarget = piecesArr.some(p => p.ends_game_on_checkmate && !p._occupied);
+        const piecesArr = Array.isArray(pieces) ? pieces : (pieces ? Object.values(pieces) : []);
+        const hasCheckmateTarget = piecesArr.some(p => p && p.ends_game_on_checkmate && !p._occupied);
         if (!hasCheckmateTarget) {
           setShowCheckmateWarning(true);
           return;
         }
-      } catch (e) { /* ignore parse errors */ }
+      } catch (e) {
+        // If pieces can't be parsed, show warning since we can't verify
+        setShowCheckmateWarning(true);
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -401,7 +405,7 @@ const GameWizard = ({ editGameId }) => {
           {currentStep === totalSteps && (
             <StandardButton 
               buttonText={isSubmitting ? "Saving..." : (isEditMode ? "Update Game" : "Create Game")} 
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={isSubmitting}
             />
           )}
@@ -409,7 +413,7 @@ const GameWizard = ({ editGameId }) => {
           {isEditMode && currentStep < totalSteps && (
             <StandardButton 
               buttonText={isSubmitting ? "Saving..." : "Save and Exit"} 
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={isSubmitting}
             />
           )}
