@@ -10,6 +10,8 @@ import games from "./games";
 import friends from "./friends";
 import notifications from "./notifications";
 import messages from "./messages";
+import siteSettings from "./siteSettings";
+import lobbyGames from "./lobbyGames";
 export default combineReducers({
   authReducer,
   message,
@@ -22,4 +24,6 @@ export default combineReducers({
   friends,
   notifications,
   messages,
+  siteSettings,
+  lobbyGames,
 });

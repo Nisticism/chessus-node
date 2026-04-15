@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSelector } from "react-redux";
 import axios from "axios";
 import styles from "./ongoing-games.module.scss";
 import API_URL from "../../global/global";
 
-const OngoingGames = ({ userId, currentUserId }) => {
+const OngoingGames = ({ userId }) => {
+  const { user: currentUser } = useSelector((state) => state.authReducer);
+  const currentUserId = currentUser?.id;
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

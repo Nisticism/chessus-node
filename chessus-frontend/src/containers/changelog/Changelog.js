@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import { useSelector } from "react-redux";
 import styles from "./changelog.module.scss";
-import axios from "../../services/axios-interceptor";
-import API_URL from "../../global/global";
 
 const changelogData = [
   {
@@ -11,10 +10,41 @@ const changelogData = [
       "Fixed dragging pieces on the home page sometimes picking up the entire row as a chunk",
       "AI difficulty buttons in the host game modal now spread evenly across their row",
       "New distinct sound effect plays when a piece is hit but survives (HP/AD system)",
-      "Sound playback length reduced to 0.6s for snappier feedback",
+      "Sound playback length reduced to 0.6s for snappier feedback; move sounds play at 0.25s and check sounds at 0.4s for even snappier response",
       "Computer opponent now values piece exchanges more aggressively — trading a lower-value piece for a higher-value one is prioritized",
       "Sound effects now reliably play after switching back to the browser tab",
       "The last move of a game now plays its sound (capture, move, etc.) even when the game ends in checkmate",
+      "Winning by capture now correctly plays the capture sound effect",
+      "Check sound now plays on the first move of a multi-action turn when that move puts the opponent in check",
+      "Fixed a bug where pieces with 'disable hopping for non-exact directional movement' could still hop through other pieces when calculating check and checkmate",
+      "Fixed the first sound in a computer game sometimes playing at full length instead of being clipped",
+      "Premoves in multi-action turn games no longer end your turn early — remaining actions are preserved",
+      "King-type pieces can no longer be directly captured in multi-action games — checkmate is required",
+      "Fixed 'You are in check' incorrectly showing for the moving player when they put the opponent in check mid-turn",
+      "When you put the opponent in check mid-turn, a message now tells you to try to checkmate them before your turn ends",
+      "Fixed the first computer move sound still sometimes playing at full length",
+      "Restored the 'Ends game on checkmate' toggle in the piece placement modal of the game wizard",
+      "Castling partners section now matches the width of Combat Stats and Additional Piece Settings sections",
+      "Restored toggle switch styling to rounded pill shape in the game wizard",
+      "Fixed pieces incorrectly showing capture-only squares as valid moves during regular turns in bot games",
+      "Premoves can now target squares occupied by your own pieces — if the opponent captures your piece, your premove will recapture the attacker",
+      "Premoves now correctly trigger promotion when a piece reaches a promotion square",
+      "If only one promotion option is available, the piece auto-promotes without showing a modal",
+      "When no valid promotion options exist, a message is shown instead of freezing the game",
+      "Promotion no longer offers promotable, checkmate, or capture-loss pieces as options",
+      "Premoves now play the check sound when the premove puts the opponent in check",
+      "Improved connection resilience — the game automatically reconnects after server restarts or network interruptions",
+      "Premoves can now target enemy checkmate pieces (they may move away before your premove executes)",
+      "Offering a draw to the computer now automatically results in a draw",
+      "New 'Premove Clock Cost' option in Additional Options — optionally deducts 0.1 seconds per premove instead of being free",
+      "Additional Options in the host game modal now use toggle switches with helpful descriptions for each setting",
+      "Toggle switch styling restored to rounded pill shape across the entire site",
+      "Reduced duplicate API calls — site settings now load once on startup instead of per-component",
+      "Game lobby lists now managed centrally for better performance",
+      "Host game modal dropdowns and Play As buttons restyled for a cleaner, more consistent look",
+      "Dropdown option backgrounds are now dark for better readability",
+      "Additional Options panel now overlays the modal instead of expanding it",
+      "Notification links for new user registrations now correctly open their profile page",
     ],
   },
   {
@@ -354,30 +384,13 @@ const changelogData = [
 const ENTRIES_PER_PAGE = 5;
 
 const Changelog = () => {
-  const [disabled, setDisabled] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { changelogEnabled, loaded } = useSelector((state) => state.siteSettings);
   const [page, setPage] = useState(0);
 
   const totalPages = Math.ceil(changelogData.length / ENTRIES_PER_PAGE);
   const pageEntries = changelogData.slice(page * ENTRIES_PER_PAGE, (page + 1) * ENTRIES_PER_PAGE);
 
-  useEffect(() => {
-    const checkEnabled = async () => {
-      try {
-        const res = await axios.get(`${API_URL}site-settings/changelog_enabled`);
-        if (res.data.value === "false" || res.data.value === false) {
-          setDisabled(true);
-        }
-      } catch {
-        // If endpoint doesn't exist yet or errors, default to enabled
-      } finally {
-        setLoading(false);
-      }
-    };
-    checkEnabled();
-  }, []);
-
-  if (loading) {
+  if (!loaded) {
     return (
       <div className={styles["changelog-container"]}>
         <div className={styles["changelog-header"]}>
@@ -387,7 +400,7 @@ const Changelog = () => {
     );
   }
 
-  if (disabled) {
+  if (!changelogEnabled) {
     return (
       <div className={styles["changelog-container"]}>
         <div className={styles["changelog-disabled"]}>

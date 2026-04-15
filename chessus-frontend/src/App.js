@@ -6,6 +6,7 @@ import Footer from './components/footer/Footer';
 import ChunkErrorBoundary from './components/ChunkErrorBoundary';
 import { SocketProvider } from "./contexts/SocketContext";
 import { clearMessage, resetEdit } from "./actions/general";
+import { fetchSiteSettings } from "./actions/siteSettings";
 import { initGA, trackPageView } from "./analytics/GoogleAnalytics";
 import "./App.css";
 
@@ -74,6 +75,11 @@ function App() {
     const savedTheme = localStorage.getItem('siteTheme') || 'grove';
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);
+
+  // Fetch site settings once on app boot
+  useEffect(() => {
+    dispatch(fetchSiteSettings());
+  }, [dispatch]);
 
   // Initialize Google Analytics once on mount
   useEffect(() => {

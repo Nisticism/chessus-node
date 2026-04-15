@@ -1,20 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Link } from "react-router-dom";
-import axios from "../../services/axios-interceptor";
-import API_URL from "../../global/global";
+import { useSelector } from "react-redux";
 import styles from "./footer.module.scss";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
-  const [showChangelog, setShowChangelog] = useState(true);
-
-  useEffect(() => {
-    axios.get(`${API_URL}site-settings/changelog_enabled`)
-      .then(res => {
-        if (res.data.value === "false") setShowChangelog(false);
-      })
-      .catch(() => {});
-  }, []);
+  const { changelogEnabled: showChangelog } = useSelector((state) => state.siteSettings);
 
   return (
     <footer className={styles.footer}>

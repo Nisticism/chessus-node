@@ -861,7 +861,6 @@ const PlayerPage = (props) => {
                 <h2 className={styles["card-title"]}>Ongoing Games</h2>
                 <OngoingGames
                   userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
-                  currentUserId={currentUser?.id}
                 />
               </div>
 

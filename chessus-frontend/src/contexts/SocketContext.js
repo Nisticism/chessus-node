@@ -1,6 +1,17 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
+import {
+  SET_LOBBY_OPEN_GAMES,
+  SET_LOBBY_ONGOING_GAMES,
+  SET_LOBBY_PRIVATE_GAMES,
+  ADD_LOBBY_OPEN_GAME,
+  REMOVE_LOBBY_OPEN_GAME,
+  LOBBY_GAME_STARTED,
+  NEW_NOTIFICATION,
+  GET_UNREAD_COUNT_SUCCESS,
+  NEW_DIRECT_MESSAGE,
+} from '../actions/types';
 
 const SocketContext = createContext(null);
 
@@ -17,23 +28,27 @@ const getSocketUrl = () => {
 export const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
-  const [openGames, setOpenGames] = useState([]);
-  const [ongoingGames, setOngoingGames] = useState([]);
-  const [privateGames, setPrivateGames] = useState([]);
   const [currentGame, setCurrentGame] = useState(null);
   const { user } = useSelector((state) => state.authReducer);
+  const dispatch = useDispatch();
   const reconnectAttempts = useRef(0);
   const lastAuthRef = useRef(null); // Track last auth to prevent duplicate emits
-  const maxReconnectAttempts = 5;
+  const dispatchRef = useRef(dispatch);
+  const maxReconnectAttempts = Infinity;
+
+  // Keep dispatch ref current
+  useEffect(() => {
+    dispatchRef.current = dispatch;
+  }, [dispatch]);
 
   // Initialize socket connection
   useEffect(() => {
     const newSocket = io(getSocketUrl(), {
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: maxReconnectAttempts,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelayMax: 10000,
       transports: ['websocket', 'polling'], // Prefer websocket, fall back to polling
       withCredentials: true,
     });
@@ -58,35 +73,47 @@ export const SocketProvider = ({ children }) => {
 
     // Game events
     newSocket.on('openGamesList', (games) => {
-      setOpenGames(games);
+      dispatchRef.current({ type: SET_LOBBY_OPEN_GAMES, payload: games });
     });
 
     newSocket.on('ongoingGamesList', (games) => {
-      setOngoingGames(games);
+      dispatchRef.current({ type: SET_LOBBY_ONGOING_GAMES, payload: games });
     });
 
     newSocket.on('privateGamesList', (games) => {
-      setPrivateGames(games);
+      dispatchRef.current({ type: SET_LOBBY_PRIVATE_GAMES, payload: games });
     });
 
     newSocket.on('newOpenGame', (game) => {
-      setOpenGames(prev => [game, ...prev]);
+      dispatchRef.current({ type: ADD_LOBBY_OPEN_GAME, payload: game });
     });
 
     newSocket.on('gameRemoved', ({ gameId }) => {
-      setOpenGames(prev => prev.filter(g => g.id !== gameId && g.gameId !== gameId));
+      dispatchRef.current({ type: REMOVE_LOBBY_OPEN_GAME, payload: gameId });
     });
 
     newSocket.on('gameStarted', ({ gameId }) => {
       // Move from open to ongoing
-      setOpenGames(prev => prev.filter(g => g.id !== gameId && g.gameId !== gameId));
-      setPrivateGames(prev => prev.filter(g => g.id !== gameId && g.gameId !== gameId));
+      dispatchRef.current({ type: LOBBY_GAME_STARTED, payload: gameId });
       // Refresh ongoing games list when a game starts
       newSocket.emit('getOngoingGames');
     });
 
     newSocket.on('error', ({ message }) => {
       console.error('Socket error:', message);
+    });
+
+    // Real-time notification and DM listeners
+    newSocket.on('newNotification', (notification) => {
+      dispatchRef.current({ type: NEW_NOTIFICATION, payload: notification });
+    });
+
+    newSocket.on('unreadNotificationCount', ({ unreadCount }) => {
+      dispatchRef.current({ type: GET_UNREAD_COUNT_SUCCESS, payload: unreadCount });
+    });
+
+    newSocket.on('newDirectMessage', (message) => {
+      dispatchRef.current({ type: NEW_DIRECT_MESSAGE, payload: message });
     });
 
     setSocket(newSocket);
@@ -490,9 +517,6 @@ export const SocketProvider = ({ children }) => {
   const value = {
     socket,
     connected,
-    openGames,
-    ongoingGames,
-    privateGames,
     currentGame,
     setCurrentGame,
     fetchOpenGames,

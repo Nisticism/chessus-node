@@ -4,11 +4,8 @@ import { RiMenu3Line, RiCloseLine } from 'react-icons/ri';
 import { IoNotificationsOutline, IoChatbubbleOutline } from 'react-icons/io5';
 import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
-import { getUnreadCount, receiveNewNotification } from "../../actions/notifications";
-import { getUnreadDMCount, receiveDirectMessage } from "../../actions/messages";
-import { useSocket } from "../../contexts/SocketContext";
-import axios from "../../services/axios-interceptor";
-import API_URL from "../../global/global";
+import { getUnreadCount } from "../../actions/notifications";
+import { getUnreadDMCount } from "../../actions/messages";
 import logo from '../../assets/logo.png';
 import './navbar.scss';
 
@@ -191,15 +188,14 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
 
 const Navbar = () => {
   const [toggleMenu, setToggleMenu] = useState(false);
-  const [showChangelog, setShowChangelog] = useState(true);
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const { unreadCount } = useSelector((state) => state.notifications);
   const { unreadDMCount } = useSelector((state) => state.messages);
+  const { changelogEnabled: showChangelog } = useSelector((state) => state.siteSettings);
   const dispatch = useDispatch();
-  const { socket } = useSocket();
 
   const logOut = () => {
     dispatch(removeUsers());
@@ -207,14 +203,6 @@ const Navbar = () => {
     navigate('/');
     setToggleMenu(false);
   };
-
-  useEffect(() => {
-    axios.get(`${API_URL}site-settings/changelog_enabled`)
-      .then(res => {
-        if (res.data.value === "false") setShowChangelog(false);
-      })
-      .catch(() => {});
-  }, []);
 
   // Fetch unread notification count on mount and when user changes
   useEffect(() => {
@@ -233,33 +221,6 @@ const Navbar = () => {
     }, 60000);
     return () => clearInterval(interval);
   }, [currentUser, dispatch]);
-
-  // Listen for real-time notifications via socket
-  useEffect(() => {
-    if (!socket || !currentUser) return;
-
-    const handleNewNotification = (notification) => {
-      dispatch(receiveNewNotification(notification));
-    };
-
-    // When server pushes unread count on connect/reconnect, sync immediately
-    const handleUnreadCount = ({ unreadCount }) => {
-      dispatch({ type: 'GET_UNREAD_COUNT_SUCCESS', payload: unreadCount });
-    };
-
-    const handleNewDM = (message) => {
-      dispatch(receiveDirectMessage(message));
-    };
-
-    socket.on('newNotification', handleNewNotification);
-    socket.on('unreadNotificationCount', handleUnreadCount);
-    socket.on('newDirectMessage', handleNewDM);
-    return () => {
-      socket.off('newNotification', handleNewNotification);
-      socket.off('unreadNotificationCount', handleUnreadCount);
-      socket.off('newDirectMessage', handleNewDM);
-    };
-  }, [socket, currentUser, dispatch]);
 
   // Close menu when clicking outside
   useEffect(() => {
