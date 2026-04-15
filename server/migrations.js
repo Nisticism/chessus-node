@@ -270,6 +270,30 @@ const tableMigrations = [
       INDEX idx_moderation_uploader (uploader_id)
     )`,
     description: "Create image moderation queue table"
+  },
+  {
+    table: 'site_settings',
+    sql: `CREATE TABLE IF NOT EXISTS site_settings (
+      setting_key VARCHAR(100) PRIMARY KEY,
+      setting_value VARCHAR(500) NOT NULL DEFAULT 'true',
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`,
+    description: "Create site_settings table for admin-configurable site options"
+  },
+  {
+    table: 'game_type_upvotes',
+    sql: `CREATE TABLE IF NOT EXISTS game_type_upvotes (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      game_type_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE KEY unique_upvote (game_type_id, user_id),
+      INDEX idx_upvotes_game_type_id (game_type_id),
+      INDEX idx_upvotes_user_id (user_id)
+    )`,
+    description: "Create game_type_upvotes table for game upvote system"
   }
 ];
 
@@ -541,34 +565,10 @@ const migrations = [
     description: "Add show_burn column to game_type_pieces - whether to display burn badge on this piece during gameplay"
   },
   {
-    table: 'site_settings',
-    sql: `CREATE TABLE IF NOT EXISTS site_settings (
-      setting_key VARCHAR(100) PRIMARY KEY,
-      setting_value VARCHAR(500) NOT NULL DEFAULT 'true',
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`,
-    description: "Create site_settings table for admin-configurable site options"
-  },
-  {
     table: 'pieces',
     column: 'moderation_status',
     sql: "ALTER TABLE pieces ADD COLUMN moderation_status ENUM('approved', 'pending_review', 'rejected') DEFAULT 'approved'",
     description: "Add moderation_status column to pieces for image moderation tracking"
-  },
-  {
-    table: 'game_type_upvotes',
-    sql: `CREATE TABLE IF NOT EXISTS game_type_upvotes (
-      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-      game_type_id INT UNSIGNED NOT NULL,
-      user_id INT UNSIGNED NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      UNIQUE KEY unique_upvote (game_type_id, user_id),
-      INDEX idx_upvotes_game_type_id (game_type_id),
-      INDEX idx_upvotes_user_id (user_id)
-    )`,
-    description: "Create game_type_upvotes table for game upvote system"
   }
 ];
 
