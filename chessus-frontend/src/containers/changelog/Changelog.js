@@ -66,6 +66,9 @@ const changelogData = [
       "Match history no longer shows 'won by game completed' — all win conditions now display properly",
       "Game Details and Game Settings sections in match history are now collapsible (collapsed by default)",
       "Lichess users can now edit their profile without adding an email address",
+      "New 'Show Details' toggle on the game details page — switch between a clean board view and one with all overlays (badges, dots, special squares, etc.)",
+      "Fixed mobile drag-and-drop showing a duplicate ghost piece instead of lifting the original in live games",
+      "Mobile touch drag-and-drop now works on all boards — home page, sandbox, piece wizard preview, game wizard piece placement, and special square placement steps",
     ],
   },
   {
