@@ -316,10 +316,37 @@
   color: var(--text-heading);
 }
 
+.collapsible-header {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 0;
+  margin-bottom: 0 !important;
+
+  &:hover {
+    color: var(--accent-primary-text);
+  }
+}
+
+.collapse-arrow {
+  font-size: 0.75rem;
+  transition: transform 0.3s ease;
+  display: inline-block;
+  color: var(--text-dim);
+  transform: rotate(-90deg);
+
+  &.open {
+    transform: rotate(0deg);
+  }
+}
+
 .details-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 16px;
+  margin-top: 16px;
 }
 
 .detail-item {
@@ -344,6 +371,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 12px;
+  margin-top: 16px;
 }
 
 .setting-item {
@@ -562,6 +590,11 @@
 
   .game-board {
     max-width: 100%;
+  }
+
+  .board-container {
+    padding: 16px;
+    overflow-x: auto;
   }
 
   .details-grid {

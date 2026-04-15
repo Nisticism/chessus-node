@@ -128,9 +128,9 @@ code {
   --sq-range: #ff8c00;
   --sq-range-bg: rgba(255, 140, 0, 0.2);
   --sq-range-swatch: rgba(255, 140, 0, 0.3);
-  --sq-promotion: #4b0082;
-  --sq-promotion-bg: rgba(75, 0, 130, 0.2);
-  --sq-promotion-swatch: rgba(75, 0, 130, 0.3);
+  --sq-promotion: #9b59b6;
+  --sq-promotion-bg: rgba(155, 89, 182, 0.25);
+  --sq-promotion-swatch: rgba(155, 89, 182, 0.35);
   --sq-control: #32CD32;
   --sq-control-bg: rgba(50, 205, 50, 0.2);
   --sq-control-swatch: rgba(50, 205, 50, 0.3);

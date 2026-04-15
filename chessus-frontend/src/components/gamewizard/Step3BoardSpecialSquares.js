@@ -133,7 +133,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const getSquareColor = useCallback((type) => {
     switch (type) {
       case 'range': return '#ff8c00'; // Orange
-      case 'promotion': return '#4b0082'; // Purple
+      case 'promotion': return '#9b59b6'; // Purple
       case 'control': return '#32CD32'; // Green
       case 'custom': return '#ffd700'; // Gold
       default: return null;

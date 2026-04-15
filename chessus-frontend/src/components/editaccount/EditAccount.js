@@ -289,9 +289,17 @@ const EditAccount = (props) => {
     else if (username.length < 3) warnings.push("Username must be at least 3 characters.");
     else if (username.length > USERNAME_MAX) warnings.push(`Username must be ${USERNAME_MAX} characters or fewer.`);
     else if (!/^[a-zA-Z0-9_-]+$/.test(username)) warnings.push("Username can only contain letters, numbers, underscores, and hyphens.");
-    if (!email || email.trim().length === 0) warnings.push("Email is required.");
-    else if (email.length > EMAIL_MAX) warnings.push(`Email must be ${EMAIL_MAX} characters or fewer.`);
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) warnings.push("Please provide a valid email address.");
+    // Waive email requirement for Lichess OAuth users (Lichess API does not expose emails)
+    const editTarget = userInfo || currentUser;
+    const isLichessUser = !!(editTarget && editTarget.lichess_id);
+    if (!isLichessUser) {
+      if (!email || email.trim().length === 0) warnings.push("Email is required.");
+      else if (email.length > EMAIL_MAX) warnings.push(`Email must be ${EMAIL_MAX} characters or fewer.`);
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) warnings.push("Please provide a valid email address.");
+    } else if (email && email.trim().length > 0) {
+      if (email.length > EMAIL_MAX) warnings.push(`Email must be ${EMAIL_MAX} characters or fewer.`);
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) warnings.push("Please provide a valid email address.");
+    }
     if (firstName && firstName.length > NAME_MAX) warnings.push(`First name must be ${NAME_MAX} characters or fewer.`);
     if (lastName && lastName.length > NAME_MAX) warnings.push(`Last name must be ${NAME_MAX} characters or fewer.`);
     if (bio && bio.length > BIO_MAX) warnings.push(`Bio must be ${BIO_MAX} characters or fewer.`);

@@ -16,7 +16,7 @@ const MAX_SANDBOXES = 4;
 // Special square type definitions
 const SPECIAL_SQUARE_TYPES = {
   range: { name: 'Range Square', color: '#ff8c00' },
-  promotion: { name: 'Promotion Square', color: '#4b0082' },
+  promotion: { name: 'Promotion Square', color: '#9b59b6' },
   control: { name: 'Control Square', color: '#32CD32' },
   custom: { name: 'Custom Square', color: '#ffd700' }
 };

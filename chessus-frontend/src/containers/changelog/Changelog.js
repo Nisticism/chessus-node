@@ -60,6 +60,12 @@ const changelogData = [
       "New site logo and favicon — updated across browser tabs, navbar, and PWA icons",
       "Dark-themed browsers now see a lighter favicon for better visibility",
       "Navbar logo is now slightly larger with a subtle warm glow on hover",
+      "Win on promotion now triggers correctly even when no valid promotion pieces exist",
+      "Promotion square highlights are now a lighter, more visible purple",
+      "Match history board now fits within the screen on mobile devices",
+      "Match history no longer shows 'won by game completed' — all win conditions now display properly",
+      "Game Details and Game Settings sections in match history are now collapsible (collapsed by default)",
+      "Lichess users can now edit their profile without adding an email address",
     ],
   },
   {

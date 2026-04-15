@@ -21,6 +21,8 @@ const MatchView = () => {
   const [error, setError] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
   const [reviewMoveIndex, setReviewMoveIndex] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     fetchMatch();
@@ -109,7 +111,17 @@ const MatchView = () => {
       case 'resignation': return 'Resignation';
       case 'timeout': return 'Time ran out';
       case 'stalemate': return 'Stalemate';
-      case 'insufficient_material': return 'Insufficient Material';
+      case 'promotion': return 'Promotion';
+      case 'piece_count': return 'Piece count';
+      case 'draw_move_limit': return 'Move limit';
+      case 'repetition': return 'Repetition';
+      case 'agreement': return 'Agreement';
+      case 'equal_piece_count': return 'Equal piece count';
+      case 'no_moves': return 'No legal moves';
+      case 'no_legal_moves': return 'No legal moves';
+      case 'control': return 'Square control';
+      case 'elimination': return 'Elimination';
+      case 'insufficient_material': return 'Insufficient material';
       default: return 'Game completed';
     }
   };
@@ -125,8 +137,10 @@ const MatchView = () => {
 
     const boardWidth = match.boardWidth || 8;
     const boardHeight = match.boardHeight || 8;
-    // Calculate square size to keep squares square
-    const squareSize = Math.min(60, 480 / Math.max(boardWidth, boardHeight));
+    // Calculate square size to keep squares square, responsive to viewport
+    // Account for padding (48px board-container padding) + rank labels (~20px) + border (6px) + page margins (~32px)
+    const availableWidth = Math.min(480, window.innerWidth - 106);
+    const squareSize = Math.min(60, availableWidth / Math.max(boardWidth, boardHeight));
     const squares = [];
     
     // Flip the board so the current user's side is at the bottom
@@ -434,8 +448,11 @@ const MatchView = () => {
 
         {/* Game Details */}
         <div className={styles["game-details"]}>
-          <h3>Game Details</h3>
-          <div className={styles["details-grid"]}>
+          <h3 className={styles["collapsible-header"]} onClick={() => setDetailsOpen(prev => !prev)}>
+            <span className={`${styles["collapse-arrow"]} ${detailsOpen ? styles["open"] : ''}`}>▼</span>
+            Game Details
+          </h3>
+          {detailsOpen && <div className={styles["details-grid"]}>
             <div className={styles["detail-item"]}>
               <span className={styles["detail-label"]}>Game Type</span>
               <span className={styles["detail-value"]}>{match.gameTypeName || "Custom Game"}</span>
@@ -460,14 +477,17 @@ const MatchView = () => {
               <span className={styles["detail-label"]}>Duration</span>
               <span className={styles["detail-value"]}>{formatDuration(match.startTime, match.endTime)}</span>
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Game Settings */}
         {match.settings && (
           <div className={styles["game-details"]}>
-            <h3>Game Settings</h3>
-            <div className={styles["settings-grid"]}>
+            <h3 className={styles["collapsible-header"]} onClick={() => setSettingsOpen(prev => !prev)}>
+              <span className={`${styles["collapse-arrow"]} ${settingsOpen ? styles["open"] : ''}`}>▼</span>
+              Game Settings
+            </h3>
+            {settingsOpen && <div className={styles["settings-grid"]}>
               <div className={styles["setting-item"]}>
                 <span className={styles["setting-label"]}>Rated</span>
                 <span className={`${styles["setting-value"]} ${match.settings.rated ? styles["setting-on"] : styles["setting-off"]}`}>
@@ -536,7 +556,7 @@ const MatchView = () => {
                   <span className={styles["setting-value"]}>{match.settings.correspondenceDays || 1} day{match.settings.correspondenceDays !== 1 ? 's' : ''} per move</span>
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         )}
 

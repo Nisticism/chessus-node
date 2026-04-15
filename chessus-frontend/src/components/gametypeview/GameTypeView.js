@@ -468,7 +468,7 @@ const GameTypeView = () => {
   const getSquareColor = (type) => {
     switch (type) {
       case 'range': return '#ff8c00';
-      case 'promotion': return '#4b0082';
+      case 'promotion': return '#9b59b6';
       case 'control': return '#32CD32';
       case 'special': return '#ffd700';
       default: return null;

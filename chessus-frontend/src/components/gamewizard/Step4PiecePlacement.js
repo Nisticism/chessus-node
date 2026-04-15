@@ -163,7 +163,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   // Helper to get special square type and color
   const getSpecialSquareInfo = useCallback((key) => {
     if (specialSquaresData.range[key]) return { type: 'range', color: '#ff8c00' }; // Orange
-    if (specialSquaresData.promotion[key]) return { type: 'promotion', color: '#4b0082' }; // Purple
+    if (specialSquaresData.promotion[key]) return { type: 'promotion', color: '#9b59b6' }; // Purple
     if (specialSquaresData.control[key]) return { type: 'control', color: '#32CD32' }; // Green
     if (specialSquaresData.custom[key]) return { type: 'custom', color: '#ffd700' }; // Gold
     return null;

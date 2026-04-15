@@ -2523,7 +2523,13 @@ app.post("/api/profile/edit", authenticateToken, async (req, res) => {
     }
 
     // Security: Email validation (matching registration validation)
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    // Waive email requirement for Lichess OAuth users (Lichess API does not expose emails)
+    const editTargetUser = req.user.id !== parseInt(id) ? await dbHelpers.findUserById(id) : currentUser;
+    const isLichessUser = !!(editTargetUser && editTargetUser.lichess_id);
+    if (!isLichessUser && (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+      return res.status(400).send({ message: "Please provide a valid email address" });
+    }
+    if (email && email.trim().length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).send({ message: "Please provide a valid email address" });
     }
 

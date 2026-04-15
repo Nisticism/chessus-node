@@ -269,7 +269,7 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
   const getSquareColor = (type) => {
     switch (type) {
       case 'range': return '#ff8c00'; // Orange
-      case 'promotion': return '#4b0082'; // Purple
+      case 'promotion': return '#9b59b6'; // Purple
       case 'special': return '#ffd700'; // Gold
       default: return null;
     }

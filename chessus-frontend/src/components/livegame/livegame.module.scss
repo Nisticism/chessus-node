@@ -2317,7 +2317,7 @@
   pointer-events: none;
 
   &.promotion {
-    background: #4b0082;
+    background: #9b59b6;
   }
 
   &.range {
@@ -2344,7 +2344,7 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(75, 0, 130, 0.3);
+      background: rgba(155, 89, 182, 0.3);
       pointer-events: none;
       z-index: 1;
     }
@@ -2416,7 +2416,7 @@
       border-radius: 3px;
 
       &.promotion {
-        background: rgba(75, 0, 130, 0.7);
+        background: rgba(155, 89, 182, 0.7);
       }
 
       &.range {

@@ -2244,21 +2244,8 @@ function initializeSocket(server) {
           gameState.playerTimes[userId] += gameState.increment;
         }
 
-        // Notify player if promotion was skipped (piece reached promotion square but no valid options)
-        if (moveResult.promotionEligible && moveResult.promotionEligible.skipped) {
-          socket.emit('promotionSkipped', {
-            gameId,
-            pieceId: moveResult.promotionEligible.pieceId,
-            pieceName: moveResult.promotionEligible.pieceName,
-            message: `Your ${moveResult.promotionEligible.pieceName} reached a promotion square, but there are no valid pieces to promote to.`
-          });
-        }
-
-        // Check if promotion is required (only if there are valid options)
-        if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
-
-          // Win on promotion: if enabled, reaching a promotion square instantly wins
-          if (gameState.gameType?.promotion_condition) {
+        // Win on promotion: if enabled, reaching a promotion square instantly wins (even with no valid promotion pieces)
+        if (moveResult.promotionEligible && gameState.gameType?.promotion_condition) {
             stopGameTimer(gameId);
             gameState.status = 'completed';
             gameState.winner = userId;
@@ -2289,6 +2276,19 @@ function initializeSocket(server) {
             });
             return;
           }
+
+        // Notify player if promotion was skipped (piece reached promotion square but no valid options)
+        if (moveResult.promotionEligible && moveResult.promotionEligible.skipped) {
+          socket.emit('promotionSkipped', {
+            gameId,
+            pieceId: moveResult.promotionEligible.pieceId,
+            pieceName: moveResult.promotionEligible.pieceName,
+            message: `Your ${moveResult.promotionEligible.pieceName} reached a promotion square, but there are no valid pieces to promote to.`
+          });
+        }
+
+        // Check if promotion is required (only if there are valid options)
+        if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
 
           // Store pending promotion
           gameState.pendingPromotion = {
@@ -2621,21 +2621,8 @@ function initializeSocket(server) {
               gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
             }
 
-            // Check for promotion on premove (piece reached a promotion square)
-            if (premoveResult.promotionEligible && premoveResult.promotionEligible.skipped) {
-              // No valid promotion options — notify the player
-              const nextPlayerSocketId = userSockets.get(nextPlayer.id.toString());
-              if (nextPlayerSocketId) {
-                io.to(nextPlayerSocketId).emit('promotionSkipped', {
-                  gameId,
-                  pieceId: premoveResult.promotionEligible.pieceId,
-                  pieceName: premoveResult.promotionEligible.pieceName,
-                  message: `Your ${premoveResult.promotionEligible.pieceName} reached a promotion square, but there are no valid pieces to promote to.`
-                });
-              }
-            } else if (premoveResult.promotionEligible && premoveResult.promotionEligible.options && premoveResult.promotionEligible.options.length > 0) {
-              // Win on promotion: if enabled, reaching a promotion square instantly wins
-              if (gameState.gameType?.promotion_condition) {
+            // Win on promotion: if enabled, reaching a promotion square instantly wins (even with no valid promotion pieces)
+            if (premoveResult.promotionEligible && gameState.gameType?.promotion_condition) {
                 stopGameTimer(gameId);
                 gameState.status = 'completed';
                 gameState.winner = nextPlayer.id;
@@ -2667,6 +2654,22 @@ function initializeSocket(server) {
                 });
                 return;
               }
+
+            // Check for promotion on premove (piece reached a promotion square)
+            if (premoveResult.promotionEligible && premoveResult.promotionEligible.skipped) {
+              // No valid promotion options — notify the player
+              const nextPlayerSocketId = userSockets.get(nextPlayer.id.toString());
+              if (nextPlayerSocketId) {
+                io.to(nextPlayerSocketId).emit('promotionSkipped', {
+                  gameId,
+                  pieceId: premoveResult.promotionEligible.pieceId,
+                  pieceName: premoveResult.promotionEligible.pieceName,
+                  message: `Your ${premoveResult.promotionEligible.pieceName} reached a promotion square, but there are no valid pieces to promote to.`
+                });
+              }
+            }
+
+            if (premoveResult.promotionEligible && premoveResult.promotionEligible.options && premoveResult.promotionEligible.options.length > 0) {
 
               // Store pending promotion (turn switch happens after promotion is chosen)
               gameState.pendingPromotion = {
@@ -9705,14 +9708,14 @@ async function processBotTurn(io, gameId, gameState) {
       }
 
       // 4. Handle promotion (auto-select best option)
-      if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
+      // Win on promotion: if enabled, reaching a promotion square instantly wins for the bot (even with no valid promotion pieces)
+      if (moveResult.promotionEligible && gameState.gameType?.promotion_condition) {
+        return await finishBotGame(io, gameId, gameState, {
+          gameOver: true, winner: botPlayer.id, reason: 'promotion'
+        }, moveRecord, {});
+      }
 
-        // Win on promotion: if enabled, reaching a promotion square instantly wins for the bot
-        if (gameState.gameType?.promotion_condition) {
-          return await finishBotGame(io, gameId, gameState, {
-            gameOver: true, winner: botPlayer.id, reason: 'promotion'
-          }, moveRecord, {});
-        }
+      if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
 
         const bestPromo = aiEngine.chooseBestPromotion(moveResult.promotionEligible.options);
         if (bestPromo && bestPromo.piece_id) {
@@ -10022,6 +10025,13 @@ async function processBotTurn(io, gameId, gameState) {
               gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
             }
 
+            // Win on promotion: if enabled, reaching a promotion square instantly wins (even with no valid promotion pieces)
+            if (premoveResult.promotionEligible && gameState.gameType?.promotion_condition) {
+                return await finishBotGame(io, gameId, gameState, {
+                  gameOver: true, winner: humanPlayer.id, reason: 'promotion'
+                }, pmRecord, {});
+              }
+
             // Check for promotion on premove (piece reached a promotion square)
             if (premoveResult.promotionEligible && premoveResult.promotionEligible.skipped) {
               // No valid promotion options — notify the player
@@ -10034,13 +10044,9 @@ async function processBotTurn(io, gameId, gameState) {
                   message: `Your ${premoveResult.promotionEligible.pieceName} reached a promotion square, but there are no valid pieces to promote to.`
                 });
               }
-            } else if (premoveResult.promotionEligible && premoveResult.promotionEligible.options && premoveResult.promotionEligible.options.length > 0) {
-              // Win on promotion: if enabled, reaching a promotion square instantly wins
-              if (gameState.gameType?.promotion_condition) {
-                return await finishBotGame(io, gameId, gameState, {
-                  gameOver: true, winner: humanPlayer.id, reason: 'promotion'
-                }, pmRecord, {});
-              }
+            }
+
+            if (premoveResult.promotionEligible && premoveResult.promotionEligible.options && premoveResult.promotionEligible.options.length > 0) {
 
               // Store pending promotion
               gameState.pendingPromotion = {
