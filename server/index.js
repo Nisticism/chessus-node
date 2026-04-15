@@ -4800,7 +4800,13 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
       }
 
       if (scanResult.overall === 'pending_review') {
-        moderationStatus = 'pending_review';
+        // Auto-approve for admin/owner — they don't need manual review
+        const uploaderRole = req.user.role?.toLowerCase();
+        if (uploaderRole === 'admin' || uploaderRole === 'owner') {
+          moderationStatus = 'approved';
+        } else {
+          moderationStatus = 'pending_review';
+        }
       }
     }
 
@@ -5143,17 +5149,12 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
     // Find images that were removed (in original but not in kept)
     const removedImages = originalImagePaths.filter(img => !keptImagePaths.includes(img));
     
-    // Delete removed images from filesystem
-    for (const imagePath of removedImages) {
-      try {
-        const fullPath = path.join(__dirname, '..', imagePath);
-        if (fs.existsSync(fullPath)) {
-          fs.unlinkSync(fullPath);
-          console.log(`Deleted removed piece image: ${fullPath}`);
-        }
-      } catch (err) {
-        console.error(`Error deleting image ${imagePath}:`, err.message);
-      }
+    // Note: We intentionally keep old image files on disk rather than deleting them.
+    // Active games may still reference these URLs in their game state, so deleting
+    // them would cause 404 errors and blank pieces mid-game. The disk cost is minimal
+    // since piece images are small. Files are cleaned up when the piece itself is deleted.
+    if (removedImages.length > 0) {
+      console.log(`Piece ${pieceId} update: ${removedImages.length} image(s) replaced (old files kept for active game compatibility)`);
     }
     
     // Add new image paths if any
@@ -5225,7 +5226,13 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
         }
 
         if (scanResult.overall === 'pending_review') {
-          moderationStatus = 'pending_review';
+          // Auto-approve for admin/owner — they don't need manual review
+          const uploaderRole = req.user.role?.toLowerCase();
+          if (uploaderRole === 'admin' || uploaderRole === 'owner') {
+            moderationStatus = 'approved';
+          } else {
+            moderationStatus = 'pending_review';
+          }
         }
       }
     }
@@ -5703,6 +5710,28 @@ app.post("/api/admin/moderation-queue/:id/reject", authenticateAdmin, async (req
   } catch (err) {
     console.error("Error rejecting moderation item:", err);
     res.status(500).send({ message: "Failed to reject item" });
+  }
+});
+
+// Directly approve a piece's moderation status (bypasses queue)
+app.post("/api/admin/pieces/:pieceId/approve-moderation", authenticateAdmin, async (req, res) => {
+  try {
+    const { pieceId } = req.params;
+    const reviewerId = req.user.id;
+    
+    // Update piece status
+    await db_pool.query("UPDATE pieces SET moderation_status = 'approved' WHERE id = ?", [pieceId]);
+    
+    // Also approve any pending queue items for this piece
+    await db_pool.query(
+      "UPDATE image_moderation_queue SET status = 'approved', reviewer_id = ?, reviewed_at = NOW() WHERE piece_id = ? AND status = 'pending_review'",
+      [reviewerId, pieceId]
+    );
+    
+    res.json({ message: "Piece approved" });
+  } catch (err) {
+    console.error("Error approving piece:", err);
+    res.status(500).send({ message: "Failed to approve piece" });
   }
 });
 
