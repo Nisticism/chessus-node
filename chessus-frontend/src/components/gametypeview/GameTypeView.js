@@ -312,6 +312,7 @@ const GameTypeView = () => {
   const boardContainerRef = useRef(null);
   const [upvoteCount, setUpvoteCount] = useState(0);
   const [hasUpvoted, setHasUpvoted] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -1304,7 +1305,7 @@ const GameTypeView = () => {
           width: `${squareSize}px`,
           height: `${squareSize}px`,
           position: 'relative',
-          border: squareType ? `4px solid ${borderColor}` : 'none',
+          border: squareType && showDetails ? `4px solid ${borderColor}` : 'none',
           boxSizing: 'border-box'
         };
 
@@ -1340,15 +1341,15 @@ const GameTypeView = () => {
               }
             }}
           >
-            <SquareHighlightOverlay
+            {showDetails && <SquareHighlightOverlay
               highlightStyle={highlightStyle}
               highlightIcon={highlightIcon}
               canHopCapture={canHopCapture}
               isAttackRadiusSplash={attackRadiusSplashSquares.has(key)}
               squareSize={squareSize}
               isLight={isLight}
-            />
-            {squareType && !placement && (
+            />}
+            {showDetails && squareType && !placement && (
               <div 
                 style={{
                   position: 'absolute',
@@ -1397,7 +1398,7 @@ const GameTypeView = () => {
                 }}
               >
                 {/* Smoky aura for multi-tile pieces */}
-                {boardAnimationsEnabled && ((placement.piece_width || 1) > 1 || (placement.piece_height || 1) > 1) && (
+                {showDetails && boardAnimationsEnabled && ((placement.piece_width || 1) > 1 || (placement.piece_height || 1) > 1) && (
                   <>
                     <div className={styles["multi-tile-smoke"]} />
                     <div className={styles["multi-tile-electric"]} />
@@ -1441,7 +1442,7 @@ const GameTypeView = () => {
                     </span>
                   );
                 })()}
-                <div className={styles["player-indicator"]} style={{
+                {showDetails && <div className={styles["player-indicator"]} style={{
                   position: 'absolute',
                   bottom: '2px',
                   right: '2px',
@@ -1452,9 +1453,9 @@ const GameTypeView = () => {
                   border: '1px solid #fff',
                   pointerEvents: 'none',
                   zIndex: 2
-                }} />
+                }} />}
                 {/* Checkmate piece indicator - upper right, styled for player */}
-                {placement.ends_game_on_checkmate && (
+                {showDetails && placement.ends_game_on_checkmate && (
                   <div style={{
                     position: 'absolute',
                     top: '1px',
@@ -1469,7 +1470,7 @@ const GameTypeView = () => {
                   </div>
                 )}
                 {/* Capture piece indicator - upper left */}
-                {placement.ends_game_on_capture && (
+                {showDetails && placement.ends_game_on_capture && (
                   <div style={{
                     position: 'absolute',
                     top: '2px',
@@ -1482,7 +1483,7 @@ const GameTypeView = () => {
                   </div>
                 )}
                 {/* Stat badges - anchored to corners via PieceBadges component */}
-                {(() => {
+                {showDetails && (() => {
                   let showGlobal = false;
                   try { showGlobal = JSON.parse(game.other_game_data || '{}').show_all_hp_ad || false; } catch {}
                   return <PieceBadges piece={placement} squareSize={squareSize} showGlobalHpAd={showGlobal} />;
@@ -1602,8 +1603,17 @@ const GameTypeView = () => {
         </div>
 
         <div className={styles["section"]}>
-          <h2>Board Setup</h2>
-          <BoardLegend
+          <div className={styles["board-setup-header"]}>
+            <div
+              className={`${styles["details-toggle"]} ${showDetails ? styles.active : ''}`}
+              onClick={() => setShowDetails(prev => !prev)}
+            >
+              <div className={`${styles["details-switch"]} ${showDetails ? styles.on : ''}`} />
+              <span className={styles["details-label"]}>{showDetails ? 'Hide Details' : 'Show Details'}</span>
+            </div>
+            <h2>Board Setup</h2>
+          </div>
+          {showDetails && <BoardLegend
             showMoveAttack
             showCheckmate={Object.values(piecePlacements).some(p => p.ends_game_on_checkmate)}
             showCaptureLoss={Object.values(piecePlacements).some(p => p.ends_game_on_capture)}
@@ -1613,10 +1623,10 @@ const GameTypeView = () => {
               control: Object.keys(specialSquares.control).length > 0,
               special: Object.keys(specialSquares.special).length > 0,
             }}
-          />
-          <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '10px' }}>
+          />}
+          {showDetails && <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '10px' }}>
             Hover over a piece to see where it can move and attack
-          </p>
+          </p>}
           <div className={styles["board-container"]} ref={boardContainerRef}>
             <div
               className={styles["board"]}
