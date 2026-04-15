@@ -40,6 +40,7 @@ const EditAccount = (props) => {
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [sendingResetEmail, setSendingResetEmail] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
   const [validationWarnings, setValidationWarnings] = useState(null);
   const [showBanner, setShowBanner] = useState(false);
   const [bannerMessage, setBannerMessage] = useState("");
@@ -249,6 +250,36 @@ const EditAccount = (props) => {
     }
   };
 
+  const handlePasswordOnly = async () => {
+    const warnings = [];
+    if (!oldPassword) warnings.push("Current password is required.");
+    if (!password) warnings.push("New password is required.");
+    else if (password.length < 8) warnings.push("New password must be at least 8 characters.");
+    else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) warnings.push("New password must contain at least one uppercase letter, one lowercase letter, and one number.");
+    if (warnings.length > 0) {
+      setValidationWarnings(warnings);
+      return;
+    }
+
+    setUpdatingPassword(true);
+    try {
+      await AuthService.changePassword(oldPassword, password);
+      setPassword("");
+      setOldPassword("");
+      setShowPasswordSection(false);
+      setBannerMessage("Password updated successfully");
+      setBannerType("success");
+      setShowBanner(true);
+    } catch (error) {
+      const msg = error.response?.data?.message || "Failed to update password.";
+      setBannerMessage(msg);
+      setBannerType("error");
+      setShowBanner(true);
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
+
   const handleAccountUpdate = async(e) => {
     e.preventDefault();
     console.log("edit submit clicked");
@@ -264,6 +295,11 @@ const EditAccount = (props) => {
     if (firstName && firstName.length > NAME_MAX) warnings.push(`First name must be ${NAME_MAX} characters or fewer.`);
     if (lastName && lastName.length > NAME_MAX) warnings.push(`Last name must be ${NAME_MAX} characters or fewer.`);
     if (bio && bio.length > BIO_MAX) warnings.push(`Bio must be ${BIO_MAX} characters or fewer.`);
+    if (password && password.length > 0) {
+      if (!oldPassword) warnings.push("Current password is required to change password.");
+      if (password.length < 8) warnings.push("New password must be at least 8 characters.");
+      else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) warnings.push("New password must contain at least one uppercase letter, one lowercase letter, and one number.");
+    }
     if (warnings.length > 0) {
       setValidationWarnings(warnings);
       return;
@@ -295,7 +331,7 @@ const EditAccount = (props) => {
     }
     else {
       console.log(id);
-      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id, oldPassword, null, showDisplayName))
+      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id, null, oldPassword, showDisplayName))
         .then(() => {
           console.log("user updated from the editaccount.js page")
           // Clear password fields after successful update
@@ -490,8 +526,17 @@ const EditAccount = (props) => {
                 ) : (
                   <>
                     <p className={styles["password-hint"]}>
-                      Enter your current password and choose a new password (minimum 6 characters)
+                      Enter your current password and choose a new password.
                     </p>
+                    <div className={styles["password-requirements"]}>
+                      <span className={styles["requirements-label"]}>Password requirements:</span>
+                      <ul>
+                        <li className={password.length >= 8 ? styles["req-met"] : ""}>At least 8 characters</li>
+                        <li className={/[A-Z]/.test(password) ? styles["req-met"] : ""}>At least one uppercase letter (A-Z)</li>
+                        <li className={/[a-z]/.test(password) ? styles["req-met"] : ""}>At least one lowercase letter (a-z)</li>
+                        <li className={/\d/.test(password) ? styles["req-met"] : ""}>At least one number (0-9)</li>
+                      </ul>
+                    </div>
                     <div className={styles["form-grid"]}>
                       <div className={styles["form-group-modern"]}>
                         <label htmlFor="oldPassword">Current Password</label>
@@ -536,17 +581,27 @@ const EditAccount = (props) => {
                         </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPasswordSection(false);
-                        setPassword("");
-                        setOldPassword("");
-                      }}
-                      className={styles["cancel-password-button"]}
-                    >
-                      Cancel Password Change
-                    </button>
+                    <div className={styles["password-action-buttons"]}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPasswordSection(false);
+                          setPassword("");
+                          setOldPassword("");
+                        }}
+                        className={styles["cancel-password-button"]}
+                      >
+                        Cancel Password Change
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePasswordOnly}
+                        disabled={updatingPassword || !oldPassword || !password}
+                        className={styles["update-password-button"]}
+                      >
+                        {updatingPassword ? 'Updating...' : 'Update Password'}
+                      </button>
+                    </div>
                   </>
                 )}
               </div>

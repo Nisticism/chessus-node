@@ -56,6 +56,14 @@ const edit = async (current_user, username, password, email, first_name, last_na
   return response.data;
 }
 
+const changePassword = async (oldPassword, newPassword) => {
+  const response = await axios.post(API_URL + "profile/change-password", {
+    oldPassword,
+    newPassword,
+  });
+  return response.data;
+}
+
 const login = async (username, password) => {
   try {
     const response = await axios.post(API_URL + "login", {
@@ -201,6 +209,7 @@ const resetPassword = async (token, password) => {
 const AuthService = {
   register,
   edit,
+  changePassword,
   login,
   googleLogin,
   lichessLogin,

@@ -5,9 +5,18 @@
     <!-- PayPal SDK dynamically loaded in Donate component when needed -->
     <meta charset="utf-8" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <link rel="icon" type="image/png" sizes="64x64" href="%PUBLIC_URL%/favicon-64x64.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32x32.png" />
-    <link rel="shortcut icon" href="%PUBLIC_URL%/favicon-32x32.png" />
+    <link rel="icon" id="app-favicon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32x32.png" />
+    <script>
+      (function() {
+        var mq = window.matchMedia('(prefers-color-scheme: dark)');
+        function setFavicon(dark) {
+          var el = document.getElementById('app-favicon');
+          if (el) el.href = dark ? '%PUBLIC_URL%/favicon-dark-32x32.png' : '%PUBLIC_URL%/favicon-32x32.png';
+        }
+        setFavicon(mq.matches);
+        mq.addEventListener('change', function(e) { setFavicon(e.matches); });
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#2c302e" />
     <meta name="description" content="GridGrove lets you create custom strategy games with your own pieces, rules, and boards. Play online against friends in real time." />

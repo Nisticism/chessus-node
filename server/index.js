@@ -2592,6 +2592,49 @@ app.post("/api/profile/edit", authenticateToken, async (req, res) => {
   }
 });
 
+// Password-only update endpoint
+app.post("/api/profile/change-password", authenticateToken, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).send({ message: "Current password and new password are required" });
+    }
+
+    // Fetch current user
+    const [userRows] = await db_pool.query("SELECT id, password FROM users WHERE id = ?", [userId]);
+    if (!userRows || userRows.length === 0) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+    const user = userRows[0];
+
+    // Verify old password
+    const passwordMatch = bcrypt.compareSync(oldPassword, user.password);
+    if (!passwordMatch) {
+      return res.status(400).send({ message: "Current password is incorrect" });
+    }
+
+    // Validate new password
+    if (newPassword.length < 8) {
+      return res.status(400).send({ message: "Password must be at least 8 characters long" });
+    }
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword)) {
+      return res.status(400).send({ message: "Password must contain at least one uppercase letter, one lowercase letter, and one number" });
+    }
+
+    // Hash and update
+    const hashedPassword = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
+    await db_pool.query("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, userId]);
+
+    res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    console.error("Error in /api/profile/change-password:", err);
+    res.status(500).send({ message: "Password update failed" });
+  }
+});
+
 app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_picture'), async (req, res) => {
   try {
     const userId = req.body.user_id;

@@ -54,6 +54,12 @@ const changelogData = [
       "Dropdown option backgrounds are now dark for better readability",
       "Additional Options panel now overlays the modal instead of expanding it",
       "Notification links for new user registrations now correctly open their profile page",
+      "Change password now works properly on the Edit Profile page — enter your current and new password to update",
+      "New 'Update Password' button lets you change just your password without updating other settings",
+      "Password requirements are now shown as a live checklist while typing your new password",
+      "New site logo and favicon — updated across browser tabs, navbar, and PWA icons",
+      "Dark-themed browsers now see a lighter favicon for better visibility",
+      "Navbar logo is now slightly larger with a subtle dark green glow on hover",
     ],
   },
   {
