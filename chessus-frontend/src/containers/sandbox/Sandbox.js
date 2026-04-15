@@ -79,6 +79,9 @@ const Sandbox = () => {
   const [boardFlipped, setBoardFlipped] = useState(false);
   const [playingAs, setPlayingAs] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
+  const touchDragRef = useRef({ piece: null, startX: 0, startY: 0, isDragging: false, grabOffsetX: 0, grabOffsetY: 0 });
+  const [touchDragPos, setTouchDragPos] = useState(null);
+  const [touchDragPiece, setTouchDragPiece] = useState(null);
 
   // Pagination for sidebars
   const ITEMS_PER_PAGE = 20;
@@ -1927,6 +1930,122 @@ const Sandbox = () => {
     }
   }, []);
 
+  // Touch drag handlers for mobile piece dragging
+  const handlePieceTouchStart = useCallback((e, piece) => {
+    if (!activeSandbox) return;
+    // Cancel any long press from square
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    const touch = e.touches[0];
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
+    let grabOffsetX = 0, grabOffsetY = 0;
+    if ((pw > 1 || ph > 1) && e.currentTarget) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const cellWidth = rect.width / pw;
+      const cellHeight = rect.height / ph;
+      grabOffsetX = Math.floor((touch.clientX - rect.left) / cellWidth);
+      grabOffsetY = Math.floor((touch.clientY - rect.top) / cellHeight);
+    }
+    const moves = calculateValidMoves(piece, activeSandbox.pieces, activeSandbox.gameType.board_width, activeSandbox.gameType.board_height);
+    touchDragRef.current = { piece, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffsetX, grabOffsetY, moves };
+    setSelectedPiece(piece);
+    setValidMoves(moves);
+  }, [activeSandbox, calculateValidMoves]);
+
+  const handlePieceTouchMove = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (!td.piece) return;
+    // Cancel long press on any movement
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    const touch = e.touches[0];
+    const dx = touch.clientX - td.startX;
+    const dy = touch.clientY - td.startY;
+    if (!td.isDragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      td.isDragging = true;
+      setTouchDragPiece(td.piece);
+      setIsDragging(true);
+    }
+    if (td.isDragging) {
+      e.preventDefault();
+      setTouchDragPos({ x: touch.clientX, y: touch.clientY });
+    }
+  }, []);
+
+  const handlePieceTouchEnd = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (td.isDragging && boardRef.current && activeSandbox) {
+      const touch = e.changedTouches[0];
+      const rect = boardRef.current.getBoundingClientRect();
+      const boardWidth = activeSandbox.gameType.board_width || 8;
+      const boardHeight = activeSandbox.gameType.board_height || 8;
+      const cellW = rect.width / boardWidth;
+      const cellH = rect.height / boardHeight;
+      const dropX = Math.floor((touch.clientX - rect.left) / cellW);
+      const dropY = Math.floor((touch.clientY - rect.top) / cellH);
+
+      if (dropX >= 0 && dropX < boardWidth && dropY >= 0 && dropY < boardHeight) {
+        const piece = td.piece;
+        const pw = piece.piece_width || 1;
+        const ph = piece.piece_height || 1;
+        let anchorX = dropX - (td.grabOffsetX || 0);
+        let anchorY = dropY - (td.grabOffsetY || 0);
+
+        if (!(piece.x === anchorX && piece.y === anchorY)) {
+          const moves = td.moves || [];
+          let move = moves.find(m => m.x === anchorX && m.y === anchorY);
+          if (!move && (pw > 1 || ph > 1)) {
+            const candidates = moves.filter(m => !m.isRangedAttack && dropX >= m.x && dropX < m.x + pw && dropY >= m.y && dropY < m.y + ph);
+            if (candidates.length === 1) move = candidates[0];
+            else if (candidates.length > 1) {
+              move = candidates.reduce((best, m) => {
+                const d = Math.abs(m.x - anchorX) + Math.abs(m.y - anchorY);
+                const bd = Math.abs(best.x - anchorX) + Math.abs(best.y - anchorY);
+                return d < bd ? m : best;
+              });
+            }
+            if (move) { anchorX = move.x; anchorY = move.y; }
+          }
+          if (move) {
+            const pieces = activeSandbox.pieces;
+            let targetPiece = null;
+            if (move.isCapture && !move.isRangedAttack) {
+              const pieceTeam = piece.player_id || piece.team;
+              for (let dy = 0; dy < ph && !targetPiece; dy++) {
+                for (let dx = 0; dx < pw && !targetPiece; dx++) {
+                  const found = findPieceAt(pieces, anchorX + dx, anchorY + dy);
+                  if (found && found.id !== piece.id) {
+                    const foundTeam = found.player_id || found.team;
+                    if (foundTeam !== pieceTeam || piece.can_capture_allies) targetPiece = found;
+                  }
+                }
+              }
+            }
+            let piecesToRemove = new Set();
+            if (move.isHopCapture && move.hopCapturedPieceIds) move.hopCapturedPieceIds.forEach(id => piecesToRemove.add(id));
+            if (targetPiece) piecesToRemove.add(targetPiece.id);
+            const updatedPieces = piecesToRemove.size > 0 ? pieces.filter(p => !piecesToRemove.has(p.id)) : [...pieces];
+            const movedPieces = updatedPieces.map(p => p.id === piece.id ? { ...p, x: anchorX, y: anchorY } : p);
+            const currentTurn = activeSandbox.currentTurn;
+            const nextTurn = currentTurn === 1 ? 2 : 1;
+            setSandboxes(prev => prev.map(s => s.id === activeSandboxId ? { ...s, pieces: movedPieces, currentTurn: nextTurn, moveHistory: [...s.moveHistory, { from: { x: piece.x, y: piece.y }, to: { x: anchorX, y: anchorY }, piece: piece.piece_name, piece_width: pw, piece_height: ph }] } : s));
+          }
+        }
+      }
+    }
+    touchDragRef.current = { piece: null, startX: 0, startY: 0, isDragging: false, grabOffsetX: 0, grabOffsetY: 0, moves: [] };
+    setTouchDragPiece(null);
+    setTouchDragPos(null);
+    setIsDragging(false);
+    setSelectedPiece(null);
+    setValidMoves([]);
+  }, [activeSandbox, activeSandboxId, findPieceAt]);
+
   // Handle right-click mousedown on square (for ranged click-vs-drag detection)
   const handleSquareMouseDown = useCallback((e, x, y) => {
     if (e.button !== 2) return; // Only right-click
@@ -2565,10 +2684,11 @@ const Sandbox = () => {
                 left: 0,
                 ...(isDragging ? { pointerEvents: 'none' } : {})
               } : {};
+              const isTouchDragging = touchDragPiece && touchDragPiece.x === piece.x && touchDragPiece.y === piece.y;
               return (
               <div
                 className={`${styles.piece} ${styles.draggable}`}
-                style={multiTileStyle}
+                style={{ ...multiTileStyle, ...(isTouchDragging ? { opacity: 0 } : {}) }}
                 draggable={true}
                 onDragStart={(e) => handleBoardPieceDragStart(e, piece)}
                 onDragEnd={() => {
@@ -2576,6 +2696,9 @@ const Sandbox = () => {
                   setSelectedPiece(null);
                   setValidMoves([]);
                 }}
+                onTouchStart={(e) => handlePieceTouchStart(e, piece)}
+                onTouchMove={handlePieceTouchMove}
+                onTouchEnd={handlePieceTouchEnd}
                 onMouseEnter={() => handlePieceHover(piece)}
                 onMouseLeave={() => handlePieceHover(null)}
               >
@@ -2708,6 +2831,27 @@ const Sandbox = () => {
             );
           })()}
             </div>
+            {touchDragPiece && touchDragPos && (() => {
+              const imgUrl = getBoardPieceImage(touchDragPiece);
+              const pw = touchDragPiece.piece_width || 1;
+              const ph = touchDragPiece.piece_height || 1;
+              const cellSize = boardRef.current ? boardRef.current.getBoundingClientRect().width / (activeSandbox?.gameType?.board_width || 8) : 60;
+              return (
+                <div style={{
+                  position: 'fixed',
+                  left: touchDragPos.x - (cellSize * pw) / 2,
+                  top: touchDragPos.y - (cellSize * ph) / 2,
+                  width: cellSize * pw,
+                  height: cellSize * ph,
+                  pointerEvents: 'none',
+                  zIndex: 9999,
+                  opacity: 0.85,
+                }}>
+                  {imgUrl && <img src={imgUrl} alt="" draggable={false}
+                    style={{ width: '100%', height: '100%', objectFit: 'fill' }} />}
+                </div>
+              );
+            })()}
             {/* File labels (bottom) */}
             <div className={styles["file-labels"]} style={{ gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)` }}>
               {Array.from({ length: boardWidth }, (_, col) => {

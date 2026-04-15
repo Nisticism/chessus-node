@@ -12,6 +12,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [showSquareSelector, setShowSquareSelector] = useState(false);
   const [draggedSquare, setDraggedSquare] = useState(null);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+  const boardRef = useRef(null);
+  const touchDragRef = useRef({ key: null, type: null, data: null, startX: 0, startY: 0, isDragging: false });
+  const [touchDragPos, setTouchDragPos] = useState(null);
+  const [touchDragType, setTouchDragType] = useState(null);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -274,6 +278,74 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     setDraggedSquare(null);
   }, []);
 
+  // Touch drag handlers for mobile
+  const handleSquareTouchStart = useCallback((e, key, squareType) => {
+    const squareData =
+      squareType === 'range' ? rangeSquares[key] :
+      squareType === 'promotion' ? promotionSquares[key] :
+      squareType === 'control' ? controlSquares[key] :
+      customSquares[key];
+    const touch = e.touches[0];
+    touchDragRef.current = { key, type: squareType, data: squareData, startX: touch.clientX, startY: touch.clientY, isDragging: false };
+    setDraggedSquare({ key, type: squareType, data: squareData });
+  }, [rangeSquares, promotionSquares, controlSquares, customSquares]);
+
+  const handleSquareTouchMove = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (!td.key) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - td.startX;
+    const dy = touch.clientY - td.startY;
+    if (!td.isDragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      td.isDragging = true;
+      setTouchDragType(td.type);
+    }
+    if (td.isDragging) {
+      e.preventDefault();
+      setTouchDragPos({ x: touch.clientX, y: touch.clientY });
+    }
+  }, []);
+
+  const handleSquareTouchEnd = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (td.isDragging && boardRef.current) {
+      const touch = e.changedTouches[0];
+      const rect = boardRef.current.getBoundingClientRect();
+      const boardW = gameData.board_width || 8;
+      const boardH = gameData.board_height || 8;
+      const cellW = rect.width / boardW;
+      const cellH = rect.height / boardH;
+      const targetCol = Math.floor((touch.clientX - rect.left) / cellW);
+      const targetRow = Math.floor((touch.clientY - rect.top) / cellH);
+
+      if (targetCol >= 0 && targetCol < boardW && targetRow >= 0 && targetRow < boardH) {
+        const targetKey = `${targetRow},${targetCol}`;
+        if (td.key !== targetKey) {
+          // Remove source from all types
+          const removeKey = (prev, key) => { const n = { ...prev }; delete n[key]; return n; };
+          setRangeSquares(prev => removeKey(prev, td.key));
+          setPromotionSquares(prev => removeKey(prev, td.key));
+          setControlSquares(prev => removeKey(prev, td.key));
+          setCustomSquares(prev => removeKey(prev, td.key));
+          // Remove target from all types
+          setRangeSquares(prev => removeKey(prev, targetKey));
+          setPromotionSquares(prev => removeKey(prev, targetKey));
+          setControlSquares(prev => removeKey(prev, targetKey));
+          setCustomSquares(prev => removeKey(prev, targetKey));
+          // Add to target
+          if (td.type === 'range') setRangeSquares(prev => ({ ...prev, [targetKey]: td.data }));
+          else if (td.type === 'promotion') setPromotionSquares(prev => ({ ...prev, [targetKey]: td.data }));
+          else if (td.type === 'control') setControlSquares(prev => ({ ...prev, [targetKey]: td.data }));
+          else if (td.type === 'custom') setCustomSquares(prev => ({ ...prev, [targetKey]: td.data }));
+        }
+      }
+    }
+    touchDragRef.current = { key: null, type: null, data: null, startX: 0, startY: 0, isDragging: false };
+    setTouchDragType(null);
+    setTouchDragPos(null);
+    setDraggedSquare(null);
+  }, [gameData.board_width, gameData.board_height]);
+
   const handleSquareTypeSelected = (squareType, options = {}) => {
     if (!selectedSquare) return;
 
@@ -429,6 +501,9 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
                 draggable
                 onDragStart={(e) => handleDragStart(e, key, squareType)}
                 onDragEnd={handleDragEnd}
+                onTouchStart={(e) => handleSquareTouchStart(e, key, squareType)}
+                onTouchMove={handleSquareTouchMove}
+                onTouchEnd={handleSquareTouchEnd}
                 style={{
                   position: 'absolute',
                   top: 0,
@@ -443,7 +518,8 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
                   color: borderColor,
                   textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
                   cursor: 'grab',
-                  pointerEvents: 'all'
+                  pointerEvents: 'all',
+                  ...(touchDragType && touchDragRef.current.key === key ? { opacity: 0 } : {})
                 }}
               >
                 {squareType === 'range' && 'R'}
@@ -458,7 +534,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     }
 
     return board;
-  }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, rangeSquares, promotionSquares, controlSquares, customSquares, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd]);
+  }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, rangeSquares, promotionSquares, controlSquares, customSquares, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handleSquareTouchStart, handleSquareTouchMove, handleSquareTouchEnd, touchDragType]);
 
   const getCounts = () => {
     return {
@@ -584,6 +660,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
 
       <div className={styles["board-placement-preview"]}>
         <div
+          ref={boardRef}
           className={styles["placement-board"]}
           style={{
             display: 'grid',
@@ -600,6 +677,36 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         >
           {renderBoard}
         </div>
+        {touchDragType && touchDragPos && (() => {
+          const td = touchDragRef.current;
+          const squareSize = boardRef.current ? boardRef.current.getBoundingClientRect().width / (gameData.board_width || 8) : 50;
+          const color = getSquareColor(td.type);
+          const letter = td.type === 'range' ? 'R' : td.type === 'promotion' ? 'P' : td.type === 'control' ? 'C' : 'X';
+          return (
+            <div style={{
+              position: 'fixed',
+              left: touchDragPos.x - squareSize / 2,
+              top: touchDragPos.y - squareSize / 2,
+              width: squareSize,
+              height: squareSize,
+              pointerEvents: 'none',
+              zIndex: 9999,
+              opacity: 0.85,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: `${squareSize * 0.4}px`,
+              fontWeight: 'bold',
+              color: color,
+              textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+              border: `4px solid ${color}`,
+              background: 'rgba(0,0,0,0.5)',
+              borderRadius: '4px',
+            }}>
+              {letter}
+            </div>
+          );
+        })()}
       </div>
 
       <div className={styles["placement-instructions"]}>

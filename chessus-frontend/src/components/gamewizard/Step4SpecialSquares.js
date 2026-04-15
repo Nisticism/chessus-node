@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import styles from "./gamewizard.module.scss";
 import SpecialSquareSelector from "./SpecialSquareSelector";
 
@@ -10,6 +10,10 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
   const [showSquareSelector, setShowSquareSelector] = useState(false);
   const [draggedSquare, setDraggedSquare] = useState(null);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+  const boardRef = useRef(null);
+  const touchDragRef = useRef({ key: null, type: null, data: null, startX: 0, startY: 0, isDragging: false });
+  const [touchDragPos, setTouchDragPos] = useState(null);
+  const [touchDragType, setTouchDragType] = useState(null);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -185,6 +189,67 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
     setDraggedSquare(null);
   }, []);
 
+  // Touch drag handlers for mobile
+  const handleSquareTouchStart = useCallback((e, key, squareType) => {
+    const squareData =
+      squareType === 'range' ? rangeSquares[key] :
+      squareType === 'promotion' ? promotionSquares[key] :
+      specialSquares[key];
+    const touch = e.touches[0];
+    touchDragRef.current = { key, type: squareType, data: squareData, startX: touch.clientX, startY: touch.clientY, isDragging: false };
+    setDraggedSquare({ key, type: squareType, data: squareData });
+  }, [rangeSquares, promotionSquares, specialSquares]);
+
+  const handleSquareTouchMove = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (!td.key) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - td.startX;
+    const dy = touch.clientY - td.startY;
+    if (!td.isDragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      td.isDragging = true;
+      setTouchDragType(td.type);
+    }
+    if (td.isDragging) {
+      e.preventDefault();
+      setTouchDragPos({ x: touch.clientX, y: touch.clientY });
+    }
+  }, []);
+
+  const handleSquareTouchEnd = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (td.isDragging && boardRef.current) {
+      const touch = e.changedTouches[0];
+      const rect = boardRef.current.getBoundingClientRect();
+      const boardW = gameData.board_width || 8;
+      const boardH = gameData.board_height || 8;
+      const cellW = rect.width / boardW;
+      const cellH = rect.height / boardH;
+      const targetCol = Math.floor((touch.clientX - rect.left) / cellW);
+      const targetRow = Math.floor((touch.clientY - rect.top) / cellH);
+
+      if (targetCol >= 0 && targetCol < boardW && targetRow >= 0 && targetRow < boardH) {
+        const targetKey = `${targetRow},${targetCol}`;
+        if (td.key !== targetKey) {
+          const removeKey = (prev, key) => { const n = { ...prev }; delete n[key]; return n; };
+          setRangeSquares(prev => removeKey(prev, td.key));
+          setPromotionSquares(prev => removeKey(prev, td.key));
+          setSpecialSquares(prev => removeKey(prev, td.key));
+          setRangeSquares(prev => removeKey(prev, targetKey));
+          setPromotionSquares(prev => removeKey(prev, targetKey));
+          setSpecialSquares(prev => removeKey(prev, targetKey));
+          if (td.type === 'range') setRangeSquares(prev => ({ ...prev, [targetKey]: td.data }));
+          else if (td.type === 'promotion') setPromotionSquares(prev => ({ ...prev, [targetKey]: td.data }));
+          else if (td.type === 'special') setSpecialSquares(prev => ({ ...prev, [targetKey]: td.data }));
+        }
+      }
+    }
+    touchDragRef.current = { key: null, type: null, data: null, startX: 0, startY: 0, isDragging: false };
+    setTouchDragType(null);
+    setTouchDragPos(null);
+    setDraggedSquare(null);
+  }, [gameData.board_width, gameData.board_height]);
+
   const handleSquareTypeSelected = (squareType) => {
     if (!selectedSquare) return;
 
@@ -309,6 +374,9 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
                 draggable
                 onDragStart={(e) => handleDragStart(e, key, squareType)}
                 onDragEnd={handleDragEnd}
+                onTouchStart={(e) => handleSquareTouchStart(e, key, squareType)}
+                onTouchMove={handleSquareTouchMove}
+                onTouchEnd={handleSquareTouchEnd}
                 style={{
                   position: 'absolute',
                   top: 0,
@@ -323,7 +391,8 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
                   color: borderColor,
                   textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
                   cursor: 'grab',
-                  pointerEvents: 'all'
+                  pointerEvents: 'all',
+                  ...(touchDragType && touchDragRef.current.key === key ? { opacity: 0 } : {})
                 }}
               >
                 {squareType === 'range' && 'R'}
@@ -370,6 +439,7 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
 
       <div className={styles["board-placement-preview"]}>
         <div
+          ref={boardRef}
           className={styles["placement-board"]}
           style={{
             display: 'grid',
@@ -383,6 +453,36 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
         >
           {renderBoard()}
         </div>
+        {touchDragType && touchDragPos && (() => {
+          const td = touchDragRef.current;
+          const squareSize = boardRef.current ? boardRef.current.getBoundingClientRect().width / (gameData.board_width || 8) : 50;
+          const color = getSquareColor(td.type);
+          const letter = td.type === 'range' ? 'R' : td.type === 'promotion' ? 'P' : 'S';
+          return (
+            <div style={{
+              position: 'fixed',
+              left: touchDragPos.x - squareSize / 2,
+              top: touchDragPos.y - squareSize / 2,
+              width: squareSize,
+              height: squareSize,
+              pointerEvents: 'none',
+              zIndex: 9999,
+              opacity: 0.85,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: `${squareSize * 0.4}px`,
+              fontWeight: 'bold',
+              color: color,
+              textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+              border: `4px solid ${color}`,
+              background: 'rgba(0,0,0,0.5)',
+              borderRadius: '4px',
+            }}>
+              {letter}
+            </div>
+          );
+        })()}
       </div>
 
       <div className={styles["placement-instructions"]}>

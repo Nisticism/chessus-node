@@ -41,6 +41,10 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const [randomizationOpen, setRandomizationOpen] = useState(false);
   const [hpAdSectionOpen, setHpAdSectionOpen] = useState(false);
   const longPressTimeoutRef = useRef(null);
+  const boardRef = useRef(null);
+  const touchDragRef = useRef({ piece: null, key: null, startX: 0, startY: 0, isDragging: false });
+  const [touchDragPos, setTouchDragPos] = useState(null);
+  const [touchDragPiece, setTouchDragPiece] = useState(null);
   
   // Check if the board setup is symmetric (for mirrored randomization)
   const isBoardSymmetric = useMemo(() => {
@@ -637,6 +641,112 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
     setHoveredPiecePosition(null);
   }, []);
 
+  // Touch drag handlers for mobile
+  const handlePieceTouchStart = useCallback((e, key) => {
+    // Cancel any pending long press
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    const touch = e.touches[0];
+    const [row, col] = key.split(',').map(Number);
+    touchDragRef.current = { piece: piecePlacements[key], key, startX: touch.clientX, startY: touch.clientY, isDragging: false };
+    setDraggedPiece({ key, data: piecePlacements[key] });
+    setDraggedPiecePosition({ row, col });
+  }, [piecePlacements]);
+
+  const handlePieceTouchMove = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (!td.piece) return;
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    const touch = e.touches[0];
+    const dx = touch.clientX - td.startX;
+    const dy = touch.clientY - td.startY;
+    if (!td.isDragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      td.isDragging = true;
+      setTouchDragPiece(td.piece);
+    }
+    if (td.isDragging) {
+      e.preventDefault();
+      setTouchDragPos({ x: touch.clientX, y: touch.clientY });
+    }
+  }, []);
+
+  const handlePieceTouchEnd = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (td.isDragging && boardRef.current) {
+      const touch = e.changedTouches[0];
+      const rect = boardRef.current.getBoundingClientRect();
+      const boardW = gameData.board_width || 8;
+      const boardH = gameData.board_height || 8;
+      const cellW = rect.width / boardW;
+      const cellH = rect.height / boardH;
+      const targetCol = Math.floor((touch.clientX - rect.left) / cellW);
+      const targetRow = Math.floor((touch.clientY - rect.top) / cellH);
+
+      if (targetCol >= 0 && targetCol < boardW && targetRow >= 0 && targetRow < boardH) {
+        const targetKey = `${targetRow},${targetCol}`;
+        const sourceKey = td.key;
+        if (sourceKey !== targetKey) {
+          const pw = td.piece.piece_width || 1;
+          const ph = td.piece.piece_height || 1;
+          if (targetRow + ph <= boardH && targetCol + pw <= boardW) {
+            setPiecePlacements(prev => {
+              const newPlacements = { ...prev };
+              const [srcRow, srcCol] = sourceKey.split(',').map(Number);
+              for (let dr = 0; dr < ph; dr++) {
+                for (let dc = 0; dc < pw; dc++) {
+                  delete newPlacements[`${srcRow + dr},${srcCol + dc}`];
+                }
+              }
+              for (let dr = 0; dr < ph; dr++) {
+                for (let dc = 0; dc < pw; dc++) {
+                  const checkKey = `${targetRow + dr},${targetCol + dc}`;
+                  const existing = newPlacements[checkKey];
+                  if (existing) {
+                    if (existing._occupied && existing._anchorKey) {
+                      const anchorData = newPlacements[existing._anchorKey];
+                      if (anchorData) {
+                        const aw = anchorData.piece_width || 1;
+                        const ah = anchorData.piece_height || 1;
+                        const [ar, ac] = existing._anchorKey.split(',').map(Number);
+                        for (let r2 = 0; r2 < ah; r2++) for (let c2 = 0; c2 < aw; c2++) delete newPlacements[`${ar + r2},${ac + c2}`];
+                      }
+                    } else {
+                      const ew = existing.piece_width || 1;
+                      const eh = existing.piece_height || 1;
+                      const [er, ec] = checkKey.split(',').map(Number);
+                      for (let r2 = 0; r2 < eh; r2++) for (let c2 = 0; c2 < ew; c2++) delete newPlacements[`${er + r2},${ec + c2}`];
+                    }
+                  }
+                }
+              }
+              newPlacements[targetKey] = { ...td.piece };
+              for (let dr = 0; dr < ph; dr++) {
+                for (let dc = 0; dc < pw; dc++) {
+                  if (dr === 0 && dc === 0) continue;
+                  newPlacements[`${targetRow + dr},${targetCol + dc}`] = {
+                    _anchorKey: targetKey, piece_id: td.piece.piece_id, player_id: td.piece.player_id, piece_name: td.piece.piece_name, _occupied: true
+                  };
+                }
+              }
+              return newPlacements;
+            });
+          }
+        }
+      }
+    }
+    touchDragRef.current = { piece: null, key: null, startX: 0, startY: 0, isDragging: false };
+    setTouchDragPiece(null);
+    setTouchDragPos(null);
+    setDraggedPiece(null);
+    setDraggedPiecePosition(null);
+    setHoveredSquare(null);
+  }, [gameData.board_width, gameData.board_height]);
+
   const handleStartingModeToggle = (mode) => {
     setAllowedStartingModes(prev => {
       let newModes;
@@ -946,12 +1056,16 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
               const placePw = placement.piece_width || 1;
               const placePh = placement.piece_height || 1;
               const isMultiTile = placePw > 1 || placePh > 1;
+              const isTouchDragging = touchDragPiece && touchDragRef.current.key === key;
               return (
               <div 
                 className={isMultiTile ? styles["piece-on-square-multitile"] : styles["piece-on-square"]}
                 draggable
                 onDragStart={(e) => handleDragStart(e, key)}
                 onDragEnd={handleDragEnd}
+                onTouchStart={(e) => handlePieceTouchStart(e, key)}
+                onTouchMove={handlePieceTouchMove}
+                onTouchEnd={handlePieceTouchEnd}
                 onMouseEnter={() => {
                   const playerId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
                   setHoveredPiecePosition({ row, col, pieceId: placement.piece_id, playerId });
@@ -969,7 +1083,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  zIndex: 5
+                  zIndex: 5,
+                  ...(isTouchDragging ? { opacity: 0 } : {})
                 }}
               >
                 {getPlacementImageUrl(placement) ? (
@@ -1273,6 +1388,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
           maxWidth={boardDimensions.boardWidth + 30}
         />
         <div 
+          ref={boardRef}
           className={styles["placement-board"]}
           style={{
             display: 'grid',
@@ -1289,6 +1405,27 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
         >
           {renderBoard}
         </div>
+        {touchDragPiece && touchDragPos && (() => {
+          const imgUrl = getPlacementImageUrl(touchDragPiece);
+          const pw = touchDragPiece.piece_width || 1;
+          const ph = touchDragPiece.piece_height || 1;
+          const cellSize = boardDimensions.squareSize;
+          return (
+            <div style={{
+              position: 'fixed',
+              left: touchDragPos.x - (cellSize * pw) / 2,
+              top: touchDragPos.y - (cellSize * ph) / 2,
+              width: cellSize * pw,
+              height: cellSize * ph,
+              pointerEvents: 'none',
+              zIndex: 9999,
+              opacity: 0.85,
+            }}>
+              {imgUrl && <img src={imgUrl} alt="" draggable={false}
+                style={{ width: '100%', height: '100%', objectFit: 'fill' }} />}
+            </div>
+          );
+        })()}
       </div>
 
       <div className={styles["placement-instructions"]}>

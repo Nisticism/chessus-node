@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./home.module.scss";
@@ -29,6 +29,10 @@ const Home = () => {
   const [selectedLayout, setSelectedLayout] = useState('chess');
   const [pieces, setPieces] = useState([]);
   const [draggedPiece, setDraggedPiece] = useState(null);
+  const boardRef = useRef(null);
+  const touchDragRef = useRef({ piece: null, index: -1, startX: 0, startY: 0, isDragging: false });
+  const [touchDragPos, setTouchDragPos] = useState(null);
+  const [touchDragPiece, setTouchDragPiece] = useState(null);
   
   // State for popular games from database
   const [popularGames, setPopularGames] = useState([]);
@@ -214,6 +218,47 @@ const Home = () => {
     setDraggedPiece(null);
   };
 
+  // Touch drag handlers for mobile
+  const handleTouchStart = useCallback((e, piece, index) => {
+    const touch = e.touches[0];
+    touchDragRef.current = { piece, index, startX: touch.clientX, startY: touch.clientY, isDragging: false };
+  }, []);
+
+  const handleTouchMove = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (!td.piece) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - td.startX;
+    const dy = touch.clientY - td.startY;
+    if (!td.isDragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      td.isDragging = true;
+      setTouchDragPiece(td.piece);
+    }
+    if (td.isDragging) {
+      e.preventDefault();
+      setTouchDragPos({ x: touch.clientX, y: touch.clientY });
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback((e) => {
+    const td = touchDragRef.current;
+    if (td.isDragging && boardRef.current) {
+      const touch = e.changedTouches[0];
+      const rect = boardRef.current.getBoundingClientRect();
+      const col = Math.floor((touch.clientX - rect.left) / (rect.width / boardSize));
+      const row = Math.floor((touch.clientY - rect.top) / (rect.height / boardSize));
+      if (row >= 0 && row < boardSize && col >= 0 && col < boardSize) {
+        const newPieces = pieces.map((p, i) =>
+          i === td.index ? { ...p, row, col } : p
+        );
+        setPieces(newPieces);
+      }
+    }
+    touchDragRef.current = { piece: null, index: -1, startX: 0, startY: 0, isDragging: false };
+    setTouchDragPiece(null);
+    setTouchDragPos(null);
+  }, [boardSize, pieces]);
+
   // Get piece at a specific position
   const getPieceAt = (row, col) => {
     return pieces.find(p => p.row === row && p.col === col);
@@ -251,7 +296,11 @@ const Home = () => {
                 draggable
                 onDragStart={(e) => handleDragStart(e, piece, pieceIndex)}
                 onDragEnd={handleDragEnd}
+                onTouchStart={(e) => handleTouchStart(e, piece, pieceIndex)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
                 onContextMenu={(e) => e.preventDefault()}
+                style={touchDragPiece && touchDragPiece === piece ? { opacity: 0 } : undefined}
               />
             )}
           </div>
@@ -354,6 +403,7 @@ const Home = () => {
               ) : (
                 <>
                   <div 
+                    ref={boardRef}
                     className={styles["board-grid"]}
                     style={{
                       gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
@@ -362,6 +412,21 @@ const Home = () => {
                   >
                     {renderBoard()}
                   </div>
+                  {touchDragPiece && touchDragPos && (
+                    <div style={{
+                      position: 'fixed',
+                      left: touchDragPos.x - 30,
+                      top: touchDragPos.y - 30,
+                      width: 60,
+                      height: 60,
+                      pointerEvents: 'none',
+                      zIndex: 9999,
+                      opacity: 0.85,
+                    }}>
+                      <img src={touchDragPiece.image} alt="" draggable={false}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    </div>
+                  )}
                   <div className={styles["board-controls"]}>
                     <button 
                       className={`${styles["control-button"]} ${selectedLayout === 'chess' ? styles.active : ''}`}

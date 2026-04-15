@@ -1006,6 +1006,27 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     setIsHovering(true);
   }, [animState, anchorRow, anchorCol, boardWidth]);
 
+  const handlePieceTouchStart = useCallback((e) => {
+    if (animState) return;
+    e.preventDefault();
+    const gridRect = gridRef.current?.getBoundingClientRect();
+    if (!gridRect) return;
+    const squares = gridRef.current.querySelectorAll(`.${styles["board-square"]}`);
+    const anchorIdx = anchorRow * boardWidth + anchorCol;
+    const anchorRect = squares[anchorIdx]?.getBoundingClientRect();
+    if (!anchorRect) return;
+    dragStartRef.current = {
+      gridRect,
+      anchorRect,
+      squareWidth: anchorRect.width,
+      squareHeight: anchorRect.height,
+    };
+    const touch = e.touches[0];
+    setDragPos({ x: touch.clientX - gridRect.left, y: touch.clientY - gridRect.top });
+    setIsDragging(true);
+    setIsHovering(true);
+  }, [animState, anchorRow, anchorCol, boardWidth]);
+
   useEffect(() => {
     if (!isDragging) return;
     const handleMouseMove = (e) => {
@@ -1018,11 +1039,27 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
       setDragPos(null);
       dragStartRef.current = null;
     };
+    const handleTouchMove = (e) => {
+      e.preventDefault();
+      const gridRect = gridRef.current?.getBoundingClientRect();
+      if (!gridRect) return;
+      const touch = e.touches[0];
+      setDragPos({ x: touch.clientX - gridRect.left, y: touch.clientY - gridRect.top });
+    };
+    const handleTouchEnd = () => {
+      setIsDragging(false);
+      setDragPos(null);
+      dragStartRef.current = null;
+    };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
     };
   }, [isDragging]);
 
@@ -1131,7 +1168,10 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
                     width: `${pw * 100}%`,
                     height: `${ph * 100}%`,
                     zIndex: 5,
+                    cursor: 'grab',
                   }}
+                  onMouseDown={handlePieceMouseDown}
+                  onTouchStart={handlePieceTouchStart}
                 />
               ) : isMultiTile ? (
                 <div
@@ -1146,10 +1186,13 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
                     backgroundSize: '100% 100%',
                     backgroundPosition: 'center',
                     backgroundRepeat: 'no-repeat',
+                    cursor: 'grab',
                   }}
+                  onMouseDown={handlePieceMouseDown}
+                  onTouchStart={handlePieceTouchStart}
                 />
               ) : (
-                <img src={imgSrc} alt="Piece" draggable="false" onDragStart={(e) => e.preventDefault()} onMouseDown={handlePieceMouseDown} style={{ cursor: 'grab' }} />
+                <img src={imgSrc} alt="Piece" draggable="false" onDragStart={(e) => e.preventDefault()} onMouseDown={handlePieceMouseDown} onTouchStart={handlePieceTouchStart} style={{ cursor: 'grab' }} />
               )
             )}
             {showPiece && !imgSrc && "?"}
