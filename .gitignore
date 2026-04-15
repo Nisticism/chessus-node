@@ -14,3 +14,4 @@ uploads/
 # JWT secrets file (auto-generated, do not commit)
 server/.jwt-secrets.json
 sound-library-backup/
+node_modules
