@@ -3737,10 +3737,15 @@ const LiveGame = () => {
                   : { top: 0, left: 0 })
               } : {};
               
+              const isTouchDragging = touchDragPiece && touchDragPiece.x === piece.x && touchDragPiece.y === piece.y;
+              
               return (
                 <div 
                   className={styles.piece}
-                  style={multiTileStyle}
+                  style={{
+                    ...multiTileStyle,
+                    ...(isTouchDragging ? { opacity: 0 } : {})
+                  }}
                   draggable={canDragForMove || canDragForPremove}
                   onDragStart={(e) => handleDragStart(e, piece)}
                   onDragEnd={handleDragEnd}
