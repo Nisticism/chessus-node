@@ -55,6 +55,11 @@ const AdminDashboard = () => {
   const [siteSettings, setSiteSettings] = useState({});
   const [settingsLoading, setSettingsLoading] = useState(false);
 
+  // Moderation queue state
+  const [moderationQueue, setModerationQueue] = useState([]);
+  const [moderationLoading, setModerationLoading] = useState(false);
+  const [moderationFilter, setModerationFilter] = useState('pending_review');
+
   // Online players state
   const [onlinePlayers, setOnlinePlayers] = useState([]);
   const [onlineLoading, setOnlineLoading] = useState(false);
@@ -112,6 +117,8 @@ const AdminDashboard = () => {
       fetchSiteSettings();
     } else if (activeTab === 'online') {
       fetchOnlinePlayers();
+    } else if (activeTab === 'moderation') {
+      fetchModerationQueue(moderationFilter);
     } else {
       fetchData(activeTab, 1);
     }
@@ -166,6 +173,81 @@ const AdminDashboard = () => {
       console.error("Error fetching online players:", error);
     } finally {
       setOnlineLoading(false);
+    }
+  };
+
+  const fetchModerationQueue = async (status = 'pending_review') => {
+    setModerationLoading(true);
+    try {
+      const response = await axios.get(
+        `${API_URL}admin/moderation-queue?status=${status}`,
+        { headers: authHeader() }
+      );
+      setModerationQueue(response.data.items || []);
+    } catch (error) {
+      console.error("Error fetching moderation queue:", error);
+    } finally {
+      setModerationLoading(false);
+    }
+  };
+
+  const handleModerationApprove = async (itemId) => {
+    try {
+      await axios.post(
+        `${API_URL}admin/moderation-queue/${itemId}/approve`,
+        {},
+        { headers: authHeader() }
+      );
+      setAlertMessage("Image approved");
+      setAlertType("success");
+      setShowAlert(true);
+      fetchModerationQueue(moderationFilter);
+    } catch (error) {
+      console.error("Error approving item:", error);
+      setAlertMessage("Failed to approve image");
+      setAlertType("error");
+      setShowAlert(true);
+    }
+  };
+
+  const handleModerationReject = async (itemId) => {
+    try {
+      await axios.post(
+        `${API_URL}admin/moderation-queue/${itemId}/reject`,
+        {},
+        { headers: authHeader() }
+      );
+      setAlertMessage("Image rejected and removed");
+      setAlertType("success");
+      setShowAlert(true);
+      fetchModerationQueue(moderationFilter);
+    } catch (error) {
+      console.error("Error rejecting item:", error);
+      setAlertMessage("Failed to reject image");
+      setAlertType("error");
+      setShowAlert(true);
+    }
+  };
+
+  const handleApproveAllForPiece = async (pieceId) => {
+    try {
+      const itemsForPiece = moderationQueue.filter(q => q.piece_id === pieceId);
+      for (const item of itemsForPiece) {
+        await axios.post(
+          `${API_URL}admin/moderation-queue/${item.id}/approve`,
+          {},
+          { headers: authHeader() }
+        );
+      }
+      setAlertMessage("All images for piece approved");
+      setAlertType("success");
+      setShowAlert(true);
+      fetchModerationQueue(moderationFilter);
+    } catch (error) {
+      console.error("Error approving piece:", error);
+      setAlertMessage("Failed to approve piece images");
+      setAlertType("error");
+      setShowAlert(true);
     }
   };
 
@@ -1062,6 +1144,91 @@ const AdminDashboard = () => {
     </div>
   );
 
+  const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
+
+  const renderModerationTab = () => (
+    <div className={styles["table-container"]}>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', alignItems: 'center' }}>
+        <span style={{ fontWeight: 'bold' }}>Filter:</span>
+        {['pending_review', 'approved', 'rejected'].map(status => (
+          <button
+            key={status}
+            className={`${styles["tab"]} ${moderationFilter === status ? styles["active"] : ""}`}
+            style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+            onClick={() => { setModerationFilter(status); fetchModerationQueue(status); }}
+          >
+            {status === 'pending_review' ? 'Pending' : status.charAt(0).toUpperCase() + status.slice(1)}
+          </button>
+        ))}
+      </div>
+      {moderationLoading ? (
+        <div className={styles["loading"]}>Loading...</div>
+      ) : moderationQueue.length === 0 ? (
+        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          No {moderationFilter === 'pending_review' ? 'pending' : moderationFilter} items in the moderation queue.
+        </div>
+      ) : (
+        <table className={styles["data-table"]}>
+          <thead>
+            <tr>
+              <th>Image</th>
+              <th>Piece</th>
+              <th>Uploader</th>
+              <th>Reason</th>
+              <th>Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {moderationQueue.map(item => (
+              <tr key={item.id}>
+                <td>
+                  <img
+                    src={`${ASSET_URL}${item.image_path}`}
+                    alt="Pending"
+                    style={{ width: 60, height: 60, objectFit: 'contain', background: '#222', borderRadius: 4 }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                </td>
+                <td>
+                  {item.piece_name || `Piece #${item.piece_id}`}
+                </td>
+                <td>{item.uploader_username || 'Unknown'}</td>
+                <td style={{ fontSize: '0.85rem', maxWidth: 250, wordBreak: 'break-word' }}>
+                  {item.auto_reason || 'N/A'}
+                </td>
+                <td style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                  {item.created_at ? formatDateTime(parseServerDate(item.created_at)) : 'N/A'}
+                </td>
+                <td>
+                  {moderationFilter === 'pending_review' && (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <StandardButton
+                        buttonText="Approve"
+                        onClick={() => handleModerationApprove(item.id)}
+                        style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                      />
+                      <StandardButton
+                        buttonText="Reject"
+                        onClick={() => handleModerationReject(item.id)}
+                        style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#c0392b' }}
+                      />
+                      <StandardButton
+                        buttonText="Approve All for Piece"
+                        onClick={() => handleApproveAllForPiece(item.piece_id)}
+                        style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#27ae60' }}
+                      />
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
   const renderStreamsTab = () => (
     <div className={styles["table-container"]}>
       <div className={styles["table-header"]} style={{ marginBottom: '15px' }}>
@@ -1534,6 +1701,12 @@ const AdminDashboard = () => {
         >
           Settings
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "moderation" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("moderation")}
+        >
+          Moderation
+        </button>
       </div>
 
       <div className={styles["content"]}>
@@ -1550,6 +1723,7 @@ const AdminDashboard = () => {
             {activeTab === "streams" && renderStreamsTab()}
             {activeTab === "online" && renderOnlinePlayersTab()}
             {activeTab === "anonymous-games" && renderAnonymousGamesTable()}
+            {activeTab === "moderation" && renderModerationTab()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>

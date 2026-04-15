@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
+import axios from "../../services/axios-interceptor";
 import { getPieceById, getGamesByPieceId, deletePiece } from "../../actions/pieces";
 import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import Pagination from "../pagination/Pagination";
 import styles from "./pieceview.module.scss";
 import { parseServerDate } from "../../helpers/date-formatter";
+import authHeader from "../../services/auth-header";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
+const API_URL = (process.env.REACT_APP_API_URL || "") + "/api/";
 
 const PieceView = () => {
   const { pieceId } = useParams();
@@ -529,9 +532,33 @@ const PieceView = () => {
             <h1>{pieceToDisplay.piece_name}</h1>
             {pieceToDisplay.moderation_status && pieceToDisplay.moderation_status !== 'approved' && 
              (currentUser && (Number(currentUser.id) === Number(pieceToDisplay.creator_id) || currentUser.role === 'admin' || currentUser.role === 'owner')) && (
-              <span className={styles[`moderation-badge-${pieceToDisplay.moderation_status}`]}>
-                {pieceToDisplay.moderation_status === 'pending_review' ? '⏳ Images Under Review' : '❌ Images Rejected'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span className={styles[`moderation-badge-${pieceToDisplay.moderation_status}`]}>
+                  {pieceToDisplay.moderation_status === 'pending_review' ? '⏳ Images Under Review' : '❌ Images Rejected'}
+                </span>
+                {(currentUser.role === 'admin' || currentUser.role === 'owner') && pieceToDisplay.moderation_status === 'pending_review' && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await axios.post(
+                          `${API_URL}admin/pieces/${pieceToDisplay.id}/approve-moderation`,
+                          {},
+                          { headers: authHeader() }
+                        );
+                        window.location.reload();
+                      } catch (err) {
+                        console.error("Failed to approve:", err);
+                      }
+                    }}
+                    style={{
+                      padding: '4px 12px', fontSize: '0.85rem', cursor: 'pointer',
+                      background: '#27ae60', color: '#fff', border: 'none', borderRadius: '4px'
+                    }}
+                  >
+                    Approve
+                  </button>
+                )}
+              </div>
             )}
             {pieceToDisplay.creator_username && (
               <p className={styles["creator"]}>
