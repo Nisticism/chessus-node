@@ -541,7 +541,7 @@ const PieceView = () => {
                     onClick={async () => {
                       try {
                         await axios.post(
-                          `${API_URL}admin/pieces/${pieceToDisplay.id}/approve-moderation`,
+                          `${API_URL}admin/pieces/${pieceToDisplay.piece_id}/approve-moderation`,
                           {},
                           { headers: authHeader() }
                         );
