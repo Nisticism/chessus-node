@@ -8,6 +8,7 @@ import { colToFile, rowToRank, formatMoveNotation, replayToMove } from "../../he
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { parseServerDate } from "../../helpers/date-formatter";
+import { handlePieceImageError } from "../../utils/pieceFallback";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 
@@ -209,6 +210,7 @@ const MatchView = () => {
                       alt={piece.piece_name || piece.name || "Piece"}
                       className={styles["piece-image"]}
                       draggable={false}
+                      onError={(e) => handlePieceImageError(e, piece.piece_name || piece.name, piece.player_id || piece.team)}
                     />
                   )
                 ) : (

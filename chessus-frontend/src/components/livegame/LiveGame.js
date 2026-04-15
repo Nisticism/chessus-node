@@ -25,6 +25,7 @@ import {
   replayToMove
 } from "../../helpers/pieceMovementUtils";
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
+import { getFallbackPieceImage } from "../../utils/pieceFallback";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -3778,11 +3779,11 @@ const LiveGame = () => {
                       draggable={false}
                       {...(pieceShadowEnabled ? { style: { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } } : {})}
                       onError={(e) => {
-                        console.error('Failed to load piece image:', {
-                          src: imageUrl,
-                          piece_id: piece.piece_id,
-                          piece_name: piece.piece_name
-                        });
+                        // Try to load a matching library fallback image
+                        const fallbackSrc = getFallbackPieceImage(piece.piece_name || piece.name, piece.player_id);
+                        if (fallbackSrc && e.target.src !== fallbackSrc) {
+                          e.target.src = fallbackSrc;
+                        }
                       }}
                     />
                   )
@@ -4841,7 +4842,10 @@ const LiveGame = () => {
                         return (
                           <div key={`p1-${index}`} className={styles["captured-piece"]} title={piece.piece_name}>
                             {imgSrc ? (
-                              <img src={imgSrc} alt={piece.piece_name} />
+                              <img src={imgSrc} alt={piece.piece_name} onError={(e) => {
+                                const fb = getFallbackPieceImage(piece.piece_name, piece.player_id);
+                                if (fb && e.target.src !== fb) e.target.src = fb;
+                              }} />
                             ) : (
                               <span className={styles["piece-symbol"]}>♟</span>
                             )}
@@ -4879,7 +4883,10 @@ const LiveGame = () => {
                         return (
                           <div key={`p2-${index}`} className={styles["captured-piece"]} title={piece.piece_name}>
                             {imgSrc ? (
-                              <img src={imgSrc} alt={piece.piece_name} />
+                              <img src={imgSrc} alt={piece.piece_name} onError={(e) => {
+                                const fb = getFallbackPieceImage(piece.piece_name, piece.player_id);
+                                if (fb && e.target.src !== fb) e.target.src = fb;
+                              }} />
                             ) : (
                               <span className={styles["piece-symbol"]}>♟</span>
                             )}

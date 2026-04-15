@@ -9,6 +9,7 @@ import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import SquareHighlightOverlay from "../../components/common/SquareHighlightOverlay";
+import { handlePieceImageError } from "../../utils/pieceFallback";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 const MAX_SANDBOXES = 4;
@@ -2724,6 +2725,7 @@ const Sandbox = () => {
                     alt={piece.piece_name}
                     draggable={false}
                     {...(pieceShadowEnabled ? { style: { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } } : {})}
+                    onError={(e) => handlePieceImageError(e, piece.piece_name, piece.player_id || piece.team)}
                   />
                 )}
               </div>
@@ -2848,7 +2850,8 @@ const Sandbox = () => {
                   opacity: 0.85,
                 }}>
                   {imgUrl && <img src={imgUrl} alt="" draggable={false}
-                    style={{ width: '100%', height: '100%', objectFit: 'fill' }} />}
+                    style={{ width: '100%', height: '100%', objectFit: 'fill' }}
+                    onError={(e) => handlePieceImageError(e, touchDragPiece.piece_name, touchDragPiece.player_id || touchDragPiece.team)} />}
                 </div>
               );
             })()}
