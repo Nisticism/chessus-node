@@ -69,6 +69,11 @@ const changelogData = [
       "New 'Show Details' toggle on the game details page — switch between a clean board view and one with all overlays (badges, dots, special squares, etc.)",
       "Fixed mobile drag-and-drop showing a duplicate ghost piece instead of lifting the original in live games",
       "Mobile touch drag-and-drop now works on all boards — home page, sandbox, piece wizard preview, game wizard piece placement, and special square placement steps",
+      "Admin and owner image uploads are now auto-approved — no more 'Under Review' for your own pieces",
+      "New 'Moderation' tab in the admin dashboard to review, approve, or reject flagged piece images",
+      "Admins and owners can now approve pieces directly from the piece details page when images are under review",
+      "Piece images that fail to load now show a matching chess piece from the built-in library as a fallback instead of blank/broken images",
+      "Editing a piece's images no longer breaks pieces in active games — old image files are preserved for compatibility",
     ],
   },
   {
