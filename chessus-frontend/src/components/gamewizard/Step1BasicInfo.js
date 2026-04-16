@@ -118,21 +118,18 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
       </div>
 
       <div className={styles["form-group"]}>
-        <label className={styles["checkbox-label"]}>
-          <input
-            type="checkbox"
-            checked={gameData.simultaneous_turns || false}
-            onChange={(e) => handleChange("simultaneous_turns", e.target.checked)}
-            disabled={gameData.actions_per_turn > 1}
-          />
-          <span>Simultaneous turns</span>
-          <InfoTooltip text="Both players submit their moves secretly, then both moves are revealed and executed at the same time. Incompatible with multiple actions per turn." />
+        <label className={styles["toggle-label"]}>
+          <span>Simultaneous turns <InfoTooltip text="Both players submit their moves secretly, then both moves are revealed and executed at the same time. Incompatible with multiple actions per turn. ⚠ Experimental: Some mechanics (multi-action turns, piece placement) are not compatible." /></span>
+          <div className={styles["toggle-switch"]}>
+            <input
+              type="checkbox"
+              checked={gameData.simultaneous_turns || false}
+              onChange={(e) => handleChange("simultaneous_turns", e.target.checked)}
+              disabled={gameData.actions_per_turn > 1}
+            />
+            <span className={styles["toggle-slider"]}></span>
+          </div>
         </label>
-        {gameData.simultaneous_turns && (
-          <p className={styles["field-hint"]}>
-            ⚠ Experimental: Both players choose their move in secret. Moves are revealed and resolved simultaneously. Some mechanics (multi-action turns, piece placement) are not compatible.
-          </p>
-        )}
         {gameData.actions_per_turn > 1 && gameData.simultaneous_turns && (
           <p className={styles["validation-error"]}>
             Simultaneous turns requires exactly 1 action per turn.
@@ -141,20 +138,18 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
       </div>
 
       <div className={styles["form-group"]}>
-        <label className={styles["checkbox-label"]}>
-          <input
-            type="checkbox"
-            checked={!currentUser || gameData.is_anonymous_creator}
-            onChange={(e) => handleChange("is_anonymous_creator", e.target.checked)}
-            disabled={!currentUser}
-          />
-          <span>Create anonymously</span>
+        <label className={styles["toggle-label"]}>
+          <span>Create anonymously <InfoTooltip text={!currentUser ? "You are not logged in — your game will be created anonymously." : "When enabled, your username will not be shown publicly as the creator of this game."} /></span>
+          <div className={styles["toggle-switch"]}>
+            <input
+              type="checkbox"
+              checked={!currentUser || gameData.is_anonymous_creator}
+              onChange={(e) => handleChange("is_anonymous_creator", e.target.checked)}
+              disabled={!currentUser}
+            />
+            <span className={styles["toggle-slider"]}></span>
+          </div>
         </label>
-        <p className={styles["field-hint"]}>
-          {!currentUser
-            ? "You are not logged in — your game will be created anonymously."
-            : "When checked, your username will not be shown publicly as the creator of this game."}
-        </p>
       </div>
     </div>
   );

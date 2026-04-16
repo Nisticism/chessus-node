@@ -2587,6 +2587,100 @@ const runMigrations = async () => {
     console.error('Error expanding comments.content:', err.message);
   }
 
+  // Add is_draft column to game_types for draft game support
+  try {
+    const isDraftCol = await columnExists('game_types', 'is_draft');
+    if (!isDraftCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN is_draft TINYINT(1) DEFAULT 0 COMMENT 'If true, game is a draft and not publicly visible'`,
+        "Add is_draft column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_draft column:', err.message);
+  }
+
+  // Add draft_saved_step column to game_types to remember which wizard step the draft was saved on
+  try {
+    const draftStepCol = await columnExists('game_types', 'draft_saved_step');
+    if (!draftStepCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN draft_saved_step INT DEFAULT NULL COMMENT 'Wizard step number where draft was last saved'`,
+        "Add draft_saved_step column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding draft_saved_step column:', err.message);
+  }
+
+  // Add uniqueness checker columns to game_types
+  try {
+    const isUniqueCol = await columnExists('game_types', 'is_unique');
+    if (!isUniqueCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN is_unique TINYINT(1) DEFAULT NULL COMMENT 'NULL=unchecked, 0=not unique, 1=certified unique'`,
+        "Add is_unique column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_unique column:', err.message);
+  }
+
+  try {
+    const uniqueBadgeDateCol = await columnExists('game_types', 'unique_badge_date');
+    if (!uniqueBadgeDateCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN unique_badge_date DATETIME DEFAULT NULL COMMENT 'Date when unique badge was first awarded; only resets on game update'`,
+        "Add unique_badge_date column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding unique_badge_date column:', err.message);
+  }
+
+  try {
+    const uniquenessScoreCol = await columnExists('game_types', 'uniqueness_score');
+    if (!uniquenessScoreCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN uniqueness_score FLOAT DEFAULT NULL COMMENT 'Uniqueness score 0-100'`,
+        "Add uniqueness_score column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding uniqueness_score column:', err.message);
+  }
+
+  try {
+    const similarGamesCol = await columnExists('game_types', 'similar_games');
+    if (!similarGamesCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN similar_games TEXT DEFAULT NULL COMMENT 'JSON array of up to 3 similar game ids with similarity scores'`,
+        "Add similar_games column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding similar_games column:', err.message);
+  }
+
+  try {
+    const lastUniquenessCheckCol = await columnExists('game_types', 'last_uniqueness_check');
+    if (!lastUniquenessCheckCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN last_uniqueness_check DATETIME DEFAULT NULL COMMENT 'When uniqueness check was last run (rate limited to once per day per game)'`,
+        "Add last_uniqueness_check column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding last_uniqueness_check column:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

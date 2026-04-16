@@ -14,12 +14,13 @@ import axios from "../services/axios-interceptor";
 import API_URL from "../global/global";
 import authHeader from "../services/auth-header";
 
-export const getGames = (page = 1, limit = 20, sort = 'newest', winCondition = '', search = '', creatorId = '') => async (dispatch) => {
+export const getGames = (page = 1, limit = 20, sort = 'newest', winCondition = '', search = '', creatorId = '', includeDrafts = '') => async (dispatch) => {
   try {
     const params = { page, limit, sort };
     if (winCondition) params.winCondition = winCondition;
     if (search) params.search = search;
     if (creatorId) params.creatorId = creatorId;
+    if (includeDrafts) params.includeDrafts = includeDrafts;
     const response = await axios.get(API_URL + "games", {
       params
     });
@@ -173,4 +174,13 @@ export const deleteGame = (gameId) => async (dispatch) => {
     
     return Promise.reject(error);
   }
+};
+
+export const runUniquenessCheck = async (gameId) => {
+  const response = await axios.post(
+    API_URL + "games/" + gameId + "/uniqueness-check",
+    {},
+    { headers: authHeader() }
+  );
+  return response.data;
 };

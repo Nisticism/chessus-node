@@ -1907,11 +1907,18 @@ app.get("/api/games", async (req, res) => {
     const winCondition = req.query.winCondition || '';
     const search = req.query.search || '';
     const creatorId = req.query.creatorId ? parseInt(req.query.creatorId) : null;
+    const includeDrafts = req.query.includeDrafts === 'true';
 
     // Build WHERE clause
     let whereClause = '';
     const whereParams = [];
     const conditions = [];
+
+    // By default, exclude drafts from public listings
+    // Only show drafts when explicitly requested AND filtering by creator
+    if (!includeDrafts || !creatorId) {
+      conditions.push('(gt.is_draft = 0 OR gt.is_draft IS NULL)');
+    }
 
     if (creatorId) {
       conditions.push('gt.creator_id = ?');
@@ -2187,6 +2194,10 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     gameData.player_count = 2;
     
     // Build the SQL query for updating
+    const isDraft = gameData.is_draft ? 1 : 0;
+    const draftSavedStep = gameData.draft_saved_step || null;
+    const wasPublished = !existingGame.is_draft;
+    
     const sql = `
       UPDATE game_types SET
         game_name = ?, descript = ?, rules = ?,
@@ -2197,7 +2208,11 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         starting_piece_count = ?, pieces_string = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
         randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?,
-        no_moves_condition = ?, piece_count_condition = ?, promotion_condition = ?
+        no_moves_condition = ?, piece_count_condition = ?, promotion_condition = ?,
+        is_draft = ?, draft_saved_step = ?,
+        is_unique = NULL,
+        uniqueness_score = NULL,
+        similar_games = NULL
       WHERE id = ?
     `;
     
@@ -2238,6 +2253,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.no_moves_condition || false,
       gameData.piece_count_condition || false,
       gameData.promotion_condition || false,
+      isDraft,
+      draftSavedStep,
       gameId
     ];
     
@@ -2308,10 +2325,26 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         console.error('Error parsing pieces_string:', parseError);
       }
     }
+
+    // If publishing a draft (was draft, now not), create forum and notify owner
+    if (existingGame.is_draft && !isDraft) {
+      try {
+        const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const forumTitle = `${gameData.game_name} - Discussion`;
+        const forumContent = `Welcome to the ${gameData.game_name} discussion forum! Share strategies, ask questions, and connect with other players of this game.${gameData.descript ? '\n\n' + gameData.descript : ''}`;
+        const forumAuthorId = existingGame.is_anonymous_creator ? null : existingGame.creator_id;
+        await db_pool.query(
+          `INSERT INTO articles (author_id, game_type_id, title, content, created_at, public) VALUES (?, ?, ?, ?, ?, ?)`,
+          [forumAuthorId, gameId, forumTitle, forumContent, currentTime, true]
+        );
+      } catch (forumErr) {
+        console.error('Error creating forum for published draft:', forumErr.message);
+      }
+    }
     
     res.json({ 
-      message: "Game updated successfully",
-      game: { id: gameId, ...gameData }
+      message: isDraft ? "Draft saved successfully" : "Game updated successfully",
+      game: { id: gameId, ...gameData, is_draft: isDraft }
     });
   } catch (err) {
     console.error("Error in PUT /api/games/:gameId:", err);
@@ -2357,6 +2390,394 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
   } catch (err) {
     console.error("Error in DELETE /api/games/:gameId:", err);
     res.status(500).send({ message: "Failed to delete game", err: err.message });
+  }
+});
+
+// Uniqueness checker — compares a game's full configuration against all other games
+app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, res) => {
+  try {
+    const { gameId } = req.params;
+    const userId = req.user.id;
+    const userRole = (req.user.role || '').toLowerCase();
+
+    // Fetch the target game
+    const targetGame = await dbHelpers.getGameById(gameId);
+    if (!targetGame) {
+      return res.status(404).send({ message: "Game not found" });
+    }
+
+    // Verify ownership (only the game creator can run the check, or admins)
+    if (Number(targetGame.creator_id) !== Number(userId) && userRole !== 'admin' && userRole !== 'owner') {
+      return res.status(403).send({ message: "Only the game creator can run a uniqueness check" });
+    }
+
+    // Can't check drafts
+    if (targetGame.is_draft) {
+      return res.status(400).send({ message: "Publish your game before running a uniqueness check" });
+    }
+
+    // Rate limit: once per day per game
+    if (targetGame.last_uniqueness_check) {
+      const lastCheck = new Date(targetGame.last_uniqueness_check);
+      const now = new Date();
+      const hoursSince = (now - lastCheck) / (1000 * 60 * 60);
+      if (hoursSince < 24 && userRole !== 'admin' && userRole !== 'owner') {
+        const hoursRemaining = Math.ceil(24 - hoursSince);
+        return res.status(429).send({ message: `You can only run the uniqueness check once per day. Try again in ${hoursRemaining} hour${hoursRemaining !== 1 ? 's' : ''}.` });
+      }
+    }
+
+    // Fetch all other published games (excluding this one and drafts)
+    const [allGames] = await db_pool.query(
+      `SELECT id, mate_condition, mate_piece, capture_condition, capture_piece,
+              value_condition, value_piece, value_max, value_title,
+              squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
+              no_moves_condition, piece_count_condition, promotion_condition, optional_condition,
+              actions_per_turn, simultaneous_turns, board_width, board_height, player_count,
+              draw_move_limit, repetition_draw_count,
+              range_squares_string, promotion_squares_string, special_squares_string, control_squares_string,
+              other_game_data, game_name, created_at
+       FROM game_types
+       WHERE id != ? AND (is_draft = 0 OR is_draft IS NULL)`,
+      [gameId]
+    );
+
+    if (allGames.length === 0) {
+      // No other games to compare against — automatically unique
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      await db_pool.query(
+        `UPDATE game_types SET is_unique = 1, unique_badge_date = COALESCE(unique_badge_date, ?), uniqueness_score = 100, similar_games = '[]', last_uniqueness_check = ? WHERE id = ?`,
+        [now, now, gameId]
+      );
+      return res.json({
+        is_unique: true,
+        uniqueness_score: 100,
+        similar_games: [],
+        badge_date: targetGame.unique_badge_date || now
+      });
+    }
+
+    // Fetch target game's pieces from junction table with full piece data
+    const targetPieces = await dbHelpers.getPiecesForGameType(gameId);
+
+    // Helper: normalize special squares JSON for comparison (ignoring empty)
+    const normalizeSquaresJSON = (str) => {
+      if (!str) return null;
+      try {
+        const parsed = JSON.parse(str);
+        if (!parsed || (typeof parsed === 'object' && Object.keys(parsed).length === 0)) return null;
+        return parsed;
+      } catch { return null; }
+    };
+
+    // Helper: deep compare two objects/arrays
+    const deepEqual = (a, b) => {
+      if (a === b) return true;
+      if (a == null && b == null) return true;
+      if (a == null || b == null) return false;
+      if (typeof a !== typeof b) return false;
+      if (typeof a !== 'object') return String(a) === String(b);
+      const keysA = Object.keys(a).sort();
+      const keysB = Object.keys(b).sort();
+      if (keysA.length !== keysB.length) return false;
+      for (let i = 0; i < keysA.length; i++) {
+        if (keysA[i] !== keysB[i]) return false;
+        if (!deepEqual(a[keysA[i]], b[keysB[i]])) return false;
+      }
+      return true;
+    };
+
+    // Piece columns to compare for uniqueness (from pieces table — movement/attack settings)
+    const pieceCompareColumns = [
+      'directional_movement_style', 'repeating_movement',
+      'max_directional_movement_iterations', 'min_directional_movement_iterations',
+      'up_left_movement', 'up_movement', 'up_right_movement', 'right_movement',
+      'down_right_movement', 'down_movement', 'down_left_movement', 'left_movement',
+      'ratio_movement_style', 'ratio_one_movement', 'ratio_two_movement',
+      'repeating_ratio', 'max_ratio_iterations', 'min_ratio_iterations',
+      'step_by_step_movement_style', 'step_by_step_movement_value',
+      'can_hop_over_allies', 'can_hop_over_enemies',
+      'can_capture_enemy_via_range', 'can_capture_ally_via_range',
+      'can_capture_enemy_on_move', 'can_capture_ally_on_range', 'can_attack_on_iteration',
+      'up_left_attack_range', 'up_attack_range', 'up_right_attack_range', 'right_attack_range',
+      'down_right_attack_range', 'down_attack_range', 'down_left_attack_range', 'left_attack_range',
+      'repeating_directional_ranged_attack', 'max_directional_ranged_attack_iterations',
+      'min_directional_ranged_attack_iterations',
+      'ratio_one_attack_range', 'ratio_two_attack_range',
+      'repeating_ratio_ranged_attack', 'max_ratio_ranged_attack_iterations',
+      'min_ratio_ranged_attack_iterations',
+      'step_by_step_attack_style', 'step_by_step_attack_value',
+      'max_piece_captures_per_move', 'max_piece_captures_per_ranged_attack',
+      'special_scenario_moves', 'special_scenario_captures',
+      'has_checkmate_rule', 'has_check_rule', 'has_lose_on_capture_rule',
+      'can_castle', 'can_promote',
+      'piece_width', 'piece_height',
+      'can_fire_over_allies', 'can_fire_over_enemies', 'can_en_passant',
+      'exact_ratio_hop_only', 'directional_hop_disabled',
+      'repeating_capture', 'repeating_ratio_capture', 'max_ratio_capture_iterations',
+      'can_capture_allies', 'cannot_be_captured', 'max_chain_hops',
+      'promotion_pieces_ids'
+    ];
+
+    // Junction table columns to compare (HP, attack, etc.)
+    const junctionCompareColumns = [
+      'ends_game_on_checkmate', 'ends_game_on_capture',
+      'manual_castling_partners', 'castling_partner_left_key', 'castling_partner_right_key',
+      'castling_distance', 'can_control_squares',
+      'hit_points', 'attack_damage', 'hp_regen',
+      'cannot_be_captured', 'burn_damage', 'burn_duration',
+      'trample', 'trample_radius', 'ghostwalk', 'die_on_capture', 'attack_radius'
+    ];
+
+    // Build a fingerprint for a piece that captures all gameplay-relevant settings
+    const buildPieceFingerprint = (piece) => {
+      const fp = {};
+      for (const col of pieceCompareColumns) {
+        fp[col] = piece[col] ?? null;
+      }
+      for (const col of junctionCompareColumns) {
+        fp[col] = piece[col] ?? null;
+      }
+      // Include position and player number
+      fp.x = piece.x;
+      fp.y = piece.y;
+      fp.player_number = piece.player_number;
+      return fp;
+    };
+
+    // Build sorted fingerprints for target game's pieces
+    const targetFingerprints = targetPieces
+      .map(p => buildPieceFingerprint(p))
+      .sort((a, b) => a.player_number - b.player_number || a.y - b.y || a.x - b.x);
+
+    // Target game data for comparison
+    const targetSquares = {
+      range: normalizeSquaresJSON(targetGame.range_squares_string),
+      promotion: normalizeSquaresJSON(targetGame.promotion_squares_string),
+      special: normalizeSquaresJSON(targetGame.special_squares_string),
+      control: normalizeSquaresJSON(targetGame.control_squares_string),
+    };
+
+    // Parse target other_game_data for gameplay-relevant settings
+    let targetOtherData = {};
+    try { targetOtherData = JSON.parse(targetGame.other_game_data || '{}') || {}; } catch {}
+    // Only keep gameplay-relevant keys from other_game_data
+    const gameplayOtherDataKeys = ['place_pieces_action', 'placeable_pieces'];
+    const targetOtherDataFiltered = {};
+    for (const key of gameplayOtherDataKeys) {
+      if (targetOtherData[key] !== undefined) targetOtherDataFiltered[key] = targetOtherData[key];
+    }
+
+    // Compare each game and calculate similarity
+    const similarities = []; // { id, name, score, created_at }
+    let isUnique = true;
+
+    for (const otherGame of allGames) {
+      let matchScore = 0;
+      let totalWeight = 0;
+      let isIdentical = true;
+
+      // --- LEVEL 1: Win conditions (weight: 30) ---
+      const winConditionFields = [
+        'mate_condition', 'capture_condition', 'value_condition', 'squares_condition',
+        'hill_condition', 'no_moves_condition', 'piece_count_condition', 'promotion_condition'
+      ];
+      const winWeight = 30;
+      totalWeight += winWeight;
+      let winMatches = 0;
+      for (const field of winConditionFields) {
+        if (Boolean(targetGame[field]) === Boolean(otherGame[field])) {
+          winMatches++;
+        } else {
+          isIdentical = false;
+        }
+      }
+      // Also check win condition parameters
+      const winParamFields = ['mate_piece', 'capture_piece', 'value_piece', 'value_max',
+        'squares_count', 'hill_x', 'hill_y', 'hill_turns', 'optional_condition'];
+      let winParamMatches = 0;
+      for (const field of winParamFields) {
+        const tVal = targetGame[field] ?? null;
+        const oVal = otherGame[field] ?? null;
+        if (String(tVal) === String(oVal)) {
+          winParamMatches++;
+        } else {
+          isIdentical = false;
+        }
+      }
+      const totalWinFields = winConditionFields.length + winParamFields.length;
+      matchScore += winWeight * ((winMatches + winParamMatches) / totalWinFields);
+
+      if (!isIdentical) {
+        // Continue to compute similarity but we already know it's not identical
+      }
+
+      // --- LEVEL 2: Board settings (weight: 15) ---
+      const boardWeight = 15;
+      totalWeight += boardWeight;
+      const boardFields = ['board_width', 'board_height', 'player_count', 'actions_per_turn',
+        'simultaneous_turns', 'draw_move_limit', 'repetition_draw_count'];
+      let boardMatches = 0;
+      for (const field of boardFields) {
+        const tVal = targetGame[field] ?? null;
+        const oVal = otherGame[field] ?? null;
+        if (String(tVal) === String(oVal)) {
+          boardMatches++;
+        } else {
+          isIdentical = false;
+        }
+      }
+      matchScore += boardWeight * (boardMatches / boardFields.length);
+
+      // --- LEVEL 3: Special squares (weight: 15) ---
+      const squaresWeight = 15;
+      totalWeight += squaresWeight;
+      const otherSquares = {
+        range: normalizeSquaresJSON(otherGame.range_squares_string),
+        promotion: normalizeSquaresJSON(otherGame.promotion_squares_string),
+        special: normalizeSquaresJSON(otherGame.special_squares_string),
+        control: normalizeSquaresJSON(otherGame.control_squares_string),
+      };
+      let squareMatches = 0;
+      const squareTypes = ['range', 'promotion', 'special', 'control'];
+      for (const type of squareTypes) {
+        if (deepEqual(targetSquares[type], otherSquares[type])) {
+          squareMatches++;
+        } else {
+          isIdentical = false;
+        }
+      }
+      matchScore += squaresWeight * (squareMatches / squareTypes.length);
+
+      // --- LEVEL 3.5: Other game data (weight: 5) ---
+      const otherDataWeight = 5;
+      totalWeight += otherDataWeight;
+      let otherOtherData = {};
+      try { otherOtherData = JSON.parse(otherGame.other_game_data || '{}') || {}; } catch {}
+      const otherOtherDataFiltered = {};
+      for (const key of gameplayOtherDataKeys) {
+        if (otherOtherData[key] !== undefined) otherOtherDataFiltered[key] = otherOtherData[key];
+      }
+      if (deepEqual(targetOtherDataFiltered, otherOtherDataFiltered)) {
+        matchScore += otherDataWeight;
+      } else {
+        isIdentical = false;
+      }
+
+      // --- LEVEL 4: Pieces (weight: 35) — most expensive, do last ---
+      const piecesWeight = 35;
+      totalWeight += piecesWeight;
+
+      // Only do full piece comparison if still potentially identical or for scoring
+      const otherPieces = await dbHelpers.getPiecesForGameType(otherGame.id);
+      const otherFingerprints = otherPieces
+        .map(p => buildPieceFingerprint(p))
+        .sort((a, b) => a.player_number - b.player_number || a.y - b.y || a.x - b.x);
+
+      if (targetFingerprints.length !== otherFingerprints.length) {
+        isIdentical = false;
+        // Score based on piece count similarity
+        const maxPieces = Math.max(targetFingerprints.length, otherFingerprints.length);
+        const minPieces = Math.min(targetFingerprints.length, otherFingerprints.length);
+        matchScore += piecesWeight * (minPieces / maxPieces) * 0.5; // partial credit
+      } else {
+        // Compare piece by piece (sorted by position)
+        let pieceMatches = 0;
+        for (let i = 0; i < targetFingerprints.length; i++) {
+          if (deepEqual(targetFingerprints[i], otherFingerprints[i])) {
+            pieceMatches++;
+          } else {
+            isIdentical = false;
+            // Partial credit: count matching fields
+            const allCols = [...pieceCompareColumns, ...junctionCompareColumns, 'x', 'y', 'player_number'];
+            let fieldMatches = 0;
+            for (const col of allCols) {
+              if (String(targetFingerprints[i][col] ?? '') === String(otherFingerprints[i][col] ?? '')) {
+                fieldMatches++;
+              }
+            }
+            pieceMatches += fieldMatches / allCols.length;
+          }
+        }
+        matchScore += piecesWeight * (pieceMatches / targetFingerprints.length);
+      }
+
+      // Calculate final similarity percentage
+      const similarityScore = Math.round((matchScore / totalWeight) * 100);
+
+      if (isIdentical) {
+        isUnique = false;
+      }
+
+      similarities.push({
+        id: otherGame.id,
+        name: otherGame.game_name,
+        score: similarityScore,
+        created_at: otherGame.created_at
+      });
+    }
+
+    // Sort by similarity score descending, take top 3
+    similarities.sort((a, b) => b.score - a.score);
+    const topSimilar = similarities.slice(0, 3).map(s => ({
+      id: s.id,
+      name: s.name,
+      similarity: s.score
+    }));
+
+    // Calculate uniqueness score (inverse of highest similarity)
+    const highestSimilarity = similarities.length > 0 ? similarities[0].score : 0;
+    const uniquenessScore = Math.max(0, 100 - highestSimilarity);
+
+    // Determine badge date logic:
+    // If unique and previously had badge, keep old date
+    // If unique and no previous badge, set new date
+    // If not unique but previously had badge AND was the first creator: keep badge date
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    let badgeDate = targetGame.unique_badge_date;
+
+    if (isUnique) {
+      // Award or keep badge
+      if (!badgeDate) {
+        badgeDate = now;
+      }
+    } else {
+      // Check if this game was created before any identical game
+      const identicalGames = similarities.filter(s => s.score === 100);
+      const targetCreatedAt = targetGame.created_at ? new Date(targetGame.created_at) : null;
+      let wasFirst = true;
+      for (const ig of identicalGames) {
+        if (ig.created_at && targetCreatedAt && new Date(ig.created_at) < targetCreatedAt) {
+          wasFirst = false;
+          break;
+        }
+      }
+      if (wasFirst && badgeDate) {
+        // Creator was first — keep their badge date
+        isUnique = true; // they maintain their badge
+      } else if (!wasFirst) {
+        // Not the first — lose badge
+        badgeDate = null;
+      }
+    }
+
+    // Update database
+    await db_pool.query(
+      `UPDATE game_types SET is_unique = ?, unique_badge_date = ?, uniqueness_score = ?, similar_games = ?, last_uniqueness_check = ? WHERE id = ?`,
+      [isUnique ? 1 : 0, badgeDate, uniquenessScore, JSON.stringify(topSimilar), now, gameId]
+    );
+
+    res.json({
+      is_unique: isUnique,
+      uniqueness_score: uniquenessScore,
+      similar_games: topSimilar,
+      badge_date: badgeDate,
+      games_compared: allGames.length
+    });
+
+  } catch (err) {
+    console.error("Error in POST /api/games/:gameId/uniqueness-check:", err);
+    res.status(500).send({ message: "Failed to run uniqueness check", err: err.message });
   }
 });
 
@@ -4462,9 +4883,16 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     const creator_id = req.user.id;
     const is_anonymous_creator = gameData.is_anonymous_creator ? 1 : 0;
 
-    // Validate required fields
-    if (!gameData.game_name || gameData.game_name.length < 3) {
-      return res.status(400).send({ message: "Game name must be at least 3 characters" });
+    // Validate required fields - drafts have relaxed validation
+    if (!gameData.is_draft) {
+      if (!gameData.game_name || gameData.game_name.length < 3) {
+        return res.status(400).send({ message: "Game name must be at least 3 characters" });
+      }
+    } else {
+      // Drafts just need a non-empty name
+      if (!gameData.game_name || gameData.game_name.trim().length < 1) {
+        gameData.game_name = "Untitled Draft";
+      }
     }
 
     // Content moderation: Check game name
@@ -4514,6 +4942,14 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       }
     }
 
+    const isDraft = gameData.is_draft ? 1 : 0;
+    const draftSavedStep = gameData.draft_saved_step || null;
+
+    // Drafts only need a game_name of at least 1 char; full games need 3
+    if (!isDraft && (!gameData.game_name || gameData.game_name.length < 3)) {
+      return res.status(400).send({ message: "Game name must be at least 3 characters" });
+    }
+
     // Build the SQL query
     const sql = `
       INSERT INTO game_types (
@@ -4526,8 +4962,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         promotion_squares_string, special_squares_string, control_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
         no_moves_condition, piece_count_condition, promotion_condition,
-        pieces_string, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        pieces_string, created_at, is_draft, draft_saved_step
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -4569,7 +5005,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.piece_count_condition || false,
       gameData.promotion_condition || false,
       gameData.pieces_string || '{}',
-      new Date().toISOString().slice(0, 19).replace('T', ' ')
+      new Date().toISOString().slice(0, 19).replace('T', ' '),
+      isDraft,
+      draftSavedStep
     ];
 
     const [result] = await db_pool.query(sql, values);
@@ -4638,6 +5076,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     }
     
     // Automatically create a forum for this game (non-critical, don't fail the whole request)
+    // Skip forum creation for drafts
+    if (!isDraft) {
     try {
       const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
       const forumTitle = `${gameData.game_name} - Discussion`;
@@ -4653,8 +5093,10 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     } catch (forumErr) {
       console.error('Error creating forum for game type:', forumErr.message);
     }
+    } // end skip forum for drafts
 
-    // Notify owner of new game type creation (non-blocking)
+    // Notify owner of new game type creation (non-blocking) — skip for drafts
+    if (!isDraft) {
     dbHelpers.getOwnerUserId().then(async (ownerId) => {
       if (ownerId && ownerId !== creator_id) {
         try {
@@ -4678,12 +5120,14 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         } catch (err) { console.error('Owner notification (new game type) failed:', err.message); }
       }
     }).catch(() => {});
+    } // end skip notification for drafts
 
     res.status(201).send({
-      message: "Game created successfully!",
+      message: isDraft ? "Draft saved successfully!" : "Game created successfully!",
       result: {
         id: result.insertId,
-        game_name: gameData.game_name
+        game_name: gameData.game_name,
+        is_draft: isDraft
       }
     });
 

@@ -1013,7 +1013,17 @@
     box-shadow: inset 0 0 0 3px rgba(255, 183, 77, 0.5);
   }
 
-  &.last-move {
+  &.last-move-from-light {
+    outline: 2px dashed rgba(120, 100, 60, 0.7);
+    outline-offset: -4px;
+  }
+
+  &.last-move-from-dark {
+    outline: 2px dashed rgba(200, 180, 120, 0.65);
+    outline-offset: -4px;
+  }
+
+  &.last-move-to {
     &::before {
       content: '';
       position: absolute;

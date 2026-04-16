@@ -2352,6 +2352,10 @@ function initializeSocket(server) {
               gameState.checkedPieces = promoCheckResult.checkedPieces;
               if (promoCheckResult.inCheck && gameState.gameType?.mate_condition) {
                 if (isCheckmate(gameState, gameState.currentTurn)) {
+                  // Mark the last move as checkmate
+                  if (gameState.moveHistory.length > 0) {
+                    gameState.moveHistory[gameState.moveHistory.length - 1].isCheckmate = true;
+                  }
                   stopGameTimer(gameId);
                   gameState.status = 'completed';
                   const checkmatedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
@@ -2369,6 +2373,10 @@ function initializeSocket(server) {
                   io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: winner?.id, reason: 'checkmate', finalState: gameState, eloChanges });
                   return;
                 }
+              }
+              // Mark check on last move for notation
+              if (promoCheckResult.inCheck && gameState.moveHistory.length > 0) {
+                gameState.moveHistory[gameState.moveHistory.length - 1].isCheck = true;
               }
               if (promoCheckResult.inCheck) {
                 io.to(`game-${gameId}`).emit("check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: promoCheckResult.checkedPieces });
@@ -2748,6 +2756,10 @@ function initializeSocket(server) {
                   gameState.checkedPieces = promoCheckResult.checkedPieces;
                   if (promoCheckResult.inCheck && gameState.gameType?.mate_condition) {
                     if (isCheckmate(gameState, gameState.currentTurn)) {
+                      // Mark the last move as checkmate
+                      if (gameState.moveHistory.length > 0) {
+                        gameState.moveHistory[gameState.moveHistory.length - 1].isCheckmate = true;
+                      }
                       stopGameTimer(gameId);
                       gameState.status = 'completed';
                       const checkmatedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
@@ -2765,6 +2777,10 @@ function initializeSocket(server) {
                       io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: winner?.id, reason: 'checkmate', finalState: gameState, eloChanges });
                       return;
                     }
+                  }
+                  // Mark check on last move for notation
+                  if (promoCheckResult.inCheck && gameState.moveHistory.length > 0) {
+                    gameState.moveHistory[gameState.moveHistory.length - 1].isCheck = true;
                   }
                   if (promoCheckResult.inCheck) {
                     io.to(`game-${gameId}`).emit("check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: promoCheckResult.checkedPieces });
@@ -3001,6 +3017,10 @@ function initializeSocket(server) {
               const isPremoveCheckmate = isCheckmate(gameState, gameState.currentTurn);
               
               if (isPremoveCheckmate) {
+                // Mark the last move as checkmate
+                if (gameState.moveHistory.length > 0) {
+                  gameState.moveHistory[gameState.moveHistory.length - 1].isCheckmate = true;
+                }
                 // Checkmate detected - end the game
                 stopGameTimer(gameId);
                 
@@ -3036,6 +3056,11 @@ function initializeSocket(server) {
                 console.log(`CHECKMATE! Player ${checkmatedPlayer?.username} is checkmated in game ${gameId} after premove`);
                 return; // Exit early since game is over
               }
+            }
+
+            // Mark check on last move for notation (premove path)
+            if (premoveCheckResult.inCheck && gameState.moveHistory.length > 0) {
+              gameState.moveHistory[gameState.moveHistory.length - 1].isCheck = true;
             }
 
             // Check for stalemate after premove (only if mate_condition is enabled)
@@ -3333,6 +3358,11 @@ function initializeSocket(server) {
           gameState.inCheck = checkResult.inCheck;
           gameState.checkedPieces = checkResult.checkedPieces;
 
+          // Mark the last move in history as a check move (for notation display)
+          if (checkResult.inCheck && gameState.moveHistory.length > 0) {
+            gameState.moveHistory[gameState.moveHistory.length - 1].isCheck = true;
+          }
+
           // If in check, also check for checkmate (only if mate_condition is enabled)
           let isInCheckmate = false;
           if (checkResult.inCheck && gameState.gameType?.mate_condition) {
@@ -3343,6 +3373,12 @@ function initializeSocket(server) {
             if (isInCheckmate) {
               // Checkmate detected - end the game
               console.log('CHECKMATE DETECTED! Ending game...');
+              
+              // Mark the last move in history as checkmate
+              if (gameState.moveHistory.length > 0) {
+                gameState.moveHistory[gameState.moveHistory.length - 1].isCheckmate = true;
+              }
+              
               stopGameTimer(gameId);
               
               gameState.status = 'completed';
@@ -5266,6 +5302,8 @@ async function getOngoingGames() {
        JOIN players p ON g.id = p.game_id
        JOIN users u ON p.user_id = u.id
        WHERE g.status IN ('active', 'ready') AND (g.allow_spectators = 1 OR g.allow_spectators IS NULL) AND (g.is_anonymous = 0 OR g.is_anonymous IS NULL)
+             AND g.turn_length IS NOT NULL AND g.turn_length > 0
+             AND (g.other_data IS NULL OR JSON_EXTRACT(g.other_data, '$.isBotGame') IS NULL OR JSON_EXTRACT(g.other_data, '$.isBotGame') = false)
        GROUP BY g.id
        ORDER BY g.start_time DESC, g.created_at DESC`
     );

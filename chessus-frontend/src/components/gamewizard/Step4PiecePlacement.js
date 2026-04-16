@@ -17,6 +17,7 @@ import NumberInput from "../common/NumberInput";
 import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
+import { runUniquenessCheck } from "../../actions/games";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -26,7 +27,7 @@ const getImageUrl = (imagePath) => {
   return `${ASSET_URL}${imagePath}`;
 };
 
-const Step5PiecePlacement = ({ gameData, updateGameData }) => {
+const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   const [piecePlacements, setPiecePlacements] = useState({});
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
@@ -45,6 +46,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
   const touchDragRef = useRef({ piece: null, key: null, startX: 0, startY: 0, isDragging: false });
   const [touchDragPos, setTouchDragPos] = useState(null);
   const [touchDragPiece, setTouchDragPiece] = useState(null);
+  const [uniquenessCheckLoading, setUniquenessCheckLoading] = useState(false);
+  const [uniquenessResult, setUniquenessResult] = useState(null);
+  const [uniquenessError, setUniquenessError] = useState(null);
   
   // Check if the board setup is symmetric (for mirrored randomization)
   const isBoardSymmetric = useMemo(() => {
@@ -1711,6 +1715,83 @@ const Step5PiecePlacement = ({ gameData, updateGameData }) => {
       </div>
 
       {/* Additional Game Data - hidden, managed internally via global settings above */}
+
+      {/* Uniqueness Checker - hidden for now, will be enabled later */}
+      {false && editGameId && (
+        <div className={styles["form-section"]}>
+          <h3 className={styles["section-title"]}>🔍 Uniqueness Checker</h3>
+          <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
+            Check if your game configuration is unique compared to all other published games.
+            The check compares win conditions, board settings, special squares, and all piece configurations.
+          </p>
+          <button
+            className={styles["draft-check-btn"]}
+            onClick={async () => {
+              setUniquenessCheckLoading(true);
+              setUniquenessError(null);
+              try {
+                const result = await runUniquenessCheck(editGameId);
+                setUniquenessResult(result);
+              } catch (error) {
+                const msg = error?.response?.data?.message || error?.message || 'Failed to run uniqueness check. Save your game first.';
+                setUniquenessError(msg);
+              } finally {
+                setUniquenessCheckLoading(false);
+              }
+            }}
+            disabled={uniquenessCheckLoading}
+            style={{
+              padding: '10px 20px',
+              background: 'var(--panel-bg-start)',
+              border: '1px solid var(--panel-border)',
+              borderRadius: '6px',
+              color: 'var(--text-bright)',
+              fontSize: '0.95rem',
+              cursor: uniquenessCheckLoading ? 'not-allowed' : 'pointer',
+              opacity: uniquenessCheckLoading ? 0.6 : 1,
+            }}
+          >
+            {uniquenessCheckLoading ? '⏳ Checking...' : '🔍 Run Uniqueness Check'}
+          </button>
+
+          {uniquenessError && (
+            <p style={{ color: '#ef4444', marginTop: '8px', fontSize: '0.9rem' }}>{uniquenessError}</p>
+          )}
+
+          {uniquenessResult && !uniquenessError && (
+            <div style={{ marginTop: '12px', padding: '12px', background: 'var(--bg-deep)', border: '1px solid var(--panel-border)', borderRadius: '8px' }}>
+              {uniquenessResult.is_unique ? (
+                <p style={{ color: '#10b981', fontWeight: 600, marginBottom: '8px' }}>
+                  ✦ Certified Unique! Your game has a unique configuration.
+                </p>
+              ) : (
+                <p style={{ color: '#f59e0b', fontWeight: 600, marginBottom: '8px' }}>
+                  A game with a similar configuration was found.
+                </p>
+              )}
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                Uniqueness Score: <strong style={{ color: uniquenessResult.uniqueness_score >= 80 ? '#10b981' : uniquenessResult.uniqueness_score >= 50 ? '#f59e0b' : '#ef4444' }}>
+                  {uniquenessResult.uniqueness_score}%
+                </strong>
+                {' · '}Compared against {uniquenessResult.games_compared} game{uniquenessResult.games_compared !== 1 ? 's' : ''}
+              </p>
+              {uniquenessResult.similar_games && uniquenessResult.similar_games.length > 0 && (
+                <div style={{ marginTop: '8px' }}>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Most similar games:</p>
+                  {uniquenessResult.similar_games.map((sg, idx) => (
+                    <div key={idx} style={{ fontSize: '0.85rem', padding: '2px 0' }}>
+                      <a href={`/games/${sg.id}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--link-color, #58a6ff)' }}>
+                        {sg.name}
+                      </a>
+                      <span style={{ color: 'var(--text-dim)', marginLeft: '8px' }}>{sg.similarity}% similar</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {showPieceSelector && (
         <PieceSelector

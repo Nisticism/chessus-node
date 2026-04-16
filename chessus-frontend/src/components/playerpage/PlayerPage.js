@@ -164,8 +164,12 @@ const PlayerPage = (props) => {
     const fetchCreatedContent = async () => {
       if (playerPageUser?.id) {
         try {
+          // Include drafts when viewing your own profile or as admin
+          const isOwnProfile = currentUser && currentUser.id === playerPageUser.id;
+          const isAdmin = currentUser && (currentUser.role?.toLowerCase() === 'admin' || currentUser.role?.toLowerCase() === 'owner');
+          const includeDrafts = (isOwnProfile || isAdmin) ? '&includeDrafts=true' : '';
           const [gamesRes, piecesRes] = await Promise.all([
-            axios.get(`${API_URL}games?creatorId=${playerPageUser.id}&limit=50`),
+            axios.get(`${API_URL}games?creatorId=${playerPageUser.id}&limit=50${includeDrafts}`),
             axios.get(`${API_URL}pieces?creatorId=${playerPageUser.id}&limit=50`)
           ]);
           setCreatedGames(gamesRes.data.games || []);
@@ -179,7 +183,7 @@ const PlayerPage = (props) => {
     if (!loading && playerPageUser) {
       fetchCreatedContent();
     }
-  }, [playerPageUser, loading]);
+  }, [playerPageUser, loading, currentUser]);
 
 
   useEffect(() => {
@@ -761,10 +765,13 @@ const PlayerPage = (props) => {
                       {createdGames.map((game) => (
                         <Link
                           key={game.id}
-                          to={`/create/games/${game.id}`}
-                          className={styles["created-content-item"]}
+                          to={game.is_draft ? `/create/game/edit/${game.id}` : `/create/games/${game.id}`}
+                          className={`${styles["created-content-item"]} ${game.is_draft ? styles["draft-item"] : ''}`}
                         >
-                          <span className={styles["content-name"]}>{game.game_name}</span>
+                          <span className={styles["content-name"]}>
+                            {game.is_draft && <span className={styles["draft-tag"]}>DRAFT</span>}
+                            {game.game_name}
+                          </span>
                           {game.board_width && game.board_height && (
                             <span className={styles["content-detail"]}>{game.board_width}×{game.board_height}</span>
                           )}

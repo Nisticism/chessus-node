@@ -19,8 +19,11 @@ const GameWizard = ({ editGameId }) => {
   
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isDraftMode, setIsDraftMode] = useState(false);
+  const [isPublishedGame, setIsPublishedGame] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [showCheckmateWarning, setShowCheckmateWarning] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -143,6 +146,11 @@ const GameWizard = ({ editGameId }) => {
             other_game_data: existingGame.other_game_data || "",
           });
           setIsEditMode(true);
+          setIsDraftMode(Boolean(existingGame.is_draft));
+          setIsPublishedGame(!Boolean(existingGame.is_draft));
+          if (existingGame.draft_saved_step) {
+            setCurrentStep(existingGame.draft_saved_step);
+          }
         } catch (error) {
           console.error("Error loading game:", error);
           setLoadError("Failed to load game data. Please try again.");
@@ -262,7 +270,9 @@ const GameWizard = ({ editGameId }) => {
 
       const finalGameData = {
         ...gameData,
-        starting_piece_count: pieceCount
+        starting_piece_count: pieceCount,
+        is_draft: false,
+        draft_saved_step: null,
       };
 
       if (isEditMode) {
@@ -291,6 +301,64 @@ const GameWizard = ({ editGameId }) => {
     }
   };
 
+  const handleSaveDraft = async () => {
+    setSaveError(null);
+    setIsSavingDraft(true);
+
+    try {
+      // Calculate starting_piece_count from pieces_string
+      let pieceCount = 0;
+      try {
+        const pieces = JSON.parse(gameData.pieces_string || '{}');
+        pieceCount = Object.values(pieces).filter(p => !p._occupied).length;
+      } catch (e) {
+        pieceCount = 0;
+      }
+
+      const draftData = {
+        ...gameData,
+        starting_piece_count: pieceCount,
+        is_draft: true,
+        draft_saved_step: currentStep,
+      };
+
+      if (isEditMode && isDraftMode && !isPublishedGame) {
+        // Editing an existing draft - update it in place
+        await dispatch(updateGame(editGameId, draftData));
+        trackEvent('Game', 'SaveDraft', gameData.game_name);
+      } else {
+        // Creating a new draft (either fresh or copying from a published game)
+        const newDraftData = {
+          ...draftData,
+          creator_id: currentUser ? currentUser.id : null,
+          is_anonymous_creator: !currentUser || gameData.is_anonymous_creator,
+        };
+        const result = await dispatch(createGame(newDraftData));
+        trackEvent('Game', isPublishedGame ? 'CopyAsDraft' : 'CreateDraft', gameData.game_name);
+        // After creating a new draft, switch to edit mode so future saves update instead of creating new
+        if (result?.result?.id) {
+          setIsEditMode(true);
+          setIsDraftMode(true);
+          setIsPublishedGame(false);
+          // Update the URL without navigation to reflect edit mode
+          window.history.replaceState(null, '', `/create/game/edit/${result.result.id}`);
+        }
+      }
+      
+      setSaveError(null);
+      setIsDraftMode(true);
+      // Show brief success feedback
+      setSaveError(isPublishedGame ? 'Draft copy created!' : 'Draft saved!');
+      setTimeout(() => setSaveError(null), 2000);
+    } catch (error) {
+      const msg = error?.response?.data?.message || error?.message || 'Failed to save draft.';
+      setSaveError(msg);
+      console.error("Error saving draft:", error);
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
   const renderStep = () => {
     switch (currentStep) {
       case 1:
@@ -300,7 +368,7 @@ const GameWizard = ({ editGameId }) => {
       case 3:
         return <Step3BoardSpecialSquares gameData={gameData} updateGameData={updateGameData} />;
       case 4:
-        return <Step4PiecePlacement gameData={gameData} updateGameData={updateGameData} />;
+        return <Step4PiecePlacement gameData={gameData} updateGameData={updateGameData} editGameId={editGameId} />;
       default:
         return null;
     }
@@ -359,7 +427,30 @@ const GameWizard = ({ editGameId }) => {
   return (
     <div className={styles["wizard-container"]}>
       <div className={styles["wizard-header"]}>
-        <h1>{isEditMode ? 'Edit Game' : 'Create New Game'}</h1>
+        <div className={styles["header-left"]}>
+          {currentUser && (
+            <StandardButton 
+              buttonText={isSavingDraft ? "Saving..." : (isPublishedGame ? "📋 Copy as Draft" : "💾 Save as Draft")} 
+              onClick={handleSaveDraft}
+              disabled={isSubmitting || isSavingDraft}
+            />
+          )}
+        </div>
+        <div className={styles["header-center"]}>
+          <h1>{isEditMode ? (isDraftMode ? 'Edit Draft' : 'Edit Game') : 'Create New Game'}</h1>
+          {isDraftMode && (
+            <span className={styles["draft-badge"]}>DRAFT</span>
+          )}
+        </div>
+        <div className={styles["header-right"]}>
+          {isEditMode && (
+            <StandardButton 
+              buttonText={isSubmitting ? "Saving..." : "Save and Exit"} 
+              onClick={() => handleSubmit()}
+              disabled={isSubmitting || isSavingDraft}
+            />
+          )}
+        </div>
       </div>
 
       <div className={styles["progress-bar"]}>
@@ -385,41 +476,52 @@ const GameWizard = ({ editGameId }) => {
 
       <div className={styles["wizard-navigation"]}>
         <div className={styles["nav-buttons"]}>
-          {currentStep > 1 ? (
-            <StandardButton 
-              buttonText="Previous" 
-              onClick={prevStep}
-              disabled={isSubmitting}
-            />
-          ) : (
-            <div />
-          )}
-          
-          {currentStep < totalSteps && (
-            <StandardButton 
-              buttonText="Next" 
-              onClick={nextStep}
-            />
-          )}
-          
-          {currentStep === totalSteps && (
-            <StandardButton 
-              buttonText={isSubmitting ? "Saving..." : (isEditMode ? "Update Game" : "Create Game")} 
-              onClick={() => handleSubmit()}
-              disabled={isSubmitting}
-            />
-          )}
+          <div className={styles["nav-left"]}>
+            {currentStep > 1 && (
+              <StandardButton 
+                buttonText="Previous" 
+                onClick={prevStep}
+                disabled={isSubmitting || isSavingDraft}
+              />
+            )}
+          </div>
 
-          {isEditMode && currentStep < totalSteps && (
-            <StandardButton 
-              buttonText={isSubmitting ? "Saving..." : "Save and Exit"} 
-              onClick={() => handleSubmit()}
-              disabled={isSubmitting}
-            />
-          )}
+          <div className={styles["nav-center"]}>
+            {currentUser && (
+              <StandardButton 
+                buttonText={isSavingDraft ? "Saving..." : (isPublishedGame ? "📋 Copy as Draft" : "💾 Save as Draft")} 
+                onClick={handleSaveDraft}
+                disabled={isSubmitting || isSavingDraft}
+              />
+            )}
+            {isEditMode && (
+              <StandardButton 
+                buttonText={isSubmitting ? "Saving..." : "Save and Exit"} 
+                onClick={() => handleSubmit()}
+                disabled={isSubmitting || isSavingDraft}
+              />
+            )}
+          </div>
+
+          <div className={styles["nav-right"]}>
+            {currentStep < totalSteps && (
+              <StandardButton 
+                buttonText="Next" 
+                onClick={nextStep}
+              />
+            )}
+            
+            {currentStep === totalSteps && (
+              <StandardButton 
+                buttonText={isSubmitting ? "Saving..." : (isDraftMode ? "Publish Game" : (isEditMode ? "Update Game" : "Create Game"))} 
+                onClick={() => handleSubmit()}
+                disabled={isSubmitting || isSavingDraft}
+              />
+            )}
+          </div>
         </div>
         {saveError && (
-          <p className={styles["validation-error"]} style={{ marginTop: '12px', textAlign: 'center' }}>
+          <p className={saveError === 'Draft saved!' ? styles["draft-saved-message"] : styles["validation-error"]} style={{ marginTop: '12px', textAlign: 'center' }}>
             {saveError}
           </p>
         )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { getGameById, deleteGame, toggleUpvote, getUpvoteStatus } from "../../actions/games";
+import { getGameById, deleteGame, toggleUpvote, getUpvoteStatus, runUniquenessCheck } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import styles from "./gametypeview.module.scss";
 import {
@@ -308,6 +308,9 @@ const GameTypeView = () => {
     control: {},
     special: {}
   });
+  const [uniquenessCheckLoading, setUniquenessCheckLoading] = useState(false);
+  const [uniquenessResult, setUniquenessResult] = useState(null);
+  const [uniquenessError, setUniquenessError] = useState(null);
   const [boardContainerWidth, setBoardContainerWidth] = useState(0);
   const boardContainerRef = useRef(null);
   const [upvoteCount, setUpvoteCount] = useState(0);
@@ -1516,6 +1519,28 @@ const GameTypeView = () => {
     }
   };
 
+  const handleUniquenessCheck = async () => {
+    setUniquenessCheckLoading(true);
+    setUniquenessError(null);
+    try {
+      const result = await runUniquenessCheck(gameId);
+      setUniquenessResult(result);
+      // Update game state with new uniqueness data
+      setGame(prev => ({
+        ...prev,
+        is_unique: result.is_unique ? 1 : 0,
+        unique_badge_date: result.badge_date,
+        uniqueness_score: result.uniqueness_score,
+        similar_games: JSON.stringify(result.similar_games)
+      }));
+    } catch (error) {
+      const msg = error?.response?.data?.message || error?.message || 'Failed to run uniqueness check';
+      setUniquenessError(msg);
+    } finally {
+      setUniquenessCheckLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className={styles["container"]}>
@@ -1597,10 +1622,74 @@ const GameTypeView = () => {
           </div>
         )}
 
-        <div className={styles["section"]}>
-          <h2>Description</h2>
-          <p>{game.descript || "No description provided."}</p>
-        </div>
+        {/* Uniqueness Badge & Section - hidden for now, will be enabled later */}
+        {false && (() => {
+          const isUniqueChecked = game.is_unique !== null && game.is_unique !== undefined;
+          const isUnique = game.is_unique === 1 || game.is_unique === true;
+          let similarGames = [];
+          try { similarGames = JSON.parse(game.similar_games || '[]'); } catch {}
+          const badgeDate = game.unique_badge_date ? parseServerDate(game.unique_badge_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+
+          return (
+            <div className={styles["uniqueness-section"]}>
+              {isUnique && badgeDate && (
+                <div className={styles["unique-badge"]}>
+                  <span className={styles["badge-icon"]}>✦</span>
+                  <span className={styles["badge-text"]}>Certified Unique</span>
+                  <span className={styles["badge-date"]}>Since {badgeDate}</span>
+                </div>
+              )}
+              
+              {isUniqueChecked && game.uniqueness_score != null && (
+                <div className={styles["uniqueness-score"]}>
+                  <span className={styles["score-label"]}>Uniqueness Score:</span>
+                  <span className={styles["score-value"]} style={{
+                    color: game.uniqueness_score >= 80 ? '#10b981' : game.uniqueness_score >= 50 ? '#f59e0b' : '#ef4444'
+                  }}>
+                    {game.uniqueness_score}%
+                  </span>
+                </div>
+              )}
+
+              {isUniqueChecked && similarGames.length > 0 && (
+                <div className={styles["similar-games"]}>
+                  <h3>Most Similar Games</h3>
+                  <div className={styles["similar-games-list"]}>
+                    {similarGames.map((sg, idx) => (
+                      <Link key={idx} to={`/games/${sg.id}`} className={styles["similar-game-item"]}>
+                        <span className={styles["similar-game-name"]}>{sg.name}</span>
+                        <span className={styles["similar-game-score"]}>{sg.similarity}% similar</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {canEdit() && (
+                <div className={styles["uniqueness-check-actions"]}>
+                  <button
+                    className={styles["uniqueness-check-btn"]}
+                    onClick={handleUniquenessCheck}
+                    disabled={uniquenessCheckLoading}
+                  >
+                    {uniquenessCheckLoading ? '⏳ Checking...' : (isUniqueChecked ? '🔄 Re-run Uniqueness Check' : '🔍 Check Uniqueness')}
+                  </button>
+                  {uniquenessError && (
+                    <p className={styles["uniqueness-error"]}>{uniquenessError}</p>
+                  )}
+                  {uniquenessResult && !uniquenessError && (
+                    <p className={styles["uniqueness-success"]}>
+                      {uniquenessResult.is_unique 
+                        ? `✅ Certified Unique! Compared against ${uniquenessResult.games_compared} game${uniquenessResult.games_compared !== 1 ? 's' : ''}.`
+                        : `Compared against ${uniquenessResult.games_compared} game${uniquenessResult.games_compared !== 1 ? 's' : ''}. A similar game was found.`
+                      }
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div className={styles["section"]}>
           <div className={styles["board-setup-header"]}>
@@ -1674,6 +1763,11 @@ const GameTypeView = () => {
             </div>
             <span className={styles["stat-value"]}>{Object.values(piecePlacements).filter(p => !p._occupied).length}</span>
           </div>
+        </div>
+
+        <div className={styles["section"]}>
+          <h2>Description</h2>
+          <p>{game.descript || "No description provided."}</p>
         </div>
 
         {/* Placeable Pieces Visual Section */}

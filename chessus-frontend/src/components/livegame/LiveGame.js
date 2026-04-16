@@ -15,6 +15,7 @@ import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
   canRangedAttackTo,
+  isRangedPathClear,
   colToFile,
   rowToRank,
   formatMoveNotation,
@@ -152,9 +153,10 @@ const LiveGame = () => {
   const [showBadges, setShowBadges] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     if (!currentUser) return true;
-    return currentUser.sound_enabled === 1 || currentUser.sound_enabled === true;
+    // Default to true unless explicitly disabled (0 or false)
+    return currentUser.sound_enabled !== 0 && currentUser.sound_enabled !== false;
   });
-  const soundEnabledRef = useRef(!currentUser || currentUser.sound_enabled === 1 || currentUser.sound_enabled === true);
+  const soundEnabledRef = useRef(!currentUser || (currentUser.sound_enabled !== 0 && currentUser.sound_enabled !== false));
   const [premove, setPremove] = useState(null); // Store premove {from, to, pieceId}
   const [showPromotionModal, setShowPromotionModal] = useState(false);
   const [promotionData, setPromotionData] = useState(null); // {pieceId, options, promotingPiece}
@@ -593,7 +595,9 @@ const LiveGame = () => {
           winner,
           // Update pieces from finalState if available (includes the final move that caused checkmate)
           pieces: finalState?.pieces || prev.pieces,
-          currentTurn: finalState?.currentTurn || prev.currentTurn
+          currentTurn: finalState?.currentTurn || prev.currentTurn,
+          // Update moveHistory so the final winning move appears in the move history panel
+          moveHistory: finalState?.moveHistory || prev.moveHistory
         }));
         setInCheck(false);
         setCheckedPieces([]);
@@ -2355,6 +2359,10 @@ const LiveGame = () => {
           // Already in moves as a regular capture? skip
           if (moves.some(m => m.x === toX && m.y === toY)) continue;
           if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
+            // Check if ranged path is clear (blocked by pieces unless can fire over)
+            if (!isRangedPathClear(piece.x, piece.y, toX, toY, piece, pieces, pieceTeam)) {
+              continue;
+            }
             const hasTarget = !!targetPiece;
             // For premoves, include empty ranged squares as potential targets
             if (hasTarget || forPremove) {
@@ -3484,6 +3492,22 @@ const LiveGame = () => {
     const lastMove = isGhostMode
       ? gameState.moveHistory[ghostMoveIndex] || null
       : gameState.moveHistory?.slice(-1)[0];
+    // For multi-action turns, collect all moves from the last completed turn
+    const actionsPerTurn = gameState.gameType?.actions_per_turn || 1;
+    const lastMoves = (() => {
+      if (!lastMove) return [];
+      if (actionsPerTurn <= 1) return [lastMove];
+      const history = gameState.moveHistory || [];
+      const endIdx = isGhostMode ? ghostMoveIndex : history.length - 1;
+      const turnPosition = history[endIdx]?.position;
+      if (turnPosition == null) return [lastMove];
+      const moves = [];
+      for (let i = endIdx; i >= 0 && i > endIdx - actionsPerTurn; i--) {
+        if (history[i].position !== turnPosition) break;
+        moves.push(history[i]);
+      }
+      return moves;
+    })();
     const showHelpers = gameState.showPieceHelpers;
     
     // Calculate which of the current player's pieces can move (only if feature is enabled and it's their turn)
@@ -3577,17 +3601,18 @@ const LiveGame = () => {
           gameX >= m.x && gameX < m.x + spw && gameY >= m.y && gameY < m.y + sph
         ) : null;
         const rangedMove = validMoves.find(m => m.x === gameX && m.y === gameY && m.isRangedAttack);
-        const isLastMove = (() => {
-          if (!lastMove) return false;
-          const lmpw = lastMove.piece_width || 1;
-          const lmph = lastMove.piece_height || 1;
-          // Check if this square is within the footprint at the from or to location
-          const inFrom = lastMove.from && gameX >= lastMove.from.x && gameX < lastMove.from.x + lmpw
-            && gameY >= lastMove.from.y && gameY < lastMove.from.y + lmph;
-          const inTo = lastMove.to && gameX >= lastMove.to.x && gameX < lastMove.to.x + lmpw
-            && gameY >= lastMove.to.y && gameY < lastMove.to.y + lmph;
-          return inFrom || inTo;
-        })();
+        const isLastMoveFrom = lastMoves.some(lm => {
+          const lmpw = lm.piece_width || 1;
+          const lmph = lm.piece_height || 1;
+          return lm.from && gameX >= lm.from.x && gameX < lm.from.x + lmpw
+            && gameY >= lm.from.y && gameY < lm.from.y + lmph;
+        });
+        const isLastMoveTo = lastMoves.some(lm => {
+          const lmpw = lm.piece_width || 1;
+          const lmph = lm.piece_height || 1;
+          return lm.to && gameX >= lm.to.x && gameX < lm.to.x + lmpw
+            && gameY >= lm.to.y && gameY < lm.to.y + lmph;
+        });
         
         // Check if this piece can move (only shown when it's your turn)
         const canMove = piece && movablePieceIds.has(piece.id);
@@ -3659,7 +3684,8 @@ const LiveGame = () => {
               ${attackRadiusSplashSquares.has(`${gameX},${gameY}`) ? styles["hover-attack-radius"] : ''}
               ${isRangedDragTarget || isRangedSelectedTarget ? styles["ranged-drag-target"] : ''}
               ${isRangedSelectedSource ? styles["selected"] : ''}
-              ${isLastMove ? styles["last-move"] : ''}
+              ${isLastMoveFrom ? (isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]) : ''}
+              ${isLastMoveTo ? styles["last-move-to"] : ''}
               ${canMove ? styles["can-move"] : ''}
               ${isInCheck ? styles["in-check"] : ''}
               ${isPremoveFrom || isPremoveTo ? styles["premove"] : ''}

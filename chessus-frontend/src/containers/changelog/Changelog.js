@@ -4,6 +4,23 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 16, 2026",
+    title: "Game Wizard & Bug Fixes",
+    items: [
+      "Game sounds are now on by default for new users — no need to enable them manually",
+      "Last move indicators in live games now show all moves made during a multi-action turn, not just the final move",
+      "Vacated squares now use a dashed outline instead of a solid highlight, making it easier to distinguish where a piece moved from vs. where it landed",
+      "Editing a published game now offers 'Copy as Draft' — creates a separate draft copy so the original game stays public and playable",
+      "Game wizard header now shows 'Save as Draft' and 'Save and Exit' buttons at the top of every step for easier access",
+      "Previous and Next buttons are now anchored to the bottom corners of the wizard for consistent navigation",
+      "Simultaneous turns and Create anonymously options now use toggle switches with tooltips instead of checkboxes with inline text",
+      "Game detail page now shows the board setup and stats above the description for a better first impression",
+      "Fixed a bug where ranged units without 'fire over pieces' could appear to move through blocking pieces instead of being blocked",
+      "The final checkmate move is now recorded and displayed in the match history",
+      "Check (+) and checkmate (#) notation now appears on moves in the match history",
+    ]
+  },
+  {
     date: "April 15, 2026",
     title: "Sound Effects, AI, Home Board & UI Overhaul",
     items: [

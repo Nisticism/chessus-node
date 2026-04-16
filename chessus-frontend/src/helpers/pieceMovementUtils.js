@@ -907,10 +907,13 @@ export const toChessNotation = (col, row) => {
 export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) => {
   if (!move || !move.from || !move.to) return '';
   
+  // Check/checkmate suffix
+  const suffix = move.isCheckmate ? '#' : (move.isCheck ? '+' : '');
+  
   // Castling notation
   if (move.isCastling) {
     const dx = move.to.x - move.from.x;
-    return dx < 0 ? 'O-O-O' : 'O-O';
+    return (dx < 0 ? 'O-O-O' : 'O-O') + suffix;
   }
   
   const fromSquare = colToFile(move.from.x) + rowToRank(boardHeight - 1 - move.from.y);
@@ -919,22 +922,22 @@ export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) =>
   // Ranged attack notation
   if (move.isRangedAttack) {
     if (move.captured) {
-      return `${fromSquare}→${toSquare}×`;
+      return `${fromSquare}→${toSquare}×` + suffix;
     }
     // Ranged attack that dealt damage but didn't kill
     if (move.damagedPieces && move.damagedPieces.length > 0) {
-      return `${fromSquare}→${toSquare}⚔`;
+      return `${fromSquare}→${toSquare}⚔` + suffix;
     }
-    return `${fromSquare}→${toSquare}`;
+    return `${fromSquare}→${toSquare}` + suffix;
   }
 
   const captureSymbol = move.captured ? 'x' : '-';
   
   if (includeFrom) {
-    return `${fromSquare}${captureSymbol}${toSquare}`;
+    return `${fromSquare}${captureSymbol}${toSquare}` + suffix;
   }
   
-  return `${move.captured ? 'x' : ''}${toSquare}`;
+  return `${move.captured ? 'x' : ''}${toSquare}` + suffix;
 };
 
 /**

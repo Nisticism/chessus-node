@@ -26,7 +26,8 @@ const GameList = () => {
   useEffect(() => {
     const creatorId = sortBy === 'my_games' && currentUser ? currentUser.id : '';
     const actualSort = sortBy === 'my_games' ? 'newest' : sortBy;
-    dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId));
+    const includeDrafts = sortBy === 'my_games' && currentUser ? 'true' : '';
+    dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId, includeDrafts));
   }, [currentPage, sortBy, winConditionFilter, searchQuery, currentUser, dispatch]);
 
   const handleSortChange = (e) => {
@@ -110,7 +111,8 @@ const GameList = () => {
       setTimeout(() => {
         const creatorId = sortBy === 'my_games' && currentUser ? currentUser.id : '';
         const actualSort = sortBy === 'my_games' ? 'newest' : sortBy;
-        dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId));
+        const includeDrafts = sortBy === 'my_games' && currentUser ? 'true' : '';
+        dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId, includeDrafts));
       }, 100);
     } catch (error) {
       console.error("Error deleting game:", error);
@@ -137,7 +139,8 @@ const GameList = () => {
       // Update the count in the redux store games list
       const creatorId = sortBy === 'my_games' && currentUser ? currentUser.id : '';
       const actualSort = sortBy === 'my_games' ? 'newest' : sortBy;
-      dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId));
+      const includeDrafts = sortBy === 'my_games' && currentUser ? 'true' : '';
+      dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId, includeDrafts));
     } catch (err) {
       console.error("Error toggling upvote:", err);
     }
@@ -183,11 +186,13 @@ const GameList = () => {
   };
 
   const renderGameCard = (game, showEditButton = false) => {
+    const isDraft = Boolean(game.is_draft);
     return (
-      <div key={game.id} className={styles["game-card"]}>
-        <Link to={`/games/${game.id}`} className={styles["game-link"]}>
+      <div key={game.id} className={`${styles["game-card"]} ${isDraft ? styles["draft-card"] : ''}`}>
+        {isDraft && <div className={styles["draft-ribbon"]}>DRAFT</div>}
+        <Link to={isDraft ? `/create/game/edit/${game.id}` : `/games/${game.id}`} className={styles["game-link"]}>
           <div className={styles["game-header"]}>
-            <div
+            {!isDraft && <div
               className={styles["game-icon"]}
               onClick={(e) => {
                 e.preventDefault();
@@ -195,7 +200,7 @@ const GameList = () => {
                 navigate(`/play?gameTypeId=${game.id}`);
               }}
               title="Play this game"
-            >▶</div>
+            >▶</div>}
             <div className={styles["game-title-area"]}>
               <h3 className={styles["game-name"]}>{game.game_name || 'Unnamed Game'}</h3>
               <span className={styles["game-board-info"]}>
