@@ -69,7 +69,8 @@ const Play = () => {
   const PAGE_SIZE = 16;
   const [friendsPage, setFriendsPage] = useState(1);
   const [openGamesPage, setOpenGamesPage] = useState(1);
-  const [ongoingGamesPage, setOngoingGamesPage] = useState(1);
+  const [ongoingLiveGamesPage, setOngoingLiveGamesPage] = useState(1);
+  const [ongoingCorrespondenceGamesPage, setOngoingCorrespondenceGamesPage] = useState(1);
   const [privateGamesPage, setPrivateGamesPage] = useState(1);
 
   // Anonymous play state
@@ -87,6 +88,9 @@ const Play = () => {
   const [anonTimeControl, setAnonTimeControl] = useState("10");
   const [anonIncrement, setAnonIncrement] = useState("0");
   const [anonWarning, setAnonWarning] = useState(null);
+
+  // Online player count (includes anonymous)
+  const [playerCount, setPlayerCount] = useState(null);
 
   // Check for game deleted message on mount
   useEffect(() => {
@@ -208,6 +212,19 @@ const Play = () => {
       };
     }
   }, [socket, dispatch, currentUser]);
+
+  // Listen for player count updates (includes anonymous)
+  useEffect(() => {
+    if (socket) {
+      socket.on("playerCount", (count) => {
+        setPlayerCount(count);
+      });
+
+      return () => {
+        socket.off("playerCount");
+      };
+    }
+  }, [socket]);
 
   // Listen for game events
   useEffect(() => {
@@ -407,10 +424,24 @@ const Play = () => {
     return openGames.slice(start, start + PAGE_SIZE);
   }, [openGames, openGamesPage]);
 
-  const paginatedOngoingGames = useMemo(() => {
-    const start = (ongoingGamesPage - 1) * PAGE_SIZE;
-    return ongoingGames.slice(start, start + PAGE_SIZE);
-  }, [ongoingGames, ongoingGamesPage]);
+  // Split ongoing games into live and correspondence
+  const ongoingLiveGames = useMemo(() => {
+    return ongoingGames.filter(g => !g.is_correspondence);
+  }, [ongoingGames]);
+
+  const ongoingCorrespondenceGames = useMemo(() => {
+    return ongoingGames.filter(g => g.is_correspondence);
+  }, [ongoingGames]);
+
+  const paginatedOngoingLiveGames = useMemo(() => {
+    const start = (ongoingLiveGamesPage - 1) * PAGE_SIZE;
+    return ongoingLiveGames.slice(start, start + PAGE_SIZE);
+  }, [ongoingLiveGames, ongoingLiveGamesPage]);
+
+  const paginatedOngoingCorrespondenceGames = useMemo(() => {
+    const start = (ongoingCorrespondenceGamesPage - 1) * PAGE_SIZE;
+    return ongoingCorrespondenceGames.slice(start, start + PAGE_SIZE);
+  }, [ongoingCorrespondenceGames, ongoingCorrespondenceGamesPage]);
 
   const paginatedPrivateGames = useMemo(() => {
     const start = (privateGamesPage - 1) * PAGE_SIZE;
@@ -420,7 +451,8 @@ const Play = () => {
   // Total pages for each section
   const totalFriendsPages = Math.ceil((onlineFriends?.length || 0) / PAGE_SIZE);
   const totalOpenGamesPages = Math.ceil(openGames.length / PAGE_SIZE);
-  const totalOngoingGamesPages = Math.ceil(ongoingGames.length / PAGE_SIZE);
+  const totalOngoingLiveGamesPages = Math.ceil(ongoingLiveGames.length / PAGE_SIZE);
+  const totalOngoingCorrespondenceGamesPages = Math.ceil(ongoingCorrespondenceGames.length / PAGE_SIZE);
   const totalPrivateGamesPages = Math.ceil(privateGames.length / PAGE_SIZE);
   // Format time control for display
   const formatTimeControl = (game) => {
@@ -591,6 +623,11 @@ const Play = () => {
         <div className={styles["connection-status"]}>
           <span className={`${styles["status-dot"]} ${connected ? styles.connected : ''}`}></span>
           {connected ? "Connected" : "Connecting..."}
+          {connected && playerCount != null && (
+            <span className={styles["player-count"]}>
+              {playerCount} {playerCount === 1 ? 'player' : 'players'} online
+            </span>
+          )}
         </div>
       </div>
 
@@ -1021,23 +1058,23 @@ const Play = () => {
             )}
           </div>
 
-          {/* Ongoing Games Section */}
+          {/* Ongoing Live Games Section */}
           <div className={styles["ongoing-games-section"]}>
             <h2>
-              Ongoing Games
-              {ongoingGames.length > 0 && (
-                <span className={styles["match-count"]}>{ongoingGames.length}</span>
+              Live Games
+              {ongoingLiveGames.length > 0 && (
+                <span className={styles["match-count"]}>{ongoingLiveGames.length}</span>
               )}
             </h2>
             
-            {ongoingGames.length === 0 ? (
+            {ongoingLiveGames.length === 0 ? (
               <div className={styles["no-matches"]}>
-                No ongoing games to watch right now.
+                No live games to watch right now.
               </div>
             ) : (
               <>
                 <div className={styles["ongoing-games-list"]}>
-                  {paginatedOngoingGames.map((game) => (
+                  {paginatedOngoingLiveGames.map((game) => (
                     <div 
                       key={game.id} 
                       className={styles["ongoing-game-card"]}
@@ -1074,21 +1111,99 @@ const Play = () => {
                     </div>
                   ))}
                 </div>
-                {totalOngoingGamesPages > 1 && (
+                {totalOngoingLiveGamesPages > 1 && (
                   <div className={styles["pagination"]}>
                     <button
-                      disabled={ongoingGamesPage === 1}
-                      onClick={() => setOngoingGamesPage(p => p - 1)}
+                      disabled={ongoingLiveGamesPage === 1}
+                      onClick={() => setOngoingLiveGamesPage(p => p - 1)}
                       className={styles["pagination-btn"]}
                     >
                       ← Prev
                     </button>
                     <span className={styles["pagination-info"]}>
-                      {ongoingGamesPage} / {totalOngoingGamesPages}
+                      {ongoingLiveGamesPage} / {totalOngoingLiveGamesPages}
                     </span>
                     <button
-                      disabled={ongoingGamesPage >= totalOngoingGamesPages}
-                      onClick={() => setOngoingGamesPage(p => p + 1)}
+                      disabled={ongoingLiveGamesPage >= totalOngoingLiveGamesPages}
+                      onClick={() => setOngoingLiveGamesPage(p => p + 1)}
+                      className={styles["pagination-btn"]}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Ongoing Correspondence Games Section */}
+          <div className={styles["ongoing-games-section"]}>
+            <h2>
+              Correspondence Games
+              {ongoingCorrespondenceGames.length > 0 && (
+                <span className={styles["match-count"]}>{ongoingCorrespondenceGames.length}</span>
+              )}
+            </h2>
+            
+            {ongoingCorrespondenceGames.length === 0 ? (
+              <div className={styles["no-matches"]}>
+                No correspondence games in progress right now.
+              </div>
+            ) : (
+              <>
+                <div className={styles["ongoing-games-list"]}>
+                  {paginatedOngoingCorrespondenceGames.map((game) => (
+                    <div 
+                      key={game.id} 
+                      className={styles["ongoing-game-card"]}
+                    >
+                      <div className={styles["match-header"]}>
+                        <span className={styles["match-game-name"]}>
+                          {game.game_name}
+                        </span>
+                        <span className={styles["match-time-control"]}>
+                          {formatTimeControl(game)}
+                        </span>
+                      </div>
+                      <div className={styles["match-players"]}>
+                        {game.player_names}
+                      </div>
+                      <div className={styles["match-actions"]}>
+                        <button
+                          className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
+                          onClick={() => navigate(`/play/${game.id}`)}
+                        >
+                          {game.player_ids?.includes(currentUser?.id) ? 'Re-join' : 'Watch'}
+                        </button>
+                        {isAdmin && (
+                          <button
+                            className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
+                            onClick={() => handleDeleteGame(game.id)}
+                            disabled={deletingGameId === game.id}
+                            title="Delete bugged game (admin only)"
+                          >
+                            {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {totalOngoingCorrespondenceGamesPages > 1 && (
+                  <div className={styles["pagination"]}>
+                    <button
+                      disabled={ongoingCorrespondenceGamesPage === 1}
+                      onClick={() => setOngoingCorrespondenceGamesPage(p => p - 1)}
+                      className={styles["pagination-btn"]}
+                    >
+                      ← Prev
+                    </button>
+                    <span className={styles["pagination-info"]}>
+                      {ongoingCorrespondenceGamesPage} / {totalOngoingCorrespondenceGamesPages}
+                    </span>
+                    <button
+                      disabled={ongoingCorrespondenceGamesPage >= totalOngoingCorrespondenceGamesPages}
+                      onClick={() => setOngoingCorrespondenceGamesPage(p => p + 1)}
                       className={styles["pagination-btn"]}
                     >
                       Next →

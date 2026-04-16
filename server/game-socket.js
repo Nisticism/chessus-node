@@ -517,6 +517,9 @@ function initializeSocket(server) {
   io.on("connection", (socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
+    // Broadcast updated player count (includes anonymous)
+    io.emit("playerCount", io.engine.clientsCount);
+
     // Handle socket errors
     socket.on("error", (error) => {
       console.error(`Socket error for ${socket.id}:`, error);
@@ -5192,6 +5195,9 @@ function initializeSocket(server) {
     // Handle disconnection
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);
+
+      // Broadcast updated player count (includes anonymous)
+      io.emit("playerCount", io.engine.clientsCount);
       
       // Remove from spectator lists in any active games
       for (const [gameIdStr, gameState] of activeGames) {
@@ -5302,7 +5308,6 @@ async function getOngoingGames() {
        JOIN players p ON g.id = p.game_id
        JOIN users u ON p.user_id = u.id
        WHERE g.status IN ('active', 'ready') AND (g.allow_spectators = 1 OR g.allow_spectators IS NULL) AND (g.is_anonymous = 0 OR g.is_anonymous IS NULL)
-             AND g.turn_length IS NOT NULL AND g.turn_length > 0
              AND (g.other_data IS NULL OR JSON_EXTRACT(g.other_data, '$.isBotGame') IS NULL OR JSON_EXTRACT(g.other_data, '$.isBotGame') = false)
        GROUP BY g.id
        ORDER BY g.start_time DESC, g.created_at DESC`

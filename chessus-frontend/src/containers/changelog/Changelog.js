@@ -18,6 +18,10 @@ const changelogData = [
       "Fixed a bug where ranged units without 'fire over pieces' could appear to move through blocking pieces instead of being blocked",
       "The final checkmate move is now recorded and displayed in the match history",
       "Check (+) and checkmate (#) notation now appears on moves in the match history",
+      "Correspondence games now appear in the ongoing games sections on /play and profile pages",
+      "Ongoing games on /play are now split into 'Live Games' and 'Correspondence Games' sections",
+      "Ongoing Games section on player profiles is now displayed above My Games for better visibility",
+      "The /play page now shows the number of players currently online next to the connection indicator",
     ]
   },
   {

@@ -753,6 +753,13 @@ const PlayerPage = (props) => {
                 wrapperClassName={styles["info-card"]}
               />
 
+              <div className={styles["info-card"]}>
+                <h2 className={styles["card-title"]}>Ongoing Games</h2>
+                <OngoingGames
+                  userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
+                />
+              </div>
+
               {/* My Games - show if user has created any game types */}
               {createdGames.length > 0 && (
                 <div className={styles["info-card"]}>
@@ -861,13 +868,6 @@ const PlayerPage = (props) => {
                 <FriendsList 
                   userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
                   showOnlineOnly={false}
-                />
-              </div>
-
-              <div className={styles["info-card"]}>
-                <h2 className={styles["card-title"]}>Ongoing Games</h2>
-                <OngoingGames
-                  userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
                 />
               </div>
 
