@@ -24,6 +24,7 @@ const PieceView = () => {
   const [gamesUsingPiece, setGamesUsingPiece] = useState([]);
   const [gamesLoading, setGamesLoading] = useState(true);
   const [gamesPage, setGamesPage] = useState(1);
+  const [selectedPreviewImageUrl, setSelectedPreviewImageUrl] = useState(null);
   const GAMES_PER_PAGE = 10;
 
   useEffect(() => {
@@ -162,26 +163,38 @@ const PieceView = () => {
     }
   };
 
-  // Parse piece images for the board preview - must be before early returns
-  const parsePieceImages = () => {
+  const pieceImages = useMemo(() => {
     if (!piece?.image_location) return [];
     try {
       const images = JSON.parse(piece.image_location);
       if (Array.isArray(images)) {
-        return images.map(img => img.startsWith('http') ? img : `${ASSET_URL}${img}`);
+        return images.map((img) => (img.startsWith('http') ? img : `${ASSET_URL}${img}`));
       }
     } catch {
       const imagePath = piece.image_location;
       if (imagePath.startsWith('http')) {
         return [imagePath];
-      } else if (imagePath.startsWith('/uploads/')) {
-        return [`${ASSET_URL}${imagePath}`];
-      } else {
-        return `${ASSET_URL}/uploads/pieces/${imagePath}`;
       }
+      if (imagePath.startsWith('/uploads/')) {
+        return [`${ASSET_URL}${imagePath}`];
+      }
+      return [`${ASSET_URL}/uploads/pieces/${imagePath}`];
     }
     return [];
-  };
+  }, [piece?.image_location]);
+
+  useEffect(() => {
+    setSelectedPreviewImageUrl(pieceImages[0] || null);
+  }, [pieceImages]);
+
+  const orderedPieceImages = useMemo(() => {
+    if (!selectedPreviewImageUrl) {
+      return pieceImages;
+    }
+
+    const remainingImages = pieceImages.filter((imageUrl) => imageUrl !== selectedPreviewImageUrl);
+    return [selectedPreviewImageUrl, ...remainingImages];
+  }, [pieceImages, selectedPreviewImageUrl]);
 
   // Create piece data with parsed images - useMemo must be before early returns
   const pieceDataWithImages = useMemo(() => {
@@ -238,7 +251,7 @@ const PieceView = () => {
       down_attack_range_exact: !!piece.down_attack_range_exact,
       down_left_attack_range_exact: !!piece.down_left_attack_range_exact,
       left_attack_range_exact: !!piece.left_attack_range_exact,
-      piece_image_previews: parsePieceImages(),
+      piece_image_previews: orderedPieceImages,
       // Use database field names directly for PieceBoardPreview
       special_scenario_moves: piece.special_scenario_moves || "",
       special_scenario_capture: piece.special_scenario_captures || ""
@@ -246,7 +259,7 @@ const PieceView = () => {
     
     return sanitized;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [piece]);
+  }, [orderedPieceImages, piece]);
 
   // Helper to get additional movements from special_scenario_moves
   const getAdditionalMovements = useMemo(() => {
@@ -344,6 +357,64 @@ const PieceView = () => {
       { name: 'Down-Right', value: piece.down_right_attack_range, exact: !!piece.down_right_attack_range_exact, availableFor: piece.down_right_attack_range_available_for }
     ];
     return directions.filter(d => d.value != null && d.value !== 0);
+  };
+
+  const parseCustomSquares = (squareData) => {
+    if (!squareData) return [];
+
+    try {
+      const parsedSquares = typeof squareData === 'string'
+        ? JSON.parse(squareData)
+        : squareData;
+
+      if (!Array.isArray(parsedSquares)) {
+        return [];
+      }
+
+      return parsedSquares
+        .filter((square) => Number.isInteger(square?.row) && Number.isInteger(square?.col))
+        .sort((leftSquare, rightSquare) => {
+          if (leftSquare.row !== rightSquare.row) {
+            return leftSquare.row - rightSquare.row;
+          }
+
+          return leftSquare.col - rightSquare.col;
+        });
+    } catch {
+      return [];
+    }
+  };
+
+  const customMovementSquares = useMemo(
+    () => parseCustomSquares(piece?.custom_movement_squares),
+    [piece?.custom_movement_squares]
+  );
+
+  const customAttackSquares = useMemo(
+    () => parseCustomSquares(piece?.custom_attack_squares),
+    [piece?.custom_attack_squares]
+  );
+
+  const formatCustomSquareCoordinate = (square) => `(${square.row}, ${square.col})`;
+
+  const formatCustomSquareArray = (squares) => `[${squares.map(formatCustomSquareCoordinate).join(', ')}]`;
+
+  const describeCustomSquareOffset = (square) => {
+    const parts = [];
+
+    if (square.row < 0) {
+      parts.push(`up ${Math.abs(square.row)}`);
+    } else if (square.row > 0) {
+      parts.push(`down ${square.row}`);
+    }
+
+    if (square.col < 0) {
+      parts.push(`left ${Math.abs(square.col)}`);
+    } else if (square.col > 0) {
+      parts.push(`right ${square.col}`);
+    }
+
+    return parts.length > 0 ? parts.join(', ') : 'piece position';
   };
 
   const firstImageUrl = piece ? getFirstImage(piece.image_location) : null;
@@ -578,12 +649,18 @@ const PieceView = () => {
           </div>
         )}
 
-        {parsePieceImages().length > 0 && (
+        {pieceImages.length > 0 && (
           <div className={styles["section"]}>
             <h2>Piece Images</h2>
             <div className={styles["images-gallery"]}>
-              {parsePieceImages().map((imageUrl, index) => (
-                <div key={index} className={styles["image-item"]}>
+              {pieceImages.map((imageUrl, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  className={`${styles["image-item"]} ${selectedPreviewImageUrl === imageUrl ? styles["selected-image-item"] : ''}`}
+                  onClick={() => setSelectedPreviewImageUrl(imageUrl)}
+                  title={selectedPreviewImageUrl === imageUrl ? "Currently shown on the board" : "Show this image on the board"}
+                >
                   <img 
                     src={imageUrl} 
                     alt={`${pieceToDisplay.piece_name} ${index + 1}`}
@@ -591,7 +668,8 @@ const PieceView = () => {
                     className={styles["gallery-image"]}
                   />
                   {index === 0 && <span className={styles["default-badge"]}>Default</span>}
-                </div>
+                  {selectedPreviewImageUrl === imageUrl && <span className={styles["preview-badge"]}>Preview</span>}
+                </button>
               ))}
             </div>
           </div>
@@ -766,6 +844,27 @@ const PieceView = () => {
               <div className={styles["step-display"]}>
                 Can move up to <span className={styles["step-value"]}>{pieceToDisplay.step_by_step_movement_value}</span> squares,
                 changing direction within a single move
+              </div>
+            </div>
+          )}
+
+          {customMovementSquares.length > 0 && (
+            <div className={styles["ability-card"]}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>🟩</span>
+                <h3>Custom Square Movement</h3>
+              </div>
+              <div className={styles["custom-square-summary"]}>
+                Relative offsets [row, col]:
+                <span className={styles["custom-square-array"]}>{formatCustomSquareArray(customMovementSquares)}</span>
+              </div>
+              <div className={styles["custom-square-list"]}>
+                {customMovementSquares.map((square, index) => (
+                  <div key={`${square.row}-${square.col}-${index}`} className={styles["custom-square-item"]}>
+                    <span className={styles["custom-square-coordinate"]}>{formatCustomSquareCoordinate(square)}</span>
+                    <span className={styles["custom-square-description"]}>{describeCustomSquareOffset(square)}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -1000,6 +1099,27 @@ const PieceView = () => {
             </div>
           )}
 
+          {customAttackSquares.length > 0 && (
+            <div className={styles["ability-card"]}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>🟥</span>
+                <h3>Custom Square Attack</h3>
+              </div>
+              <div className={styles["custom-square-summary"]}>
+                Relative capture offsets [row, col]:
+                <span className={styles["custom-square-array"]}>{formatCustomSquareArray(customAttackSquares)}</span>
+              </div>
+              <div className={styles["custom-square-list"]}>
+                {customAttackSquares.map((square, index) => (
+                  <div key={`${square.row}-${square.col}-${index}`} className={styles["custom-square-item"]}>
+                    <span className={styles["custom-square-coordinate"]}>{formatCustomSquareCoordinate(square)}</span>
+                    <span className={styles["custom-square-description"]}>{describeCustomSquareOffset(square)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Ranged Attack */}
           {pieceToDisplay.can_capture_enemy_via_range && (
             <div className={styles["ability-card"]} style={{ borderLeftColor: '#f44336' }}>
@@ -1056,6 +1176,7 @@ const PieceView = () => {
 
           {!pieceToDisplay.can_capture_enemy_via_range && 
            !pieceToDisplay.capture_on_hop && !pieceToDisplay.can_capture_allies &&
+           customAttackSquares.length === 0 &&
            (!pieceToDisplay.can_capture_enemy_on_move || (
              getDirectionalCaptureDetails().length === 0 &&
              !pieceToDisplay.ratio_one_capture && !pieceToDisplay.ratio_two_capture &&

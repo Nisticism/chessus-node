@@ -32,30 +32,16 @@
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.back-button {
-  background-color: var(--text-dim);
-  color: var(--text-heading);
-
-  &:hover {
-    background-color: var(--text-dim);
-  }
-}
-
-.edit-button {
-  background-color: var(--accent-primary-text);
-  color: var(--text-heading);
-
-  &:hover {
-    background-color: var(--accent-primary-text);
-  }
-}
-
+.back-button,
+.edit-button,
 .sandbox-button {
-  background-color: var(--accent-primary-text);
+  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
   color: var(--text-heading);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   &:hover {
-    background-color: var(--accent-primary-text);
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 1px rgba(var(--interaction-hover-rgb), 0.28), 0 8px 18px rgba(var(--interaction-hover-rgb), 0.18);
   }
 }
 
@@ -170,11 +156,20 @@
   align-items: center;
   justify-content: center;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  appearance: none;
+  width: 100%;
+  padding: 0;
+  cursor: pointer;
 
   &:hover {
     border-color: var(--border-bright);
     transform: scale(1.05);
   }
+}
+
+.selected-image-item {
+  border-color: var(--accent-vivid, var(--accent-primary-text));
+  box-shadow: 0 0 0 1px rgba(var(--accent-vivid-rgb, var(--accent-rgb)), 0.28);
 }
 
 .gallery-image {
@@ -537,6 +532,48 @@
   font-size: 14px;
 }
 
+.custom-square-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: var(--text-bright);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.custom-square-array {
+  color: var(--accent-vivid, var(--accent-primary-text));
+  font-weight: 600;
+}
+
+.custom-square-list {
+  display: grid;
+  gap: 10px;
+}
+
+.custom-square-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(var(--accent-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border-radius: 6px;
+}
+
+.custom-square-coordinate {
+  color: var(--accent-vivid, var(--accent-primary-text));
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.custom-square-description {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
 .ratio-value,
 .step-value {
   color: var(--accent-primary-text);
@@ -742,4 +779,18 @@
   border-radius: 6px;
   color: var(--text-dim);
   font-style: italic;
+}
+
+.preview-badge {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  background: rgba(var(--accent-vivid-rgb, var(--accent-rgb)), 0.92);
+  color: #102215;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
 }
