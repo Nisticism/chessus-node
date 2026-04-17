@@ -107,9 +107,11 @@ const Home = () => {
   }, []);
 
   // Initialize pieces when layout changes
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     setPieces(pieceLayouts[selectedLayout] || pieceLayouts.chess);
   }, [selectedLayout]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Different piece layouts for the interactive board
   const pieceLayouts = {

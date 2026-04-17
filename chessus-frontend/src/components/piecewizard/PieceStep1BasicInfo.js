@@ -4,7 +4,7 @@ import PieceBoardPreview from "./PieceBoardPreview";
 import InfoTooltip from "./InfoTooltip";
 import NumberInput from "../common/NumberInput";
 import { pieceImageLibrary } from "../../assets/piece-images";
-import { validateContent, checkForLinks, checkOffensiveContent } from "../../utils/contentModeration";
+import { checkForLinks, checkOffensiveContent } from "../../utils/contentModeration";
 
 // Compute average perceived brightness (0-255) of an image from its data URL
 const computeImageBrightness = (dataUrl) => {

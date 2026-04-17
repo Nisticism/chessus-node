@@ -534,7 +534,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     }
 
     return board;
-  }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, rangeSquares, promotionSquares, controlSquares, customSquares, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handleSquareTouchStart, handleSquareTouchMove, handleSquareTouchEnd, touchDragType]);
+  }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handleSquareTouchStart, handleSquareTouchMove, handleSquareTouchEnd, touchDragType]);
 
   const getCounts = () => {
     return {

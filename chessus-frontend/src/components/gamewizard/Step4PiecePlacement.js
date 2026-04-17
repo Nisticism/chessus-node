@@ -458,7 +458,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     }
     setShowPieceSelector(false);
     setSelectedSquare(null);
-  }, [selectedSquare, gameData.board_width, gameData.board_height]);
+  }, [selectedSquare, gameData.board_width, gameData.board_height, gameData.other_game_data, updateGameData]);
 
   const handleRemovePiece = useCallback(() => {
     if (selectedSquare) {
@@ -1176,7 +1176,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     }
     
     return board;
-  }, [piecePlacements, gameData.board_width, gameData.board_height, gameData.other_game_data, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, getSpecialSquareInfo]);
+  }, [piecePlacements, gameData.board_width, gameData.board_height, gameData.other_game_data, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handlePieceTouchStart, handlePieceTouchMove, handlePieceTouchEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, touchDragPiece, getSpecialSquareInfo]);
 
   const handleMirrorPieces = useCallback((sourcePlayerId, targetPlayerId) => {
     const boardHeight = gameData.board_height || 8;

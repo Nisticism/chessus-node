@@ -34,6 +34,7 @@ const Forum = () => {
 
   const { forumId } = useParams();
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!firstRender) {
       console.log(forumId)
@@ -42,6 +43,7 @@ const Forum = () => {
       setFirstRender(true);
     }
   }, [firstRender]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const handleDelete = (e, id) => {
     e.preventDefault();

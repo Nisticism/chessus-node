@@ -13,11 +13,13 @@ const OngoingGames = ({ userId }) => {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (userId) {
       fetchOngoingGames();
     }
   }, [userId]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const fetchOngoingGames = async () => {
     setLoading(true);

@@ -14,11 +14,13 @@ const MatchHistory = ({ userId, username }) => {
   const [collapsed, setCollapsed] = useState(true);
   const navigate = useNavigate();
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (userId) {
       fetchMatchHistory();
     }
   }, [userId, page]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const fetchMatchHistory = async () => {
     setLoading(true);

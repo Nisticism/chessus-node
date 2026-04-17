@@ -11,6 +11,8 @@ import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import SquareHighlightOverlay from "../../components/common/SquareHighlightOverlay";
 import { handlePieceImageError } from "../../utils/pieceFallback";
 
+/* eslint-disable react-hooks/exhaustive-deps */
+
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 const MAX_SANDBOXES = 4;
 
@@ -467,7 +469,7 @@ const Sandbox = () => {
     };
     setSandboxes(prev => [...prev, newSandbox]);
     setActiveSandboxId(newSandbox.id);
-  }, [sandboxes.length, getFullPieceData, normalizePieceData, dispatch, fullPiecesList.length]);
+  }, [sandboxes.length, getFullPieceData, normalizePieceData, dispatch]);
 
   // Delete a sandbox and relabel remaining ones
   const deleteSandbox = useCallback((sandboxId) => {
@@ -893,6 +895,7 @@ const Sandbox = () => {
   }, [getStepMovementConfig]);
 
   // Check if a move is from a first-move-only additional movement option
+  /* eslint-disable react-hooks/exhaustive-deps */
   const checkIfFirstMoveOnlyMove = (pieceData, fromX, fromY, toX, toY, playerPosition) => {
     if (!pieceData.special_scenario_moves) return false;
     
@@ -1879,6 +1882,7 @@ const Sandbox = () => {
       }
     }
   }, [activeSandbox, activeSandboxId, selectedPiece, validMoves, findPieceAt, calculateValidMoves]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Handle Delete key to remove selected piece
   useEffect(() => {

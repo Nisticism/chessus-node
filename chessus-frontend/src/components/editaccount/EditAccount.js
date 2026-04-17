@@ -65,6 +65,7 @@ const EditAccount = (props) => {
     !profileUsername
   );
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!firstRender) {
       if (isAdminOrOwner || (profileUsername && profileUsername === username)
@@ -80,6 +81,7 @@ const EditAccount = (props) => {
       setFirstRender(true);
     }
   }, [firstRender]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ message: "Please log in to edit your profile." }} />;

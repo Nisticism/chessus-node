@@ -34,7 +34,6 @@ export const SocketProvider = ({ children }) => {
   const reconnectAttempts = useRef(0);
   const lastAuthRef = useRef(null); // Track last auth to prevent duplicate emits
   const dispatchRef = useRef(dispatch);
-  const maxReconnectAttempts = Infinity;
 
   // Keep dispatch ref current
   useEffect(() => {

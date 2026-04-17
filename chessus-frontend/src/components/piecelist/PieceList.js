@@ -150,17 +150,6 @@ const PieceList = () => {
       if (v < 0) return `exactly ${Math.abs(v)}`;
       return `up to ${v}`;
     };
-    // Directional
-    const dirs = [
-      { label: 'Up', v: piece.up_movement },
-      { label: 'Down', v: piece.down_movement },
-      { label: 'Left', v: piece.left_movement },
-      { label: 'Right', v: piece.right_movement },
-      { label: 'Diag UL', v: piece.up_left_movement },
-      { label: 'Diag UR', v: piece.up_right_movement },
-      { label: 'Diag DL', v: piece.down_left_movement },
-      { label: 'Diag DR', v: piece.down_right_movement },
-    ];
     // Group same-value directions
     const up = piece.up_movement, down = piece.down_movement;
     const left = piece.left_movement, right = piece.right_movement;

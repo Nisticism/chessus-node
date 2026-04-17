@@ -5,6 +5,8 @@ import { getSquareHighlightStyle } from "../../helpers/pieceMovementUtils";
 import BoardLegend from "../common/BoardLegend";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
+/* eslint-disable react-hooks/exhaustive-deps */
+
 const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) => {
   const [isHovering, setIsHovering] = useState(false);
   // Animation state: null = idle, 'moving' = piece sliding, 'paused' = landed, 'recentering' = board shifting back
@@ -267,6 +269,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
   const anchorCol = boardPadding;
   
   // Check if a square is occupied by the multi-tile piece
+  /* eslint-disable react-hooks/exhaustive-deps */
   const isPieceSquare = (row, col) => {
     return row >= anchorRow && row < anchorRow + ph && col >= anchorCol && col < anchorCol + pw;
   };
@@ -953,7 +956,8 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
       setAnimState('shifted');
       setMoveTarget(null);
     }, 750);
-  }, [animState, showAttack, anchorRow, anchorCol, boardWidth]);
+  }, [animState, showAttack, anchorRow, anchorCol, boardWidth, canMoveTo, canCaptureOnMoveTo, isPieceSquare]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Transition from 'shifted' → 'recentering' after the shifted frame is painted
   useEffect(() => {

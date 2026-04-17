@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import styles from "./gamewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "../piecewizard/InfoTooltip";
-import { validateContent, checkForLinks, checkOffensiveContent } from "../../utils/contentModeration";
+import { checkForLinks, checkOffensiveContent } from "../../utils/contentModeration";
 
 const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
   const [contentWarnings, setContentWarnings] = useState({});

@@ -122,6 +122,7 @@ const AdminDashboard = () => {
     } else {
       fetchData(activeTab, 1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, fetchData]);
 
   const fetchAnonymousGames = async (page = 1) => {

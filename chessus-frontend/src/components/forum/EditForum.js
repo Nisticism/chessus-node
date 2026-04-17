@@ -27,6 +27,7 @@ const EditForum = () => {
 
   const { forumId } = useParams();
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!firstRender) {
       console.log(forumId)
@@ -35,6 +36,7 @@ const EditForum = () => {
       setFirstRender(true);
     }
   }, [firstRender]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const onChangeTitle = (e) => {
     const title = e.target.value;

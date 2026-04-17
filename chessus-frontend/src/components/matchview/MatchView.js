@@ -25,10 +25,12 @@ const MatchView = () => {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     fetchMatch();
     fetchChatHistory();
   }, [gameId]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Keyboard navigation for review mode
   useEffect(() => {

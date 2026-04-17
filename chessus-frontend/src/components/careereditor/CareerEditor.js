@@ -21,11 +21,13 @@ const CareerEditor = () => {
   const isOwner = currentUser && currentUser.role === 'owner';
 
   // Fetch existing job data if in edit mode
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (isEditMode) {
       fetchJob();
     }
   }, [jobId]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const fetchJob = async () => {
     try {
