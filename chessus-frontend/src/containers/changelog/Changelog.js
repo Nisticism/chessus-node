@@ -14,6 +14,10 @@ const changelogData = [
       "Clicking alternate piece images now previews that image on the piece board until you refresh or leave the page",
       "Footer section headings now link directly to Create, Play, Community, and Info",
       "Home page stats, hero buttons, and shared green/blue hover accents have been refined for a cleaner, more consistent theme across navigation and buttons",
+      "Piece library cards in the grove theme now use the same darker border treatment as game library cards instead of the old blue-tinted outlines",
+      "Forum Subject and Written By columns now stay left-aligned consistently across forum tables",
+      "Dark panels such as profile, edit profile, and preferences sections now use softer shadows and lower-contrast borders for a cleaner look",
+      "Dark cards, sections, filters, and other panel-style elements now use the same border treatment as the user profile across hubs, forums, streams, news, tutorial, and shared buttons",
     ]
   },
   {

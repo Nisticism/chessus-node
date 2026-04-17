@@ -30,7 +30,7 @@
 
 .filter-button {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   color: var(--text-muted);
   padding: 10px 20px;
   border-radius: 10px;
@@ -76,7 +76,7 @@
 
 .faq-item {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   overflow: hidden;
   transition: transform 0.3s ease, box-shadow 0.3s ease;

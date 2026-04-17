@@ -82,7 +82,7 @@ const GameForums = () => {
                     className={styles["forum-row"]}
                     onClick={(e) => handleRowClick(forum.id, e)}
                   >
-                    <td>
+                    <td className={styles["subject-cell"]}>
                       <div className={styles["forums-link"]}>
                         <strong><div className={styles["forum-title"]}>{ forum.title }</div></strong>
                       </div>
@@ -98,7 +98,7 @@ const GameForums = () => {
                         <div className={styles["no-game"]}>General</div>
                       )}
                     </td>
-                    <td>
+                    <td className={styles["author-cell"]}>
                       <div className={styles["forums-link"]}>
                         { forum.author_name && forum.author_name !== 'Anonymous' ? 
                           <Link to={`/profile/${forum.author_name}`} onClick={(e) => e.stopPropagation()}>

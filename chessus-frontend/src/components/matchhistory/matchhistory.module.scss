@@ -3,7 +3,7 @@
   padding: 30px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border-radius: 6px;
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
@@ -17,7 +17,7 @@
   justify-content: space-between;
   cursor: pointer;
   user-select: none;
-  border-bottom: 2px solid var(--panel-border);
+  border-bottom: 2px solid var(--panel-card-border);
   padding-bottom: 15px;
 }
 

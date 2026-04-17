@@ -20,7 +20,7 @@
   justify-content: space-between;
   margin-bottom: 20px;
   padding-bottom: 20px;
-  border-bottom: 2px solid var(--panel-border);
+  border-bottom: 2px solid var(--panel-card-border);
 }
 
 .forum-title {
@@ -65,6 +65,7 @@
   margin: 40px auto;
   padding: 40px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 
@@ -73,7 +74,7 @@
     color: var(--accent-primary-text);
     margin: 40px 0 25px 0;
     padding-bottom: 15px;
-    border-bottom: 2px solid var(--panel-border);
+    border-bottom: 2px solid var(--panel-card-border);
   }
 }
 
@@ -85,7 +86,8 @@
   padding: 30px;
   background: rgba(var(--panel-bg-start-rgb), 0.5);
   border-radius: 8px;
-  border-left: 4px solid var(--accent-primary);
+  border: 1px solid rgba(var(--panel-card-border-rgb), 0.82);
+  box-shadow: inset 4px 0 0 rgba(var(--accent-rgb), 0.85);
 }
 
 .forum-author-date {
@@ -119,7 +121,7 @@
   border-radius: 10px;
   padding: 25px;
   margin-bottom: 20px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid rgba(var(--panel-card-border-rgb), 0.82);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   
   &:hover {

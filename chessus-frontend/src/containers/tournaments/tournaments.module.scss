@@ -23,7 +23,7 @@
 .guest-note {
   margin-top: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid rgba(var(--panel-card-border-rgb), 0.82);
   border-radius: 8px;
   background: rgba(var(--panel-bg-start-rgb), 0.4);
   color: var(--text-dim);
@@ -57,7 +57,7 @@
 .listing {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border-radius: 8px;
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   padding: 14px;
 }
 
@@ -103,7 +103,7 @@
   input {
     width: 100%;
     background: rgba(var(--panel-bg-start-rgb), 0.6);
-    border: 1px solid var(--panel-border);
+    border: 1px solid rgba(var(--panel-card-border-rgb), 0.82);
     border-radius: 8px;
     padding: 10px;
     color: var(--text-muted);
@@ -140,7 +140,7 @@
   align-items: flex-start;
   gap: 6px;
   text-align: left;
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 8px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   color: var(--text-muted);
@@ -247,7 +247,7 @@
 }
 
 .tournament-card {
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 8px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   padding: 10px;
@@ -317,7 +317,7 @@
 .participants-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border-radius: 8px;
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   padding: 14px;
   margin-bottom: 14px;
 }

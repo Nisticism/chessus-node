@@ -93,6 +93,7 @@ code {
   --panel-bg-start: #112e1d;
   --panel-bg-end: #173526;
   --panel-border: #1f4f3b;
+  --panel-card-border: #183628;
 
   /* Deep backgrounds (sandbox, dense UIs) */
   --bg-deep: #0a1e12;
@@ -116,6 +117,8 @@ code {
   --panel-bg-start-rgb: 13, 40, 23;
   --panel-bg-end-rgb: 26, 61, 44;
   --panel-border-rgb: 31, 79, 59;
+  --panel-card-border-rgb: 24, 54, 40;
+  --panel-shadow-rgb: 8, 14, 11;
 
   /* Secondary accent (decorative) */
   --accent-secondary: #4caf50;
@@ -197,6 +200,7 @@ code {
   --panel-bg-start: #16221b;
   --panel-bg-end: #1d2a23;
   --panel-border: #4f6b59;
+  --panel-card-border: #3c5144;
 
   /* Deep backgrounds */
   --bg-deep: #121a15;
@@ -221,6 +225,8 @@ code {
   --panel-bg-start-rgb: 22, 34, 27;
   --panel-bg-end-rgb: 32, 50, 40;
   --panel-border-rgb: 79, 107, 89;
+  --panel-card-border-rgb: 60, 81, 68;
+  --panel-shadow-rgb: 10, 18, 13;
 
   /* Secondary accent */
   --accent-secondary: #4f6b59;
@@ -294,6 +300,7 @@ code {
   --panel-bg-start: #17334f;
   --panel-bg-end: #1d3a58;
   --panel-border: #355672;
+  --panel-card-border: #2f4c67;
 
   /* Deep backgrounds */
   --bg-deep: #101c2c;
@@ -320,6 +327,8 @@ code {
   --panel-bg-start-rgb: 23, 51, 79;
   --panel-bg-end-rgb: 29, 58, 88;
   --panel-border-rgb: 53, 86, 114;
+  --panel-card-border-rgb: 47, 76, 103;
+  --panel-shadow-rgb: 9, 18, 31;
 
   /* Secondary accent */
   --accent-secondary: #6c63ff;

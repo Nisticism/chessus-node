@@ -29,7 +29,7 @@
 
 .item-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   padding: 25px;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -66,6 +66,7 @@
   margin-bottom: 15px;
   flex-grow: 1;
   display: -webkit-box;
+  line-clamp: 3;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -117,7 +118,7 @@
   align-items: flex-end;
   padding: 20px;
   background: linear-gradient(135deg, var(--bg-deep) 0%, var(--panel-bg-start) 100%);
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--panel-card-border);
   border-radius: 10px;
   margin-bottom: 10px;
 }
@@ -141,7 +142,7 @@
 .filter-select {
   padding: 8px 12px;
   background: var(--panel-bg-start);
-  border: 1px solid var(--panel-border);
+  border: 1px solid rgba(var(--panel-card-border-rgb), 0.82);
   border-radius: 6px;
   color: var(--text-bright);
   font-size: 0.9rem;
@@ -180,7 +181,7 @@
 .filter-toggle-btn {
   padding: 8px 14px;
   background: var(--panel-bg-start);
-  border: 1px solid var(--panel-border);
+  border: 1px solid rgba(var(--panel-card-border-rgb), 0.82);
   border-radius: 6px;
   color: var(--text-muted);
   font-size: 0.85rem;

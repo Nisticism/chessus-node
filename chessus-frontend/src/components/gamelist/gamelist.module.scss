@@ -193,7 +193,7 @@
   align-items: center;
   margin-bottom: 25px;
   padding-bottom: 15px;
-  border-bottom: 2px solid var(--panel-border);
+  border-bottom: 2px solid var(--panel-card-border);
 
   h2 {
     font-size: 1.8rem;
@@ -218,7 +218,7 @@
 
 .game-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   overflow: hidden;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -268,7 +268,7 @@
 .game-header {
   padding: 16px;
   background: rgba(0, 0, 0, 0.2);
-  border-bottom: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-card-border);
   display: flex;
   align-items: center;
   gap: 15px;
@@ -453,8 +453,8 @@
 .empty-section {
   text-align: center;
   padding: 50px 20px;
-  background: rgba(var(--panel-border-rgb), 0.2);
-  border: 2px dashed var(--panel-border);
+  background: rgba(var(--panel-card-border-rgb), 0.16);
+  border: 2px dashed var(--panel-card-border);
   border-radius: 6px;
 
   p {
@@ -545,7 +545,7 @@
 
 .modal-content {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   padding: 30px;
   max-width: 450px;

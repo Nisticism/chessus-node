@@ -28,7 +28,7 @@
   width: 100%;
   padding: 15px 20px;
   background: linear-gradient(135deg, var(--bg-deep) 0%, var(--panel-bg-start) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 8px;
   color: var(--text-bright);
   font-size: 16px;
@@ -49,7 +49,7 @@
 .forum-section {
   margin-bottom: 30px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -60,7 +60,7 @@
   gap: 12px;
   padding: 18px 24px;
   background: linear-gradient(135deg, var(--panel-bg-end) 0%, var(--bg-deep) 100%);
-  border-bottom: 2px solid var(--panel-border);
+  border-bottom: 2px solid var(--panel-card-border);
 }
 
 .collapse-toggle {
@@ -152,13 +152,13 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    border-bottom: 2px solid var(--panel-border);
+    border-bottom: 2px solid var(--panel-card-border);
   }
 
   tbody td {
     background: linear-gradient(135deg, var(--bg-deep) 0%, var(--panel-bg-start) 100%);
     padding: 16px 18px;
-    border-bottom: 1px solid var(--panel-bg-end);
+    border-bottom: 1px solid rgba(var(--panel-card-border-rgb), 0.6);
     color: var(--text-muted);
     vertical-align: middle;
   }
@@ -178,13 +178,35 @@
 }
 
 .forums-link {
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  width: 100%;
+
   a {
     color: var(--text-heading);
     text-decoration: none;
     display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+    width: 100%;
 
     &:hover {
       color: var(--text-info);
+    }
+  }
+}
+
+.subject-cell,
+.author-cell {
+  text-align: left;
+
+  .forums-link {
+    text-align: left;
+
+    > * {
+      width: 100%;
+      text-align: left;
     }
   }
 }
@@ -200,12 +222,14 @@
   font-size: 17px;
   font-weight: 600;
   color: var(--text-heading);
+  text-align: left;
 }
 
 .forums-username {
   font-size: 15px;
   font-weight: 500;
   color: var(--accent-primary-text);
+  text-align: left;
 
   &:hover {
     color: var(--text-info);

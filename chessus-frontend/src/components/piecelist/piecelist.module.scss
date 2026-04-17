@@ -242,7 +242,7 @@
   align-items: center;
   margin-bottom: 25px;
   padding-bottom: 15px;
-  border-bottom: 2px solid #2a4d6c;
+  border-bottom: 2px solid var(--panel-card-border);
 
   h2 {
     font-size: 1.8rem;
@@ -274,7 +274,7 @@
 
 .piece-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid #2a4d6c;
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   overflow: hidden;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -294,7 +294,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.2);
-  border-bottom: 1px solid #2a4d6c;
+  border-bottom: 1px solid var(--panel-card-border);
 }
 
 .piece-image {
@@ -445,8 +445,8 @@
 .empty-section {
   text-align: center;
   padding: 50px 20px;
-  background: rgba(var(--panel-border-rgb), 0.2);
-  border: 2px dashed #2a4d6c;
+  background: rgba(var(--panel-card-border-rgb), 0.16);
+  border: 2px dashed var(--panel-card-border);
   border-radius: 6px;
 
   p {
@@ -494,7 +494,7 @@
 
 .modal-content {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid #2a4d6c;
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   padding: 30px;
   max-width: 450px;
@@ -530,7 +530,7 @@
   padding: 12px 30px;
   background: rgba(var(--panel-border-rgb), 0.4);
   color: var(--text-muted);
-  border: 1px solid #2a4d6c;
+  border: 1px solid var(--panel-border);
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;

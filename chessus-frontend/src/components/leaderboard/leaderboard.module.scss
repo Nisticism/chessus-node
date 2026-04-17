@@ -29,7 +29,7 @@
 
 .stat-card {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   padding: 25px;
   text-align: center;
@@ -51,7 +51,7 @@
 
 .leaderboard-table {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   overflow: hidden;
   margin-bottom: 40px;
@@ -74,7 +74,7 @@
     display: grid;
     grid-template-columns: 100px 1fr 150px;
     padding: 20px 25px;
-    border-bottom: 1px solid var(--panel-border);
+    border-bottom: 1px solid var(--panel-card-border);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     align-items: center;
 
@@ -174,7 +174,7 @@
 
 .leaderboard-info {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   padding: 40px;
   text-align: center;
