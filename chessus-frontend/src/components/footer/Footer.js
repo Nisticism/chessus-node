@@ -11,7 +11,7 @@ const Footer = () => {
     <footer className={styles.footer}>
       <div className={styles.footerContent}>
         <div className={styles.footerSection}>
-          <h3 className={styles.footerHeading}>Create</h3>
+          <h3 className={styles.footerHeading}><Link to="/create">Create</Link></h3>
           <ul className={styles.footerLinks}>
             <li><Link to="/create/game">New Game</Link></li>
             <li><Link to="/create/piece">New Piece</Link></li>
@@ -21,7 +21,7 @@ const Footer = () => {
         </div>
 
         <div className={styles.footerSection}>
-          <h3 className={styles.footerHeading}>Play</h3>
+          <h3 className={styles.footerHeading}><Link to="/play">Play</Link></h3>
           <ul className={styles.footerLinks}>
             <li><Link to="/play">Browse Open Games</Link></li>
             <li><Link to="/sandbox">Sandbox</Link></li>
@@ -31,7 +31,7 @@ const Footer = () => {
         </div>
 
         <div className={styles.footerSection}>
-          <h3 className={styles.footerHeading}>Community</h3>
+          <h3 className={styles.footerHeading}><Link to="/community">Community</Link></h3>
           <ul className={styles.footerLinks}>
             <li><Link to="/community/players">Players</Link></li>
             <li><Link to="/forums">Forums</Link></li>
@@ -41,7 +41,7 @@ const Footer = () => {
         </div>
 
         <div className={styles.footerSection}>
-          <h3 className={styles.footerHeading}>Info</h3>
+          <h3 className={styles.footerHeading}><Link to="/info">Info</Link></h3>
           <ul className={styles.footerLinks}>
             <li><Link to="/news">News</Link></li>
             <li><Link to="/faq">FAQ</Link></li>

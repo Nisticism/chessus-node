@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
-import { getGames } from "../../actions/games";
+import { getGames, getGameById } from "../../actions/games";
 import { getOnlineFriends, setOnlineUsers, getFriends } from "../../actions/friends";
 import authHeader from "../../services/auth-header";
 import axios from "../../services/axios-interceptor";
@@ -13,9 +13,9 @@ const Play = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user: currentUser } = useSelector((state) => state.authReducer);
-  const { gamesList } = useSelector((state) => state.games);
+  const { gamesList, pagination: gamesPagination } = useSelector((state) => state.games);
   const { onlineFriends } = useSelector((state) => state.friends);
   const { openGames, ongoingGames, privateGames } = useSelector((state) => state.lobbyGames);
   
@@ -67,6 +67,7 @@ const Play = () => {
 
   // Pagination state
   const PAGE_SIZE = 16;
+  const [gameTypesPage, setGameTypesPage] = useState(1);
   const [friendsPage, setFriendsPage] = useState(1);
   const [openGamesPage, setOpenGamesPage] = useState(1);
   const [ongoingLiveGamesPage, setOngoingLiveGamesPage] = useState(1);
@@ -89,6 +90,64 @@ const Play = () => {
   const [anonIncrement, setAnonIncrement] = useState("0");
   const [anonWarning, setAnonWarning] = useState(null);
 
+  const normalizedSearchTerm = searchTerm.trim();
+  const requestedGameTypeId = useMemo(() => {
+    const rawGameTypeId = searchParams.get('gameTypeId');
+    if (!rawGameTypeId) return null;
+    const parsedGameTypeId = parseInt(rawGameTypeId, 10);
+    return Number.isNaN(parsedGameTypeId) ? null : parsedGameTypeId;
+  }, [searchParams]);
+
+  const selectedGameTypeOnCurrentPage = useMemo(() => {
+    if (!selectedGameType) {
+      return false;
+    }
+    return gamesList.some((game) => game.id === selectedGameType.id);
+  }, [gamesList, selectedGameType]);
+
+  const pinnedSelectedGameType = useMemo(() => {
+    if (!selectedGameType || selectedGameTypeOnCurrentPage) {
+      return null;
+    }
+
+    if (!normalizedSearchTerm) {
+      return selectedGameType;
+    }
+
+    return selectedGameType.game_name?.toLowerCase().includes(normalizedSearchTerm.toLowerCase())
+      ? selectedGameType
+      : null;
+  }, [normalizedSearchTerm, selectedGameType, selectedGameTypeOnCurrentPage]);
+
+  const filteredGameTypes = useMemo(() => {
+    return pinnedSelectedGameType ? [pinnedSelectedGameType, ...gamesList] : gamesList;
+  }, [gamesList, pinnedSelectedGameType]);
+
+  const totalGameTypePages = Math.max(gamesPagination?.totalPages || 0, 1);
+
+  const setGameTypeQueryParam = (gameTypeId) => {
+    const nextSearchParams = new URLSearchParams(searchParams);
+    if (gameTypeId) {
+      nextSearchParams.set('gameTypeId', String(gameTypeId));
+    } else {
+      nextSearchParams.delete('gameTypeId');
+    }
+    setSearchParams(nextSearchParams, { replace: true });
+  };
+
+  const selectGameType = (gameType, syncQueryParam = true) => {
+    if (!gameType) {
+      return;
+    }
+
+    setSelectedGameType(gameType);
+    localStorage.setItem('lastPlayedGameType', String(gameType.id));
+
+    if (syncQueryParam) {
+      setGameTypeQueryParam(gameType.id);
+    }
+  };
+
   // Online player count (includes anonymous)
   const [playerCount, setPlayerCount] = useState(null);
 
@@ -108,10 +167,16 @@ const Play = () => {
     navigate('/login', { state: { message } });
   };
 
-  // Fetch game types on mount
+  // Fetch the current game-type page whenever the library filters change
   useEffect(() => {
-    dispatch(getGames());
-  }, [dispatch]);
+    dispatch(getGames(gameTypesPage, PAGE_SIZE, 'newest', '', normalizedSearchTerm));
+  }, [dispatch, gameTypesPage, normalizedSearchTerm]);
+
+  useEffect(() => {
+    if (gameTypesPage > totalGameTypePages) {
+      setGameTypesPage(totalGameTypePages);
+    }
+  }, [gameTypesPage, totalGameTypePages]);
 
   // Handle incoming challenge navigation from profile pages
   useEffect(() => {
@@ -125,29 +190,87 @@ const Play = () => {
     }
   }, [location.state, navigate, location.pathname]);
 
-  // Select game type from URL parameter or last played game
+  // Select a directly linked game type, even if it is older than the current page of results.
   useEffect(() => {
-    if (gamesList?.length > 0) {
-      // Check for URL parameter first
-      const gameTypeIdParam = searchParams.get('gameTypeId');
-      if (gameTypeIdParam) {
-        const gameFromParam = gamesList.find(g => g.id === parseInt(gameTypeIdParam));
-        if (gameFromParam) {
-          setSelectedGameType(gameFromParam);
-          return;
+    let ignore = false;
+
+    const loadRequestedGameType = async () => {
+      if (!requestedGameTypeId || selectedGameType?.id === requestedGameTypeId) {
+        return;
+      }
+
+      const pagedGameMatch = gamesList.find((game) => game.id === requestedGameTypeId);
+      if (pagedGameMatch) {
+        if (!ignore) {
+          setSelectedGameType(pagedGameMatch);
+          localStorage.setItem('lastPlayedGameType', String(pagedGameMatch.id));
+        }
+        return;
+      }
+
+      try {
+        const requestedGameType = await dispatch(getGameById(requestedGameTypeId));
+        if (!ignore) {
+          setSelectedGameType(requestedGameType);
+          localStorage.setItem('lastPlayedGameType', String(requestedGameType.id));
+        }
+      } catch (loadError) {
+        if (!ignore) {
+          setSelectedGameType(null);
         }
       }
-      
-      // Fall back to last played game
-      const lastPlayedGameTypeId = localStorage.getItem('lastPlayedGameType');
-      if (lastPlayedGameTypeId) {
-        const lastGame = gamesList.find(g => g.id === parseInt(lastPlayedGameTypeId));
-        if (lastGame) {
-          setSelectedGameType(lastGame);
-        }
+    };
+
+    loadRequestedGameType();
+
+    return () => {
+      ignore = true;
+    };
+  }, [dispatch, gamesList, requestedGameTypeId, selectedGameType?.id]);
+
+  // Fall back to the most recently played game only when the URL does not request one.
+  useEffect(() => {
+    let ignore = false;
+
+    const loadLastPlayedGameType = async () => {
+      if (requestedGameTypeId || selectedGameType) {
+        return;
       }
-    }
-  }, [gamesList, searchParams]);
+
+      const rawLastPlayedGameTypeId = localStorage.getItem('lastPlayedGameType');
+      if (!rawLastPlayedGameTypeId) {
+        return;
+      }
+
+      const lastPlayedGameTypeId = parseInt(rawLastPlayedGameTypeId, 10);
+      if (Number.isNaN(lastPlayedGameTypeId)) {
+        return;
+      }
+
+      const pagedGameMatch = gamesList.find((game) => game.id === lastPlayedGameTypeId);
+      if (pagedGameMatch) {
+        if (!ignore) {
+          setSelectedGameType(pagedGameMatch);
+        }
+        return;
+      }
+
+      try {
+        const lastPlayedGameType = await dispatch(getGameById(lastPlayedGameTypeId));
+        if (!ignore) {
+          setSelectedGameType(lastPlayedGameType);
+        }
+      } catch {
+        // Ignore stale last-played IDs.
+      }
+    };
+
+    loadLastPlayedGameType();
+
+    return () => {
+      ignore = true;
+    };
+  }, [dispatch, gamesList, requestedGameTypeId, selectedGameType]);
 
   // Parse allowed starting modes from the selected game type
   const allowedStartingModes = useMemo(() => {
@@ -251,7 +374,7 @@ const Play = () => {
       unsubscribeGameCancelled();
       unsubscribeGameOver();
     };
-  }, [onGameEvent, fetchOpenGames, fetchOngoingGames]);
+  }, [onGameEvent, fetchOpenGames, fetchOngoingGames, fetchPrivateGames, currentUser]);
 
   // Listen for incoming friend challenges
   useEffect(() => {
@@ -349,14 +472,9 @@ const Play = () => {
     setPendingChallenges(prev => prev.filter(c => c.gameId !== gameId));
   };
 
-  // Filter game types by search
-  const filteredGameTypes = gamesList.filter(game => 
-    game.game_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   // Filter game types for modal search
   const modalFilteredGameTypes = modalGameSearch.trim() 
-    ? gamesList.filter(game => 
+    ? filteredGameTypes.filter(game => 
         game.game_name?.toLowerCase().includes(modalGameSearch.toLowerCase())
       )
     : [];
@@ -714,7 +832,10 @@ const Play = () => {
               type="text"
               placeholder="Search games..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setGameTypesPage(1);
+              }}
             />
           </div>
           <div className={styles["game-types-list"]}>
@@ -724,19 +845,44 @@ const Play = () => {
               </div>
             ) : (
               filteredGameTypes.map((game) => (
-                <div
-                  key={game.id}
-                  className={`${styles["game-type-item"]} ${selectedGameType?.id === game.id ? styles.selected : ''}`}
-                  onClick={() => setSelectedGameType(game)}
-                >
-                  <div className={styles["game-type-name"]}>{game.game_name}</div>
-                  <div className={styles["game-type-info"]}>
-                    {game.board_width}x{game.board_height} • {game.player_count || 2} players
+                <div key={game.id}>
+                  {pinnedSelectedGameType?.id === game.id && (
+                    <div className={styles["selected-game-indicator"]}>Selected from link</div>
+                  )}
+                  <div
+                    className={`${styles["game-type-item"]} ${selectedGameType?.id === game.id ? styles.selected : ''}`}
+                    onClick={() => selectGameType(game)}
+                  >
+                    <div className={styles["game-type-name"]}>{game.game_name}</div>
+                    <div className={styles["game-type-info"]}>
+                      {game.board_width}x{game.board_height} • {game.player_count || 2} players
+                    </div>
                   </div>
                 </div>
               ))
             )}
           </div>
+          {totalGameTypePages > 1 && (
+            <div className={styles["game-types-pagination"]}>
+              <button
+                disabled={gameTypesPage === 1}
+                onClick={() => setGameTypesPage((page) => page - 1)}
+                className={styles["pagination-btn"]}
+              >
+                ← Prev
+              </button>
+              <span className={styles["pagination-info"]}>
+                {gameTypesPage} / {totalGameTypePages}
+              </span>
+              <button
+                disabled={gameTypesPage >= totalGameTypePages}
+                onClick={() => setGameTypesPage((page) => page + 1)}
+                className={styles["pagination-btn"]}
+              >
+                Next →
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Main Content */}
@@ -1375,7 +1521,7 @@ const Play = () => {
                           key={game.id}
                           className={`${styles["game-search-item"]} ${selectedGameType?.id === game.id ? styles.selected : ''}`}
                           onClick={() => {
-                            setSelectedGameType(game);
+                            selectGameType(game);
                             setModalGameSearch("");
                           }}
                         >

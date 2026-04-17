@@ -181,12 +181,62 @@ const LiveGame = () => {
   });
   const [pendingMove, setPendingMove] = useState(null); // {gameId, moveData} awaiting confirmation
   const [preConfirmState, setPreConfirmState] = useState(null); // snapshot of gameState before visual preview
+  const optimisticMoveSnapshotRef = useRef(null); // Snapshot for reverting rejected optimistic previews
 
   // Options menu collapse state
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
 
   const boardAnimationsEnabled = typeof window !== 'undefined' && localStorage.getItem('boardAnimations') !== 'false';
   const pieceShadowEnabled = typeof window !== 'undefined' && localStorage.getItem('pieceShadow') === 'true';
+
+  const showIllegalMoveWarning = useCallback((message, duration = 3000) => {
+    setMoveError(message);
+    if (soundEnabledRef.current) {
+      soundManager.playIllegalMove();
+    }
+    setTimeout(() => setMoveError(null), duration);
+  }, []);
+
+  const clearOptimisticMoveSnapshot = useCallback(() => {
+    optimisticMoveSnapshotRef.current = null;
+  }, []);
+
+  const createOptimisticSnapshot = useCallback((state) => ({
+    pieces: parsePieces(state?.pieces).map((piece) => ({ ...piece })),
+    currentTurn: state?.currentTurn
+  }), []);
+
+  const applyOptimisticMovePreview = useCallback((state, moveData) => {
+    if (!state?.pieces) return state;
+
+    const nextPieces = parsePieces(state.pieces).map((piece) => ({ ...piece }));
+    const movingPieceIndex = nextPieces.findIndex((piece) => piece.id === moveData.pieceId);
+
+    if (movingPieceIndex === -1) {
+      return state;
+    }
+
+    const capturedPieceIndex = nextPieces.findIndex(
+      (piece) => piece.x === moveData.to.x && piece.y === moveData.to.y && piece.id !== moveData.pieceId
+    );
+
+    if (capturedPieceIndex !== -1) {
+      nextPieces.splice(capturedPieceIndex, 1);
+    }
+
+    if (!moveData.isRangedAttack) {
+      const adjustedMovingPieceIndex = nextPieces.findIndex((piece) => piece.id === moveData.pieceId);
+      if (adjustedMovingPieceIndex !== -1) {
+        nextPieces[adjustedMovingPieceIndex].x = moveData.to.x;
+        nextPieces[adjustedMovingPieceIndex].y = moveData.to.y;
+      }
+    }
+
+    return {
+      ...state,
+      pieces: nextPieces
+    };
+  }, []);
 
   // Ranged attack state
   const [rangedAttackSource, setRangedAttackSource] = useState(null);
@@ -225,61 +275,31 @@ const LiveGame = () => {
 
   // Wrapper for makeMove that supports turn confirmation in correspondence games
   const submitMove = useCallback((gId, moveData) => {
+    const optimisticSnapshot = createOptimisticSnapshot({
+      pieces: gameState?.pieces,
+      currentTurn: gameState?.currentTurn
+    });
+
     if (turnConfirmEnabled && gameState?.isCorrespondence && !gameState?.timeControl) {
       // Save current state for revert on cancel
-      setPreConfirmState({
-        pieces: JSON.parse(JSON.stringify(gameState.pieces)),
-        currentTurn: gameState.currentTurn
-      });
+      setPreConfirmState(optimisticSnapshot);
+      optimisticMoveSnapshotRef.current = optimisticSnapshot;
       // Apply move visually (optimistic preview)
       if (moveData.type === 'place') {
         // For placement moves, we don't preview visually (complex piece creation)
       } else {
-        setGameState(prev => {
-          const newPieces = prev.pieces.map(p => ({ ...p }));
-          // Move the piece
-          const movingIdx = newPieces.findIndex(p => p.id === moveData.pieceId);
-          if (movingIdx !== -1) {
-            // Remove captured piece at destination
-            const capturedIdx = newPieces.findIndex(p =>
-              p.x === moveData.to.x && p.y === moveData.to.y && p.id !== moveData.pieceId
-            );
-            if (capturedIdx !== -1) newPieces.splice(capturedIdx, 1);
-            // Update position
-            const mi = newPieces.findIndex(p => p.id === moveData.pieceId);
-            if (mi !== -1) {
-              newPieces[mi].x = moveData.to.x;
-              newPieces[mi].y = moveData.to.y;
-            }
-          }
-          return { ...prev, pieces: newPieces };
-        });
+        setGameState((prev) => applyOptimisticMovePreview(prev, moveData));
       }
       setPendingMove({ gameId: gId, moveData });
     } else {
       // Optimistic position update: move piece visually before server confirms
       if (moveData.type !== 'place') {
-        setGameState(prev => {
-          if (!prev?.pieces) return prev;
-          const newPieces = prev.pieces.map(p => ({ ...p }));
-          const movingIdx = newPieces.findIndex(p => p.id === moveData.pieceId);
-          if (movingIdx !== -1) {
-            const capturedIdx = newPieces.findIndex(p =>
-              p.x === moveData.to.x && p.y === moveData.to.y && p.id !== moveData.pieceId
-            );
-            if (capturedIdx !== -1) newPieces.splice(capturedIdx, 1);
-            const mi = newPieces.findIndex(p => p.id === moveData.pieceId);
-            if (mi !== -1) {
-              newPieces[mi].x = moveData.to.x;
-              newPieces[mi].y = moveData.to.y;
-            }
-          }
-          return { ...prev, pieces: newPieces };
-        });
+        optimisticMoveSnapshotRef.current = optimisticSnapshot;
+        setGameState((prev) => applyOptimisticMovePreview(prev, moveData));
       }
       makeMove(gId, moveData);
     }
-  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, makeMove]);
+  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview]);
 
   const confirmPendingMove = useCallback(() => {
     if (pendingMove) {
@@ -297,9 +317,10 @@ const LiveGame = () => {
         currentTurn: preConfirmState.currentTurn
       }));
     }
+    clearOptimisticMoveSnapshot();
     setPendingMove(null);
     setPreConfirmState(null);
-  }, [preConfirmState]);
+  }, [preConfirmState, clearOptimisticMoveSnapshot]);
 
   // Track window size for responsive board sizing
   useEffect(() => {
@@ -348,6 +369,7 @@ const LiveGame = () => {
         if (state.premove === undefined) {
           state.premove = null;
         }
+        clearOptimisticMoveSnapshot();
         setGameState(state);
         
         // Capture initial pieces for ghost board replay
@@ -396,7 +418,7 @@ const LiveGame = () => {
     };
 
     loadGame();
-  }, [gameId, connected, getGameState]);
+  }, [gameId, connected, getGameState, clearOptimisticMoveSnapshot]);
 
   /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // When not a player, register as a spectator
@@ -441,7 +463,7 @@ const LiveGame = () => {
     }, 1000);
     
     return () => clearInterval(interval);
-  }, [botThinking, gameState?.botPlayer, gameState?.clockMultipliers]);
+  }, [botThinking, gameState?.botPlayer, gameState?.playerTimes, gameState?.clockMultipliers]);
 
   // Subscribe to game events
   useEffect(() => {
@@ -453,6 +475,7 @@ const LiveGame = () => {
 
     const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces, clockMultipliers, midTurnCheckmate, midTurnCheck }) => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
+        clearOptimisticMoveSnapshot();
         setBotThinking(false);
         
         setGameState(prev => {
@@ -585,6 +608,7 @@ const LiveGame = () => {
 
     const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges, player1Count, player2Count, move }) => {
       if (parseInt(overGameId) === parseInt(gameId)) {
+        clearOptimisticMoveSnapshot();
         setGameOverData({ winner, winnerUsername, reason, eloChanges, player1Count, player2Count });
         setShowGameOver(true);
         setPendingDrawOffer(null); // Clear any pending draw offer
@@ -643,6 +667,7 @@ const LiveGame = () => {
 
     const unsubscribePlayerJoined = onGameEvent("playerJoined", ({ gameId: joinedGameId, gameState: newState }) => {
       if (parseInt(joinedGameId) === parseInt(gameId)) {
+        clearOptimisticMoveSnapshot();
         setGameState(prev => {
           // Play game start sound when both players have joined and game starts
           if (soundEnabledRef.current && newState.status === 'active' && (!prev || prev.status !== 'active')) {
@@ -662,6 +687,7 @@ const LiveGame = () => {
 
     const unsubscribeGameState = onGameEvent("gameState", (state) => {
       if (parseInt(state.id) === parseInt(gameId)) {
+        clearOptimisticMoveSnapshot();
         setGameState(state);
         setLoading(false);
       }
@@ -669,12 +695,18 @@ const LiveGame = () => {
 
     // Listen for move errors (e.g., "You must get out of check")
     const unsubscribeError = onGameEvent("error", ({ message }) => {
-      setMoveError(message);
-      if (soundEnabledRef.current) {
-        soundManager.playIllegalMove();
+      const optimisticSnapshot = optimisticMoveSnapshotRef.current;
+      if (optimisticSnapshot) {
+        setGameState((prev) => ({
+          ...prev,
+          pieces: optimisticSnapshot.pieces,
+          currentTurn: optimisticSnapshot.currentTurn ?? prev.currentTurn
+        }));
+        clearOptimisticMoveSnapshot();
       }
-      // Clear error after 3 seconds
-      setTimeout(() => setMoveError(null), 3000);
+      setPendingMove(null);
+      setPreConfirmState(null);
+      showIllegalMoveWarning(message);
     });
 
     // Listen for premove events
@@ -704,6 +736,7 @@ const LiveGame = () => {
 
     const unsubscribePremoveExecuted = onGameEvent("premoveExecuted", ({ gameId: execGameId, move, gameState: newState, regenPieces, burnPieces }) => {
       if (parseInt(execGameId) === parseInt(gameId)) {
+        clearOptimisticMoveSnapshot();
         setPremove(null);
         setGameState(prev => ({
           ...prev,
@@ -791,6 +824,7 @@ const LiveGame = () => {
     // Promotion events
     const unsubscribePromotionRequired = onGameEvent("promotionRequired", ({ gameId: promoGameId, pieceId, pieceName, options, move, gameState: newState }) => {
       if (parseInt(promoGameId) === parseInt(gameId)) {
+        clearOptimisticMoveSnapshot();
         // Update game state with the move
         setGameState(prev => ({
           ...prev,
@@ -828,6 +862,7 @@ const LiveGame = () => {
 
     const unsubscribePiecePromoted = onGameEvent("piecePromoted", ({ gameId: promoGameId, pieceId, newPieceId, newPieceName, promotedPiece, gameState: newState }) => {
       if (parseInt(promoGameId) === parseInt(gameId)) {
+        clearOptimisticMoveSnapshot();
         // Hide promotion modal
         setShowPromotionModal(false);
         setPromotionData(null);
@@ -904,9 +939,10 @@ const LiveGame = () => {
       unsubscribeGameDeleted();
       unsubscribeSpectatorUpdate();
     };
-  }, [gameId, onGameEvent, navigate, currentUser?.id]);
+  }, [gameId, onGameEvent, navigate, currentUser?.id, gameState?.players, clearOptimisticMoveSnapshot, showIllegalMoveWarning]);
 
   // Get current player info
+  /* eslint-disable react-hooks/exhaustive-deps */
   const currentPlayer = useMemo(() => {
     if (!gameState?.players) return null;
     if (currentUser) {
@@ -918,6 +954,7 @@ const LiveGame = () => {
     }
     return null;
   }, [gameState?.players, currentUser, socket?.id]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Check if it's the current user's turn
   const isMyTurn = useMemo(() => {
@@ -2395,6 +2432,7 @@ const LiveGame = () => {
   }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep, gameState, currentPlayer, wouldMoveResolveCheck, applyRangeSquareBonus]);
 
   // Handle square click
+  /* eslint-disable react-hooks/exhaustive-deps */
   const handleSquareClick = useCallback((x, y) => {
     // Block interactions while a move is pending confirmation
     if (pendingMove) return;
@@ -2621,7 +2659,8 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Handle piece hover for movement helpers
   const handlePieceHover = useCallback((piece) => {
@@ -3150,6 +3189,14 @@ const LiveGame = () => {
       const isValidTarget = canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam);
       const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
       const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
+      const isPathClear = isRangedPathClear(rangedSelectedPiece.x, rangedSelectedPiece.y, x, y, rangedSelectedPiece, pieces, sourceTeam);
+
+      if (isValidTarget && !isPathClear && (isEnemyTarget || canPremoveRanged)) {
+        showIllegalMoveWarning("Ranged attack is blocked by another piece");
+        setRangedSelectedPiece(null);
+        rightClickDataRef.current = null;
+        return;
+      }
 
       if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
         if (isMyTurn) {
@@ -3205,7 +3252,7 @@ const LiveGame = () => {
       setValidMoves([]);
     }
     rightClickDataRef.current = null;
-  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, currentPlayer, rangedSelectedPiece, sendPremove]);
+  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning]);
 
   // Global listeners for ranged right-click drag detection
   useEffect(() => {
@@ -3270,6 +3317,13 @@ const LiveGame = () => {
           const isValidTarget = canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
           const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
           const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
+          const isPathClear = isRangedPathClear(data.piece.x, data.piece.y, target.x, target.y, data.piece, pieces, sourceTeam);
+
+          if (isValidTarget && !isPathClear && (isEnemyTarget || canPremoveRanged)) {
+            showIllegalMoveWarning("Ranged attack is blocked by another piece");
+            cleanup();
+            return;
+          }
 
           if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
             if (isMyTurn && isEnemyTarget) {
@@ -3332,7 +3386,7 @@ const LiveGame = () => {
       window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
       window.removeEventListener('resize', handleResize);
     };
-  }, [isRightClickActive, gameState, currentPlayer, submitMove, gameId, isMyTurn, sendPremove, setPremove]);
+  }, [isRightClickActive, gameState, currentPlayer, submitMove, gameId, isMyTurn, sendPremove, setPremove, showIllegalMoveWarning]);
 
   // Handle resign
   const handleResign = () => {

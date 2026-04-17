@@ -24,7 +24,6 @@ const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 
 const PlayerPage = (props) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
-  const { onlineUsers } = useSelector((state) => state.friends);
   const { connected } = useSocket();
   
   const [loading, setLoading] = useState(true);
@@ -61,9 +60,6 @@ const PlayerPage = (props) => {
   const { username: routeUsername } = useParams();
   const username = routeUsername || (currentUser ? currentUser.username : "");
 
-  // Check if user is online
-  const isUserOnline = playerPageUser && onlineUsers?.includes(playerPageUser.id);
-
   // Navigate to play page with challenge modal open
   const handleChallenge = () => {
     if (playerPageUser) {
@@ -97,7 +93,6 @@ const PlayerPage = (props) => {
   }, [firstRender, username]);
 
   // Handle banner message from navigation state (e.g., after profile update)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (location.state?.showBanner) {
       setBannerMessage(location.state.bannerMessage || "Action completed successfully");
@@ -107,7 +102,7 @@ const PlayerPage = (props) => {
       // Clear the navigation state immediately to prevent re-triggering
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.state]);
+  }, [location.state, location.pathname, navigate]);
 
   // Auto-dismiss banner after 5 seconds
   useEffect(() => {
@@ -769,21 +764,25 @@ const PlayerPage = (props) => {
                   </h2>
                   {!gamesCollapsed && (
                     <div className={styles["created-content-list"]}>
-                      {createdGames.map((game) => (
-                        <Link
-                          key={game.id}
-                          to={game.is_draft ? `/create/game/edit/${game.id}` : `/create/games/${game.id}`}
-                          className={`${styles["created-content-item"]} ${game.is_draft ? styles["draft-item"] : ''}`}
-                        >
-                          <span className={styles["content-name"]}>
-                            {game.is_draft && <span className={styles["draft-tag"]}>DRAFT</span>}
-                            {game.game_name}
-                          </span>
-                          {game.board_width && game.board_height && (
-                            <span className={styles["content-detail"]}>{game.board_width}×{game.board_height}</span>
-                          )}
-                        </Link>
-                      ))}
+                      {createdGames.map((game) => {
+                        const isDraft = Boolean(game.is_draft);
+
+                        return (
+                          <Link
+                            key={game.id}
+                            to={isDraft ? `/create/game/edit/${game.id}` : `/games/${game.id}`}
+                            className={`${styles["created-content-item"]} ${isDraft ? styles["draft-item"] : ''}`}
+                          >
+                            <span className={styles["content-name"]}>
+                              {isDraft && <span className={styles["draft-tag"]}>DRAFT</span>}
+                              {game.game_name}
+                            </span>
+                            {game.board_width && game.board_height && (
+                              <span className={styles["content-detail"]}>{game.board_width}×{game.board_height}</span>
+                            )}
+                          </Link>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -801,7 +800,7 @@ const PlayerPage = (props) => {
                       {createdPieces.map((piece) => (
                         <Link
                           key={piece.id}
-                          to={`/create/pieces/${piece.id}`}
+                          to={`/pieces/${piece.id}`}
                           className={styles["created-content-item"]}
                         >
                           <span className={styles["content-name"]}>{piece.piece_name}</span>

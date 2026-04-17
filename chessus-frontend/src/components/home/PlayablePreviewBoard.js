@@ -116,8 +116,10 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
     let x = fromX + stepX;
 
     while (y !== toY || x !== toX) {
-      if (pieces.some(p => p.y === y && p.x === x)) {
-        return false;
+      for (const piece of pieces) {
+        if (piece.y === y && piece.x === x) {
+          return false;
+        }
       }
       y += stepY;
       x += stepX;

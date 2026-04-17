@@ -97,9 +97,19 @@
 
       &:focus {
         outline: none;
-        border-color: var(--accent-secondary);
+        border-color: var(--accent-vivid, var(--accent-secondary));
+        box-shadow: 0 0 0 1px rgba(var(--accent-vivid-rgb, var(--accent-secondary-rgb)), 0.28);
       }
     }
+  }
+
+  .selected-game-indicator {
+    color: var(--accent-vivid, var(--accent-secondary));
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    margin: 0 0 6px 4px;
+    text-transform: uppercase;
   }
 
   .game-types-list {
@@ -124,22 +134,30 @@
     background: var(--border-subtle);
     border-radius: 8px;
     cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
     border: 2px solid transparent;
 
     &:hover {
-      background: var(--bg-card);
+      background: rgba(var(--accent-vivid-rgb, var(--accent-secondary-rgb)), 0.12);
+      border-color: rgba(var(--accent-vivid-rgb, var(--accent-secondary-rgb)), 0.36);
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
     }
 
     &.selected {
-      border-color: var(--accent-secondary);
-      background: var(--bg-card);
+      border-color: var(--accent-vivid, var(--accent-secondary));
+      background: rgba(var(--accent-vivid-rgb, var(--accent-secondary-rgb)), 0.14);
+    }
+
+    &:hover .game-type-name,
+    &.selected .game-type-name {
+      color: var(--accent-vivid, var(--accent-secondary));
     }
 
     .game-type-name {
       font-weight: 600;
       color: var(--text-heading);
       margin-bottom: 4px;
+      transition: color 0.2s ease;
     }
 
     .game-type-info {
@@ -152,6 +170,16 @@
     color: #666;
     text-align: center;
     padding: 20px;
+  }
+
+  .game-types-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--panel-border);
   }
 }
 
@@ -465,7 +493,7 @@
   font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: filter 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 
   &:disabled {
     opacity: 0.5;
@@ -474,11 +502,11 @@
 }
 
 .btn-primary {
-  background: var(--accent-secondary);
+  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
   color: var(--text-heading);
 
   &:hover:not(:disabled) {
-    background: var(--accent-secondary);
+    box-shadow: 0 0 0 1px rgba(var(--interaction-hover-rgb), 0.28), 0 8px 18px rgba(var(--interaction-hover-rgb), 0.18);
   }
 }
 
@@ -1191,7 +1219,7 @@
     left: 0;
     right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(var(--accent-secondary-rgb), 0.4), transparent);
+    background: linear-gradient(90deg, transparent, rgba(var(--accent-vivid-rgb, var(--accent-secondary-rgb)), 0.42), transparent);
   }
 
   .no-selection {
@@ -1363,17 +1391,17 @@
       padding: 10px 20px;
       border-radius: 8px;
       border: none;
-      background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover));
+      background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
       color: var(--text-heading);
       font-weight: 600;
       font-size: 0.9rem;
       cursor: pointer;
       white-space: nowrap;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
 
       &:hover:not(:disabled) {
         transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
+        box-shadow: 0 0 0 1px rgba(var(--interaction-hover-rgb), 0.28), 0 8px 18px rgba(var(--interaction-hover-rgb), 0.18);
       }
 
       &:disabled {
@@ -1393,17 +1421,17 @@
       padding: 10px 20px;
       border-radius: 8px;
       border: none;
-      background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover));
+      background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
       color: var(--text-heading);
       font-weight: 600;
       font-size: 0.9rem;
       cursor: pointer;
       white-space: nowrap;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
 
       &:hover:not(:disabled) {
         transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
+        box-shadow: 0 0 0 1px rgba(var(--interaction-hover-rgb), 0.28), 0 8px 18px rgba(var(--interaction-hover-rgb), 0.18);
       }
 
       &:disabled {
@@ -1722,7 +1750,7 @@
     font-weight: 500;
 
     .win-label {
-      color: var(--accent-secondary);
+      color: var(--accent-vivid, var(--accent-secondary));
       font-weight: 600;
       text-transform: uppercase;
       font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
@@ -1763,8 +1791,9 @@
   transition: transform 0.2s, box-shadow 0.2s;
 
   &:hover:not(:disabled) {
-    background: var(--panel-border);
-    border-color: var(--accent-secondary);
+    background: rgba(var(--accent-vivid-rgb, var(--accent-secondary-rgb)), 0.12);
+    border-color: var(--accent-vivid, var(--accent-secondary));
+    color: var(--accent-vivid, var(--text-heading));
   }
 
   &:disabled {
