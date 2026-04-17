@@ -148,130 +148,138 @@ code {
 
 /* ======= GROVE THEME (Default) ======= */
 [data-theme="grove"], :root {
-  --nav-background: #2c302e;
-  --dark-blue-text: #1b4332;
-  --link-text: #4caf50;
-  --link-text-light: #81c784;
-  --scrollbar-color: #66bb6a;
-  --scrollbar-background: #2d5a3f;
+  --nav-background: #2c3530;
+  --dark-blue-text: #244434;
+  --link-text: #6d9a7a;
+  --link-text-light: #8fb29a;
+  --scrollbar-color: #6d9277;
+  --scrollbar-background: #375040;
 
-  --light-button: rgb(47, 100, 65);
-  --dark-button: rgb(36, 85, 55);
+  --light-button: rgb(73, 103, 81);
+  --dark-button: rgb(61, 88, 69);
 
-  --forum-background: #1e3a2c;
-  --forum-border: #3a6b4a;
-  --forum-title-color: #5aa06a;
-  --forum-link-hover: #66bb6a;
-  --forum-row-hover: rgba(76, 175, 80, 0.15);
+  --forum-background: #223129;
+  --forum-border: #4f6b59;
+  --forum-title-color: #739480;
+  --forum-link-hover: #86ab93;
+  --forum-row-hover: rgba(89, 118, 98, 0.16);
 
-  --button-primary-bg: rgb(56, 100, 68);
-  --button-primary-hover: rgb(45, 85, 55);
-  --button-border: rgb(102, 187, 106);
-  --button-border-alt: rgb(76, 160, 90);
+  --interaction-hover: #5f9d6a;
+  --interaction-hover-rgb: 95, 157, 106;
 
-  --bg-dark: #212423;
-  --bg-card: #252826;
-  background-color: #2a2d2b;
+  --button-primary-bg: rgb(87, 135, 95);
+  --button-primary-hover: var(--interaction-hover);
+  --button-border: rgb(121, 171, 129);
+  --button-border-alt: rgb(84, 113, 91);
 
-  --board-bg: rgb(62, 94, 72);
-  --board-border: rgb(100, 147, 110);
-  --square-dark-border: rgb(46, 100, 62);
-  --square-light-border: rgb(76, 160, 96);
+  --bg-dark: #222a24;
+  --bg-card: #28312a;
+  background-color: #303531;
 
-  --nav-hover: rgb(46, 100, 62);
-  --nav-light-hover: rgb(102, 187, 106);
-  --nav-menu-bg: rgb(200, 230, 210);
+  --board-bg: rgb(61, 89, 69);
+  --board-border: rgb(92, 126, 99);
+  --square-dark-border: rgb(52, 83, 61);
+  --square-light-border: rgb(81, 121, 91);
 
-  --accent-primary: #439157;
-  --accent-primary-text: #6fad7d;
-  --accent-primary-hover: #387a4a;
-  --accent-highlight: #81c784;
-  --accent-bright: #66bb6a;
-  --accent-muted: #4caf50;
+  --nav-hover: rgb(58, 90, 66);
+  --nav-light-hover: var(--interaction-hover);
+  --nav-menu-bg: rgb(193, 214, 198);
+
+  --accent-primary: #567a5f;
+  --accent-primary-text: #84b690;
+  --accent-primary-hover: #486850;
+  --accent-highlight: #6e9179;
+  --accent-bright: #6e9179;
+  --accent-vivid: #83bf8d;
+  --accent-muted: #4f6b59;
 
   /* Panel/Card themed colors */
-  --panel-bg-start: #112e1d;
-  --panel-bg-end: #173526;
-  --panel-border: #1f4f3b;
+  --panel-bg-start: #16221b;
+  --panel-bg-end: #1d2a23;
+  --panel-border: #4f6b59;
 
   /* Deep backgrounds */
-  --bg-deep: #121c16;
-  --bg-deeper: #121d17;
-  --border-subtle: #1a3d2b;
-  --border-medium: #1f6b47;
-  --border-bright: #237a50;
+  --bg-deep: #121a15;
+  --bg-deeper: #0f1612;
+  --border-subtle: #2a3a31;
+  --border-medium: #4f6b59;
+  --border-bright: #6d8a76;
 
   /* Themed text colors */
-  --text-muted: #a0d0b8;
-  --text-dim: #6ba88b;
-  --text-info: #5cb3a8;
-  --text-info-hover: #7cf0c5;
-  --text-accent-light: #8ae8b4;
-  --text-bright: #e0f0e8;
+  --text-muted: #a6c1af;
+  --text-dim: #7d9b87;
+  --text-info: #78a08c;
+  --text-info-hover: #a0d8af;
+  --text-accent-light: #a5cfb7;
+  --text-bright: #e2efe6;
 
   /* RGB components */
-  --accent-rgb: 67, 145, 87;
-  --accent-highlight-rgb: 129, 199, 132;
-  --accent-muted-rgb: 76, 175, 80;
-  --panel-bg-start-rgb: 17, 46, 29;
-  --panel-bg-end-rgb: 23, 53, 38;
-  --panel-border-rgb: 31, 79, 59;
+  --accent-rgb: 87, 135, 95;
+  --accent-highlight-rgb: 110, 145, 121;
+  --accent-vivid-rgb: 131, 191, 141;
+  --accent-muted-rgb: 79, 107, 89;
+  --panel-bg-start-rgb: 22, 34, 27;
+  --panel-bg-end-rgb: 32, 50, 40;
+  --panel-border-rgb: 79, 107, 89;
 
   /* Secondary accent */
-  --accent-secondary: #4caf50;
-  --accent-secondary-rgb: 76, 175, 80;
+  --accent-secondary: #4f6b59;
+  --accent-secondary-rgb: 79, 107, 89;
 
   /* Teal accent */
-  --color-teal: #2ecc71;
+  --color-teal: #6a9e84;
 
   /* Chat/Inbox UI colors */
-  --bg-input: #0d1f14;
-  --bg-secondary: #0d1f14;
-  --bg-hover: #142e1f;
-  --bg-active: #1a3d2b;
-  --bg-tertiary: #1a3d2b;
-  --accent-hover: #5ab56a;
-  --text-main: #c8e6d0;
+  --bg-input: #141d17;
+  --bg-secondary: #141d17;
+  --bg-hover: #1c2b23;
+  --bg-active: #28392f;
+  --bg-tertiary: #28392f;
+  --accent-hover: var(--interaction-hover);
+  --text-main: #ccdfd3;
 
   /* Last-move highlight colors */
-  --last-move-from: rgba(180, 160, 120, 0.55);
-  --last-move-to: rgba(80, 180, 140, 0.4);
+  --last-move-from: rgba(170, 156, 120, 0.52);
+  --last-move-to: rgba(92, 145, 112, 0.35);
 }
 
 /* ======= CLASSIC THEME (Original blue) ======= */
 [data-theme="classic"] {
-  --nav-background: #082c51;
+  --nav-background: #12314d;
   --dark-blue-text: #09325a;
   --link-text: #1163b5;
   --link-text-light: #508fcd;
   --scrollbar-color: #6cacd4;
   --scrollbar-background: #285c94;
 
-  --light-button: rgb(47, 70, 119);
-  --dark-button: rgb(43, 56, 134);
+  --light-button: rgb(71, 94, 127);
+  --dark-button: rgb(58, 78, 108);
 
-  --forum-background: #26374e;
-  --forum-border: #44618a;
+  --forum-background: #25384d;
+  --forum-border: #4a627d;
   --forum-title-color: #5a80aa;
   --forum-link-hover: #5888be;
   --forum-row-hover: rgba(100, 150, 255, 0.15);
 
-  --button-primary-bg: rgb(75, 77, 124);
-  --button-primary-hover: rgb(59, 61, 131);
-  --button-border: rgb(117, 124, 252);
-  --button-border-alt: rgb(81, 107, 192);
+  --interaction-hover: #5e93c9;
+  --interaction-hover-rgb: 94, 147, 201;
 
-  --bg-dark: #1e2129;
-  --bg-card: #20242e;
-  background-color: #2a2e38;
+  --button-primary-bg: rgb(79, 103, 138);
+  --button-primary-hover: var(--interaction-hover);
+  --button-border: rgb(125, 165, 214);
+  --button-border-alt: rgb(93, 119, 158);
+
+  --bg-dark: #202633;
+  --bg-card: #242c39;
+  background-color: #2c3440;
 
   --board-bg: rgb(82, 94, 117);
   --board-border: rgb(125, 147, 184);
   --square-dark-border: rgb(49, 83, 141);
   --square-light-border: rgb(77, 129, 212);
 
-  --nav-hover: rgb(51, 55, 147);
-  --nav-light-hover: rgb(117, 124, 252);
+  --nav-hover: rgb(42, 68, 97);
+  --nav-light-hover: var(--interaction-hover);
   --nav-menu-bg: rgb(202, 213, 232);
 
   --accent-primary: #4a90e2;
@@ -279,19 +287,20 @@ code {
   --accent-primary-hover: #357abd;
   --accent-highlight: #64b5f6;
   --accent-bright: #60a5fa;
+  --accent-vivid: #78b4e5;
   --accent-muted: #1565c0;
 
   /* Panel/Card themed colors */
-  --panel-bg-start: #122e4e;
-  --panel-bg-end: #173556;
-  --panel-border: #244362;
+  --panel-bg-start: #17334f;
+  --panel-bg-end: #1d3a58;
+  --panel-border: #355672;
 
   /* Deep backgrounds */
-  --bg-deep: #0a1628;
-  --bg-deeper: #081220;
-  --border-subtle: #1a2b3d;
-  --border-medium: #1f4a73;
-  --border-bright: #2a5b8d;
+  --bg-deep: #101c2c;
+  --bg-deeper: #0d1826;
+  --border-subtle: #26394c;
+  --border-medium: #3a6485;
+  --border-bright: #4d7ca1;
 
   /* Themed text colors */
   --text-heading: #d0d8e0;
@@ -306,10 +315,11 @@ code {
   /* RGB components */
   --accent-rgb: 74, 144, 226;
   --accent-highlight-rgb: 100, 181, 246;
+  --accent-vivid-rgb: 120, 180, 229;
   --accent-muted-rgb: 21, 101, 192;
-  --panel-bg-start-rgb: 18, 46, 78;
-  --panel-bg-end-rgb: 23, 53, 86;
-  --panel-border-rgb: 42, 77, 108;
+  --panel-bg-start-rgb: 23, 51, 79;
+  --panel-bg-end-rgb: 29, 58, 88;
+  --panel-border-rgb: 53, 86, 114;
 
   /* Secondary accent */
   --accent-secondary: #6c63ff;
@@ -319,12 +329,12 @@ code {
   --color-teal: #4ecdc4;
 
   /* Chat/Inbox UI colors */
-  --bg-input: #0d1420;
-  --bg-secondary: #0d1420;
-  --bg-hover: #142030;
-  --bg-active: #1a2b3d;
-  --bg-tertiary: #1a2b3d;
-  --accent-hover: #5a9be6;
+  --bg-input: #121c29;
+  --bg-secondary: #121c29;
+  --bg-hover: #1b2a3a;
+  --bg-active: #26394c;
+  --bg-tertiary: #26394c;
+  --accent-hover: var(--interaction-hover);
   --text-main: #c8d6e8;
 
   /* Last-move highlight colors */

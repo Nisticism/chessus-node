@@ -145,13 +145,13 @@
 }
 
 .submit-button {
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
   color: var(--text-heading);
-  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.3);
+  box-shadow: 0 4px 16px rgba(var(--interaction-hover-rgb), 0.24);
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 6px 24px rgba(var(--accent-rgb), 0.4);
+    box-shadow: 0 6px 24px rgba(var(--interaction-hover-rgb), 0.34);
   }
 
   &:active:not(:disabled) {

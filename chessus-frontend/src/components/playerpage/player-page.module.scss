@@ -147,7 +147,7 @@
     right: 0;
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -192,7 +192,7 @@
   }
 
   .friend-button {
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
     color: var(--text-heading);
     border: none;
     padding: 10px 24px;

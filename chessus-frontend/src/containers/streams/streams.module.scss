@@ -10,7 +10,7 @@
 
   h1 {
     font-size: 3.5rem;
-    color: var(--accent-primary-text);
+    color: var(--accent-vivid, var(--accent-primary-text));
     margin-bottom: 15px;
   }
 
@@ -86,7 +86,7 @@
   }
 
   &.active {
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
     border-color: var(--text-info);
     color: var(--text-heading);
   }
@@ -212,7 +212,7 @@
 
   h3 {
     font-size: 1.8rem;
-    color: var(--accent-primary-text);
+    color: var(--accent-vivid, var(--accent-primary-text));
     margin-bottom: 15px;
   }
 
@@ -225,7 +225,7 @@
 
   .retry-btn {
     margin-top: 25px;
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
     border: none;
     border-radius: 10px;
     padding: 12px 30px;
@@ -273,7 +273,7 @@
 
   h2 {
     font-size: 2rem;
-    color: var(--accent-primary-text);
+    color: var(--accent-vivid, var(--accent-primary-text));
     margin-bottom: 20px;
   }
 
@@ -294,7 +294,7 @@
       font-weight: 600;
 
       &:hover {
-        color: var(--accent-primary-text);
+        color: var(--accent-vivid, var(--accent-primary-text));
       }
     }
   }

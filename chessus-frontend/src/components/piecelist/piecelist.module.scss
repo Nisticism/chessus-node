@@ -47,7 +47,7 @@
   .create-button {
     display: inline-block;
     padding: 12px 16px;
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
     color: var(--text-heading);
     text-decoration: none;
     border-radius: 8px;
@@ -58,7 +58,7 @@
 
     &:hover {
       transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(var(--accent-rgb), 0.4);
+      box-shadow: 0 8px 20px rgba(var(--interaction-hover-rgb), 0.34);
     }
   }
 }
@@ -351,6 +351,7 @@
   margin: 0 0 15px 0;
   flex-grow: 1;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -379,6 +380,7 @@
 
 .movement-patterns {
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -420,12 +422,12 @@
 }
 
 .edit-button {
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
   color: var(--text-heading);
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
+    box-shadow: 0 4px 12px rgba(var(--interaction-hover-rgb), 0.34);
   }
 }
 

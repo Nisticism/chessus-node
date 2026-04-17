@@ -10,7 +10,7 @@
 
   h1 {
     font-size: 3.5rem;
-    color: var(--accent-primary-text);
+    color: var(--accent-vivid, var(--accent-primary-text));
     margin-bottom: 15px;
   }
 
@@ -46,7 +46,7 @@
     box-shadow: 0 15px 40px rgba(var(--accent-rgb), 0.15);
 
     .explore-button {
-      background: linear-gradient(135deg, var(--text-info) 0%, var(--accent-primary) 100%);
+      background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
       transform: translateX(3px);
     }
   }
@@ -58,7 +58,7 @@
 
   .option-title {
     font-size: 2rem;
-    color: var(--text-heading);
+    color: var(--accent-vivid, var(--accent-primary-text));
     margin-bottom: 20px;
     font-weight: 600;
   }
@@ -72,7 +72,7 @@
   }
 
   .explore-button {
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
+    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
     color: var(--text-heading);
     padding: 12px 35px;
     border-radius: 10px;

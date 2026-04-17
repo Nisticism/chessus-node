@@ -39,7 +39,7 @@
   }
 
   &.active {
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover));
+    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
     border-color: var(--border-bright);
     box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
     cursor: default;

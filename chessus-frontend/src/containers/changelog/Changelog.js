@@ -4,6 +4,19 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 17, 2026",
+    title: "Theme Polish, Live Fixes & Better Browsing",
+    items: [
+      "Profile pages now open published games and pieces on their public detail pages, while drafts still jump straight into the editor",
+      "Direct links to older game types on /play now load the correct game, and the game-type sidebar now supports pagination",
+      "Blocked ranged attacks in live games no longer make the attacking piece appear to move before the server rejects the shot",
+      "Piece detail pages now explain custom-square movement and attack patterns in plain text",
+      "Clicking alternate piece images now previews that image on the piece board until you refresh or leave the page",
+      "Footer section headings now link directly to Create, Play, Community, and Info",
+      "Home page stats, hero buttons, and shared green/blue hover accents have been refined for a cleaner, more consistent theme across navigation and buttons",
+    ]
+  },
+  {
     date: "April 16, 2026",
     title: "Game Wizard & Bug Fixes",
     items: [
