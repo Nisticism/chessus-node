@@ -4,6 +4,19 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 19, 2026",
+    title: "Match Review Polish, Grove Tuning & Custom Piece Images",
+    items: [
+      "Match review now has a true 'starting position' before the first move — using ⏮ jumps to the empty-history view, and arrow keys can step into and out of it",
+      "When viewing the starting position, no row in the move history table is highlighted; pressing the right arrow then highlights the first move",
+      "Grove theme background tuned to a subtly greener tint",
+      "Pieces with more than 2 image variants can now actually use those extra images in real games — pick any image in the 'Choose Image' grid and it will be saved with the placement and shown everywhere (sandbox, home preview, live games, match review, promotions)",
+      "Clicking Player 1 or Player 2 still resets the image to that player's default; only clicking inside the image grid creates an override",
+      "When a game is saved, you'll now get a dismissible warning if you've assigned a dark image to Player 1 or a light image to Player 2",
+      "Large card shadows (e.g. home preview board, feature cards, create-news panel, career listings) toned down for a cleaner, less dramatic look",
+    ]
+  },
+  {
     date: "April 18, 2026",
     title: "Piece Wizard Limits & Detail Page Polish",
     items: [

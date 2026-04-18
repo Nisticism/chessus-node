@@ -6,11 +6,11 @@
 }
 
 .create-news-card {
-  background: linear-gradient(135deg, rgba(32, 36, 46, 0.95) 0%, rgba(30, 33, 41, 0.95) 100%);
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border-radius: 8px;
   padding: 40px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  border: 2px solid rgba(var(--accent-rgb), 0.2);
+  box-shadow: var(--shadow-card);
+  border: 2px solid var(--panel-card-border);
   position: relative;
   overflow: hidden;
 

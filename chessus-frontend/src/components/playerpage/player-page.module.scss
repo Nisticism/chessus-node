@@ -81,7 +81,7 @@
   align-items: center;
   gap: 30px;
   margin-bottom: 30px;
-  box-shadow: 0 4px 16px rgba(var(--panel-shadow-rgb), 0.2);
+  box-shadow: var(--shadow-card);
   position: relative;
 }
 
@@ -364,7 +364,7 @@
   border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   padding: 15px;
-  box-shadow: 0 4px 14px rgba(var(--panel-shadow-rgb), 0.18);
+  box-shadow: var(--shadow-card);
 
   .card-title {
     font-size: 1.5rem;
@@ -706,7 +706,7 @@
   border-radius: 8px;
   width: 90%;
   max-width: 600px;
-  box-shadow: 0 10px 30px rgba(var(--panel-shadow-rgb), 0.28);
+  box-shadow: var(--shadow-card);
   animation: modalSlideIn 0.3s ease;
 }
 
