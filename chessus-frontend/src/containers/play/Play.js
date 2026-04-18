@@ -330,11 +330,17 @@ const Play = () => {
         }
       });
 
+      // Request current snapshot in case we missed the broadcast that fires
+      // on socket auth/connect (race: listener registered after event arrived).
+      if (connected) {
+        socket.emit("getOnlineUsers");
+      }
+
       return () => {
         socket.off("onlineUsers");
       };
     }
-  }, [socket, dispatch, currentUser]);
+  }, [socket, connected, dispatch, currentUser]);
 
   // Listen for player count updates (includes anonymous)
   useEffect(() => {
@@ -343,11 +349,17 @@ const Play = () => {
         setPlayerCount(count);
       });
 
+      // Request current count in case we missed the broadcast that fires
+      // on connection (race: listener registered after event arrived).
+      if (connected) {
+        socket.emit("getPlayerCount");
+      }
+
       return () => {
         socket.off("playerCount");
       };
     }
-  }, [socket]);
+  }, [socket, connected]);
 
   // Listen for game events
   useEffect(() => {

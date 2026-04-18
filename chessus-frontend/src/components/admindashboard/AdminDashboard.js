@@ -166,7 +166,7 @@ const AdminDashboard = () => {
     setOnlineLoading(true);
     try {
       const response = await axios.get(
-        `${API_URL}admin/online-players`,
+        `${API_URL}admin/online-players?_=${Date.now()}`,
         { headers: authHeader() }
       );
       setOnlinePlayers(response.data.data || []);
@@ -833,7 +833,17 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const renderAnonymousGamesTable = () => (
+  const renderAnonymousGamesTable = () => {
+    const statusLabel = (status) => {
+      switch (status) {
+        case 'waiting': return 'Waiting for players';
+        case 'active': return 'In progress';
+        case 'completed': return 'Completed';
+        case 'abandoned': return 'Abandoned';
+        default: return status || 'Unknown';
+      }
+    };
+    return (
     <div className={styles["table-container"]}>
       <table className={styles["data-table"]}>
         <thead>
@@ -846,33 +856,49 @@ const AdminDashboard = () => {
             <th>Created</th>
             <th>Started</th>
             <th>Ended</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
+              <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No anonymous games found'}
               </td>
             </tr>
           ) : (
-            data.map(game => (
-            <tr key={game.id}>
-              <td>{game.id}</td>
-              <td>{game.game_name || 'Unnamed'}</td>
-              <td>{game.status}</td>
-              <td style={{ fontFamily: 'monospace', letterSpacing: '2px' }}>{game.invite_code}</td>
-              <td>{game.turn_length ? `${game.turn_length}+${game.increment || 0}` : 'No limit'}</td>
-              <td>{game.created_at ? formatDateTime(game.created_at) : 'N/A'}</td>
-              <td>{game.start_time ? formatDateTime(game.start_time) : 'Not started'}</td>
-              <td>{game.end_time ? formatDateTime(game.end_time) : 'In progress'}</td>
-            </tr>
-          ))
+            data.map(game => {
+              const started = game.status === 'active' || game.status === 'completed';
+              const ended = game.status === 'completed' || game.status === 'abandoned';
+              return (
+              <tr key={game.id}>
+                <td>{game.id}</td>
+                <td>{game.game_name || 'Unnamed'}</td>
+                <td>{statusLabel(game.status)}</td>
+                <td style={{ fontFamily: 'monospace', letterSpacing: '2px' }}>{game.invite_code}</td>
+                <td>{game.turn_length ? `${game.turn_length}+${game.increment || 0}` : 'No limit'}</td>
+                <td>{game.created_at ? formatDateTime(game.created_at) : 'N/A'}</td>
+                <td>{started ? (game.start_time ? formatDateTime(game.start_time) : '—') : '—'}</td>
+                <td>{ended ? (game.end_time ? formatDateTime(game.end_time) : '—') : '—'}</td>
+                <td>
+                  {!ended && (
+                    <Link
+                      to={`/play/${game.id}?anonSpectate=1`}
+                      className={styles["edit-btn"]}
+                      style={{ textDecoration: 'none' }}
+                    >
+                      Spectate
+                    </Link>
+                  )}
+                </td>
+              </tr>
+            );})
           )}
         </tbody>
       </table>
     </div>
-  );
+    );
+  };
 
   const renderForumsTable = () => (
     <div className={styles["table-container"]}>
@@ -1104,7 +1130,10 @@ const AdminDashboard = () => {
     <div className={styles["table-container"]}>
       <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span className={styles["online-count"]}>{onlinePlayers.length} player{onlinePlayers.length !== 1 ? 's' : ''} online</span>
-        <StandardButton onClick={fetchOnlinePlayers} buttonText="Refresh" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {onlineLoading && <span style={{ color: 'var(--text-dim)', fontSize: '0.85em' }}>Refreshing…</span>}
+          <StandardButton onClick={fetchOnlinePlayers} buttonText="Refresh" disabled={onlineLoading} />
+        </div>
       </div>
       {onlinePlayers.length === 0 ? (
         <p style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '30px 0' }}>
@@ -1711,7 +1740,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className={styles["content"]}>
-        {loading || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) || (activeTab === 'online' && onlineLoading) ? (
+        {loading || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>

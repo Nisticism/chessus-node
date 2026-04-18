@@ -450,16 +450,18 @@ export const SocketProvider = ({ children }) => {
   }, [socket, connected, user]);
 
   // Spectate a game
-  const spectateGame = useCallback((gameId) => {
+  const spectateGame = useCallback((gameId, options = {}) => {
     if (!socket || !connected) {
       console.error('Not connected');
       return;
     }
 
-    socket.emit('spectateGame', { 
+    const { anonymous = false } = options;
+    socket.emit('spectateGame', {
       gameId,
-      userId: user?.id || `anon_${socket.id}`,
-      username: user?.username || 'Guest'
+      userId: anonymous ? `anon_${socket.id}` : (user?.id || `anon_${socket.id}`),
+      username: anonymous ? 'Anonymous' : (user?.username || 'Guest'),
+      anonymous
     });
   }, [socket, connected, user]);
 

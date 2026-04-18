@@ -59,7 +59,7 @@
   border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   padding: 30px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-card);
 }
 
 .title-section {

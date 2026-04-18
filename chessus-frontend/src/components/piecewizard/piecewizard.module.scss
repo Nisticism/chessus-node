@@ -5,9 +5,10 @@
   margin: 2rem auto;
   padding: 2rem;
   padding-bottom: 3rem;
-  background-color: var(--forum-background);
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-card);
   min-height: auto;
   height: auto;
   overflow-x: hidden;

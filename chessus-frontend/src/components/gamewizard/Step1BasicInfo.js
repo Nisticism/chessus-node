@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import styles from "./gamewizard.module.scss";
 import NumberInput from "../common/NumberInput";
+import ToggleSwitch from "../common/ToggleSwitch";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import { checkForLinks, checkOffensiveContent } from "../../utils/contentModeration";
 
@@ -118,18 +119,17 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
       </div>
 
       <div className={styles["form-group"]}>
-        <label className={styles["toggle-label"]}>
-          <span>Simultaneous turns <InfoTooltip text="Both players submit their moves secretly, then both moves are revealed and executed at the same time. Incompatible with multiple actions per turn. ⚠ Experimental: Some mechanics (multi-action turns, piece placement) are not compatible." /></span>
-          <div className={styles["toggle-switch"]}>
-            <input
-              type="checkbox"
-              checked={gameData.simultaneous_turns || false}
-              onChange={(e) => handleChange("simultaneous_turns", e.target.checked)}
-              disabled={gameData.actions_per_turn > 1}
-            />
-            <span className={styles["toggle-slider"]}></span>
-          </div>
-        </label>
+        <ToggleSwitch
+          checked={!!gameData.simultaneous_turns}
+          onChange={(val) => handleChange("simultaneous_turns", val)}
+          disabled={gameData.actions_per_turn > 1}
+          label={
+            <span>
+              Simultaneous turns{' '}
+              <InfoTooltip text="Both players submit their moves secretly, then both moves are revealed and executed at the same time. Incompatible with multiple actions per turn. ⚠ Experimental: Some mechanics (multi-action turns, piece placement) are not compatible." />
+            </span>
+          }
+        />
         {gameData.actions_per_turn > 1 && gameData.simultaneous_turns && (
           <p className={styles["validation-error"]}>
             Simultaneous turns requires exactly 1 action per turn.
@@ -138,18 +138,17 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
       </div>
 
       <div className={styles["form-group"]}>
-        <label className={styles["toggle-label"]}>
-          <span>Create anonymously <InfoTooltip text={!currentUser ? "You are not logged in — your game will be created anonymously." : "When enabled, your username will not be shown publicly as the creator of this game."} /></span>
-          <div className={styles["toggle-switch"]}>
-            <input
-              type="checkbox"
-              checked={!currentUser || gameData.is_anonymous_creator}
-              onChange={(e) => handleChange("is_anonymous_creator", e.target.checked)}
-              disabled={!currentUser}
-            />
-            <span className={styles["toggle-slider"]}></span>
-          </div>
-        </label>
+        <ToggleSwitch
+          checked={!currentUser || !!gameData.is_anonymous_creator}
+          onChange={(val) => handleChange("is_anonymous_creator", val)}
+          disabled={!currentUser}
+          label={
+            <span>
+              Create anonymously{' '}
+              <InfoTooltip text={!currentUser ? "You are not logged in — your game will be created anonymously." : "When enabled, your username will not be shown publicly as the creator of this game."} />
+            </span>
+          }
+        />
       </div>
     </div>
   );

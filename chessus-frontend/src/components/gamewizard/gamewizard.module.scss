@@ -5,9 +5,10 @@
   max-width: 1200px;
   margin: 40px auto;
   padding: 30px;
-  background: var(--forum-background);
-  border-radius: 10px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
   overflow-x: hidden;
 }
 
@@ -384,6 +385,20 @@
   border-radius: 8px;
   margin-bottom: 1rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.condition-toggle-row {
+  display: flex;
+  align-items: center;
+}
+
+.condition-toggle-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-light, var(--light-gray));
 }
 
 .sub-field,

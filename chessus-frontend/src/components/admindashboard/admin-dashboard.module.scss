@@ -63,7 +63,7 @@
   border-radius: 6px;
   padding: 30px;
   margin: 0 20px;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-card);
 }
 
 .table-container {

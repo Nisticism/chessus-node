@@ -26,12 +26,12 @@
 }
 
 .preference-section {
-  background: var(--forum-background, var(--bg-dark));
-  border: 1px solid var(--panel-card-border);
-  border-radius: 10px;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
+  border-radius: 8px;
   padding: 12px 20px 20px;
   margin-bottom: 20px;
-  box-shadow: 0 4px 10px rgba(var(--panel-shadow-rgb), 0.18);
+  box-shadow: var(--shadow-card);
 
   &:first-of-type {
     margin-top: 20px;
@@ -67,7 +67,7 @@
   border: 2px solid rgba(var(--panel-card-border-rgb), 0.78);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 4px 10px rgba(var(--panel-shadow-rgb), 0.22);
+  box-shadow: var(--shadow-card);
 }
 
 .preview-row {
@@ -164,7 +164,7 @@
   height: 48px;
   border-radius: 6px;
   overflow: hidden;
-  box-shadow: 0 2px 5px rgba(var(--panel-shadow-rgb), 0.18);
+  box-shadow: var(--shadow-card-sm);
   border: 1px solid rgba(var(--panel-card-border-rgb), 0.7);
 }
 
@@ -210,7 +210,7 @@
   height: 60px;
   border-radius: 8px;
   border: 2px solid rgba(var(--panel-card-border-rgb), 0.72);
-  box-shadow: 0 2px 6px rgba(var(--panel-shadow-rgb), 0.18);
+  box-shadow: var(--shadow-card-sm);
 }
 
 .slider-group {

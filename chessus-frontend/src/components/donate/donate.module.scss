@@ -10,9 +10,10 @@
   max-width: 800px;
   width: 100%;
   padding: 2rem;
-  background-color: rgba(var(--panel-bg-start-rgb), 0.8);
-  border-radius: 6px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
 }
 
 .title {

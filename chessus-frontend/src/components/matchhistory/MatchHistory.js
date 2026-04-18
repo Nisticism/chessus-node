@@ -112,7 +112,13 @@ const MatchHistory = ({ userId, username }) => {
   };
 
   const handleViewGame = (gameId) => {
-    navigate(`/match/${gameId}`);
+    // Pass the profile owner's user id so the match view can orient the board
+    // with that player on the bottom (even when the current viewer wasn't a participant).
+    if (userId) {
+      navigate(`/match/${gameId}?viewerUserId=${userId}`);
+    } else {
+      navigate(`/match/${gameId}`);
+    }
   };
 
   if (loading && games.length === 0) {
