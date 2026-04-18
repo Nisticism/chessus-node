@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import axios from "axios";
 import authHeader from "../../services/auth-header";
@@ -57,12 +57,16 @@ const getFirstImageUrl = (imageLocation) => {
   return null;
 };
 
-// Helper to get image URL for a specific player (player 1 uses index 0, player 2 uses index 1)
-const getPlayerImageUrl = (imageLocation, playerNumber) => {
+// Helper to get image URL for a specific player (player 1 uses index 0, player 2 uses index 1).
+// Optional imageIndexOverride forces a specific index from the array (per-placement override).
+const getPlayerImageUrl = (imageLocation, playerNumber, imageIndexOverride = null) => {
   if (!imageLocation) return null;
   
   // Default to first image index for player 1, second for player 2
-  const imageIndex = playerNumber === 2 ? 1 : 0;
+  const defaultImageIndex = playerNumber === 2 ? 1 : 0;
+  const imageIndex = (imageIndexOverride != null && imageIndexOverride >= 0)
+    ? imageIndexOverride
+    : defaultImageIndex;
   
   try {
     const images = JSON.parse(imageLocation);
@@ -104,6 +108,10 @@ const parsePieces = (pieces) => {
 const LiveGame = () => {
   const { gameId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const anonSpectate = React.useMemo(() => {
+    try { return new URLSearchParams(location.search).get('anonSpectate') === '1'; } catch { return false; }
+  }, [location.search]);
   const dispatch = useDispatch();
   const { user: currentUser } = useSelector((state) => state.authReducer);
   
@@ -422,12 +430,12 @@ const LiveGame = () => {
 
   /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // When not a player, register as a spectator
-  const isSpectator = !!(gameState && !gameState.players?.some(p => p.id === currentUser?.id || (socket?.id && p.id === `anon_${socket.id}`)));
+  const isSpectator = !!(gameState && (anonSpectate || !gameState.players?.some(p => p.id === currentUser?.id || (socket?.id && p.id === `anon_${socket.id}`))));
   useEffect(() => {
     if (isSpectator && connected && gameId && spectateGame) {
-      spectateGame(parseInt(gameId));
+      spectateGame(parseInt(gameId), { anonymous: anonSpectate });
     }
-  }, [isSpectator, connected, gameId, spectateGame]);
+  }, [isSpectator, connected, gameId, spectateGame, anonSpectate]);
 
   // Leave game room on unmount so notifications can be sent
   useEffect(() => {

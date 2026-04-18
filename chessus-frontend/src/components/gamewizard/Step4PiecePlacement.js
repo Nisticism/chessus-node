@@ -343,6 +343,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
               piece_id: pieceData.piece_id,
               player_id: pieceData.player_id,
               image_url: pieceData.image_url,
+              image_index: (pieceData.image_index != null && pieceData.image_index >= 0) ? pieceData.image_index : null,
               piece_name: pieceData.piece_name,
               ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
               ends_game_on_capture: pieceData.ends_game_on_capture || false,
@@ -407,6 +408,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
             piece_id: pieceData.piece_id,
             player_id: pieceData.player_id,
             image_url: pieceData.image_url,
+            image_index: (pieceData.image_index != null && pieceData.image_index >= 0) ? pieceData.image_index : null,
             piece_name: pieceData.piece_name,
             piece_width: pw,
             piece_height: ph,
@@ -774,6 +776,26 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
 
   // Helper function to get placement image URL with fallback
   const getPlacementImageUrl = useCallback((placement) => {
+    const overrideIdx = (placement.image_index != null && placement.image_index >= 0)
+      ? placement.image_index
+      : null;
+
+    // If a per-placement image_index override is set, prefer pulling from the source array
+    // (works whether image_location lives on the placement or on the piece template).
+    if (overrideIdx != null) {
+      const sourceLoc = placement.image_location
+        || (placement.piece_id && pieceDataMap[placement.piece_id]?.image_location);
+      if (sourceLoc) {
+        try {
+          const images = JSON.parse(sourceLoc);
+          if (Array.isArray(images) && images.length > 0) {
+            const idx = Math.min(overrideIdx, images.length - 1);
+            return getImageUrl(images[idx]);
+          }
+        } catch (e) { /* fall through */ }
+      }
+    }
+
     // Use the selected image_url from placement (set by PieceSelector or loaded from server)
     if (placement.image_url) {
       // Handle both full URLs and paths

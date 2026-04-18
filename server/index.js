@@ -80,7 +80,7 @@ const MAX_LOGIN_ATTEMPTS = 10; // Allow 10 failed attempts before lockout
 const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail, sendNotificationSummaryEmail } = require("./email-service");
 
 // Socket.io game handler
-const { initializeSocket, onlineUsers, getIO } = require("./game-socket");
+const { initializeSocket, onlineUsers, reconcileOnlineUsers, getIO } = require("./game-socket");
 
 //  Express
 
@@ -2201,7 +2201,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     const sql = `
       UPDATE game_types SET
         game_name = ?, descript = ?, rules = ?,
-        mate_condition = ?, mate_piece = ?, capture_condition = ?, capture_piece = ?,
+        mate_condition = ?, mate_piece = ?, capture_condition = ?, capture_piece = ?, capture_condition_requires_all = ?,
         value_condition = ?, value_piece = ?, value_max = ?, value_title = ?,
         squares_condition = ?, squares_count = ?, hill_condition = ?, hill_x = ?, hill_y = ?, hill_turns = ?,
         actions_per_turn = ?, simultaneous_turns = ?, board_width = ?, board_height = ?, player_count = ?,
@@ -2224,6 +2224,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.mate_piece != null ? gameData.mate_piece : null,
       gameData.capture_condition || false,
       gameData.capture_piece != null ? gameData.capture_piece : null,
+      gameData.capture_condition_requires_all || false,
       gameData.value_condition || false,
       gameData.value_piece != null ? gameData.value_piece : null,
       gameData.value_max || null,
@@ -2317,7 +2318,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.trample_radius ?? 0,
               piece.ghostwalk || false,
               piece.die_on_capture || false,
-              piece.attack_radius ?? 0
+              piece.attack_radius ?? 0,
+              (piece.image_index != null && piece.image_index >= 0) ? Number(piece.image_index) : null
             );
           }
         }
@@ -4954,7 +4956,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     const sql = `
       INSERT INTO game_types (
         creator_id, is_anonymous_creator, game_name, descript, rules,
-        mate_condition, mate_piece, capture_condition, capture_piece,
+        mate_condition, mate_piece, capture_condition, capture_piece, capture_condition_requires_all,
         value_condition, value_piece, value_max, value_title,
         squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
         actions_per_turn, simultaneous_turns, board_width, board_height, player_count,
@@ -4963,7 +4965,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
         no_moves_condition, piece_count_condition, promotion_condition,
         pieces_string, created_at, is_draft, draft_saved_step
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -4976,6 +4978,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.mate_piece != null ? gameData.mate_piece : null,
       gameData.capture_condition || false,
       gameData.capture_piece != null ? gameData.capture_piece : null,
+      gameData.capture_condition_requires_all || false,
       gameData.value_condition || false,
       gameData.value_piece != null ? gameData.value_piece : null,
       gameData.value_max || null,
@@ -5066,7 +5069,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.trample_radius ?? 0,
               piece.ghostwalk || false,
               piece.die_on_capture || false,
-              piece.attack_radius ?? 0
+              piece.attack_radius ?? 0,
+              (piece.image_index != null && piece.image_index >= 0) ? Number(piece.image_index) : null
             );
           }
         }
@@ -6578,6 +6582,10 @@ app.get("/api/admin/news/:newsId", authenticateAdmin, async (req, res) => {
 // Get all currently online players (admin only)
 app.get("/api/admin/online-players", authenticateAdmin, async (req, res) => {
   try {
+    // Reconcile against active socket mappings to drop stale entries that
+    // never fired a clean disconnect (network drops, closed laptops, etc).
+    reconcileOnlineUsers();
+    res.set('Cache-Control', 'no-store');
     const onlineIds = Array.from(onlineUsers);
     if (onlineIds.length === 0) {
       return res.json({ data: [], total: 0 });

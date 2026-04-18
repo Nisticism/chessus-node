@@ -385,12 +385,15 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
   // Get image URL for piece
   const getPieceImageUrl = useCallback((piece) => {
     const playerIndex = (piece.player_number || 1) - 1;
+    // Per-placement image_index override (set in game wizard) takes precedence
+    const overrideIdx = (piece.image_index != null && piece.image_index >= 0) ? piece.image_index : null;
 
     if (piece.image_location) {
       try {
         const images = JSON.parse(piece.image_location);
         if (Array.isArray(images) && images.length > 0) {
-          const imageIndex = Math.min(playerIndex, images.length - 1);
+          const baseIndex = overrideIdx != null ? overrideIdx : playerIndex;
+          const imageIndex = Math.min(baseIndex, images.length - 1);
           return getImageUrl(images[imageIndex]);
         }
       } catch (e) {

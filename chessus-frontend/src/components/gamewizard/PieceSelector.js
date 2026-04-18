@@ -47,6 +47,11 @@ const PieceSelector = ({
   const [selectedPieceId, setSelectedPieceId] = useState(currentPlacement?.piece_id || null);
   const [selectedPlayerId, setSelectedPlayerId] = useState(getInitialPlayerId());
   const [selectedImageUrl, setSelectedImageUrl] = useState(currentPlacement?.image_url || "");
+  // True when the user has explicitly clicked an image in the "Choose Image" grid,
+  // overriding the player-default. Reset whenever player or piece changes.
+  const [imageManuallyOverridden, setImageManuallyOverridden] = useState(
+    currentPlacement?.image_index != null && currentPlacement?.image_index >= 0
+  );
   const [availableImages, setAvailableImages] = useState([]);
   const [endsGameOnCheckmate, setEndsGameOnCheckmate] = useState(currentPlacement?.ends_game_on_checkmate || false);
   const [endsGameOnCapture, setEndsGameOnCapture] = useState(currentPlacement?.ends_game_on_capture || false);
@@ -95,6 +100,13 @@ const PieceSelector = ({
       setSelectedPlayerId(currentPlacement.player_id);
     }
   }, [currentPlacement?.player_id]);
+
+  // Reset manual-image-override flag when the player toggle changes — clicking Player 1/2
+  // should always restore the player default image (per UX requirement).
+  useEffect(() => {
+    setImageManuallyOverridden(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlayerId]);
   
   // Save selected player ID to localStorage whenever it changes
   useEffect(() => {
@@ -176,8 +188,9 @@ const PieceSelector = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPieceId, pieces]);
 
-  // Auto-select image based on player number
+  // Auto-select image based on player number (only when not manually overridden)
   useEffect(() => {
+    if (imageManuallyOverridden) return;
     if (availableImages.length > 0 && selectedPlayerId) {
       // Player IDs are 1-indexed, array is 0-indexed
       const imageIndex = selectedPlayerId - 1;
@@ -185,7 +198,7 @@ const PieceSelector = ({
       const targetImageIndex = imageIndex < availableImages.length ? imageIndex : 0;
       setSelectedImageUrl(availableImages[targetImageIndex]);
     }
-  }, [selectedPlayerId, availableImages]);
+  }, [selectedPlayerId, availableImages, imageManuallyOverridden]);
 
   const loadPieces = async () => {
     try {
@@ -233,6 +246,14 @@ const PieceSelector = ({
       return;
     }
 
+    // Compute image_index from the selected URL within the available list.
+    // Only persist as an override when it differs from the player default.
+    let imageIndex = null;
+    if (imageManuallyOverridden && availableImages.length > 0) {
+      const idx = availableImages.indexOf(selectedImageUrl);
+      if (idx >= 0) imageIndex = idx;
+    }
+
     // Pass the full piece data along with placement-specific properties
     onSelect({
       ...selectedPiece,  // Include ALL piece data (movement, capture, etc.)
@@ -240,6 +261,7 @@ const PieceSelector = ({
       piece_name: selectedPiece.piece_name,
       player_id: selectedPlayerId,
       image_url: selectedImageUrl,
+      image_index: imageIndex,
       ends_game_on_checkmate: endsGameOnCheckmate,
       ends_game_on_capture: endsGameOnCapture,
       can_control_squares: canControlSquares,
@@ -517,7 +539,10 @@ const PieceSelector = ({
                 <div
                   key={index}
                   className={`${styles["image-option"]} ${selectedImageUrl === imageUrl ? styles["selected"] : ""}`}
-                  onClick={() => setSelectedImageUrl(imageUrl)}
+                  onClick={() => {
+                    setSelectedImageUrl(imageUrl);
+                    setImageManuallyOverridden(true);
+                  }}
                 >
                   <img src={imageUrl} alt={`Option ${index + 1}`} loading="lazy" />
                 </div>

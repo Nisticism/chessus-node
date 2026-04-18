@@ -17,6 +17,28 @@ const onlineUsers = new Set(); // Set of online user IDs
 const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grace period)
 
 /**
+ * Reconcile the onlineUsers Set against actual active socket mappings.
+ * Removes any userIds that no longer have a socket connection (e.g. due to
+ * dropped connections that never fired the `disconnect` handler within the
+ * Socket.IO ping timeout). Safe to call from HTTP endpoints.
+ */
+function reconcileOnlineUsers() {
+  const stale = [];
+  for (const userId of onlineUsers) {
+    if (!userSockets.has(userId.toString())) {
+      stale.push(userId);
+    }
+  }
+  for (const userId of stale) {
+    onlineUsers.delete(userId);
+  }
+  if (stale.length > 0 && ioInstance) {
+    ioInstance.emit("onlineUsers", Array.from(onlineUsers));
+  }
+  return stale.length;
+}
+
+/**
  * Sanitize winner_id for database writes.
  * Anonymous player IDs are strings like "anon_xxx" which can't go into the INT winner_id column.
  */
@@ -46,14 +68,19 @@ function buildOtherData(gameState, extraFields = {}) {
 /**
  * Helper function to parse image_location and get the correct image URL based on player
  */
-function getImageUrlForPlayer(imageLocation, playerNumber) {
+function getImageUrlForPlayer(imageLocation, playerNumber, imageIndexOverride = null) {
   if (!imageLocation) return null;
   
   try {
     const images = JSON.parse(imageLocation);
     if (Array.isArray(images) && images.length > 0) {
-      // Use player 1's image (index 0) or player 2's image (index 1) if available
-      const imageIndex = (playerNumber === 2 && images.length > 1) ? 1 : 0;
+      // Per-placement image_index override takes precedence over player default
+      let imageIndex;
+      if (imageIndexOverride != null && imageIndexOverride >= 0 && imageIndexOverride < images.length) {
+        imageIndex = imageIndexOverride;
+      } else {
+        imageIndex = (playerNumber === 2 && images.length > 1) ? 1 : 0;
+      }
       const imagePath = images[imageIndex];
       return imagePath.startsWith('http') ? imagePath : imagePath.startsWith('/uploads/') ? imagePath : `/uploads/pieces/${imagePath}`;
     }
@@ -525,6 +552,28 @@ function initializeSocket(server) {
       console.error(`Socket error for ${socket.id}:`, error);
     });
 
+    // Allow clients to request the current player count on demand (avoids
+    // race where the broadcast on `connection` arrives before the client
+    // listener is registered).
+    socket.on("getPlayerCount", () => {
+      try {
+        socket.emit("playerCount", io.engine.clientsCount);
+      } catch (err) {
+        console.error("Error in getPlayerCount handler:", err);
+      }
+    });
+
+    // Allow clients to request the current online-users snapshot on demand.
+    // Reconciles stale entries before responding.
+    socket.on("getOnlineUsers", () => {
+      try {
+        reconcileOnlineUsers();
+        socket.emit("onlineUsers", Array.from(onlineUsers));
+      } catch (err) {
+        console.error("Error in getOnlineUsers handler:", err);
+      }
+    });
+
     // Authenticate user
     socket.on("authenticate", async (data) => {
       try {
@@ -733,7 +782,7 @@ function initializeSocket(server) {
           const fullPieceData = pieceDataMap[piece.piece_id];
           if (fullPieceData) {
             const imageLocation = piece.image_location || fullPieceData.image_location;
-            const imageUrl = getImageUrlForPlayer(imageLocation, piece.player_id);
+            const imageUrl = getImageUrlForPlayer(imageLocation, piece.player_id, piece.image_index);
             
             // Debug logging for first piece
             if (piece.piece_id === piecesArray[0]?.piece_id) {
@@ -1205,7 +1254,7 @@ function initializeSocket(server) {
           const fullPieceData = pieceDataMap[piece.piece_id];
           if (fullPieceData) {
             const imageLocation = piece.image_location || fullPieceData.image_location;
-            const imageUrl = getImageUrlForPlayer(imageLocation, piece.player_id);
+            const imageUrl = getImageUrlForPlayer(imageLocation, piece.player_id, piece.image_index);
 
             return {
               ...piece,
@@ -1846,15 +1895,20 @@ function initializeSocket(server) {
 
     // Spectate a game (join room but not as player)
     socket.on("spectateGame", async (data) => {
-      const { gameId, userId, username } = data;
+      const { gameId, userId, username, anonymous } = data;
       socket.join(`game-${gameId}`);
-      
+
       const gameState = activeGames.get(gameId.toString());
       if (gameState) {
         // Track spectators
         if (!gameState.spectators) gameState.spectators = [];
-        const spectatorName = username || 'Guest';
-        const spectatorEntry = { id: userId || socket.id, username: spectatorName, socketId: socket.id };
+        const spectatorName = anonymous ? 'Anonymous' : (username || 'Guest');
+        const spectatorEntry = {
+          id: anonymous ? `anon_${socket.id}` : (userId || socket.id),
+          username: spectatorName,
+          socketId: socket.id,
+          anonymous: !!anonymous
+        };
         // Avoid duplicates
         if (!gameState.spectators.some(s => s.socketId === socket.id)) {
           gameState.spectators.push(spectatorEntry);
@@ -4566,7 +4620,7 @@ function initializeSocket(server) {
           // Assign image URLs based on player_id (already set from junction table)
           pieces = pieces.map(piece => {
             if (piece.image_location) {
-              const imageUrl = getImageUrlForPlayer(piece.image_location, piece.player_id);
+              const imageUrl = getImageUrlForPlayer(piece.image_location, piece.player_id, piece.image_index);
               return {
                 ...piece,
                 image: imageUrl,
@@ -9145,7 +9199,8 @@ function applyFlankingCaptures(gameState, placedX, placedY, playerPosition) {
             target.player_id = playerPosition;
             // Update image to match new owner if image_location is available
             if (target.image_location) {
-              const newImageUrl = getImageUrlForPlayer(target.image_location, playerPosition);
+              // After flanking flip, owner changes; per-placement image_index override still wins if set
+              const newImageUrl = getImageUrlForPlayer(target.image_location, playerPosition, target.image_index);
               if (newImageUrl) {
                 target.image_url = newImageUrl;
                 target.image = newImageUrl;
@@ -9401,6 +9456,20 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
   for (const capturedPiece of capturedPieces) {
     if (capturedPiece.ends_game_on_capture) {
       const loserPosition = capturedPiece.team || capturedPiece.player_id;
+
+      // If the game type requires ALL ends_game_on_capture pieces to be
+      // captured, only end the game once none remain on the loser's side.
+      if (gameType.capture_condition_requires_all) {
+        const remaining = pieces.some(p => {
+          if (!p.ends_game_on_capture) return false;
+          const owner = p.team || p.player_id || p.player;
+          return owner === loserPosition;
+        });
+        if (remaining) {
+          continue; // some flagged pieces still alive; don't end yet
+        }
+      }
+
       const winner = players.find(p => p.position !== loserPosition);
       return {
         gameOver: true,
@@ -10423,6 +10492,7 @@ module.exports = {
   activeGames,
   onlineUsers,
   userSockets,
+  reconcileOnlineUsers,
   getIO,
   // Pure game logic functions (used by AI engine)
   getPossibleMovesForPiece,

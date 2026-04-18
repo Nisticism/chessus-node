@@ -542,7 +542,13 @@ const getGameById = async (gameId) => {
         try {
           const images = JSON.parse(piece.image_location);
           if (Array.isArray(images) && images.length > 0) {
-            const imageIndex = Math.min((playerId || 1) - 1, images.length - 1);
+            // Per-placement image_index override (NULL/invalid → fall back to player_id-1)
+            let imageIndex;
+            if (piece.image_index != null && piece.image_index >= 0 && piece.image_index < images.length) {
+              imageIndex = piece.image_index;
+            } else {
+              imageIndex = Math.min((playerId || 1) - 1, images.length - 1);
+            }
             const imagePath = images[imageIndex];
             if (imagePath) {
               imageUrl = imagePath.startsWith('http') ? imagePath : 
@@ -578,6 +584,7 @@ const getGameById = async (gameId) => {
         piece_name: piece.piece_name,
         image_url: imageUrl,
         image_location: piece.image_location,
+        image_index: (piece.image_index != null && piece.image_index >= 0) ? piece.image_index : null,
         // HP/AD system
         hit_points: piece.hit_points ?? 1,
         attack_damage: piece.attack_damage ?? 1,
@@ -674,11 +681,11 @@ const getPiecesForGameType = async (gameTypeId) => {
  * @param {boolean} canControlSquares - If true, this piece can control squares for the control squares win condition
  * @returns {Promise<Object>} Insert result
  */
-const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false, trample = false, trampleRadius = 0, ghostwalk = false, dieOnCapture = false, attackRadius = 0) => {
+const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false, trample = false, trampleRadius = 0, ghostwalk = false, dieOnCapture = false, attackRadius = 0, imageIndex = null) => {
   const result = await query(`
-    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen, burn_damage, burn_duration, show_burn, trample, trample_radius, ghostwalk, die_on_capture, attack_radius)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0, burnDamage || 0, burnDuration || 0, showBurn ? 1 : 0, trample ? 1 : 0, trampleRadius || 0, ghostwalk ? 1 : 0, dieOnCapture ? 1 : 0, attackRadius || 0]);
+    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen, burn_damage, burn_duration, show_burn, trample, trample_radius, ghostwalk, die_on_capture, attack_radius, image_index)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0, burnDamage || 0, burnDuration || 0, showBurn ? 1 : 0, trample ? 1 : 0, trampleRadius || 0, ghostwalk ? 1 : 0, dieOnCapture ? 1 : 0, attackRadius || 0, (imageIndex == null || imageIndex < 0) ? null : Number(imageIndex)]);
   return result;
 };
 

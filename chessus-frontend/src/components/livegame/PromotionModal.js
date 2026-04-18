@@ -19,9 +19,12 @@ const PromotionModal = ({ promotionOptions, promotingPiece, onSelect, onCancel }
       try {
         const images = JSON.parse(piece.image_location);
         if (Array.isArray(images) && images.length > 0) {
-          // Use player position to select correct image (0 = player 1, 1 = player 2)
+          // Use player position to select correct image (0 = player 1, 1 = player 2),
+          // unless a per-placement image_index override is set on the piece.
           const playerIndex = (promotingPiece.player_id || promotingPiece.team || 1) - 1;
-          const imagePath = images[playerIndex] || images[0];
+          const overrideIdx = (piece.image_index != null && piece.image_index >= 0) ? piece.image_index : null;
+          const idx = overrideIdx != null ? Math.min(overrideIdx, images.length - 1) : playerIndex;
+          const imagePath = images[idx] || images[0];
           if (imagePath.startsWith('http')) {
             return imagePath;
           }

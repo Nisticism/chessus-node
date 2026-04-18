@@ -7,6 +7,7 @@ import Divider from "../Divider/Divider";
 import { createGame, getGameById, updateGame } from "../../actions/games";
 import { trackGameCreation, trackEvent } from "../../analytics/GoogleAnalytics";
 import { validateContent } from "../../utils/contentModeration";
+import { findMismatchedPlacements } from "../../helpers/imageBrightness";
 import Step1BasicInfo from "./Step1BasicInfo";
 import Step2WinConditions from "./Step2WinConditions";
 import Step3BoardSpecialSquares from "./Step3BoardSpecialSquares";
@@ -26,6 +27,7 @@ const GameWizard = ({ editGameId }) => {
   const [isPublishedGame, setIsPublishedGame] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [showCheckmateWarning, setShowCheckmateWarning] = useState(false);
+  const [imageMismatchWarning, setImageMismatchWarning] = useState(null);
   const [saveError, setSaveError] = useState(null);
   const [missingFields, setMissingFields] = useState(null);
   
@@ -252,6 +254,29 @@ const GameWizard = ({ editGameId }) => {
         // If pieces can't be parsed, show warning since we can't verify
         setShowCheckmateWarning(true);
         return;
+      }
+    }
+
+    // Check for dark-on-player-1 / light-on-player-2 image mismatches.
+    // Dismissible: skipWarning bypasses this check on the second submission.
+    if (!skipWarning) {
+      try {
+        const piecesObj = JSON.parse(gameData.pieces_string || '{}');
+        const placements = Object.entries(piecesObj)
+          .filter(([, p]) => p && p.piece_id && !p._occupied && !p._anchorKey)
+          .map(([key, p]) => ({
+            key,
+            piece_name: p.piece_name,
+            player_id: Number(p.player_id ?? p.player_number ?? 1),
+            imageUrl: p.image_url || null,
+          }));
+        const mismatches = await findMismatchedPlacements(placements);
+        if (mismatches.length > 0) {
+          setImageMismatchWarning(mismatches);
+          return;
+        }
+      } catch (e) {
+        // Brightness check is best-effort; don't block save on failure
       }
     }
 
@@ -540,6 +565,42 @@ const GameWizard = ({ editGameId }) => {
               <StandardButton 
                 buttonText="Create Anyway" 
                 onClick={() => { setShowCheckmateWarning(false); handleSubmit(true); }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {imageMismatchWarning && (
+        <div className={styles["warning-overlay"]}>
+          <div className={styles["warning-modal"]}>
+            <h3>⚠️ Piece Color May Look Wrong</h3>
+            <p>
+              Player 1 traditionally uses light pieces and Player 2 uses dark pieces.
+              The following placements appear to use the opposite color and may be hard
+              to distinguish on the board:
+            </p>
+            <ul className={styles["missing-fields-list"]}>
+              {imageMismatchWarning.slice(0, 12).map((m, i) => (
+                <li key={i}>
+                  <strong>{m.piece_name || 'Piece'}</strong> at {m.key} —{' '}
+                  {m.kind === 'dark-on-p1'
+                    ? 'dark image on Player 1'
+                    : 'light image on Player 2'}
+                </li>
+              ))}
+              {imageMismatchWarning.length > 12 && (
+                <li>…and {imageMismatchWarning.length - 12} more</li>
+              )}
+            </ul>
+            <div className={styles["warning-buttons"]}>
+              <StandardButton
+                buttonText="Go Back"
+                onClick={() => setImageMismatchWarning(null)}
+              />
+              <StandardButton
+                buttonText="Save Anyway"
+                onClick={() => { setImageMismatchWarning(null); handleSubmit(true); }}
               />
             </div>
           </div>

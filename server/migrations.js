@@ -569,6 +569,12 @@ const migrations = [
     column: 'moderation_status',
     sql: "ALTER TABLE pieces ADD COLUMN moderation_status ENUM('approved', 'pending_review', 'rejected') DEFAULT 'approved'",
     description: "Add moderation_status column to pieces for image moderation tracking"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'image_index',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN image_index INT NULL DEFAULT NULL",
+    description: "Add image_index to game_type_pieces - per-placement override of which image (from pieces.image_location array) to display, NULL = use default (player_id-1)"
   }
 ];
 
@@ -2679,6 +2685,21 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error adding last_uniqueness_check column:', err.message);
+  }
+
+  // Add capture_condition_requires_all column to game_types table
+  // When TRUE, the capture win condition requires ALL pieces flagged with
+  // ends_game_on_capture to be captured (instead of just one).
+  try {
+    if (!(await columnExists('game_types', 'capture_condition_requires_all'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN capture_condition_requires_all BOOLEAN DEFAULT FALSE COMMENT 'If true, all pieces with ends_game_on_capture must be captured to end the game'`,
+        "Add capture_condition_requires_all column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding capture_condition_requires_all column:', err.message);
   }
 
   if (migrationsRun === 0) {
