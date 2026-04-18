@@ -35,6 +35,17 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
     updatePieceData({ [field]: numValue });
   };
 
+  // Step-by-step movement is capped at 8 because the custom-square selector
+  // grid is 15x15 (radius 7). At step value 7+ the grid is fully covered, so
+  // we disable adding custom squares to avoid lag and confusing UX.
+  const MAX_STEP_BY_STEP = 8;
+  const STEP_DISABLES_CUSTOM = 7;
+  const stepMoveAbs = Math.abs(pieceData.step_by_step_movement_value || 0);
+  const customMovementDisabled = stepMoveAbs >= STEP_DISABLES_CUSTOM;
+  const customMovementDisabledMessage = customMovementDisabled
+    ? `Custom square movement cannot be expanded while step-by-step movement is ${stepMoveAbs} or higher (it already covers the grid). Reduce step-by-step movement below ${STEP_DISABLES_CUSTOM} to add more squares.`
+    : "";
+
   // Parse additional movements from special_scenario_moves JSON
   const getAdditionalMovements = () => {
     if (!pieceData.special_scenario_moves) return {};
@@ -778,7 +789,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
 
       {/* Step by Step Movement */}
       <div className={styles["condition-section"]}>
-        <h3>Step-by-Step Movement <InfoTooltip text="The piece gets a budget of steps and can move one square at a time in any direction, changing direction with each step. Like a king that can take multiple steps per turn. Set the max steps and optionally exclude diagonal steps." /></h3>
+        <h3>Step-by-Step Movement <InfoTooltip text="The piece gets a budget of steps and can move one square at a time in any direction, changing direction with each step. Like a king that can take multiple steps per turn. Set the max steps (1–8) and optionally exclude diagonal steps. Values of 7 or higher will disable additional custom-square movement because the step area already covers the entire 15×15 custom-square grid." /></h3>
         <div className={styles["radio-group"]}>
           <label className={styles["radio-label"]}>
             <input
@@ -804,14 +815,15 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
 
         {pieceData.step_by_step_movement_style && (
           <div className={styles["sub-field"]}>
-            <label>Maximum Steps</label>
+            <label>Maximum Steps (1–{MAX_STEP_BY_STEP})</label>
             <NumberInput
               value={Math.abs(pieceData.step_by_step_movement_value || 0) || ""}
               onChange={(val) => {
                 const noDiagonal = document.getElementById("step_by_step_no_diagonal")?.checked;
-                handleNumberChange("step_by_step_movement_value", noDiagonal ? -Math.abs(val || 0) : Math.abs(val || 0));
+                const clamped = Math.min(MAX_STEP_BY_STEP, Math.max(0, Math.abs(val || 0)));
+                handleNumberChange("step_by_step_movement_value", noDiagonal ? -clamped : clamped);
               }}
-              options={{ min: 1, placeholder: "Total squares piece can move", className: styles["form-input-small"] }}
+              options={{ min: 1, max: MAX_STEP_BY_STEP, placeholder: `Total squares piece can move (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
             />
             <div className={styles["checkbox-row"]}>
               <label className={styles["checkbox-label"]}>
@@ -877,11 +889,13 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
 
       {/* Custom Square Movement */}
       <div className={styles["condition-section"]}>
-        <h3>Custom Square Movement <InfoTooltip text="Click squares on the grid to define specific squares this piece can move to, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other movement configured above." /></h3>
+        <h3>Custom Square Movement <InfoTooltip text="Click squares on the grid to define specific squares this piece can move to, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other movement configured above. Limited to 50 squares. If step-by-step movement is set to 7 or higher, additional custom squares cannot be added because the step area already covers the entire grid." /></h3>
         <CustomSquareSelector
           squares={pieceData.custom_movement_squares}
           onChange={(val) => updatePieceData({ custom_movement_squares: val })}
           color="#4a90d9"
+          addDisabled={customMovementDisabled}
+          addDisabledMessage={customMovementDisabledMessage}
         />
       </div>
 

@@ -5151,6 +5151,47 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 
 const parseBooleanField = (value) => value === true || value === 'true' || value === 1 || value === '1';
 
+// Limits for piece configuration to avoid pathological pieces causing UI lag.
+const MAX_STEP_BY_STEP_VALUE = 8;
+const MAX_CUSTOM_SQUARES = 50;
+
+// Returns null if valid, or an error message string if invalid.
+const validatePieceLimits = (pieceData) => {
+  const stepFields = [
+    ['step_by_step_movement_value', 'step-by-step movement'],
+    ['step_by_step_capture', 'step-by-step capture'],
+    ['step_by_step_attack_value', 'step-by-step ranged attack'],
+    ['step_by_step_attack_range', 'step-by-step ranged attack']
+  ];
+  for (const [field, label] of stepFields) {
+    const raw = pieceData[field];
+    if (raw === undefined || raw === null || raw === '') continue;
+    const num = parseInt(raw);
+    if (!Number.isNaN(num) && Math.abs(num) > MAX_STEP_BY_STEP_VALUE) {
+      return `Maximum ${label} value is ${MAX_STEP_BY_STEP_VALUE}.`;
+    }
+  }
+
+  const customFields = [
+    ['custom_movement_squares', 'custom movement squares'],
+    ['custom_attack_squares', 'custom attack squares']
+  ];
+  for (const [field, label] of customFields) {
+    const raw = pieceData[field];
+    if (!raw) continue;
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (Array.isArray(parsed) && parsed.length > MAX_CUSTOM_SQUARES) {
+        return `Maximum of ${MAX_CUSTOM_SQUARES} ${label} allowed (received ${parsed.length}).`;
+      }
+    } catch (e) {
+      return `Invalid ${label} payload.`;
+    }
+  }
+
+  return null;
+};
+
 app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_images', 8), async (req, res) => {
   try {
     const pieceData = req.body;
@@ -5177,6 +5218,12 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }
+    }
+
+    // Validate piece configuration limits (step-by-step max & custom-square count)
+    const limitsError = validatePieceLimits(pieceData);
+    if (limitsError) {
+      return res.status(400).send({ message: limitsError });
     }
 
     // Rename with color suffix when exactly 2 images: first = -w (white/light), second = -b (black/dark)
@@ -5567,6 +5614,12 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }
+    }
+
+    // Validate piece configuration limits (step-by-step max & custom-square count)
+    const limitsError = validatePieceLimits(pieceData);
+    if (limitsError) {
+      return res.status(400).send({ message: limitsError });
     }
 
     // Handle images

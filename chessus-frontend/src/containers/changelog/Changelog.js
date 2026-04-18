@@ -4,6 +4,17 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 18, 2026",
+    title: "Piece Wizard Limits & Detail Page Polish",
+    items: [
+      "Step-by-step movement, capture, and ranged attack values are now capped at 8 to prevent extreme pieces from causing hover lag",
+      "Custom square movement and attack are now limited to 50 squares each, with a live counter shown in the piece wizard",
+      "Adding new custom squares is automatically blocked when step-by-step movement, capture, or ranged attack is set to 7 or higher (the step area already covers the entire grid), with a clear in-wizard message explaining why",
+      "Updated piece wizard tooltips to document the new step-by-step and custom-square limits",
+      "Piece detail pages now collapse the custom-square movement and attack lists by default when there are 10 or more squares, with a Show all / Hide toggle",
+    ]
+  },
+  {
     date: "April 17, 2026",
     title: "Theme Polish, Live Fixes & Better Browsing",
     items: [

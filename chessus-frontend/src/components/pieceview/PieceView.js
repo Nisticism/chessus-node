@@ -395,6 +395,18 @@ const PieceView = () => {
     [piece?.custom_attack_squares]
   );
 
+  const COLLAPSE_CUSTOM_SQUARES_THRESHOLD = 10;
+  const [showCustomMovementList, setShowCustomMovementList] = useState(false);
+  const [showCustomAttackList, setShowCustomAttackList] = useState(false);
+
+  useEffect(() => {
+    setShowCustomMovementList(customMovementSquares.length > 0 && customMovementSquares.length < COLLAPSE_CUSTOM_SQUARES_THRESHOLD);
+  }, [customMovementSquares.length]);
+
+  useEffect(() => {
+    setShowCustomAttackList(customAttackSquares.length > 0 && customAttackSquares.length < COLLAPSE_CUSTOM_SQUARES_THRESHOLD);
+  }, [customAttackSquares.length]);
+
   const formatCustomSquareCoordinate = (square) => `(${square.row}, ${square.col})`;
 
   const formatCustomSquareArray = (squares) => `[${squares.map(formatCustomSquareCoordinate).join(', ')}]`;
@@ -852,20 +864,35 @@ const PieceView = () => {
             <div className={styles["ability-card"]}>
               <div className={styles["ability-header"]}>
                 <span className={styles["ability-icon"]}>🟩</span>
-                <h3>Custom Square Movement</h3>
+                <h3>Custom Square Movement ({customMovementSquares.length})</h3>
               </div>
               <div className={styles["custom-square-summary"]}>
                 Relative offsets [row, col]:
                 <span className={styles["custom-square-array"]}>{formatCustomSquareArray(customMovementSquares)}</span>
               </div>
-              <div className={styles["custom-square-list"]}>
-                {customMovementSquares.map((square, index) => (
-                  <div key={`${square.row}-${square.col}-${index}`} className={styles["custom-square-item"]}>
-                    <span className={styles["custom-square-coordinate"]}>{formatCustomSquareCoordinate(square)}</span>
-                    <span className={styles["custom-square-description"]}>{describeCustomSquareOffset(square)}</span>
-                  </div>
-                ))}
-              </div>
+              {customMovementSquares.length >= COLLAPSE_CUSTOM_SQUARES_THRESHOLD && (
+                <button
+                  type="button"
+                  onClick={() => setShowCustomMovementList((prev) => !prev)}
+                  style={{
+                    marginTop: '8px', marginBottom: '8px', padding: '4px 10px',
+                    background: 'transparent', border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: '4px', color: 'inherit', cursor: 'pointer', fontSize: '0.85rem'
+                  }}
+                >
+                  {showCustomMovementList ? `Hide ${customMovementSquares.length} squares` : `Show all ${customMovementSquares.length} squares`}
+                </button>
+              )}
+              {showCustomMovementList && (
+                <div className={styles["custom-square-list"]}>
+                  {customMovementSquares.map((square, index) => (
+                    <div key={`${square.row}-${square.col}-${index}`} className={styles["custom-square-item"]}>
+                      <span className={styles["custom-square-coordinate"]}>{formatCustomSquareCoordinate(square)}</span>
+                      <span className={styles["custom-square-description"]}>{describeCustomSquareOffset(square)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1103,20 +1130,35 @@ const PieceView = () => {
             <div className={styles["ability-card"]}>
               <div className={styles["ability-header"]}>
                 <span className={styles["ability-icon"]}>🟥</span>
-                <h3>Custom Square Attack</h3>
+                <h3>Custom Square Attack ({customAttackSquares.length})</h3>
               </div>
               <div className={styles["custom-square-summary"]}>
                 Relative capture offsets [row, col]:
                 <span className={styles["custom-square-array"]}>{formatCustomSquareArray(customAttackSquares)}</span>
               </div>
-              <div className={styles["custom-square-list"]}>
-                {customAttackSquares.map((square, index) => (
-                  <div key={`${square.row}-${square.col}-${index}`} className={styles["custom-square-item"]}>
-                    <span className={styles["custom-square-coordinate"]}>{formatCustomSquareCoordinate(square)}</span>
-                    <span className={styles["custom-square-description"]}>{describeCustomSquareOffset(square)}</span>
-                  </div>
-                ))}
-              </div>
+              {customAttackSquares.length >= COLLAPSE_CUSTOM_SQUARES_THRESHOLD && (
+                <button
+                  type="button"
+                  onClick={() => setShowCustomAttackList((prev) => !prev)}
+                  style={{
+                    marginTop: '8px', marginBottom: '8px', padding: '4px 10px',
+                    background: 'transparent', border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: '4px', color: 'inherit', cursor: 'pointer', fontSize: '0.85rem'
+                  }}
+                >
+                  {showCustomAttackList ? `Hide ${customAttackSquares.length} squares` : `Show all ${customAttackSquares.length} squares`}
+                </button>
+              )}
+              {showCustomAttackList && (
+                <div className={styles["custom-square-list"]}>
+                  {customAttackSquares.map((square, index) => (
+                    <div key={`${square.row}-${square.col}-${index}`} className={styles["custom-square-item"]}>
+                      <span className={styles["custom-square-coordinate"]}>{formatCustomSquareCoordinate(square)}</span>
+                      <span className={styles["custom-square-description"]}>{describeCustomSquareOffset(square)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

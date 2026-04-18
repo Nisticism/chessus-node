@@ -3,10 +3,19 @@ import styles from "./piecewizard.module.scss";
 
 const BOARD_SIZE = 15; // 15x15 grid
 const CENTER = Math.floor(BOARD_SIZE / 2); // piece sits at center (7,7)
+export const MAX_CUSTOM_SQUARES = 50;
 
-const CustomSquareSelector = ({ squares, onChange, color = "#4a90d9" }) => {
+const CustomSquareSelector = ({
+  squares,
+  onChange,
+  color = "#4a90d9",
+  maxSquares = MAX_CUSTOM_SQUARES,
+  addDisabled = false,
+  addDisabledMessage = ""
+}) => {
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [paintMode, setPaintMode] = useState(null); // 'add' or 'remove'
+  const [warning, setWarning] = useState("");
   const gridRef = useRef(null);
 
   // Get user's preferred board colors from localStorage
@@ -40,11 +49,20 @@ const CustomSquareSelector = ({ squares, onChange, color = "#4a90d9" }) => {
       newSquares = selectedSquares.filter(sq => !(sq.row === row && sq.col === col));
     } else {
       if (exists) return; // Already selected
+      if (addDisabled) {
+        if (addDisabledMessage) setWarning(addDisabledMessage);
+        return;
+      }
+      if (selectedSquares.length >= maxSquares) {
+        setWarning(`Maximum of ${maxSquares} custom squares allowed.`);
+        return;
+      }
       newSquares = [...selectedSquares, { row, col }];
     }
+    setWarning("");
 
     onChange(newSquares.length > 0 ? JSON.stringify(newSquares) : null);
-  }, [selectedSquares, onChange]);
+  }, [selectedSquares, onChange, addDisabled, addDisabledMessage, maxSquares]);
 
   const handleCellAction = (row, col, mode = null) => {
     const offset = { row: row - CENTER, col: col - CENTER };
@@ -120,14 +138,33 @@ const CustomSquareSelector = ({ squares, onChange, color = "#4a90d9" }) => {
   };
 
   const clearAll = () => {
+    setWarning("");
     onChange(null);
   };
+
+  const atLimit = selectedSquares.length >= maxSquares;
+  const limitMessage = addDisabled
+    ? (addDisabledMessage || "Adding new custom squares is disabled.")
+    : (atLimit
+      ? `Maximum of ${maxSquares} custom squares reached. Remove a square to add another.`
+      : "");
 
   return (
     <div className={styles["custom-square-selector"]}>
       <p className={styles["custom-square-hint"]}>
         Click or drag on squares to select where this piece can reach. The highlighted center square is the piece's position.
+        {` `}({selectedSquares.length}/{maxSquares} squares)
       </p>
+      {limitMessage && (
+        <p className={styles["custom-square-hint"]} style={{ color: '#e8a735', marginBottom: '0.5rem' }}>
+          {limitMessage}
+        </p>
+      )}
+      {warning && warning !== limitMessage && (
+        <p className={styles["custom-square-hint"]} style={{ color: '#e8a735', marginBottom: '0.5rem' }}>
+          {warning}
+        </p>
+      )}
       <div
         ref={gridRef}
         className={styles["custom-square-grid"]}

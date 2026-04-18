@@ -112,6 +112,18 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
     updatePieceData({ [field]: numValue });
   };
 
+  // Step-by-step capture/attack is capped at 8 because the custom-square selector
+  // grid is 15x15 (radius 7). At step value 7+ the grid is fully covered, so we
+  // disable adding custom squares.
+  const MAX_STEP_BY_STEP = 8;
+  const STEP_DISABLES_CUSTOM = 7;
+  const stepCaptureAbs = Math.abs(pieceData.step_by_step_capture || 0);
+  const stepAttackAbs = Math.abs(pieceData.step_by_step_attack_range || 0);
+  const customAttackDisabled = stepCaptureAbs >= STEP_DISABLES_CUSTOM || stepAttackAbs >= STEP_DISABLES_CUSTOM;
+  const customAttackDisabledMessage = customAttackDisabled
+    ? `Custom square attack cannot be expanded while step-by-step capture or ranged attack is ${STEP_DISABLES_CUSTOM} or higher (it already covers the grid). Reduce step-by-step capture/attack below ${STEP_DISABLES_CUSTOM} to add more squares.`
+    : "";
+
   // Parse additional captures from special_scenario_capture JSON
   const getAdditionalCaptures = () => {
     if (!pieceData.special_scenario_capture) return {};
@@ -1017,15 +1029,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
             {/* Step-by-Step Capture */}
             {!pieceData.attacks_like_movement && (
               <div className={styles["sub-field"]}>
-                <h4>Step-by-Step Capture <InfoTooltip text="A step budget for capturing. The piece moves one square at a time in any direction, changing direction each step, to reach and capture an enemy. The checkbox restricts steps to orthogonal directions only (no diagonal). Leave empty to disable." /></h4>
-                <label>Total Capture Steps</label>
+                <h4>Step-by-Step Capture <InfoTooltip text="A step budget for capturing. The piece moves one square at a time in any direction, changing direction each step, to reach and capture an enemy. Maximum 8 steps. The checkbox restricts steps to orthogonal directions only (no diagonal). Leave empty to disable. Values of 7 or higher disable additional custom-square attacks." /></h4>
+                <label>Total Capture Steps (1–{MAX_STEP_BY_STEP})</label>
                 <NumberInput
                   value={pieceData.step_by_step_capture ? Math.abs(pieceData.step_by_step_capture) : ""}
                   onChange={(val) => {
                     const currentIsNoDiagonal = pieceData.step_by_step_capture < 0;
-                    handleChange("step_by_step_capture", currentIsNoDiagonal && val ? -val : val || null);
+                    const clamped = val ? Math.min(MAX_STEP_BY_STEP, Math.max(0, Math.abs(val))) : null;
+                    handleChange("step_by_step_capture", clamped && currentIsNoDiagonal ? -clamped : (clamped || null));
                   }}
-                  options={{ placeholder: "Leave empty to disable", className: styles["form-input-small"] }}
+                  options={{ min: 1, max: MAX_STEP_BY_STEP, placeholder: `Leave empty to disable (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
                 />
                 <label className={styles["checkbox-label-inline"]}>
                   <input
@@ -1438,15 +1451,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
 
             {/* Step-by-Step Ranged Attack */}
             <div className={styles["sub-field"]}>
-              <h4>Step-by-Step Ranged Attack</h4>
-              <label>Total Attack Steps</label>
+              <h4>Step-by-Step Ranged Attack <InfoTooltip text="A step budget for ranged attacks. The piece projects an attack one square at a time in any direction, changing direction each step. Maximum 8 steps. The checkbox restricts steps to orthogonal directions only (no diagonal). Leave empty to disable. Values of 7 or higher disable additional custom-square attacks." /></h4>
+              <label>Total Attack Steps (1–{MAX_STEP_BY_STEP})</label>
               <NumberInput
                 value={pieceData.step_by_step_attack_range ? Math.abs(pieceData.step_by_step_attack_range) : ""}
                 onChange={(val) => {
                   const currentIsNoDiagonal = pieceData.step_by_step_attack_range < 0;
-                  handleChange("step_by_step_attack_range", currentIsNoDiagonal && val ? -val : val || null);
+                  const clamped = val ? Math.min(MAX_STEP_BY_STEP, Math.max(0, Math.abs(val))) : null;
+                  handleChange("step_by_step_attack_range", clamped && currentIsNoDiagonal ? -clamped : (clamped || null));
                 }}
-                options={{ placeholder: "Leave empty to disable", className: styles["form-input-small"] }}
+                options={{ min: 1, max: MAX_STEP_BY_STEP, placeholder: `Leave empty to disable (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
               />
               <label className={styles["checkbox-label-inline"]}>
                 <input
@@ -1470,11 +1484,13 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
 
       {/* Custom Square Attack */}
       <div className={styles["condition-section"]}>
-        <h3>Custom Square Attack <InfoTooltip text="Click squares on the grid to define specific squares this piece can capture on, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other capture configured above." /></h3>
+        <h3>Custom Square Attack <InfoTooltip text="Click squares on the grid to define specific squares this piece can capture on, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other capture configured above. Limited to 50 squares. If step-by-step capture or step-by-step ranged attack is set to 7 or higher, additional custom squares cannot be added because the step area already covers the entire grid." /></h3>
         <CustomSquareSelector
           squares={pieceData.custom_attack_squares}
           onChange={(val) => updatePieceData({ custom_attack_squares: val })}
           color="#d94a4a"
+          addDisabled={customAttackDisabled}
+          addDisabledMessage={customAttackDisabledMessage}
         />
       </div>
 
