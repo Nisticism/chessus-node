@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import React, { useState, useEffect, useMemo } from "react";
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "axios";
 import styles from "./matchview.module.scss";
@@ -15,7 +15,18 @@ const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 const MatchView = () => {
   const { gameId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user: currentUser } = useSelector((state) => state.authReducer);
+
+  // Optional viewer hint: when navigated from a player profile, show that player on the bottom.
+  const viewerUserId = useMemo(() => {
+    try {
+      const v = new URLSearchParams(location.search).get('viewerUserId');
+      return v ? parseInt(v, 10) : null;
+    } catch {
+      return null;
+    }
+  }, [location.search]);
   
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -33,13 +44,17 @@ const MatchView = () => {
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Keyboard navigation for review mode
+  // Index semantics:
+  //   null = final position (after last move)
+  //   -1   = starting position (before any moves), no row highlighted
+  //   0..N = position after move at that index, that row highlighted
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (reviewMoveIndex === null || !match?.moveHistory) return;
       const totalMoves = match.moveHistory.length;
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        setReviewMoveIndex(prev => prev > 0 ? prev - 1 : prev);
+        setReviewMoveIndex(prev => prev > -1 ? prev - 1 : prev);
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         setReviewMoveIndex(prev => prev < totalMoves - 1 ? prev + 1 : null);
@@ -146,16 +161,21 @@ const MatchView = () => {
     const squareSize = Math.min(60, availableWidth / Math.max(boardWidth, boardHeight));
     const squares = [];
     
-    // Flip the board so the current user's side is at the bottom
+    // Flip the board so the current user's (or profile owner's) side is at the bottom
     const userPlayer = currentUser && match.players?.find(p => p.id === currentUser.id);
-    const shouldFlip = userPlayer?.position === 2;
+    const viewerPlayer = viewerUserId ? match.players?.find(p => p.id === viewerUserId) : null;
+    const orientPlayer = userPlayer || viewerPlayer;
+    const shouldFlip = orientPlayer?.position === 2;
     
-    // Use replayed pieces when reviewing, otherwise show final position
+    // Use replayed pieces when reviewing, otherwise show final position.
+    // reviewMoveIndex === -1 means starting position (no moves applied).
     const isReviewing = reviewMoveIndex !== null && match.initialPieces;
     const pieces = isReviewing
-      ? replayToMove(match.initialPieces, match.moveHistory, reviewMoveIndex)
+      ? (reviewMoveIndex < 0
+          ? (Array.isArray(match.initialPieces) ? JSON.parse(JSON.stringify(match.initialPieces)) : [])
+          : replayToMove(match.initialPieces, match.moveHistory, reviewMoveIndex))
       : (Array.isArray(match.pieces) ? match.pieces : []);
-    const lastMove = isReviewing ? match.moveHistory[reviewMoveIndex] : null;
+    const lastMove = isReviewing && reviewMoveIndex >= 0 ? match.moveHistory[reviewMoveIndex] : null;
 
     for (let displayY = 0; displayY < boardHeight; displayY++) {
       for (let displayX = 0; displayX < boardWidth; displayX++) {
@@ -328,6 +348,14 @@ const MatchView = () => {
   const isUserInGame = currentUser && match.players?.some(p => p.id === currentUser.id);
   const userResult = isUserInGame ? getResultForPlayer(currentUser.id) : null;
 
+  // Match the board orientation: when the viewer (current user, or profile owner)
+  // is position 2, show that player at the bottom of the players panel.
+  const orientPlayer = (currentUser && match.players?.find(p => p.id === currentUser.id))
+    || (viewerUserId ? match.players?.find(p => p.id === viewerUserId) : null);
+  const flipPlayers = orientPlayer?.position === 2;
+  const topPlayer = flipPlayers ? player1 : player2;
+  const bottomPlayer = flipPlayers ? player2 : player1;
+
   return (
     <div className={styles["match-view-container"]}>
       {/* Result Banner */}
@@ -361,74 +389,74 @@ const MatchView = () => {
       <div className={styles["match-content"]}>
         {/* Players Panel */}
         <div className={styles["players-panel"]}>
-          {/* Player 1 */}
-          <div className={`${styles["player-card"]} ${match.winnerId === player1?.id ? styles["winner"] : ""}`}>
+          {/* Top player (opponent of viewer) */}
+          <div className={`${styles["player-card"]} ${match.winnerId === topPlayer?.id ? styles["winner"] : ""}`}>
             <div className={styles["player-avatar"]}>
-              {player1?.id === 'bot' ? (
+              {topPlayer?.id === 'bot' ? (
                 <span>🤖</span>
-              ) : player1?.profilePicture ? (
-                <img src={`${ASSET_URL}${player1.profilePicture}`} alt={player1.username} />
+              ) : topPlayer?.profilePicture ? (
+                <img src={`${ASSET_URL}${topPlayer.profilePicture}`} alt={topPlayer.username} />
               ) : (
-                <span>{player1?.username?.charAt(0).toUpperCase() || "?"}</span>
+                <span>{topPlayer?.username?.charAt(0).toUpperCase() || "?"}</span>
               )}
             </div>
             <div className={styles["player-info"]}>
-              {player1?.id === 'bot' ? (
-                <span className={styles["player-name"]}>{player1?.username || "Computer"}</span>
+              {topPlayer?.id === 'bot' ? (
+                <span className={styles["player-name"]}>{topPlayer?.username || "Computer"}</span>
               ) : (
-                <Link to={`/profile/${player1?.username}`} className={styles["player-name"]}>
-                  {player1?.username || "Player 1"}
+                <Link to={`/profile/${topPlayer?.username}`} className={styles["player-name"]}>
+                  {topPlayer?.username || "Player"}
                 </Link>
               )}
-              {player1?.id !== 'bot' && (
-                <span className={styles["player-elo"]}>ELO: {player1?.elo || "?"}</span>
+              {topPlayer?.id !== 'bot' && (
+                <span className={styles["player-elo"]}>ELO: {topPlayer?.elo || "?"}</span>
               )}
-              {player1?.id !== 'bot' && match.eloChanges && player1 && (
-                <span className={`${styles["elo-change"]} ${match.winnerId === player1.id ? styles["positive"] : styles["negative"]}`}>
-                  {match.winnerId === player1.id 
-                    ? `+${match.eloChanges.winner?.change || 0}` 
+              {topPlayer?.id !== 'bot' && match.eloChanges && topPlayer && (
+                <span className={`${styles["elo-change"]} ${match.winnerId === topPlayer.id ? styles["positive"] : styles["negative"]}`}>
+                  {match.winnerId === topPlayer.id
+                    ? `+${match.eloChanges.winner?.change || 0}`
                     : `${match.eloChanges.loser?.change || 0}`}
                 </span>
               )}
             </div>
-            {match.winnerId === player1?.id && (
+            {match.winnerId === topPlayer?.id && (
               <div className={styles["winner-badge"]}>👑</div>
             )}
           </div>
 
           <div className={styles["vs-divider"]}>VS</div>
 
-          {/* Player 2 */}
-          <div className={`${styles["player-card"]} ${match.winnerId === player2?.id ? styles["winner"] : ""}`}>
+          {/* Bottom player (viewer's side) */}
+          <div className={`${styles["player-card"]} ${match.winnerId === bottomPlayer?.id ? styles["winner"] : ""}`}>
             <div className={styles["player-avatar"]}>
-              {player2?.id === 'bot' ? (
+              {bottomPlayer?.id === 'bot' ? (
                 <span>🤖</span>
-              ) : player2?.profilePicture ? (
-                <img src={`${ASSET_URL}${player2.profilePicture}`} alt={player2.username} />
+              ) : bottomPlayer?.profilePicture ? (
+                <img src={`${ASSET_URL}${bottomPlayer.profilePicture}`} alt={bottomPlayer.username} />
               ) : (
-                <span>{player2?.username?.charAt(0).toUpperCase() || "?"}</span>
+                <span>{bottomPlayer?.username?.charAt(0).toUpperCase() || "?"}</span>
               )}
             </div>
             <div className={styles["player-info"]}>
-              {player2?.id === 'bot' ? (
-                <span className={styles["player-name"]}>{player2?.username || "Computer"}</span>
+              {bottomPlayer?.id === 'bot' ? (
+                <span className={styles["player-name"]}>{bottomPlayer?.username || "Computer"}</span>
               ) : (
-                <Link to={`/profile/${player2?.username}`} className={styles["player-name"]}>
-                  {player2?.username || "Player 2"}
+                <Link to={`/profile/${bottomPlayer?.username}`} className={styles["player-name"]}>
+                  {bottomPlayer?.username || "Player"}
                 </Link>
               )}
-              {player2?.id !== 'bot' && (
-                <span className={styles["player-elo"]}>ELO: {player2?.elo || "?"}</span>
+              {bottomPlayer?.id !== 'bot' && (
+                <span className={styles["player-elo"]}>ELO: {bottomPlayer?.elo || "?"}</span>
               )}
-              {player2?.id !== 'bot' && match.eloChanges && player2 && (
-                <span className={`${styles["elo-change"]} ${match.winnerId === player2.id ? styles["positive"] : styles["negative"]}`}>
-                  {match.winnerId === player2.id 
-                    ? `+${match.eloChanges.winner?.change || 0}` 
+              {bottomPlayer?.id !== 'bot' && match.eloChanges && bottomPlayer && (
+                <span className={`${styles["elo-change"]} ${match.winnerId === bottomPlayer.id ? styles["positive"] : styles["negative"]}`}>
+                  {match.winnerId === bottomPlayer.id
+                    ? `+${match.eloChanges.winner?.change || 0}`
                     : `${match.eloChanges.loser?.change || 0}`}
                 </span>
               )}
             </div>
-            {match.winnerId === player2?.id && (
+            {match.winnerId === bottomPlayer?.id && (
               <div className={styles["winner-badge"]}>👑</div>
             )}
           </div>
@@ -437,14 +465,28 @@ const MatchView = () => {
         {/* Board */}
         <div className={styles["board-container"]}>
           <h3 className={styles["board-title"]}>
-            {reviewMoveIndex !== null ? `Move ${reviewMoveIndex + 1} of ${match.moveHistory?.length || 0}` : 'Final Position'}
+            {reviewMoveIndex === null
+              ? 'Final Position'
+              : reviewMoveIndex < 0
+                ? 'Starting Position'
+                : `Move ${reviewMoveIndex + 1} of ${match.moveHistory?.length || 0}`}
           </h3>
-          {reviewMoveIndex !== null && (
+          {match.moveHistory && match.moveHistory.length > 0 && (
             <div className={styles["review-controls"]}>
-              <button onClick={() => setReviewMoveIndex(0)} disabled={reviewMoveIndex === 0}>⏮</button>
-              <button onClick={() => setReviewMoveIndex(prev => Math.max(0, prev - 1))} disabled={reviewMoveIndex === 0}>◀</button>
-              <button onClick={() => setReviewMoveIndex(prev => prev < (match.moveHistory?.length || 1) - 1 ? prev + 1 : prev)} disabled={reviewMoveIndex === (match.moveHistory?.length || 1) - 1}>▶</button>
-              <button onClick={() => setReviewMoveIndex(null)}>⏭ Final</button>
+              <button onClick={() => setReviewMoveIndex(-1)} disabled={reviewMoveIndex === -1}>⏮</button>
+              <button
+                onClick={() => setReviewMoveIndex(prev => prev === null ? Math.max(-1, match.moveHistory.length - 2) : Math.max(-1, prev - 1))}
+                disabled={reviewMoveIndex === -1}
+              >◀</button>
+              <button
+                onClick={() => setReviewMoveIndex(prev => {
+                  const total = match.moveHistory.length;
+                  if (prev === null) return null;
+                  return prev < total - 1 ? prev + 1 : null;
+                })}
+                disabled={reviewMoveIndex === null}
+              >▶</button>
+              <button onClick={() => setReviewMoveIndex(null)} disabled={reviewMoveIndex === null}>⏭ Final</button>
             </div>
           )}
           {renderBoard()}
