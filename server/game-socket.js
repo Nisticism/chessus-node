@@ -6896,65 +6896,62 @@ async function checkPromotionEligibility(piece, targetSquare, gameState) {
 async function getPromotionOptions(gameState, promotingPiece) {
   const pieces = gameState.pieces;
   const pieceOwner = promotingPiece.player_id || promotingPiece.team;
-  
-  // Check if this piece has custom promotion pieces defined
-  if (promotingPiece.promotion_pieces_ids) {
+
+  // Per-placement override (set in game wizard Step 4 → Promotion Options).
+  // Falls back to default behaviour when null/empty.
+  let overrideRaw = promotingPiece.promotion_pieces_override;
+  let overrideIds = null;
+  if (overrideRaw) {
     try {
-      const customPieceIds = JSON.parse(promotingPiece.promotion_pieces_ids);
-      if (Array.isArray(customPieceIds) && customPieceIds.length > 0) {
-        // Load full piece data for the custom promotion pieces from database
-        const eligiblePieces = [];
-        for (const pieceId of customPieceIds) {
-          // First try to find the piece in the current game pieces
-          const existingPiece = pieces.find(p => parseInt(p.piece_id) === parseInt(pieceId));
-          if (existingPiece) {
-            eligiblePieces.push({
-              piece_id: existingPiece.piece_id,
-              piece_name: existingPiece.piece_name,
-              image_location: existingPiece.image_location,
-              image: existingPiece.image,
-              image_url: existingPiece.image_url
-            });
-          } else {
-            // Load from database if not in current game
-            try {
-              const [[pieceData]] = await db_pool.query(
-                `SELECT id as piece_id, piece_name, image_location FROM pieces WHERE id = ?`,
-                [pieceId]
-              );
-              if (pieceData) {
-                eligiblePieces.push({
-                  piece_id: pieceData.piece_id,
-                  piece_name: pieceData.piece_name,
-                  image_location: pieceData.image_location,
-                  image: null,
-                  image_url: null
-                });
-              }
-            } catch (dbErr) {
-              console.error(`Error loading piece ${pieceId} for promotion:`, dbErr);
-            }
-          }
-        }
-        
-        return eligiblePieces;
-      }
-    } catch (parseErr) {
-      console.error('Error parsing promotion_pieces_ids:', parseErr);
-      // Fall through to default logic
+      const parsed = typeof overrideRaw === 'string' ? JSON.parse(overrideRaw) : overrideRaw;
+      if (Array.isArray(parsed) && parsed.length > 0) overrideIds = parsed.map(Number);
+    } catch (e) {
+      console.error('Error parsing promotion_pieces_override:', e);
     }
   }
-  
-  // Default logic: Get all unique piece types that the player started with
-  // Use initialPieces (snapshot from game start) so captured piece types remain available
+
+  if (overrideIds) {
+    const eligiblePieces = [];
+    for (const pieceId of overrideIds) {
+      const existingPiece = pieces.find(p => parseInt(p.piece_id) === parseInt(pieceId));
+      if (existingPiece) {
+        eligiblePieces.push({
+          piece_id: existingPiece.piece_id,
+          piece_name: existingPiece.piece_name,
+          image_location: existingPiece.image_location,
+          image: existingPiece.image,
+          image_url: existingPiece.image_url
+        });
+      } else {
+        try {
+          const [[pieceData]] = await db_pool.query(
+            `SELECT id as piece_id, piece_name, image_location FROM pieces WHERE id = ?`,
+            [pieceId]
+          );
+          if (pieceData) {
+            eligiblePieces.push({
+              piece_id: pieceData.piece_id,
+              piece_name: pieceData.piece_name,
+              image_location: pieceData.image_location,
+              image: null,
+              image_url: null
+            });
+          }
+        } catch (dbErr) {
+          console.error(`Error loading piece ${pieceId} for promotion:`, dbErr);
+        }
+      }
+    }
+    return eligiblePieces;
+  }
+
+  // Default logic: unique piece types the player started with.
   const sourcePieces = gameState.initialPieces || pieces;
   const playerPieces = sourcePieces.filter(p => {
     const owner = p.player_id || p.team;
     return owner === pieceOwner;
   });
-  
-  // Create a map of piece_id to piece data, keeping one example of each type
-  // Also track if any piece of that type has checkmate/capture rules
+
   const pieceTypeMap = new Map();
   for (const p of playerPieces) {
     if (!pieceTypeMap.has(p.piece_id)) {
@@ -6964,30 +6961,45 @@ async function getPromotionOptions(gameState, promotingPiece) {
         hasCaptureRule: p.ends_game_on_capture || false
       });
     } else {
-      // If any piece of this type has the checkmate/capture rule, mark it
       const existing = pieceTypeMap.get(p.piece_id);
       if (p.ends_game_on_checkmate) existing.hasCheckmateRule = true;
       if (p.ends_game_on_capture) existing.hasCaptureRule = true;
     }
   }
-  
-  // Filter out:
-  // 1. Promotable pieces (pieces with can_promote flag) — you can't promote into another promotable piece
-  // 2. Pieces that have ends_game_on_checkmate flag (can be checkmated)
-  // 3. Pieces that have ends_game_on_capture flag (lose on capture)
-  // Uses initialPieces so captured piece types still appear as options
+
+  // Per-placement promotion permissions (set in game wizard Step 4).
+  const allowCheckmate = !!promotingPiece.can_promote_to_checkmate;
+  const limitCheckmate = !!promotingPiece.limit_promote_checkmate_to_original;
+  const allowCapture = !!promotingPiece.can_promote_to_capture;
+  const limitCapture = !!promotingPiece.limit_promote_capture_to_original;
+
+  // For "limit to original" enforcement, count current owner's living pieces of each type
+  // versus the original count from gameState.initialPieces.
+  const countByPieceId = (collection, pid) =>
+    collection.filter(p => parseInt(p.piece_id) === parseInt(pid) && (p.player_id || p.team) === pieceOwner).length;
+
   const eligiblePieces = [];
-  
-  for (const [pieceId, pieceData] of pieceTypeMap) {
-    // Skip promotable pieces (e.g. pawns — you can't promote a pawn into another pawn)
+  for (const [, pieceData] of pieceTypeMap) {
     if (pieceData.can_promote) continue;
-    
-    // Skip pieces with checkmate rule
-    if (pieceData.hasCheckmateRule) continue;
-    
-    // Skip pieces with capture-loss rule
-    if (pieceData.hasCaptureRule) continue;
-    
+
+    if (pieceData.hasCheckmateRule) {
+      if (!allowCheckmate) continue;
+      if (limitCheckmate) {
+        const original = countByPieceId(sourcePieces, pieceData.piece_id);
+        const current = countByPieceId(pieces, pieceData.piece_id);
+        if (current >= original) continue;
+      }
+    }
+
+    if (pieceData.hasCaptureRule) {
+      if (!allowCapture) continue;
+      if (limitCapture) {
+        const original = countByPieceId(sourcePieces, pieceData.piece_id);
+        const current = countByPieceId(pieces, pieceData.piece_id);
+        if (current >= original) continue;
+      }
+    }
+
     eligiblePieces.push({
       piece_id: pieceData.piece_id,
       piece_name: pieceData.piece_name,
@@ -6996,7 +7008,7 @@ async function getPromotionOptions(gameState, promotingPiece) {
       image_url: pieceData.image_url
     });
   }
-  
+
   return eligiblePieces;
 }
 

@@ -598,7 +598,13 @@ const getGameById = async (gameId) => {
         // Trample & Ghostwalk
         trample: Boolean(piece.trample),
         trample_radius: piece.trample_radius ?? 0,
-        ghostwalk: Boolean(piece.ghostwalk)
+        ghostwalk: Boolean(piece.ghostwalk),
+        // Per-placement promotion overrides
+        promotion_pieces_override: piece.promotion_pieces_override || null,
+        can_promote_to_checkmate: Boolean(piece.can_promote_to_checkmate),
+        limit_promote_checkmate_to_original: Boolean(piece.limit_promote_checkmate_to_original),
+        can_promote_to_capture: Boolean(piece.can_promote_to_capture),
+        limit_promote_capture_to_original: Boolean(piece.limit_promote_capture_to_original)
       };
 
       // For multi-tile pieces, create extension square markers
@@ -681,11 +687,23 @@ const getPiecesForGameType = async (gameTypeId) => {
  * @param {boolean} canControlSquares - If true, this piece can control squares for the control squares win condition
  * @returns {Promise<Object>} Insert result
  */
-const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false, trample = false, trampleRadius = 0, ghostwalk = false, dieOnCapture = false, attackRadius = 0, imageIndex = null) => {
+const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false, trample = false, trampleRadius = 0, ghostwalk = false, dieOnCapture = false, attackRadius = 0, imageIndex = null, promotionPiecesOverride = null, canPromoteToCheckmate = false, limitPromoteCheckmateToOriginal = false, canPromoteToCapture = false, limitPromoteCaptureToOriginal = false) => {
+  // Normalize promotionPiecesOverride: accept null, JSON string, or array
+  let promoOverrideJson = null;
+  if (promotionPiecesOverride != null) {
+    if (typeof promotionPiecesOverride === 'string') {
+      try {
+        const parsed = JSON.parse(promotionPiecesOverride);
+        if (Array.isArray(parsed) && parsed.length > 0) promoOverrideJson = JSON.stringify(parsed.map(Number));
+      } catch (e) { /* ignore malformed */ }
+    } else if (Array.isArray(promotionPiecesOverride) && promotionPiecesOverride.length > 0) {
+      promoOverrideJson = JSON.stringify(promotionPiecesOverride.map(Number));
+    }
+  }
   const result = await query(`
-    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen, burn_damage, burn_duration, show_burn, trample, trample_radius, ghostwalk, die_on_capture, attack_radius, image_index)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0, burnDamage || 0, burnDuration || 0, showBurn ? 1 : 0, trample ? 1 : 0, trampleRadius || 0, ghostwalk ? 1 : 0, dieOnCapture ? 1 : 0, attackRadius || 0, (imageIndex == null || imageIndex < 0) ? null : Number(imageIndex)]);
+    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen, burn_damage, burn_duration, show_burn, trample, trample_radius, ghostwalk, die_on_capture, attack_radius, image_index, promotion_pieces_override, can_promote_to_checkmate, limit_promote_checkmate_to_original, can_promote_to_capture, limit_promote_capture_to_original)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0, burnDamage || 0, burnDuration || 0, showBurn ? 1 : 0, trample ? 1 : 0, trampleRadius || 0, ghostwalk ? 1 : 0, dieOnCapture ? 1 : 0, attackRadius || 0, (imageIndex == null || imageIndex < 0) ? null : Number(imageIndex), promoOverrideJson, canPromoteToCheckmate ? 1 : 0, limitPromoteCheckmateToOriginal ? 1 : 0, canPromoteToCapture ? 1 : 0, limitPromoteCaptureToOriginal ? 1 : 0]);
   return result;
 };
 

@@ -368,7 +368,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
               manual_castling_partners: pieceData.manual_castling_partners || false,
               castling_partner_left_key: pieceData.castling_partner_left_key || null,
               castling_partner_right_key: pieceData.castling_partner_right_key || null,
-              castling_distance: pieceData.castling_distance ?? 2
+              castling_distance: pieceData.castling_distance ?? 2,
+              // Promotion options (per-placement override)
+              promotion_pieces_override: pieceData.promotion_pieces_override ?? null,
+              can_promote_to_checkmate: pieceData.can_promote_to_checkmate || false,
+              limit_promote_checkmate_to_original: pieceData.limit_promote_checkmate_to_original || false,
+              can_promote_to_capture: pieceData.can_promote_to_capture || false,
+              limit_promote_capture_to_original: pieceData.limit_promote_capture_to_original || false
             };
           }
           return newPlacements;
@@ -434,7 +440,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
             castling_partner_right_key: pieceData.castling_partner_right_key || null,
-            castling_distance: pieceData.castling_distance ?? 2
+            castling_distance: pieceData.castling_distance ?? 2,
+            // Promotion options (per-placement override)
+            promotion_pieces_override: pieceData.promotion_pieces_override ?? null,
+            can_promote_to_checkmate: pieceData.can_promote_to_checkmate || false,
+            limit_promote_checkmate_to_original: pieceData.limit_promote_checkmate_to_original || false,
+            can_promote_to_capture: pieceData.can_promote_to_capture || false,
+            limit_promote_capture_to_original: pieceData.limit_promote_capture_to_original || false
           };
 
           // For multi-tile pieces, mark the other occupied squares with a reference to the anchor
@@ -1313,6 +1325,12 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         piece_width: pw,
         piece_height: ph,
         player_id: targetPlayerId,
+        // Promotion options mirror as-is (player-agnostic)
+        promotion_pieces_override: sourcePiece.promotion_pieces_override ?? null,
+        can_promote_to_checkmate: sourcePiece.can_promote_to_checkmate || false,
+        limit_promote_checkmate_to_original: sourcePiece.limit_promote_checkmate_to_original || false,
+        can_promote_to_capture: sourcePiece.can_promote_to_capture || false,
+        limit_promote_capture_to_original: sourcePiece.limit_promote_capture_to_original || false,
       };
       // Place extension squares
       for (let dr = 0; dr < ph; dr++) {

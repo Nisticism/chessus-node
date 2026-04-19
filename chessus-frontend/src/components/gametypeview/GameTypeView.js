@@ -965,33 +965,66 @@ const GameTypeView = () => {
       let promoContent = `**Promotion**\nCertain squares on the board are promotion squares. When a promotable piece lands on a promotion square, it can transform into a different, more powerful piece.\n\n**Promotion Squares:** ${promoSquareDescs.join(', ')}`;
 
       if (promotablePieces.length > 0) {
-        const promoDescs = promotablePieces.map(piece => {
-          const pieceData = pieceDataMap[piece.id] || piece;
-          const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
-          // Determine what the piece promotes to
-          let promotesTo = 'any non-checkmate piece in the game';
-          if (pieceData.promotion_pieces_ids) {
+        // Build per-placement rule descriptions (placements of the same piece type may
+        // have different per-placement promotion overrides). Dedupe identical rule sets.
+        const seen = new Set();
+        const ruleLines = [];
+        Object.values(piecePlacements).forEach(placement => {
+          if (placement._occupied) return;
+          const pid = placement.piece_id;
+          if (!pid) return;
+          const pd = pieceDataMap[pid] || placement;
+          if (!pd.can_promote) return;
+          const pieceName = pd.piece_name || placement.piece_name || 'Unknown Piece';
+
+          // Parse override
+          let overrideIds = null;
+          if (placement.promotion_pieces_override) {
             try {
-              const promoIds = typeof pieceData.promotion_pieces_ids === 'string' 
-                ? JSON.parse(pieceData.promotion_pieces_ids) 
-                : pieceData.promotion_pieces_ids;
-              if (Array.isArray(promoIds) && promoIds.length > 0) {
-                const promoNames = promoIds.map(pid => {
-                  const pd = pieceDataMap[pid];
-                  return pd ? `**${pd.piece_name}**` : `Piece #${pid}`;
-                });
-                promotesTo = promoNames.join(', ');
-              }
-            } catch (e) {
-              // fallback to default text
-            }
+              const parsed = typeof placement.promotion_pieces_override === 'string'
+                ? JSON.parse(placement.promotion_pieces_override)
+                : placement.promotion_pieces_override;
+              if (Array.isArray(parsed) && parsed.length > 0) overrideIds = parsed.map(Number);
+            } catch (e) { /* ignore */ }
           }
-          return `• **${pieceName}** can promote to: ${promotesTo}`;
-        }).join('\n');
-        promoContent += `\n\n${promoDescs}`;
+
+          let promotesTo;
+          if (overrideIds) {
+            promotesTo = overrideIds.map(pid2 => {
+              const pd2 = pieceDataMap[pid2];
+              return pd2 ? `**${pd2.piece_name}**` : `Piece #${pid2}`;
+            }).join(', ');
+          } else {
+            promotesTo = 'any starting piece on this player\'s side, except other promotable pieces, checkmate pieces, and lose-on-capture pieces';
+          }
+
+          const extras = [];
+          if (placement.can_promote_to_checkmate) {
+            const limitNote = placement.limit_promote_checkmate_to_original
+              ? ' (only while the player owns fewer checkmate pieces than they started with — once they reach the original count, the option is hidden)'
+              : '';
+            extras.push(`also allowed to promote into checkmate (game-ending) pieces${limitNote}`);
+          }
+          if (placement.can_promote_to_capture) {
+            const limitNote = placement.limit_promote_capture_to_original
+              ? ' (only while the player owns fewer lose-on-capture pieces than they started with — once they reach the original count, the option is hidden)'
+              : '';
+            extras.push(`also allowed to promote into lose-on-capture pieces${limitNote}`);
+          }
+          const extraStr = extras.length > 0 ? `\n   _${extras.join('; ')}._` : '';
+
+          const line = `• **${pieceName}** can promote to: ${promotesTo}${extraStr}`;
+          if (!seen.has(line)) {
+            seen.add(line);
+            ruleLines.push(line);
+          }
+        });
+        if (ruleLines.length > 0) {
+          promoContent += `\n\n${ruleLines.join('\n')}`;
+        }
       }
 
-      promoContent += `\n\n**Promotion Rules:**\n• Move a promotable piece onto a promotion square\n• Choose which piece to transform into\n• The promoted piece keeps the same position and player ownership`;
+      promoContent += `\n\n**Promotion Rules:**\n• Move a promotable piece onto a promotion square\n• Choose which piece to transform into\n• The promoted piece keeps the same position and player ownership\n• When a "limit to original count" rule applies, the relevant piece is hidden from the promotion modal once the player already owns the original starting count`;
 
       specialRulesContent.push(promoContent);
     }

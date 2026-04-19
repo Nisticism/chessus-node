@@ -575,6 +575,36 @@ const migrations = [
     column: 'image_index',
     sql: "ALTER TABLE game_type_pieces ADD COLUMN image_index INT NULL DEFAULT NULL",
     description: "Add image_index to game_type_pieces - per-placement override of which image (from pieces.image_location array) to display, NULL = use default (player_id-1)"
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'promotion_pieces_override',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN promotion_pieces_override TEXT NULL",
+    description: "Per-placement override for promotion target piece IDs (JSON array). NULL = use default behavior (any non-promotable, non-checkmate, non-capture piece in starting set)."
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'can_promote_to_checkmate',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN can_promote_to_checkmate TINYINT(1) DEFAULT 0",
+    description: "When 1, this placement may include checkmate (game-ending) pieces in its promotion targets."
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'limit_promote_checkmate_to_original',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN limit_promote_checkmate_to_original TINYINT(1) DEFAULT 0",
+    description: "When 1 and can_promote_to_checkmate is set, hide checkmate targets from this player's promotion modal once they own >= the original starting count of those checkmate pieces."
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'can_promote_to_capture',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN can_promote_to_capture TINYINT(1) DEFAULT 0",
+    description: "When 1, this placement may include capture-loss (lose-on-capture) pieces in its promotion targets."
+  },
+  {
+    table: 'game_type_pieces',
+    column: 'limit_promote_capture_to_original',
+    sql: "ALTER TABLE game_type_pieces ADD COLUMN limit_promote_capture_to_original TINYINT(1) DEFAULT 0",
+    description: "When 1 and can_promote_to_capture is set, hide capture-loss targets from this player's promotion modal once they own >= the original starting count of those pieces."
   }
 ];
 

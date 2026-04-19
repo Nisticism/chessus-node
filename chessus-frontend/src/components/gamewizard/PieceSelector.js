@@ -93,6 +93,31 @@ const PieceSelector = ({
   const [additionalSettingsOpen, setAdditionalSettingsOpen] = useState(
     currentPlacement?.cannot_be_captured || currentPlacement?.trample || currentPlacement?.ghostwalk || currentPlacement?.die_on_capture || (currentPlacement?.attack_radius > 0) || false
   );
+
+  // Promotion options state (per-placement override)
+  const initialPromotionOverrideIds = (() => {
+    const v = currentPlacement?.promotion_pieces_override;
+    if (!v) return [];
+    if (Array.isArray(v)) return v.map(Number);
+    try {
+      const p = JSON.parse(v);
+      return Array.isArray(p) ? p.map(Number) : [];
+    } catch { return []; }
+  })();
+  const [promotionSectionOpen, setPromotionSectionOpen] = useState(
+    initialPromotionOverrideIds.length > 0 ||
+    !!currentPlacement?.can_promote_to_checkmate ||
+    !!currentPlacement?.can_promote_to_capture
+  );
+  const [customizePromotion, setCustomizePromotion] = useState(initialPromotionOverrideIds.length > 0);
+  const [promotionPieceIds, setPromotionPieceIds] = useState(initialPromotionOverrideIds);
+  const [canPromoteToCheckmate, setCanPromoteToCheckmate] = useState(!!currentPlacement?.can_promote_to_checkmate);
+  const [limitCheckmateOriginal, setLimitCheckmateOriginal] = useState(!!currentPlacement?.limit_promote_checkmate_to_original);
+  const [canPromoteToCapture, setCanPromoteToCapture] = useState(!!currentPlacement?.can_promote_to_capture);
+  const [limitCaptureOriginal, setLimitCaptureOriginal] = useState(!!currentPlacement?.limit_promote_capture_to_original);
+  const [promotionSearchTerm, setPromotionSearchTerm] = useState("");
+  const [promotionPiecePage, setPromotionPiecePage] = useState(1);
+  const PROMOTION_PIECES_PER_PAGE = 12;
   
   // Update selectedPlayerId when currentPlacement changes (e.g., when opening modal for different piece)
   useEffect(() => {
@@ -290,7 +315,13 @@ const PieceSelector = ({
       ghostwalk: ghostwalk,
       // Die on capture & Attack radius
       die_on_capture: dieOnCapture,
-      attack_radius: attackRadius
+      attack_radius: attackRadius,
+      // Promotion options (per-placement override)
+      promotion_pieces_override: customizePromotion && promotionPieceIds.length > 0 ? JSON.stringify(promotionPieceIds) : null,
+      can_promote_to_checkmate: !!canPromoteToCheckmate,
+      limit_promote_checkmate_to_original: !!(canPromoteToCheckmate && limitCheckmateOriginal),
+      can_promote_to_capture: !!canPromoteToCapture,
+      limit_promote_capture_to_original: !!(canPromoteToCapture && limitCaptureOriginal)
     });
   };
 
@@ -334,6 +365,70 @@ const PieceSelector = ({
     const piece = pieces.find(p => (p.id || p.piece_id) === selectedPieceId);
     return piece?.can_castle === 1 || piece?.can_castle === true;
   }, [selectedPieceId, pieces]);
+
+  // Check if selected piece can promote (gates the Promotion Options section)
+  const selectedPieceCanPromote = React.useMemo(() => {
+    if (!selectedPieceId) return false;
+    const piece = pieces.find(p => (p.id || p.piece_id) === selectedPieceId);
+    return piece?.can_promote === 1 || piece?.can_promote === true;
+  }, [selectedPieceId, pieces]);
+
+  // Unique piece types currently placed on the board (by piece_id)
+  const uniquePlacedPieceIds = React.useMemo(() => {
+    const ids = new Set();
+    Object.values(piecePlacements || {}).forEach(p => {
+      if (p && p.piece_id && !p._occupied) ids.add(Number(p.piece_id));
+    });
+    // Always include the currently-selected piece even if not yet placed
+    if (selectedPieceId) ids.add(Number(selectedPieceId));
+    return ids;
+  }, [piecePlacements, selectedPieceId]);
+
+  // Cap the customizable promotion-target list to (unique types on board) + 8
+  const promotionTargetCap = uniquePlacedPieceIds.size + 8;
+
+  // Pieces eligible to appear in the customize-promotion picker: cap to N pieces total.
+  // Prefer pieces already on the board first, then fill with other pieces (alphabetical).
+  const promotionPickerPool = React.useMemo(() => {
+    if (!Array.isArray(pieces) || pieces.length === 0) return [];
+    const placed = [];
+    const others = [];
+    pieces.forEach(p => {
+      const pid = p.id || p.piece_id;
+      if (uniquePlacedPieceIds.has(Number(pid))) placed.push(p);
+      else others.push(p);
+    });
+    placed.sort((a, b) => (a.piece_name || '').localeCompare(b.piece_name || ''));
+    others.sort((a, b) => (a.piece_name || '').localeCompare(b.piece_name || ''));
+    return [...placed, ...others].slice(0, promotionTargetCap);
+  }, [pieces, uniquePlacedPieceIds, promotionTargetCap]);
+
+  const filteredPromotionPicker = React.useMemo(() => {
+    if (!promotionSearchTerm.trim()) return promotionPickerPool;
+    const term = promotionSearchTerm.toLowerCase();
+    return promotionPickerPool.filter(p =>
+      (p.piece_name && p.piece_name.toLowerCase().includes(term)) ||
+      String(p.id || p.piece_id).includes(term)
+    );
+  }, [promotionPickerPool, promotionSearchTerm]);
+
+  const promotionPickerTotalPages = Math.max(1, Math.ceil(filteredPromotionPicker.length / PROMOTION_PIECES_PER_PAGE));
+  const paginatedPromotionPicker = React.useMemo(() => {
+    const start = (promotionPiecePage - 1) * PROMOTION_PIECES_PER_PAGE;
+    return filteredPromotionPicker.slice(start, start + PROMOTION_PIECES_PER_PAGE);
+  }, [filteredPromotionPicker, promotionPiecePage]);
+
+  React.useEffect(() => { setPromotionPiecePage(1); }, [promotionSearchTerm]);
+
+  const togglePromotionPieceId = (pid) => {
+    const id = Number(pid);
+    setPromotionPieceIds(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id);
+      // Cap at promotionTargetCap so users can't pick more than the limit
+      if (prev.length >= promotionTargetCap) return prev;
+      return [...prev, id];
+    });
+  };
 
   // Calculate max castling distance based on closest castling partner piece
   const maxCastlingDistance = React.useMemo(() => {
@@ -731,6 +826,181 @@ const PieceSelector = ({
               </div>
             </div>
               </>
+            )}
+          </div>
+        )}
+
+        {/* Promotion Options (shown when selected piece can promote) */}
+        {selectedPieceCanPromote && (
+          <div className={styles["hp-ad-section"]}>
+            <h3
+              onClick={() => setPromotionSectionOpen(!promotionSectionOpen)}
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+            >
+              <span style={{ display: 'inline-block', transition: 'transform 0.2s', transform: promotionSectionOpen ? 'rotate(90deg)' : 'rotate(0deg)', marginRight: '4px' }}>▶</span>
+              Promotion Options <InfoTooltip text="Choose what this piece can promote into when it lands on a promotion square. By default, it can promote to any starting piece (excluding promotable, checkmate, and capture-loss pieces)." />
+            </h3>
+            {promotionSectionOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Customize promotion targets */}
+                <div>
+                  <label className={styles["checkbox-label"]}>
+                    <input
+                      type="checkbox"
+                      checked={customizePromotion}
+                      onChange={(e) => {
+                        setCustomizePromotion(e.target.checked);
+                        if (!e.target.checked) setPromotionPieceIds([]);
+                      }}
+                    />
+                    <span>
+                      Customize promotion options
+                      {' '}
+                      <InfoTooltip text={`Override which pieces this piece can promote into. Up to ${promotionTargetCap} pieces (the number of unique piece types on the board, plus 8) may be selected. If left unchecked, default behavior applies.`} />
+                    </span>
+                  </label>
+
+                  {customizePromotion && (
+                    <div style={{ marginLeft: '20px', borderLeft: '3px solid var(--button-border)', paddingLeft: '12px', marginTop: '8px' }}>
+                      <input
+                        type="text"
+                        className={styles["form-input"]}
+                        placeholder="Search pieces..."
+                        value={promotionSearchTerm}
+                        onChange={(e) => setPromotionSearchTerm(e.target.value)}
+                        style={{ marginBottom: '8px', maxWidth: '260px' }}
+                      />
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                        {promotionPieceIds.length} / {promotionTargetCap} selected
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                        gap: '8px',
+                        padding: '8px',
+                        backgroundColor: 'var(--bg-dark, rgba(0,0,0,0.2))',
+                        borderRadius: '6px',
+                        maxHeight: '260px',
+                        overflowY: 'auto'
+                      }}>
+                        {paginatedPromotionPicker.map(p => {
+                          const pid = Number(p.id || p.piece_id);
+                          const isSel = promotionPieceIds.includes(pid);
+                          let thumb = null;
+                          try {
+                            const arr = JSON.parse(p.image_location || '[]');
+                            if (Array.isArray(arr) && arr.length > 0) thumb = getImageUrl(arr[(selectedPlayerId - 1) || 0] || arr[0]);
+                          } catch { thumb = null; }
+                          return (
+                            <div
+                              key={pid}
+                              onClick={() => togglePromotionPieceId(pid)}
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                padding: '6px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                backgroundColor: isSel ? 'rgba(117,124,252,0.3)' : 'rgba(255,255,255,0.04)',
+                                border: isSel ? '2px solid var(--button-border)' : '2px solid transparent'
+                              }}
+                            >
+                              {thumb ? (
+                                <img src={thumb} alt={p.piece_name} style={{ width: 44, height: 44, objectFit: 'contain' }} />
+                              ) : (
+                                <div style={{ width: 44, height: 44, background: 'rgba(255,255,255,0.1)', borderRadius: 4 }} />
+                              )}
+                              <span style={{ fontSize: 11, marginTop: 4, textAlign: 'center', color: isSel ? 'var(--button-border)' : 'inherit' }}>
+                                {p.piece_name || `#${pid}`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {promotionPickerTotalPages > 1 && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8 }}>
+                          <button type="button" onClick={() => setPromotionPiecePage(Math.max(1, promotionPiecePage - 1))} disabled={promotionPiecePage === 1}>Prev</button>
+                          <span style={{ fontSize: 12 }}>Page {promotionPiecePage} / {promotionPickerTotalPages}</span>
+                          <button type="button" onClick={() => setPromotionPiecePage(Math.min(promotionPickerTotalPages, promotionPiecePage + 1))} disabled={promotionPiecePage === promotionPickerTotalPages}>Next</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Can promote to checkmate pieces (only when checkmate win condition is active) */}
+                {mateCondition && (
+                  <div>
+                    <label className={styles["checkbox-label"]}>
+                      <input
+                        type="checkbox"
+                        checked={canPromoteToCheckmate}
+                        onChange={(e) => {
+                          setCanPromoteToCheckmate(e.target.checked);
+                          if (!e.target.checked) setLimitCheckmateOriginal(false);
+                        }}
+                      />
+                      <span>
+                        Can promote to checkmate pieces
+                        {' '}
+                        <InfoTooltip text="Allow this piece to promote into pieces that end the game when checkmated (e.g. kings)." />
+                      </span>
+                    </label>
+                    {canPromoteToCheckmate && (
+                      <div style={{ marginLeft: 24, marginTop: 4 }}>
+                        <label className={styles["checkbox-label"]}>
+                          <input
+                            type="checkbox"
+                            checked={limitCheckmateOriginal}
+                            onChange={(e) => setLimitCheckmateOriginal(e.target.checked)}
+                          />
+                          <span>
+                            Cannot exceed the original number of checkmateable pieces this player started with
+                            {' '}
+                            <InfoTooltip text="When active, the checkmate piece will be hidden from the promotion modal once you already control as many checkmate pieces as you started the game with." />
+                          </span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Can promote to win-on-capture pieces */}
+                <div>
+                  <label className={styles["checkbox-label"]}>
+                    <input
+                      type="checkbox"
+                      checked={canPromoteToCapture}
+                      onChange={(e) => {
+                        setCanPromoteToCapture(e.target.checked);
+                        if (!e.target.checked) setLimitCaptureOriginal(false);
+                      }}
+                    />
+                    <span>
+                      Can promote to win-on-capture pieces
+                      {' '}
+                      <InfoTooltip text="Allow this piece to promote into pieces that end the game when captured." />
+                    </span>
+                  </label>
+                  {canPromoteToCapture && (
+                    <div style={{ marginLeft: 24, marginTop: 4 }}>
+                      <label className={styles["checkbox-label"]}>
+                        <input
+                          type="checkbox"
+                          checked={limitCaptureOriginal}
+                          onChange={(e) => setLimitCaptureOriginal(e.target.checked)}
+                        />
+                        <span>
+                          Cannot exceed the original number of win-on-capture pieces this player started with
+                          {' '}
+                          <InfoTooltip text="When active, the win-on-capture piece will be hidden from the promotion modal once you already control as many such pieces as you started the game with." />
+                        </span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}

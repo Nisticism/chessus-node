@@ -2319,7 +2319,12 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.ghostwalk || false,
               piece.die_on_capture || false,
               piece.attack_radius ?? 0,
-              (piece.image_index != null && piece.image_index >= 0) ? Number(piece.image_index) : null
+              (piece.image_index != null && piece.image_index >= 0) ? Number(piece.image_index) : null,
+              piece.promotion_pieces_override ?? null,
+              piece.can_promote_to_checkmate || false,
+              piece.limit_promote_checkmate_to_original || false,
+              piece.can_promote_to_capture || false,
+              piece.limit_promote_capture_to_original || false
             );
           }
         }
@@ -5070,7 +5075,12 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.ghostwalk || false,
               piece.die_on_capture || false,
               piece.attack_radius ?? 0,
-              (piece.image_index != null && piece.image_index >= 0) ? Number(piece.image_index) : null
+              (piece.image_index != null && piece.image_index >= 0) ? Number(piece.image_index) : null,
+              piece.promotion_pieces_override ?? null,
+              piece.can_promote_to_checkmate || false,
+              piece.limit_promote_checkmate_to_original || false,
+              piece.can_promote_to_capture || false,
+              piece.limit_promote_capture_to_original || false
             );
           }
         }
