@@ -1093,6 +1093,18 @@ const GameTypeView = () => {
       winConditions.push(`• **Win on Promotion**: A player instantly wins by moving a promotable piece onto a promotion square.`);
     }
 
+    if (game.lose_all_pieces_condition) {
+      winConditions.push(`• **Lose All Pieces (Anti-Chess)**: A player WINS as soon as they have lost all of their pieces. Combine with Forced Capture for classic anti-chess.`);
+    }
+
+    if (game.stalemate_win_condition) {
+      winConditions.push(`• **Stalemate Win**: A stalemated player (no legal moves and not in check) WINS instead of the game being a draw.`);
+    }
+
+    if (game.forced_capture_condition) {
+      winConditions.push(`• **Forced Capture**: If any of your pieces can make a capturing move, you MUST make a capture this turn (any capture). Non-capturing moves will be rejected when captures are available.`);
+    }
+
     if (winConditions.length > 0) {
       // Build piece links for win condition pieces
       const winPieceLinks = [];

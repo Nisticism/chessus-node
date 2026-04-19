@@ -104,6 +104,20 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         onChange={(val) => handleChange("promotion_condition", val)}
       />
 
+      <ToggleRow
+        title="Lose-All-Pieces Win (Anti-Chess)"
+        tooltip="Anti-chess style: a player WINS as soon as they have lost all of their pieces. Combine with Forced Capture for a classic anti-chess (suicide chess) experience."
+        checked={gameData.lose_all_pieces_condition === true}
+        onChange={(val) => handleChange("lose_all_pieces_condition", val)}
+      />
+
+      <ToggleRow
+        title="Stalemate Win"
+        tooltip="When enabled, a stalemated player (no legal moves and not in check) WINS instead of the game being a draw. Useful for anti-chess variants and other games where being unable to move is a goal."
+        checked={gameData.stalemate_win_condition === true}
+        onChange={(val) => handleChange("stalemate_win_condition", val)}
+      />
+
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
           Optional Condition ID <InfoTooltip text="Reference to a custom win condition defined externally. Leave empty unless you have a custom condition system set up." />
@@ -182,6 +196,13 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           if (!val) data.placeable_pieces = [];
           updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
         }}
+      />
+
+      <ToggleRow
+        title="Forced Capture"
+        tooltip="When enabled, if any of your pieces can make a capturing move on your turn, you MUST make a capture (any capture). Used in Checkers-style and anti-chess games. Non-capture moves will be rejected when captures are available."
+        checked={gameData.forced_capture_condition === true}
+        onChange={(val) => handleChange("forced_capture_condition", val)}
       />
 
       <ToggleRow
