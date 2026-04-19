@@ -29,6 +29,10 @@ const changelogData = [
       "All dates and times across the site (last active, account creation, piece/game creation, forums, comments, news, careers, changelog, etc.) now display in your own local time, converted from a single UTC source of truth so relative ordering stays correct across users",
       "Removing the checkmate or capture win condition from a game now correctly clears any per-placement checkmate/capture flags so leftover icons no longer appear in the wizard or game detail page",
       "Sandbox now uses the same purple highlight as the piece detail page for first-move-only movement and capture squares",
+      "Added Anti-Chess support: a new 'Lose-All-Pieces Win' condition lets a player win as soon as they have lost all of their pieces",
+      "Added a 'Stalemate Win' condition — when enabled, a stalemated player (no legal moves and not in check) wins instead of the game being a draw",
+      "Added a 'Forced Capture' gameplay rule — when enabled, if any of your pieces can capture, you must make a capturing move (any capture) on your turn",
+      "All three new rules are explained on the game detail page and listed alongside existing win conditions on game library cards, match history, and live game over messages",
     ]
   },
   {
