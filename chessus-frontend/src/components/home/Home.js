@@ -24,6 +24,7 @@ const Home = () => {
   const allGames = useSelector((state) => state.games);
   const allPieces = useSelector((state) => state.pieces);
   const allUsers = useSelector((state) => state.users);
+  const { forumInviteEnabled, forumInviteText } = useSelector((state) => state.siteSettings);
 
   const [boardSize] = useState(8);
   const [selectedLayout, setSelectedLayout] = useState('chess');
@@ -357,6 +358,15 @@ const Home = () => {
           )}
         </div>
       </section>
+
+      {forumInviteEnabled && forumInviteText && (
+        <section className={styles["forum-invite-banner"]} aria-label="Community invitation">
+          <p className={styles["forum-invite-text"]}>{forumInviteText}</p>
+          <Link to="/forums" className={styles["forum-invite-link"]}>
+            💬 Visit the Forums
+          </Link>
+        </section>
+      )}
 
       {/* Interactive Board Section */}
       <section className={styles["board-section"]}>

@@ -6761,9 +6761,14 @@ async function validateAndApplyMove(gameState, move, options = {}) {
  * @returns {string} - Position hash string
  */
 function getPositionHash(pieces, currentTurn) {
-  // Sort pieces by position and create a deterministic string representation
+  // Sort pieces by position and create a deterministic string representation.
+  // Includes current_hp so that damage-only attacks (where the victim survives but
+  // takes HP damage) produce a different hash and don't count toward N-fold repetition.
   const sortedPieces = pieces
-    .map(p => `${p.piece_id}:${p.x},${p.y}:${p.team || p.player_id}`)
+    .map(p => {
+      const hp = p.current_hp ?? p.hit_points ?? 1;
+      return `${p.piece_id}:${p.x},${p.y}:${p.team || p.player_id}:${hp}`;
+    })
     .sort()
     .join('|');
   return `${currentTurn}:${sortedPieces}`;
@@ -8717,9 +8722,12 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       if (movementOption.infinite) maxDist = 99;
       if (movementOption.exact) maxDist = -Math.abs(maxDist);
       
-      // Use checkDirectionalMoves to process this additional movement
+      // Use checkDirectionalMoves to process this additional movement.
+      // Pass `${direction}_movement` as the directionName so capture-direction
+      // gating (e.g. pawns moving forward but capturing diagonally) still applies
+      // to the extended-distance moves from special_scenario_moves.
       if (maxDist !== 0) {
-        checkDirectionalMoves(dx, dy, maxDist, null, movementOption.availableForMoves || movementOption.firstMoveOnly || false);
+        checkDirectionalMoves(dx, dy, maxDist, `${direction}_movement`, movementOption.availableForMoves || movementOption.firstMoveOnly || false);
       }
     }
   }
@@ -8759,14 +8767,6 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
     const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
     const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
     const pieceOwner = piece.team || piece.player_id;
-    
-    console.log('Ratio movement check:', {
-      pieceName: piece.piece_name,
-      can_hop_over_allies_raw: piece.can_hop_over_allies,
-      can_hop_over_enemies_raw: piece.can_hop_over_enemies,
-      canHopAllies,
-      canHopEnemies
-    });
     
     for (const [dx, dy] of ratioMoves) {
       const targetX = piece.x + dx;

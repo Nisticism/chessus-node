@@ -2774,6 +2774,56 @@ const runMigrations = async () => {
     console.error('Error adding forced_capture_condition column:', err.message);
   }
 
+  // Bump site_settings.setting_value to TEXT to support longer values (e.g. banner text)
+  try {
+    const sql = `
+      SELECT DATA_TYPE
+      FROM information_schema.COLUMNS 
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'site_settings' AND COLUMN_NAME = 'setting_value'
+    `;
+    const [results] = await db_pool.query(sql, [process.env.DB_NAME || 'chessusnode']);
+    if (results[0] && results[0].DATA_TYPE === 'varchar') {
+      await runMigration(
+        "ALTER TABLE site_settings MODIFY COLUMN setting_value TEXT NOT NULL",
+        "Convert site_settings.setting_value from VARCHAR to TEXT for longer values"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error widening site_settings.setting_value:', err.message);
+  }
+
+  // Seed default site settings (only inserts if missing — never overwrites admin edits)
+  try {
+    const defaultSettings = [
+      { key: 'forum_invite_enabled', value: 'true' },
+      {
+        key: 'forum_invite_text',
+        value:
+          "Welcome new players! 🌿 With so many of you joining recently, we'd love to hear from you. " +
+          "Head over to our community forums to discuss bugs you've run into, ask questions, and share " +
+          "what changes you'd like to see. Heads-up: while we're rolling out improvements, expect frequent " +
+          "server restarts as new updates go live."
+      }
+    ];
+    for (const setting of defaultSettings) {
+      const [rows] = await db_pool.query(
+        "SELECT 1 FROM site_settings WHERE setting_key = ? LIMIT 1",
+        [setting.key]
+      );
+      if (rows.length === 0) {
+        await db_pool.query(
+          "INSERT INTO site_settings (setting_key, setting_value) VALUES (?, ?)",
+          [setting.key, setting.value]
+        );
+        console.log(`  ✓ Seeded site_settings: ${setting.key}`);
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error seeding default site settings:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

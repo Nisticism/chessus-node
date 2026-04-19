@@ -54,6 +54,9 @@ const AdminDashboard = () => {
   // Site settings state
   const [siteSettings, setSiteSettings] = useState({});
   const [settingsLoading, setSettingsLoading] = useState(false);
+  // Draft state for the editable forum-invite text (so admins can type without saving on every keystroke)
+  const [forumInviteDraft, setForumInviteDraft] = useState('');
+  const [savingForumInvite, setSavingForumInvite] = useState(false);
 
   // Moderation queue state
   const [moderationQueue, setModerationQueue] = useState([]);
@@ -155,6 +158,10 @@ const AdminDashboard = () => {
       const map = {};
       (response.data.settings || []).forEach(s => { map[s.setting_key] = s.setting_value; });
       setSiteSettings(map);
+      // Seed the editable draft with the loaded value (only if not already dirty)
+      if (map.forum_invite_text !== undefined) {
+        setForumInviteDraft(map.forum_invite_text);
+      }
     } catch (error) {
       console.error("Error fetching site settings:", error);
     } finally {
@@ -1770,6 +1777,46 @@ const AdminDashboard = () => {
                     />
                     <span className={styles["toggle-slider"]} />
                   </label>
+                </div>
+                <div className={styles["setting-row"]}>
+                  <div className={styles["setting-info"]}>
+                    <span className={styles["setting-label"]}>Show Forum Invite Banner</span>
+                    <span className={styles["setting-desc"]}>Display the gold banner above "Explore the Grove" inviting players to the forums</span>
+                  </div>
+                  <label className={styles["setting-toggle"]}>
+                    <input
+                      type="checkbox"
+                      checked={siteSettings.forum_invite_enabled !== "false"}
+                      onChange={(e) => updateSiteSetting("forum_invite_enabled", e.target.checked)}
+                    />
+                    <span className={styles["toggle-slider"]} />
+                  </label>
+                </div>
+                <div className={styles["setting-textarea-row"]}>
+                  <div className={styles["setting-info"]}>
+                    <span className={styles["setting-label"]}>Forum Invite Banner Text</span>
+                    <span className={styles["setting-desc"]}>The message shown to visitors in the gold banner. Line breaks are preserved.</span>
+                  </div>
+                  <textarea
+                    className={styles["setting-textarea"]}
+                    value={forumInviteDraft}
+                    onChange={(e) => setForumInviteDraft(e.target.value)}
+                    placeholder="Enter the message shown in the home page forum invite banner..."
+                    maxLength={2000}
+                  />
+                  <div className={styles["setting-textarea-actions"]}>
+                    <button
+                      className={styles["setting-save-button"]}
+                      disabled={savingForumInvite || forumInviteDraft === (siteSettings.forum_invite_text || '')}
+                      onClick={async () => {
+                        setSavingForumInvite(true);
+                        await updateSiteSetting('forum_invite_text', forumInviteDraft);
+                        setSavingForumInvite(false);
+                      }}
+                    >
+                      {savingForumInvite ? 'Saving...' : 'Save Banner Text'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

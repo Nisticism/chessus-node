@@ -2,6 +2,8 @@ import { FETCH_SITE_SETTINGS_SUCCESS } from "../actions/types";
 
 const initialState = {
   changelogEnabled: true,
+  forumInviteEnabled: true,
+  forumInviteText: "",
   loaded: false,
 };
 

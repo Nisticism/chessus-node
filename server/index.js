@@ -7482,6 +7482,34 @@ app.get("/api/site-settings/:key", async (req, res) => {
   }
 });
 
+// Public: Get multiple site settings at once via ?keys=key1,key2,key3
+// Returns { settings: { key1: value1, key2: value2, ... } }. Missing keys are omitted.
+app.get("/api/site-settings", async (req, res) => {
+  try {
+    const keysParam = (req.query.keys || "").toString().trim();
+    if (!keysParam) {
+      return res.json({ settings: {} });
+    }
+    const keys = keysParam.split(",").map(k => k.trim()).filter(Boolean).slice(0, 50);
+    if (keys.length === 0) {
+      return res.json({ settings: {} });
+    }
+    const placeholders = keys.map(() => "?").join(",");
+    const [rows] = await db_pool.query(
+      `SELECT setting_key, setting_value FROM site_settings WHERE setting_key IN (${placeholders})`,
+      keys
+    );
+    const settings = {};
+    for (const row of rows) {
+      settings[row.setting_key] = row.setting_value;
+    }
+    res.json({ settings });
+  } catch (err) {
+    console.error("Error fetching site settings:", err.message);
+    res.json({ settings: {} });
+  }
+});
+
 // Admin: Get all site settings
 app.get("/api/admin/site-settings", authenticateAdmin, async (req, res) => {
   try {

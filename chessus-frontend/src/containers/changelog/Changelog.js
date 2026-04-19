@@ -39,6 +39,9 @@ const changelogData = [
       "Game detail pages now render promotion-target piece names as proper links to the piece detail pages, even when those pieces aren't placed on the board",
       "Forced Capture rejections now name the exact piece, target, and capture type the server detected, so it's much easier to find the available capture (or report a false positive)",
       "Forced Capture now also recognizes ranged attacks and en passant as captures, so the rule no longer blocks valid en-passant moves or non-capturing moves when the only available capture was a ranged attack",
+      "Fixed a Forced Capture false positive where extended-distance moves (like a pawn's first-move two-square advance) were treated as captures even in directions the piece can only move — not capture — through",
+      "The threefold-repetition draw counter now resets when a piece takes damage but survives, so wearing down high-HP pieces no longer triggers an unintended draw",
+      "Added a new home-page banner inviting players to share bugs and feedback on the forums, with a heads-up about frequent server restarts during this update period — admins can toggle it on/off and edit its text from the Site Settings tab",
       "Trimmed a large amount of console noise (Redux actions, reducers, services, hover and socket-connection logs) for a cleaner browser console",
     ]
   },
