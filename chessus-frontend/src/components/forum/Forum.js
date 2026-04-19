@@ -258,7 +258,18 @@ const Forum = () => {
                     </div>
                     <div className={styles["comment-content-container"]}> { comment.content }</div>
                     <div id={comment.id + "edit"} className={styles["comment-edit"]}>
-                      <textarea id={comment.id + "edit-field"} onChange={onChangeCommentContent} defaultValue={comment.content} maxLength={COMMENT_MAX}></textarea>
+                      <textarea
+                        id={comment.id + "edit-field"}
+                        onChange={onChangeCommentContent}
+                        defaultValue={comment.content}
+                        maxLength={COMMENT_MAX}
+                        onBlur={(e) => {
+                          const editDiv = document.getElementById(comment.id + "edit");
+                          if (!editDiv) return;
+                          if (e.relatedTarget && editDiv.contains(e.relatedTarget)) return;
+                          editDiv.style.display = "none";
+                        }}
+                      ></textarea>
                       <div className={styles["submit-comment-button"]}>
                         <StandardButton buttonText={"Update Comment"} onClick={(event) => handleEditComment(event, comment.id + "edit-field", comment.id)}/>
                       </div>

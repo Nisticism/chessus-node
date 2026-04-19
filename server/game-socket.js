@@ -3130,8 +3130,11 @@ function initializeSocket(server) {
               const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
               
               if (legalMoves.length === 0) {
-                const stalemateWinsForCurrent = gameState.gameType?.stalemate_win_condition === true;
-                const stalemateDraws = gameState.gameType?.stalemate_draw_condition !== false;
+                // Use !! coercion because the DB returns tinyint 1/0, not boolean true/false.
+                // win condition takes priority over draw condition when both are set.
+                const stalemateWinsForCurrent = !!gameState.gameType?.stalemate_win_condition;
+                // Default to true when undefined for backward compatibility
+                const stalemateDraws = !stalemateWinsForCurrent && gameState.gameType?.stalemate_draw_condition !== false;
                 const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
                 const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
 
@@ -3520,9 +3523,11 @@ function initializeSocket(server) {
             const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
             
             if (legalMoves.length === 0) {
-              const stalemateWinsForCurrent = gameState.gameType?.stalemate_win_condition === true;
+              // Use !! coercion because the DB returns tinyint 1/0, not boolean true/false.
+              // win condition takes priority over draw condition when both are set.
+              const stalemateWinsForCurrent = !!gameState.gameType?.stalemate_win_condition;
               // Default to true when undefined for backward compatibility
-              const stalemateDraws = gameState.gameType?.stalemate_draw_condition !== false;
+              const stalemateDraws = !stalemateWinsForCurrent && gameState.gameType?.stalemate_draw_condition !== false;
               const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
               const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
 
