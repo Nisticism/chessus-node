@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { getGames, getGameById } from "../../actions/games";
 import PiecesService from "../../services/pieces.service";
 import PieceSelector from "../../components/gamewizard/PieceSelector";
-import { canRangedAttackTo, isRangedPathClear, isDestinationClear, doesPieceOccupySquare, getSquareHighlightStyle, canHopCaptureToUtil } from "../../helpers/pieceMovementUtils";
+import { canRangedAttackTo, isRangedPathClear, isDestinationClear, doesPieceOccupySquare, getSquareHighlightStyle, canHopCaptureToUtil, canPieceMoveTo as canPieceMoveToUtil, canCaptureOnMoveTo as canCaptureOnMoveToUtil } from "../../helpers/pieceMovementUtils";
 import styles from "./sandbox.module.scss";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 
@@ -216,6 +216,7 @@ const Sandbox = () => {
           player_id: 1,
           piece_image_urls: images,
           name: fullPiece.piece_name,
+          move_count: 0,
         };
 
         const newSandbox = {
@@ -448,7 +449,8 @@ const Sandbox = () => {
             x: p.x ?? p.col ?? p.xLocation ?? 0,
             y: posY,
             team: playerId,
-            player_id: playerId
+            player_id: playerId,
+            move_count: 0
           };
           
           return resultPiece;
@@ -625,6 +627,8 @@ const Sandbox = () => {
       // Custom square movement/attack
       custom_movement_squares: pieceData.custom_movement_squares,
       custom_attack_squares: pieceData.custom_attack_squares,
+      // Track move count so first-move-only restrictions apply correctly
+      move_count: 0,
     };
 
     setSandboxes(prev => prev.map(s => {
@@ -894,91 +898,21 @@ const Sandbox = () => {
     return false;
   }, [getStepMovementConfig]);
 
-  // Check if a move is from a first-move-only additional movement option
+  // Check if a move is from a first-move-only additional movement option.
+  // Delegates to the centralized helper so we cover every flavour of
+  // first-move-only flag (top-level `first_move_only`, per-direction
+  // `${direction}_movement_available_for`, ratio/step `availableForMoves`,
+  // and additionalMovements `availableForMoves`).
   /* eslint-disable react-hooks/exhaustive-deps */
   const checkIfFirstMoveOnlyMove = (pieceData, fromX, fromY, toX, toY, playerPosition) => {
-    if (!pieceData.special_scenario_moves) return false;
-    
-    try {
-      const parsed = typeof pieceData.special_scenario_moves === 'string'
-        ? JSON.parse(pieceData.special_scenario_moves)
-        : pieceData.special_scenario_moves;
-      const additionalMovements = parsed?.additionalMovements || {};
-      
-      const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
-      const colDiff = playerPosition === 2 ? (fromX - toX) : (toX - fromX);
-      const distance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      
-      // Determine direction
-      let direction = null;
-      if (rowDiff < 0 && colDiff === 0) direction = 'up';
-      else if (rowDiff > 0 && colDiff === 0) direction = 'down';
-      else if (rowDiff === 0 && colDiff < 0) direction = 'left';
-      else if (rowDiff === 0 && colDiff > 0) direction = 'right';
-      else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_left';
-      else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_right';
-      else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_left';
-      else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_right';
-      
-      if (!direction || !additionalMovements[direction]) return false;
-      
-      // Check if any of the additional movements for this direction are first-move-only
-      for (const movementOption of additionalMovements[direction]) {
-        if (!movementOption.firstMoveOnly) continue;
-        
-        const value = movementOption.value || 0;
-        if (movementOption.infinite && distance > 0) return true;
-        if (movementOption.exact && distance === value) return true;
-        if (!movementOption.exact && !movementOption.infinite && distance > 0 && distance <= value) return true;
-      }
-    } catch (e) {
-      // Ignore parse errors
-    }
-    
-    return false;
+    const result = canPieceMoveToUtil(fromY, fromX, toY, toX, pieceData, playerPosition);
+    return !!result?.isFirstMoveOnly;
   };
 
-  // Check if a capture is from a first-move-only additional capture option
+  // Check if a capture is from a first-move-only additional capture option.
   const checkIfFirstMoveOnlyCapture = (pieceData, fromX, fromY, toX, toY, playerPosition) => {
-    if (!pieceData.special_scenario_captures) return false;
-    
-    try {
-      const parsed = typeof pieceData.special_scenario_captures === 'string'
-        ? JSON.parse(pieceData.special_scenario_captures)
-        : pieceData.special_scenario_captures;
-      const additionalCaptures = parsed?.additionalCaptures || {};
-      
-      const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
-      const colDiff = playerPosition === 2 ? (fromX - toX) : (toX - fromX);
-      const distance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      
-      // Determine direction
-      let direction = null;
-      if (rowDiff < 0 && colDiff === 0) direction = 'up';
-      else if (rowDiff > 0 && colDiff === 0) direction = 'down';
-      else if (rowDiff === 0 && colDiff < 0) direction = 'left';
-      else if (rowDiff === 0 && colDiff > 0) direction = 'right';
-      else if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_left';
-      else if (rowDiff < 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'up_right';
-      else if (rowDiff > 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_left';
-      else if (rowDiff > 0 && colDiff > 0 && Math.abs(rowDiff) === Math.abs(colDiff)) direction = 'down_right';
-      
-      if (!direction || !additionalCaptures[direction]) return false;
-      
-      // Check if any of the additional captures for this direction are first-move-only
-      for (const captureOption of additionalCaptures[direction]) {
-        if (!captureOption.firstMoveOnly) continue;
-        
-        const value = captureOption.value || 0;
-        if (captureOption.infinite && distance > 0) return true;
-        if (captureOption.exact && distance === value) return true;
-        if (!captureOption.exact && !captureOption.infinite && distance > 0 && distance <= value) return true;
-      }
-    } catch (e) {
-      // Ignore parse errors
-    }
-    
-    return false;
+    const result = canCaptureOnMoveToUtil(fromY, fromX, toY, toX, pieceData, playerPosition);
+    return !!result?.isFirstMoveOnly;
   };
 
   // Check if piece can move to a square
@@ -1711,7 +1645,11 @@ const Sandbox = () => {
       }
     }
 
-    return moves;
+    // Apply first-move-only restriction: pieces that have already moved cannot use
+    // first-move-only moves/captures. Mirrors the live-game behaviour.
+    const hasMoved = (piece.move_count || 0) > 0;
+    const filtered = hasMoved ? moves.filter(m => !m.isFirstMoveOnly) : moves;
+    return filtered;
   }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, isStepByStepTarget, canReachStepByStep, findPieceAt, checkIfFirstMoveOnlyMove, checkIfFirstMoveOnlyCapture]);
 
   // Handle square click - free repositioning (click piece, click destination)
@@ -1794,9 +1732,11 @@ const Sandbox = () => {
           ? pieces.filter(p => !piecesToRemove.has(p.id))
           : [...pieces];
         const movedPieces = move.isRangedAttack
-          ? updatedPieces
+          ? updatedPieces.map(p =>
+              p.id === selectedPiece.id ? { ...p, move_count: (p.move_count || 0) + 1 } : p
+            )
           : updatedPieces.map(p =>
-              p.id === selectedPiece.id ? { ...p, x: targetX, y: targetY } : p
+              p.id === selectedPiece.id ? { ...p, x: targetX, y: targetY, move_count: (p.move_count || 0) + 1 } : p
             );
 
         const currentTurn = activeSandbox.currentTurn;
@@ -2035,7 +1975,7 @@ const Sandbox = () => {
             if (move.isHopCapture && move.hopCapturedPieceIds) move.hopCapturedPieceIds.forEach(id => piecesToRemove.add(id));
             if (targetPiece) piecesToRemove.add(targetPiece.id);
             const updatedPieces = piecesToRemove.size > 0 ? pieces.filter(p => !piecesToRemove.has(p.id)) : [...pieces];
-            const movedPieces = updatedPieces.map(p => p.id === piece.id ? { ...p, x: anchorX, y: anchorY } : p);
+            const movedPieces = updatedPieces.map(p => p.id === piece.id ? { ...p, x: anchorX, y: anchorY, move_count: (p.move_count || 0) + 1 } : p);
             const currentTurn = activeSandbox.currentTurn;
             const nextTurn = currentTurn === 1 ? 2 : 1;
             setSandboxes(prev => prev.map(s => s.id === activeSandboxId ? { ...s, pieces: movedPieces, currentTurn: nextTurn, moveHistory: [...s.moveHistory, { from: { x: piece.x, y: piece.y }, to: { x: anchorX, y: anchorY }, piece: piece.piece_name, piece_width: pw, piece_height: ph }] } : s));
@@ -2297,7 +2237,34 @@ const Sandbox = () => {
         }
 
         if (canMove || canCapture || canRanged || canHopCapture) {
-          highlights[`${tx},${ty}`] = { canMove, canCapture, canRanged, canHopCapture, isCustomMove, isCustomAttack };
+          // Determine first-move-only flags so we can render the purple highlight
+          // (matching the piece detail page / live game). These only apply when
+          // the piece has not moved yet — once it has, the move was already
+          // filtered out of validMoves by calculateValidMoves.
+          const hasMoved = (piece.move_count || 0) > 0;
+          let isMoveFirstOnly = false;
+          let isCaptureFirstOnly = false;
+          if (!hasMoved) {
+            if (canMove) {
+              for (let dr = 0; dr < hph && !isMoveFirstOnly; dr++) {
+                for (let dc = 0; dc < hpw && !isMoveFirstOnly; dc++) {
+                  if (checkIfFirstMoveOnlyMove(piece, piece.x + dc, piece.y + dr, tx, ty, hTeam)) {
+                    isMoveFirstOnly = true;
+                  }
+                }
+              }
+            }
+            if (canCapture) {
+              for (let dr = 0; dr < hph && !isCaptureFirstOnly; dr++) {
+                for (let dc = 0; dc < hpw && !isCaptureFirstOnly; dc++) {
+                  if (checkIfFirstMoveOnlyCapture(piece, piece.x + dc, piece.y + dr, tx, ty, hTeam)) {
+                    isCaptureFirstOnly = true;
+                  }
+                }
+              }
+            }
+          }
+          highlights[`${tx},${ty}`] = { canMove, canCapture, canRanged, canHopCapture, isCustomMove, isCustomAttack, isMoveFirstOnly, isCaptureFirstOnly };
         }
       }
     }
@@ -2442,7 +2409,7 @@ const Sandbox = () => {
               ? pieces.filter(p => !piecesToRemove.has(p.id))
               : [...pieces];
             const movedPieces = updatedPieces.map(p =>
-              p.id === pieceData.id ? { ...p, x: anchorX, y: anchorY } : p
+              p.id === pieceData.id ? { ...p, x: anchorX, y: anchorY, move_count: (p.move_count || 0) + 1 } : p
             );
 
             const currentTurn = activeSandbox.currentTurn;
@@ -2630,8 +2597,10 @@ const Sandbox = () => {
         const hovCanHopCapture = !!hovHighlight?.canHopCapture;
         const hovIsCustomMove = !!hovHighlight?.isCustomMove;
         const hovIsCustomAttack = !!hovHighlight?.isCustomAttack;
+        const hovMoveFirstOnly = !!hovHighlight?.isMoveFirstOnly;
+        const hovCaptureFirstOnly = !!hovHighlight?.isCaptureFirstOnly;
         const { style: hovHighlightStyle, icon: hovHighlightIcon } = (hovCanMove || hovCanCapture || hovCanRanged)
-          ? getSquareHighlightStyle(hovCanMove, false, hovCanCapture, false, hovCanRanged, isLight, hovIsCustomMove, hovIsCustomAttack)
+          ? getSquareHighlightStyle(hovCanMove, hovMoveFirstOnly, hovCanCapture, hovCaptureFirstOnly, hovCanRanged, isLight, hovIsCustomMove, hovIsCustomAttack)
           : { style: {}, icon: null };
 
         // Use selected piece highlights if active, otherwise use hovered piece highlights
