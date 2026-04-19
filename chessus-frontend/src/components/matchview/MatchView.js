@@ -379,8 +379,8 @@ const MatchView = () => {
               {player?.username || "Player"}
             </Link>
           )}
-          {player?.id !== 'bot' && (
-            <span className={styles["player-elo"]}>ELO: {player?.elo || "?"}</span>
+          {player?.id !== 'bot' && player?.elo && (
+            <span className={styles["player-elo"]}>ELO: {player.elo}</span>
           )}
           {player?.id !== 'bot' && match.eloChanges && player && (
             <span className={`${styles["elo-change"]} ${isWinner ? styles["positive"] : styles["negative"]}`}>

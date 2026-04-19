@@ -1695,14 +1695,18 @@ app.get("/api/match/:gameId", async (req, res) => {
           position: p.player_position,
           profilePicture: p.profile_picture
         }));
-        if (otherData.isBotGame && !mapped.some(p => p.id === 'bot' || p.position === 2)) {
-          mapped.push({
-            id: 'bot',
-            username: `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`,
-            elo: null,
-            position: 2,
-            profilePicture: null
-          });
+        if (otherData.isBotGame) {
+          const botPos = otherData.botPosition || 2;
+          const botLabel = `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`;
+          if (!mapped.some(p => p.id === 'bot' || p.position === botPos)) {
+            mapped.push({
+              id: 'bot',
+              username: botLabel,
+              elo: null,
+              position: botPos,
+              profilePicture: null
+            });
+          }
         }
         return mapped;
       })()
