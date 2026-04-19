@@ -3120,65 +3120,84 @@ function initializeSocket(server) {
               gameState.moveHistory[gameState.moveHistory.length - 1].isCheck = true;
             }
 
-            // Check for stalemate after premove (only if mate_condition or stalemate_win_condition is enabled)
-            if (!premoveCheckResult.inCheck && (gameState.gameType?.mate_condition || gameState.gameType?.stalemate_win_condition)) {
+            // Check for stalemate after premove. Always run when not in check (and
+            // after a turn switch) so a player who has no legal moves never gets stuck.
+            // - stalemate_win_condition: stalemated player WINS
+            // - no_moves_condition: stalemated player LOSES (handled in its own block below)
+            // - stalemate_draw_condition (default true): DRAW
+            // - none of the above: emit a notice and skip the stalemated player's turn
+            if (premoveTurnSwitched && !premoveCheckResult.inCheck && !gameState.gameType?.no_moves_condition) {
               const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
               
               if (legalMoves.length === 0) {
                 const stalemateWinsForCurrent = gameState.gameType?.stalemate_win_condition === true;
+                const stalemateDraws = gameState.gameType?.stalemate_draw_condition !== false;
                 const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
                 const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
-                const winnerObj = stalemateWinsForCurrent ? stalematedPlayerObj : null;
-                const winReasonStr = stalemateWinsForCurrent ? 'stalemate_win' : 'stalemate';
 
-                if (stalemateWinsForCurrent) {
-                  console.log('STALEMATE WIN after premove! Stalemated player wins. Ending game...');
+                if (!stalemateWinsForCurrent && !stalemateDraws) {
+                  console.log(`STALEMATE NOTICE (premove): Player ${stalematedPlayerObj?.username} has no legal moves but no stalemate rule applies — skipping turn in game ${gameId}`);
+                  gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+                  io.to(`game-${gameId}`).emit('stalemateNotice', {
+                    gameId,
+                    stalematedPlayerId: stalematedPlayerObj?.id,
+                    stalematedPlayerUsername: stalematedPlayerObj?.username,
+                    message: `${stalematedPlayerObj?.username || 'A player'} has no legal moves but the game has no stalemate rule configured. Their turn has been skipped.`,
+                    currentTurn: gameState.currentTurn,
+                  });
                 } else {
-                  console.log('STALEMATE DETECTED after premove! Ending game in a draw...');
-                }
-                stopGameTimer(gameId);
-                
-                gameState.status = 'completed';
-                gameState.winner = winnerObj?.id || null;
-                gameState.winReason = winReasonStr;
+                  const winnerObj = stalemateWinsForCurrent ? stalematedPlayerObj : null;
+                  const winReasonStr = stalemateWinsForCurrent ? 'stalemate_win' : 'stalemate';
 
-                // Update ELO ratings
-                let eloChanges = null;
-                const player1 = gameState.players[0];
-                const player2 = gameState.players[1];
-                if (gameState.rated !== false && player1?.id && player2?.id) {
-                  if (stalemateWinsForCurrent && winnerObj && opponentObj) {
-                    eloChanges = await updateEloRatings(winnerObj.id, opponentObj.id);
-                    console.log('ELO updated for stalemate win:', eloChanges);
+                  if (stalemateWinsForCurrent) {
+                    console.log('STALEMATE WIN after premove! Stalemated player wins. Ending game...');
                   } else {
-                    const p1Elo = player1.elo || 1000;
-                    const p2Elo = player2.elo || 1000;
-                    const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
-                    const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
-                    eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
-                    console.log('ELO updated for stalemate (draw):', eloChanges);
+                    console.log('STALEMATE DETECTED after premove! Ending game in a draw...');
                   }
+                  stopGameTimer(gameId);
+                  
+                  gameState.status = 'completed';
+                  gameState.winner = winnerObj?.id || null;
+                  gameState.winReason = winReasonStr;
+
+                  // Update ELO ratings
+                  let eloChanges = null;
+                  const player1 = gameState.players[0];
+                  const player2 = gameState.players[1];
+                  if (gameState.rated !== false && player1?.id && player2?.id) {
+                    if (stalemateWinsForCurrent && winnerObj && opponentObj) {
+                      eloChanges = await updateEloRatings(winnerObj.id, opponentObj.id);
+                      console.log('ELO updated for stalemate win:', eloChanges);
+                    } else {
+                      const p1Elo = player1.elo || 1000;
+                      const p2Elo = player2.elo || 1000;
+                      const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+                      const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+                      eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+                      console.log('ELO updated for stalemate (draw):', eloChanges);
+                    }
+                  }
+
+                  const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                  await db_pool.query(
+                    `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                     pieces = ?, other_data = ? WHERE id = ?`,
+                    [endTime, winnerObj?.id || null, JSON.stringify(gameState.pieces),
+                     buildOtherData(gameState, { reason: winReasonStr, eloChanges }),
+                     gameId]
+                  );
+
+                  io.to(`game-${gameId}`).emit("gameOver", {
+                    gameId,
+                    winner: winnerObj?.id || null,
+                    reason: winReasonStr,
+                    finalState: gameState,
+                    eloChanges
+                  });
+                  
+                  console.log(`STALEMATE! Player ${stalematedPlayerObj?.username} has no legal moves in game ${gameId} after premove`);
+                  return; // Exit early since game is over
                 }
-
-                const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
-                await db_pool.query(
-                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
-                   pieces = ?, other_data = ? WHERE id = ?`,
-                  [endTime, winnerObj?.id || null, JSON.stringify(gameState.pieces),
-                   buildOtherData(gameState, { reason: winReasonStr, eloChanges }),
-                   gameId]
-                );
-
-                io.to(`game-${gameId}`).emit("gameOver", {
-                  gameId,
-                  winner: winnerObj?.id || null,
-                  reason: winReasonStr,
-                  finalState: gameState,
-                  eloChanges
-                });
-                
-                console.log(`STALEMATE! Player ${stalematedPlayerObj?.username} has no legal moves in game ${gameId} after premove`);
-                return; // Exit early since game is over
               }
             }
 
@@ -3490,72 +3509,94 @@ function initializeSocket(server) {
             }
           }
 
-          // Check for stalemate (only if mate_condition or stalemate_win_condition is enabled)
-          if (!checkResult.inCheck && (gameState.gameType?.mate_condition || gameState.gameType?.stalemate_win_condition)) {
+          // Check for stalemate. Always run when not in check (and after a turn
+          // switch) so a player who has no legal moves never gets stuck — outcome
+          // depends on game type flags.
+          // - stalemate_win_condition: stalemated player WINS
+          // - no_moves_condition: stalemated player LOSES (handled in its own block below)
+          // - stalemate_draw_condition (default true): DRAW
+          // - none of the above: emit a notice and skip the stalemated player's turn
+          if (moveTurnSwitched && !checkResult.inCheck && !gameState.gameType?.no_moves_condition) {
             const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
             
             if (legalMoves.length === 0) {
               const stalemateWinsForCurrent = gameState.gameType?.stalemate_win_condition === true;
+              // Default to true when undefined for backward compatibility
+              const stalemateDraws = gameState.gameType?.stalemate_draw_condition !== false;
               const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
               const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
-              const winnerObj = stalemateWinsForCurrent ? stalematedPlayerObj : null;
-              const winReasonStr = stalemateWinsForCurrent ? 'stalemate_win' : 'stalemate';
 
-              if (stalemateWinsForCurrent) {
-                console.log('STALEMATE WIN! Stalemated player wins under stalemate_win_condition. Ending game...');
+              if (!stalemateWinsForCurrent && !stalemateDraws) {
+                // Skip the stalemated player's turn and notify the room.
+                console.log(`STALEMATE NOTICE: Player ${stalematedPlayerObj?.username} has no legal moves but no stalemate rule applies — skipping turn in game ${gameId}`);
+                gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+                io.to(`game-${gameId}`).emit('stalemateNotice', {
+                  gameId,
+                  stalematedPlayerId: stalematedPlayerObj?.id,
+                  stalematedPlayerUsername: stalematedPlayerObj?.username,
+                  message: `${stalematedPlayerObj?.username || 'A player'} has no legal moves but the game has no stalemate rule configured. Their turn has been skipped.`,
+                  currentTurn: gameState.currentTurn,
+                });
               } else {
-                console.log('STALEMATE DETECTED! Ending game in a draw...');
-              }
-              stopGameTimer(gameId);
-              
-              gameState.status = 'completed';
-              gameState.winner = winnerObj?.id || null;
-              gameState.winReason = winReasonStr;
+                const winnerObj = stalemateWinsForCurrent ? stalematedPlayerObj : null;
+                const winReasonStr = stalemateWinsForCurrent ? 'stalemate_win' : 'stalemate';
 
-              // Update ELO ratings
-              let eloChanges = null;
-              const player1 = gameState.players[0];
-              const player2 = gameState.players[1];
-              if (gameState.rated !== false && player1?.id && player2?.id) {
-                if (stalemateWinsForCurrent && winnerObj && opponentObj) {
-                  eloChanges = await updateEloRatings(winnerObj.id, opponentObj.id);
-                  console.log('ELO updated for stalemate win:', eloChanges);
+                if (stalemateWinsForCurrent) {
+                  console.log('STALEMATE WIN! Stalemated player wins under stalemate_win_condition. Ending game...');
                 } else {
-                  // Draw: pass higher rated as winner with isDraw=true
-                  const p1Elo = player1.elo || 1000;
-                  const p2Elo = player2.elo || 1000;
-                  const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
-                  const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
-                  eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
-                  console.log('ELO updated for stalemate (draw):', eloChanges);
+                  console.log('STALEMATE DETECTED! Ending game in a draw...');
                 }
-              }
+                stopGameTimer(gameId);
+                
+                gameState.status = 'completed';
+                gameState.winner = winnerObj?.id || null;
+                gameState.winReason = winReasonStr;
 
-              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
-              try {
-                await db_pool.query(
-                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
-                   pieces = ?, other_data = ? WHERE id = ?`,
-                  [endTime, winnerObj?.id || null, JSON.stringify(gameState.pieces),
-                   buildOtherData(gameState, { reason: winReasonStr, eloChanges }),
-                   gameId]
-                );
-                console.log('Database updated for stalemate');
-              } catch (dbError) {
-                console.error('Failed to update database:', dbError);
-              }
+                // Update ELO ratings
+                let eloChanges = null;
+                const player1 = gameState.players[0];
+                const player2 = gameState.players[1];
+                if (gameState.rated !== false && player1?.id && player2?.id) {
+                  if (stalemateWinsForCurrent && winnerObj && opponentObj) {
+                    eloChanges = await updateEloRatings(winnerObj.id, opponentObj.id);
+                    console.log('ELO updated for stalemate win:', eloChanges);
+                  } else {
+                    // Draw: pass higher rated as winner with isDraw=true
+                    const p1Elo = player1.elo || 1000;
+                    const p2Elo = player2.elo || 1000;
+                    const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+                    const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+                    eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+                    console.log('ELO updated for stalemate (draw):', eloChanges);
+                  }
+                }
 
-              io.to(`game-${gameId}`).emit("gameOver", {
-                gameId,
-                winner: winnerObj?.id || null,
-                reason: winReasonStr,
-                move: moveRecord,
-                finalState: gameState,
-                eloChanges
-              });
-              
-              console.log(`STALEMATE! Player ${stalematedPlayerObj?.username} has no legal moves in game ${gameId}`);
-              return; // Exit early since game is over
+                const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                try {
+                  await db_pool.query(
+                    `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                     pieces = ?, other_data = ? WHERE id = ?`,
+                    [endTime, winnerObj?.id || null, JSON.stringify(gameState.pieces),
+                     buildOtherData(gameState, { reason: winReasonStr, eloChanges }),
+                     gameId]
+                  );
+                  console.log('Database updated for stalemate');
+                } catch (dbError) {
+                  console.error('Failed to update database:', dbError);
+                }
+
+                io.to(`game-${gameId}`).emit("gameOver", {
+                  gameId,
+                  winner: winnerObj?.id || null,
+                  reason: winReasonStr,
+                  move: moveRecord,
+                  finalState: gameState,
+                  eloChanges
+                });
+                
+                console.log(`STALEMATE! Player ${stalematedPlayerObj?.username} has no legal moves in game ${gameId}`);
+                return; // Exit early since game is over
+              }
             }
           }
 
@@ -6906,16 +6947,38 @@ async function checkPromotionEligibility(piece, targetSquare, gameState) {
   if (!piece || !piece.can_promote) return null;
   
   const gameType = gameState.gameType;
-  if (!gameType || !gameType.promotion_squares_string) return null;
+  if (!gameType) return null;
   
-  // Parse promotion squares
+  // Combine actual promotion squares with any "custom" squares flagged as
+  // acting as promotion squares (asPromotion === true).
   let promotionSquares = {};
   try {
-    promotionSquares = JSON.parse(gameType.promotion_squares_string);
+    if (gameType.promotion_squares_string) {
+      const parsed = JSON.parse(gameType.promotion_squares_string);
+      if (parsed && typeof parsed === 'object') {
+        promotionSquares = { ...parsed };
+      }
+    }
   } catch (e) {
     console.error('Error parsing promotion_squares_string:', e);
-    return null;
   }
+
+  try {
+    if (gameType.special_squares_string) {
+      const customSquares = typeof gameType.special_squares_string === 'string'
+        ? JSON.parse(gameType.special_squares_string)
+        : gameType.special_squares_string;
+      if (customSquares && typeof customSquares === 'object') {
+        for (const [key, cfg] of Object.entries(customSquares)) {
+          if (cfg && cfg.asPromotion && !promotionSquares[key]) {
+            promotionSquares[key] = { type: 'promotion', fromCustom: true };
+          }
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  if (Object.keys(promotionSquares).length === 0) return null;
   
   // Check if target square is a promotion square
   const squareKey = `${targetSquare.y},${targetSquare.x}`;
@@ -8420,23 +8483,46 @@ function checkForCheck(gameState, playerPosition) {
  * Returns a shallow copy of the piece with boosted stats if on a range square, or the original piece if not.
  */
 function applyRangeSquareBonus(piece, gameType) {
-  if (!gameType || !gameType.range_squares_string) return piece;
-  
-  let rangeSquares;
+  if (!gameType) return piece;
+
+  // Combine actual range squares with any "custom" squares that are flagged
+  // to act as range squares (asRange === true).
+  let rangeSquares = {};
   try {
-    rangeSquares = typeof gameType.range_squares_string === 'string'
-      ? JSON.parse(gameType.range_squares_string)
-      : gameType.range_squares_string;
-  } catch (e) {
-    return piece;
-  }
-  
-  if (!rangeSquares || typeof rangeSquares !== 'object') return piece;
-  
+    if (gameType.range_squares_string) {
+      const parsed = typeof gameType.range_squares_string === 'string'
+        ? JSON.parse(gameType.range_squares_string)
+        : gameType.range_squares_string;
+      if (parsed && typeof parsed === 'object') {
+        rangeSquares = { ...parsed };
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  try {
+    if (gameType.special_squares_string) {
+      const customSquares = typeof gameType.special_squares_string === 'string'
+        ? JSON.parse(gameType.special_squares_string)
+        : gameType.special_squares_string;
+      if (customSquares && typeof customSquares === 'object') {
+        for (const [key, cfg] of Object.entries(customSquares)) {
+          if (cfg && cfg.asRange) {
+            // Custom-as-range entries override only if not already a real range square
+            if (!rangeSquares[key]) {
+              rangeSquares[key] = { rangeBonus: cfg.rangeBonus || 1 };
+            }
+          }
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  if (!rangeSquares || Object.keys(rangeSquares).length === 0) return piece;
+
   // Range squares use "row,col" format where row = y, col = x
   const key = `${piece.y},${piece.x}`;
   if (!rangeSquares[key]) return piece;
-  
+
   const bonus = rangeSquares[key].rangeBonus || 1;
   const boosted = { ...piece };
   
@@ -9440,6 +9526,40 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
         legalMoves.push(move);
       }
     }
+
+    // Also count ranged attacks as legal moves. A piece that can only act via
+    // a ranged attack (e.g. a stationary archer with an enemy in range) should
+    // not be considered as having no legal moves for stalemate / no-moves
+    // detection. Ranged attacks don't move the attacker so they can't expose
+    // the king any further than it already is — but if mate_condition is on
+    // and the player is currently in check, the ranged attack only counts if
+    // it removes the checking piece. We approximate this by simulating the
+    // attack and re-running the check test.
+    if (piece.can_capture_enemy_via_range) {
+      for (const target of pieces) {
+        if (target.id === piece.id) continue;
+        const targetOwner = target.team || target.player_id;
+        if (targetOwner === playerPosition) continue;
+        if (target.cannot_be_captured) continue;
+        if (!canRangedAttackTo(piece.y, piece.x, target.y, target.x, piece, playerPosition, gameType)) continue;
+        if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition)) continue;
+
+        const rangedMove = {
+          pieceId: piece.id,
+          from: { x: piece.x, y: piece.y },
+          to: { x: target.x, y: target.y },
+          isRangedAttack: true
+        };
+
+        if (gameType && gameType.mate_condition) {
+          if (!wouldMoveLeaveInCheck(gameState, rangedMove, playerPosition)) {
+            legalMoves.push(rangedMove);
+          }
+        } else {
+          legalMoves.push(rangedMove);
+        }
+      }
+    }
   }
   
   return legalMoves;
@@ -9515,16 +9635,41 @@ function isCheckmate(gameState, playerPosition) {
 function updateControlSquareTracking(gameState) {
   const { gameType, pieces, players } = gameState;
   
-  if (!gameType?.control_squares_string) return null;
-  
-  let controlSquares;
+  if (!gameType) return null;
+
+  // Combine actual control squares with any "custom" squares flagged to act
+  // as control squares (asControl === true).
+  let controlSquares = {};
   try {
-    controlSquares = JSON.parse(gameType.control_squares_string);
+    if (gameType.control_squares_string) {
+      const parsed = JSON.parse(gameType.control_squares_string);
+      if (parsed && typeof parsed === 'object') {
+        controlSquares = { ...parsed };
+      }
+    }
   } catch (e) {
     console.error('Error parsing control_squares_string:', e);
-    return null;
   }
-  
+
+  try {
+    if (gameType.special_squares_string) {
+      const customSquares = typeof gameType.special_squares_string === 'string'
+        ? JSON.parse(gameType.special_squares_string)
+        : gameType.special_squares_string;
+      if (customSquares && typeof customSquares === 'object') {
+        for (const [key, cfg] of Object.entries(customSquares)) {
+          if (cfg && cfg.asControl && !controlSquares[key]) {
+            controlSquares[key] = {
+              type: 'control',
+              fromCustom: true,
+              ...(cfg.controlConfig || {}),
+            };
+          }
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+
   if (!controlSquares || Object.keys(controlSquares).length === 0) return null;
   
   // Ensure controlSquareTracking exists with proper structure

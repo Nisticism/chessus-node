@@ -2774,6 +2774,52 @@ const runMigrations = async () => {
     console.error('Error adding forced_capture_condition column:', err.message);
   }
 
+  // Add stalemate_draw_condition column to game_types table.
+  // When TRUE (default for backward compatibility), reaching a stalemate position
+  // (no legal moves, not in check) ends the game as a draw — unless a higher-priority
+  // rule (stalemate_win_condition or no_moves_condition) overrides it.
+  // When FALSE and no override is set, the stalemated player's turn is skipped and a
+  // notice is broadcast; the game continues.
+  try {
+    if (!(await columnExists('game_types', 'stalemate_draw_condition'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN stalemate_draw_condition BOOLEAN DEFAULT TRUE COMMENT 'If true (default), a stalemate ends the game in a draw. If false and no other stalemate rule applies, the stalemated player skips their turn'`,
+        "Add stalemate_draw_condition column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding stalemate_draw_condition column:', err.message);
+  }
+
+  // Email notification preferences columns on users table.
+  // notification_email_enabled: global on/off for the weekly notification digest email.
+  // notification_email_disabled_types: comma-separated list of notification 'type' values
+  // the user has opted out of for the digest (those types are excluded from both the
+  // threshold count AND the email body).
+  try {
+    if (!(await columnExists('users', 'notification_email_enabled'))) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN notification_email_enabled TINYINT(1) DEFAULT 1 COMMENT 'If 1 (default), user receives the weekly notification digest email. If 0, user has globally unsubscribed.'`,
+        "Add notification_email_enabled column to users table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding notification_email_enabled column:', err.message);
+  }
+  try {
+    if (!(await columnExists('users', 'notification_email_disabled_types'))) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN notification_email_disabled_types VARCHAR(500) DEFAULT '' COMMENT 'Comma-separated notification type strings the user has opted out of in the digest email.'`,
+        "Add notification_email_disabled_types column to users table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding notification_email_disabled_types column:', err.message);
+  }
+
   // Bump site_settings.setting_value to TEXT to support longer values (e.g. banner text)
   try {
     const sql = `

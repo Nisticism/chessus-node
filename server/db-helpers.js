@@ -976,23 +976,39 @@ const deleteNotification = async (notificationId, userId) => {
 };
 
 const getWeeklyNotificationCounts = async (weekStart) => {
+  // Threshold for sending the weekly digest email. Counts only notifications
+  // whose `type` is NOT in the user's notification_email_disabled_types list,
+  // and excludes users who have globally opted out (notification_email_enabled = 0)
+  // or who have no email on file.
+  const NOTIFICATION_EMAIL_THRESHOLD = 20;
   const results = await query(
-    `SELECT n.user_id, u.username, u.email, COUNT(*) as notification_count
+    `SELECT n.user_id,
+            u.username,
+            u.email,
+            COALESCE(u.notification_email_disabled_types, '') AS disabled_types,
+            COUNT(*) AS notification_count
      FROM notifications n
      JOIN users u ON n.user_id = u.id
-     WHERE n.created_at >= ? AND u.email IS NOT NULL AND u.email != ''
+     WHERE n.created_at >= ?
+       AND u.email IS NOT NULL AND u.email != ''
+       AND COALESCE(u.notification_email_enabled, 1) = 1
+       AND NOT FIND_IN_SET(n.type, COALESCE(u.notification_email_disabled_types, ''))
      GROUP BY n.user_id
-     HAVING notification_count > 10`,
-    [weekStart]
+     HAVING notification_count > ?`,
+    [weekStart, NOTIFICATION_EMAIL_THRESHOLD]
   );
   return results;
 };
 
 const getNotificationSummaryForUser = async (userId, weekStart) => {
+  // Exclude notification types the user has opted out of in the digest.
   const results = await query(
-    `SELECT type, COUNT(*) as count FROM notifications
-     WHERE user_id = ? AND created_at >= ?
-     GROUP BY type`,
+    `SELECT n.type, COUNT(*) AS count
+     FROM notifications n
+     JOIN users u ON n.user_id = u.id
+     WHERE n.user_id = ? AND n.created_at >= ?
+       AND NOT FIND_IN_SET(n.type, COALESCE(u.notification_email_disabled_types, ''))
+     GROUP BY n.type`,
     [userId, weekStart]
   );
   return results;

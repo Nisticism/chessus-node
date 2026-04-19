@@ -1,4 +1,5 @@
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+const crypto = require('crypto');
 
 // Initialize AWS SES client
 const sesClient = new SESClient({
@@ -9,8 +10,39 @@ const sesClient = new SESClient({
   } : undefined
 });
 
+// Build a signed unsubscribe URL for a given user. Stateless: the receiving
+// endpoint verifies the HMAC against the JWT_SECRET so no extra DB column is
+// needed. The token is bound to the user id and a fixed purpose string so it
+// can't be reused for anything other than unsubscribing.
+const buildUnsubscribeUrl = (userId) => {
+  const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'change-me';
+  const sig = crypto
+    .createHmac('sha256', secret)
+    .update(`unsubscribe:${userId}`)
+    .digest('hex')
+    .slice(0, 32);
+  const base = process.env.CLIENT_URL || 'http://localhost:3000';
+  return `${base}/email/unsubscribe?uid=${userId}&token=${sig}`;
+};
+
+const verifyUnsubscribeToken = (userId, token) => {
+  if (!userId || !token) return false;
+  const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'change-me';
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(`unsubscribe:${userId}`)
+    .digest('hex')
+    .slice(0, 32);
+  // Constant-time compare
+  if (token.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+};
+
 // Modern email template base (matches site's blue theme)
-const getEmailTemplate = (content) => `
+// `unsubscribeUrl` is optional: when provided, an unsubscribe link is rendered
+// in the footer (used for the weekly notification digest only — transactional
+// emails like password reset and donation receipts intentionally omit it).
+const getEmailTemplate = (content, unsubscribeUrl = null) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -145,6 +177,7 @@ const getEmailTemplate = (content) => `
         <a href="https://gridgrove.gg/forums" class="footer-link">Community Forums</a>
         <a href="https://gridgrove.gg/play" class="footer-link">Play Games</a>
       </div>
+      ${unsubscribeUrl ? `<p style="margin-top: 16px; font-size: 12px;"><a href="${unsubscribeUrl}" class="footer-link" style="color: #90a4ae;">Unsubscribe from notification emails</a> &middot; <a href="${process.env.CLIENT_URL || 'https://gridgrove.gg'}/preferences" class="footer-link" style="color: #90a4ae;">Manage email preferences</a></p>` : ''}
       <p style="margin-top: 20px; color: #607d8b;">
         © ${new Date().getFullYear()} GridGrove. All rights reserved.
       </p>
@@ -514,9 +547,13 @@ const getNotificationSummaryContent = (username, summaryItems, totalCount) => {
   `;
 };
 
-const sendNotificationSummaryEmail = async (email, username, summaryItems, totalCount) => {
+const sendNotificationSummaryEmail = async (email, username, summaryItems, totalCount, userId = null) => {
   try {
-    const htmlBody = getEmailTemplate(getNotificationSummaryContent(username, summaryItems, totalCount));
+    const unsubscribeUrl = userId ? buildUnsubscribeUrl(userId) : null;
+    const htmlBody = getEmailTemplate(getNotificationSummaryContent(username, summaryItems, totalCount), unsubscribeUrl);
+
+    const textBody = `Hi ${username}, you received ${totalCount} notifications this week. Log in to view them: ${process.env.CLIENT_URL || 'http://localhost:3000'}/notifications`
+      + (unsubscribeUrl ? `\n\nTo unsubscribe from these emails: ${unsubscribeUrl}` : '');
 
     const params = {
       Source: process.env.AWS_SES_FROM_EMAIL || 'noreply@gridgrove.gg',
@@ -530,7 +567,7 @@ const sendNotificationSummaryEmail = async (email, username, summaryItems, total
         },
         Body: {
           Text: {
-            Data: `Hi ${username}, you received ${totalCount} notifications this week. Log in to view them: ${process.env.CLIENT_URL || 'http://localhost:3000'}/notifications`,
+            Data: textBody,
             Charset: 'UTF-8',
           },
           Html: {
@@ -557,4 +594,6 @@ module.exports = {
   sendPasswordResetEmail,
   sendContactEmail,
   sendNotificationSummaryEmail,
+  buildUnsubscribeUrl,
+  verifyUnsubscribeToken,
 };

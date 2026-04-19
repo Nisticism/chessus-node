@@ -77,7 +77,7 @@ const LOGIN_LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
 const MAX_LOGIN_ATTEMPTS = 10; // Allow 10 failed attempts before lockout
 
 // Email service
-const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail, sendNotificationSummaryEmail } = require("./email-service");
+const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail, sendNotificationSummaryEmail, verifyUnsubscribeToken } = require("./email-service");
 
 // Socket.io game handler
 const { initializeSocket, onlineUsers, reconcileOnlineUsers, getIO } = require("./game-socket");
@@ -2209,7 +2209,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
         randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?,
         no_moves_condition = ?, piece_count_condition = ?, promotion_condition = ?,
-        lose_all_pieces_condition = ?, stalemate_win_condition = ?, forced_capture_condition = ?,
+        lose_all_pieces_condition = ?, stalemate_win_condition = ?, stalemate_draw_condition = ?, forced_capture_condition = ?,
         is_draft = ?, draft_saved_step = ?,
         is_unique = NULL,
         uniqueness_score = NULL,
@@ -2257,6 +2257,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.promotion_condition || false,
       gameData.lose_all_pieces_condition || false,
       gameData.stalemate_win_condition || false,
+      gameData.stalemate_draw_condition !== undefined ? !!gameData.stalemate_draw_condition : true,
       gameData.forced_capture_condition || false,
       isDraft,
       draftSavedStep,
@@ -4975,9 +4976,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         promotion_squares_string, special_squares_string, control_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
         no_moves_condition, piece_count_condition, promotion_condition,
-        lose_all_pieces_condition, stalemate_win_condition, forced_capture_condition,
+        lose_all_pieces_condition, stalemate_win_condition, stalemate_draw_condition, forced_capture_condition,
         pieces_string, created_at, is_draft, draft_saved_step
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -5021,6 +5022,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.promotion_condition || false,
       gameData.lose_all_pieces_condition || false,
       gameData.stalemate_win_condition || false,
+      gameData.stalemate_draw_condition !== undefined ? !!gameData.stalemate_draw_condition : true,
       gameData.forced_capture_condition || false,
       gameData.pieces_string || '{}',
       new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -6445,12 +6447,13 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
        (SELECT COUNT(*) FROM games gm WHERE gm.game_type_id = g.id) as play_count
        FROM game_types g
        LEFT JOIN users u ON g.creator_id = u.id
+       WHERE COALESCE(g.is_draft, 0) = 0
        ORDER BY g.id DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
 
-    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM game_types");
+    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM game_types WHERE COALESCE(is_draft, 0) = 0");
 
     res.json({
       data: games,
@@ -6464,6 +6467,81 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
   } catch (err) {
     console.error("Error in /api/admin/games:", err);
     res.status(500).send({ message: "Failed to fetch games", err: err.message });
+  }
+});
+
+// List unfinished game drafts (game_types rows with is_draft = 1) for admin review.
+app.get("/api/admin/drafts", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const [drafts] = await db_pool.query(
+      `SELECT g.id, g.game_name, g.descript, g.board_width, g.board_height,
+       g.player_count, g.draft_saved_step, g.created_at, g.updated_at,
+       g.creator_id,
+       u.username as creator_name
+       FROM game_types g
+       LEFT JOIN users u ON g.creator_id = u.id
+       WHERE g.is_draft = 1
+       ORDER BY g.updated_at DESC, g.id DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query(
+      "SELECT COUNT(*) as total FROM game_types WHERE is_draft = 1"
+    );
+
+    res.json({
+      data: drafts,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/drafts:", err);
+    res.status(500).send({ message: "Failed to fetch drafts", err: err.message });
+  }
+});
+
+// Fetch a single draft (full game_types row) for admin inspection.
+app.get("/api/admin/drafts/:draftId", authenticateAdmin, async (req, res) => {
+  try {
+    const draftId = parseInt(req.params.draftId);
+    if (!draftId) return res.status(400).send({ message: "Invalid draft id" });
+    const [rows] = await db_pool.query(
+      `SELECT g.*, u.username as creator_name
+       FROM game_types g
+       LEFT JOIN users u ON g.creator_id = u.id
+       WHERE g.id = ? AND g.is_draft = 1`,
+      [draftId]
+    );
+    if (rows.length === 0) return res.status(404).send({ message: "Draft not found" });
+    res.json({ data: rows[0] });
+  } catch (err) {
+    console.error("Error fetching draft:", err);
+    res.status(500).send({ message: "Failed to fetch draft", err: err.message });
+  }
+});
+
+// Delete a draft. Only deletes rows still flagged is_draft=1 to avoid wiping
+// out a published game by mistake.
+app.delete("/api/admin/drafts/:draftId", authenticateAdmin, async (req, res) => {
+  try {
+    const draftId = parseInt(req.params.draftId);
+    if (!draftId) return res.status(400).send({ message: "Invalid draft id" });
+    const [result] = await db_pool.query(
+      "DELETE FROM game_types WHERE id = ? AND is_draft = 1",
+      [draftId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).send({ message: "Draft not found or already published" });
+    }
+    console.log(`Admin ${req.user.id} deleted draft ${draftId}`);
+    res.json({ message: "Draft deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting draft:", err);
+    res.status(500).send({ message: "Failed to delete draft", err: err.message });
   }
 });
 
@@ -7463,6 +7541,174 @@ app.put("/api/users/:userId/messaging-preferences", authenticateToken, async (re
   }
 });
 
+// Get the current user's email notification preferences.
+app.get("/api/users/:userId/email-preferences", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const [rows] = await db_pool.query(
+      "SELECT notification_email_enabled, notification_email_disabled_types FROM users WHERE id = ?",
+      [userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+    const row = rows[0];
+    res.json({
+      notification_email_enabled: row.notification_email_enabled === null || row.notification_email_enabled === undefined ? 1 : row.notification_email_enabled,
+      notification_email_disabled_types: (row.notification_email_disabled_types || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean),
+    });
+  } catch (err) {
+    console.error("Error fetching email preferences:", err);
+    res.status(500).json({ error: "Failed to fetch email preferences" });
+  }
+});
+
+// Update email notification preferences (global toggle + per-type opt-out list).
+app.put("/api/users/:userId/email-preferences", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const { notification_email_enabled, notification_email_disabled_types } = req.body;
+    const updates = [];
+    const values = [];
+    if (notification_email_enabled !== undefined) {
+      updates.push("notification_email_enabled = ?");
+      values.push(notification_email_enabled ? 1 : 0);
+    }
+    if (notification_email_disabled_types !== undefined) {
+      // Whitelist allowed type strings to avoid storing arbitrary input.
+      const ALLOWED_TYPES = ['friend_request', 'challenge', 'comment', 'reply', 'game_thread', 'game_move', 'game_chat'];
+      const list = Array.isArray(notification_email_disabled_types)
+        ? notification_email_disabled_types
+        : String(notification_email_disabled_types || '').split(',');
+      const cleaned = list
+        .map(s => String(s).trim())
+        .filter(s => ALLOWED_TYPES.includes(s));
+      // Deduplicate
+      const unique = Array.from(new Set(cleaned));
+      updates.push("notification_email_disabled_types = ?");
+      values.push(unique.join(','));
+    }
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No preferences to update" });
+    }
+    values.push(userId);
+    await dbHelpers.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+    res.json({ message: "Email preferences updated" });
+  } catch (err) {
+    console.error("Error updating email preferences:", err);
+    res.status(500).json({ error: "Failed to update email preferences" });
+  }
+});
+
+// One-click unsubscribe from notification digest emails. The token is HMAC-signed
+// against the user id so this endpoint requires no login. Successful requests
+// flip notification_email_enabled to 0; existing per-type opt-outs are preserved.
+app.get("/api/email/unsubscribe", async (req, res) => {
+  try {
+    const uid = parseInt(req.query.uid, 10);
+    const token = String(req.query.token || '');
+    if (!uid || !token || !verifyUnsubscribeToken(uid, token)) {
+      return res.status(400).json({ ok: false, message: "Invalid or expired unsubscribe link." });
+    }
+    await db_pool.query("UPDATE users SET notification_email_enabled = 0 WHERE id = ?", [uid]);
+    return res.json({ ok: true, message: "You have been unsubscribed from notification emails. You can re-enable them in your Preferences." });
+  } catch (err) {
+    console.error("Error processing unsubscribe:", err);
+    res.status(500).json({ ok: false, message: "Failed to process unsubscribe." });
+  }
+});
+
+// Get the current user's email notification preferences.
+app.get("/api/users/:userId/email-preferences", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const [rows] = await db_pool.query(
+      "SELECT notification_email_enabled, notification_email_disabled_types FROM users WHERE id = ?",
+      [userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+    const row = rows[0];
+    res.json({
+      notification_email_enabled: row.notification_email_enabled === null || row.notification_email_enabled === undefined ? 1 : row.notification_email_enabled,
+      notification_email_disabled_types: (row.notification_email_disabled_types || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean),
+    });
+  } catch (err) {
+    console.error("Error fetching email preferences:", err);
+    res.status(500).json({ error: "Failed to fetch email preferences" });
+  }
+});
+
+// Update email notification preferences (global toggle + per-type opt-out list).
+app.put("/api/users/:userId/email-preferences", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const { notification_email_enabled, notification_email_disabled_types } = req.body;
+    const updates = [];
+    const values = [];
+    if (notification_email_enabled !== undefined) {
+      updates.push("notification_email_enabled = ?");
+      values.push(notification_email_enabled ? 1 : 0);
+    }
+    if (notification_email_disabled_types !== undefined) {
+      // Whitelist allowed type strings to avoid storing arbitrary input.
+      const ALLOWED_TYPES = ['friend_request', 'challenge', 'comment', 'reply', 'game_thread', 'game_move', 'game_chat'];
+      const list = Array.isArray(notification_email_disabled_types)
+        ? notification_email_disabled_types
+        : String(notification_email_disabled_types || '').split(',');
+      const cleaned = list
+        .map(s => String(s).trim())
+        .filter(s => ALLOWED_TYPES.includes(s));
+      // Deduplicate
+      const unique = Array.from(new Set(cleaned));
+      updates.push("notification_email_disabled_types = ?");
+      values.push(unique.join(','));
+    }
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No preferences to update" });
+    }
+    values.push(userId);
+    await dbHelpers.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+    res.json({ message: "Email preferences updated" });
+  } catch (err) {
+    console.error("Error updating email preferences:", err);
+    res.status(500).json({ error: "Failed to update email preferences" });
+  }
+});
+
+// One-click unsubscribe from notification digest emails. The token is HMAC-signed
+// against the user id so this endpoint requires no login. Successful requests
+// flip notification_email_enabled to 0; existing per-type opt-outs are preserved.
+app.get("/api/email/unsubscribe", async (req, res) => {
+  try {
+    const uid = parseInt(req.query.uid, 10);
+    const token = String(req.query.token || '');
+    if (!uid || !token || !verifyUnsubscribeToken(uid, token)) {
+      return res.status(400).json({ ok: false, message: "Invalid or expired unsubscribe link." });
+    }
+    await db_pool.query("UPDATE users SET notification_email_enabled = 0 WHERE id = ?", [uid]);
+    return res.json({ ok: true, message: "You have been unsubscribed from notification emails. You can re-enable them in your Preferences." });
+  } catch (err) {
+    console.error("Error processing unsubscribe:", err);
+    res.status(500).json({ ok: false, message: "Failed to process unsubscribe." });
+  }
+});
+
 // ========== Site Settings API ==========
 
 // Public: Get a single site setting by key
@@ -7590,7 +7836,7 @@ const checkWeeklyNotificationDigest = async () => {
       if (alreadySent) continue;
 
       const summary = await dbHelpers.getNotificationSummaryForUser(user.user_id, weekStartStr);
-      await sendNotificationSummaryEmail(user.email, user.username, summary, user.notification_count);
+      await sendNotificationSummaryEmail(user.email, user.username, summary, user.notification_count, user.user_id);
       await dbHelpers.logNotificationEmail(user.user_id, user.notification_count, weekStartStr);
     }
   } catch (err) {
