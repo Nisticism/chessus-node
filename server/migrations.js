@@ -2732,6 +2732,48 @@ const runMigrations = async () => {
     console.error('Error adding capture_condition_requires_all column:', err.message);
   }
 
+  // Add lose_all_pieces_condition column to game_types table (anti-chess style)
+  // When TRUE, a player WINS as soon as they have lost all of their pieces.
+  try {
+    if (!(await columnExists('game_types', 'lose_all_pieces_condition'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN lose_all_pieces_condition BOOLEAN DEFAULT FALSE COMMENT 'Anti-chess: a player wins when they have lost all of their pieces'`,
+        "Add lose_all_pieces_condition column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding lose_all_pieces_condition column:', err.message);
+  }
+
+  // Add stalemate_win_condition column to game_types table
+  // When TRUE, a stalemated player (no legal moves and not in check) WINS instead of drawing.
+  try {
+    if (!(await columnExists('game_types', 'stalemate_win_condition'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN stalemate_win_condition BOOLEAN DEFAULT FALSE COMMENT 'If true, a stalemated player (no legal moves, not in check) wins instead of the game being a draw'`,
+        "Add stalemate_win_condition column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding stalemate_win_condition column:', err.message);
+  }
+
+  // Add forced_capture_condition column to game_types table
+  // When TRUE, if any of a player's pieces can capture, they MUST make a capture move.
+  try {
+    if (!(await columnExists('game_types', 'forced_capture_condition'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN forced_capture_condition BOOLEAN DEFAULT FALSE COMMENT 'If true, players are forced to capture when a capture is available (any capture)'`,
+        "Add forced_capture_condition column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding forced_capture_condition column:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

@@ -2209,6 +2209,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
         randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?,
         no_moves_condition = ?, piece_count_condition = ?, promotion_condition = ?,
+        lose_all_pieces_condition = ?, stalemate_win_condition = ?, forced_capture_condition = ?,
         is_draft = ?, draft_saved_step = ?,
         is_unique = NULL,
         uniqueness_score = NULL,
@@ -2254,6 +2255,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.no_moves_condition || false,
       gameData.piece_count_condition || false,
       gameData.promotion_condition || false,
+      gameData.lose_all_pieces_condition || false,
+      gameData.stalemate_win_condition || false,
+      gameData.forced_capture_condition || false,
       isDraft,
       draftSavedStep,
       gameId
@@ -2440,6 +2444,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
               value_condition, value_piece, value_max, value_title,
               squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
               no_moves_condition, piece_count_condition, promotion_condition, optional_condition,
+              lose_all_pieces_condition, stalemate_win_condition, forced_capture_condition,
               actions_per_turn, simultaneous_turns, board_width, board_height, player_count,
               draw_move_limit, repetition_draw_count,
               range_squares_string, promotion_squares_string, special_squares_string, control_squares_string,
@@ -2587,7 +2592,8 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       // --- LEVEL 1: Win conditions (weight: 30) ---
       const winConditionFields = [
         'mate_condition', 'capture_condition', 'value_condition', 'squares_condition',
-        'hill_condition', 'no_moves_condition', 'piece_count_condition', 'promotion_condition'
+        'hill_condition', 'no_moves_condition', 'piece_count_condition', 'promotion_condition',
+        'lose_all_pieces_condition', 'stalemate_win_condition', 'forced_capture_condition'
       ];
       const winWeight = 30;
       totalWeight += winWeight;
@@ -4969,8 +4975,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         promotion_squares_string, special_squares_string, control_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
         no_moves_condition, piece_count_condition, promotion_condition,
+        lose_all_pieces_condition, stalemate_win_condition, forced_capture_condition,
         pieces_string, created_at, is_draft, draft_saved_step
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -5012,6 +5019,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.no_moves_condition || false,
       gameData.piece_count_condition || false,
       gameData.promotion_condition || false,
+      gameData.lose_all_pieces_condition || false,
+      gameData.stalemate_win_condition || false,
+      gameData.forced_capture_condition || false,
       gameData.pieces_string || '{}',
       new Date().toISOString().slice(0, 19).replace('T', ' '),
       isDraft,

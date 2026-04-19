@@ -3120,53 +3120,64 @@ function initializeSocket(server) {
               gameState.moveHistory[gameState.moveHistory.length - 1].isCheck = true;
             }
 
-            // Check for stalemate after premove (only if mate_condition is enabled)
-            if (!premoveCheckResult.inCheck && gameState.gameType?.mate_condition) {
+            // Check for stalemate after premove (only if mate_condition or stalemate_win_condition is enabled)
+            if (!premoveCheckResult.inCheck && (gameState.gameType?.mate_condition || gameState.gameType?.stalemate_win_condition)) {
               const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
               
               if (legalMoves.length === 0) {
-                // Stalemate detected after premove
-                console.log('STALEMATE DETECTED after premove! Ending game in a draw...');
+                const stalemateWinsForCurrent = gameState.gameType?.stalemate_win_condition === true;
+                const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
+                const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
+                const winnerObj = stalemateWinsForCurrent ? stalematedPlayerObj : null;
+                const winReasonStr = stalemateWinsForCurrent ? 'stalemate_win' : 'stalemate';
+
+                if (stalemateWinsForCurrent) {
+                  console.log('STALEMATE WIN after premove! Stalemated player wins. Ending game...');
+                } else {
+                  console.log('STALEMATE DETECTED after premove! Ending game in a draw...');
+                }
                 stopGameTimer(gameId);
                 
                 gameState.status = 'completed';
-                gameState.winner = null;
-                gameState.winReason = 'stalemate';
+                gameState.winner = winnerObj?.id || null;
+                gameState.winReason = winReasonStr;
 
-                // Update ELO ratings for draw (only if game is rated)
+                // Update ELO ratings
                 let eloChanges = null;
                 const player1 = gameState.players[0];
                 const player2 = gameState.players[1];
                 if (gameState.rated !== false && player1?.id && player2?.id) {
-                  // For draws, pass higher rated player as 'winner' and lower as 'loser' with isDraw=true
-                  // This ensures the higher player loses a bit and lower player gains a bit
-                  const p1Elo = player1.elo || 1000;
-                  const p2Elo = player2.elo || 1000;
-                  const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
-                  const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
-                  eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
-                  console.log('ELO updated for stalemate (draw):', eloChanges);
+                  if (stalemateWinsForCurrent && winnerObj && opponentObj) {
+                    eloChanges = await updateEloRatings(winnerObj.id, opponentObj.id);
+                    console.log('ELO updated for stalemate win:', eloChanges);
+                  } else {
+                    const p1Elo = player1.elo || 1000;
+                    const p2Elo = player2.elo || 1000;
+                    const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+                    const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+                    eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+                    console.log('ELO updated for stalemate (draw):', eloChanges);
+                  }
                 }
 
                 const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
                 await db_pool.query(
-                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                    pieces = ?, other_data = ? WHERE id = ?`,
-                  [endTime, JSON.stringify(gameState.pieces), 
-                   buildOtherData(gameState, { reason: 'stalemate', eloChanges }),
+                  [endTime, winnerObj?.id || null, JSON.stringify(gameState.pieces),
+                   buildOtherData(gameState, { reason: winReasonStr, eloChanges }),
                    gameId]
                 );
 
                 io.to(`game-${gameId}`).emit("gameOver", {
                   gameId,
-                  winner: null,
-                  reason: 'stalemate',
+                  winner: winnerObj?.id || null,
+                  reason: winReasonStr,
                   finalState: gameState,
                   eloChanges
                 });
                 
-                const stalematedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
-                console.log(`STALEMATE! Player ${stalematedPlayer?.username} has no legal moves in game ${gameId} after premove`);
+                console.log(`STALEMATE! Player ${stalematedPlayerObj?.username} has no legal moves in game ${gameId} after premove`);
                 return; // Exit early since game is over
               }
             }
@@ -3479,41 +3490,54 @@ function initializeSocket(server) {
             }
           }
 
-          // Check for stalemate (only if mate_condition is enabled)
-          if (!checkResult.inCheck && gameState.gameType?.mate_condition) {
+          // Check for stalemate (only if mate_condition or stalemate_win_condition is enabled)
+          if (!checkResult.inCheck && (gameState.gameType?.mate_condition || gameState.gameType?.stalemate_win_condition)) {
             const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
             
             if (legalMoves.length === 0) {
-              // Stalemate detected - no legal moves but not in check
-              console.log('STALEMATE DETECTED! Ending game in a draw...');
+              const stalemateWinsForCurrent = gameState.gameType?.stalemate_win_condition === true;
+              const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
+              const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
+              const winnerObj = stalemateWinsForCurrent ? stalematedPlayerObj : null;
+              const winReasonStr = stalemateWinsForCurrent ? 'stalemate_win' : 'stalemate';
+
+              if (stalemateWinsForCurrent) {
+                console.log('STALEMATE WIN! Stalemated player wins under stalemate_win_condition. Ending game...');
+              } else {
+                console.log('STALEMATE DETECTED! Ending game in a draw...');
+              }
               stopGameTimer(gameId);
               
               gameState.status = 'completed';
-              gameState.winner = null; // Draw, no winner
-              gameState.winReason = 'stalemate';
+              gameState.winner = winnerObj?.id || null;
+              gameState.winReason = winReasonStr;
 
-              // Update ELO ratings for draw (only if game is rated)
+              // Update ELO ratings
               let eloChanges = null;
               const player1 = gameState.players[0];
               const player2 = gameState.players[1];
               if (gameState.rated !== false && player1?.id && player2?.id) {
-                // For draws, pass higher rated player as 'winner' and lower as 'loser' with isDraw=true
-                // This ensures the higher player loses a bit and lower player gains a bit
-                const p1Elo = player1.elo || 1000;
-                const p2Elo = player2.elo || 1000;
-                const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
-                const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
-                eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
-                console.log('ELO updated for stalemate (draw):', eloChanges);
+                if (stalemateWinsForCurrent && winnerObj && opponentObj) {
+                  eloChanges = await updateEloRatings(winnerObj.id, opponentObj.id);
+                  console.log('ELO updated for stalemate win:', eloChanges);
+                } else {
+                  // Draw: pass higher rated as winner with isDraw=true
+                  const p1Elo = player1.elo || 1000;
+                  const p2Elo = player2.elo || 1000;
+                  const higherPlayer = p1Elo >= p2Elo ? player1.id : player2.id;
+                  const lowerPlayer = p1Elo >= p2Elo ? player2.id : player1.id;
+                  eloChanges = await updateEloRatings(higherPlayer, lowerPlayer, true);
+                  console.log('ELO updated for stalemate (draw):', eloChanges);
+                }
               }
 
               const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
               try {
                 await db_pool.query(
-                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL,
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                    pieces = ?, other_data = ? WHERE id = ?`,
-                  [endTime, JSON.stringify(gameState.pieces), 
-                   buildOtherData(gameState, { reason: 'stalemate', eloChanges }),
+                  [endTime, winnerObj?.id || null, JSON.stringify(gameState.pieces),
+                   buildOtherData(gameState, { reason: winReasonStr, eloChanges }),
                    gameId]
                 );
                 console.log('Database updated for stalemate');
@@ -3523,15 +3547,14 @@ function initializeSocket(server) {
 
               io.to(`game-${gameId}`).emit("gameOver", {
                 gameId,
-                winner: null,
-                reason: 'stalemate',
+                winner: winnerObj?.id || null,
+                reason: winReasonStr,
                 move: moveRecord,
                 finalState: gameState,
                 eloChanges
               });
               
-              const stalematedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
-              console.log(`STALEMATE! Player ${stalematedPlayer?.username} has no legal moves in game ${gameId}`);
+              console.log(`STALEMATE! Player ${stalematedPlayerObj?.username} has no legal moves in game ${gameId}`);
               return; // Exit early since game is over
             }
           }
@@ -6000,6 +6023,19 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     const checkmateVictim = allCapturedPieces.find(p => p.ends_game_on_checkmate);
     if (checkmateVictim) {
       return { valid: false, reason: "That piece must be checkmated, not captured. Put it in checkmate instead!" };
+    }
+  }
+
+  // Forced capture rule: if any of this player's pieces can make a capturing move,
+  // the player MUST make a capturing move (any capture). This rejects non-capturing
+  // moves when captures are available.
+  if (gameState.gameType?.forced_capture_condition) {
+    const isCapturingMove = allCapturedPieces.length > 0 ||
+                            (move.isRangedAttack === true && destinationPieceIndex !== -1);
+    if (!isCapturingMove) {
+      if (playerHasCaptureAvailable(gameState, currentPlayer.position)) {
+        return { valid: false, reason: "A capture is available — you must make a capture this turn." };
+      }
     }
   }
   
@@ -9234,6 +9270,54 @@ function applyFlankingCaptures(gameState, placedX, placedY, playerPosition) {
 }
 
 /**
+ * Determine whether a player currently has any capture move available
+ * (used by the forced_capture_condition rule). Considers movement-based
+ * captures across all of the player's pieces. Skips ranged attacks because
+ * those require explicit player input (right-click) and aren't auto-required.
+ *
+ * If mate_condition is enabled, only legal (non-self-checking) captures count.
+ */
+function playerHasCaptureAvailable(gameState, playerPosition) {
+  const { pieces, gameType } = gameState;
+  const playerPieces = pieces.filter(p => {
+    const owner = p.team || p.player_id;
+    return owner === playerPosition;
+  });
+
+  for (const piece of playerPieces) {
+    let possibleMoves;
+    try {
+      possibleMoves = getPossibleMovesForPiece(piece, pieces, gameType);
+    } catch (e) {
+      continue;
+    }
+    for (const toSquare of possibleMoves) {
+      const enemyAtDest = pieces.some(p => {
+        if (p.id === piece.id) return false;
+        if (!doesPieceOccupySquare(p, toSquare.x, toSquare.y)) return false;
+        const owner = p.team || p.player_id;
+        return owner !== playerPosition;
+      });
+      if (!enemyAtDest) continue;
+
+      if (gameType && gameType.mate_condition) {
+        const move = {
+          pieceId: piece.id,
+          from: { x: piece.x, y: piece.y },
+          to: toSquare
+        };
+        if (!wouldMoveLeaveInCheck(gameState, move, playerPosition)) {
+          return true;
+        }
+      } else {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * @param {Object} gameState
  * @param {Number} playerPosition - 1 or 2
  * @returns {Array} - Array of legal moves { pieceId, from: {x, y}, to: {x, y} }
@@ -9504,6 +9588,26 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
     }
   }
 
+  // Check lose-all-pieces condition (anti-chess style: a player WINS when they have no pieces left)
+  if (gameType.lose_all_pieces_condition) {
+    for (const player of players) {
+      const playerPieces = pieces.filter(p =>
+        p.team === player.position ||
+        p.player_id === player.position ||
+        p.player === player.id ||
+        p.player_number === player.position
+      );
+      if (playerPieces.length === 0) {
+        // This player has lost all of their pieces — they WIN under anti-chess rules
+        return {
+          gameOver: true,
+          winner: player.id,
+          reason: 'lose_all_pieces'
+        };
+      }
+    }
+  }
+
   // Check mate condition (specific piece type captured - legacy support)
   if (gameType.mate_condition && gameType.mate_piece) {
     for (const player of players) {
@@ -9605,7 +9709,8 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
   const hasAnyWinCondition = gameType.mate_condition || gameType.capture_condition || 
                               gameType.value_condition || gameType.squares_condition || 
                               gameType.hill_condition || gameType.no_moves_condition ||
-                              gameType.promotion_condition;
+                              gameType.promotion_condition || gameType.lose_all_pieces_condition ||
+                              gameType.stalemate_win_condition;
   
   if (!hasAnyWinCondition) {
     for (const player of players) {
