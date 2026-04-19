@@ -4,9 +4,16 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
-    date: "April 19, 2026",
-    title: "Match Review Polish, Grove Tuning & Custom Piece Images",
+    date: "April 18, 2026",
+    title: "Promotion Overhaul, Match Review Polish & Piece Wizard Limits",
     items: [
+      "Promotion target selection has moved out of the piece wizard and into the game wizard — when you place a piece that can promote, a new collapsible 'Promotion Options' section now appears in step 4 next to Combat Stats",
+      "You can override the default promotion list per placement, with a paginated piece picker capped at the number of unique piece types on the board plus 8",
+      "If your game uses the checkmate win condition, you can now allow a piece to promote into a checkmate piece (e.g. another king), with an optional 'cannot exceed the original starting count' guard that hides the option from the promotion modal once the player owns as many checkmate pieces as they started with",
+      "The same allow/limit pair is available for win-on-capture pieces, regardless of win condition",
+      "Mirroring a player's pieces in step 4 now copies these new promotion settings as well",
+      "Game detail pages now describe each piece's promotion targets, including any allowance for checkmate or win-on-capture targets and any 'limit to original count' guards",
+      "Sandbox now respects 'first move only' movement and capture restrictions — once a piece has moved, those moves are no longer offered, matching live-game behaviour",
       "Match review now has a true 'starting position' before the first move — using ⏮ jumps to the empty-history view, and arrow keys can step into and out of it",
       "When viewing the starting position, no row in the move history table is highlighted; pressing the right arrow then highlights the first move",
       "Grove theme background tuned to a subtly greener tint",
@@ -14,17 +21,14 @@ const changelogData = [
       "Clicking Player 1 or Player 2 still resets the image to that player's default; only clicking inside the image grid creates an override",
       "When a game is saved, you'll now get a dismissible warning if you've assigned a dark image to Player 1 or a light image to Player 2",
       "Large card shadows (e.g. home preview board, feature cards, create-news panel, career listings) toned down for a cleaner, less dramatic look",
-    ]
-  },
-  {
-    date: "April 18, 2026",
-    title: "Piece Wizard Limits & Detail Page Polish",
-    items: [
       "Step-by-step movement, capture, and ranged attack values are now capped at 8 to prevent extreme pieces from causing hover lag",
       "Custom square movement and attack are now limited to 50 squares each, with a live counter shown in the piece wizard",
       "Adding new custom squares is automatically blocked when step-by-step movement, capture, or ranged attack is set to 7 or higher (the step area already covers the entire grid), with a clear in-wizard message explaining why",
       "Updated piece wizard tooltips to document the new step-by-step and custom-square limits",
       "Piece detail pages now collapse the custom-square movement and attack lists by default when there are 10 or more squares, with a Show all / Hide toggle",
+      "All dates and times across the site (last active, account creation, piece/game creation, forums, comments, news, careers, changelog, etc.) now display in your own local time, converted from a single UTC source of truth so relative ordering stays correct across users",
+      "Removing the checkmate or capture win condition from a game now correctly clears any per-placement checkmate/capture flags so leftover icons no longer appear in the wizard or game detail page",
+      "Sandbox now uses the same purple highlight as the piece detail page for first-move-only movement and capture squares",
     ]
   },
   {
