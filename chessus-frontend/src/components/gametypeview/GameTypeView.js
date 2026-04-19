@@ -1055,6 +1055,25 @@ const GameTypeView = () => {
       specialRulesContent.push(promoContent);
     }
 
+    // Custom squares description — they can act as combinations of the other special square types
+    if (Object.keys(specialSquares.special).length > 0) {
+      const customEntries = Object.entries(specialSquares.special);
+      const labelFor = (cfg) => {
+        const parts = [];
+        if (cfg?.asRange) parts.push(`Range (+${cfg.rangeBonus || 1})`);
+        if (cfg?.asPromotion) parts.push('Promotion');
+        if (cfg?.asControl) parts.push('Control');
+        return parts.length > 0 ? parts.join(' + ') : 'no combined behavior yet';
+      };
+      const lines = customEntries.map(([key, cfg]) => {
+        const [row, col] = key.split(',').map(Number);
+        return `• ${String.fromCharCode(97 + col)}${row + 1} — ${labelFor(cfg)}`;
+      });
+      specialRulesContent.push(
+        `**Custom Squares**\nCustom squares can act as any combination of the other special square types simultaneously (Range, Promotion, and/or Control).\n\n${lines.join('\n')}\n\nSquares with no combined behavior yet are visual placeholders only.`
+      );
+    }
+
     // ---- Win Conditions Section ----
     const winConditions = [];
 
@@ -1446,7 +1465,14 @@ const GameTypeView = () => {
                 {squareType === 'range' && 'R'}
                 {squareType === 'promotion' && 'P'}
                 {squareType === 'control' && 'C'}
-                {squareType === 'special' && 'S'}
+                {squareType === 'special' && (() => {
+                  const cfg = specialSquares.special[`${row},${col}`] || {};
+                  const parts = [];
+                  if (cfg.asRange) parts.push('R');
+                  if (cfg.asPromotion) parts.push('P');
+                  if (cfg.asControl) parts.push('C');
+                  return parts.length > 0 ? parts.join('') : 'X';
+                })()}
               </div>
             )}
             {placement && !placement._occupied && (

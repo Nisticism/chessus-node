@@ -255,6 +255,22 @@
     border: none;
     white-space: nowrap;
   }
+
+  // On smaller screens the absolutely-centered "Board Setup" heading can
+  // overlap the "Show Details" toggle. Switch to a flex layout that keeps
+  // them side by side without overlapping.
+  @media (max-width: 600px) {
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+
+    h2 {
+      position: static;
+      transform: none;
+      font-size: 1.1rem;
+      flex: 0 0 auto;
+    }
+  }
 }
 
 .details-toggle {

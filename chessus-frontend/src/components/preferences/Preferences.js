@@ -168,6 +168,39 @@ const Preferences = () => {
     return currentUser?.chat_public_for_spectators === 1 || currentUser?.chat_public_for_spectators === true;
   });
 
+  // Email notification preferences (loaded async from /email-preferences)
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const NOTIFICATION_EMAIL_TYPES = [
+    { key: 'friend_request', label: 'Friend requests' },
+    { key: 'challenge', label: 'Game challenges' },
+    { key: 'comment', label: 'Comments on your forum posts' },
+    { key: 'reply', label: 'Replies to your comments' },
+    { key: 'game_thread', label: 'New forum threads about your games' },
+    { key: 'game_move', label: 'Opponent moves in your games' },
+    { key: 'game_chat', label: 'Game chat messages' },
+  ];
+  const [emailDisabledTypes, setEmailDisabledTypes] = useState([]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let cancelled = false;
+    axios
+      .get(`${API_URL}users/${currentUser.id}/email-preferences`, { headers: authHeader() })
+      .then((res) => {
+        if (cancelled) return;
+        setEmailEnabled(res.data.notification_email_enabled !== 0);
+        setEmailDisabledTypes(Array.isArray(res.data.notification_email_disabled_types) ? res.data.notification_email_disabled_types : []);
+      })
+      .catch((err) => console.error('Failed to load email preferences:', err));
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
+  const toggleEmailType = (typeKey) => {
+    setEmailDisabledTypes((prev) =>
+      prev.includes(typeKey) ? prev.filter((t) => t !== typeKey) : [...prev, typeKey]
+    );
+  };
+
   const [pieceShadow, setPieceShadow] = useState(() => {
     return localStorage.getItem('pieceShadow') === 'true';
   });
@@ -240,6 +273,16 @@ const Preferences = () => {
           disable_game_chat: disableGameChat,
           sound_enabled: soundEnabled,
           chat_public_for_spectators: chatPublicForSpectators,
+        },
+        { headers: authHeader() }
+      );
+
+      // Save email notification preferences
+      await axios.put(
+        API_URL + `users/${currentUser.id}/email-preferences`,
+        {
+          notification_email_enabled: emailEnabled,
+          notification_email_disabled_types: emailDisabledTypes,
         },
         { headers: authHeader() }
       );
@@ -639,6 +682,50 @@ const Preferences = () => {
                 <span className={styles["toggle-slider"]} />
               </div>
             </label>
+          </div>
+        </section>
+
+        <Divider muted />
+
+        <section className={styles["preference-section"]}>
+          <h2>Email Notifications</h2>
+          <p style={{ marginTop: 0, opacity: 0.8 }}>
+            We only send one notification email per week, and only when you've accumulated more than 20 unread notifications. Transactional emails (welcome, password reset, donation receipts) are not affected by these settings.
+          </p>
+          <div className={styles["animations-section"]}>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Receive notification summary emails <InfoTooltip text="When disabled, you will not receive the weekly notification digest email regardless of activity." /></span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={emailEnabled}
+                  onChange={(e) => setEmailEnabled(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+            <div style={{ marginTop: 12, opacity: emailEnabled ? 1 : 0.5, pointerEvents: emailEnabled ? 'auto' : 'none' }}>
+              <p style={{ marginBottom: 8, fontWeight: 600 }}>Per-type opt-out</p>
+              <p style={{ marginTop: 0, fontSize: 13, opacity: 0.8 }}>
+                Notifications you opt out of here are excluded from both the threshold count and the email itself.
+              </p>
+              {NOTIFICATION_EMAIL_TYPES.map((t) => {
+                const optedOut = emailDisabledTypes.includes(t.key);
+                return (
+                  <label key={t.key} className={styles["toggle-row"]}>
+                    <span className={styles["toggle-text"]}>{t.label}</span>
+                    <div className={styles["toggle-switch"]}>
+                      <input
+                        type="checkbox"
+                        checked={!optedOut}
+                        onChange={() => toggleEmailType(t.key)}
+                      />
+                      <span className={styles["toggle-slider"]} />
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         </section>
 

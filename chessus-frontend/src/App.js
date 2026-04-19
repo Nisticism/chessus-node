@@ -52,6 +52,7 @@ const Careers = lazy(() => import("./containers/careers/Careers"));
 const CareerEditor = lazy(() => import("./components/careereditor/CareerEditor"));
 const DeletedAccount = lazy(() => import("./components/deletedaccount/DeletedAccount"));
 const Preferences = lazy(() => import("./components/preferences/Preferences"));
+const Unsubscribe = lazy(() => import("./components/unsubscribe/Unsubscribe"));
 const Donate = lazy(() => import("./components/donate/Donate"));
 const Contact = lazy(() => import("./components/contact/Contact"));
 const PrivacyPolicy = lazy(() => import("./components/privacypolicy/PrivacyPolicy"));
@@ -217,6 +218,7 @@ function App() {
             <Route exact path="/careers/create" element={<CareerEditor />} />
             <Route exact path="/careers/edit/:jobId" element={<CareerEditor />} />
             <Route exact path="/preferences" element={<Preferences />} />
+            <Route exact path="/email/unsubscribe" element={<Unsubscribe />} />
             <Route exact path="/donate" element={<Donate />} />
             <Route exact path="/contact" element={<Contact />} />
             <Route exact path="/privacy" element={<PrivacyPolicy />} />

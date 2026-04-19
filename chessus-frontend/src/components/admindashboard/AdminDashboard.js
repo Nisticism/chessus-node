@@ -67,6 +67,9 @@ const AdminDashboard = () => {
   const [onlinePlayers, setOnlinePlayers] = useState([]);
   const [onlineLoading, setOnlineLoading] = useState(false);
 
+  // Draft detail modal state
+  const [viewingDraft, setViewingDraft] = useState(null);
+
   // Auto-hide alert after 2 seconds
   useEffect(() => {
     let timer;
@@ -839,6 +842,127 @@ const AdminDashboard = () => {
       </table>
     </div>
   );
+
+  // ---- Drafts (unfinished game wizard sessions) ----
+  const handleDeleteDraft = async (draft) => {
+    const name = draft.game_name || `(Untitled draft #${draft.id})`;
+    if (!window.confirm(`Delete draft "${name}"? This cannot be undone.`)) return;
+    try {
+      await axios.delete(`${API_URL}admin/drafts/${draft.id}`, { headers: authHeader() });
+      setAlertMessage(`Draft "${name}" deleted`);
+      setAlertType('success');
+      setShowAlert(true);
+      fetchData('drafts', pagination.page);
+    } catch (error) {
+      console.error('Error deleting draft:', error);
+      setAlertMessage(`Failed to delete draft: ${error.response?.data?.message || error.message}`);
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const handleViewDraft = async (draft) => {
+    try {
+      const res = await axios.get(`${API_URL}admin/drafts/${draft.id}`, { headers: authHeader() });
+      setViewingDraft(res.data.data);
+    } catch (error) {
+      console.error('Error fetching draft detail:', error);
+      setAlertMessage('Failed to load draft details');
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const renderDraftsTable = () => (
+    <div className={styles["table-container"]}>
+      <table className={styles["data-table"]}>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Creator</th>
+            <th>Board</th>
+            <th>Last Step</th>
+            <th>Last Saved</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {!data || data.length === 0 ? (
+            <tr>
+              <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
+                {!data ? 'Loading...' : 'No drafts found'}
+              </td>
+            </tr>
+          ) : (
+            data.map(draft => (
+              <tr key={draft.id}>
+                <td>{draft.id}</td>
+                <td>{draft.game_name || <span style={{ opacity: 0.6 }}>(Untitled)</span>}</td>
+                <td>
+                  {draft.creator_name ? (
+                    <Link to={`/profile/${draft.creator_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>
+                      {draft.creator_name}
+                    </Link>
+                  ) : 'N/A'}
+                </td>
+                <td>{draft.board_width}x{draft.board_height}</td>
+                <td>{draft.draft_saved_step ?? 0}</td>
+                <td>{draft.updated_at ? formatDateTime(draft.updated_at) : '—'}</td>
+                <td>
+                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                    <button className={styles["edit-btn"]} onClick={() => handleViewDraft(draft)}>View</button>
+                    <button className={styles["edit-btn"]} onClick={() => navigate(`/create/game/edit/${draft.id}`)}>Open in Wizard</button>
+                    <button className={styles["ban-btn"]} onClick={() => handleDeleteDraft(draft)}>Delete</button>
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderDraftDetailModal = () => {
+    if (!viewingDraft) return null;
+    return (
+      <div className={styles["modal-overlay"]} onClick={() => setViewingDraft(null)}>
+        <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+          <div className={styles["modal-header"]}>
+            <h2>Draft #{viewingDraft.id} {viewingDraft.game_name ? `— ${viewingDraft.game_name}` : ''}</h2>
+            <button className={styles["close-btn"]} onClick={() => setViewingDraft(null)}>×</button>
+          </div>
+          <div className={styles["modal-body"]}>
+            <div style={{ marginBottom: 12 }}>
+              <strong>Creator:</strong> {viewingDraft.creator_name || 'N/A'}<br />
+              <strong>Board:</strong> {viewingDraft.board_width} x {viewingDraft.board_height}<br />
+              <strong>Players:</strong> {viewingDraft.player_count || 2}<br />
+              <strong>Last saved at step:</strong> {viewingDraft.draft_saved_step ?? 0}<br />
+              <strong>Created:</strong> {viewingDraft.created_at ? formatDateTime(viewingDraft.created_at) : '—'}<br />
+              <strong>Last updated:</strong> {viewingDraft.updated_at ? formatDateTime(viewingDraft.updated_at) : '—'}
+            </div>
+            {viewingDraft.descript && (
+              <div style={{ marginBottom: 12 }}>
+                <strong>Description:</strong>
+                <div style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{viewingDraft.descript}</div>
+              </div>
+            )}
+            <details>
+              <summary style={{ cursor: 'pointer', marginBottom: 8 }}>Raw draft data</summary>
+              <pre style={{ maxHeight: 400, overflow: 'auto', background: 'var(--bg-secondary, #222)', padding: 12, fontSize: 12 }}>
+                {JSON.stringify(viewingDraft, null, 2)}
+              </pre>
+            </details>
+          </div>
+          <div className={styles["modal-footer"]} style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', padding: 16 }}>
+            <button className={styles["edit-btn"]} onClick={() => { const id = viewingDraft.id; setViewingDraft(null); navigate(`/create/game/edit/${id}`); }}>Open in Wizard</button>
+            <button className={styles["ban-btn"]} onClick={() => { handleDeleteDraft(viewingDraft); setViewingDraft(null); }}>Delete</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderAnonymousGamesTable = () => {
     const statusLabel = (status) => {
@@ -1697,6 +1821,12 @@ const AdminDashboard = () => {
           Games
         </button>
         <button
+          className={`${styles["tab"]} ${activeTab === "drafts" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("drafts")}
+        >
+          Drafts
+        </button>
+        <button
           className={`${styles["tab"]} ${activeTab === "forums" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("forums")}
         >
@@ -1754,6 +1884,7 @@ const AdminDashboard = () => {
             {activeTab === "users" && renderUsersTable()}
             {activeTab === "pieces" && renderPiecesTable()}
             {activeTab === "games" && renderGamesTable()}
+            {activeTab === "drafts" && renderDraftsTable()}
             {activeTab === "forums" && renderForumsTable()}
             {activeTab === "news" && renderNewsTable()}
             {activeTab === "featured" && renderFeaturedTab()}
@@ -1829,6 +1960,7 @@ const AdminDashboard = () => {
       {renderEditModal()}
       {renderBanModal()}
       {renderStreamModal()}
+      {renderDraftDetailModal()}
     </div>
   );
 };

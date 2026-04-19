@@ -110,7 +110,14 @@ const MatchHistory = ({ userId, username }) => {
       return { username: `Computer (${diffLabel})`, elo: null, isBot: true };
     }
     const opponent = game.players.find(p => p.id !== parseInt(userId));
-    return opponent || { username: "Unknown", elo: "?" };
+    if (!opponent) return { username: "Unknown", elo: "?" };
+    // Defense-in-depth: if the opponent record itself is the bot sentinel
+    // (id === 'bot' or non-numeric id), mark it as a bot so we never render
+    // a profile link for a computer player.
+    if (opponent.id === 'bot' || typeof opponent.id !== 'number') {
+      return { ...opponent, isBot: true };
+    }
+    return opponent;
   };
 
   const handleViewGame = (gameId) => {
@@ -176,33 +183,67 @@ const MatchHistory = ({ userId, username }) => {
       <div className={styles["games-list"]}>
         {games.map((game) => {
           const opponent = getOpponent(game);
+          // Find the profile owner's player record to get their position (1=white, 2=black).
+          const me = game.players.find(p => p.id === parseInt(userId)) ||
+            { id: parseInt(userId), username: username || 'You', elo: null, position: 1 };
+          const myPosition = me.position ?? 1;
+          const opponentPosition = myPosition === 1 ? 2 : 1;
+          const isWin  = game.result === 'win';
+          const isLoss = game.result === 'loss';
+
           return (
-            <div 
-              key={game.id} 
+            <div
+              key={game.id}
               className={`${styles["game-card"]} ${getResultClass(game.result)}`}
               onClick={() => handleViewGame(game.id)}
             >
-              <div className={styles["game-result"]}>
-                <span className={styles["result-text"]}>{getResultText(game.result)}</span>
-                <span className={styles["result-reason"]}>{getReasonText(game.reason)}</span>
-              </div>
-              
-              <div className={styles["game-info"]}>
-                <div className={styles["opponent-info"]}>
-                  <span className={styles["vs-text"]}>vs</span>
-                  {!opponent.isBot ? (
-                    <Link to={`/profile/${opponent.username}`} className={styles["opponent-name-link"]} onClick={(e) => e.stopPropagation()}>
+              {/* ── Two player cards ── */}
+              <div className={styles["players-vs"]}>
+                {/* My card – always shown first */}
+                <div className={`${styles["player-card"]} ${isWin ? styles["is-winner"] : ''}`}>
+                  {isWin && <span className={styles["victory-icon"]}>🏆</span>}
+                  <span className={styles["player-name-card"]}>{me.username || username}</span>
+                  {me.elo != null && (
+                    <span className={styles["player-elo-card"]}>({me.elo})</span>
+                  )}
+                  <span className={`${styles["player-color-icon"]} ${myPosition === 1 ? styles["white-piece"] : styles["black-piece"]}`}>
+                    {myPosition === 1 ? '♔' : '♚'}
+                  </span>
+                </div>
+
+                <span className={styles["vs-divider"]}>vs</span>
+
+                {/* Opponent card */}
+                <div className={`${styles["player-card"]} ${isLoss ? styles["is-winner"] : ''}`}>
+                  {isLoss && <span className={styles["victory-icon"]}>🏆</span>}
+                  {!opponent.isBot && !game.isBotGame && opponent.id !== 'bot' && typeof opponent.id === 'number' ? (
+                    <Link
+                      to={`/profile/${opponent.username}`}
+                      className={styles["player-name-card-link"]}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {opponent.username}
                     </Link>
                   ) : (
-                    <span className={styles["opponent-name"]}>{opponent.username}</span>
+                    <span className={styles["player-name-card"]}>{opponent.username}</span>
                   )}
-                  {!opponent.isBot && (
-                    <span className={styles["opponent-elo"]}>({opponent.elo || "?"})</span>
+                  {!opponent.isBot && opponent.elo != null && (
+                    <span className={styles["player-elo-card"]}>({opponent.elo})</span>
                   )}
                   {game.isBotGame && (
                     <span className={styles["bot-badge"]}>BOT</span>
                   )}
+                  <span className={`${styles["player-color-icon"]} ${opponentPosition === 1 ? styles["white-piece"] : styles["black-piece"]}`}>
+                    {opponentPosition === 1 ? '♔' : '♚'}
+                  </span>
+                </div>
+              </div>
+
+              {/* ── Game details column ── */}
+              <div className={styles["match-details"]}>
+                <div className={styles["result-line"]}>
+                  <span className={styles["result-text"]}>{getResultText(game.result)}</span>
+                  <span className={styles["result-reason"]}>{getReasonText(game.reason)}</span>
                 </div>
                 <div className={styles["game-details"]}>
                   <span className={styles["game-type"]}>{game.gameTypeName || "Custom Game"}</span>
@@ -210,12 +251,13 @@ const MatchHistory = ({ userId, username }) => {
                 </div>
               </div>
 
+              {/* ── Date / ELO ── */}
               <div className={styles["game-meta"]}>
                 <span className={styles["game-date"]}>{formatDate(game.endTime)}</span>
                 {game.eloChanges && (
                   <span className={`${styles["elo-change"]} ${game.result === 'win' ? styles["positive"] : styles["negative"]}`}>
-                    {game.eloChanges.winner?.id === parseInt(userId) 
-                      ? `+${game.eloChanges.winner?.change}` 
+                    {game.eloChanges.winner?.id === parseInt(userId)
+                      ? `+${game.eloChanges.winner?.change}`
                       : game.eloChanges.loser?.change}
                   </span>
                 )}
