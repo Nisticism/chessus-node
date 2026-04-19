@@ -421,10 +421,21 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         return newSquares;
       });
     } else if (squareType === 'custom') {
+      const customData = options.customConfig || {
+        asRange: false,
+        rangeBonus: 1,
+        asPromotion: false,
+        asControl: false,
+        controlConfig: null,
+      };
       setCustomSquares(prev => {
         const newSquares = { ...prev };
         keysToUpdate.forEach(key => {
-          newSquares[key] = { type: 'custom', effect: 'custom' };
+          newSquares[key] = {
+            type: 'custom',
+            effect: 'custom',
+            ...customData,
+          };
         });
         return newSquares;
       });
@@ -525,7 +536,14 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
                 {squareType === 'range' && 'R'}
                 {squareType === 'promotion' && 'P'}
                 {squareType === 'control' && 'C'}
-                {squareType === 'custom' && 'X'}
+                {squareType === 'custom' && (() => {
+                  const cfg = customSquares[key] || {};
+                  const parts = [];
+                  if (cfg.asRange) parts.push('R');
+                  if (cfg.asPromotion) parts.push('P');
+                  if (cfg.asControl) parts.push('C');
+                  return parts.length > 0 ? parts.join('') : 'X';
+                })()}
               </div>
             )}
           </div>
@@ -715,7 +733,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           <li><strong style={{ color: 'var(--sq-range)' }}>Range Squares (R):</strong> Increase the attack/movement range of pieces on this square</li>
           <li><strong style={{ color: 'var(--sq-promotion)' }}>Promotion Squares (P):</strong> Pieces can be promoted to different types on this square</li>
           <li><strong style={{ color: 'var(--sq-control)' }}>Control Squares (C):</strong> Players must control these squares to win (if control squares win condition is enabled)</li>
-          <li><strong style={{ color: 'var(--sq-custom)' }}>Custom Squares (X):</strong> Custom effects to be defined later</li>
+          <li><strong style={{ color: 'var(--sq-custom)' }}>Custom Squares (X / R / P / C / combinations):</strong> Combine the effects of any of the other special squares (range, promotion, and/or control) on a single square. The displayed letters indicate which behaviors are enabled.</li>
         </ul>
         <p style={{ marginTop: '10px', fontStyle: 'italic' }}>
           Right-click any square to add a special square type. Click a special square to edit or remove it. 
@@ -729,7 +747,11 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           onRemove={handleRemoveSquare}
           onCancel={handleCancelSelector}
           currentType={getSquareType(selectedSquare?.key)}
-          currentConfig={controlSquares[selectedSquare?.key]}
+          currentConfig={
+            getSquareType(selectedSquare?.key) === 'custom'
+              ? customSquares[selectedSquare?.key]
+              : controlSquares[selectedSquare?.key]
+          }
           squarePosition={selectedSquare}
           boardWidth={gameData.board_width}
           squaresConditionEnabled={gameData.squares_condition === true}

@@ -144,6 +144,7 @@ const LiveGame = () => {
   const [validMoves, setValidMoves] = useState([]);
   const [showGameOver, setShowGameOver] = useState(false);
   const [gameOverData, setGameOverData] = useState(null);
+  const [stalemateNotice, setStalemateNotice] = useState(null);
   const [hoveredPiece, setHoveredPiece] = useState(null);
   const [hoveredMoves, setHoveredMoves] = useState([]);
   const [draggedPiece, setDraggedPiece] = useState(null);
@@ -928,15 +929,28 @@ const LiveGame = () => {
       setSpectators(spectatorList || []);
     });
 
+    // Stalemate notice (fires when no stalemate rule applies and the stalemated
+    // player's turn is being skipped instead of ending the game).
+    const unsubscribeStalemateNotice = onGameEvent("stalemateNotice", ({ gameId: noticeGameId, message, currentTurn }) => {
+      if (parseInt(noticeGameId) !== parseInt(gameId)) return;
+      setStalemateNotice(message);
+      if (typeof currentTurn === 'number') {
+        setGameState(prev => ({ ...prev, currentTurn }));
+      }
+      // Auto-dismiss after a while so it doesn't block the UI.
+      setTimeout(() => setStalemateNotice(null), 12000);
+    });
+
     return () => {
       unsubscribeBotThinking();
       unsubscribeMove();
       unsubscribeCheck();
       unsubscribeGameOver();
-      unsubscribeTimeUpdate();
+      unsubscribeStalemateNotice();
       unsubscribePlayerJoined();
       unsubscribeGameState();
       unsubscribeError();
+      unsubscribeTimeUpdate();
       unsubscribePremoveSet();
       unsubscribePremoveCancelled();
       unsubscribePremoveExecuted();
@@ -3779,7 +3793,14 @@ const LiveGame = () => {
               <div className={`${styles["special-square-indicator"]} ${styles[specialSquareType]}`}>
                 {specialSquareType === 'promotion' && 'P'}
                 {specialSquareType === 'range' && 'R'}
-                {specialSquareType === 'special' && 'S'}
+                {specialSquareType === 'special' && (() => {
+                  const cfg = specialSquares.special[`${gameY},${gameX}`] || {};
+                  const parts = [];
+                  if (cfg.asRange) parts.push('R');
+                  if (cfg.asPromotion) parts.push('P');
+                  if (cfg.asControl) parts.push('C');
+                  return parts.length > 0 ? parts.join('') : 'X';
+                })()}
               </div>
             )}
             {isAnchor && (() => {
@@ -4214,6 +4235,17 @@ const LiveGame = () => {
             )}
             {moveError && (
               <span className={styles["move-error"]}>❌ {moveError}</span>
+            )}
+            {stalemateNotice && (
+              <span className={styles["move-error"]} style={{ background: 'rgba(255, 193, 7, 0.18)', color: '#ffc107' }}>
+                ⚠️ {stalemateNotice}
+                <button
+                  type="button"
+                  onClick={() => setStalemateNotice(null)}
+                  style={{ marginLeft: 8, background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 'bold' }}
+                  aria-label="Dismiss notice"
+                >×</button>
+              </span>
             )}
           </div>
         )}

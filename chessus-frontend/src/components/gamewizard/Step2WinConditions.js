@@ -136,6 +136,13 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
       </p>
 
       <ToggleRow
+        title="Stalemate Draw Rule"
+        tooltip="Standard chess behavior: if a player has no legal moves on their turn but is NOT in check, the game ends in a draw. Disable this only if you also use 'Stalemate Win', 'No Legal Moves Loss', or want stalemated players' turns to simply be skipped (a warning will be shown to both players in that case)."
+        checked={gameData.stalemate_draw_condition !== false}
+        onChange={(val) => handleChange("stalemate_draw_condition", val)}
+      />
+
+      <ToggleRow
         title="Move Limit Draw Rule"
         tooltip="Similar to chess's 50-move rule. The game ends in a draw after a set number of moves without any captures or promotable piece advances. A 'move' counts as one turn by each player (e.g., 50 moves = 50 turns by white + 50 turns by black)."
         checked={moveLimitEnabled}
