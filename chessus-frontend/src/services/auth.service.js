@@ -121,7 +121,6 @@ const logout = async () => {
   } catch (error) {
     // Even if the API call fails, remove the user from localStorage
     localStorage.removeItem("user");
-    console.log("Logout API call failed, but user removed from localStorage");
   }
 };
 

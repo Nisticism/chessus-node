@@ -197,12 +197,10 @@ const PieceSelector = ({
     // When a piece is selected, load its available images
     if (selectedPieceId) {
       const piece = pieces.find(p => (p.id || p.piece_id) === selectedPieceId);
-      console.log("Selected piece:", piece);
       if (piece && piece.image_location) {
         try {
           const images = JSON.parse(piece.image_location);
           const imageUrls = Array.isArray(images) ? images.map(img => getImageUrl(img)) : [];
-          console.log("Parsed images for piece", piece.id, ":", imageUrls);
           setAvailableImages(imageUrls);
           // If no image selected yet, use first available
           if (!selectedImageUrl && imageUrls.length > 0) {
@@ -213,7 +211,6 @@ const PieceSelector = ({
           setAvailableImages([]);
         }
       } else {
-        console.log("No image_location for piece:", piece);
         setAvailableImages([]);
       }
     }
@@ -240,16 +237,10 @@ const PieceSelector = ({
       try {
         const response = await PiecesService.getPiecesWithMovement();
         piecesData = response.data;
-        console.log("Loaded pieces with movement:", piecesData?.length, "pieces");
       } catch (err) {
         // Fallback to regular pieces if the full endpoint fails
-        console.log("Falling back to regular pieces endpoint");
         const response = await PiecesService.getPieces();
         piecesData = response.data;
-        console.log("Loaded regular pieces:", piecesData?.length, "pieces");
-      }
-      if (piecesData?.length > 0) {
-        console.log("Sample piece data:", piecesData[0]);
       }
       setPieces(piecesData || []);
       setError(null);

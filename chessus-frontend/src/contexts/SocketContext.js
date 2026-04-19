@@ -53,14 +53,12 @@ export const SocketProvider = ({ children }) => {
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected:', newSocket.id);
       setConnected(true);
       reconnectAttempts.current = 0;
       // Authentication is handled by the separate useEffect that watches [user, socket, connected]
     });
 
     newSocket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
       setConnected(false);
       lastAuthRef.current = null; // Reset so re-auth works on reconnect
     });
@@ -193,7 +191,6 @@ export const SocketProvider = ({ children }) => {
         hostId: user?.id,
         hostUsername: user?.username
       };
-      console.log('Creating game with data:', emitData);
       socket.emit('createGame', emitData);
 
       // Timeout after 10 seconds

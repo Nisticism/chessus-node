@@ -16,8 +16,6 @@ import NewsService from "../services/news.service";
 export const newNews = (author_id, title, content, created_at) => (dispatch) => {
   return NewsService.newNews(author_id, title, content, created_at).then(
     (response) => {
-      console.log("dispatching post success");
-      console.log(response.result);
       dispatch({
         type: NEWS_SUCCESS,
         payload: response.result,
@@ -46,8 +44,6 @@ export const newNews = (author_id, title, content, created_at) => (dispatch) => 
 export const editNews = (title, content, last_updated_at, id) => (dispatch) => {
   return NewsService.editNews(title, content, last_updated_at, id).then(
     (response) => {
-      console.log("dispatching edit news success");
-      console.log(response.result);
       dispatch({
         type: EDIT_NEWS_SUCCESS,
         payload: response.result,
@@ -76,8 +72,6 @@ export const editNews = (title, content, last_updated_at, id) => (dispatch) => {
 export const news = () => (dispatch) => {
   return NewsService.getNews().then(
     (response) => {
-      console.log("in get all news action");
-      console.log(response);
       dispatch({
         type: ALL_NEWS,
         payload: response.data.news,
@@ -96,8 +90,6 @@ export const news = () => (dispatch) => {
 export const getNews = (id) => (dispatch) => {
   return NewsService.getNews(id).then(
     (response) => {
-      console.log("in news action");
-      console.log(response.result)
       dispatch({
         type: GET_NEWS_SUCCESS,
         payload: response.result,
@@ -117,7 +109,6 @@ export const getNews = (id) => (dispatch) => {
 export const deleteNews = (id) => (dispatch) => {
   NewsService.deleteNews(id).then(
     (response) => {
-      console.log(response)
       dispatch({
         type: DELETE_NEWS,
         payload: id

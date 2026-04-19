@@ -34,8 +34,6 @@ const forumsReducer = (state = initialState, action) => {
     case POST_FAILURE:
       return initialState;
     case ALL_FORUMS:
-      console.log("in all forums success");
-      // console.log(payload);
       return {
         ...state,
         forums: payload.forums || payload,
@@ -47,7 +45,6 @@ const forumsReducer = (state = initialState, action) => {
         message: "Get forums failed"
       }
     case GET_FORUM_SUCCESS:
-      console.log("in get forum post succeeded reducer")
       return {
         ...state,
         forum: payload,
@@ -78,8 +75,6 @@ const forumsReducer = (state = initialState, action) => {
     }
     case DELETE_COMMENT: {
       const comments = state.forum.comments;
-      console.log(comments);
-      console.log("in delete comment reducer", payload);
       // Collect IDs to delete (the comment + all nested replies)
       const idsToDelete = new Set();
       const collectReplies = (parentId) => {
@@ -100,14 +95,12 @@ const forumsReducer = (state = initialState, action) => {
     }
     case COMMENT_EDIT_SUCCESS: {
       const comments = state.forum.comments;
-      console.log("in edit comment reducer", payload);
       comments.forEach(function(comment, index) {
         if (comment.id === payload.id) {
           comment.content = payload.content;
           comment.last_updated_at = payload.last_updated_at;
         }
       });
-      console.log(comments);
       return {
         ...state,
         forum: {
@@ -144,9 +137,7 @@ const forumsReducer = (state = initialState, action) => {
             deleteIndex = index;
           }
         });
-        console.log("all forums: " + allForums);
         allForums.splice(deleteIndex, 1);
-        console.log("all forums: " + allForums);
         return {
           ...state,
           forums: allForums,

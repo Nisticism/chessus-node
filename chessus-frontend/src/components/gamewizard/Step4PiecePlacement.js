@@ -56,7 +56,6 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     const playerCount = gameData.player_count || 2;
     
     if (playerCount !== 2) {
-      console.log('isBoardSymmetric: false - not 2 players');
       return false; // Mirrored only works for 2 players
     }
     
@@ -83,18 +82,15 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     
     // Empty board is considered symmetric - allow mirrored mode
     if (playerIds.length === 0) {
-      console.log('isBoardSymmetric: true - empty board');
       return true;
     }
     
     // If only one player has pieces, not symmetric
     if (playerIds.length === 1) {
-      console.log('isBoardSymmetric: false - only one player has pieces');
       return false;
     }
     
     if (playerIds.length !== 2) {
-      console.log('isBoardSymmetric: false - not exactly 2 players with pieces:', playerIds.length);
       return false;
     }
     
@@ -103,11 +99,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     
     // Must have same number of pieces
     if (player1Pieces.length !== player2Pieces.length) {
-      console.log('isBoardSymmetric: false - different piece counts:', player1Pieces.length, 'vs', player2Pieces.length);
       return false;
     }
-    
-    console.log('Checking symmetry for', player1Pieces.length, 'pieces per player');
     
     // Check if pieces are at mirrored positions with same piece types
     // We need to verify both directions to ensure perfect symmetry
@@ -121,17 +114,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
       const p2 = player2Pieces.find(p => p.x === p1.x && p.y === mirroredY);
       
       if (!p2) {
-        console.log(`isBoardSymmetric: false - no piece at mirrored position for (${p1.x},${p1.y}), expected at (${p1.x},${mirroredY})`);
         return false;
       }
       
       if (p2.piece_id !== p1.piece_id) {
-        console.log(`isBoardSymmetric: false - different piece types at (${p1.x},${p1.y}) and (${p2.x},${p2.y}): ${p1.piece_id} vs ${p2.piece_id}`);
         return false;
       }
     }
     
-    console.log('isBoardSymmetric: true!');
     return true;
   }, [piecePlacements, gameData.board_height, gameData.player_count]);
   

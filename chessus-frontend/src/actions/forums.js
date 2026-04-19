@@ -34,8 +34,6 @@ export const firstForumsRender = (first_render) => (dispatch) => {
 export const newForum = (author_id, title, content, created_at, game_type_id = null) => async (dispatch) => {
   try {
     const response = await ForumsService.newForum(author_id, title, content, created_at, game_type_id);
-    console.log("dispatching post success");
-    console.log(response.result);
     dispatch({
       type: POST_SUCCESS,
       payload: response.result,
@@ -57,8 +55,6 @@ export const newForum = (author_id, title, content, created_at, game_type_id = n
 export const editForum = (title, content, last_updated_at, id) => async (dispatch) => {
   try {
     const response = await ForumsService.editForum(title, content, last_updated_at, id);
-    console.log("dispatching edit forum success");
-    console.log(response.result);
     dispatch({
       type: EDIT_POST_SUCCESS,
       payload: response.result,
@@ -80,8 +76,6 @@ export const editForum = (title, content, last_updated_at, id) => async (dispatc
 export const forums = (page = 1, limit = 20, gameTypeId = null) => async (dispatch) => {
   try {
     const response = await ForumsService.getForums(page, limit, gameTypeId);
-    console.log("in forums action");
-    console.log(response);
     dispatch({
       type: ALL_FORUMS,
       payload: response.data,
@@ -99,8 +93,6 @@ export const forums = (page = 1, limit = 20, gameTypeId = null) => async (dispat
 export const getForum = (id) => async (dispatch) => {
   try {
     const response = await ForumsService.getForum(id);
-    console.log("in forum action");
-    console.log(response.result);
     dispatch({
       type: GET_FORUM_SUCCESS,
       payload: response.result,
@@ -119,7 +111,6 @@ export const getForum = (id) => async (dispatch) => {
 export const deleteForum = (id) => async (dispatch) => {
   try {
     const response = await ForumsService.deleteForum(id);
-    console.log(response);
     dispatch({
       type: DELETE_FORUM,
       payload: id
@@ -132,8 +123,6 @@ export const deleteForum = (id) => async (dispatch) => {
 export const newComment = (author_id, article_id, content, created_at, author_name, parent_id = null) => async (dispatch) => {
   try {
     const response = await ForumsService.newComment(author_id, article_id, content, created_at, author_name, parent_id);
-    console.log("dispatching comment success");
-    console.log(response.result);
     dispatch({
       type: COMMENT_SUCCESS,
       payload: response.result,
@@ -155,8 +144,6 @@ export const newComment = (author_id, article_id, content, created_at, author_na
 export const editComment = (id, content, last_updated_at) => async (dispatch) => {
   try {
     const response = await ForumsService.editComment(id, content, last_updated_at);
-    console.log("dispatching edit comment success");
-    console.log(response.result);
     dispatch({
       type: COMMENT_EDIT_SUCCESS,
       payload: response.result,
@@ -190,8 +177,6 @@ export const deleteComment = (id) => async (dispatch) => {
 export const newLike = (user_id, article_id) => async (dispatch) => {
   try {
     const response = await ForumsService.newLike(user_id, article_id);
-    console.log("dispatching like success");
-    console.log(response.result);
     dispatch({
       type: LIKE_SUCCESS,
       payload: response.result,

@@ -26,14 +26,12 @@ const authReducer = (state = initialState, action) => {
   const { type, payload } = action;
   switch (type) {
     case GET_USER_SUCCESS:
-      console.log("in get user success");
       return {
         ...state,
         playerPage: payload.response,
         message: payload.message,
       }
     case GET_USER_FAILURE:
-      console.log("in get user failure");
       return {
         ...state,
         playerPage: payload.response,
@@ -55,7 +53,6 @@ const authReducer = (state = initialState, action) => {
         isLoggedIn: false,
       };
     case EDIT_SUCCESS:
-      console.log("in edit reducer - edit success");
       return {
         ...state,
         user: payload.user,
@@ -63,9 +60,7 @@ const authReducer = (state = initialState, action) => {
         editSuccess: true,
       }
     case EDIT_SUCCESS_ADMIN:
-      console.log("in edit success admin");
       if (payload.user && payload.user.id && payload.user.id !== payload.admin_id) {
-        console.log("editting someone else");
         return {
           ...state,
           playerPage: payload.user,
@@ -74,7 +69,6 @@ const authReducer = (state = initialState, action) => {
           editSuccess: true,
         }
       } else {
-        console.log("editting yourself");
         return {
           ...state,
           user: payload.user,
@@ -85,7 +79,6 @@ const authReducer = (state = initialState, action) => {
         }
       }
     case EDIT_FAIL:
-      console.log("in edit reducer - edit fail");
       return {
         ...state,
         editSuccess: false,

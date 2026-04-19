@@ -5,7 +5,6 @@ import API_URL from "../global/global.js";
 
 
 const getUser = async(username) => {
-  console.log("in get User service");
   const response = await axios.get(API_URL + "user", {
     params: { username: username}
   });

@@ -4,7 +4,6 @@ import authHeader from "./auth-header";
 import API_URL from "../global/global.js";
 
 const getNews = async () => {
-  console.log("in news service");
   const response = await axios.get(API_URL + "news", { 
     headers: authHeader() 
   });

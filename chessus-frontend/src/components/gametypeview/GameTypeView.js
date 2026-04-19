@@ -349,7 +349,6 @@ const GameTypeView = () => {
         if (gameData.pieces_string) {
           try {
             const parsed = JSON.parse(gameData.pieces_string);
-            console.log("Parsed piece placements:", parsed);
             
             // Get unique piece IDs from placements
             const pieceIds = new Set();
@@ -377,7 +376,6 @@ const GameTypeView = () => {
               await Promise.all(Array.from(pieceIds).map(async (pieceId) => {
                 try {
                   const fullPieceData = await getPieceById(pieceId);
-                  console.log(`getPieceById(${pieceId}) returned:`, fullPieceData);
                   // Store by the requested ID, not the returned ID
                   pieceMap[pieceId] = fullPieceData;
                 } catch (err) {
@@ -385,7 +383,6 @@ const GameTypeView = () => {
                 }
               }));
               
-              console.log('Loaded piece data map with movement data:', pieceMap);
               setPieceDataMap(pieceMap);
             }
             setPiecePlacements(parsed);
@@ -1455,11 +1452,9 @@ const GameTypeView = () => {
             {placement && !placement._occupied && (
               <div
                 onMouseEnter={() => {
-                  console.log('Hovering over piece at', row, col, 'pieceId:', placement.piece_id, 'playerId:', placement.player_id);
                   setHoveredPiecePosition({ row, col, pieceId: placement.piece_id, playerId: placement.player_id });
                 }}
                 onMouseLeave={() => {
-                  console.log('Left piece');
                   setHoveredPiecePosition(null);
                 }}
                 style={{

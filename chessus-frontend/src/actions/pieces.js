@@ -8,7 +8,6 @@ import {
 export const getPieces = (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '') => async (dispatch) => {
   try {
     const response = await PiecesService.getPieces(page, limit, sort, search, creatorId);
-    console.log("pieces action");
     dispatch({
       type: LIST_PIECES,
       payload: response.data,
@@ -26,7 +25,6 @@ export const getPieces = (page = 1, limit = 20, sort = 'newest', search = '', cr
 export const getAllPieces = async () => {
   try {
     const response = await PiecesService.getPieces();
-    console.log("pieces action");
     // Handle paginated response { pieces: [...], pagination: {...} }
     if (response.data && response.data.pieces) {
       return response.data.pieces;

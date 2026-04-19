@@ -45,7 +45,6 @@ export const register = (username, password, email) => async (dispatch) => {
 export const getUser = (username) => async (dispatch) => {
   try {
     const response = await UserService.getUser(username);
-    console.log("in getUser action");
     dispatch({
       type: GET_USER_SUCCESS,
       payload: {response: response.result, message: response.message}
@@ -57,7 +56,6 @@ export const getUser = (username) => async (dispatch) => {
     return Promise.resolve();
   } catch (error) {
     const message = getErrorMessage(error);
-    console.log(message);
     dispatch({
       type: GET_USER_FAILURE,
       payload: {response: null, message: message},
@@ -72,10 +70,7 @@ export const getUser = (username) => async (dispatch) => {
 
 export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name) => async (dispatch) => {
   try {
-    console.log(id);
     const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name);
-    console.log("in edit action");
-    console.log(response.message);
     if (!admin_id) {
       dispatch({
         type: EDIT_SUCCESS,
@@ -114,9 +109,7 @@ export const login = (username, password) => async (dispatch) => {
     });
     return Promise.resolve();
   } catch (error) {
-    console.log("logging error in auth actions");
     const message = getErrorMessage(error);
-    console.log(message);
     dispatch({
       type: LOGIN_FAIL,
     });
@@ -124,7 +117,6 @@ export const login = (username, password) => async (dispatch) => {
       type: SET_MESSAGE,
       payload: message,
     });
-    console.log("message set");
     return Promise.reject();
   }
 };
@@ -182,7 +174,6 @@ export const deleteUser = (username, admin_id) => async (dispatch) => {
   try {
     await AuthService.deleteUser(username, admin_id);
     if (admin_id) {
-      console.log("admin attempting delete user from state");
       dispatch({
         type: DELETE_USER_ADMIN,
       });
@@ -192,14 +183,12 @@ export const deleteUser = (username, admin_id) => async (dispatch) => {
       });
       return Promise.resolve();
     } else {
-      console.log("regular person attempting delete user from state");
       dispatch({
         type: DELETE_USER,
       });
       return Promise.resolve();
     }
   } catch (err) {
-    console.log("Issue with user deletion");
     return Promise.reject();
   }
 };

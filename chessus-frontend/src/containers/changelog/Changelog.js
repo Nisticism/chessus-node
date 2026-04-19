@@ -37,6 +37,9 @@ const changelogData = [
       "Selected promotion targets now appear as a separate, always-visible chip list above the picker, with one-click removal — no more hunting through pages or search to see what you've picked",
       "Right-clicking a piece in step 4 now opens the piece selector instantly because it reuses the pieces already loaded by the placement editor instead of re-fetching them",
       "Game detail pages now render promotion-target piece names as proper links to the piece detail pages, even when those pieces aren't placed on the board",
+      "Forced Capture rejections now name the exact piece, target, and capture type the server detected, so it's much easier to find the available capture (or report a false positive)",
+      "Forced Capture now also recognizes ranged attacks and en passant as captures, so the rule no longer blocks valid en-passant moves or non-capturing moves when the only available capture was a ranged attack",
+      "Trimmed a large amount of console noise (Redux actions, reducers, services, hover and socket-connection logs) for a cleaner browser console",
     ]
   },
   {

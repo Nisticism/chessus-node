@@ -23,7 +23,6 @@ const newsReducer = (state = initialState, action) => {
     case NEWS_FAILURE:
       return initialState;
     case ALL_NEWS:
-      console.log("in all news success");
       return {
         ...state,
         all_news: payload,
@@ -34,7 +33,6 @@ const newsReducer = (state = initialState, action) => {
         message: "Get news failed"
       }
     case GET_NEWS_SUCCESS:
-      console.log("in get news post succeeded reducer")
       return {
         ...state,
         news: payload,
@@ -66,7 +64,6 @@ const newsReducer = (state = initialState, action) => {
             deleteIndex = index;
           }
         });
-        console.log("all news: " + allNews);
         allNews.splice(deleteIndex, 1);
         return {
           ...state,

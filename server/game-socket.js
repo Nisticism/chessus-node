@@ -6026,15 +6026,36 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     }
   }
 
-  // Forced capture rule: if any of this player's pieces can make a capturing move,
-  // the player MUST make a capturing move (any capture). This rejects non-capturing
-  // moves when captures are available.
+  // Forced capture rule: if any of this player's pieces can make a capturing move
+  // (regular capture, ranged attack, or en passant), the player MUST make a
+  // capturing move. Reject non-capturing moves when captures are available.
   if (gameState.gameType?.forced_capture_condition) {
+    // Detect en passant capture *for this candidate move* before classifying
+    // it as non-capturing — otherwise an en-passant move (which has an empty
+    // destination square) would be wrongly rejected by the rule.
+    let isEnPassantCandidate = false;
+    if (destinationPieceIndex === -1 && piece.can_en_passant && gameState.enPassantTarget) {
+      const ept = gameState.enPassantTarget;
+      if (to.x === ept.captureSquare.x && to.y === ept.captureSquare.y) {
+        isEnPassantCandidate = true;
+      }
+    }
     const isCapturingMove = allCapturedPieces.length > 0 ||
-                            (move.isRangedAttack === true && destinationPieceIndex !== -1);
+                            (move.isRangedAttack === true && destinationPieceIndex !== -1) ||
+                            isEnPassantCandidate;
     if (!isCapturingMove) {
-      if (playerHasCaptureAvailable(gameState, currentPlayer.position)) {
-        return { valid: false, reason: "A capture is available — you must make a capture this turn." };
+      const detail = findAvailableCaptureForPlayer(gameState, currentPlayer.position);
+      if (detail) {
+        const pieceName = detail.piece.piece_name || `Piece #${detail.piece.id}`;
+        const victimName = detail.victim.piece_name || `Piece #${detail.victim.id}`;
+        const fileLetter = String.fromCharCode(97 + detail.target.x);
+        const rankNumber = (gameState.gameType?.board_height || 8) - detail.target.y;
+        const kindLabel = detail.kind === 'ranged' ? 'ranged-attack' : detail.kind === 'enpassant' ? 'en passant' : 'capture';
+        console.log(`[forced_capture] Rejecting move from player ${currentPlayer.position}. Available ${kindLabel}: ${pieceName} (${detail.piece.x},${detail.piece.y}) -> ${victimName} (${detail.victim.x},${detail.victim.y}) via ${fileLetter}${rankNumber}`);
+        return {
+          valid: false,
+          reason: `Forced capture: your ${pieceName} can ${kindLabel} the enemy ${victimName} at ${fileLetter}${rankNumber}. You must make a capturing move this turn.`
+        };
       }
     }
   }
@@ -9278,43 +9299,92 @@ function applyFlankingCaptures(gameState, placedX, placedY, playerPosition) {
  * If mate_condition is enabled, only legal (non-self-checking) captures count.
  */
 function playerHasCaptureAvailable(gameState, playerPosition) {
+  const detail = findAvailableCaptureForPlayer(gameState, playerPosition);
+  return !!detail;
+}
+
+/**
+ * Returns the FIRST available capturing action a player can legally make this turn,
+ * or null if none. Considers regular movement-with-capture, ranged attacks, and en passant.
+ * Used by the forced-capture rule (and powers its error message).
+ *
+ * @param {Object} gameState
+ * @param {Number} playerPosition - 1 or 2
+ * @returns {{ piece, target: {x,y}, victim, kind: 'move'|'ranged'|'enpassant' } | null}
+ */
+function findAvailableCaptureForPlayer(gameState, playerPosition) {
   const { pieces, gameType } = gameState;
   const playerPieces = pieces.filter(p => {
     const owner = p.team || p.player_id;
     return owner === playerPosition;
   });
 
+  const isMoveLegal = (piece, toSquare) => {
+    if (gameType && gameType.mate_condition) {
+      const move = { pieceId: piece.id, from: { x: piece.x, y: piece.y }, to: toSquare };
+      return !wouldMoveLeaveInCheck(gameState, move, playerPosition);
+    }
+    return true;
+  };
+
   for (const piece of playerPieces) {
-    let possibleMoves;
+    // 1) Regular movement-with-capture (covers most cases incl. capture-on-hop diagonals)
+    let possibleMoves = [];
     try {
       possibleMoves = getPossibleMovesForPiece(piece, pieces, gameType);
-    } catch (e) {
-      continue;
-    }
+    } catch (e) { /* ignore */ }
     for (const toSquare of possibleMoves) {
-      const enemyAtDest = pieces.some(p => {
+      const victim = pieces.find(p => {
         if (p.id === piece.id) return false;
         if (!doesPieceOccupySquare(p, toSquare.x, toSquare.y)) return false;
         const owner = p.team || p.player_id;
         return owner !== playerPosition;
       });
-      if (!enemyAtDest) continue;
+      if (!victim) continue;
+      if (isMoveLegal(piece, toSquare)) {
+        return { piece, target: { x: toSquare.x, y: toSquare.y }, victim, kind: 'move' };
+      }
+    }
 
-      if (gameType && gameType.mate_condition) {
-        const move = {
-          pieceId: piece.id,
-          from: { x: piece.x, y: piece.y },
-          to: toSquare
-        };
-        if (!wouldMoveLeaveInCheck(gameState, move, playerPosition)) {
-          return true;
+    // 2) Ranged attacks (piece stays in place; an enemy at range is captured)
+    if (piece.can_capture_enemy_via_range) {
+      for (const target of pieces) {
+        if (target.id === piece.id) continue;
+        const owner = target.team || target.player_id;
+        if (owner === playerPosition) continue;
+        if (target.cannot_be_captured) continue;
+        if (!canRangedAttackTo(piece.y, piece.x, target.y, target.x, piece, playerPosition, gameType)) continue;
+        if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition)) continue;
+        // Ranged attacks don't change the attacker's square so they cannot expose own king
+        // unless mate_condition + the attacker itself is the king and would still be in check;
+        // since the attacker doesn't move, an existing check would have been rejected upstream.
+        // We still respect mate_condition by leaving check filtering to validateAndApplyMove.
+        return { piece, target: { x: target.x, y: target.y }, victim: target, kind: 'ranged' };
+      }
+    }
+
+    // 3) En passant (only valid when an enPassantTarget is set this turn)
+    if (piece.can_en_passant && gameState.enPassantTarget) {
+      const ept = gameState.enPassantTarget;
+      const victim = pieces.find(p =>
+        p.id === ept.pieceId && p.x === ept.piecePosition.x && p.y === ept.piecePosition.y
+      );
+      if (victim) {
+        const victimOwner = victim.team || victim.player_id;
+        if (victimOwner !== playerPosition && piece.piece_id === victim.piece_id) {
+          if (piece.y === victim.y && Math.abs(piece.x - victim.x) === 1) {
+            const cap = ept.captureSquare;
+            if (canPieceAttackSquare(piece, cap.x, cap.y, pieces, gameType)) {
+              if (isMoveLegal(piece, cap)) {
+                return { piece, target: { x: cap.x, y: cap.y }, victim, kind: 'enpassant' };
+              }
+            }
+          }
         }
-      } else {
-        return true;
       }
     }
   }
-  return false;
+  return null;
 }
 
 /**
