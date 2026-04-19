@@ -107,6 +107,8 @@
   border: 2px solid transparent;
   position: relative;
   min-width: 200px;
+  /* Extra bottom padding so the color badge never overlaps content */
+  padding-bottom: 28px;
 }
 
 .player-card.winner {
@@ -171,9 +173,31 @@
 
 .winner-badge {
   position: absolute;
-  top: -10px;
-  right: -10px;
-  font-size: 1.5rem;
+  top: 6px;
+  left: 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Chess-piece color badge — contained in the lower-right corner of the card */
+.player-color-badge {
+  position: absolute;
+  bottom: 6px;
+  right: 10px;
+  font-size: 1.3rem;
+  line-height: 1;
+  pointer-events: none;
+
+  &.white-piece {
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.95), 0 0 1px rgba(0, 0, 0, 1);
+  }
+
+  &.black-piece {
+    color: #111;
+    text-shadow: 0 0 4px rgba(255, 255, 255, 0.7), 0 0 1px rgba(255, 255, 255, 0.9);
+  }
 }
 
 .vs-divider {

@@ -23,6 +23,8 @@ const changelogData = [
       "Notification summary emails now require more than 20 unread notifications (raised from 10) before being sent",
       "Added a Drafts tab to the admin portal showing all unfinished game drafts across users, with view-detail, open-in-wizard, and delete actions; existing Games tab now hides drafts",
       "Match history now shows both players as side-by-side cards — your card always appears first on the left; the result trophy icon is contained in the upper-left of the winner's card; a chess-piece icon (♔ or ♚) in the lower-right of each card shows which player color each person was",
+      "Match history list view reverted to the original compact row layout; player 1 (white) is now always listed first followed by player 2 (black), and a small ♔/♚ icon appears inline next to each name to show player color",
+      "Match history detail page (match review) always shows the player 1 card on the left and player 2 card on the right; the winner crown badge is now contained inside the top-left of the winning card, and a ♔/♚ color icon sits in the lower-right corner of each card",
     ]
   },
   {

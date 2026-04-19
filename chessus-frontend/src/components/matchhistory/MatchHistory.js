@@ -182,14 +182,19 @@ const MatchHistory = ({ userId, username }) => {
         <>
       <div className={styles["games-list"]}>
         {games.map((game) => {
+          // Identify player 1 (position 1) and player 2 (position 2).
+          // player1 is shown in the "vs" line first; player 2 second.
+          const p1 = game.players.find(p => p.position === 1);
+          const p2 = game.players.find(p => p.position === 2);
+
+          // For bot games, fill whichever slot is missing.
           const opponent = getOpponent(game);
-          // Find the profile owner's player record to get their position (1=white, 2=black).
-          const me = game.players.find(p => p.id === parseInt(userId)) ||
-            { id: parseInt(userId), username: username || 'You', elo: null, position: 1 };
-          const myPosition = me.position ?? 1;
-          const opponentPosition = myPosition === 1 ? 2 : 1;
-          const isWin  = game.result === 'win';
-          const isLoss = game.result === 'loss';
+          const player1 = p1 || (opponent.position === 1 ? { ...opponent, position: 1 } : null);
+          const player2 = p2 || (opponent.position === 2 ? { ...opponent, position: 2 } : opponent);
+
+          // Determine which player corresponds to the profile owner so we can
+          // show result labels relative to them.
+          const meIsP1 = player1 && player1.id === parseInt(userId);
 
           return (
             <div
@@ -197,53 +202,51 @@ const MatchHistory = ({ userId, username }) => {
               className={`${styles["game-card"]} ${getResultClass(game.result)}`}
               onClick={() => handleViewGame(game.id)}
             >
-              {/* ── Two player cards ── */}
-              <div className={styles["players-vs"]}>
-                {/* My card – always shown first */}
-                <div className={`${styles["player-card"]} ${isWin ? styles["is-winner"] : ''}`}>
-                  {isWin && <span className={styles["victory-icon"]}>🏆</span>}
-                  <span className={styles["player-name-card"]}>{me.username || username}</span>
-                  {me.elo != null && (
-                    <span className={styles["player-elo-card"]}>({me.elo})</span>
-                  )}
-                  <span className={`${styles["player-color-icon"]} ${myPosition === 1 ? styles["white-piece"] : styles["black-piece"]}`}>
-                    {myPosition === 1 ? '♔' : '♚'}
-                  </span>
-                </div>
-
-                <span className={styles["vs-divider"]}>vs</span>
-
-                {/* Opponent card */}
-                <div className={`${styles["player-card"]} ${isLoss ? styles["is-winner"] : ''}`}>
-                  {isLoss && <span className={styles["victory-icon"]}>🏆</span>}
-                  {!opponent.isBot && !game.isBotGame && opponent.id !== 'bot' && typeof opponent.id === 'number' ? (
-                    <Link
-                      to={`/profile/${opponent.username}`}
-                      className={styles["player-name-card-link"]}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {opponent.username}
-                    </Link>
-                  ) : (
-                    <span className={styles["player-name-card"]}>{opponent.username}</span>
-                  )}
-                  {!opponent.isBot && opponent.elo != null && (
-                    <span className={styles["player-elo-card"]}>({opponent.elo})</span>
-                  )}
-                  {game.isBotGame && (
-                    <span className={styles["bot-badge"]}>BOT</span>
-                  )}
-                  <span className={`${styles["player-color-icon"]} ${opponentPosition === 1 ? styles["white-piece"] : styles["black-piece"]}`}>
-                    {opponentPosition === 1 ? '♔' : '♚'}
-                  </span>
-                </div>
+              <div className={styles["game-result"]}>
+                <span className={styles["result-text"]}>{getResultText(game.result)}</span>
+                <span className={styles["result-reason"]}>{getReasonText(game.reason)}</span>
               </div>
 
-              {/* ── Game details column ── */}
-              <div className={styles["match-details"]}>
-                <div className={styles["result-line"]}>
-                  <span className={styles["result-text"]}>{getResultText(game.result)}</span>
-                  <span className={styles["result-reason"]}>{getReasonText(game.reason)}</span>
+              <div className={styles["game-info"]}>
+                <div className={styles["opponent-info"]}>
+                  {/* Player 1 */}
+                  {player1 && (
+                    <>
+                      {player1.id !== 'bot' && !game.isBotGame && typeof player1.id === 'number' ? (
+                        <Link to={`/profile/${player1.username}`} className={styles["opponent-name-link"]} onClick={(e) => e.stopPropagation()}>
+                          {player1.username}
+                        </Link>
+                      ) : (
+                        <span className={styles["opponent-name"]}>{player1.username}</span>
+                      )}
+                      {!player1.isBot && (
+                        <span className={styles["opponent-elo"]}>({player1.elo || "?"})</span>
+                      )}
+                      <span className={`${styles["color-icon"]} ${styles["white-piece"]}`} title="Player 1 (White)">♔</span>
+                    </>
+                  )}
+
+                  <span className={styles["vs-text"]}>vs</span>
+
+                  {/* Player 2 */}
+                  {player2 && (
+                    <>
+                      {player2.id !== 'bot' && !game.isBotGame && typeof player2.id === 'number' ? (
+                        <Link to={`/profile/${player2.username}`} className={styles["opponent-name-link"]} onClick={(e) => e.stopPropagation()}>
+                          {player2.username}
+                        </Link>
+                      ) : (
+                        <span className={styles["opponent-name"]}>{player2.username}</span>
+                      )}
+                      {!player2.isBot && (
+                        <span className={styles["opponent-elo"]}>({player2.elo || "?"})</span>
+                      )}
+                      {game.isBotGame && (
+                        <span className={styles["bot-badge"]}>BOT</span>
+                      )}
+                      <span className={`${styles["color-icon"]} ${styles["black-piece"]}`} title="Player 2 (Black)">♚</span>
+                    </>
+                  )}
                 </div>
                 <div className={styles["game-details"]}>
                   <span className={styles["game-type"]}>{game.gameTypeName || "Custom Game"}</span>
@@ -251,7 +254,6 @@ const MatchHistory = ({ userId, username }) => {
                 </div>
               </div>
 
-              {/* ── Date / ELO ── */}
               <div className={styles["game-meta"]}>
                 <span className={styles["game-date"]}>{formatDate(game.endTime)}</span>
                 {game.eloChanges && (

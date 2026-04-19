@@ -350,13 +350,52 @@ const MatchView = () => {
   const isUserInGame = currentUser && match.players?.some(p => p.id === currentUser.id);
   const userResult = isUserInGame ? getResultForPlayer(currentUser.id) : null;
 
-  // Match the board orientation: when the viewer (current user, or profile owner)
-  // is position 2, show that player at the bottom of the players panel.
-  const orientPlayer = (currentUser && match.players?.find(p => p.id === currentUser.id))
-    || (viewerUserId ? match.players?.find(p => p.id === viewerUserId) : null);
-  const flipPlayers = orientPlayer?.position === 2;
-  const topPlayer = flipPlayers ? player1 : player2;
-  const bottomPlayer = flipPlayers ? player2 : player1;
+  // Player 1 is always shown on the left (first card); player 2 on the right.
+  // Board orientation is separate and still uses the viewer hint.
+
+  const renderPlayerCard = (player, position) => {
+    const isWinner = match.winnerId === player?.id;
+    const colorIcon = position === 1 ? '♔' : '♚';
+    const colorClass = position === 1 ? styles["white-piece"] : styles["black-piece"];
+    return (
+      <div className={`${styles["player-card"]} ${isWinner ? styles["winner"] : ""}`}>
+        {isWinner && (
+          <div className={styles["winner-badge"]}>👑</div>
+        )}
+        <div className={styles["player-avatar"]}>
+          {player?.id === 'bot' ? (
+            <span>🤖</span>
+          ) : player?.profilePicture ? (
+            <img src={`${ASSET_URL}${player.profilePicture}`} alt={player.username} />
+          ) : (
+            <span>{player?.username?.charAt(0).toUpperCase() || "?"}</span>
+          )}
+        </div>
+        <div className={styles["player-info"]}>
+          {player?.id === 'bot' ? (
+            <span className={styles["player-name"]}>{player?.username || "Computer"}</span>
+          ) : (
+            <Link to={`/profile/${player?.username}`} className={styles["player-name"]}>
+              {player?.username || "Player"}
+            </Link>
+          )}
+          {player?.id !== 'bot' && (
+            <span className={styles["player-elo"]}>ELO: {player?.elo || "?"}</span>
+          )}
+          {player?.id !== 'bot' && match.eloChanges && player && (
+            <span className={`${styles["elo-change"]} ${isWinner ? styles["positive"] : styles["negative"]}`}>
+              {isWinner
+                ? `+${match.eloChanges.winner?.change || 0}`
+                : `${match.eloChanges.loser?.change || 0}`}
+            </span>
+          )}
+        </div>
+        <span className={`${styles["player-color-badge"]} ${colorClass}`} title={`Player ${position}`}>
+          {colorIcon}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div className={styles["match-view-container"]}>
@@ -389,79 +428,11 @@ const MatchView = () => {
       </div>
 
       <div className={styles["match-content"]}>
-        {/* Players Panel */}
+        {/* Players Panel — player 1 always on the left */}
         <div className={styles["players-panel"]}>
-          {/* Top player (opponent of viewer) */}
-          <div className={`${styles["player-card"]} ${match.winnerId === topPlayer?.id ? styles["winner"] : ""}`}>
-            <div className={styles["player-avatar"]}>
-              {topPlayer?.id === 'bot' ? (
-                <span>🤖</span>
-              ) : topPlayer?.profilePicture ? (
-                <img src={`${ASSET_URL}${topPlayer.profilePicture}`} alt={topPlayer.username} />
-              ) : (
-                <span>{topPlayer?.username?.charAt(0).toUpperCase() || "?"}</span>
-              )}
-            </div>
-            <div className={styles["player-info"]}>
-              {topPlayer?.id === 'bot' ? (
-                <span className={styles["player-name"]}>{topPlayer?.username || "Computer"}</span>
-              ) : (
-                <Link to={`/profile/${topPlayer?.username}`} className={styles["player-name"]}>
-                  {topPlayer?.username || "Player"}
-                </Link>
-              )}
-              {topPlayer?.id !== 'bot' && (
-                <span className={styles["player-elo"]}>ELO: {topPlayer?.elo || "?"}</span>
-              )}
-              {topPlayer?.id !== 'bot' && match.eloChanges && topPlayer && (
-                <span className={`${styles["elo-change"]} ${match.winnerId === topPlayer.id ? styles["positive"] : styles["negative"]}`}>
-                  {match.winnerId === topPlayer.id
-                    ? `+${match.eloChanges.winner?.change || 0}`
-                    : `${match.eloChanges.loser?.change || 0}`}
-                </span>
-              )}
-            </div>
-            {match.winnerId === topPlayer?.id && (
-              <div className={styles["winner-badge"]}>👑</div>
-            )}
-          </div>
-
+          {renderPlayerCard(player1, 1)}
           <div className={styles["vs-divider"]}>VS</div>
-
-          {/* Bottom player (viewer's side) */}
-          <div className={`${styles["player-card"]} ${match.winnerId === bottomPlayer?.id ? styles["winner"] : ""}`}>
-            <div className={styles["player-avatar"]}>
-              {bottomPlayer?.id === 'bot' ? (
-                <span>🤖</span>
-              ) : bottomPlayer?.profilePicture ? (
-                <img src={`${ASSET_URL}${bottomPlayer.profilePicture}`} alt={bottomPlayer.username} />
-              ) : (
-                <span>{bottomPlayer?.username?.charAt(0).toUpperCase() || "?"}</span>
-              )}
-            </div>
-            <div className={styles["player-info"]}>
-              {bottomPlayer?.id === 'bot' ? (
-                <span className={styles["player-name"]}>{bottomPlayer?.username || "Computer"}</span>
-              ) : (
-                <Link to={`/profile/${bottomPlayer?.username}`} className={styles["player-name"]}>
-                  {bottomPlayer?.username || "Player"}
-                </Link>
-              )}
-              {bottomPlayer?.id !== 'bot' && (
-                <span className={styles["player-elo"]}>ELO: {bottomPlayer?.elo || "?"}</span>
-              )}
-              {bottomPlayer?.id !== 'bot' && match.eloChanges && bottomPlayer && (
-                <span className={`${styles["elo-change"]} ${match.winnerId === bottomPlayer.id ? styles["positive"] : styles["negative"]}`}>
-                  {match.winnerId === bottomPlayer.id
-                    ? `+${match.eloChanges.winner?.change || 0}`
-                    : `${match.eloChanges.loser?.change || 0}`}
-                </span>
-              )}
-            </div>
-            {match.winnerId === bottomPlayer?.id && (
-              <div className={styles["winner-badge"]}>👑</div>
-            )}
-          </div>
+          {renderPlayerCard(player2, 2)}
         </div>
 
         {/* Board */}
