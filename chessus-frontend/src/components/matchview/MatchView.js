@@ -105,8 +105,8 @@ const MatchView = () => {
 
   const formatDuration = (startTime, endTime) => {
     if (!startTime || !endTime) return "N/A";
-    const start = new Date(startTime);
-    const end = new Date(endTime);
+    const start = parseServerDate(startTime);
+    const end = parseServerDate(endTime);
     const diffMs = end - start;
     const diffMins = Math.floor(diffMs / 60000);
     const diffSecs = Math.floor((diffMs % 60000) / 1000);
