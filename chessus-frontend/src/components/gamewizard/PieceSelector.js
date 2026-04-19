@@ -400,8 +400,9 @@ const PieceSelector = ({
     });
     placed.sort((a, b) => (a.piece_name || '').localeCompare(b.piece_name || ''));
     others.sort((a, b) => (a.piece_name || '').localeCompare(b.piece_name || ''));
-    return [...placed, ...others].slice(0, promotionTargetCap);
-  }, [pieces, uniquePlacedPieceIds, promotionTargetCap]);
+    // Show ALL pieces — search and pagination handle navigating large lists.
+    return [...placed, ...others];
+  }, [pieces, uniquePlacedPieceIds]);
 
   const filteredPromotionPicker = React.useMemo(() => {
     if (!promotionSearchTerm.trim()) return promotionPickerPool;
