@@ -650,6 +650,8 @@ const LiveGame = () => {
           setTimeout(() => {
             if (reason === 'checkmate') {
               soundManager.playCheckmate();
+            } else if (reason === 'lose_all_pieces' || reason === 'stalemate_win') {
+              soundManager.playCheckmate();
             } else if (reason === 'stalemate' || reason === 'insufficient_material') {
               if (!move) soundManager.playMove();
             }
@@ -5259,6 +5261,11 @@ const LiveGame = () => {
                gameOverData.reason === 'piece_count' ? 'By Piece Count' :
                gameOverData.reason === 'equal_piece_count' ? 'Equal Piece Count - Draw' :
                gameOverData.reason === 'promotion' ? 'By Promotion' :
+               gameOverData.reason === 'lose_all_pieces' ? 'By Anti-Chess (Lost All Pieces)' :
+               gameOverData.reason === 'stalemate_win' ? 'By Stalemate Win' :
+               gameOverData.reason === 'no_moves' ? 'By No Legal Moves' :
+               gameOverData.reason === 'no_legal_moves' ? 'By No Legal Moves' :
+               gameOverData.reason === 'elimination' ? 'By Elimination' :
                gameOverData.reason}
             </div>
             {(gameOverData.reason === 'piece_count' || gameOverData.reason === 'equal_piece_count') && 

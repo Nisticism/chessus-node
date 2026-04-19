@@ -161,6 +161,9 @@ const GameList = () => {
     if (game.piece_count_condition) conditions.push("Piece Count");
     if (game.no_moves_condition) conditions.push("No Legal Moves");
     if (game.promotion_condition) conditions.push("Win on Promotion");
+    if (game.lose_all_pieces_condition) conditions.push("Lose All Pieces");
+    if (game.stalemate_win_condition) conditions.push("Stalemate Win");
+    if (game.forced_capture_condition) conditions.push("Forced Capture");
     return conditions.length > 0 ? conditions.join(", ") : "Capture (default)";
   };
 

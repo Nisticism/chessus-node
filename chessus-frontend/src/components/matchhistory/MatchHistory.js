@@ -96,6 +96,8 @@ const MatchHistory = ({ userId, username }) => {
       case 'control': return 'by square control';
       case 'elimination': return 'by elimination';
       case 'insufficient_material': return 'by insufficient material';
+      case 'lose_all_pieces': return 'by anti-chess';
+      case 'stalemate_win': return 'by stalemate win';
       default: return '';
     }
   };

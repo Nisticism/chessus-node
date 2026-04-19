@@ -503,6 +503,9 @@ const Play = () => {
     if (gameType.no_moves_condition) conditions.push("No Legal Moves");
     if (gameType.piece_count_condition) conditions.push("Piece Count");
     if (gameType.promotion_condition) conditions.push("Win on Promotion");
+    if (gameType.lose_all_pieces_condition) conditions.push("Lose All Pieces");
+    if (gameType.stalemate_win_condition) conditions.push("Stalemate Win");
+    if (gameType.forced_capture_condition) conditions.push("Forced Capture");
     return conditions.length > 0 ? conditions.join(" / ") : "Capture (default)";
   };
 

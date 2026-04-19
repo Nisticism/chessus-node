@@ -140,6 +140,8 @@ const MatchView = () => {
       case 'control': return 'Square control';
       case 'elimination': return 'Elimination';
       case 'insufficient_material': return 'Insufficient material';
+      case 'lose_all_pieces': return 'Anti-chess (lost all pieces)';
+      case 'stalemate_win': return 'Stalemate win';
       default: return 'Game completed';
     }
   };
