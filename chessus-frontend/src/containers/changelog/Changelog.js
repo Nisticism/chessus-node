@@ -4,6 +4,28 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 19, 2026",
+    title: "Stalemate Fixes, Capture Win Persistence & Custom Square Combinations",
+    items: [
+      "Stalemate detection is now generalized to all pieces, not just kings — a player who has no legal moves on their turn (and isn't in check) will now correctly end the game even in games without a checkmate condition (e.g. a single pawn stuck behind an enemy pawn now ends the game)",
+      "Stalemate outcome respects your win conditions: 'Stalemate Win' awards the win to the stalemated player, 'No Legal Moves' awards the win to the opponent, otherwise the game ends in a draw",
+      "Fixed the 'Require all capture-flagged pieces to be captured' win condition not persisting when editing or saving a draft — the toggle now loads its previous value and survives create / edit / draft round trips",
+      "Custom squares are no longer placeholders! When you place a custom square you can now toggle it to act as a Range, Promotion, and/or Control square simultaneously, with full per-square configuration",
+      "Custom squares show their combined behaviors directly on the board — the indicator letter changes (e.g. R, RP, RPC) based on which behaviors are enabled",
+      "Custom square combinations work in live games, on the game detail board preview, in fill-row, on edits, and in drafts",
+      "The game detail page now describes each custom square and which behaviors it combines",
+      "Fixed an overlap on small screens where the 'Show Details' toggle could collide with the 'Board Setup' heading on the game detail page",
+      "Fixed a regression where opponent names linked to a profile page in match history rows for games against the computer — the bot opponent is no longer rendered as a clickable link",
+      "Ranged attacks now count as legal moves when checking for stalemate, so a piece that can only attack at range is no longer treated as having no moves",
+      "Stalemate detection now requires an explicit 'Stalemate Draw Rule' (default ON for both new and existing games) — if neither stalemate-win, no-legal-moves, nor stalemate-draw is enabled, the stuck player simply skips their turn and a notice is shown so the game keeps going",
+      "Added an Email Notifications section to Preferences with a global on/off and per-type opt-out (friend requests, challenges, comments, replies, game threads, opponent moves, game chat) — opted-out types are excluded from both the email threshold and the email body",
+      "Notification summary emails now include a one-click unsubscribe link at the bottom that disables future notification emails without requiring a login",
+      "Notification summary emails now require more than 20 unread notifications (raised from 10) before being sent",
+      "Added a Drafts tab to the admin portal showing all unfinished game drafts across users, with view-detail, open-in-wizard, and delete actions; existing Games tab now hides drafts",
+      "Match history now shows both players as side-by-side cards — your card always appears first on the left; the result trophy icon is contained in the upper-left of the winner's card; a chess-piece icon (♔ or ♚) in the lower-right of each card shows which player color each person was",
+    ]
+  },
+  {
     date: "April 18, 2026",
     title: "Promotion Overhaul, Match Review Polish & Piece Wizard Limits",
     items: [
