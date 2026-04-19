@@ -171,7 +171,41 @@ const GameWizard = ({ editGameId }) => {
   }, [currentStep]);
 
   const updateGameData = (updates) => {
-    setGameData(prev => ({ ...prev, ...updates }));
+    setGameData(prev => {
+      const next = { ...prev, ...updates };
+
+      // When a win condition is turned off, clear the matching per-placement
+      // flags from pieces_string so leftover icons don't appear in the wizard
+      // or game detail page. Same applies to promotion-into-checkmate / capture
+      // toggles, which only make sense when the underlying win condition is on.
+      const mateGoingOff = updates.mate_condition === false && prev.mate_condition === true;
+      const captureGoingOff = updates.capture_condition === false && prev.capture_condition === true;
+      if (mateGoingOff || captureGoingOff) {
+        try {
+          const pieces = JSON.parse(next.pieces_string || '{}');
+          let changed = false;
+          for (const key of Object.keys(pieces)) {
+            const p = pieces[key];
+            if (!p || p._occupied) continue;
+            if (mateGoingOff) {
+              if (p.ends_game_on_checkmate) { p.ends_game_on_checkmate = false; changed = true; }
+              if (p.can_promote_to_checkmate) { p.can_promote_to_checkmate = false; changed = true; }
+              if (p.limit_promote_checkmate_to_original) { p.limit_promote_checkmate_to_original = false; changed = true; }
+            }
+            if (captureGoingOff) {
+              if (p.ends_game_on_capture) { p.ends_game_on_capture = false; changed = true; }
+              if (p.can_promote_to_capture) { p.can_promote_to_capture = false; changed = true; }
+              if (p.limit_promote_capture_to_original) { p.limit_promote_capture_to_original = false; changed = true; }
+            }
+          }
+          if (changed) {
+            next.pieces_string = JSON.stringify(pieces);
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      return next;
+    });
   };
 
   const nextStep = () => {
@@ -285,8 +319,29 @@ const GameWizard = ({ editGameId }) => {
     try {
       // Calculate starting_piece_count from pieces_string
       let pieceCount = 0;
+      let sanitizedPiecesString = gameData.pieces_string;
       try {
         const pieces = JSON.parse(gameData.pieces_string || '{}');
+        // Strip win-condition-tied flags when their corresponding win condition is off,
+        // so games loaded with stale flags get cleaned up on next save.
+        if (!gameData.mate_condition || !gameData.capture_condition) {
+          let changed = false;
+          for (const key of Object.keys(pieces)) {
+            const p = pieces[key];
+            if (!p || p._occupied) continue;
+            if (!gameData.mate_condition) {
+              if (p.ends_game_on_checkmate) { p.ends_game_on_checkmate = false; changed = true; }
+              if (p.can_promote_to_checkmate) { p.can_promote_to_checkmate = false; changed = true; }
+              if (p.limit_promote_checkmate_to_original) { p.limit_promote_checkmate_to_original = false; changed = true; }
+            }
+            if (!gameData.capture_condition) {
+              if (p.ends_game_on_capture) { p.ends_game_on_capture = false; changed = true; }
+              if (p.can_promote_to_capture) { p.can_promote_to_capture = false; changed = true; }
+              if (p.limit_promote_capture_to_original) { p.limit_promote_capture_to_original = false; changed = true; }
+            }
+          }
+          if (changed) sanitizedPiecesString = JSON.stringify(pieces);
+        }
         // Filter out multi-tile extension squares (only count anchor squares)
         pieceCount = Object.values(pieces).filter(p => !p._occupied).length;
       } catch (e) {
@@ -295,6 +350,7 @@ const GameWizard = ({ editGameId }) => {
 
       const finalGameData = {
         ...gameData,
+        pieces_string: sanitizedPiecesString,
         starting_piece_count: pieceCount,
         is_draft: false,
         draft_saved_step: null,
