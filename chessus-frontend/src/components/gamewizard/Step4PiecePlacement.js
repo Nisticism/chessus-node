@@ -1847,6 +1847,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           requireSpecificPieceControl={requireSpecificPieceControl}
           piecePlacements={piecePlacements}
           boardWidth={gameData.board_width}
+          preloadedPieces={Object.values(pieceDataMap)}
         />
       )}
     </div>

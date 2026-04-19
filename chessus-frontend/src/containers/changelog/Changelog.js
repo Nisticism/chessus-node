@@ -33,6 +33,10 @@ const changelogData = [
       "Added a 'Stalemate Win' condition — when enabled, a stalemated player (no legal moves and not in check) wins instead of the game being a draw",
       "Added a 'Forced Capture' gameplay rule — when enabled, if any of your pieces can capture, you must make a capturing move (any capture) on your turn",
       "All three new rules are explained on the game detail page and listed alongside existing win conditions on game library cards, match history, and live game over messages",
+      "Customize Promotion Options now searches the full piece library — every piece is reachable via search and pagination, not just the first few past those already on the board",
+      "Selected promotion targets now appear as a separate, always-visible chip list above the picker, with one-click removal — no more hunting through pages or search to see what you've picked",
+      "Right-clicking a piece in step 4 now opens the piece selector instantly because it reuses the pieces already loaded by the placement editor instead of re-fetching them",
+      "Game detail pages now render promotion-target piece names as proper links to the piece detail pages, even when those pieces aren't placed on the board",
     ]
   },
   {

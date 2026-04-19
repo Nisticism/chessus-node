@@ -26,11 +26,12 @@ const PieceSelector = ({
   requireSpecificPieceControl,  // Whether any control square requires specific pieces
   piecePlacements = {},  // All piece placements on the board
   boardWidth = 8,        // Board width for finding pieces on same row
-  embedded = false  // New prop: if true, don't render modal wrapper
+  embedded = false,  // New prop: if true, don't render modal wrapper
+  preloadedPieces = null  // Optional: pre-loaded piece list to skip the fetch
 }) => {
-  const [pieces, setPieces] = useState([]);
+  const [pieces, setPieces] = useState(preloadedPieces || []);
   const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!preloadedPieces);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const PIECES_PER_PAGE = 25;
@@ -139,7 +140,13 @@ const PieceSelector = ({
   }, [selectedPlayerId]);
 
   useEffect(() => {
+    if (preloadedPieces && preloadedPieces.length > 0) {
+      setPieces(preloadedPieces);
+      setLoading(false);
+      return;
+    }
     loadPieces();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Memoize filtered pieces (before pagination) to avoid re-filtering on every render
@@ -863,6 +870,68 @@ const PieceSelector = ({
 
                   {customizePromotion && (
                     <div style={{ marginLeft: '20px', borderLeft: '3px solid var(--button-border)', paddingLeft: '12px', marginTop: '8px' }}>
+                      {/* Selected pieces summary (always visible regardless of search/page) */}
+                      {promotionPieceIds.length > 0 && (
+                        <div style={{ marginBottom: '10px' }}>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Selected pieces:</div>
+                          <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '6px',
+                            padding: '6px',
+                            backgroundColor: 'rgba(117,124,252,0.08)',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(117,124,252,0.3)'
+                          }}>
+                            {promotionPieceIds.map(pid => {
+                              const p = pieces.find(pp => Number(pp.id || pp.piece_id) === Number(pid));
+                              const name = p?.piece_name || `#${pid}`;
+                              let thumb = null;
+                              if (p) {
+                                try {
+                                  const arr = JSON.parse(p.image_location || '[]');
+                                  if (Array.isArray(arr) && arr.length > 0) thumb = getImageUrl(arr[(selectedPlayerId - 1) || 0] || arr[0]);
+                                } catch { thumb = null; }
+                              }
+                              return (
+                                <div
+                                  key={`sel-${pid}`}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    padding: '3px 6px 3px 3px',
+                                    borderRadius: 4,
+                                    backgroundColor: 'rgba(117,124,252,0.25)',
+                                    fontSize: 12
+                                  }}
+                                >
+                                  {thumb ? (
+                                    <img src={thumb} alt={name} style={{ width: 20, height: 20, objectFit: 'contain' }} />
+                                  ) : (
+                                    <div style={{ width: 20, height: 20, background: 'rgba(255,255,255,0.1)', borderRadius: 2 }} />
+                                  )}
+                                  <span>{name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => togglePromotionPieceId(pid)}
+                                    title="Remove"
+                                    style={{
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: 'inherit',
+                                      cursor: 'pointer',
+                                      padding: '0 2px',
+                                      fontSize: 14,
+                                      lineHeight: 1
+                                    }}
+                                  >×</button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <input
                         type="text"
                         className={styles["form-input"]}

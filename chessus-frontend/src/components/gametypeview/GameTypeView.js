@@ -357,6 +357,16 @@ const GameTypeView = () => {
               if (placement.piece_id) {
                 pieceIds.add(placement.piece_id);
               }
+              // Also include any promotion override target piece IDs so their
+              // names can be displayed (and linked) in the Special Rules section
+              if (placement.promotion_pieces_override) {
+                try {
+                  const v = typeof placement.promotion_pieces_override === 'string'
+                    ? JSON.parse(placement.promotion_pieces_override)
+                    : placement.promotion_pieces_override;
+                  if (Array.isArray(v)) v.forEach(id => { if (id != null) pieceIds.add(Number(id)); });
+                } catch { /* ignore */ }
+              }
             });
             
             // Fetch piece data for all unique piece IDs with full movement data
@@ -738,6 +748,10 @@ const GameTypeView = () => {
 
     // ---- Special Rules Section (combines multi-tile, castling, en passant, capture on hop) ----
     const specialRulesContent = [];
+    // Aggregated piece-name → id map for piece links rendered inside the Special Rules section.
+    // Sub-sections (e.g. promotion target overrides) push entries here so names render as links
+    // to the piece detail page instead of plain bold text or raw IDs.
+    const specialRulesPieceLinkMap = new Map();
 
     // Multi-tile piece explanations
     const multiTilePieces = Object.values(uniquePieces).filter(piece => {
@@ -964,6 +978,9 @@ const GameTypeView = () => {
 
       let promoContent = `**Promotion**\nCertain squares on the board are promotion squares. When a promotable piece lands on a promotion square, it can transform into a different, more powerful piece.\n\n**Promotion Squares:** ${promoSquareDescs.join(', ')}`;
 
+      // Track promotion-target piece names so they can be linked in the Special Rules section
+      const promotionTargetLinks = new Map(); // name -> id
+
       if (promotablePieces.length > 0) {
         // Build per-placement rule descriptions (placements of the same piece type may
         // have different per-placement promotion overrides). Dedupe identical rule sets.
@@ -992,7 +1009,9 @@ const GameTypeView = () => {
           if (overrideIds) {
             promotesTo = overrideIds.map(pid2 => {
               const pd2 = pieceDataMap[pid2];
-              return pd2 ? `**${pd2.piece_name}**` : `Piece #${pid2}`;
+              const name = pd2?.piece_name || `Piece #${pid2}`;
+              if (pd2?.piece_name) promotionTargetLinks.set(pd2.piece_name, pid2);
+              return `**${name}**`;
             }).join(', ');
           } else {
             promotesTo = 'any starting piece on this player\'s side, except other promotable pieces, checkmate pieces, and lose-on-capture pieces';
@@ -1025,6 +1044,16 @@ const GameTypeView = () => {
       }
 
       promoContent += `\n\n**Promotion Rules:**\n• Move a promotable piece onto a promotion square\n• Choose which piece to transform into\n• The promoted piece keeps the same position and player ownership\n• When a "limit to original count" rule applies, the relevant piece is hidden from the promotion modal once the player already owns the original starting count`;
+
+      // Register promotion-target piece names so they render as links in Special Rules.
+      promotionTargetLinks.forEach((id, name) => specialRulesPieceLinkMap.set(name, id));
+      // Also register the promotable source pieces themselves
+      promotablePieces.forEach(piece => {
+        const pd = pieceDataMap[piece.id] || piece;
+        const name = pd?.piece_name;
+        const id = pd?.piece_id || piece.id;
+        if (name && id) specialRulesPieceLinkMap.set(name, id);
+      });
 
       specialRulesContent.push(promoContent);
     }
@@ -1229,9 +1258,11 @@ const GameTypeView = () => {
 
     // Add the combined Special Rules section if any content exists
     if (specialRulesContent.length > 0) {
+      const specialRulesPieceLinks = Array.from(specialRulesPieceLinkMap.entries()).map(([name, id]) => ({ name, id }));
       rules.push({
         title: "Special Rules",
-        content: specialRulesContent.join('\n\n---\n\n')
+        content: specialRulesContent.join('\n\n---\n\n'),
+        pieceLinks: specialRulesPieceLinks.length > 0 ? specialRulesPieceLinks : undefined
       });
     }
 
