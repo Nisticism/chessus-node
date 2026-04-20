@@ -4203,127 +4203,23 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Invalid promotion choice" });
         }
 
-        // Load full piece data for the new piece type
-        const [[fullPieceData]] = await db_pool.query(
-          `SELECT * FROM pieces WHERE id = ?`,
-          [promoteToPieceId]
-        );
-
-        if (!fullPieceData) {
+        // Apply the promotion using the shared helper, which loads the piece
+        // definition AND the per-game junction overrides (so flags such as
+        // ends_game_on_checkmate / ends_game_on_capture, hp/ad, burn, etc.
+        // are correctly propagated to the promoted piece).
+        let promotedPiece;
+        try {
+          promotedPiece = await applyPromotionToPiece(gameState, pieceId, promoteToPieceId);
+        } catch (promoErr) {
+          console.error('Error applying promotion:', promoErr);
+          return socket.emit("error", { message: "Failed to promote piece" });
+        }
+        if (!promotedPiece) {
           return socket.emit("error", { message: "Promotion piece type not found" });
         }
-
-        // Get the correct image for this player
-        let imageUrl = null;
-        if (fullPieceData.image_location) {
-          try {
-            const images = JSON.parse(fullPieceData.image_location);
-            if (Array.isArray(images) && images.length > 0) {
-              const playerIndex = (piece.player_id || piece.team || 1) - 1;
-              imageUrl = images[playerIndex] || images[0];
-            }
-          } catch (e) {
-            console.error('Error parsing image_location for promotion:', e);
-          }
-        }
-
-        // Create the promoted piece, keeping position and ownership
-        const promotedPiece = {
-          ...piece,
-          // New piece data
-          piece_id: fullPieceData.id,
-          piece_name: fullPieceData.piece_name,
-          image_location: fullPieceData.image_location,
-          image: imageUrl,
-          image_url: imageUrl,
-          // Movement data
-          directional_movement_style: fullPieceData.directional_movement_style,
-          up_movement: fullPieceData.up_movement,
-          down_movement: fullPieceData.down_movement,
-          left_movement: fullPieceData.left_movement,
-          right_movement: fullPieceData.right_movement,
-          up_left_movement: fullPieceData.up_left_movement,
-          up_right_movement: fullPieceData.up_right_movement,
-          down_left_movement: fullPieceData.down_left_movement,
-          down_right_movement: fullPieceData.down_right_movement,
-          ratio_movement_style: fullPieceData.ratio_movement_style,
-          ratio_movement_1: fullPieceData.ratio_one_movement,
-          ratio_movement_2: fullPieceData.ratio_two_movement,
-          step_movement_style: fullPieceData.step_by_step_movement_style,
-          step_movement_value: fullPieceData.step_by_step_movement_value,
-          can_hop_over_allies: fullPieceData.can_hop_over_allies,
-          can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
-          can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
-          can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
-          // Capture data
-          can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
-          up_capture: fullPieceData.up_capture,
-          down_capture: fullPieceData.down_capture,
-          left_capture: fullPieceData.left_capture,
-          right_capture: fullPieceData.right_capture,
-          up_left_capture: fullPieceData.up_left_capture,
-          up_right_capture: fullPieceData.up_right_capture,
-          down_left_capture: fullPieceData.down_left_capture,
-          down_right_capture: fullPieceData.down_right_capture,
-          ratio_capture_1: fullPieceData.ratio_one_capture,
-          ratio_capture_2: fullPieceData.ratio_two_capture,
-          step_capture_value: fullPieceData.step_by_step_capture,
-          // Special attributes
-          piece_value: fullPieceData.piece_value,
-          is_royal: fullPieceData.is_royal,
-          can_promote: fullPieceData.can_promote,
-          can_castle: fullPieceData.can_castle,
-          has_checkmate_rule: fullPieceData.has_checkmate_rule,
-          has_check_rule: fullPieceData.has_check_rule,
-          special_scenario_moves: fullPieceData.special_scenario_moves,
-          special_scenario_captures: fullPieceData.special_scenario_captures,
-          // Ranged attack data
-          can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
-          up_attack_range: fullPieceData.up_attack_range,
-          down_attack_range: fullPieceData.down_attack_range,
-          left_attack_range: fullPieceData.left_attack_range,
-          right_attack_range: fullPieceData.right_attack_range,
-          up_left_attack_range: fullPieceData.up_left_attack_range,
-          up_right_attack_range: fullPieceData.up_right_attack_range,
-          down_left_attack_range: fullPieceData.down_left_attack_range,
-          down_right_attack_range: fullPieceData.down_right_attack_range,
-          up_attack_range_exact: fullPieceData.up_attack_range_exact,
-          down_attack_range_exact: fullPieceData.down_attack_range_exact,
-          left_attack_range_exact: fullPieceData.left_attack_range_exact,
-          right_attack_range_exact: fullPieceData.right_attack_range_exact,
-          up_left_attack_range_exact: fullPieceData.up_left_attack_range_exact,
-          up_right_attack_range_exact: fullPieceData.up_right_attack_range_exact,
-          down_left_attack_range_exact: fullPieceData.down_left_attack_range_exact,
-          down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
-          ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
-          ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
-          step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
-          max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
-          can_fire_over_allies: fullPieceData.can_fire_over_allies,
-          can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
-          // En passant
-          can_en_passant: fullPieceData.can_en_passant,
-          // Checkers-style options
-          capture_on_hop: fullPieceData.capture_on_hop,
-          chain_capture_enabled: fullPieceData.chain_capture_enabled,
-          chain_hop_allies: fullPieceData.chain_hop_allies,
-          free_move_after_promotion: fullPieceData.free_move_after_promotion,
-          promotion_pieces_ids: fullPieceData.promotion_pieces_ids,
-          // Trample & Ghostwalk
-          trample: fullPieceData.trample,
-          trample_radius: fullPieceData.trample_radius,
-          ghostwalk: fullPieceData.ghostwalk,
-          die_on_capture: fullPieceData.die_on_capture,
-          attack_radius: fullPieceData.attack_radius,
-          custom_movement_squares: fullPieceData.custom_movement_squares,
-          custom_attack_squares: fullPieceData.custom_attack_squares,
-          // Reset move tracking for the new piece type
-          moveCount: 0,
-          hasMoved: false
+        const fullPieceData = {
+          free_move_after_promotion: promotedPiece.free_move_after_promotion
         };
-
-        // Update the piece in the game state
-        gameState.pieces[pieceIndex] = promotedPiece;
 
         // Clear pending promotion
         gameState.pendingPromotion = null;
@@ -8734,7 +8630,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
  * @returns {Object} - { inCheck: boolean, checkedPieces: Array }
  */
 function checkForCheck(gameState, playerPosition) {
-  const { pieces } = gameState;
+  const { pieces, gameType } = gameState;
   
   // Find all pieces belonging to this player that have ends_game_on_checkmate
   const checkmatePieces = pieces.filter(p => {
@@ -8753,7 +8649,17 @@ function checkForCheck(gameState, playerPosition) {
       checkedPieces.push(piece);
     }
   }
-  
+
+  // When mate_condition_requires_all is enabled, the player is only considered
+  // "in check" (and therefore eligible for checkmate) when EVERY remaining
+  // checkmate-flagged piece is simultaneously under lethal attack. Otherwise
+  // the player can defend their other royal pieces normally.
+  if (gameType?.mate_condition_requires_all) {
+    if (checkedPieces.length < checkmatePieces.length) {
+      return { inCheck: false, checkedPieces: [] };
+    }
+  }
+
   return {
     inCheck: checkedPieces.length > 0,
     checkedPieces
@@ -10081,6 +9987,21 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
   for (const capturedPiece of capturedPieces) {
     if (capturedPiece.ends_game_on_checkmate) {
       const loserPosition = capturedPiece.team || capturedPiece.player_id;
+
+      // If the game type requires ALL ends_game_on_checkmate pieces to be
+      // captured/checkmated, only end the game once none remain on the
+      // loser's side.
+      if (gameType.mate_condition_requires_all) {
+        const remaining = pieces.some(p => {
+          if (!p.ends_game_on_checkmate) return false;
+          const owner = p.team || p.player_id || p.player;
+          return owner === loserPosition;
+        });
+        if (remaining) {
+          continue; // some flagged pieces still alive; don't end yet
+        }
+      }
+
       const winner = players.find(p => p.position !== loserPosition);
       return {
         gameOver: true,

@@ -53,7 +53,21 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         tooltip="When enabled, the game ends when a designated piece (like a King) is put in checkmate — meaning it's attacked and has no legal escape. Specific checkmate-triggering pieces are configured in Step 4 (Piece Placement)."
         checked={gameData.mate_condition === true}
         onChange={(val) => handleChange("mate_condition", val)}
-      />
+      >
+        <div className={styles["sub-field"]}>
+          <ToggleSwitch
+            checked={gameData.mate_condition_requires_all === true}
+            onChange={(val) => handleChange("mate_condition_requires_all", val)}
+            size="small"
+            label={
+              <span className={styles["condition-toggle-title"]}>
+                Require <em>all</em> checkmate-flagged pieces to be checkmated
+                <InfoTooltip text="By default, putting any single piece marked 'End game on checkmate' (in Step 4) into checkmate ends the game. When this option is checked, ALL such pieces belonging to a player must be simultaneously under lethal attack with no legal escape, AND capturing one such piece does not end the game until none remain. This makes checkmate very hard to achieve — useful when promotion can create additional checkmate-flagged pieces." />
+              </span>
+            }
+          />
+        </div>
+      </ToggleRow>
 
       <ToggleRow
         title="Capture Condition"

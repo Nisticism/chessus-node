@@ -2801,6 +2801,21 @@ const runMigrations = async () => {
     console.error('Error adding capture_condition_requires_all column:', err.message);
   }
 
+  // Add mate_condition_requires_all column to game_types table
+  // When TRUE, the checkmate win condition requires ALL pieces flagged with
+  // ends_game_on_checkmate to be checkmated/captured (instead of just one).
+  try {
+    if (!(await columnExists('game_types', 'mate_condition_requires_all'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN mate_condition_requires_all BOOLEAN DEFAULT FALSE COMMENT 'If true, all pieces with ends_game_on_checkmate must be in a checkmated/captured state to end the game'`,
+        "Add mate_condition_requires_all column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding mate_condition_requires_all column:', err.message);
+  }
+
   // Add lose_all_pieces_condition column to game_types table (anti-chess style)
   // When TRUE, a player WINS as soon as they have lost all of their pieces.
   try {

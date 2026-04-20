@@ -2258,7 +2258,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     const sql = `
       UPDATE game_types SET
         game_name = ?, descript = ?, rules = ?,
-        mate_condition = ?, mate_piece = ?, capture_condition = ?, capture_piece = ?, capture_condition_requires_all = ?,
+        mate_condition = ?, mate_piece = ?, capture_condition = ?, capture_piece = ?, capture_condition_requires_all = ?, mate_condition_requires_all = ?,
         value_condition = ?, value_piece = ?, value_max = ?, value_title = ?,
         squares_condition = ?, squares_count = ?, hill_condition = ?, hill_x = ?, hill_y = ?, hill_turns = ?,
         actions_per_turn = ?, simultaneous_turns = ?, board_width = ?, board_height = ?, player_count = ?,
@@ -2283,6 +2283,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.capture_condition || false,
       gameData.capture_piece != null ? gameData.capture_piece : null,
       gameData.capture_condition_requires_all || false,
+      gameData.mate_condition_requires_all || false,
       gameData.value_condition || false,
       gameData.value_piece != null ? gameData.value_piece : null,
       gameData.value_max || null,
@@ -5057,7 +5058,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     const sql = `
       INSERT INTO game_types (
         creator_id, is_anonymous_creator, game_name, descript, rules,
-        mate_condition, mate_piece, capture_condition, capture_piece, capture_condition_requires_all,
+        mate_condition, mate_piece, capture_condition, capture_piece, capture_condition_requires_all, mate_condition_requires_all,
         value_condition, value_piece, value_max, value_title,
         squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
         actions_per_turn, simultaneous_turns, board_width, board_height, player_count,
@@ -5067,7 +5068,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         no_moves_condition, piece_count_condition, promotion_condition,
         lose_all_pieces_condition, stalemate_win_condition, stalemate_draw_condition, forced_capture_condition,
         pieces_string, created_at, is_draft, draft_saved_step
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -5081,6 +5082,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.capture_condition || false,
       gameData.capture_piece != null ? gameData.capture_piece : null,
       gameData.capture_condition_requires_all || false,
+      gameData.mate_condition_requires_all || false,
       gameData.value_condition || false,
       gameData.value_piece != null ? gameData.value_piece : null,
       gameData.value_max || null,
