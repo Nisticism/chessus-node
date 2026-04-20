@@ -227,7 +227,7 @@ const pieceStorage = multer.diskStorage({
 
 const pieceUpload = multer({ 
   storage: pieceStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit (pixel-art / SVG pieces don't need more)
   fileFilter: function (req, file, cb) {
     const allowedTypes = /jpeg|jpg|png|gif|webp|svg/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -259,7 +259,7 @@ const profilePictureStorage = multer.diskStorage({
 
 const profilePictureUpload = multer({ 
   storage: profilePictureStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
   fileFilter: function (req, file, cb) {
     const allowedTypes = /jpeg|jpg|png|gif/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -2303,9 +2303,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.player_count || 2,
       gameData.starting_piece_count || 0,
       gameData.pieces_string || null,
-      gameData.range_squares_string || null,
+      sanitizeRangeSquaresJSON(gameData.range_squares_string) || null,
       gameData.promotion_squares_string || null,
-      gameData.special_squares_string || null,
+      sanitizeSpecialSquaresJSON(gameData.special_squares_string) || null,
       gameData.control_squares_string || null,
       gameData.randomized_starting_positions || null,
       gameData.other_game_data || null,
@@ -3817,7 +3817,11 @@ app.post("/api/delete", authenticateToken, async (req, res) => {
     
     console.log(`User ${requestingUser.username} (role: ${requestingUser.role}) deleting account: ${username}`);
     
-    await dbHelpers.deleteUser(username);
+    const isSelf = requestingUser.username === username;
+    await dbHelpers.deleteUser(username, {
+      deletedByUserId: isSelf ? null : requestingUser.id,
+      deletionType: isSelf ? 'self' : 'admin'
+    });
     res.json({ message: "Account deleted" });
   } catch (err) {
     console.error("Error in /api/delete:", err);
@@ -5096,9 +5100,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.board_height || 8,
       gameData.player_count || 2,
       gameData.starting_piece_count || 0,
-      gameData.range_squares_string || null,
+      sanitizeRangeSquaresJSON(gameData.range_squares_string) || null,
       gameData.promotion_squares_string || null,
-      gameData.special_squares_string || null,
+      sanitizeSpecialSquaresJSON(gameData.special_squares_string) || null,
       gameData.control_squares_string || null,
       gameData.randomized_starting_positions || null,
       gameData.other_game_data || null,
@@ -6271,6 +6275,31 @@ app.post("/api/admin/moderation-queue/:id/approve", authenticateAdmin, async (re
 
     if (pending[0].cnt === 0) {
       await db_pool.query("UPDATE pieces SET moderation_status = 'approved' WHERE id = ?", [pieceId]);
+      // Notify the piece creator that their piece is fully approved
+      try {
+        const [pieceRows] = await db_pool.query("SELECT id, creator_id, piece_name FROM pieces WHERE id = ?", [pieceId]);
+        const piece = pieceRows[0];
+        if (piece && piece.creator_id) {
+          await dbHelpers.createNotification({
+            user_id: piece.creator_id,
+            sender_id: reviewerId,
+            type: 'moderation_approved',
+            title: 'Piece approved',
+            content: `Your piece "${piece.piece_name}" has been approved and is now visible to other players.`,
+            related_id: piece.id,
+            action_url: `/pieces/${piece.id}`
+          });
+          // Live push if recipient is online
+          try {
+            const ioInst = app.get('io');
+            if (ioInst) {
+              const { userSockets: uSockets } = require('./game-socket');
+              const targetSockId = uSockets && uSockets.get(parseInt(piece.creator_id));
+              if (targetSockId) ioInst.to(targetSockId).emit('newNotification', { type: 'moderation_approved', title: 'Piece approved' });
+            }
+          } catch (e) { /* non-fatal live-push */ }
+        }
+      } catch (notifyErr) { console.error('Failed to send approval notification:', notifyErr.message); }
     }
 
     res.json({ message: "Image approved" });
@@ -6308,6 +6337,32 @@ app.post("/api/admin/moderation-queue/:id/reject", authenticateAdmin, async (req
     // Update piece moderation status to rejected
     await db_pool.query("UPDATE pieces SET moderation_status = 'rejected' WHERE id = ?", [item[0].piece_id]);
 
+    // Notify the piece creator that their piece was rejected
+    try {
+      const [pieceRows] = await db_pool.query("SELECT id, creator_id, piece_name FROM pieces WHERE id = ?", [item[0].piece_id]);
+      const piece = pieceRows[0];
+      if (piece && piece.creator_id) {
+        const noteText = review_note ? ` Reason: ${review_note}` : '';
+        await dbHelpers.createNotification({
+          user_id: piece.creator_id,
+          sender_id: reviewerId,
+          type: 'moderation_rejected',
+          title: 'Piece rejected',
+          content: `Your piece "${piece.piece_name}" was rejected by a moderator.${noteText}`,
+          related_id: piece.id,
+          action_url: `/pieces`
+        });
+        try {
+          const ioInst = app.get('io');
+          if (ioInst) {
+            const { userSockets: uSockets } = require('./game-socket');
+            const targetSockId = uSockets && uSockets.get(parseInt(piece.creator_id));
+            if (targetSockId) ioInst.to(targetSockId).emit('newNotification', { type: 'moderation_rejected', title: 'Piece rejected' });
+          }
+        } catch (e) { /* non-fatal live-push */ }
+      }
+    } catch (notifyErr) { console.error('Failed to send rejection notification:', notifyErr.message); }
+
     res.json({ message: "Image rejected and removed" });
   } catch (err) {
     console.error("Error rejecting moderation item:", err);
@@ -6329,7 +6384,32 @@ app.post("/api/admin/pieces/:pieceId/approve-moderation", authenticateAdmin, asy
       "UPDATE image_moderation_queue SET status = 'approved', reviewer_id = ?, reviewed_at = NOW() WHERE piece_id = ? AND status = 'pending_review'",
       [reviewerId, pieceId]
     );
-    
+
+    // Notify the piece creator that their piece is approved
+    try {
+      const [pieceRows] = await db_pool.query("SELECT id, creator_id, piece_name FROM pieces WHERE id = ?", [pieceId]);
+      const piece = pieceRows[0];
+      if (piece && piece.creator_id) {
+        await dbHelpers.createNotification({
+          user_id: piece.creator_id,
+          sender_id: reviewerId,
+          type: 'moderation_approved',
+          title: 'Piece approved',
+          content: `Your piece "${piece.piece_name}" has been approved and is now visible to other players.`,
+          related_id: piece.id,
+          action_url: `/pieces/${piece.id}`
+        });
+        try {
+          const ioInst = app.get('io');
+          if (ioInst) {
+            const { userSockets: uSockets } = require('./game-socket');
+            const targetSockId = uSockets && uSockets.get(parseInt(piece.creator_id));
+            if (targetSockId) ioInst.to(targetSockId).emit('newNotification', { type: 'moderation_approved', title: 'Piece approved' });
+          }
+        } catch (e) { /* non-fatal live-push */ }
+      }
+    } catch (notifyErr) { console.error('Failed to send approval notification:', notifyErr.message); }
+
     res.json({ message: "Piece approved" });
   } catch (err) {
     console.error("Error approving piece:", err);
@@ -6395,6 +6475,54 @@ function canModerate(requesterRole, targetRole) {
   if (rRole === 'owner') return true;
   if (rRole === 'admin' && tRole !== 'admin' && tRole !== 'owner') return true;
   return false;
+}
+
+/**
+ * Clamp `rangeBonus` values inside the range_squares JSON to the valid
+ * 1..MAX_RANGE_BONUS window. Frontend already validates, but we re-validate
+ * here so a hand-crafted POST cannot bypass the cap.
+ * Accepts the raw JSON string from the wizard and returns the (possibly
+ * rewritten) JSON string. Returns the input unchanged on parse failure.
+ */
+const MAX_RANGE_BONUS = 8;
+function sanitizeRangeSquaresJSON(raw) {
+  if (!raw || typeof raw !== 'string') return raw || null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return raw;
+    let dirty = false;
+    for (const key of Object.keys(parsed)) {
+      const sq = parsed[key];
+      if (sq && typeof sq === 'object') {
+        const b = Number(sq.rangeBonus);
+        const clamped = Number.isFinite(b) ? Math.min(MAX_RANGE_BONUS, Math.max(1, Math.floor(b))) : 1;
+        if (clamped !== sq.rangeBonus) { sq.rangeBonus = clamped; dirty = true; }
+      }
+    }
+    return dirty ? JSON.stringify(parsed) : raw;
+  } catch { return raw; }
+}
+
+/**
+ * Same idea but for the special_squares JSON which holds custom squares
+ * that may carry their own rangeBonus inside { asRange, rangeBonus, ... }.
+ */
+function sanitizeSpecialSquaresJSON(raw) {
+  if (!raw || typeof raw !== 'string') return raw || null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return raw;
+    let dirty = false;
+    for (const key of Object.keys(parsed)) {
+      const sq = parsed[key];
+      if (sq && typeof sq === 'object' && (sq.asRange || sq.rangeBonus != null)) {
+        const b = Number(sq.rangeBonus);
+        const clamped = Number.isFinite(b) ? Math.min(MAX_RANGE_BONUS, Math.max(1, Math.floor(b))) : 1;
+        if (clamped !== sq.rangeBonus) { sq.rangeBonus = clamped; dirty = true; }
+      }
+    }
+    return dirty ? JSON.stringify(parsed) : raw;
+  } catch { return raw; }
 }
 
 function generateAccessToken(user) {
@@ -6658,6 +6786,35 @@ app.get("/api/admin/anonymous-games", authenticateAdmin, async (req, res) => {
   } catch (err) {
     console.error("Error in /api/admin/anonymous-games:", err);
     res.status(500).send({ message: "Failed to fetch anonymous games", err: err.message });
+  }
+});
+
+// Get deleted users audit log for admin tracking
+app.get("/api/admin/deleted-users", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 25;
+    const offset = (page - 1) * limit;
+
+    const [rows] = await db_pool.query(
+      `SELECT du.id, du.original_user_id, du.previous_username, du.deleted_at,
+              du.deletion_type, du.deleted_by_user_id, u.username AS deleted_by_username
+       FROM deleted_users du
+       LEFT JOIN users u ON du.deleted_by_user_id = u.id
+       ORDER BY du.deleted_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) AS total FROM deleted_users");
+
+    res.json({
+      data: rows,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/deleted-users:", err);
+    res.status(500).send({ message: "Failed to fetch deleted users", err: err.message });
   }
 });
 
@@ -7862,10 +8019,9 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin, async (req, res) => 
   }
 });
 
-// All other GET requests not handled before will return our React app
-app.get('/api/*', (req, res) => {
-  res.json({ message: "No data to return from this endpoint!" });
-});
+// (catch-all /api/* handler is registered at the end of the file, after all
+// real route definitions, so it doesn't accidentally swallow routes that are
+// declared lower in the file.)
 
 // Create HTTP server and initialize Socket.io
 const server = http.createServer(app);
@@ -7951,6 +8107,42 @@ setTimeout(cleanupOldNotifications, 60 * 1000); // 1 minute after startup
 setInterval(cleanupOldNotifications, 6 * 60 * 60 * 1000);
 
 // ---------------------------------------------------------------------------
+// Anonymous game cleanup:
+//   - Close any anonymous game stuck in 'waiting' / 'active' / 'ready' for
+//     more than 24 hours by setting status='completed' and end_time=NOW().
+//     Anonymous games can be abandoned mid-play (no auto-forfeit on disconnect)
+//     so without this, end_time stays NULL and they accumulate forever.
+//   - Delete any anonymous game older than 30 days regardless of status.
+// Runs once at startup (delayed) and every 6 hours.
+// ---------------------------------------------------------------------------
+const cleanupAnonymousGames = async () => {
+  try {
+    // 1. Close stale unfinished anonymous games (>24h old, not completed)
+    const [closed] = await db_pool.query(
+      `UPDATE games
+         SET status = 'completed',
+             end_time = COALESCE(end_time, NOW())
+       WHERE is_anonymous = 1
+         AND status IN ('waiting', 'active', 'ready')
+         AND created_at < (NOW() - INTERVAL 24 HOUR)`
+    );
+    // 2. Delete anonymous games older than 30 days (any status)
+    const [deleted] = await db_pool.query(
+      `DELETE FROM games
+       WHERE is_anonymous = 1
+         AND created_at < (NOW() - INTERVAL 30 DAY)`
+    );
+    if ((closed.affectedRows || 0) + (deleted.affectedRows || 0) > 0) {
+      console.log(`[anon-games-cleanup] closed ${closed.affectedRows} stale, deleted ${deleted.affectedRows} old anonymous games`);
+    }
+  } catch (err) {
+    console.error('[anon-games-cleanup] error:', err.message);
+  }
+};
+setTimeout(cleanupAnonymousGames, 90 * 1000);
+setInterval(cleanupAnonymousGames, 6 * 60 * 60 * 1000);
+
+// ---------------------------------------------------------------------------
 // Lightweight admin diagnostic endpoint: quick view of in-memory state and
 // process RSS / heap. Useful for spotting leaks without SSH'ing into the box.
 // ---------------------------------------------------------------------------
@@ -7977,3 +8169,11 @@ app.get("/api/admin/memory-stats", authenticateAdmin, (req, res) => {
     res.status(500).json({ error: 'Failed to read stats' });
   }
 });
+
+// Catch-all for any /api/* GET request not handled by an earlier route.
+// MUST stay at the very bottom of this file so it doesn't accidentally
+// shadow real routes that are declared further down (e.g. memory-stats).
+app.get('/api/*', (req, res) => {
+  res.status(404).json({ message: "No data to return from this endpoint!" });
+});
+

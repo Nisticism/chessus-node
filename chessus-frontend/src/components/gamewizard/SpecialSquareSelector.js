@@ -33,6 +33,18 @@ const SpecialSquareSelector = ({
     asControl: false,
   });
 
+  // Plain range square: how much the bonus increases piece range by.
+  // Max 8 (validated on backend too). Default 1. Cannot drop below 1
+  // (users can always remove the square instead).
+  const [rangeBonus, setRangeBonus] = useState(1);
+
+  // Initialize plain range square bonus when editing
+  useEffect(() => {
+    if (currentType === 'range' && currentConfig) {
+      setRangeBonus(Math.min(8, Math.max(1, currentConfig.rangeBonus || 1)));
+    }
+  }, [currentType, currentConfig]);
+
   // Initialize controlConfig from currentConfig if editing existing control square
   useEffect(() => {
     if (currentType === 'control' && currentConfig) {
@@ -50,7 +62,7 @@ const SpecialSquareSelector = ({
     if (currentType === 'custom' && currentConfig) {
       setCustomCombo({
         asRange: !!currentConfig.asRange,
-        rangeBonus: currentConfig.rangeBonus || 1,
+        rangeBonus: Math.min(8, Math.max(1, currentConfig.rangeBonus || 1)),
         asPromotion: !!currentConfig.asPromotion,
         asControl: !!currentConfig.asControl,
       });
@@ -90,11 +102,16 @@ const SpecialSquareSelector = ({
       options.controlConfig = controlConfig;
     }
 
+    // Include range bonus for plain range squares (1..8, default 1)
+    if (selectedType === 'range') {
+      options.rangeBonus = Math.min(8, Math.max(1, rangeBonus || 1));
+    }
+
     // Include combination config if selecting custom square
     if (selectedType === 'custom') {
       options.customConfig = {
         asRange: !!customCombo.asRange,
-        rangeBonus: customCombo.asRange ? Math.max(1, customCombo.rangeBonus || 1) : 1,
+        rangeBonus: customCombo.asRange ? Math.min(8, Math.max(1, customCombo.rangeBonus || 1)) : 1,
         asPromotion: !!customCombo.asPromotion,
         asControl: !!customCombo.asControl,
         controlConfig: customCombo.asControl ? controlConfig : null,
@@ -170,6 +187,29 @@ const SpecialSquareSelector = ({
               </div>
             ))}
           </div>
+
+          {/* Range Square Configuration Panel */}
+          {selectedType === 'range' && (
+            <div className={styles["control-config-panel"]}>
+              <h4 style={{ marginBottom: '8px', color: 'var(--sq-range, #ff8c00)' }}>
+                Range Square Settings
+              </h4>
+              <p style={{ marginBottom: '16px', color: 'var(--text-light-gray)', fontSize: '0.85rem' }}>
+                Boosts the movement / capture / attack range of pieces standing on this square.
+              </p>
+              <div className={styles["control-config-row"]}>
+                <label className={styles["control-config-label"]}>Range Bonus</label>
+                <NumberInput
+                  value={rangeBonus}
+                  onChange={(val) => setRangeBonus(Math.min(8, Math.max(1, val)))}
+                  options={{ min: 1, max: 8, className: styles["control-number-input"] }}
+                />
+                <span className={styles["control-config-hint"]}>
+                  How many additional squares of range pieces gain on this square (min 1, max 8).
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Control Square Configuration Panel */}
           {selectedType === 'control' && (
@@ -298,8 +338,8 @@ const SpecialSquareSelector = ({
                     <span style={{ fontSize: '0.85rem' }}>Range Bonus:</span>
                     <NumberInput
                       value={customCombo.rangeBonus}
-                      onChange={(val) => handleCustomComboChange('rangeBonus', Math.max(1, val))}
-                      options={{ min: 1, max: 10, className: styles["control-number-input"] }}
+                      onChange={(val) => handleCustomComboChange('rangeBonus', Math.min(8, Math.max(1, val)))}
+                      options={{ min: 1, max: 8, className: styles["control-number-input"] }}
                     />
                   </div>
                 )}

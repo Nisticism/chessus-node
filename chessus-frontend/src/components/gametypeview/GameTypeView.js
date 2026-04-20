@@ -1055,6 +1055,37 @@ const GameTypeView = () => {
       specialRulesContent.push(promoContent);
     }
 
+    // Range squares description (plain ranged squares with their per-square bonus)
+    if (Object.keys(specialSquares.range).length > 0) {
+      const entries = Object.entries(specialSquares.range);
+      const lines = entries.map(([key, cfg]) => {
+        const [row, col] = key.split(',').map(Number);
+        const bonus = Math.min(8, Math.max(1, Number(cfg?.rangeBonus) || 1));
+        return `• ${String.fromCharCode(97 + col)}${row + 1} — Range Bonus +${bonus}`;
+      });
+      specialRulesContent.push(
+        `**Range Squares**\nA piece standing on a Range Square has its movement, capture, and attack range increased by the listed bonus while it is on that square.\n\n${lines.join('\n')}`
+      );
+    }
+
+    // Control squares description (per-square turns / piece / player config)
+    if (Object.keys(specialSquares.control).length > 0) {
+      const entries = Object.entries(specialSquares.control);
+      const playerLabel = (p) => p === 'p1' ? 'Player 1 only' : p === 'p2' ? 'Player 2 only' : 'either player';
+      const lines = entries.map(([key, cfg]) => {
+        const [row, col] = key.split(',').map(Number);
+        const turns = cfg?.turnsRequired || 1;
+        const consec = cfg?.consecutiveTurns ? 'consecutive ' : '';
+        const piece = cfg?.requireSpecificPiece
+          ? 'only pieces marked **Can Control Squares**'
+          : 'any piece';
+        return `• ${String.fromCharCode(97 + col)}${row + 1} — must be held for ${turns} ${consec}turn${turns > 1 ? 's' : ''} by ${piece} (${playerLabel(cfg?.appliesToPlayer)})`;
+      });
+      specialRulesContent.push(
+        `**Control Squares**\nWhen the Control Squares win condition is enabled, players must hold these squares according to their per-square rules.\n\n${lines.join('\n')}`
+      );
+    }
+
     // Custom squares description — they can act as combinations of the other special square types
     if (Object.keys(specialSquares.special).length > 0) {
       const customEntries = Object.entries(specialSquares.special);

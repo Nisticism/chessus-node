@@ -294,6 +294,20 @@ const tableMigrations = [
       INDEX idx_upvotes_user_id (user_id)
     )`,
     description: "Create game_type_upvotes table for game upvote system"
+  },
+  {
+    table: 'deleted_users',
+    sql: `CREATE TABLE IF NOT EXISTS deleted_users (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      original_user_id INT UNSIGNED NOT NULL,
+      previous_username VARCHAR(50),
+      deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      deleted_by_user_id INT UNSIGNED,
+      deletion_type VARCHAR(20),
+      INDEX idx_deleted_users_user_id (original_user_id),
+      INDEX idx_deleted_users_deleted_at (deleted_at)
+    )`,
+    description: "Create deleted_users audit table"
   }
 ];
 

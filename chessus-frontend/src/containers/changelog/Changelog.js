@@ -4,6 +4,21 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 20, 2026",
+    title: "Range-Square Bonus, SVG Auto-Scan, Moderation Notifications & Admin Audit Log",
+    items: [
+      "Range Squares can now be configured with a per-square range bonus from +1 to +8 (default +1). Click any range square in Step 3 to set the value, and the bonus carries over when you use Fill Entire Row. The chosen bonus is applied in live games — pieces standing on a Range Square gain that many extra squares of movement, capture, and attack range — and the value is described on each game's detail page",
+      "Custom Squares with Range behavior are now also capped at +1 to +8 (down from the previous max of +10) so they line up with plain Range Squares; backend validation re-clamps the value so a hand-crafted request can't bypass the cap",
+      "Control Squares: the per-square 'Require Specific Piece Type' toggle now actually takes effect in live games — when enabled, only pieces marked 'Can Control Squares' in Step 4 can hold the square; when disabled, any piece can hold it. The configured turns / consecutive-turns / applies-to-player / piece-requirement settings now also appear on the game detail page so opponents can see them up front",
+      "You'll now get a notification when a moderator approves or rejects one of your pieces (and the notification deep-links to the piece or your library so you can re-upload if needed)",
+      "SVG piece images now get auto-moderated instead of always going to manual review: SVGs containing scripts, iframes, foreignObjects, inline event handlers, javascript: URLs, or XML entities are rejected outright (XSS protection); SVGs containing embedded raster images or external image references are queued for manual review; plain shape-only SVGs are auto-approved. This dramatically reduces the moderation queue for chess-piece SVG uploads",
+      "Image upload size limit reduced from 5MB to 2MB for both piece images and profile pictures — pixel-art and SVG pieces never need more than that, and the lower cap keeps page loads snappy",
+      "Server Stats Memory Stats endpoint now actually loads — a catch-all `/api/*` handler had been registered above it and was swallowing the request; the catch-all has been moved to the bottom of the route list so the real endpoint is reachable",
+      "New Admin tab: 'Deleted Users' shows an audit log of every account deletion (self-delete or admin-initiated) including the deletion timestamp, previous username, original user ID, and who initiated the deletion",
+      "Anonymous games now get cleaned up automatically — any anonymous game still in 'waiting' / 'active' / 'ready' state for more than 24 hours is closed (status='completed', end_time set) and any anonymous game older than 30 days is permanently deleted; this prevents abandoned anonymous matches from accumulating forever",
+    ]
+  },
+  {
     date: "April 19, 2026",
     title: "Stalemate Fixes, Capture Win Persistence & Custom Square Combinations",
     items: [

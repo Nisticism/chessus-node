@@ -124,6 +124,8 @@ const AdminDashboard = () => {
       fetchFeaturedGames();
     } else if (activeTab === 'anonymous-games') {
       fetchAnonymousGames(1);
+    } else if (activeTab === 'deleted-users') {
+      fetchDeletedUsers(1);
     } else if (activeTab === 'settings') {
       fetchSiteSettings();
     } else if (activeTab === 'online') {
@@ -151,6 +153,26 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error("Error fetching anonymous games:", error);
       setAlertMessage("Failed to load anonymous games");
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchDeletedUsers = async (page = 1) => {
+    setLoading(true);
+    try {
+      const limit = pagination?.limit || 25;
+      const response = await axios.get(
+        `${API_URL}admin/deleted-users?page=${page}&limit=${limit}`,
+        { headers: authHeader() }
+      );
+      setData(response.data.data);
+      setPagination(response.data.pagination);
+    } catch (error) {
+      console.error("Error fetching deleted users:", error);
+      setAlertMessage("Failed to load deleted users");
       setAlertType('error');
       setShowAlert(true);
     } finally {
@@ -405,6 +427,8 @@ const AdminDashboard = () => {
   const handlePageChange = (newPage) => {
     if (activeTab === 'anonymous-games') {
       fetchAnonymousGames(newPage);
+    } else if (activeTab === 'deleted-users') {
+      fetchDeletedUsers(newPage);
     } else {
       fetchData(activeTab, newPage);
     }
@@ -1082,6 +1106,45 @@ const AdminDashboard = () => {
     </div>
     );
   };
+
+  const renderDeletedUsersTable = () => (
+    <div className={styles["table-container"]}>
+      <table className={styles["data-table"]}>
+        <thead>
+          <tr>
+            <th>Original User ID</th>
+            <th>Previous Username</th>
+            <th>Deleted At</th>
+            <th>Deletion Type</th>
+            <th>Deleted By</th>
+          </tr>
+        </thead>
+        <tbody>
+          {!data || data.length === 0 ? (
+            <tr>
+              <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
+                {!data ? 'Loading...' : 'No deleted users on record'}
+              </td>
+            </tr>
+          ) : (
+            data.map(row => (
+              <tr key={row.id}>
+                <td>{row.original_user_id}</td>
+                <td>{row.previous_username || '—'}</td>
+                <td>{row.deleted_at ? formatDateTime(row.deleted_at) : '—'}</td>
+                <td>{row.deletion_type || '—'}</td>
+                <td>
+                  {row.deletion_type === 'self'
+                    ? <em>self-delete</em>
+                    : (row.deleted_by_username || (row.deleted_by_user_id ? `User #${row.deleted_by_user_id}` : '—'))}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 
   const renderForumsTable = () => (
     <div className={styles["table-container"]}>
@@ -1972,6 +2035,12 @@ const AdminDashboard = () => {
           Anonymous Games
         </button>
         <button
+          className={`${styles["tab"]} ${activeTab === "deleted-users" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("deleted-users")}
+        >
+          Deleted Users
+        </button>
+        <button
           className={`${styles["tab"]} ${activeTab === "settings" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("settings")}
         >
@@ -2006,6 +2075,7 @@ const AdminDashboard = () => {
             {activeTab === "streams" && renderStreamsTab()}
             {activeTab === "online" && renderOnlinePlayersTab()}
             {activeTab === "anonymous-games" && renderAnonymousGamesTable()}
+            {activeTab === "deleted-users" && renderDeletedUsersTable()}
             {activeTab === "moderation" && renderModerationTab()}
             {activeTab === "server-stats" && renderServerStatsTab()}
             {activeTab === "settings" && (

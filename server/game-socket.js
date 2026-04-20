@@ -9955,10 +9955,15 @@ function updateControlSquareTracking(gameState) {
   for (const [squareKey, config] of Object.entries(controlSquares)) {
     const [row, col] = squareKey.split(',').map(Number);
     
-    // Find a piece on this square that can control squares
-    const controllingPiece = pieces.find(p => 
-      p.x === col && p.y === row && p.can_control_squares
-    );
+    // Find a piece on this square that can control squares.
+    // If the square is configured with `requireSpecificPiece`, we ONLY count
+    // pieces with the `can_control_squares` flag set on the piece itself.
+    // Otherwise (the default), any piece occupying the square may control it.
+    const piecesOnSquare = pieces.filter(p => p.x === col && p.y === row);
+    const requireSpecific = !!config?.requireSpecificPiece;
+    const controllingPiece = requireSpecific
+      ? piecesOnSquare.find(p => p.can_control_squares)
+      : piecesOnSquare[0];
     
     if (controllingPiece) {
       const controllingPlayerId = parseInt(controllingPiece.team || controllingPiece.player_id || controllingPiece.player_number);

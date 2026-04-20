@@ -102,14 +102,32 @@ const updateUser = async (userData, id) => {
 /**
  * Delete user by username — disables FK checks so that articles/comments
  * retain their author_id (server resolves missing users as "User Deleted").
+ * Also writes a row to deleted_users so admins can audit deletions.
  * @param {string} username - Username
+ * @param {Object} [options]
+ * @param {number} [options.deletedByUserId] - ID of admin/owner who initiated the delete (omit for self-delete)
+ * @param {string} [options.deletionType] - 'self' | 'admin' | 'system'
  * @returns {Promise<Object>} Result of deletion
  */
-const deleteUser = async (username) => {
+const deleteUser = async (username, options = {}) => {
   // Find the user first
-  const user = await query("SELECT id FROM chessusnode.users WHERE username = ?", [username]);
+  const user = await query("SELECT id, username FROM chessusnode.users WHERE username = ?", [username]);
   if (!user || user.length === 0) return null;
   const userId = user[0].id;
+  const previousUsername = user[0].username;
+
+  // Audit log: record the deletion BEFORE we drop the row.
+  try {
+    await query(
+      "INSERT INTO deleted_users (original_user_id, previous_username, deleted_by_user_id, deletion_type) VALUES (?, ?, ?, ?)",
+      [userId, previousUsername, options.deletedByUserId || null, options.deletionType || 'self']
+    );
+  } catch (err) {
+    // Don't block the deletion if the audit insert fails — just log it.
+    if (err.code !== 'ER_NO_SUCH_TABLE') {
+      console.error('deleteUser: failed to write deleted_users audit row:', err.message);
+    }
+  }
   
   // Clean up tables that have strict FK constraints (non-content tables)
   // Use try/catch per table to handle tables that may not exist in all environments

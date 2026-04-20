@@ -388,10 +388,11 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
 
     // Add to selected type for all keys
     if (squareType === 'range') {
+      const bonus = Math.min(8, Math.max(1, options.rangeBonus || 1));
       setRangeSquares(prev => {
         const newSquares = { ...prev };
         keysToUpdate.forEach(key => {
-          newSquares[key] = { type: 'range', rangeBonus: 1 };
+          newSquares[key] = { type: 'range', rangeBonus: bonus };
         });
         return newSquares;
       });
@@ -748,9 +749,13 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           onCancel={handleCancelSelector}
           currentType={getSquareType(selectedSquare?.key)}
           currentConfig={
-            getSquareType(selectedSquare?.key) === 'custom'
-              ? customSquares[selectedSquare?.key]
-              : controlSquares[selectedSquare?.key]
+            (() => {
+              const t = getSquareType(selectedSquare?.key);
+              if (t === 'custom') return customSquares[selectedSquare?.key];
+              if (t === 'control') return controlSquares[selectedSquare?.key];
+              if (t === 'range') return rangeSquares[selectedSquare?.key];
+              return null;
+            })()
           }
           squarePosition={selectedSquare}
           boardWidth={gameData.board_width}

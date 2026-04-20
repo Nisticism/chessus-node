@@ -78,13 +78,15 @@ async function classifyImage(filePath) {
     // Read image as buffer and decode
     const imageBuffer = fs.readFileSync(filePath);
     
-    // SVG files can't be classified by the model — skip them
+    // SVG files can't be classified by the NSFW model (it expects a raster
+    // tensor), but we can do a static analysis of the SVG markup itself:
+    //  - Reject anything with active content (scripts, event handlers, foreignObject,
+    //    iframes, javascript: URLs) — those are XSS vectors anyway
+    //  - Queue anything with embedded raster data or external image refs, since
+    //    those could hide NSFW content the static scan can't see
+    //  - Auto-approve plain shape/path-only SVGs
     if (filePath.toLowerCase().endsWith('.svg')) {
-      return {
-        status: 'pending_review',
-        predictions: null,
-        reason: 'SVG images cannot be auto-scanned — queued for manual review'
-      };
+      return scanSvg(filePath);
     }
 
     // Decode the image to a tensor
@@ -190,10 +192,83 @@ async function initialize() {
   }
 }
 
+/**
+ * Static analysis of an SVG file. SVGs are XML markup — we can't run them
+ * through the NSFW image classifier, but we can scan the source for:
+ *   - Active content / XSS vectors → REJECT (these are dangerous regardless
+ *     of NSFW concerns and should never be served back to the browser)
+ *   - Embedded raster images or external image refs → PENDING (could hide
+ *     NSFW pixel data the static scan can't see)
+ *   - Otherwise (only plain SVG primitives) → APPROVE
+ *
+ * @param {string} filePath - Absolute path to .svg file
+ * @returns {{ status, predictions: null, reason }}
+ */
+function scanSvg(filePath) {
+  const fs = require('fs');
+  let svg;
+  try {
+    svg = fs.readFileSync(filePath, 'utf8');
+  } catch (err) {
+    return { status: 'pending_review', predictions: null, reason: `Could not read SVG: ${err.message}` };
+  }
+
+  // Sanity cap — anything wildly large is suspicious. Real piece SVGs are < 200KB.
+  if (svg.length > 1024 * 1024) {
+    return { status: 'pending_review', predictions: null, reason: 'SVG is unusually large — queued for manual review' };
+  }
+
+  const lower = svg.toLowerCase();
+
+  // Hard-reject: XSS / active content. These have no place in a piece SVG and
+  // would be a security risk to serve back, so we reject outright.
+  const dangerousPatterns = [
+    { re: /<script[\s>]/, name: '<script> tag' },
+    { re: /<iframe[\s>]/, name: '<iframe> tag' },
+    { re: /<foreignobject[\s>]/, name: '<foreignObject> tag' },
+    { re: /\son[a-z]+\s*=/, name: 'inline event handler (on*=)' },
+    { re: /javascript\s*:/, name: 'javascript: URL' },
+    { re: /<!entity/, name: 'XML entity declaration' },
+  ];
+  for (const { re, name } of dangerousPatterns) {
+    if (re.test(lower)) {
+      return {
+        status: 'rejected',
+        predictions: null,
+        reason: `SVG rejected: contains ${name} (potential XSS / active content)`
+      };
+    }
+  }
+
+  // Soft-queue: embedded or external raster image data could hide content
+  // that this text scan cannot inspect.
+  const suspiciousPatterns = [
+    { re: /data:image\/(png|jpe?g|gif|webp|bmp)/, name: 'embedded raster image data' },
+    { re: /<image[^>]*\b(href|xlink:href)\s*=\s*["']?https?:/, name: 'external image reference' },
+    { re: /<use[^>]*\b(href|xlink:href)\s*=\s*["']?https?:/, name: 'external <use> reference' },
+  ];
+  for (const { re, name } of suspiciousPatterns) {
+    if (re.test(lower)) {
+      return {
+        status: 'pending_review',
+        predictions: null,
+        reason: `SVG queued for manual review: contains ${name}`
+      };
+    }
+  }
+
+  return {
+    status: 'approved',
+    predictions: null,
+    reason: 'SVG passed static analysis (shape primitives only, no scripts or embedded raster data)'
+  };
+}
+
 module.exports = {
   classifyImage,
   classifyImages,
   isModelReady,
   initialize,
+  scanSvg,
   THRESHOLDS
 };
