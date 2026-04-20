@@ -5421,8 +5421,9 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
         can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies,
         can_capture_allies, cannot_be_captured, max_chain_hops,
         custom_movement_squares, custom_attack_squares,
+        must_move_if_able, must_move_uses_action,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -7902,3 +7903,56 @@ const checkWeeklyNotificationDigest = async () => {
 
 // Check every hour
 setInterval(checkWeeklyNotificationDigest, 60 * 60 * 1000);
+
+// ---------------------------------------------------------------------------
+// Notification cleanup: prevent the notifications table from growing unbounded.
+//   - Delete READ notifications older than 30 days
+//   - Delete UNREAD notifications older than 90 days (stale)
+// Runs once at startup (delayed) and every 6 hours.
+// ---------------------------------------------------------------------------
+const cleanupOldNotifications = async () => {
+  try {
+    const [readResult] = await db_pool.query(
+      "DELETE FROM notifications WHERE is_read = 1 AND created_at < (NOW() - INTERVAL 30 DAY)"
+    );
+    const [unreadResult] = await db_pool.query(
+      "DELETE FROM notifications WHERE is_read = 0 AND created_at < (NOW() - INTERVAL 90 DAY)"
+    );
+    if ((readResult.affectedRows || 0) + (unreadResult.affectedRows || 0) > 0) {
+      console.log(`[notifications-cleanup] removed ${readResult.affectedRows} read + ${unreadResult.affectedRows} stale unread`);
+    }
+  } catch (err) {
+    console.error('[notifications-cleanup] error:', err.message);
+  }
+};
+setTimeout(cleanupOldNotifications, 60 * 1000); // 1 minute after startup
+setInterval(cleanupOldNotifications, 6 * 60 * 60 * 1000);
+
+// ---------------------------------------------------------------------------
+// Lightweight admin diagnostic endpoint: quick view of in-memory state and
+// process RSS / heap. Useful for spotting leaks without SSH'ing into the box.
+// ---------------------------------------------------------------------------
+app.get("/api/admin/memory-stats", authenticateAdmin, (req, res) => {
+  try {
+    const gs = require("./game-socket");
+    const mem = process.memoryUsage();
+    res.json({
+      uptimeSeconds: Math.round(process.uptime()),
+      activeGames: gs.activeGames ? gs.activeGames.size : 0,
+      gameTimers: gs.gameTimers ? gs.gameTimers.size : 0,
+      disconnectTimeouts: gs.disconnectTimeouts ? gs.disconnectTimeouts.size : 0,
+      onlineUsers: gs.onlineUsers ? gs.onlineUsers.size : 0,
+      memory: {
+        rssMB: +(mem.rss / 1024 / 1024).toFixed(1),
+        heapUsedMB: +(mem.heapUsed / 1024 / 1024).toFixed(1),
+        heapTotalMB: +(mem.heapTotal / 1024 / 1024).toFixed(1),
+        externalMB: +(mem.external / 1024 / 1024).toFixed(1),
+        arrayBuffersMB: +((mem.arrayBuffers || 0) / 1024 / 1024).toFixed(1),
+      },
+      nodeVersion: process.version,
+    });
+  } catch (err) {
+    console.error('memory-stats error:', err);
+    res.status(500).json({ error: 'Failed to read stats' });
+  }
+});
