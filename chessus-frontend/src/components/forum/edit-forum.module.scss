@@ -1,75 +1,116 @@
-.registration {
+.container {
   display: flex;
-  flex-direction: column;
-  padding: 0px 10px;
+  justify-content: center;
+  padding: 24px 12px 48px;
 }
 
 .wrapper {
   display: flex;
   flex-direction: column;
-  width: 90%;
+  width: min(880px, 100%);
   background: var(--forum-background);
-  border: 2px solid var(--forum-border);
-  margin-top: 25px;
-  min-width: 380px;
-  border-radius: 10px;
-  padding-top: 10px;
-  padding-bottom: 10px;
+  border: 1px solid var(--forum-border);
+  border-radius: 14px;
+  padding: 28px 32px 32px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  margin-top: 16px;
 }
 
-.container {
+.forum-form {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.signup-button {
-  background-color: var(--button-primary-bg);
-  color: var(--text-white);
+.edit-forum-title {
+  margin: 0 0 4px;
+  color: var(--text-heading);
+  font-size: 1.6rem;
+  letter-spacing: 0.2px;
+}
+
+.page-subtitle {
+  margin: 0 0 18px;
+  color: var(--text-dim, rgba(255,255,255,0.55));
+  font-size: 0.9rem;
+}
+
+.edit-field-label {
+  display: block;
+  margin: 0 0 6px;
+  color: var(--text-heading);
   font-weight: 600;
-  font-size: 18px;
-  padding: 10px;
-  margin: 10px 10px 15px 10px;
-  width: 320px;
-  border-radius: 4px;
-  border: 2px solid var(--button-border);
-}
-
-.signup-button:hover {
-  background-color: var(--button-primary-hover);
-  cursor: pointer;
+  font-size: 0.92rem;
+  letter-spacing: 0.2px;
 }
 
 .form-group {
   display: flex;
-  align-items: center;
-  // justify-content: center;
-  padding: 10px 40px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 10px 0;
 }
 
+.edit-forum-title-input,
+.edit-form-control {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-heading);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent-primary, #6c8eef);
+    box-shadow: 0 0 0 3px rgba(108, 142, 239, 0.18);
+    background: rgba(0, 0, 0, 0.22);
+  }
+}
 
 .edit-form-control {
-  width: -webkit-fill-available;
-  width: -moz-available;
-  min-height: 200px;
+  min-height: 240px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.char-counter {
+  text-align: right;
+  font-size: 0.78rem;
+  color: var(--text-dim, rgba(255, 255, 255, 0.45));
+  margin-top: 6px;
+}
+.char-counter-warn {
+  color: #ff8a8a;
 }
 
 .emoji-row {
   display: flex;
-  margin-top: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.edit-forum-title-input {
-  width: 300px;
-}
-
-.edit-field-label {
-  min-width: 120px;
+.button-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
 }
 
 .comments-container {
   color: var(--text-heading);
-  margin-left: 5%;
-  margin-right: 5%;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   .comment-container {
     a {
       color: var(--text-heading);
@@ -81,7 +122,7 @@
 }
 
 .new-comment {
-  width: 60%;
+  width: 100%;
   box-sizing: border-box;
 }
 
@@ -93,12 +134,14 @@
 
 .comment-container {
   display: flex;
-  width: 60%;
+  width: 100%;
   flex-direction: column;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .comment {
-  margin-bottom: 20px;
+  margin-bottom: 8px;
   display: flex;
   width: 100%;
   justify-content: space-between;
@@ -106,6 +149,8 @@
 
 .comment-data {
   display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .comment-link {
@@ -121,12 +166,14 @@
 }
 
 .comment-author {
-  margin-right: 20px;
+  margin-right: 0;
 }
 
 .comment-date {
   width: fit-content;
-  margin-right: 20px;
+  margin-right: 0;
+  font-size: 0.85rem;
+  color: var(--text-dim, rgba(255, 255, 255, 0.5));
 }
 
 .comment-buttons {
@@ -142,10 +189,6 @@
   margin-top: 20px;
 }
 
-.edit-forum-title {
-  color: var(--text-heading);
-}
-
 .loading-container {
   display: flex;
   justify-content: center;
@@ -153,4 +196,11 @@
   min-height: 300px;
   font-size: 24px;
   font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .wrapper {
+    padding: 20px 16px;
+  }
+  .button-row > * { flex: 1 1 auto; }
 }

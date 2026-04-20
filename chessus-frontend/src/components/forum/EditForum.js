@@ -85,8 +85,21 @@ const EditForum = () => {
     return <Navigate to="/" />;
   }
 
-  
+  const handleCancel = () => {
+    const titleChanged = title !== null && currentForum && title !== currentForum.title;
+    const contentChanged = content !== null && currentForum && content !== currentForum.content;
+    if (titleChanged || contentChanged) {
+      if (!window.confirm('Discard your changes to this post?')) return;
+    }
+    if (forumId) {
+      navigate(`/forums/${forumId}`);
+    } else {
+      navigate(-1);
+    }
+  };
 
+  const liveTitle = title !== null ? title : (currentForum?.title || '');
+  const liveContent = content !== null ? content : (currentForum?.content || '');
 
   return (
     <div className={styles["container"]}>
@@ -96,32 +109,30 @@ const EditForum = () => {
         </div>
       ) : (
       <div className={styles["wrapper"]}>
-        {/* <img
-          src="//ssl.gstatic.com/accounts/ui/avatar_2x.png"
-          alt="profile-img"
-          className="profile-img-card"
-        /> */}
-        <form ref={form}>
+        <form ref={form} className={styles["forum-form"]}>
           {!successful && (
-            <div>
+            <>
               <h2 className={styles["edit-forum-title"]}>Edit Post</h2>
+              <p className={styles["page-subtitle"]}>Update your post and save changes.</p>
+
               <div className={styles["form-group"]}>
-                <label htmlFor="username" className={styles["edit-field-label"]}>Post Subject</label>
+                <label htmlFor="title-field" className={styles["edit-field-label"]}>Post Subject</label>
                 <input
                   id="title-field"
                   type="text"
                   className={styles["edit-forum-title-input"]}
                   name="title"
                   defaultValue={currentForum ? currentForum.title : title}
-                  // value = {title}
                   onChange={onChangeTitle}
                   maxLength={TITLE_MAX}
                 />
+                <div className={`${styles["char-counter"]} ${liveTitle.length > TITLE_MAX * 0.9 ? styles["char-counter-warn"] : ""}`}>{liveTitle.length}/{TITLE_MAX}</div>
               </div>
+
               <div className={styles["form-group"]}>
-                <label htmlFor="email" className={styles["edit-field-label"]}>Content</label>
+                <label htmlFor="content-field" className={styles["edit-field-label"]}>Content</label>
                 <textarea
-                  type="text"
+                  id="content-field"
                   className={styles["edit-form-control"]}
                   name="content"
                   defaultValue={currentForum ? currentForum.content : content}
@@ -141,15 +152,18 @@ const EditForum = () => {
                       onChangeContent({ target: { value: textarea.value } });
                     }
                   }} />
+                  <div className={`${styles["char-counter"]} ${liveContent.length > CONTENT_MAX * 0.9 ? styles["char-counter-warn"] : ""}`}>{liveContent.length.toLocaleString()}/{CONTENT_MAX.toLocaleString()}</div>
                 </div>
               </div>
-              <div className="form-group">
+
+              <div className={styles["button-row"]}>
                 <StandardButton buttonText={"Update Post"} onClick={handleEditPost}></StandardButton>
+                <StandardButton buttonText={"Cancel"} onClick={handleCancel}></StandardButton>
               </div>
-            </div>
+            </>
           )}
           {message && (
-            <div className="form-group">
+            <div className={styles["form-group"]}>
               <div className={ successful ? "alert alert-success" : "alert alert-danger" } role="alert">
                 {message}
               </div>

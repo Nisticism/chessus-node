@@ -269,6 +269,58 @@ const profilePictureUpload = multer({
   }
 });
 
+/**
+ * Deduplicate an uploaded image file by SHA-256 content hash.
+ * If a file with the same hash already exists in the same upload directory,
+ * the new upload is deleted and the existing filename is reused. Otherwise
+ * the file is renamed to <hash><ext> so future uploads of the same content
+ * can find and reuse it.
+ *
+ * Mutates `file.filename` in place (and updates `file.path`) so callers can
+ * keep using the multer file object as before.
+ *
+ * @param {object} file - Multer file object
+ * @returns {string} the final filename to use
+ */
+function dedupeUploadedFile(file) {
+  if (!file || !file.destination || !file.filename) return file?.filename;
+  const fullPath = path.join(file.destination, file.filename);
+  let hash;
+  try {
+    const buffer = fs.readFileSync(fullPath);
+    hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  } catch (e) {
+    console.error('dedupeUploadedFile: failed to hash file', file.filename, e.message);
+    return file.filename;
+  }
+
+  const ext = path.extname(file.filename).toLowerCase();
+  const targetName = `${hash}${ext}`;
+  const targetPath = path.join(file.destination, targetName);
+
+  if (targetName === file.filename) {
+    return file.filename;
+  }
+
+  if (fs.existsSync(targetPath)) {
+    // Duplicate content already on disk — delete the new upload and reuse.
+    try { fs.unlinkSync(fullPath); } catch (e) { /* ignore */ }
+    file.filename = targetName;
+    file.path = targetPath;
+    return targetName;
+  }
+
+  // No existing file with this hash — rename so future uploads can dedupe.
+  try {
+    fs.renameSync(fullPath, targetPath);
+    file.filename = targetName;
+    file.path = targetPath;
+  } catch (e) {
+    console.error('dedupeUploadedFile: failed to rename', e.message);
+  }
+  return file.filename;
+}
+
 //  -----------  Auto-create Tables and Run Migrations on Startup -----------------
 
 const { runMigrations } = require("./migrations");
@@ -3104,6 +3156,10 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
       });
     }
 
+    // Deduplicate by content hash so re-uploads of the same image reuse the
+    // existing file on disk instead of creating duplicates.
+    dedupeUploadedFile(imageFile);
+
     // Get user's current profile picture before updating
     const currentUser = await dbHelpers.findUserById(userId);
     const oldPicturePath = currentUser?.profile_picture;
@@ -3117,17 +3173,23 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
       [imagePath, userId]
     );
 
-    // Delete old profile picture if it exists
-    if (oldPicturePath) {
-      const oldFilePath = path.join(__dirname, '..', oldPicturePath);
-      fs.unlink(oldFilePath, (err) => {
-        if (err) {
-          console.error("Error deleting old profile picture:", err);
-          // Don't fail the request if deletion fails
-        } else {
-          console.log("Deleted old profile picture:", oldFilePath);
-        }
-      });
+    // Delete old profile picture if it exists — but only if no other user
+    // (or this user's new picture) is still referencing the same path.
+    if (oldPicturePath && oldPicturePath !== imagePath) {
+      const [refRows] = await db_pool.query(
+        "SELECT COUNT(*) AS refs FROM chessusnode.users WHERE profile_picture = ?",
+        [oldPicturePath]
+      );
+      if (refRows[0].refs === 0) {
+        const oldFilePath = path.join(__dirname, '..', oldPicturePath);
+        fs.unlink(oldFilePath, (err) => {
+          if (err) {
+            console.error("Error deleting old profile picture:", err);
+          } else {
+            console.log("Deleted old profile picture:", oldFilePath);
+          }
+        });
+      }
     }
 
     // Fetch and return the updated user
@@ -5256,21 +5318,12 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
       return res.status(400).send({ message: limitsError });
     }
 
-    // Rename with color suffix when exactly 2 images: first = -w (white/light), second = -b (black/dark)
-    if (imageFiles.length === 2) {
-      const suffixes = ['-w', '-b'];
-      for (let i = 0; i < 2; i++) {
-        const file = imageFiles[i];
-        const ext = path.extname(file.filename);
-        const base = file.filename.replace(ext, '');
-        const newName = base + suffixes[i] + ext;
-        const oldPath = path.join(file.destination, file.filename);
-        const newPath = path.join(file.destination, newName);
-        try {
-          fs.renameSync(oldPath, newPath);
-          imageFiles[i].filename = newName;
-        } catch (e) { /* keep original name on error */ }
-      }
+    // Deduplicate uploaded piece images by content hash. If a piece already
+    // uses the exact same image, the new upload reuses the existing file
+    // instead of creating a duplicate on disk. The order in `imageFiles`
+    // is preserved so the player1/player2 mapping in `imagePaths` stays correct.
+    for (const file of imageFiles) {
+      dedupeUploadedFile(file);
     }
 
     const imagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
@@ -5535,6 +5588,9 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
       // Custom movement/attack squares
       pieceData.custom_movement_squares || null,
       pieceData.custom_attack_squares || null,
+      // Must-move-if-able (e.g., Duck Chess)
+      parseBooleanField(pieceData.must_move_if_able),
+      parseBooleanField(pieceData.must_move_uses_action),
       // Created at
       new Date().toISOString().slice(0, 19).replace('T', ' ')
     ];
@@ -5684,21 +5740,12 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
       console.log(`Piece ${pieceId} update: ${removedImages.length} image(s) replaced (old files kept for active game compatibility)`);
     }
     
-    // Add new image paths if any
-    // Rename with color suffix when exactly 2 new images: first = -w, second = -b
-    if (imageFiles && imageFiles.length === 2) {
-      const suffixes = ['-w', '-b'];
-      for (let i = 0; i < 2; i++) {
-        const file = imageFiles[i];
-        const ext = path.extname(file.filename);
-        const base = file.filename.replace(ext, '');
-        const newName = base + suffixes[i] + ext;
-        const oldPathFull = path.join(file.destination, file.filename);
-        const newPathFull = path.join(file.destination, newName);
-        try {
-          fs.renameSync(oldPathFull, newPathFull);
-          imageFiles[i].filename = newName;
-        } catch (e) { /* keep original name on error */ }
+    // Add new image paths if any.
+    // Deduplicate uploaded piece images by content hash before recording paths,
+    // so re-uploading the same image reuses the existing file on disk.
+    if (imageFiles && imageFiles.length > 0) {
+      for (const file of imageFiles) {
+        dedupeUploadedFile(file);
       }
     }
     const newImagePaths = imageFiles ? imageFiles.map(file => `/uploads/pieces/${file.filename}`) : [];
@@ -5903,7 +5950,9 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
         cannot_be_captured = ?,
         max_chain_hops = ?,
         custom_movement_squares = ?,
-        custom_attack_squares = ?
+        custom_attack_squares = ?,
+        must_move_if_able = ?,
+        must_move_uses_action = ?
       WHERE id = ?
     `;
 
@@ -6067,6 +6116,9 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
       // Custom movement/attack squares
       pieceData.custom_movement_squares || null,
       pieceData.custom_attack_squares || null,
+      // Must-move-if-able
+      parseBooleanField(pieceData.must_move_if_able),
+      parseBooleanField(pieceData.must_move_uses_action),
       pieceId
     ];
 

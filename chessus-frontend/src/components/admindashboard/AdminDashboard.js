@@ -347,7 +347,10 @@ const AdminDashboard = () => {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    setPagination(prev => ({ ...prev, page: 1 }));
+    // Clear stale data and pagination so tabs that fail to load don't show
+    // leftovers from the previously-viewed tab.
+    setData([]);
+    setPagination({ page: 1, limit: 10, total: 0, totalPages: 0 });
   };
 
   const handlePageChange = (newPage) => {

@@ -68,61 +68,62 @@ const CreateForum = () => {
     return <Navigate to="/login" state={{ message: "Please log in to create a forum post." }} />;
   }
 
+  const handleCancel = () => {
+    if ((title && title.trim()) || (content && content.trim())) {
+      if (!window.confirm('Discard this post? Your changes will be lost.')) return;
+    }
+    navigate(-1);
+  };
+
   return (
     <div className={styles["container"]}>
       <div className={styles["wrapper"]}>
-        {/* <img
-          src="//ssl.gstatic.com/accounts/ui/avatar_2x.png"
-          alt="profile-img"
-          className="profile-img-card"
-        /> */}
-        <form ref={form}>
+        <form ref={form} className={styles["forum-form"]}>
           {!successful && (
-            <div>
+            <>
+              <h2 className={styles["page-title"]}>Create New Post</h2>
+              <p className={styles["page-subtitle"]}>Start a discussion with the community.</p>
+
               <div className={styles["form-group"]}>
-                <label htmlFor="username" className={styles["create-field-label"]}>Post Subject</label>
+                <label htmlFor="title-field" className={styles["create-field-label"]}>Post Subject</label>
                 <input
+                  id="title-field"
                   type="text"
                   className={styles["forum-title-input"]}
                   name="title"
                   value={title}
                   onChange={onChangeTitle}
                   maxLength={TITLE_MAX}
+                  placeholder="Give your post a clear subject…"
                 />
-                <div style={{ textAlign: 'right', fontSize: '0.8rem', color: title.length > TITLE_MAX * 0.9 ? '#ff6b6b' : '#8899aa', marginTop: '4px' }}>{title.length}/{TITLE_MAX}</div>
+                <div className={`${styles["char-counter"]} ${title.length > TITLE_MAX * 0.9 ? styles["char-counter-warn"] : ""}`}>{title.length}/{TITLE_MAX}</div>
               </div>
+
               <div className={styles["form-group"]}>
-                <label htmlFor="email" className={styles["create-field-label"]}>Content</label>
+                <label htmlFor="content-field" className={styles["create-field-label"]}>Content</label>
                 <textarea
-                  type="text"
+                  id="content-field"
                   className={styles["create-form-control"]}
                   name="content"
                   value={content}
                   onChange={onChangeContent}
                   maxLength={CONTENT_MAX}
+                  placeholder="Share your thoughts…"
                 />
                 <div className={styles["emoji-row"]}>
                   <EmojiPickerButton onEmojiSelect={(emoji) => setContent(prev => prev + emoji)} />
+                  <div className={`${styles["char-counter"]} ${content.length > CONTENT_MAX * 0.9 ? styles["char-counter-warn"] : ""}`}>{content.length.toLocaleString()}/{CONTENT_MAX.toLocaleString()}</div>
                 </div>
               </div>
-              {/* <div className="form-group">
-                <label htmlFor="password" className={styles["field-label"]}>Password</label>
-                <input
-                  type="password"
-                  className="form-control"
-                  name="password"
-                  value={password}
-                  onChange={onChangePassword}
-                  validations={[required, vpassword]}
-                />
-              </div> */}
-              <div className="form-group">
+
+              <div className={styles["button-row"]}>
                 <StandardButton buttonText={"Create Post"} onClick={handleCreatePost}></StandardButton>
+                <StandardButton buttonText={"Cancel"} onClick={handleCancel}></StandardButton>
               </div>
-            </div>
+            </>
           )}
           {message && (
-            <div className="form-group">
+            <div className={styles["form-group"]}>
               <div className={ successful ? "alert alert-success" : "alert alert-danger" } role="alert">
                 {message}
               </div>

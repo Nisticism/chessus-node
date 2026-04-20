@@ -7,6 +7,13 @@ const changelogData = [
     date: "April 19, 2026",
     title: "Stalemate Fixes, Capture Win Persistence & Custom Square Combinations",
     items: [
+      "Forum create and edit pages have a fresh, modernized look with cleaner spacing, focus highlights, character counters, and a panel layout consistent with the rest of the site",
+      "Forum post editing now includes a Cancel button so you can back out of an edit without saving (with a confirmation prompt if you have unsaved changes)",
+      "Forum comment editing now includes a Cancel button, and clicking anywhere outside an open comment edit field will cancel the edit immediately — no need to first click inside the comment first",
+      "Piece Wizard step 4 (Special Abilities) gained a 'Must Move If Able' option that forces a piece to move on its owner's turn whenever it has a legal move (great for the duck in Duck Chess); a sub-option 'Forced Move Uses an Action' lets you decide whether the forced move counts against actions per turn or is free",
+      "These new must-move settings persist across piece creation, editing, and are shown on the piece detail page under Special Abilities",
+      "Profile pictures and piece images that are exact duplicates of an existing upload are now reused from a single source instead of being stored twice — uploads are content-hashed within their folder, and old profile pictures are only deleted when no other user references them",
+      "Fixed the admin Drafts tab not loading correctly: drafts now load reliably and pagination resets cleanly when switching between admin tabs (the bug was caused by a missing updated_at column on game types and stale state from the previously selected tab)",
       "Stalemate detection is now generalized to all pieces, not just kings — a player who has no legal moves on their turn (and isn't in check) will now correctly end the game even in games without a checkmate condition (e.g. a single pawn stuck behind an enemy pawn now ends the game)",
       "Stalemate outcome respects your win conditions: 'Stalemate Win' awards the win to the stalemated player, 'No Legal Moves' awards the win to the opponent, otherwise the game ends in a draw",
       "Fixed the 'Require all capture-flagged pieces to be captured' win condition not persisting when editing or saving a draft — the toggle now loads its previous value and survives create / edit / draft round trips",

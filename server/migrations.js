@@ -605,6 +605,18 @@ const migrations = [
     column: 'limit_promote_capture_to_original',
     sql: "ALTER TABLE game_type_pieces ADD COLUMN limit_promote_capture_to_original TINYINT(1) DEFAULT 0",
     description: "When 1 and can_promote_to_capture is set, hide capture-loss targets from this player's promotion modal once they own >= the original starting count of those pieces."
+  },
+  {
+    table: 'pieces',
+    column: 'must_move_if_able',
+    sql: "ALTER TABLE pieces ADD COLUMN must_move_if_able TINYINT(1) DEFAULT 0",
+    description: "Add must_move_if_able column - when enabled, the piece is forced to move on its owner's turn if it has any legal move (e.g., the duck in Duck Chess)."
+  },
+  {
+    table: 'pieces',
+    column: 'must_move_uses_action',
+    sql: "ALTER TABLE pieces ADD COLUMN must_move_uses_action TINYINT(1) DEFAULT 0",
+    description: "Add must_move_uses_action column - when enabled (and must_move_if_able is set), the forced move consumes one of the player's actions per turn instead of being free."
   }
 ];
 
@@ -2649,6 +2661,20 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error adding draft_saved_step column:', err.message);
+  }
+
+  // Add updated_at column to game_types so admin draft listing can sort by last edit time
+  try {
+    const updatedAtCol = await columnExists('game_types', 'updated_at');
+    if (!updatedAtCol) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last time the row was modified'`,
+        "Add updated_at column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding updated_at column:', err.message);
   }
 
   // Add uniqueness checker columns to game_types

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./forum.module.scss";
@@ -29,6 +29,28 @@ const Forum = () => {
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyContent, setReplyContent] = useState("");
   const [validationWarnings, setValidationWarnings] = useState(null);
+  // Comment editing state — single source of truth so Cancel and click-outside
+  // both work without imperative DOM manipulation.
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const editingContainerRef = useRef(null);
+
+  const cancelCommentEdit = () => {
+    setEditingCommentId(null);
+    setCommentContent(null);
+  };
+
+  // Cancel comment editing when the user clicks anywhere outside the edit form.
+  useEffect(() => {
+    if (editingCommentId === null) return undefined;
+    const handleDocumentMouseDown = (e) => {
+      const container = editingContainerRef.current;
+      if (container && !container.contains(e.target)) {
+        cancelCommentEdit();
+      }
+    };
+    document.addEventListener('mousedown', handleDocumentMouseDown);
+    return () => document.removeEventListener('mousedown', handleDocumentMouseDown);
+  }, [editingCommentId]);
   
   const navigate = useNavigate();
 
@@ -51,17 +73,10 @@ const Forum = () => {
     dispatch(deleteComment(id));
   };
 
-  const handleEdit = (e, id) => {
+  const handleEdit = (e, commentId) => {
     e.preventDefault();
-    console.log("clicked edit");
-    let editField = document.getElementById(id);
-    if (editField.style.display !== "block") {
-      console.log("at none, displaying block");
-      editField.style.setProperty("display", "block");
-    } else {
-      console.log("at block, displaying none")
-      editField.style.setProperty("display", "none");
-    }
+    setEditingCommentId(prev => (prev === commentId ? null : commentId));
+    setCommentContent(null);
   }
 
   const handleNewComment = (e) => {
@@ -101,21 +116,20 @@ const Forum = () => {
   const handleEditComment = (e, elementId, id) => {
     e.preventDefault();
     let commentEditBox = document.getElementById(elementId);
-    let editField = document.getElementById(id + "edit");
     let commentContentSubmit;
     if (commentContent) {
       commentContentSubmit = commentContent;
     } else {
-      commentContentSubmit = commentEditBox.value;
+      commentContentSubmit = commentEditBox ? commentEditBox.value : '';
     }
     if (commentContentSubmit && commentContentSubmit.length > COMMENT_MAX) {
       setValidationWarnings([`Comment exceeds ${COMMENT_MAX.toLocaleString()} character limit (currently ${commentContentSubmit.length.toLocaleString()})`]);
       return;
     }
-    editField.style.display = "none";
-  
+    setEditingCommentId(null);
+    setCommentContent(null);
+
     const currentTime = getCurrentMySQLDateTime();
-    console.log("comment content: " + commentContentSubmit, "element id: " + elementId, "id: " + id);
     dispatch(editComment(id, commentContentSubmit, currentTime));
   }
 
@@ -257,23 +271,26 @@ const Forum = () => {
                       </div>
                     </div>
                     <div className={styles["comment-content-container"]}> { comment.content }</div>
-                    <div id={comment.id + "edit"} className={styles["comment-edit"]}>
-                      <textarea
-                        id={comment.id + "edit-field"}
-                        onChange={onChangeCommentContent}
-                        defaultValue={comment.content}
-                        maxLength={COMMENT_MAX}
-                        onBlur={(e) => {
-                          const editDiv = document.getElementById(comment.id + "edit");
-                          if (!editDiv) return;
-                          if (e.relatedTarget && editDiv.contains(e.relatedTarget)) return;
-                          editDiv.style.display = "none";
-                        }}
-                      ></textarea>
-                      <div className={styles["submit-comment-button"]}>
-                        <StandardButton buttonText={"Update Comment"} onClick={(event) => handleEditComment(event, comment.id + "edit-field", comment.id)}/>
+                    {editingCommentId === comment.id && (
+                      <div
+                        id={comment.id + "edit"}
+                        className={styles["comment-edit"]}
+                        ref={editingContainerRef}
+                        style={{ display: 'block' }}
+                      >
+                        <textarea
+                          id={comment.id + "edit-field"}
+                          onChange={onChangeCommentContent}
+                          defaultValue={comment.content}
+                          maxLength={COMMENT_MAX}
+                          autoFocus
+                        ></textarea>
+                        <div className={styles["submit-comment-button"]} style={{ display: 'flex', gap: '8px' }}>
+                          <StandardButton buttonText={"Update Comment"} onClick={(event) => handleEditComment(event, comment.id + "edit-field", comment.id)}/>
+                          <StandardButton buttonText={"Cancel"} onClick={cancelCommentEdit}/>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     {replyingTo === comment.id && (
                       <div className={styles["reply-form"]}>
                         <textarea 

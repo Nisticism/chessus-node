@@ -994,10 +994,16 @@ const PieceView = () => {
                 <span className={styles["special-name"]}>Can Capture Allies <InfoTooltip text="This piece can capture friendly pieces on the same team." /></span>
               </div>
             )}
+            {pieceToDisplay.must_move_if_able && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>🦆</span>
+                <span className={styles["special-name"]}>Must Move If Able <InfoTooltip text={`On its owner's turn, this piece is forced to move if it has any legal move available.${pieceToDisplay.must_move_uses_action ? ' The forced move consumes one of the player\u2019s actions per turn.' : ' The forced move does NOT consume an action per turn.'}`} /></span>
+              </div>
+            )}
             {!pieceToDisplay.can_promote && !pieceToDisplay.can_castle && !pieceToDisplay.has_checkmate_rule && 
              !pieceToDisplay.has_check_rule && !pieceToDisplay.has_lose_on_capture_rule && !pieceToDisplay.can_en_passant &&
              !pieceToDisplay.capture_on_hop && !pieceToDisplay.chain_capture_enabled &&
-             !pieceToDisplay.can_capture_allies && (
+             !pieceToDisplay.can_capture_allies && !pieceToDisplay.must_move_if_able && (
               <div className={styles["no-abilities"]}>
                 <span className={styles["no-abilities-icon"]}>✨</span>
                 <span>No special abilities</span>

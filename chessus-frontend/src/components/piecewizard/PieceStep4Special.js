@@ -127,6 +127,36 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             <span>Can Capture Allied Pieces <InfoTooltip text="When enabled, this piece can capture friendly pieces using any of its attack methods (directional, ratio, or ranged). Useful for sacrifice-based mechanics." /></span>
           </label>
 
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={pieceData.must_move_if_able || false}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                if (checked) {
+                  handleChange("must_move_if_able", true);
+                } else {
+                  // Clear sub-option when parent unchecked
+                  updatePieceData({ must_move_if_able: false, must_move_uses_action: false });
+                }
+              }}
+            />
+            <span>Must Move If Able <InfoTooltip text="On its owner's turn, this piece is forced to move if it has any legal move available. Useful for pieces like the duck in Duck Chess. By default, this forced move does NOT consume one of the player's actions per turn." /></span>
+          </label>
+
+          {pieceData.must_move_if_able && (
+            <div style={{ paddingLeft: '24px' }}>
+              <label className={styles["checkbox-label"]}>
+                <input
+                  type="checkbox"
+                  checked={pieceData.must_move_uses_action || false}
+                  onChange={(e) => handleChange("must_move_uses_action", e.target.checked)}
+                />
+                <span>Forced Move Uses an Action <InfoTooltip text="When enabled, the forced move subtracts from the player's actions per turn. For example, if a player has 1 action per turn, this forced move would consume the entire turn." /></span>
+              </label>
+            </div>
+          )}
+
 
         </div>
       </div>

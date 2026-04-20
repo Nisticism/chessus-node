@@ -182,6 +182,9 @@ const PieceWizard = ({ editPieceId = null }) => {
     can_capture_allies: false,
     // Cannot be captured
     cannot_be_captured: false,
+    // Must-move-if-able (e.g., Duck Chess)
+    must_move_if_able: false,
+    must_move_uses_action: false,
     // Custom movement/attack squares (JSON array of {row, col} offsets)
     custom_movement_squares: null,
     custom_attack_squares: null,
@@ -401,6 +404,8 @@ const PieceWizard = ({ editPieceId = null }) => {
             promotion_pieces_ids: piece.promotion_pieces_ids || null,
             can_capture_allies: !!piece.can_capture_allies,
             cannot_be_captured: !!piece.cannot_be_captured,
+            must_move_if_able: !!piece.must_move_if_able,
+            must_move_uses_action: !!piece.must_move_uses_action,
             custom_movement_squares: piece.custom_movement_squares || null,
             custom_attack_squares: piece.custom_attack_squares || null,
           });
