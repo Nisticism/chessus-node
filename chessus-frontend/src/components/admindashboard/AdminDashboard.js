@@ -205,7 +205,19 @@ const AdminDashboard = () => {
       setServerStats({ ...response.data, _fetchedAt: Date.now() });
     } catch (error) {
       console.error("Error fetching server stats:", error);
-      setServerStatsError("Failed to load server stats");
+      const status = error?.response?.status;
+      const serverMsg = error?.response?.data?.message || error?.response?.data?.error || error?.message;
+      let msg = "Failed to load server stats";
+      if (status === 404) {
+        msg = "Endpoint not found (404). Backend may need to be restarted to pick up the new /api/admin/memory-stats route.";
+      } else if (status === 401 || status === 403) {
+        msg = `Unauthorized (${status}). You need to be logged in as admin/owner.`;
+      } else if (status) {
+        msg = `Failed to load server stats (HTTP ${status}${serverMsg ? `: ${serverMsg}` : ''})`;
+      } else if (serverMsg) {
+        msg = `Failed to load server stats: ${serverMsg}`;
+      }
+      setServerStatsError(msg);
     } finally {
       setServerStatsLoading(false);
     }

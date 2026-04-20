@@ -281,6 +281,7 @@ const Forum = () => {
                         <textarea
                           id={comment.id + "edit-field"}
                           onChange={onChangeCommentContent}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditComment(e, comment.id + "edit-field", comment.id); } }}
                           defaultValue={comment.content}
                           maxLength={COMMENT_MAX}
                           autoFocus
@@ -297,7 +298,8 @@ const Forum = () => {
                           className={styles["reply-field"]} 
                           placeholder={`Reply to ${comment.author_name}...`}
                           value={replyContent}
-                          onChange={(e) => setReplyContent(e.target.value)}                            maxLength={COMMENT_MAX}                        />
+                          onChange={(e) => setReplyContent(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(e, comment.id); } }}                            maxLength={COMMENT_MAX}                        />
                         <div className={styles["emoji-row"]}>
                           <EmojiPickerButton onEmojiSelect={(emoji) => setReplyContent(prev => prev + emoji)} />
                         </div>
@@ -320,7 +322,7 @@ const Forum = () => {
             })() : "No comments so far"
           }
           <div className={styles["new-comment"]}>
-            <textarea className={styles["comment-field"]} id="comment-field" disabled={!currentUser} value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} maxLength={COMMENT_MAX}></textarea>
+            <textarea className={styles["comment-field"]} id="comment-field" disabled={!currentUser} value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleNewComment(e); } }} maxLength={COMMENT_MAX}></textarea>
             {currentUser && (
               <div className={styles["emoji-row"]}>
                 <EmojiPickerButton onEmojiSelect={(emoji) => setNewCommentText(prev => prev + emoji)} />

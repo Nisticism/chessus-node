@@ -1202,7 +1202,14 @@ const PieceSelector = ({
 
   // If embedded, wrap content in a flex div so modal-body can scroll within parent
   if (embedded) {
-    return <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', minHeight: 0 }}>{selectorContent}</div>;
+    return (
+      <div
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', minHeight: 0 }}
+        onKeyDown={(e) => { if (e.key === 'Enter' && selectedPieceId) { e.preventDefault(); handleConfirm(); } }}
+      >
+        {selectorContent}
+      </div>
+    );
   }
 
   // Otherwise, wrap in modal

@@ -3168,11 +3168,11 @@ function initializeSocket(server) {
                   gameState.winner = winnerObj?.id || null;
                   gameState.winReason = winReasonStr;
 
-                  // Update ELO ratings
+                  // Update ELO ratings (skip if bot game — unrated)
                   let eloChanges = null;
                   const player1 = gameState.players[0];
                   const player2 = gameState.players[1];
-                  if (gameState.rated !== false && player1?.id && player2?.id) {
+                  if (gameState.rated !== false && !gameState.botPlayer && player1?.id && player2?.id) {
                     if (stalemateWinsForCurrent && winnerObj && opponentObj) {
                       eloChanges = await updateEloRatings(winnerObj.id, opponentObj.id);
                       console.log('ELO updated for stalemate win:', eloChanges);
@@ -3187,13 +3187,18 @@ function initializeSocket(server) {
                   }
 
                   const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
-                  await db_pool.query(
-                    `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
-                     pieces = ?, other_data = ? WHERE id = ?`,
-                    [endTime, winnerObj?.id || null, JSON.stringify(gameState.pieces),
-                     buildOtherData(gameState, { reason: winReasonStr, eloChanges }),
-                     gameId]
-                  );
+                  const dbWinnerIdPre = (winnerObj && isBotPlayer(winnerObj)) ? null : sanitizeWinnerId(winnerObj?.id);
+                  try {
+                    await db_pool.query(
+                      `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                       pieces = ?, other_data = ? WHERE id = ?`,
+                      [endTime, dbWinnerIdPre, JSON.stringify(gameState.pieces),
+                       buildOtherData(gameState, { reason: winReasonStr, eloChanges }),
+                       gameId]
+                    );
+                  } catch (dbError) {
+                    console.error('Failed to update database (premove stalemate):', dbError);
+                  }
 
                   io.to(`game-${gameId}`).emit("gameOver", {
                     gameId,
@@ -3562,11 +3567,11 @@ function initializeSocket(server) {
                 gameState.winner = winnerObj?.id || null;
                 gameState.winReason = winReasonStr;
 
-                // Update ELO ratings
+                // Update ELO ratings (skip if bot game — unrated)
                 let eloChanges = null;
                 const player1 = gameState.players[0];
                 const player2 = gameState.players[1];
-                if (gameState.rated !== false && player1?.id && player2?.id) {
+                if (gameState.rated !== false && !gameState.botPlayer && player1?.id && player2?.id) {
                   if (stalemateWinsForCurrent && winnerObj && opponentObj) {
                     eloChanges = await updateEloRatings(winnerObj.id, opponentObj.id);
                     console.log('ELO updated for stalemate win:', eloChanges);
@@ -3582,11 +3587,12 @@ function initializeSocket(server) {
                 }
 
                 const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                const dbWinnerIdPost = (winnerObj && isBotPlayer(winnerObj)) ? null : sanitizeWinnerId(winnerObj?.id);
                 try {
                   await db_pool.query(
                     `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                      pieces = ?, other_data = ? WHERE id = ?`,
-                    [endTime, winnerObj?.id || null, JSON.stringify(gameState.pieces),
+                    [endTime, dbWinnerIdPost, JSON.stringify(gameState.pieces),
                      buildOtherData(gameState, { reason: winReasonStr, eloChanges }),
                      gameId]
                   );
@@ -6846,13 +6852,44 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {
   );
   if (!fullPieceData) return null;
 
+  // Look up per-game junction overrides for this target piece.
+  // Prefer a row matching the same player_number (for symmetric customizations);
+  // otherwise fall back to any row for this piece_id in this game type.
+  let junctionOverrides = null;
+  try {
+    if (gameState.gameTypeId) {
+      const playerNum = piece.player_id || piece.team || piece.player_number || 1;
+      const [junctionRows] = await db_pool.query(
+        `SELECT * FROM game_type_pieces
+         WHERE game_type_id = ? AND piece_id = ?
+         ORDER BY (player_number = ?) DESC
+         LIMIT 1`,
+        [gameState.gameTypeId, promoteToPieceId, playerNum]
+      );
+      if (junctionRows && junctionRows.length > 0) {
+        junctionOverrides = junctionRows[0];
+      }
+    }
+  } catch (e) {
+    console.error('applyPromotionToPiece: failed to load junction overrides:', e);
+  }
+
   let imageUrl = null;
-  if (fullPieceData.image_location) {
+  // If junction has an image_index override and image_location is an array, prefer it.
+  const imageLocation = fullPieceData.image_location;
+  if (imageLocation) {
     try {
-      const images = JSON.parse(fullPieceData.image_location);
+      const images = JSON.parse(imageLocation);
       if (Array.isArray(images) && images.length > 0) {
         const playerIndex = (piece.player_id || piece.team || 1) - 1;
-        imageUrl = images[playerIndex] || images[0];
+        const overrideIdx = junctionOverrides && junctionOverrides.image_index != null
+          ? junctionOverrides.image_index
+          : null;
+        if (overrideIdx != null && images[overrideIdx]) {
+          imageUrl = images[overrideIdx];
+        } else {
+          imageUrl = images[playerIndex] || images[0];
+        }
       }
     } catch (e) { /* ignore */ }
   }
@@ -6941,6 +6978,45 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {
     moveCount: 0,
     hasMoved: false
   };
+
+  // Apply per-game junction overrides — these take precedence over piece defaults
+  // because they represent the game-author's per-placement customizations
+  // (e.g. ends_game_on_checkmate, ends_game_on_capture, hp/ad, burn, trample, etc.).
+  if (junctionOverrides) {
+    const j = junctionOverrides;
+    Object.assign(promotedPiece, {
+      ends_game_on_checkmate: !!j.ends_game_on_checkmate,
+      ends_game_on_capture: !!j.ends_game_on_capture,
+      can_control_squares: !!j.can_control_squares,
+      manual_castling_partners: !!j.manual_castling_partners,
+      castling_partner_left_key: j.castling_partner_left_key ?? null,
+      castling_partner_right_key: j.castling_partner_right_key ?? null,
+      castling_distance: j.castling_distance ?? promotedPiece.castling_distance ?? 2,
+      hit_points: j.hit_points ?? promotedPiece.hit_points ?? 1,
+      current_hp: j.hit_points ?? promotedPiece.hit_points ?? 1,
+      attack_damage: j.attack_damage ?? promotedPiece.attack_damage ?? 1,
+      show_hp_ad: !!j.show_hp_ad,
+      hp_regen: j.hp_regen ?? 0,
+      cannot_be_captured: !!j.cannot_be_captured,
+      show_regen: !!j.show_regen,
+      burn_damage: j.burn_damage ?? 0,
+      burn_duration: j.burn_duration ?? 0,
+      show_burn: !!j.show_burn,
+      burn_active_damage: 0,
+      burn_active_turns: 0,
+      trample: j.trample ?? promotedPiece.trample ?? 0,
+      trample_radius: j.trample_radius ?? promotedPiece.trample_radius ?? 0,
+      ghostwalk: j.ghostwalk ?? promotedPiece.ghostwalk ?? 0,
+      die_on_capture: j.die_on_capture ?? promotedPiece.die_on_capture ?? 0,
+      attack_radius: j.attack_radius ?? promotedPiece.attack_radius ?? 0,
+      image_index: j.image_index ?? null,
+      promotion_pieces_override: j.promotion_pieces_override ?? promotedPiece.promotion_pieces_override ?? null,
+      can_promote_to_checkmate: j.can_promote_to_checkmate ?? promotedPiece.can_promote_to_checkmate ?? 0,
+      limit_promote_checkmate_to_original: j.limit_promote_checkmate_to_original ?? 0,
+      can_promote_to_capture: j.can_promote_to_capture ?? promotedPiece.can_promote_to_capture ?? 0,
+      limit_promote_capture_to_original: j.limit_promote_capture_to_original ?? 0,
+    });
+  }
 
   gameState.pieces[pieceIndex] = promotedPiece;
   return promotedPiece;

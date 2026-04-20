@@ -8,6 +8,11 @@ const changelogData = [
     title: "Stalemate Fixes, Capture Win Persistence & Custom Square Combinations",
     items: [
       "Fixed a server-side bug that made it impossible to create or save certain pieces with the new 'Must Move If Able' option — the piece create endpoint was rejecting submissions with a database datetime error; the underlying column / value mismatch in the insert query is now corrected so all pieces save again",
+      "Fixed bot games not ending when the bot won by stalemate — the game now correctly transitions to the game-over screen instead of leaving you stuck on the play page (the bot's id was failing the database winner check; the path is now sanitized and wrapped in error handling so the gameOver event always fires)",
+      "Forum comments, replies, and edits now submit when you press Enter (Shift+Enter still inserts a newline)",
+      "Game wizard piece placement (Step 4) now confirms the selected piece and places it when you press Enter — previously this only worked for the modal version, not the embedded panel",
+      "Promoted pieces now inherit all per-game customizations from the original game type — the promoted piece picks up its checkmate/capture-loss flags, HP/AD, burn, trample, ghostwalk, attack radius, image override, and promotion-target settings exactly as they were configured in the game wizard, instead of falling back to the global piece defaults",
+      "Server Stats admin tab now shows a clear error message when the endpoint isn't reachable (404, 401/403, network) so you can tell whether the backend needs a restart vs an authorization issue",
       "Old read notifications (30+ days) and very old unread notifications (90+ days) are now automatically cleaned up every 6 hours so the notifications list stays fast and responsive even for long-time players",
       "Fixed a promotion bug where the per-placement promotion override list was bypassing the 'limit promote-to-checkmate / capture-loss to original starting count' guard — players could end up promoting to a third king when they only started with two; the limit is now enforced for both the default promotion list and explicit override lists",
       "Forum create and edit pages have a fresh, modernized look with cleaner spacing, focus highlights, character counters, and a panel layout consistent with the rest of the site",
