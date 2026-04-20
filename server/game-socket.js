@@ -7041,8 +7041,62 @@ async function getPromotionOptions(gameState, promotingPiece) {
   }
 
   if (overrideIds) {
+    // Per-placement override is an explicit allow-list of piece IDs. We still
+    // honor "limit promote to original starting count" gates so a player
+    // can't, e.g., promote to a third king when they started with two.
+    const limitCheckmate = !!promotingPiece.limit_promote_checkmate_to_original;
+    const limitCapture = !!promotingPiece.limit_promote_capture_to_original;
+
+    const sourcePiecesForLimits = gameState.initialPieces || pieces;
+    const countByPieceId = (collection, pid) =>
+      collection.filter(p => parseInt(p.piece_id) === parseInt(pid) && (p.player_id || p.team) === pieceOwner).length;
+
+    // Build a map of which override pieces have checkmate / capture-loss rules.
+    // Prefer junction-table flags from initialPieces (per-placement), and fall
+    // back to the underlying piece-table flags if the player never started with
+    // that piece type.
+    const ruleFlagsByPieceId = new Map();
+    for (const p of sourcePiecesForLimits) {
+      if (!overrideIds.includes(parseInt(p.piece_id))) continue;
+      const existing = ruleFlagsByPieceId.get(parseInt(p.piece_id)) || { checkmate: false, capture: false };
+      if (p.ends_game_on_checkmate) existing.checkmate = true;
+      if (p.ends_game_on_capture) existing.capture = true;
+      ruleFlagsByPieceId.set(parseInt(p.piece_id), existing);
+    }
+
     const eligiblePieces = [];
     for (const pieceId of overrideIds) {
+      // Look up rule flags — fall back to the pieces table for IDs not in the
+      // starting set so a player can't sidestep the limit by picking a piece
+      // type they never owned.
+      let flags = ruleFlagsByPieceId.get(parseInt(pieceId));
+      if (!flags) {
+        try {
+          const [[pieceRow]] = await db_pool.query(
+            `SELECT has_checkmate_rule, has_lose_on_capture_rule FROM pieces WHERE id = ?`,
+            [pieceId]
+          );
+          flags = {
+            checkmate: !!(pieceRow && pieceRow.has_checkmate_rule),
+            capture: !!(pieceRow && pieceRow.has_lose_on_capture_rule)
+          };
+        } catch (e) {
+          flags = { checkmate: false, capture: false };
+        }
+      }
+
+      // Apply limits-to-original gates
+      if (flags.checkmate && limitCheckmate) {
+        const original = countByPieceId(sourcePiecesForLimits, pieceId);
+        const current = countByPieceId(pieces, pieceId);
+        if (current >= original) continue;
+      }
+      if (flags.capture && limitCapture) {
+        const original = countByPieceId(sourcePiecesForLimits, pieceId);
+        const current = countByPieceId(pieces, pieceId);
+        if (current >= original) continue;
+      }
+
       const existingPiece = pieces.find(p => parseInt(p.piece_id) === parseInt(pieceId));
       if (existingPiece) {
         eligiblePieces.push({

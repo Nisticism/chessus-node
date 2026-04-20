@@ -7,6 +7,7 @@ const changelogData = [
     date: "April 19, 2026",
     title: "Stalemate Fixes, Capture Win Persistence & Custom Square Combinations",
     items: [
+      "Fixed a promotion bug where the per-placement promotion override list was bypassing the 'limit promote-to-checkmate / capture-loss to original starting count' guard — players could end up promoting to a third king when they only started with two; the limit is now enforced for both the default promotion list and explicit override lists",
       "Forum create and edit pages have a fresh, modernized look with cleaner spacing, focus highlights, character counters, and a panel layout consistent with the rest of the site",
       "Forum post editing now includes a Cancel button so you can back out of an edit without saving (with a confirmation prompt if you have unsaved changes)",
       "Forum comment editing now includes a Cancel button, and clicking anywhere outside an open comment edit field will cancel the edit immediately — no need to first click inside the comment first",
