@@ -10619,12 +10619,34 @@ async function processBotTurn(io, gameId, gameState) {
         }
       }
 
-      if (!checkResult.inCheck && gameState.gameType?.mate_condition) {
+      // Stalemate detection (mirrors the human-move path). Independent of
+      // mate_condition — a player with no king-style royal can still be
+      // stalemated (e.g. pawn-only games where stalemate_win_condition wins).
+      // Only no_moves_condition (handled below) takes precedence; otherwise
+      // honor stalemate_win_condition / stalemate_draw_condition.
+      if (botTurnSwitched && !checkResult.inCheck && !gameState.gameType?.no_moves_condition) {
         const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
         if (legalMoves.length === 0) {
-          return await finishBotGame(io, gameId, gameState, {
-            gameOver: true, winner: null, reason: 'stalemate'
-          }, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+          const stalemateWinsForCurrent = !!gameState.gameType?.stalemate_win_condition;
+          const stalemateDraws = !stalemateWinsForCurrent && gameState.gameType?.stalemate_draw_condition !== false;
+          const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
+          if (stalemateWinsForCurrent || stalemateDraws) {
+            const winnerObj = stalemateWinsForCurrent ? stalematedPlayerObj : null;
+            const winReasonStr = stalemateWinsForCurrent ? 'stalemate_win' : 'stalemate';
+            return await finishBotGame(io, gameId, gameState, {
+              gameOver: true, winner: winnerObj?.id || null, reason: winReasonStr
+            }, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
+          }
+          // No stalemate rule configured — skip the stalemated player's turn.
+          console.log(`STALEMATE NOTICE (bot): Player ${stalematedPlayerObj?.username} has no legal moves but no stalemate rule applies — skipping turn in game ${gameId}`);
+          gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+          io.to(`game-${gameId}`).emit('stalemateNotice', {
+            gameId,
+            stalematedPlayerId: stalematedPlayerObj?.id,
+            stalematedPlayerUsername: stalematedPlayerObj?.username,
+            message: `${stalematedPlayerObj?.username || 'A player'} has no legal moves but the game has no stalemate rule configured. Their turn has been skipped.`,
+            currentTurn: gameState.currentTurn,
+          });
         }
       }
 
