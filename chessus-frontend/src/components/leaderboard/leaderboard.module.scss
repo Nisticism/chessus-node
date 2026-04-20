@@ -172,6 +172,55 @@
   color: var(--text-dim);
 }
 
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 20px 0 40px;
+}
+
+.page-btn {
+  background: var(--panel-bg-end);
+  border: 1px solid var(--panel-card-border);
+  color: var(--text-info);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--accent-primary);
+    color: var(--text-heading);
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.page-btn-active {
+  background: var(--accent-primary);
+  color: var(--text-heading);
+  cursor: default;
+}
+
+.page-ellipsis {
+  color: var(--text-dim);
+  padding: 0 4px;
+}
+
+.page-summary {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin-left: 12px;
+}
+
 .leaderboard-info {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-card-border);

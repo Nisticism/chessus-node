@@ -16,6 +16,10 @@ const changelogData = [
       "Server Stats Memory Stats endpoint now actually loads — a catch-all `/api/*` handler had been registered above it and was swallowing the request; the catch-all has been moved to the bottom of the route list so the real endpoint is reachable",
       "New Admin tab: 'Deleted Users' shows an audit log of every account deletion (self-delete or admin-initiated) including the deletion timestamp, previous username, original user ID, and who initiated the deletion",
       "Anonymous games now get cleaned up automatically — any anonymous game still in 'waiting' / 'active' / 'ready' state for more than 24 hours is closed (status='completed', end_time set) and any anonymous game older than 30 days is permanently deleted; this prevents abandoned anonymous matches from accumulating forever",
+      "Leaderboard is now paginated (25 players per page) with previous/next and numbered page buttons, instead of trying to load every account in the database in a single request",
+      "Fixed a crash on the Edit Account page when an admin/owner edited their own profile — submitting the form was throwing 'Cannot read properties of null (reading id)' because admin self-edits never populated the secondary user lookup; the form now falls back to the logged-in user's id in that case so admins can update their own bio, linked Chess.com / Lichess accounts, etc.",
+      "Admins and owners can now spectate any game from the Admin Portal, even ones that have spectators disabled",
+      "Backstop for completed games with a missing end_time: the cleanup job now also fills in end_time on any 'completed' game where it ended up NULL (using the game's start_time / created_at as the fallback), so the audit field is never blank on a finished match",
     ]
   },
   {

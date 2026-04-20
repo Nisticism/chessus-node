@@ -4,22 +4,39 @@ import { Link } from "react-router-dom";
 import { users } from "../../actions/users";
 import styles from "./leaderboard.module.scss";
 
+const PAGE_SIZE = 25;
+
 const Leaderboard = () => {
   const dispatch = useDispatch();
-  const [firstRender, setFirstRender] = useState(false);
+  const [page, setPage] = useState(1);
   const allUsers = useSelector((state) => state.users);
+  const sortedUsers = allUsers?.usersList || [];
+  const pagination = allUsers?.pagination || null;
+  const total = pagination?.total ?? sortedUsers.length;
+  const totalPages = pagination?.totalPages ?? Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
-    if (!firstRender) {
-      dispatch(users(1, 10000, { sortBy: 'elo', sortOrder: 'desc' }));
-      setFirstRender(true);
-    }
-  }, [firstRender, dispatch]);
+    dispatch(users(page, PAGE_SIZE, { sortBy: 'elo', sortOrder: 'desc' }));
+  }, [page, dispatch]);
 
-  // Sort users by elo in descending order
-  const sortedUsers = allUsers.usersList
-    ? [...allUsers.usersList].sort((a, b) => (b.elo || 1000) - (a.elo || 1000))
-    : [];
+  const baseRank = (page - 1) * PAGE_SIZE;
+
+  const goTo = (p) => {
+    if (p < 1 || p > totalPages || p === page) return;
+    setPage(p);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Build a small page-number list around the current page
+  const windowSize = 2;
+  const startPage = Math.max(1, page - windowSize);
+  const endPage = Math.min(totalPages, page + windowSize);
+  const pageButtons = [];
+  if (startPage > 1) pageButtons.push(1);
+  if (startPage > 2) pageButtons.push('…-l');
+  for (let i = startPage; i <= endPage; i++) pageButtons.push(i);
+  if (endPage < totalPages - 1) pageButtons.push('…-r');
+  if (endPage < totalPages) pageButtons.push(totalPages);
 
   const getRankClass = (rank) => {
     if (rank === 1) return styles["rank-gold"];
@@ -46,12 +63,12 @@ const Leaderboard = () => {
 
       <div className={styles["leaderboard-stats"]}>
         <div className={styles["stat-card"]}>
-          <div className={styles["stat-value"]}>{sortedUsers.length}</div>
+          <div className={styles["stat-value"]}>{total}</div>
           <div className={styles["stat-label"]}>Total Players</div>
         </div>
         <div className={styles["stat-card"]}>
           <div className={styles["stat-value"]}>
-            {sortedUsers.length > 0 ? sortedUsers[0].elo || 1000 : 0}
+            {page === 1 && sortedUsers.length > 0 ? (sortedUsers[0].elo || 1000) : '—'}
           </div>
           <div className={styles["stat-label"]}>Highest ELO</div>
         </div>
@@ -62,39 +79,79 @@ const Leaderboard = () => {
       </div>
 
       {sortedUsers.length > 0 ? (
-        <div className={styles["leaderboard-table"]}>
-          <div className={styles["table-header"]}>
-            <div className={styles["col-rank"]}>Rank</div>
-            <div className={styles["col-player"]}>Player</div>
-            <div className={styles["col-elo"]}>ELO Rating</div>
+        <>
+          <div className={styles["leaderboard-table"]}>
+            <div className={styles["table-header"]}>
+              <div className={styles["col-rank"]}>Rank</div>
+              <div className={styles["col-player"]}>Player</div>
+              <div className={styles["col-elo"]}>ELO Rating</div>
+            </div>
+
+            <div className={styles["table-body"]}>
+              {sortedUsers.map((user, index) => {
+                const rank = baseRank + index + 1;
+                return (
+                  <div
+                    key={user.id}
+                    className={`${styles["table-row"]} ${getRankClass(rank)}`}
+                  >
+                    <div className={styles["col-rank"]}>
+                      <span className={styles["rank-display"]}>
+                        {getRankIcon(rank)}
+                      </span>
+                    </div>
+                    <div className={styles["col-player"]}>
+                      <Link to={`/profile/${user.username}`} className={styles["username-link"]}>
+                        {user.username}
+                      </Link>
+                    </div>
+                    <div className={styles["col-elo"]}>
+                      <span className={styles["elo-value"]}>{user.elo || 1000}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          <div className={styles["table-body"]}>
-            {sortedUsers.map((user, index) => {
-              const rank = index + 1;
-              return (
-                <div
-                  key={user.id}
-                  className={`${styles["table-row"]} ${getRankClass(rank)}`}
-                >
-                  <div className={styles["col-rank"]}>
-                    <span className={styles["rank-display"]}>
-                      {getRankIcon(rank)}
-                    </span>
-                  </div>
-                  <div className={styles["col-player"]}>
-                    <Link to={`/profile/${user.username}`} className={styles["username-link"]}>
-                      {user.username}
-                    </Link>
-                  </div>
-                  <div className={styles["col-elo"]}>
-                    <span className={styles["elo-value"]}>{user.elo || 1000}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+          {totalPages > 1 && (
+            <div className={styles["pagination"]}>
+              <button
+                className={styles["page-btn"]}
+                onClick={() => goTo(page - 1)}
+                disabled={page <= 1}
+                aria-label="Previous page"
+              >
+                ‹ Prev
+              </button>
+              {pageButtons.map((p, i) =>
+                typeof p === 'number' ? (
+                  <button
+                    key={`p-${p}`}
+                    className={`${styles["page-btn"]} ${p === page ? styles["page-btn-active"] : ''}`}
+                    onClick={() => goTo(p)}
+                    disabled={p === page}
+                  >
+                    {p}
+                  </button>
+                ) : (
+                  <span key={`e-${i}`} className={styles["page-ellipsis"]}>…</span>
+                )
+              )}
+              <button
+                className={styles["page-btn"]}
+                onClick={() => goTo(page + 1)}
+                disabled={page >= totalPages}
+                aria-label="Next page"
+              >
+                Next ›
+              </button>
+              <span className={styles["page-summary"]}>
+                Page {page} of {totalPages}
+              </span>
+            </div>
+          )}
+        </>
       ) : (
         <div className={styles["empty-message"]}>
           <p>No players found</p>

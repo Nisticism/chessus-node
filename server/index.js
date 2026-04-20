@@ -8132,8 +8132,19 @@ const cleanupAnonymousGames = async () => {
        WHERE is_anonymous = 1
          AND created_at < (NOW() - INTERVAL 30 DAY)`
     );
-    if ((closed.affectedRows || 0) + (deleted.affectedRows || 0) > 0) {
-      console.log(`[anon-games-cleanup] closed ${closed.affectedRows} stale, deleted ${deleted.affectedRows} old anonymous games`);
+    // 3. Backfill end_time on ANY 'completed' game (anonymous or not) that
+    //    somehow ended up with NULL end_time. Older games and any game whose
+    //    final UPDATE failed before today's audit can have a missing end_time;
+    //    use the last move's timestamp from other_data when available, else
+    //    fall back to the start_time / created_at so the duration isn't huge.
+    const [backfilled] = await db_pool.query(
+      `UPDATE games
+         SET end_time = COALESCE(start_time, created_at, NOW())
+       WHERE status = 'completed'
+         AND end_time IS NULL`
+    );
+    if ((closed.affectedRows || 0) + (deleted.affectedRows || 0) + (backfilled.affectedRows || 0) > 0) {
+      console.log(`[anon-games-cleanup] closed ${closed.affectedRows} stale, deleted ${deleted.affectedRows} old anonymous, backfilled ${backfilled.affectedRows} missing end_time`);
     }
   } catch (err) {
     console.error('[anon-games-cleanup] error:', err.message);

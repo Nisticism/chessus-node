@@ -4147,7 +4147,8 @@ const LiveGame = () => {
   // Check if user can join this game (for join button in waiting banner)
   const isHost = gameState.hostId === currentUser?.id || (socket?.id && gameState.hostId === `anon_${socket.id}`);
   const isPlayer = !!gameState.players?.some((player) => player.id === currentUser?.id || (socket?.id && player.id === `anon_${socket.id}`));
-  const canSpectate = gameState.allowSpectators !== false || isPlayer || gameState.status === 'waiting' || gameState.status === 'ready';
+  const isAdminOrOwner = ['admin', 'owner'].includes(currentUser?.role?.toLowerCase());
+  const canSpectate = gameState.allowSpectators !== false || isPlayer || gameState.status === 'waiting' || gameState.status === 'ready' || isAdminOrOwner;
   const gameUrl = `${window.location.origin}/play/${gameId}`;
 
   if (!canSpectate) {

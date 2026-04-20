@@ -330,8 +330,14 @@ const EditAccount = (props) => {
     // if (checkBtn.current.context._errors.length === 0) {
       console.log("old password: " + oldPassword + " new password: " + password);
       console.log("logged in password: " + currentUser.password);
-    if (isAdminOrOwner) {
-    dispatch(edit(userInfo, username, password, email, firstName, lastName, bio, userInfo.id, currentUser.id, null, showDisplayName, chessComUsername, lichessUsername))
+    // When an admin/owner edits their OWN account (no profileUsername in URL,
+    // or profileUsername === their own username), `userInfo` is never populated
+    // — checkIfRealUser only sets it when looking up another user. Fall back
+    // to currentUser so we don't blow up on userInfo.id.
+    const adminEditTarget = userInfo || currentUser;
+    const isAdminEditingSelf = !userInfo || userInfo.id === currentUser.id;
+    if (isAdminOrOwner && !isAdminEditingSelf) {
+    dispatch(edit(adminEditTarget, username, password, email, firstName, lastName, bio, adminEditTarget.id, currentUser.id, null, showDisplayName, chessComUsername, lichessUsername))
       .then(() => {
         console.log("user updated by adimn from the editaccount.js page")
         // Navigate to the edited user's profile with success state
