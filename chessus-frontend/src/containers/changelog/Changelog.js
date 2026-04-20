@@ -20,6 +20,8 @@ const changelogData = [
       "Fixed a crash on the Edit Account page when an admin/owner edited their own profile — submitting the form was throwing 'Cannot read properties of null (reading id)' because admin self-edits never populated the secondary user lookup; the form now falls back to the logged-in user's id in that case so admins can update their own bio, linked Chess.com / Lichess accounts, etc.",
       "Admins and owners can now spectate any game from the Admin Portal, even ones that have spectators disabled",
       "Backstop for completed games with a missing end_time: the cleanup job now also fills in end_time on any 'completed' game where it ended up NULL (using the game's start_time / created_at as the fallback), so the audit field is never blank on a finished match",
+      "CRITICAL FIX — duplicate win/loss notification spam: a recursion bug in the game-over broadcaster (broadcastGameOver was calling itself instead of emitting the socket event) caused the server to throw 'Maximum call stack size exceeded' and, because the error was caught at every recursive frame, fire thousands of duplicate win/loss notifications per game. The broadcaster now emits the socket event directly, refuses to broadcast the same game twice (in-memory guard), and the cleanup job deletes any duplicate game_outcome notifications already in the database (keeping only the earliest per user/game)",
+      "Homepage 'featured games' preview boards load much faster: removed an unnecessary LEFT JOIN + COUNT against the entire games table for hand-picked featured games (we don't need play_count for those), and the per-game-type piece queries now run in parallel instead of one at a time",
     ]
   },
   {

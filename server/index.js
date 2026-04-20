@@ -1889,32 +1889,33 @@ app.get("/api/pieces/:pieceId/games", async (req, res) => {
 app.get("/api/games/popular", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 3;
-    
-    // First, check for admin-featured games
+
+    // First, check for admin-featured games. We do NOT need play_count here
+    // (featured games are hand-picked and ordered by featured_order), so skip
+    // the expensive LEFT JOIN + COUNT against the entire games table.
     const [featuredGames] = await db_pool.query(`
-      SELECT gt.*, COUNT(g.id) as play_count
+      SELECT gt.*, 0 as play_count
       FROM game_types gt
-      LEFT JOIN games g ON gt.id = g.game_type_id
       WHERE gt.featured_order IS NOT NULL
-      GROUP BY gt.id
       ORDER BY gt.featured_order ASC
       LIMIT ?
     `, [limit]);
-    
-    // If we have featured games, return those
+
+    // If we have enough featured games, load pieces in parallel and return.
     if (featuredGames.length >= limit) {
-      for (const game of featuredGames) {
-        const pieces = await dbHelpers.getPiecesForGameType(game.id);
-        game.pieces = pieces;
-      }
+      await Promise.all(featuredGames.map(async (game) => {
+        game.pieces = await dbHelpers.getPiecesForGameType(game.id);
+      }));
       return res.json(featuredGames);
     }
-    
+
     // If we have some featured games but not enough, fill with popular games
     const featuredIds = featuredGames.map(g => g.id);
     const remainingCount = limit - featuredGames.length;
-    
-    // Get popular games that aren't already featured
+
+    // Get popular games that aren't already featured. The COUNT join here is
+    // unavoidable for "popular" ordering, but we cap to remainingCount and
+    // assume the games table has an index on game_type_id.
     const [popularGames] = await db_pool.query(`
       SELECT gt.*, COUNT(g.id) as play_count
       FROM game_types gt
@@ -1924,33 +1925,29 @@ app.get("/api/games/popular", async (req, res) => {
       ORDER BY play_count DESC, gt.id DESC
       LIMIT ?
     `, featuredIds.length > 0 ? [featuredIds, remainingCount] : [remainingCount]);
-    
+
     // Combine featured + popular
     const allGames = [...featuredGames, ...popularGames];
-    
+
     // If still no games, fall back to most recent game types
     if (allGames.length === 0) {
       const [recentGames] = await db_pool.query(
         `SELECT *, 0 as play_count FROM game_types ORDER BY id DESC LIMIT ?`,
         [limit]
       );
-      
-      for (const game of recentGames) {
-        const pieces = await dbHelpers.getPiecesForGameType(game.id);
-        game.pieces = pieces;
-      }
-      
+      await Promise.all(recentGames.map(async (game) => {
+        game.pieces = await dbHelpers.getPiecesForGameType(game.id);
+      }));
       return res.json(recentGames);
     }
-    
-    // Load pieces for each game type
-    for (const game of allGames) {
+
+    // Load pieces for each game type in parallel (was sequential N+1)
+    await Promise.all(allGames.map(async (game) => {
       if (!game.pieces) {
-        const pieces = await dbHelpers.getPiecesForGameType(game.id);
-        game.pieces = pieces;
+        game.pieces = await dbHelpers.getPiecesForGameType(game.id);
       }
-    }
-    
+    }));
+
     res.json(allGames);
   } catch (err) {
     console.error("Error in /api/games/popular:", err);
@@ -8143,8 +8140,27 @@ const cleanupAnonymousGames = async () => {
        WHERE status = 'completed'
          AND end_time IS NULL`
     );
-    if ((closed.affectedRows || 0) + (deleted.affectedRows || 0) + (backfilled.affectedRows || 0) > 0) {
-      console.log(`[anon-games-cleanup] closed ${closed.affectedRows} stale, deleted ${deleted.affectedRows} old anonymous, backfilled ${backfilled.affectedRows} missing end_time`);
+    // 4. Self-heal duplicate game_outcome notifications. A previous bug
+    //    (broadcastGameOver recursing into itself) caused thousands of
+    //    duplicate win/loss notifications per game. Keep only the earliest
+    //    notification per (user_id, related_id) for type='game_outcome'.
+    //    Idempotent: a no-op once dupes are cleared.
+    const [dedupedNotifs] = await db_pool.query(
+      `DELETE n FROM notifications n
+         INNER JOIN (
+           SELECT user_id, related_id, MIN(id) AS keep_id
+           FROM notifications
+           WHERE type = 'game_outcome' AND related_id IS NOT NULL
+           GROUP BY user_id, related_id
+           HAVING COUNT(*) > 1
+         ) keep
+           ON n.user_id = keep.user_id
+          AND n.related_id = keep.related_id
+          AND n.type = 'game_outcome'
+          AND n.id <> keep.keep_id`
+    );
+    if ((closed.affectedRows || 0) + (deleted.affectedRows || 0) + (backfilled.affectedRows || 0) + (dedupedNotifs.affectedRows || 0) > 0) {
+      console.log(`[anon-games-cleanup] closed ${closed.affectedRows} stale, deleted ${deleted.affectedRows} old anonymous, backfilled ${backfilled.affectedRows} missing end_time, deduped ${dedupedNotifs.affectedRows} duplicate game_outcome notifications`);
     }
   } catch (err) {
     console.error('[anon-games-cleanup] error:', err.message);

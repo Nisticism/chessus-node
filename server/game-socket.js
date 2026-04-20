@@ -238,13 +238,29 @@ async function notifyPlayersOfGameOutcome(io, gameId, gameState, winnerId, reaso
 }
 
 /**
- * Wrapper around broadcastGameOver(io, gameId, gameState, payload) that also
- * sends per-player win/loss notifications. Use this everywhere instead of
+ * Wrapper around io.to(...).emit('gameOver', payload) that also sends
+ * per-player win/loss notifications. Use this everywhere instead of
  * the raw emit.
+ *
+ * Hardened against accidental multi-emit (re-entry, retries, etc.) using
+ * an in-memory Set of game IDs that have already broadcast their outcome.
+ * Without this, a single bug that calls broadcastGameOver more than once
+ * for the same game can spam thousands of duplicate win/loss notifications.
  */
+const _gameOverBroadcasted = new Set();
 function broadcastGameOver(io, gameId, gameState, payload) {
+  const key = String(gameId);
+  if (_gameOverBroadcasted.has(key)) {
+    // Already broadcast for this game — emit silently, but skip notifications.
+    try { io.to(`game-${gameId}`).emit('gameOver', payload); } catch (_) {}
+    return;
+  }
+  _gameOverBroadcasted.add(key);
+  // Bound memory: drop the marker after 10 minutes (long enough for any
+  // duplicate-call window to close, short enough to not leak forever).
+  setTimeout(() => _gameOverBroadcasted.delete(key), 10 * 60 * 1000);
   try {
-    broadcastGameOver(io, gameId, gameState, payload);
+    io.to(`game-${gameId}`).emit('gameOver', payload);
   } catch (err) {
     console.error('broadcastGameOver emit failed:', err.message);
   }
