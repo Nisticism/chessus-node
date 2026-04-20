@@ -70,6 +70,11 @@ const AdminDashboard = () => {
   // Draft detail modal state
   const [viewingDraft, setViewingDraft] = useState(null);
 
+  // Server stats state
+  const [serverStats, setServerStats] = useState(null);
+  const [serverStatsLoading, setServerStatsLoading] = useState(false);
+  const [serverStatsError, setServerStatsError] = useState(null);
+
   // Auto-hide alert after 2 seconds
   useEffect(() => {
     let timer;
@@ -125,6 +130,8 @@ const AdminDashboard = () => {
       fetchOnlinePlayers();
     } else if (activeTab === 'moderation') {
       fetchModerationQueue(moderationFilter);
+    } else if (activeTab === 'server-stats') {
+      fetchServerStats();
     } else {
       fetchData(activeTab, 1);
     }
@@ -184,6 +191,23 @@ const AdminDashboard = () => {
       console.error("Error fetching online players:", error);
     } finally {
       setOnlineLoading(false);
+    }
+  };
+
+  const fetchServerStats = async () => {
+    setServerStatsLoading(true);
+    setServerStatsError(null);
+    try {
+      const response = await axios.get(
+        `${API_URL}admin/memory-stats`,
+        { headers: authHeader() }
+      );
+      setServerStats(response.data);
+    } catch (error) {
+      console.error("Error fetching server stats:", error);
+      setServerStatsError("Failed to load server stats");
+    } finally {
+      setServerStatsLoading(false);
     }
   };
 
@@ -1260,6 +1284,46 @@ const AdminDashboard = () => {
     }
   };
 
+  const renderServerStatsTab = () => (
+    <div className={styles["table-container"]}>
+      <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontWeight: 600 }}>Live Server Diagnostics</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {serverStatsLoading && <span style={{ color: 'var(--text-dim)', fontSize: '0.85em' }}>Refreshing…</span>}
+          <StandardButton onClick={fetchServerStats} buttonText="Refresh" disabled={serverStatsLoading} />
+        </div>
+      </div>
+      {serverStatsError && (
+        <p style={{ textAlign: 'center', color: 'var(--text-danger, red)', padding: '30px 0' }}>{serverStatsError}</p>
+      )}
+      {!serverStats && !serverStatsLoading && !serverStatsError && (
+        <p style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '30px 0' }}>No data loaded yet.</p>
+      )}
+      {serverStats && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', padding: '4px 0' }}>
+          {[
+            { label: 'Uptime', value: (() => { const s = serverStats.uptimeSeconds || 0; const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60; return `${h}h ${m}m ${sec}s`; })() },
+            { label: 'Active Games', value: serverStats.activeGames },
+            { label: 'Game Timers', value: serverStats.gameTimers },
+            { label: 'Disconnect Timeouts', value: serverStats.disconnectTimeouts },
+            { label: 'Online Users', value: serverStats.onlineUsers },
+            { label: 'RSS Memory', value: `${serverStats.memory?.rssMB} MB` },
+            { label: 'Heap Used', value: `${serverStats.memory?.heapUsedMB} MB` },
+            { label: 'Heap Total', value: `${serverStats.memory?.heapTotalMB} MB` },
+            { label: 'External', value: `${serverStats.memory?.externalMB} MB` },
+            { label: 'Array Buffers', value: `${serverStats.memory?.arrayBuffersMB} MB` },
+            { label: 'Node Version', value: serverStats.nodeVersion },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '14px 16px', border: '1px solid var(--border-color, #333)' }}>
+              <div style={{ fontSize: '0.75em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>{label}</div>
+              <div style={{ fontSize: '1.25em', fontWeight: 700, color: 'var(--text-primary, #fff)' }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   const renderOnlinePlayersTab = () => (
     <div className={styles["table-container"]}>
       <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1877,10 +1941,16 @@ const AdminDashboard = () => {
         >
           Moderation
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "server-stats" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("server-stats")}
+        >
+          Server Stats
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {loading || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -1895,6 +1965,7 @@ const AdminDashboard = () => {
             {activeTab === "online" && renderOnlinePlayersTab()}
             {activeTab === "anonymous-games" && renderAnonymousGamesTable()}
             {activeTab === "moderation" && renderModerationTab()}
+            {activeTab === "server-stats" && renderServerStatsTab()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>
@@ -1954,7 +2025,7 @@ const AdminDashboard = () => {
                 </div>
               </div>
             )}
-            {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && renderPagination()}
+            {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && activeTab !== "server-stats" && activeTab !== "moderation" && renderPagination()}
             {activeTab === "streams" && renderPagination()}
           </>
         )}
