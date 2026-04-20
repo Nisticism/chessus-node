@@ -39,7 +39,12 @@ module.exports = {
       error_file: "./logs/pm2-error.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       env: {
-        NODE_ENV: "production"
+        NODE_ENV: "production",
+        // Gate the chattiest debug console.log lines (game-socket.js).
+        // Set to "1" temporarily when troubleshooting a specific issue,
+        // then unset and `pm2 restart chessus-node --update-env` to quiet
+        // the logs again.
+        VERBOSE_GAME_LOG: "0"
       }
     }
   ]
