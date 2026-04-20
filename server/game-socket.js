@@ -5,6 +5,11 @@
 
 const db_pool = require("../configs/db");
 
+// Verbose per-move debug logging is gated behind an env var so PM2 isn't
+// hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
+const VERBOSE = process.env.VERBOSE_GAME_LOG === '1' || process.env.VERBOSE_GAME_LOG === 'true';
+const vlog = VERBOSE ? console.log.bind(console) : () => {};
+
 // Store io instance for access from other modules
 let ioInstance = null;
 
@@ -740,7 +745,7 @@ function initializeSocket(server) {
           
             // Debug: Check what's in the piece data
             if (pieceRows.length > 0) {
-              console.log('CREATE GAME - First piece from DB:', {
+              vlog('CREATE GAME - First piece from DB:', {
                 id: pieceRows[0].id,
                 piece_name: pieceRows[0].piece_name,
                 special_scenario_moves: pieceRows[0].special_scenario_moves,
@@ -750,7 +755,7 @@ function initializeSocket(server) {
               // Find a pawn to specifically check
               const pawn = pieceRows.find(p => p.piece_name === 'Pawn');
               if (pawn) {
-                console.log('CREATE GAME - Pawn data from DB:', {
+                vlog('CREATE GAME - Pawn data from DB:', {
                   id: pawn.id,
                   piece_name: pawn.piece_name,
                   special_scenario_moves: pawn.special_scenario_moves,
@@ -761,7 +766,7 @@ function initializeSocket(server) {
             
           // Debug: Log first piece data from database
           if (pieceRows.length > 0) {
-            console.log('First piece data loaded from DB:', {
+            vlog('First piece data loaded from DB:', {
               id: pieceRows[0].id,
               name: pieceRows[0].piece_name,
               directional_movement_style: pieceRows[0].directional_movement_style,
@@ -786,7 +791,7 @@ function initializeSocket(server) {
             
             // Debug logging for first piece
             if (piece.piece_id === piecesArray[0]?.piece_id) {
-              console.log('Processing piece image:', {
+              vlog('Processing piece image:', {
                 piece_id: piece.piece_id,
                 piece_name: piece.piece_name || fullPieceData.piece_name,
                 player_id: piece.player_id,
@@ -1638,7 +1643,7 @@ function initializeSocket(server) {
             
             // Debug: Check what's in the piece data
             if (pieceRows.length > 0) {
-              console.log('JOIN GAME - First piece from DB:', {
+              vlog('JOIN GAME - First piece from DB:', {
                 id: pieceRows[0].id,
                 name: pieceRows[0].piece_name,
                 special_scenario_moves: pieceRows[0].special_scenario_moves,
@@ -3438,7 +3443,7 @@ function initializeSocket(server) {
           // Mid-turn check on the opponent is tracked separately for sound only
           const checkResult = moveTurnSwitched ? checkForCheck(gameState, gameState.currentTurn) : { inCheck: false, checkedPieces: [] };
           
-          console.log('After move - checking for check:', {
+          vlog('After move - checking for check:', {
             currentTurn: gameState.currentTurn,
             inCheck: checkResult.inCheck,
             mateConditionEnabled: gameState.gameType?.mate_condition
@@ -3456,9 +3461,9 @@ function initializeSocket(server) {
           // If in check, also check for checkmate (only if mate_condition is enabled)
           let isInCheckmate = false;
           if (checkResult.inCheck && gameState.gameType?.mate_condition) {
-            console.log('Player is in check, checking for checkmate...');
+            vlog('Player is in check, checking for checkmate...');
             isInCheckmate = isCheckmate(gameState, gameState.currentTurn);
-            console.log('Checkmate result:', isInCheckmate);
+            vlog('Checkmate result:', isInCheckmate);
             
             if (isInCheckmate) {
               // Checkmate detected - end the game
@@ -3940,7 +3945,7 @@ function initializeSocket(server) {
           }
         }
 
-        console.log(`Move made in game ${gameId}: ${JSON.stringify(move)}`);
+        vlog(`Move made in game ${gameId}: ${JSON.stringify(move)}`);
 
         // Trigger bot turn if next player is the bot
         if (gameState.status !== 'completed' && gameState.botPlayer &&
@@ -5791,7 +5796,7 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
   const checkResult = checkForCheck(simulatedGameState, playerPosition);
   
   if (checkResult.inCheck) {
-    console.log('Move would leave player in check:', {
+    vlog('Move would leave player in check:', {
       pieceId,
       from: originalPos,
       to: to,
@@ -5976,7 +5981,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
 
   // Verify the piece is at the 'from' position
   if (piece.x !== from.x || piece.y !== from.y) {
-    console.log('Piece position mismatch:', {
+    vlog('Piece position mismatch:', {
       piecePosition: { x: piece.x, y: piece.y },
       fromPosition: from
     });
@@ -5994,7 +5999,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     pieceOwnerId === currentPlayer.id;
     
   if (!belongsToCurrentPlayer) {
-    console.log('Piece ownership check failed:', {
+    vlog('Piece ownership check failed:', {
       pieceTeam: piece.team,
       piecePlayerId: piece.player_id,
       piecePlayer: piece.player,
@@ -6500,7 +6505,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       // Use the original from position to calculate hopped pieces
       const hoppedPieces = getPiecesHoppedOver(from.x, from.y, to.x, to.y, movingPiece, pieces);
       if (hoppedPieces.length > 0) {
-        console.log('[CAPTURE ON HOP] Processing hopped pieces:', hoppedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })));
+        vlog('[CAPTURE ON HOP] Processing hopped pieces:', hoppedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })));
         const hopAttackDamage = movingPiece.attack_damage || 1;
         // HP/AD system: Apply damage to hopped pieces, only remove if HP reaches 0
         hoppedPieces.forEach(hoppedPiece => {
@@ -6596,7 +6601,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
         }
         
         // Apply trample damage to all pieces on affected squares
-        console.log('[TRAMPLE] Affected squares:', [...affectedSquares]);
+        vlog('[TRAMPLE] Affected squares:', [...affectedSquares]);
         
         for (const squareKey of affectedSquares) {
           const [sx, sy] = squareKey.split(',').map(Number);
@@ -7777,7 +7782,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       const pieceOwner = piece.team || piece.player_id;
       
       // Debug hopping values
-      console.log('Ratio movement capture check:', {
+      vlog('Ratio movement capture check:', {
         pieceName: piece.piece_name,
         can_hop_over_allies_raw: piece.can_hop_over_allies,
         can_hop_over_enemies_raw: piece.can_hop_over_enemies,
@@ -7790,13 +7795,13 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       
       // If can hop over everything, attack is valid
       if (canHopAllies && canHopEnemies) {
-        console.log('Allowing hop - can hop over both');
+        vlog('Allowing hop - can hop over both');
         return true;
       }
       
       // If no hopping ability at all, path must be completely clear
       if (!canHopAllies && !canHopEnemies) {
-        console.log('No hopping ability - checking if path is clear');
+        vlog('No hopping ability - checking if path is clear');
         // Check all squares in both possible L-shape paths
         const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
         const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
@@ -9547,8 +9552,8 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
     return pieceOwner === playerPosition;
   });
   
-  console.log('Getting legal moves for player', playerPosition, '- found', playerPieces.length, 'pieces');
-  console.log('Sample pieces:', playerPieces.slice(0, 3).map(p => ({ 
+  vlog('Getting legal moves for player', playerPosition, '- found', playerPieces.length, 'pieces');
+  vlog('Sample pieces:', playerPieces.slice(0, 3).map(p => ({ 
     id: p.id, 
     team: p.team, 
     player_id: p.player_id,
@@ -9572,7 +9577,7 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
       if (gameType && gameType.mate_condition) {
         if (!wouldMoveLeaveInCheck(gameState, move, playerPosition)) {
           legalMoves.push(move);
-          console.log('Legal move found:', {
+          vlog('Legal move found:', {
             pieceId: piece.id,
             pieceTeam: piece.team,
             piecePlayerId: piece.player_id,
@@ -9640,15 +9645,15 @@ function isCheckmate(gameState, playerPosition) {
   // Player is in check - now verify they have no legal moves to escape
   const legalMoves = getAllLegalMovesForPlayer(gameState, playerPosition);
   
-  console.log('=== CHECKMATE CHECK ===');
-  console.log('Player', playerPosition, 'is in check.');
-  console.log('Checked pieces:', checkResult.checkedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })));
-  console.log('Legal moves found:', legalMoves.length);
+  vlog('=== CHECKMATE CHECK ===');
+  vlog('Player', playerPosition, 'is in check.');
+  vlog('Checked pieces:', checkResult.checkedPieces.map(p => ({ id: p.id, name: p.piece_name, x: p.x, y: p.y })));
+  vlog('Legal moves found:', legalMoves.length);
   if (legalMoves.length > 0) {
-    console.log('NOT checkmate. Escape moves:');
+    vlog('NOT checkmate. Escape moves:');
     for (const m of legalMoves.slice(0, 10)) {
       const piece = gameState.pieces.find(p => p.id === m.pieceId);
-      console.log(`  ${piece?.piece_name || 'unknown'} (id=${m.pieceId}) from (${m.from.x},${m.from.y}) to (${m.to.x},${m.to.y})`);
+      vlog(`  ${piece?.piece_name || 'unknown'} (id=${m.pieceId}) from (${m.from.x},${m.from.y}) to (${m.to.x},${m.to.y})`);
       
       // Re-simulate to show WHY this move is considered safe
       const simPieces = gameState.pieces.map(p => ({ ...p }));
@@ -9657,7 +9662,7 @@ function isCheckmate(gameState, playerPosition) {
         // Remove any captured piece at destination
         const capturedIdx = simPieces.findIndex(p => p.id !== m.pieceId && doesPieceOccupySquare(p, m.to.x, m.to.y));
         if (capturedIdx !== -1) {
-          console.log(`    Would capture: ${simPieces[capturedIdx].piece_name} (id=${simPieces[capturedIdx].id}) at (${simPieces[capturedIdx].x},${simPieces[capturedIdx].y})`);
+          vlog(`    Would capture: ${simPieces[capturedIdx].piece_name} (id=${simPieces[capturedIdx].id}) at (${simPieces[capturedIdx].x},${simPieces[capturedIdx].y})`);
           simPieces.splice(capturedIdx, 1);
         }
         const simPieceAfter = simPieces.find(p => p.id === m.pieceId);
@@ -9668,16 +9673,16 @@ function isCheckmate(gameState, playerPosition) {
         // Check which enemy pieces COULD attack the king after this move
         const simState = { ...gameState, pieces: simPieces };
         const simCheck = checkForCheck(simState, playerPosition);
-        console.log(`    After sim: inCheck=${simCheck.inCheck}, checkedPieces=${simCheck.checkedPieces.length}`);
+        vlog(`    After sim: inCheck=${simCheck.inCheck}, checkedPieces=${simCheck.checkedPieces.length}`);
         if (simCheck.inCheck) {
-          console.log(`    INCONSISTENCY: wouldMoveLeaveInCheck said safe but sim says still in check!`);
+          vlog(`    INCONSISTENCY: wouldMoveLeaveInCheck said safe but sim says still in check!`);
         }
       }
     }
   } else {
-    console.log('CHECKMATE DETECTED!');
+    vlog('CHECKMATE DETECTED!');
   }
-  console.log('=== END CHECKMATE CHECK ===');
+  vlog('=== END CHECKMATE CHECK ===');
   
   // If no legal moves exist, it's checkmate
   return legalMoves.length === 0;
@@ -10881,6 +10886,8 @@ function getIO() {
 module.exports = {
   initializeSocket,
   activeGames,
+  gameTimers,
+  disconnectTimeouts,
   onlineUsers,
   userSockets,
   reconcileOnlineUsers,
