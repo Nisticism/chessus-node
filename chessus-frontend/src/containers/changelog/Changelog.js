@@ -7,6 +7,12 @@ const changelogData = [
     date: "April 19, 2026",
     title: "Stalemate Fixes, Capture Win Persistence & Custom Square Combinations",
     items: [
+      "You'll now get a notification whenever a game you're in ends — 'You won against ___' or 'You lost to ___' — and the notification links to your match history so you can review the game",
+      "You'll also get a notification when another player joins a game you created (the notification links straight to the game)",
+      "Admin endpoints are now exempt from the general API rate limit so the Server Stats panel and other admin tools can poll freely without getting blocked",
+      "Server Stats panel now shows the actual server message (including 'Too many requests') when the endpoint returns something unexpected, instead of a vague 'JSON without expected fields' error",
+      "You can now link your chess.com and lichess.org accounts from your Edit Account page, and a new 'Connected Accounts' card on your public profile shows the linked usernames as clickable links to those external profiles",
+      "Bios, comments, forum posts, game descriptions, game rules, and piece descriptions now allow up to 3 links — but only to gridgrove.gg, chess.com, and lichess.org; other domains are still rejected to prevent spam",
       "Fixed a server-side bug that made it impossible to create or save certain pieces with the new 'Must Move If Able' option — the piece create endpoint was rejecting submissions with a database datetime error; the underlying column / value mismatch in the insert query is now corrected so all pieces save again",
       "Fixed bot games not ending when the bot won by stalemate — the game now correctly transitions to the game-over screen instead of leaving you stuck on the play page (the bot's id was failing the database winner check; the path is now sanitized and wrapped in error handling so the gameOver event always fires)",
       "Forum comments, replies, and edits now submit when you press Enter (Shift+Enter still inserts a newline)",

@@ -197,25 +197,38 @@ const AdminDashboard = () => {
   const fetchServerStats = async () => {
     setServerStatsLoading(true);
     setServerStatsError(null);
+    const url = `${API_URL}admin/memory-stats`;
     try {
-      const response = await axios.get(
-        `${API_URL}admin/memory-stats`,
-        { headers: authHeader() }
-      );
-      setServerStats({ ...response.data, _fetchedAt: Date.now() });
+      const response = await axios.get(url, { headers: authHeader() });
+      const data = response?.data;
+      // Validate that the response is actually JSON from our endpoint.
+      // If a dev proxy returns HTML, axios will hand us a string.
+      if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+        const preview = typeof data === 'string' ? data.slice(0, 200) : String(data);
+        throw new Error(`Endpoint returned non-JSON. URL: ${url}. Response preview: ${preview}`);
+      }
+      if (data.uptimeSeconds == null && data.memory == null && data.activeGames == null) {
+        // Likely a rate-limit (429 returned as JSON {message}) or other server message.
+        // Surface the message directly so the user knows what happened.
+        if (data.message) {
+          throw new Error(`Server responded with: "${data.message}" (URL: ${url}). This is often the rate limiter — wait a few minutes and try again.`);
+        }
+        throw new Error(`Endpoint returned JSON without expected fields. URL: ${url}. Keys: ${Object.keys(data).join(', ') || '(none)'}`);
+      }
+      setServerStats({ ...data, _fetchedAt: Date.now() });
     } catch (error) {
       console.error("Error fetching server stats:", error);
       const status = error?.response?.status;
       const serverMsg = error?.response?.data?.message || error?.response?.data?.error || error?.message;
-      let msg = "Failed to load server stats";
+      let msg = `Failed to load server stats from ${url}`;
       if (status === 404) {
-        msg = "Endpoint not found (404). Backend may need to be restarted to pick up the new /api/admin/memory-stats route.";
+        msg = `Endpoint not found (404) at ${url}. Backend may need to be restarted to pick up the new /api/admin/memory-stats route.`;
       } else if (status === 401 || status === 403) {
-        msg = `Unauthorized (${status}). You need to be logged in as admin/owner.`;
+        msg = `Unauthorized (${status}) at ${url}. You need to be logged in as admin/owner.`;
       } else if (status) {
-        msg = `Failed to load server stats (HTTP ${status}${serverMsg ? `: ${serverMsg}` : ''})`;
+        msg = `Failed to load server stats (HTTP ${status}) from ${url}${serverMsg ? `: ${serverMsg}` : ''}`;
       } else if (serverMsg) {
-        msg = `Failed to load server stats: ${serverMsg}`;
+        msg = `Failed to load from ${url}: ${serverMsg}`;
       }
       setServerStatsError(msg);
     } finally {
@@ -1305,8 +1318,11 @@ const AdminDashboard = () => {
           <StandardButton onClick={fetchServerStats} buttonText="Refresh" disabled={serverStatsLoading} />
         </div>
       </div>
+      <p style={{ color: 'var(--text-dim)', fontSize: '0.75em', margin: '0 0 10px 0' }}>
+        Endpoint: <code>{`${API_URL}admin/memory-stats`}</code>
+      </p>
       {serverStatsError && (
-        <p style={{ textAlign: 'center', color: 'var(--text-danger, red)', padding: '30px 0' }}>{serverStatsError}</p>
+        <p style={{ textAlign: 'center', color: 'var(--text-danger, red)', padding: '30px 0', wordBreak: 'break-word' }}>{serverStatsError}</p>
       )}
       {!serverStats && !serverStatsLoading && !serverStatsError && (
         <p style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '30px 0' }}>No data loaded yet.</p>

@@ -67,19 +67,36 @@ const createUser = async (username, hashedPassword, email) => {
  * @returns {Promise<Object>} Result of update
  */
 const updateUser = async (userData, id) => {
-  const { username, password, email, first_name, last_name, bio, show_display_name } = userData;
-  
-  if (password) {
-    return await query(
-      "UPDATE chessusnode.users SET username = ?, password = ?, email = ?, first_name = ?, last_name = ?, bio = ?, show_display_name = COALESCE(?, show_display_name) WHERE id = ?",
-      [username, password, email, first_name, last_name, bio, show_display_name !== undefined ? show_display_name : null, id]
-    );
-  } else {
-    return await query(
-      "UPDATE chessusnode.users SET username = ?, email = ?, first_name = ?, last_name = ?, bio = ?, show_display_name = COALESCE(?, show_display_name) WHERE id = ?",
-      [username, email, first_name, last_name, bio, show_display_name !== undefined ? show_display_name : null, id]
-    );
+  const { username, password, email, first_name, last_name, bio, show_display_name, chess_com_username, lichess_username } = userData;
+
+  // Build SET clause dynamically: only include fields that were provided.
+  // For chess_com_username and lichess_username, undefined = preserve, anything else (including null/empty) = overwrite.
+  const sets = [];
+  const params = [];
+
+  sets.push("username = ?"); params.push(username);
+  if (password) { sets.push("password = ?"); params.push(password); }
+  sets.push("email = ?"); params.push(email);
+  sets.push("first_name = ?"); params.push(first_name);
+  sets.push("last_name = ?"); params.push(last_name);
+  sets.push("bio = ?"); params.push(bio);
+  sets.push("show_display_name = COALESCE(?, show_display_name)");
+  params.push(show_display_name !== undefined ? show_display_name : null);
+
+  if (chess_com_username !== undefined) {
+    sets.push("chess_com_username = ?");
+    params.push(chess_com_username || null);
   }
+  if (lichess_username !== undefined) {
+    sets.push("lichess_username = ?");
+    params.push(lichess_username || null);
+  }
+
+  params.push(id);
+  return await query(
+    `UPDATE chessusnode.users SET ${sets.join(", ")} WHERE id = ?`,
+    params
+  );
 };
 
 /**

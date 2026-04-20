@@ -31,6 +31,8 @@ const EditAccount = (props) => {
   const [firstName, setFirstName] = useState(currentUser && currentUser.first_name ? currentUser.first_name : "");
   const [lastName, setLastName] = useState(currentUser && currentUser.last_name ? currentUser.last_name : "");
   const [bio, setBio] = useState(currentUser && currentUser.bio ? currentUser.bio : "");
+  const [chessComUsername, setChessComUsername] = useState(currentUser && currentUser.chess_com_username ? currentUser.chess_com_username : "");
+  const [lichessUsername, setLichessUsername] = useState(currentUser && currentUser.lichess_username ? currentUser.lichess_username : "");
   const [showDisplayName, setShowDisplayName] = useState(currentUser && currentUser.show_display_name ? true : false);
   const [profilePicture, setProfilePicture] = useState(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState(currentUser && currentUser.profile_picture ? currentUser.profile_picture : null);
@@ -200,6 +202,8 @@ const EditAccount = (props) => {
           setFirstName(res.data.result.first_name);
           setLastName(res.data.result.last_name);
           setBio((res.data.result.bio ? res.data.result.bio : ""));
+          setChessComUsername(res.data.result.chess_com_username || "");
+          setLichessUsername(res.data.result.lichess_username || "");
           setShowDisplayName(res.data.result.show_display_name ? true : false);
         }
       }
@@ -305,6 +309,13 @@ const EditAccount = (props) => {
     if (firstName && firstName.length > NAME_MAX) warnings.push(`First name must be ${NAME_MAX} characters or fewer.`);
     if (lastName && lastName.length > NAME_MAX) warnings.push(`Last name must be ${NAME_MAX} characters or fewer.`);
     if (bio && bio.length > BIO_MAX) warnings.push(`Bio must be ${BIO_MAX} characters or fewer.`);
+    const PROFILE_USERNAME_PATTERN = /^[A-Za-z0-9_.-]{1,50}$/;
+    if (chessComUsername && chessComUsername.trim().length > 0 && !PROFILE_USERNAME_PATTERN.test(chessComUsername.trim())) {
+      warnings.push("Chess.com username can only contain letters, numbers, underscores, hyphens, and periods (max 50 chars).");
+    }
+    if (lichessUsername && lichessUsername.trim().length > 0 && !PROFILE_USERNAME_PATTERN.test(lichessUsername.trim())) {
+      warnings.push("Lichess username can only contain letters, numbers, underscores, hyphens, and periods (max 50 chars).");
+    }
     if (password && password.length > 0) {
       if (!oldPassword) warnings.push("Current password is required to change password.");
       if (password.length < 8) warnings.push("New password must be at least 8 characters.");
@@ -320,7 +331,7 @@ const EditAccount = (props) => {
       console.log("old password: " + oldPassword + " new password: " + password);
       console.log("logged in password: " + currentUser.password);
     if (isAdminOrOwner) {
-    dispatch(edit(userInfo, username, password, email, firstName, lastName, bio, userInfo.id, currentUser.id, null, showDisplayName))
+    dispatch(edit(userInfo, username, password, email, firstName, lastName, bio, userInfo.id, currentUser.id, null, showDisplayName, chessComUsername, lichessUsername))
       .then(() => {
         console.log("user updated by adimn from the editaccount.js page")
         // Navigate to the edited user's profile with success state
@@ -341,7 +352,7 @@ const EditAccount = (props) => {
     }
     else {
       console.log(id);
-      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id, null, oldPassword, showDisplayName))
+      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id, null, oldPassword, showDisplayName, chessComUsername, lichessUsername))
         .then(() => {
           console.log("user updated from the editaccount.js page")
           // Clear password fields after successful update
@@ -453,6 +464,39 @@ const EditAccount = (props) => {
                 onBioChange={setBio}
                 wrapperClassName={styles["form-card"]}
               />
+
+              <div className={styles["form-card"]}>
+                <h2 className={styles["card-title"]}>Connected Accounts</h2>
+                <p style={{ color: 'var(--text-dim, #888)', fontSize: '0.875em', marginTop: 0, marginBottom: 16 }}>
+                  Link your chess.com and lichess.org profiles. These will appear on your public profile.
+                </p>
+                <div className={styles["form-grid"]}>
+                  <div className={styles["form-group-modern"]}>
+                    <label htmlFor="chessComUsername">Chess.com Username</label>
+                    <input
+                      type="text"
+                      name="chess_com_username"
+                      value={chessComUsername}
+                      onChange={(e) => setChessComUsername(e.target.value)}
+                      placeholder="e.g. magnuscarlsen"
+                      maxLength={50}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className={styles["form-group-modern"]}>
+                    <label htmlFor="lichessUsername">Lichess.org Username</label>
+                    <input
+                      type="text"
+                      name="lichess_username"
+                      value={lichessUsername}
+                      onChange={(e) => setLichessUsername(e.target.value)}
+                      placeholder="e.g. DrNykterstein"
+                      maxLength={50}
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+              </div>
 
               <div className={styles["form-card"]}>
                 <h2 className={styles["card-title"]}>Privacy Settings</h2>

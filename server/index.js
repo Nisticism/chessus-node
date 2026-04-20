@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 //  Constants
 
@@ -168,8 +168,12 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Apply general rate limiting to all routes
-app.use('/api/', generalLimiter);
+// Apply general rate limiting to all routes EXCEPT /api/admin/* (admin endpoints
+// are already gated by authenticateAdmin and the dashboard can poll heavily)
+app.use('/api/', (req, res, next) => {
+  if (req.path.startsWith('/admin/')) return next();
+  return generalLimiter(req, res, next);
+});
 
 // Additional middleware to handle Private Network Access
 app.use((req, res, next) => {
@@ -303,14 +307,14 @@ function dedupeUploadedFile(file) {
   }
 
   if (fs.existsSync(targetPath)) {
-    // Duplicate content already on disk — delete the new upload and reuse.
+    // Duplicate content already on disk � delete the new upload and reuse.
     try { fs.unlinkSync(fullPath); } catch (e) { /* ignore */ }
     file.filename = targetName;
     file.path = targetPath;
     return targetName;
   }
 
-  // No existing file with this hash — rename so future uploads can dedupe.
+  // No existing file with this hash � rename so future uploads can dedupe.
   try {
     fs.renameSync(fullPath, targetPath);
     file.filename = targetName;
@@ -2213,7 +2217,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
 
     // Content moderation: Check description
     if (gameData.descript) {
-      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000 });
+      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000, allowLinks: 'whitelist' });
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }
@@ -2221,7 +2225,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
 
     // Content moderation: Check rules
     if (gameData.rules) {
-      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000 });
+      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000, allowLinks: 'whitelist' });
       if (!rulesCheck.isValid) {
         return res.status(400).send({ message: rulesCheck.errors[0] });
       }
@@ -2461,7 +2465,7 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
   }
 });
 
-// Uniqueness checker — compares a game's full configuration against all other games
+// Uniqueness checker � compares a game's full configuration against all other games
 app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, res) => {
   try {
     const { gameId } = req.params;
@@ -2512,7 +2516,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
     );
 
     if (allGames.length === 0) {
-      // No other games to compare against — automatically unique
+      // No other games to compare against � automatically unique
       const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
       await db_pool.query(
         `UPDATE game_types SET is_unique = 1, unique_badge_date = COALESCE(unique_badge_date, ?), uniqueness_score = 100, similar_games = '[]', last_uniqueness_check = ? WHERE id = ?`,
@@ -2556,7 +2560,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       return true;
     };
 
-    // Piece columns to compare for uniqueness (from pieces table — movement/attack settings)
+    // Piece columns to compare for uniqueness (from pieces table � movement/attack settings)
     const pieceCompareColumns = [
       'directional_movement_style', 'repeating_movement',
       'max_directional_movement_iterations', 'min_directional_movement_iterations',
@@ -2734,7 +2738,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
         isIdentical = false;
       }
 
-      // --- LEVEL 4: Pieces (weight: 35) — most expensive, do last ---
+      // --- LEVEL 4: Pieces (weight: 35) � most expensive, do last ---
       const piecesWeight = 35;
       totalWeight += piecesWeight;
 
@@ -2823,10 +2827,10 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
         }
       }
       if (wasFirst && badgeDate) {
-        // Creator was first — keep their badge date
+        // Creator was first � keep their badge date
         isUnique = true; // they maintain their badge
       } else if (!wasFirst) {
-        // Not the first — lose badge
+        // Not the first � lose badge
         badgeDate = null;
       }
     }
@@ -2937,13 +2941,13 @@ app.post("/api/register", registerLimiter, async (req, res) => {
     sendWelcomeEmail(email, username)
       .then(result => {
         if (result.success) {
-          console.log(`âœ… Welcome email sent to ${email}`);
+          console.log(`✅ Welcome email sent to ${email}`);
         } else {
-          console.log(`âš ï¸ Welcome email not sent: ${result.message}`);
+          console.log(`⚠️ Welcome email not sent: ${result.message}`);
         }
       })
       .catch(err => {
-        console.error('âš ï¸ Email sending failed:', err.message);
+        console.error('⚠️ Email sending failed:', err.message);
       });
     
     res.status(201).send(user);
@@ -2955,7 +2959,7 @@ app.post("/api/register", registerLimiter, async (req, res) => {
 
 app.post("/api/profile/edit", authenticateToken, async (req, res) => {
   try {
-    const { username, current_user, password, oldPassword, bio, email, first_name, last_name, id, show_display_name } = req.body;
+    const { username, current_user, password, oldPassword, bio, email, first_name, last_name, id, show_display_name, chess_com_username, lichess_username } = req.body;
     const logged_in_username = current_user.username;
     const logged_in_email = current_user.email;
     const requesterRole = req.user.role?.toLowerCase();
@@ -3007,7 +3011,7 @@ app.post("/api/profile/edit", authenticateToken, async (req, res) => {
 
     // Content moderation: Check bio for offensive content and links
     if (bio) {
-      const bioCheck = validateContent(bio, { fieldName: 'Bio', maxLength: 500 });
+      const bioCheck = validateContent(bio, { fieldName: 'Bio', maxLength: 500, allowLinks: 'whitelist' });
       if (!bioCheck.isValid) {
         return res.status(400).send({ message: bioCheck.errors[0] });
       }
@@ -3043,6 +3047,24 @@ app.post("/api/profile/edit", authenticateToken, async (req, res) => {
     // Handle show_display_name setting
     if (show_display_name !== undefined) {
       updatedUser.show_display_name = show_display_name ? 1 : 0;
+    }
+
+    // Validate and apply chess.com / lichess.org username links (max 50 chars,
+    // alphanumeric + underscore + hyphen + dot). Empty string clears the link.
+    const PROFILE_USERNAME_PATTERN = /^[A-Za-z0-9_.-]{1,50}$/;
+    if (chess_com_username !== undefined) {
+      const trimmed = (chess_com_username || "").trim();
+      if (trimmed.length > 0 && !PROFILE_USERNAME_PATTERN.test(trimmed)) {
+        return res.status(400).send({ message: "Chess.com username can only contain letters, numbers, underscores, hyphens, and periods (max 50 chars)." });
+      }
+      updatedUser.chess_com_username = trimmed.length > 0 ? trimmed : null;
+    }
+    if (lichess_username !== undefined) {
+      const trimmed = (lichess_username || "").trim();
+      if (trimmed.length > 0 && !PROFILE_USERNAME_PATTERN.test(trimmed)) {
+        return res.status(400).send({ message: "Lichess username can only contain letters, numbers, underscores, hyphens, and periods (max 50 chars)." });
+      }
+      updatedUser.lichess_username = trimmed.length > 0 ? trimmed : null;
     }
 
     // Hash password if provided
@@ -3173,7 +3195,7 @@ app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_pic
       [imagePath, userId]
     );
 
-    // Delete old profile picture if it exists — but only if no other user
+    // Delete old profile picture if it exists � but only if no other user
     // (or this user's new picture) is still referencing the same path.
     if (oldPicturePath && oldPicturePath !== imagePath) {
       const [refRows] = await db_pool.query(
@@ -4116,11 +4138,11 @@ app.post("/api/articles/new", async (req, res) => {
       if (!titleCheck.isValid) return res.status(400).send({ message: titleCheck.errors[0] });
     }
     if (content) {
-      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: true });
+      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: 'whitelist' });
       if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
     }
     if (description) {
-      const descCheck = validateContent(description, { fieldName: 'Description', maxLength: 500 });
+      const descCheck = validateContent(description, { fieldName: 'Description', maxLength: 500, allowLinks: 'whitelist' });
       if (!descCheck.isValid) return res.status(400).send({ message: descCheck.errors[0] });
     }
 
@@ -4186,7 +4208,7 @@ app.post("/api/forums/new", async (req, res) => {
       if (!titleCheck.isValid) return res.status(400).send({ message: titleCheck.errors[0] });
     }
     if (content) {
-      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: true });
+      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: 'whitelist' });
       if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
     }
     
@@ -4392,7 +4414,7 @@ app.put("/api/forums/edit", authenticateToken, async (req, res) => {
       }
     }
     if (content) {
-      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: true });
+      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: 'whitelist' });
       if (!contentCheck.isValid) {
         return res.status(400).send({ message: contentCheck.errors[0] });
       }
@@ -4468,7 +4490,7 @@ app.post("/api/comments/new", async (req, res) => {
 
     // Content moderation
     if (content) {
-      const contentCheck = validateContent(content, { fieldName: 'Comment', maxLength: 10000, allowLinks: true });
+      const contentCheck = validateContent(content, { fieldName: 'Comment', maxLength: 10000, allowLinks: 'whitelist' });
       if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
     }
     
@@ -4619,7 +4641,7 @@ app.put("/api/comments/edit", authenticateToken, async (req, res) => {
 
     // Content moderation
     if (content) {
-      const contentCheck = validateContent(content, { fieldName: 'Comment', maxLength: 10000, allowLinks: true });
+      const contentCheck = validateContent(content, { fieldName: 'Comment', maxLength: 10000, allowLinks: 'whitelist' });
       if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
     }
     
@@ -4983,7 +5005,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 
     // Content moderation: Check description
     if (gameData.descript) {
-      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000 });
+      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000, allowLinks: 'whitelist' });
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }
@@ -4991,7 +5013,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 
     // Content moderation: Check rules
     if (gameData.rules) {
-      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000 });
+      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000, allowLinks: 'whitelist' });
       if (!rulesCheck.isValid) {
         return res.status(400).send({ message: rulesCheck.errors[0] });
       }
@@ -5187,7 +5209,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     }
     } // end skip forum for drafts
 
-    // Notify owner of new game type creation (non-blocking) — skip for drafts
+    // Notify owner of new game type creation (non-blocking) � skip for drafts
     if (!isDraft) {
     dbHelpers.getOwnerUserId().then(async (ownerId) => {
       if (ownerId && ownerId !== creator_id) {
@@ -5306,7 +5328,7 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
 
     // Content moderation: Check piece description
     if (pieceData.piece_description) {
-      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000 });
+      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000, allowLinks: 'whitelist' });
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }
@@ -5374,7 +5396,7 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
       }
 
       if (scanResult.overall === 'pending_review') {
-        // Auto-approve for admin/owner — they don't need manual review
+        // Auto-approve for admin/owner � they don't need manual review
         const uploaderRole = req.user.role?.toLowerCase();
         if (uploaderRole === 'admin' || uploaderRole === 'owner') {
           moderationStatus = 'approved';
@@ -5697,7 +5719,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
 
     // Content moderation: Check piece description
     if (pieceData.piece_description) {
-      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000 });
+      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000, allowLinks: 'whitelist' });
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }
@@ -5801,7 +5823,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
         }
 
         if (scanResult.overall === 'pending_review') {
-          // Auto-approve for admin/owner — they don't need manual review
+          // Auto-approve for admin/owner � they don't need manual review
           const uploaderRole = req.user.role?.toLowerCase();
           if (uploaderRole === 'admin' || uploaderRole === 'owner') {
             moderationStatus = 'approved';
@@ -7133,9 +7155,9 @@ app.post("/api/admin/streams/:streamId/toggle-live", authenticateAdmin, async (r
 
 //  -----------------------  Other/Port -------------------------
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 //  PAYMENT ENDPOINTS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 
 // Create Stripe checkout session
 app.post("/api/create-stripe-checkout", async (req, res) => {
@@ -7188,9 +7210,9 @@ app.post("/api/confirm-donation", async (req, res) => {
     // Update user's total donations in database
     try {
       await dbHelpers.updateUserDonations(email, parseFloat(amount));
-      console.log(`âœ… Updated total donations for ${email}: +$${amount}`);
+      console.log(`✅ Updated total donations for ${email}: +$${amount}`);
     } catch (dbError) {
-      console.error('âš ï¸ Failed to update donation total:', dbError.message);
+      console.error('⚠️ Failed to update donation total:', dbError.message);
       // Continue anyway - email is more important than tracking
     }
 
@@ -7198,13 +7220,13 @@ app.post("/api/confirm-donation", async (req, res) => {
     sendDonationEmail(email, username, amount)
       .then(result => {
         if (result.success) {
-          console.log(`âœ… Donation email sent to ${email}`);
+          console.log(`✅ Donation email sent to ${email}`);
         } else {
-          console.log(`âš ï¸ Donation email not sent: ${result.message}`);
+          console.log(`⚠️ Donation email not sent: ${result.message}`);
         }
       })
       .catch(err => {
-        console.error('âš ï¸ Email sending failed:', err.message);
+        console.error('⚠️ Email sending failed:', err.message);
       });
     
     // Always return success - the donation was successful regardless of email

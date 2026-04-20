@@ -61,6 +61,35 @@ const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA
 // Common TLD check for bare domains (no protocol)
 const BARE_DOMAIN_PATTERN = /\b[a-zA-Z0-9][-a-zA-Z0-9]*\.(?:com|net|org|io|co|dev|gg|me|tv|cc|xyz|info|biz|us|uk|ca|au|de|fr|ru|cn|jp|app|site|online|store|shop|tech|live|pro|club|link|click|win|top|work|space|fun|website|stream|download|review|party|trade|bid|date|racing|science|faith|accountant|cricket|loan|zip|mov|nexus)\b/gi;
 
+// Default allowed hosts for whitelist mode (gridgrove.gg only for general site content)
+const DEFAULT_ALLOWED_HOSTS = ['gridgrove.gg'];
+// Default cap on number of allowed links per piece of content
+const DEFAULT_MAX_LINKS = 3;
+
+/**
+ * Extract the host (lowercased, www. stripped) from a link string.
+ * Accepts URLs with or without protocol, and bare domains.
+ * Returns null if no host can be determined.
+ */
+function extractHost(linkText) {
+  if (!linkText || typeof linkText !== 'string') return null;
+  // Strip protocol if present, then take everything up to the first slash, space, or query/hash
+  const m = linkText.match(/^(?:https?:\/\/)?(?:www\.)?([^\/\s?#]+)/i);
+  if (!m) return null;
+  return m[1].toLowerCase();
+}
+
+/**
+ * Returns true if the host matches one of the allowed hosts (exact match or subdomain).
+ */
+function isHostAllowed(host, allowedHosts) {
+  if (!host) return false;
+  return allowedHosts.some((h) => {
+    const allowed = h.toLowerCase();
+    return host === allowed || host.endsWith('.' + allowed);
+  });
+}
+
 /**
  * Check text for offensive content using word-boundary-aware patterns.
  * Returns { isClean: boolean, matches: string[] }
@@ -139,30 +168,53 @@ function checkForLinks(text) {
 
 /**
  * Validate user-generated content (descriptions, bios, etc.)
+ *
+ * options.allowLinks:
+ *   - false (default): No links/URLs/bare domains allowed at all.
+ *   - true:            Any links allowed (legacy behavior).
+ *   - 'whitelist':     Allow only links whose host matches options.allowedHosts (or DEFAULT_ALLOWED_HOSTS),
+ *                      capped at options.maxLinks (default DEFAULT_MAX_LINKS).
+ *
  * Returns { isValid: boolean, errors: string[] }
  */
 function validateContent(text, options = {}) {
-  const { allowLinks = false, maxLength = null, fieldName = 'Content' } = options;
+  const {
+    allowLinks = false,
+    allowedHosts = DEFAULT_ALLOWED_HOSTS,
+    maxLinks = DEFAULT_MAX_LINKS,
+    maxLength = null,
+    fieldName = 'Content'
+  } = options;
   const errors = [];
-  
+
   if (!text || typeof text !== 'string') return { isValid: true, errors: [] };
-  
+
   if (maxLength && text.length > maxLength) {
     errors.push(`${fieldName} must be ${maxLength} characters or fewer`);
   }
-  
+
   const offensiveCheck = checkOffensiveContent(text);
   if (!offensiveCheck.isClean) {
     errors.push(`${fieldName} contains inappropriate language. Please revise and try again.`);
   }
-  
-  if (!allowLinks) {
+
+  if (allowLinks === false) {
     const linkCheck = checkForLinks(text);
     if (linkCheck.hasLinks) {
       errors.push(`${fieldName} cannot contain links or URLs. Please remove any links and try again.`);
     }
+  } else if (allowLinks === 'whitelist') {
+    const linkCheck = checkForLinks(text);
+    if (linkCheck.links.length > maxLinks) {
+      errors.push(`${fieldName} cannot contain more than ${maxLinks} link${maxLinks === 1 ? '' : 's'}.`);
+    }
+    const disallowed = linkCheck.links.filter((l) => !isHostAllowed(extractHost(l), allowedHosts));
+    if (disallowed.length > 0) {
+      errors.push(`${fieldName} can only contain links to: ${allowedHosts.join(', ')}.`);
+    }
   }
-  
+  // allowLinks === true: no link restrictions
+
   return {
     isValid: errors.length === 0,
     errors
@@ -173,5 +225,9 @@ module.exports = {
   checkOffensiveContent,
   checkUsername,
   checkForLinks,
-  validateContent
+  validateContent,
+  extractHost,
+  isHostAllowed,
+  DEFAULT_ALLOWED_HOSTS,
+  DEFAULT_MAX_LINKS
 };

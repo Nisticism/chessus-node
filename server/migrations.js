@@ -2122,6 +2122,35 @@ const runMigrations = async () => {
     console.error('Error adding show_display_name column:', err.message);
   }
 
+  // Add chess_com_username column to users table (for displaying chess.com profile link)
+  try {
+    const chessComCol = await columnExists('users', 'chess_com_username');
+    if (!chessComCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN chess_com_username VARCHAR(50) DEFAULT NULL`,
+        "Add chess_com_username column to users table for linking chess.com profile"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding chess_com_username column:', err.message);
+  }
+
+  // Add lichess_username column to users table (for displaying lichess.org profile link;
+  // distinct from lichess_id which is OAuth-only)
+  try {
+    const lichessUsernameCol = await columnExists('users', 'lichess_username');
+    if (!lichessUsernameCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN lichess_username VARCHAR(50) DEFAULT NULL`,
+        "Add lichess_username column to users table for linking lichess.org profile"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding lichess_username column:', err.message);
+  }
+
   // Add created_at column to pieces table
   try {
     const piecesCreatedAt = await columnExists('pieces', 'created_at');

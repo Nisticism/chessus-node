@@ -172,7 +172,7 @@ const MatchHistory = ({ userId, username }) => {
   }
 
   return (
-    <div className={styles["match-history"]}>
+    <div className={styles["match-history"]} id="match-history">
       <h2 className={styles["section-title"]} onClick={() => setCollapsed(!collapsed)}>
         Match History
         <span className={`${styles["collapse-arrow"]} ${collapsed ? styles["collapsed"] : ''}`}>▼</span>

@@ -68,9 +68,9 @@ export const getUser = (username) => async (dispatch) => {
   }
 };
 
-export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name) => async (dispatch) => {
+export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name, chess_com_username, lichess_username) => async (dispatch) => {
   try {
-    const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name);
+    const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name, chess_com_username, lichess_username);
     if (!admin_id) {
       dispatch({
         type: EDIT_SUCCESS,

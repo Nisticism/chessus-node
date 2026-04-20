@@ -23,7 +23,7 @@ const updateUser = (updatedData) => {
   localStorage.setItem('user', JSON.stringify(user));
 }
 
-const edit = async (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name) => {
+const edit = async (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name, chess_com_username, lichess_username) => {
   if (email === "") {
     email = null;
   }
@@ -37,7 +37,7 @@ const edit = async (current_user, username, password, email, first_name, last_na
     bio = null;
   }
   
-  const response = await axios.post(API_URL + "profile/edit", {
+  const payload = {
     current_user,
     username,
     password,
@@ -48,7 +48,11 @@ const edit = async (current_user, username, password, email, first_name, last_na
     bio,
     id,
     show_display_name,
-  });
+  };
+  if (chess_com_username !== undefined) payload.chess_com_username = chess_com_username;
+  if (lichess_username !== undefined) payload.lichess_username = lichess_username;
+
+  const response = await axios.post(API_URL + "profile/edit", payload);
   
   if (response.data.result.username && (!admin_id || (response.data.result.id && response.data.result.id === admin_id))) {
     updateUser(response.data.result);

@@ -133,6 +133,126 @@ async function notifyOwnerOfGameCreation(io, gameId, hostId, hostUsername, gameS
 }
 
 /**
+ * Notify a game's host (creator) when another player joins their game.
+ * Skips bot games and anonymous players. Non-blocking.
+ */
+async function notifyHostOfPlayerJoin(io, gameId, gameState, joiningPlayer) {
+  try {
+    const dbHelpers = require("./db-helpers");
+    if (!gameState || !gameState.players || gameState.players.length < 2) return;
+    // Host = first player added (the creator)
+    const host = gameState.players[0];
+    const hostId = typeof host?.id === 'number' ? host.id : parseInt(host?.id);
+    if (!hostId || Number.isNaN(hostId)) return; // anonymous host
+    const joinerId = typeof joiningPlayer?.id === 'number' ? joiningPlayer.id : parseInt(joiningPlayer?.id);
+    if (!joinerId || Number.isNaN(joinerId)) return; // anonymous joiner
+    if (hostId === joinerId) return; // don't notify yourself
+    if (joiningPlayer?.isBot || host?.isBot) return; // skip bot games
+    const gameName = gameState.gameType?.game_name || 'your game';
+    const joinerName = joiningPlayer?.username || 'A player';
+    const notification = await dbHelpers.createNotification({
+      user_id: hostId,
+      sender_id: joinerId,
+      type: 'system',
+      title: `${joinerName} joined your game`,
+      content: `${joinerName} joined "${gameName}".`,
+      related_id: gameId,
+      action_url: `/play/${gameId}`
+    });
+    const hostSocketId = userSockets.get(hostId.toString());
+    if (hostSocketId && io) {
+      io.to(hostSocketId).emit('newNotification', { ...notification, sender_username: joinerName });
+      const unreadCount = await dbHelpers.getUnreadNotificationCount(hostId);
+      io.to(hostSocketId).emit('unreadNotificationCount', { unreadCount });
+    }
+  } catch (err) {
+    console.error('Player-join notification failed:', err.message);
+  }
+}
+
+/**
+ * Notify each human player when a game ends with their win/loss outcome.
+ * Action URL links to that user's match history. Skips bots and anonymous players.
+ * Non-blocking.
+ */
+async function notifyPlayersOfGameOutcome(io, gameId, gameState, winnerId, reason) {
+  try {
+    const dbHelpers = require("./db-helpers");
+    if (!gameState || !Array.isArray(gameState.players)) return;
+    const gameName = gameState.gameType?.game_name || 'your game';
+    const numericWinnerId = typeof winnerId === 'number' ? winnerId : (winnerId ? parseInt(winnerId) : null);
+    const isDraw = !numericWinnerId || Number.isNaN(numericWinnerId);
+
+    for (const player of gameState.players) {
+      const pid = typeof player?.id === 'number' ? player.id : parseInt(player?.id);
+      if (!pid || Number.isNaN(pid)) continue; // anonymous
+      if (player?.isBot) continue; // bots don't get notifications
+      if (isDraw) continue; // skip draw notifications for now (only win/loss requested)
+
+      // Idempotency: skip if a game_outcome notification already exists for this user+game
+      try {
+        const existing = await dbHelpers.query(
+          `SELECT id FROM notifications WHERE user_id = ? AND type = 'game_outcome' AND related_id = ? LIMIT 1`,
+          [pid, gameId]
+        );
+        if (existing && existing.length > 0) continue;
+      } catch (_) { /* if query helper differs, fall through */ }
+
+      const isWin = pid === numericWinnerId;
+      const opponent = gameState.players.find((p) => {
+        const opid = typeof p?.id === 'number' ? p.id : parseInt(p?.id);
+        return opid && opid !== pid;
+      });
+      const opponentName = opponent?.username || (opponent?.isBot ? 'the bot' : 'your opponent');
+      const reasonText = reason ? ` by ${reason}` : '';
+      const title = isWin
+        ? `You won against ${opponentName}!`
+        : `You lost to ${opponentName}`;
+      const content = isWin
+        ? `Victory in "${gameName}"${reasonText}.`
+        : `Defeat in "${gameName}"${reasonText}.`;
+
+      // action_url points to the player's profile match history section
+      const username = player?.username || '';
+      const actionUrl = username ? `/profile/${encodeURIComponent(username)}#match-history` : `/profile`;
+
+      const notification = await dbHelpers.createNotification({
+        user_id: pid,
+        sender_id: opponent && typeof opponent.id === 'number' ? opponent.id : null,
+        type: 'game_outcome',
+        title,
+        content,
+        related_id: gameId,
+        action_url: actionUrl,
+      });
+      const sockId = userSockets.get(pid.toString());
+      if (sockId && io) {
+        io.to(sockId).emit('newNotification', { ...notification, sender_username: opponentName });
+        const unreadCount = await dbHelpers.getUnreadNotificationCount(pid);
+        io.to(sockId).emit('unreadNotificationCount', { unreadCount });
+      }
+    }
+  } catch (err) {
+    console.error('Game-outcome notification failed:', err.message);
+  }
+}
+
+/**
+ * Wrapper around broadcastGameOver(io, gameId, gameState, payload) that also
+ * sends per-player win/loss notifications. Use this everywhere instead of
+ * the raw emit.
+ */
+function broadcastGameOver(io, gameId, gameState, payload) {
+  try {
+    broadcastGameOver(io, gameId, gameState, payload);
+  } catch (err) {
+    console.error('broadcastGameOver emit failed:', err.message);
+  }
+  // Fire-and-forget; do not block the move handler
+  notifyPlayersOfGameOutcome(io, gameId, gameState, payload?.winner, payload?.reason);
+}
+
+/**
  * ELO Rating System
  * Standard ELO calculation with K-factor of 32 for all players
  */
@@ -1575,6 +1695,9 @@ function initializeSocket(server) {
           newPlayer
         });
 
+        // Notify the host that someone joined their game
+        notifyHostOfPlayerJoin(io, gameId, gameState, newPlayer);
+
         // Remove from open games (anonymous games aren't listed, but just in case)
         io.emit("gameRemoved", { gameId });
 
@@ -1888,6 +2011,9 @@ function initializeSocket(server) {
           newPlayer: { id: userId, username }
         });
 
+        // Notify the host that someone joined their game
+        notifyHostOfPlayerJoin(io, gameId, gameState, { id: userId, username });
+
         // Remove from open games list
         io.emit("gameRemoved", { gameId });
 
@@ -2162,7 +2288,7 @@ function initializeSocket(server) {
                   console.error('Failed to update database:', dbError);
                 }
 
-                io.to(`game-${gameId}`).emit("gameOver", {
+                broadcastGameOver(io, gameId, gameState, {
                   gameId,
                   winner: winnerId,
                   reason,
@@ -2221,7 +2347,7 @@ function initializeSocket(server) {
               console.error('Failed to update database:', dbError);
             }
 
-            io.to(`game-${gameId}`).emit("gameOver", {
+            broadcastGameOver(io, gameId, gameState, {
               gameId,
               winner: winnerId,
               reason,
@@ -2328,7 +2454,7 @@ function initializeSocket(server) {
                gameId]
             );
 
-            io.to(`game-${gameId}`).emit("gameOver", {
+            broadcastGameOver(io, gameId, gameState, {
               gameId,
               winner: userId,
               reason: 'promotion',
@@ -2404,7 +2530,7 @@ function initializeSocket(server) {
                   [endTime, sanitizeWinnerId(promoWinResult.winner), JSON.stringify(gameState.pieces),
                    buildOtherData(gameState, { winner: promoWinResult.winner, reason: promoWinResult.reason, eloChanges }), gameId]
                 );
-                io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: promoWinResult.winner, reason: promoWinResult.reason, finalState: gameState, eloChanges });
+                broadcastGameOver(io, gameId, gameState, { gameId, winner: promoWinResult.winner, reason: promoWinResult.reason, finalState: gameState, eloChanges });
                 return;
               }
 
@@ -2432,7 +2558,7 @@ function initializeSocket(server) {
                     [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces),
                      buildOtherData(gameState, { winner: winner?.id, reason: 'checkmate', eloChanges }), gameId]
                   );
-                  io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: winner?.id, reason: 'checkmate', finalState: gameState, eloChanges });
+                  broadcastGameOver(io, gameId, gameState, { gameId, winner: winner?.id, reason: 'checkmate', finalState: gameState, eloChanges });
                   return;
                 }
               }
@@ -2645,7 +2771,7 @@ function initializeSocket(server) {
                buildOtherData(gameState, { winner: burnWinResult.winner, reason: burnWinResult.reason, eloChanges }),
                gameId]
             );
-            io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: burnWinResult.winner, reason: burnWinResult.reason, move: moveRecord, finalState: gameState, eloChanges });
+            broadcastGameOver(io, gameId, gameState, { gameId, winner: burnWinResult.winner, reason: burnWinResult.reason, move: moveRecord, finalState: gameState, eloChanges });
             return;
           }
         }
@@ -2719,7 +2845,7 @@ function initializeSocket(server) {
                   gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory }
                 });
 
-                io.to(`game-${gameId}`).emit("gameOver", {
+                broadcastGameOver(io, gameId, gameState, {
                   gameId, winner: nextPlayer.id, reason: 'promotion', move: premoveRecord, finalState: gameState, eloChanges
                 });
                 return;
@@ -2808,7 +2934,7 @@ function initializeSocket(server) {
                       [endTime, sanitizeWinnerId(promoWinResult.winner), JSON.stringify(gameState.pieces),
                        buildOtherData(gameState, { winner: promoWinResult.winner, reason: promoWinResult.reason, eloChanges }), gameId]
                     );
-                    io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: promoWinResult.winner, reason: promoWinResult.reason, finalState: gameState, eloChanges });
+                    broadcastGameOver(io, gameId, gameState, { gameId, winner: promoWinResult.winner, reason: promoWinResult.reason, finalState: gameState, eloChanges });
                     return;
                   }
 
@@ -2836,7 +2962,7 @@ function initializeSocket(server) {
                         [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces),
                          buildOtherData(gameState, { winner: winner?.id, reason: 'checkmate', eloChanges }), gameId]
                       );
-                      io.to(`game-${gameId}`).emit("gameOver", { gameId, winner: winner?.id, reason: 'checkmate', finalState: gameState, eloChanges });
+                      broadcastGameOver(io, gameId, gameState, { gameId, winner: winner?.id, reason: 'checkmate', finalState: gameState, eloChanges });
                       return;
                     }
                   }
@@ -2967,7 +3093,7 @@ function initializeSocket(server) {
                    buildOtherData(gameState, { winner: premoveWinResult.winner, reason: premoveWinResult.reason, eloChanges }),
                    gameId]
                 );
-                io.to(`game-${gameId}`).emit("gameOver", {
+                broadcastGameOver(io, gameId, gameState, {
                   gameId, winner: premoveWinResult.winner, reason: premoveWinResult.reason,
                   move: premoveRecord, finalState: gameState, eloChanges
                 });
@@ -3010,7 +3136,7 @@ function initializeSocket(server) {
                  gameId]
               );
 
-              io.to(`game-${gameId}`).emit("gameOver", {
+              broadcastGameOver(io, gameId, gameState, {
                 gameId,
                 winner: premoveControlWinResult.winner,
                 reason: premoveControlWinResult.reason,
@@ -3060,7 +3186,7 @@ function initializeSocket(server) {
                  gameId]
               );
 
-              io.to(`game-${gameId}`).emit("gameOver", {
+              broadcastGameOver(io, gameId, gameState, {
                 gameId,
                 winner: premoveWinResult.winner,
                 reason: premoveWinResult.reason,
@@ -3107,7 +3233,7 @@ function initializeSocket(server) {
                    gameId]
                 );
 
-                io.to(`game-${gameId}`).emit("gameOver", {
+                broadcastGameOver(io, gameId, gameState, {
                   gameId,
                   winner: winner?.id,
                   reason: 'checkmate',
@@ -3200,7 +3326,7 @@ function initializeSocket(server) {
                     console.error('Failed to update database (premove stalemate):', dbError);
                   }
 
-                  io.to(`game-${gameId}`).emit("gameOver", {
+                  broadcastGameOver(io, gameId, gameState, {
                     gameId,
                     winner: winnerObj?.id || null,
                     reason: winReasonStr,
@@ -3254,7 +3380,7 @@ function initializeSocket(server) {
                  gameId]
               );
 
-              io.to(`game-${gameId}`).emit("gameOver", {
+              broadcastGameOver(io, gameId, gameState, {
                 gameId,
                 winner: null,
                 reason: 'draw_move_limit',
@@ -3299,7 +3425,7 @@ function initializeSocket(server) {
                  gameId]
               );
 
-              io.to(`game-${gameId}`).emit("gameOver", {
+              broadcastGameOver(io, gameId, gameState, {
                 gameId,
                 winner: null,
                 reason: 'repetition',
@@ -3384,7 +3510,7 @@ function initializeSocket(server) {
              gameId]
           );
 
-          io.to(`game-${gameId}`).emit("gameOver", {
+          broadcastGameOver(io, gameId, gameState, {
             gameId,
             winner: controlWinResult.winner,
             reason: controlWinResult.reason,
@@ -3434,7 +3560,7 @@ function initializeSocket(server) {
              gameId]
           );
 
-          io.to(`game-${gameId}`).emit("gameOver", {
+          broadcastGameOver(io, gameId, gameState, {
             gameId,
             winner: winResult.winner,
             reason: winResult.reason,
@@ -3508,7 +3634,7 @@ function initializeSocket(server) {
                 console.error('Failed to update database:', dbError);
               }
 
-              io.to(`game-${gameId}`).emit("gameOver", {
+              broadcastGameOver(io, gameId, gameState, {
                 gameId,
                 winner: winner?.id,
                 reason: 'checkmate',
@@ -3601,7 +3727,7 @@ function initializeSocket(server) {
                   console.error('Failed to update database:', dbError);
                 }
 
-                io.to(`game-${gameId}`).emit("gameOver", {
+                broadcastGameOver(io, gameId, gameState, {
                   gameId,
                   winner: winnerObj?.id || null,
                   reason: winReasonStr,
@@ -3653,7 +3779,7 @@ function initializeSocket(server) {
                 console.error('Failed to update database:', dbError);
               }
 
-              io.to(`game-${gameId}`).emit("gameOver", {
+              broadcastGameOver(io, gameId, gameState, {
                 gameId,
                 winner: winner?.id,
                 reason: 'no_moves',
@@ -3714,7 +3840,7 @@ function initializeSocket(server) {
                 console.error('Failed to update database:', dbError);
               }
 
-              io.to(`game-${gameId}`).emit("gameOver", {
+              broadcastGameOver(io, gameId, gameState, {
                 gameId,
                 winner: winnerId,
                 reason,
@@ -3774,7 +3900,7 @@ function initializeSocket(server) {
               console.error('Failed to update database:', dbError);
             }
 
-            io.to(`game-${gameId}`).emit("gameOver", {
+            broadcastGameOver(io, gameId, gameState, {
               gameId,
               winner: null,
               reason: 'draw_move_limit',
@@ -3823,7 +3949,7 @@ function initializeSocket(server) {
               console.error('Failed to update database:', dbError);
             }
 
-            io.to(`game-${gameId}`).emit("gameOver", {
+            broadcastGameOver(io, gameId, gameState, {
               gameId,
               winner: null,
               reason: 'repetition',
@@ -4009,7 +4135,7 @@ function initializeSocket(server) {
           [endTime, dbWinnerId, buildOtherData(gameState, { winner: winner?.id, reason: 'resignation', eloChanges, isBotGame }), JSON.stringify(gameState.pieces), gameId]
         );
 
-        io.to(`game-${gameId}`).emit("gameOver", {
+        broadcastGameOver(io, gameId, gameState, {
           gameId,
           winner: winner?.id,
           winnerUsername: winner?.username,
@@ -4243,7 +4369,7 @@ function initializeSocket(server) {
              gameId]
           );
 
-          io.to(`game-${gameId}`).emit("gameOver", {
+          broadcastGameOver(io, gameId, gameState, {
             gameId,
             winner: promotionControlWinResult.winner,
             reason: promotionControlWinResult.reason,
@@ -4276,7 +4402,7 @@ function initializeSocket(server) {
              gameId]
           );
 
-          io.to(`game-${gameId}`).emit("gameOver", {
+          broadcastGameOver(io, gameId, gameState, {
             gameId,
             winner: winResult.winner,
             reason: winResult.reason,
@@ -4316,7 +4442,7 @@ function initializeSocket(server) {
                gameId]
             );
 
-            io.to(`game-${gameId}`).emit("gameOver", {
+            broadcastGameOver(io, gameId, gameState, {
               gameId,
               winner: winner?.id,
               reason: 'checkmate',
@@ -4914,7 +5040,7 @@ function initializeSocket(server) {
             console.error('Failed to update database for bot draw:', dbError);
           }
 
-          io.to(`game-${gameId}`).emit("gameOver", {
+          broadcastGameOver(io, gameId, gameState, {
             gameId,
             winner: null,
             reason: 'agreement',
@@ -5003,7 +5129,7 @@ function initializeSocket(server) {
         }
 
         // Emit game over to all players
-        io.to(`game-${gameId}`).emit("gameOver", {
+        broadcastGameOver(io, gameId, gameState, {
           gameId,
           winner: null,
           reason: 'agreement',
@@ -5640,7 +5766,7 @@ function startGameTimer(io, gameId) {
            gameId]
         );
         
-        io.to(`game-${gameId}`).emit("gameOver", {
+        broadcastGameOver(io, gameId, gameState, {
           gameId,
           winner: winner?.id,
           reason: 'timeout',
@@ -10940,7 +11066,7 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
     ...(effects.burnKilledPieces?.length > 0 ? { burnKilledPieces: effects.burnKilledPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y })) } : {})
   });
 
-  io.to(`game-${gameId}`).emit("gameOver", {
+  broadcastGameOver(io, gameId, gameState, {
     gameId,
     winner: winResult.winner,
     reason: winResult.reason,

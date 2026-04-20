@@ -748,6 +748,42 @@ const PlayerPage = (props) => {
                 wrapperClassName={styles["info-card"]}
               />
 
+              {(playerPageUser?.chess_com_username || playerPageUser?.lichess_username) && (
+                <div className={styles["info-card"]}>
+                  <h2 className={styles["card-title"]}>Connected Accounts</h2>
+                  <div className={styles["info-grid"]}>
+                    {playerPageUser?.chess_com_username && (
+                      <div className={styles["info-item"]}>
+                        <span className={styles["info-label"]}>Chess.com</span>
+                        <a
+                          href={`https://www.chess.com/member/${encodeURIComponent(playerPageUser.chess_com_username)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles["info-value"]}
+                          style={{ wordBreak: 'break-all' }}
+                        >
+                          {playerPageUser.chess_com_username}
+                        </a>
+                      </div>
+                    )}
+                    {playerPageUser?.lichess_username && (
+                      <div className={styles["info-item"]}>
+                        <span className={styles["info-label"]}>Lichess.org</span>
+                        <a
+                          href={`https://lichess.org/@/${encodeURIComponent(playerPageUser.lichess_username)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles["info-value"]}
+                          style={{ wordBreak: 'break-all' }}
+                        >
+                          {playerPageUser.lichess_username}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className={styles["info-card"]}>
                 <h2 className={styles["card-title"]}>Ongoing Games</h2>
                 <OngoingGames
