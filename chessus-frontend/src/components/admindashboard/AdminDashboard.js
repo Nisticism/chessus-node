@@ -202,7 +202,7 @@ const AdminDashboard = () => {
         `${API_URL}admin/memory-stats`,
         { headers: authHeader() }
       );
-      setServerStats(response.data);
+      setServerStats({ ...response.data, _fetchedAt: Date.now() });
     } catch (error) {
       console.error("Error fetching server stats:", error);
       setServerStatsError("Failed to load server stats");
@@ -1299,28 +1299,42 @@ const AdminDashboard = () => {
       {!serverStats && !serverStatsLoading && !serverStatsError && (
         <p style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '30px 0' }}>No data loaded yet.</p>
       )}
-      {serverStats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', padding: '4px 0' }}>
-          {[
-            { label: 'Uptime', value: (() => { const s = serverStats.uptimeSeconds || 0; const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60; return `${h}h ${m}m ${sec}s`; })() },
-            { label: 'Active Games', value: serverStats.activeGames },
-            { label: 'Game Timers', value: serverStats.gameTimers },
-            { label: 'Disconnect Timeouts', value: serverStats.disconnectTimeouts },
-            { label: 'Online Users', value: serverStats.onlineUsers },
-            { label: 'RSS Memory', value: `${serverStats.memory?.rssMB} MB` },
-            { label: 'Heap Used', value: `${serverStats.memory?.heapUsedMB} MB` },
-            { label: 'Heap Total', value: `${serverStats.memory?.heapTotalMB} MB` },
-            { label: 'External', value: `${serverStats.memory?.externalMB} MB` },
-            { label: 'Array Buffers', value: `${serverStats.memory?.arrayBuffersMB} MB` },
-            { label: 'Node Version', value: serverStats.nodeVersion },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '14px 16px', border: '1px solid var(--border-color, #333)' }}>
-              <div style={{ fontSize: '0.75em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>{label}</div>
-              <div style={{ fontSize: '1.25em', fontWeight: 700, color: 'var(--text-primary, #fff)' }}>{value}</div>
+      {serverStats && (() => {
+        const num = (v) => (v == null ? '—' : String(v));
+        const mb = (v) => (v == null ? '—' : `${v} MB`);
+        const s = serverStats.uptimeSeconds ?? 0;
+        const uptime = `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m ${s % 60}s`;
+        const fetchedAt = serverStats._fetchedAt ? new Date(serverStats._fetchedAt).toLocaleTimeString() : null;
+        return (
+          <>
+            {fetchedAt && (
+              <p style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginBottom: '12px' }}>
+                Last refreshed: {fetchedAt}
+              </p>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', padding: '4px 0' }}>
+              {[
+                { label: 'Uptime', value: uptime },
+                { label: 'Active Games', value: num(serverStats.activeGames) },
+                { label: 'Game Timers', value: num(serverStats.gameTimers) },
+                { label: 'Disconnect Timeouts', value: num(serverStats.disconnectTimeouts) },
+                { label: 'Online Users', value: num(serverStats.onlineUsers) },
+                { label: 'RSS Memory', value: mb(serverStats.memory?.rssMB) },
+                { label: 'Heap Used', value: mb(serverStats.memory?.heapUsedMB) },
+                { label: 'Heap Total', value: mb(serverStats.memory?.heapTotalMB) },
+                { label: 'External', value: mb(serverStats.memory?.externalMB) },
+                { label: 'Array Buffers', value: mb(serverStats.memory?.arrayBuffersMB) },
+                { label: 'Node Version', value: serverStats.nodeVersion || '—' },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '14px 16px', border: '1px solid var(--border-color, #333)' }}>
+                  <div style={{ fontSize: '0.75em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>{label}</div>
+                  <div style={{ fontSize: '1.25em', fontWeight: 700, color: 'var(--text-primary, #fff)' }}>{value}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </>
+        );
+      })()}
     </div>
   );
 

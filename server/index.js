@@ -80,7 +80,7 @@ const MAX_LOGIN_ATTEMPTS = 10; // Allow 10 failed attempts before lockout
 const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail, sendNotificationSummaryEmail, verifyUnsubscribeToken } = require("./email-service");
 
 // Socket.io game handler
-const { initializeSocket, onlineUsers, reconcileOnlineUsers, getIO } = require("./game-socket");
+const { initializeSocket, activeGames: gsActiveGames, gameTimers: gsGameTimers, disconnectTimeouts: gsDisconnectTimeouts, onlineUsers, reconcileOnlineUsers, getIO } = require("./game-socket");
 
 //  Express
 
@@ -7934,14 +7934,13 @@ setInterval(cleanupOldNotifications, 6 * 60 * 60 * 1000);
 // ---------------------------------------------------------------------------
 app.get("/api/admin/memory-stats", authenticateAdmin, (req, res) => {
   try {
-    const gs = require("./game-socket");
     const mem = process.memoryUsage();
     res.json({
       uptimeSeconds: Math.round(process.uptime()),
-      activeGames: gs.activeGames ? gs.activeGames.size : 0,
-      gameTimers: gs.gameTimers ? gs.gameTimers.size : 0,
-      disconnectTimeouts: gs.disconnectTimeouts ? gs.disconnectTimeouts.size : 0,
-      onlineUsers: gs.onlineUsers ? gs.onlineUsers.size : 0,
+      activeGames: gsActiveGames ? gsActiveGames.size : 0,
+      gameTimers: gsGameTimers ? gsGameTimers.size : 0,
+      disconnectTimeouts: gsDisconnectTimeouts ? gsDisconnectTimeouts.size : 0,
+      onlineUsers: onlineUsers ? onlineUsers.size : 0,
       memory: {
         rssMB: +(mem.rss / 1024 / 1024).toFixed(1),
         heapUsedMB: +(mem.heapUsed / 1024 / 1024).toFixed(1),
