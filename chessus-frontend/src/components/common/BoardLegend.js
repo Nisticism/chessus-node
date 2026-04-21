@@ -33,7 +33,7 @@ const LABELS = {
     promotion: 'Promotion',
     range: 'Range Boost',
     control: 'Control',
-    special: 'Special',
+    special: 'Custom',
     custom: 'Custom',
   },
   short: {
@@ -51,7 +51,7 @@ const LABELS = {
     promotion: 'Promo Sq',
     range: 'Range Sq',
     control: 'Control Sq',
-    special: 'Special Sq',
+    special: 'Custom Sq',
     custom: 'Custom Sq',
   },
   descriptive: {
@@ -69,7 +69,7 @@ const LABELS = {
     promotion: 'Promotion',
     range: 'Range Boost',
     control: 'Control',
-    special: 'Special',
+    special: 'Custom',
     custom: 'Custom',
   },
 };

@@ -21,6 +21,11 @@ const userSockets = new Map(); // Maps userId to socket.id
 const onlineUsers = new Set(); // Set of online user IDs
 const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grace period)
 
+// Game-disconnect (forfeit) timers. Keyed by `${gameId}:${userId}`.
+// Value: { timeoutId, expiresAt, durationMs, paused, remainingMs, gameId, userId }
+const gameDisconnectTimers = new Map();
+function gdtKey(gameId, userId) { return `${gameId}:${userId}`; }
+
 /**
  * Reconcile the onlineUsers Set against actual active socket mappings.
  * Removes any userIds that no longer have a socket connection (e.g. due to
@@ -250,6 +255,8 @@ async function notifyPlayersOfGameOutcome(io, gameId, gameState, winnerId, reaso
 const _gameOverBroadcasted = new Set();
 function broadcastGameOver(io, gameId, gameState, payload) {
   const key = String(gameId);
+  // Always release any disconnect-forfeit timers tied to this game.
+  try { clearAllDisconnectForfeitTimersForGame(gameId); } catch (_) {}
   if (_gameOverBroadcasted.has(key)) {
     // Already broadcast for this game — emit silently, but skip notifications.
     try { io.to(`game-${gameId}`).emit('gameOver', payload); } catch (_) {}
@@ -266,6 +273,164 @@ function broadcastGameOver(io, gameId, gameState, payload) {
   }
   // Fire-and-forget; do not block the move handler
   notifyPlayersOfGameOutcome(io, gameId, gameState, payload?.winner, payload?.reason);
+}
+
+/**
+ * Disconnect-forfeit window in milliseconds, scaled by time control.
+ * timeControlMinutes: null/0/undefined = unlimited.
+ *   - unlimited or >= 60 min  -> 60s
+ *   - 30..59 min              -> 30s
+ *   - everything else         -> 15s
+ */
+function getDisconnectGraceMs(timeControlMinutes) {
+  const tc = Number(timeControlMinutes);
+  if (!tc || isNaN(tc) || tc <= 0) return 60_000;
+  if (tc >= 60) return 60_000;
+  if (tc >= 30) return 30_000;
+  return 15_000;
+}
+
+/**
+ * Start a disconnect-forfeit timer for a player who left an active game.
+ * If the player doesn't reconnect (or the opponent doesn't pause) before
+ * the timer fires, the opponent wins by disconnect.
+ */
+function startDisconnectForfeitTimer(io, gameId, userId, durationMs) {
+  const gameIdStr = String(gameId);
+  const key = gdtKey(gameIdStr, userId);
+  // Don't double-arm
+  if (gameDisconnectTimers.has(key)) return;
+
+  const gameState = activeGames.get(gameIdStr);
+  if (!gameState || gameState.status !== 'active') return;
+  // Skip bot games — there's no human opponent to award a win to on the bot side,
+  // and the human's own disconnect can be resumed by reload anyway.
+  if (gameState.botPlayer) return;
+
+  const expiresAt = Date.now() + durationMs;
+  const timeoutId = setTimeout(() => {
+    endGameByDisconnect(io, gameIdStr, userId).catch(err =>
+      console.error(`endGameByDisconnect error for game ${gameIdStr}:`, err)
+    );
+  }, durationMs);
+
+  gameDisconnectTimers.set(key, {
+    timeoutId,
+    expiresAt,
+    durationMs,
+    paused: false,
+    remainingMs: durationMs,
+    gameId: gameIdStr,
+    userId,
+  });
+
+  const player = gameState.players?.find(p => p.id === userId);
+  io.to(`game-${gameIdStr}`).emit('opponentDisconnected', {
+    gameId: gameIdStr,
+    userId,
+    username: player?.username || null,
+    durationMs,
+    expiresAt,
+    paused: false,
+  });
+}
+
+/**
+ * Cancel a disconnect-forfeit timer. Called when the player reconnects, when
+ * the game ends for any reason, or when the opponent pauses the timer.
+ */
+function clearDisconnectForfeitTimer(gameId, userId, { broadcast = false, io = null, reason = 'reconnected' } = {}) {
+  const gameIdStr = String(gameId);
+  const key = gdtKey(gameIdStr, userId);
+  const entry = gameDisconnectTimers.get(key);
+  if (!entry) return false;
+  if (entry.timeoutId) clearTimeout(entry.timeoutId);
+  gameDisconnectTimers.delete(key);
+  if (broadcast && io) {
+    io.to(`game-${gameIdStr}`).emit('opponentReconnected', {
+      gameId: gameIdStr,
+      userId,
+      reason,
+    });
+  }
+  return true;
+}
+
+/** Cancel all disconnect timers for a user across all games (e.g. on auth). */
+function clearAllDisconnectForfeitTimersForUser(io, userId) {
+  for (const [key, entry] of Array.from(gameDisconnectTimers.entries())) {
+    if (entry.userId === userId) {
+      clearDisconnectForfeitTimer(entry.gameId, entry.userId, { broadcast: true, io, reason: 'reconnected' });
+    }
+  }
+}
+
+/** Cancel all disconnect timers for a game (e.g. when the game ends). */
+function clearAllDisconnectForfeitTimersForGame(gameId) {
+  const gameIdStr = String(gameId);
+  for (const [key, entry] of Array.from(gameDisconnectTimers.entries())) {
+    if (entry.gameId === gameIdStr) {
+      if (entry.timeoutId) clearTimeout(entry.timeoutId);
+      gameDisconnectTimers.delete(key);
+    }
+  }
+}
+
+/**
+ * End a game because a player failed to reconnect in time. The remaining
+ * (still-connected) player wins by disconnect, with ELO updated if rated.
+ */
+async function endGameByDisconnect(io, gameId, disconnectedUserId) {
+  const gameIdStr = String(gameId);
+  const gameState = activeGames.get(gameIdStr);
+  // Always clean up the entry, even on early exit
+  const key = gdtKey(gameIdStr, disconnectedUserId);
+  gameDisconnectTimers.delete(key);
+
+  if (!gameState || gameState.status !== 'active') return;
+
+  const winner = gameState.players?.find(p => p.id !== disconnectedUserId);
+  if (!winner) return;
+
+  // Stop the move clock
+  stopGameTimer(gameIdStr);
+  // Drop any other disconnect timers for this game
+  clearAllDisconnectForfeitTimersForGame(gameIdStr);
+
+  gameState.status = 'completed';
+  gameState.winner = winner.id;
+  gameState.winReason = 'disconnect';
+
+  let eloChanges = null;
+  if (gameState.rated !== false && !gameState.botPlayer && winner.id && disconnectedUserId) {
+    try {
+      eloChanges = await updateEloRatings(winner.id, disconnectedUserId);
+    } catch (err) {
+      console.error('updateEloRatings (disconnect) failed:', err.message);
+    }
+  }
+
+  const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  try {
+    await db_pool.query(
+      `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+       pieces = ?, other_data = ? WHERE id = ?`,
+      [endTime, sanitizeWinnerId(winner.id), JSON.stringify(gameState.pieces),
+       buildOtherData(gameState, { winner: winner.id, reason: 'disconnect', eloChanges, disconnectedUserId }),
+       gameIdStr]
+    );
+  } catch (err) {
+    console.error('endGameByDisconnect db update failed:', err.message);
+  }
+
+  broadcastGameOver(io, gameIdStr, gameState, {
+    gameId: gameIdStr,
+    winner: winner.id,
+    reason: 'disconnect',
+    finalState: gameState,
+    eloChanges,
+    disconnectedUserId,
+  });
 }
 
 /**
@@ -727,6 +892,13 @@ function initializeSocket(server) {
             disconnectTimeouts.delete(userId);
             console.log(`Cancelled disconnect timeout for user ${username} (ID: ${userId}) - reconnected`);
           }
+
+          // Cancel any active game-disconnect-forfeit timers for this user
+          try {
+            clearAllDisconnectForfeitTimersForUser(io, userId);
+          } catch (err) {
+            console.error('Error clearing disconnect-forfeit timers on auth:', err.message);
+          }
           
           playerSockets.set(socket.id, { id: userId, username });
           userSockets.set(userId.toString(), socket.id);
@@ -794,6 +966,21 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error fetching ongoing games:", error);
         socket.emit("error", { message: "Failed to fetch ongoing games" });
+      }
+    });
+
+    // Get the current user's ongoing games against the computer
+    socket.on("getMyBotGames", async () => {
+      try {
+        const userId = socket.userId;
+        if (!userId) {
+          return socket.emit("myBotGamesList", []);
+        }
+        const botGames = await getMyBotGames(userId);
+        socket.emit("myBotGamesList", botGames);
+      } catch (error) {
+        console.error("Error fetching my bot games:", error);
+        socket.emit("error", { message: "Failed to fetch computer games" });
       }
     });
 
@@ -4504,12 +4691,100 @@ function initializeSocket(server) {
     socket.on("leaveGame", ({ gameId }) => {
       if (gameId) {
         socket.leave(`game-${gameId}`);
-        // Remove from spectators if applicable
-        const gameState = activeGames.get(gameId.toString());
-        if (gameState && gameState.spectators) {
-          gameState.spectators = gameState.spectators.filter(s => s.socketId !== socket.id);
-          io.to(`game-${gameId}`).emit("spectatorUpdate", { spectators: gameState.spectators.map(s => ({ id: s.id, username: s.username })) });
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+        if (gameState) {
+          // Remove from spectators if applicable
+          if (gameState.spectators) {
+            gameState.spectators = gameState.spectators.filter(s => s.socketId !== socket.id);
+            io.to(`game-${gameId}`).emit("spectatorUpdate", { spectators: gameState.spectators.map(s => ({ id: s.id, username: s.username })) });
+          }
+          // If the leaving user is a player in an active human-vs-human game,
+          // arm the disconnect-forfeit timer just like a real socket disconnect.
+          // The user still has a socket open (they're just on a different page),
+          // but they're no longer present in the game so opponents shouldn't be
+          // forced to wait indefinitely. Reopening the game cancels it.
+          try {
+            const userId = socket.userId;
+            if (
+              userId &&
+              gameState.status === 'active' &&
+              !gameState.botPlayer &&
+              gameState.players?.some(p => p.id === userId)
+            ) {
+              const durationMs = getDisconnectGraceMs(gameState.timeControl);
+              startDisconnectForfeitTimer(io, gameIdStr, userId, durationMs);
+            }
+          } catch (err) {
+            console.error('leaveGame: failed to arm disconnect timer:', err.message);
+          }
         }
+      }
+    });
+
+    // Opponent can pause the disconnect-forfeit timer to grant the disconnected
+    // player more time to come back. Only allowed by the *other* (still-connected)
+    // player in the game.
+    socket.on('pauseDisconnectTimer', ({ gameId }) => {
+      try {
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return;
+        const requesterId = socket.userId;
+        if (!requesterId) return;
+        // Find any disconnect timer for this game whose target is NOT the requester
+        for (const [key, entry] of gameDisconnectTimers) {
+          if (entry.gameId !== gameIdStr) continue;
+          if (entry.userId === requesterId) continue;
+          if (entry.paused) return;
+          if (entry.timeoutId) clearTimeout(entry.timeoutId);
+          entry.timeoutId = null;
+          entry.paused = true;
+          entry.remainingMs = Math.max(0, entry.expiresAt - Date.now());
+          io.to(`game-${gameIdStr}`).emit('disconnectTimerPaused', {
+            gameId: gameIdStr,
+            userId: entry.userId,
+            remainingMs: entry.remainingMs,
+          });
+          return;
+        }
+      } catch (err) {
+        console.error('pauseDisconnectTimer error:', err.message);
+      }
+    });
+
+    // Opponent can resume (restart) the disconnect-forfeit timer. The countdown
+    // starts fresh from the original full duration ("restart timer to win faster").
+    socket.on('resumeDisconnectTimer', ({ gameId }) => {
+      try {
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return;
+        const requesterId = socket.userId;
+        if (!requesterId) return;
+        for (const [key, entry] of gameDisconnectTimers) {
+          if (entry.gameId !== gameIdStr) continue;
+          if (entry.userId === requesterId) continue;
+          if (!entry.paused) return;
+          const durationMs = entry.durationMs;
+          entry.expiresAt = Date.now() + durationMs;
+          entry.remainingMs = durationMs;
+          entry.paused = false;
+          entry.timeoutId = setTimeout(() => {
+            endGameByDisconnect(io, gameIdStr, entry.userId).catch(err =>
+              console.error(`endGameByDisconnect error for game ${gameIdStr}:`, err)
+            );
+          }, durationMs);
+          io.to(`game-${gameIdStr}`).emit('disconnectTimerResumed', {
+            gameId: gameIdStr,
+            userId: entry.userId,
+            durationMs,
+            expiresAt: entry.expiresAt,
+          });
+          return;
+        }
+      } catch (err) {
+        console.error('resumeDisconnectTimer error:', err.message);
       }
     });
 
@@ -4517,7 +4792,14 @@ function initializeSocket(server) {
     socket.on("getGameState", async (data) => {
       const { gameId, userId } = data;
       let gameState = activeGames.get(gameId.toString());
-      
+
+      // Cancel any in-flight disconnect-forfeit timer for this user — they're
+      // back on the game page (e.g. after navigating away and returning).
+      const reconnectingUserId = userId || socket.userId;
+      if (reconnectingUserId) {
+        clearDisconnectForfeitTimer(gameId, reconnectingUserId, { broadcast: true, io, reason: 'reconnected' });
+      }
+
       if (gameState) {
         socket.join(`game-${gameId}`);
         socket.emit("gameState", gameState);
@@ -5392,6 +5674,21 @@ function initializeSocket(server) {
         // Clear socket mappings immediately
         userSockets.delete(userId.toString());
         playerSockets.delete(socket.id);
+
+        // Start a disconnect-forfeit timer for every active human-vs-human game
+        // this user is participating in. Skip bot games. Reconnecting (auth) cancels it.
+        try {
+          for (const [gameIdStr, gameState] of activeGames) {
+            if (!gameState || gameState.status !== 'active') continue;
+            if (gameState.botPlayer) continue;
+            const isPlayer = gameState.players?.some(p => p.id === userId);
+            if (!isPlayer) continue;
+            const durationMs = getDisconnectGraceMs(gameState.timeControl);
+            startDisconnectForfeitTimer(io, gameIdStr, userId, durationMs);
+          }
+        } catch (err) {
+          console.error('Error arming disconnect-forfeit timers:', err.message);
+        }
         
         // Set a timeout before removing from onlineUsers (5 second grace period)
         const disconnectTimeout = setTimeout(() => {
@@ -5474,13 +5771,23 @@ async function getOngoingGames() {
               g.is_correspondence, g.correspondence_days, g.other_data,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
-              GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids
+              GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
+              MAX(u.show_computer_games_publicly) as host_show_bot_public
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
        JOIN players p ON g.id = p.game_id
        JOIN users u ON p.user_id = u.id
        WHERE g.status IN ('active', 'ready') AND (g.allow_spectators = 1 OR g.allow_spectators IS NULL) AND (g.is_anonymous = 0 OR g.is_anonymous IS NULL)
-             AND (g.other_data IS NULL OR JSON_EXTRACT(g.other_data, '$.isBotGame') IS NULL OR JSON_EXTRACT(g.other_data, '$.isBotGame') = false)
+             AND (
+               g.other_data IS NULL
+               OR JSON_EXTRACT(g.other_data, '$.isBotGame') IS NULL
+               OR JSON_EXTRACT(g.other_data, '$.isBotGame') = false
+               OR EXISTS (
+                 SELECT 1 FROM players p2
+                 JOIN users u2 ON p2.user_id = u2.id
+                 WHERE p2.game_id = g.id AND u2.show_computer_games_publicly = 1
+               )
+             )
        GROUP BY g.id
        ORDER BY g.start_time DESC, g.created_at DESC`
     );
@@ -5504,6 +5811,53 @@ async function getOngoingGames() {
     });
   } catch (error) {
     console.error("Error getting ongoing games:", error);
+    return [];
+  }
+}
+
+/**
+ * Get a user's ongoing games against the computer (bot games).
+ */
+async function getMyBotGames(userId) {
+  try {
+    const [games] = await db_pool.query(
+      `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
+              g.allow_spectators, g.show_piece_helpers,
+              g.is_correspondence, g.correspondence_days, g.other_data,
+              gt.game_name, gt.board_width, gt.board_height,
+              GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
+              GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids
+       FROM games g
+       JOIN game_types gt ON g.game_type_id = gt.id
+       JOIN players p ON g.id = p.game_id
+       JOIN users u ON p.user_id = u.id
+       WHERE g.status IN ('active', 'ready')
+         AND JSON_EXTRACT(g.other_data, '$.isBotGame') = true
+         AND EXISTS (SELECT 1 FROM players p3 WHERE p3.game_id = g.id AND p3.user_id = ?)
+       GROUP BY g.id
+       ORDER BY g.start_time DESC, g.created_at DESC`,
+      [userId]
+    );
+    return games.map(g => {
+      let otherData = {};
+      try { otherData = JSON.parse(g.other_data || '{}'); } catch (e) {}
+      let playerNames = g.player_names;
+      if (otherData.isBotGame && otherData.botDifficulty) {
+        const botUsername = `Computer (${otherData.botDifficulty.charAt(0).toUpperCase() + otherData.botDifficulty.slice(1)})`;
+        playerNames = otherData.botPosition === 1
+          ? `${botUsername} vs ${g.player_names}`
+          : `${g.player_names} vs ${botUsername}`;
+      }
+      return {
+        ...g,
+        player_names: playerNames,
+        bot_difficulty: otherData.botDifficulty || null,
+        bot_position: otherData.botPosition || null,
+        player_ids: g.player_ids ? g.player_ids.split(',').map(id => parseInt(id)) : []
+      };
+    });
+  } catch (error) {
+    console.error("Error getting my bot games:", error);
     return [];
   }
 }
@@ -5624,7 +5978,18 @@ function startGameTimer(io, gameId) {
   // Clear any existing timer
   stopGameTimer(gameId);
   
-  // Start a new timer that ticks every second
+  // Anchor: track wall-clock time of last tick to deduct EXACT elapsed time
+  // (no integer-second rounding). Tick every 100ms for smooth countdown.
+  // Track which player was active at the last tick so we can reset the anchor
+  // whenever the active player changes — without this, a turn change that
+  // happens while the event loop is blocked (e.g. during the bot's minimax)
+  // would cause the next interval fire to deduct the entire blocked duration
+  // from the WRONG player.
+  const TICK_MS = 100;
+  let lastTickAt = Date.now();
+  let lastActivePlayerId = null;
+  let lastBroadcastAt = 0; // throttle timeUpdate broadcasts to ~1Hz
+
   const timer = setInterval(async () => {
     try {
     const currentGameState = activeGames.get(gameIdStr);
@@ -5640,17 +6005,25 @@ function startGameTimer(io, gameId) {
       return;
     }
     
-    // Decrement current player's time
+    const now = Date.now();
+    // If the active player changed since the last tick, OR the tick was
+    // delayed dramatically (event loop blocked), skip this iteration's
+    // deduction and re-anchor. This avoids charging the bot's thinking time
+    // to the user, and avoids charging a single huge chunk after any other
+    // long blocking operation.
+    if (currentPlayer.id !== lastActivePlayerId || (now - lastTickAt) > TICK_MS * 5) {
+      lastActivePlayerId = currentPlayer.id;
+      lastTickAt = now;
+      return;
+    }
+    const elapsedSec = (now - lastTickAt) / 1000;
+    lastTickAt = now;
+    
+    // Decrement current player's time using exact elapsed wall-clock time
     if (currentGameState.playerTimes[currentPlayer.id] !== null) {
       // Material clock multiplier: penalty speeds up, handicap slows down
       const clockMultiplier = getClockMultiplier(currentGameState, currentPlayer.id);
-      // Accumulate fractional seconds for smooth sub-second adjustments
-      if (!currentGameState._clockAccumulator) currentGameState._clockAccumulator = {};
-      if (!currentGameState._clockAccumulator[currentPlayer.id]) currentGameState._clockAccumulator[currentPlayer.id] = 0;
-      currentGameState._clockAccumulator[currentPlayer.id] += clockMultiplier;
-      const wholeSeconds = Math.floor(currentGameState._clockAccumulator[currentPlayer.id]);
-      currentGameState._clockAccumulator[currentPlayer.id] -= wholeSeconds;
-      currentGameState.playerTimes[currentPlayer.id] -= wholeSeconds;
+      currentGameState.playerTimes[currentPlayer.id] -= elapsedSec * clockMultiplier;
       
       // Check for timeout
       if (currentGameState.playerTimes[currentPlayer.id] <= 0) {
@@ -5699,19 +6072,35 @@ function startGameTimer(io, gameId) {
         }
       }
 
-      // Broadcast time update every second
-      io.to(`game-${gameId}`).emit("timeUpdate", {
-        gameId,
-        playerTimes: currentGameState.playerTimes,
-        currentTurn: currentGameState.currentTurn,
-        ...(clockMultipliers && Object.keys(clockMultipliers).length > 0 ? { clockMultipliers } : {})
-      });
+      // NOTE: We intentionally do NOT broadcast a periodic timeUpdate here.
+      // Periodic broadcasts cause visible "jumping" on the client because
+      // network latency makes each broadcast's payload slightly stale, and
+      // the client snaps backward each time. Instead, the authoritative
+      // playerTimes are sent only on every move (moveMade) and on game-end
+      // events. The client interpolates smoothly between move events.
+      // For human-vs-human games, broadcast a low-frequency timeUpdate (~1Hz)
+      // so the client's clock visibly ticks even if local interpolation drifts
+      // or misses a beat. Sub-second smoothing is still done client-side from
+      // these anchors. Bot games skip this — the event loop is blocked during
+      // minimax so we can't broadcast anyway, and the frontend's botThinking
+      // countdown handles the bot-side ticking.
+      if (!currentGameState.botPlayer && (now - lastBroadcastAt) >= 950) {
+        lastBroadcastAt = now;
+        io.to(`game-${gameId}`).emit("timeUpdate", {
+          gameId,
+          playerTimes: currentGameState.playerTimes,
+          currentTurn: currentGameState.currentTurn,
+          ...(clockMultipliers ? { clockMultipliers } : {})
+        });
+      } else {
+        void clockMultipliers;
+      }
     }
     } catch (err) {
       console.error(`Timer error for game ${gameId}:`, err);
       stopGameTimer(gameId);
     }
-  }, 1000);
+  }, TICK_MS);
   
   gameTimers.set(gameIdStr, timer);
 }
@@ -6051,6 +6440,20 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       currentPlayerId: currentPlayer.id
     });
     return { valid: false, reason: "Not your piece" };
+  }
+
+  // Custom-square first-move blockers (restrictFirstMoveToCustom / disableFirstMoveHere) are
+  // authoritative on the server: if these flags would prevent the destination from being a
+  // legal move, reject it here. We compare against the canonical list from
+  // getPossibleMovesForPiece so the client cannot bypass the rule.
+  if (gameState.gameType && shouldBlockFirstMoveAbilities(piece, gameState.gameType)) {
+    try {
+      const allowed = getPossibleMovesForPiece(originalPiece, pieces, gameState.gameType);
+      const isAllowed = allowed.some(m => m.x === to.x && m.y === to.y);
+      if (!isAllowed) {
+        return { valid: false, reason: "First-move ability not allowed from this square" };
+      }
+    } catch (e) { /* fall through to existing checks if move generation fails */ }
   }
 
   // Multi-tile board fit check
@@ -7642,6 +8045,9 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   const effectiveDx = dx;  // Left/right never flip
   const effectiveDy = isPlayer2 ? -dy : dy;
   
+  // Custom-square first-move blocker: gates first-N capture options below.
+  const blockFirstMove = shouldBlockFirstMoveAbilities(piece, gameType);
+
   // Parse additional captures from special_scenario_captures
   let additionalCaptures = {};
   if (piece.special_scenario_captures) {
@@ -7685,6 +8091,8 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       if (captureOption.availableForMoves && piece.moveCount >= captureOption.availableForMoves) continue;
       // Legacy support for firstMoveOnly
       if (captureOption.firstMoveOnly && piece.moveCount > 0) continue;
+      // Custom-square first-move blockers gate any first-N capture option entirely.
+      if (blockFirstMove && (captureOption.availableForMoves || captureOption.firstMoveOnly)) continue;
       
       // Calculate the capture value
       let maxDist = captureOption.value || 0;
@@ -8667,12 +9075,49 @@ function checkForCheck(gameState, playerPosition) {
 }
 
 /**
+ * Determine whether "first N move" abilities should be blocked for this piece this turn,
+ * based on custom-square flags in the game type:
+ *   - disableFirstMoveHere: if the piece's CURRENT square is a custom square with this flag,
+ *     all firstMoveOnly / availableForMoves abilities are unavailable.
+ *   - restrictFirstMoveToCustom: if ANY custom square in the game has this flag, then
+ *     firstMoveOnly / availableForMoves abilities are only usable when the piece is standing
+ *     on a custom square that has this flag set.
+ *
+ * Returns true when first-N-move abilities should be blocked.
+ */
+function shouldBlockFirstMoveAbilities(piece, gameType) {
+  if (!piece || !gameType || !gameType.special_squares_string) return false;
+  let customSquares;
+  try {
+    customSquares = typeof gameType.special_squares_string === 'string'
+      ? JSON.parse(gameType.special_squares_string)
+      : gameType.special_squares_string;
+  } catch (e) { return false; }
+  if (!customSquares || typeof customSquares !== 'object') return false;
+
+  const currentKey = `${piece.y},${piece.x}`;
+  const currentCfg = customSquares[currentKey];
+  if (currentCfg && currentCfg.disableFirstMoveHere) return true;
+
+  let restrictExists = false;
+  let onAllowedSquare = false;
+  for (const [key, cfg] of Object.entries(customSquares)) {
+    if (cfg && cfg.restrictFirstMoveToCustom) {
+      restrictExists = true;
+      if (key === currentKey) onAllowedSquare = true;
+    }
+  }
+  if (restrictExists && !onAllowedSquare) return true;
+
+  return false;
+}
+
+/**
  * Apply range square bonus: +1 to all non-infinite, non-zero, non-custom movement/capture/attack values.
  * Returns a shallow copy of the piece with boosted stats if on a range square, or the original piece if not.
  */
 function applyRangeSquareBonus(piece, gameType) {
   if (!gameType) return piece;
-
   // Combine actual range squares with any "custom" squares that are flagged
   // to act as range squares (asRange === true).
   let rangeSquares = {};
@@ -8803,9 +9248,13 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
     piece.moveCount = piece.hasMoved ? 1 : 0;
   }
   
-  // Check if piece has global first_move_only restriction and has already moved
-  const hasGlobalFirstMoveOnlyRestriction = piece.first_move_only && piece.moveCount > 0;
-  const hasGlobalFirstMoveOnlyCaptureRestriction = piece.first_move_only_capture && piece.moveCount > 0;
+  // Check if piece has global first_move_only restriction and has already moved.
+  // Custom-square first-move blockers also disable global first_move_only abilities,
+  // but ONLY when the piece actually has first_move_only set — otherwise we'd suppress
+  // every directional move on the board.
+  const blockFirstMove = shouldBlockFirstMoveAbilities(piece, gameType);
+  const hasGlobalFirstMoveOnlyRestriction = !!piece.first_move_only && (piece.moveCount > 0 || blockFirstMove);
+  const hasGlobalFirstMoveOnlyCaptureRestriction = !!piece.first_move_only_capture && (piece.moveCount > 0 || blockFirstMove);
   
   // Parse additional movements from special_scenario_moves
   let additionalMovements = {};
@@ -8891,6 +9340,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
     if (directionName && piece[`${directionName}_available_for`]) {
       const availableForMoves = piece[`${directionName}_available_for`];
       if (piece.moveCount >= availableForMoves) return;
+      // Custom-square first-move blockers gate direction-specific first-N abilities too
+      if (blockFirstMove) return;
     }
     
     // Determine if hopping is allowed for this directional move
@@ -8990,6 +9441,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       if (movementOption.availableForMoves && piece.moveCount >= movementOption.availableForMoves) continue;
       // Legacy support for firstMoveOnly
       if (movementOption.firstMoveOnly && piece.moveCount > 0) continue;
+      // Custom-square first-move blockers gate any first-N movement option entirely.
+      if (blockFirstMove && (movementOption.availableForMoves || movementOption.firstMoveOnly)) continue;
       
       // Calculate the movement value
       let maxDist = movementOption.value || 0;
@@ -10261,14 +10714,12 @@ async function processBotTurn(io, gameId, gameState) {
           const aiElapsedSec = aiElapsedMs / 1000;
           // Apply clock multiplier during AI thinking time (penalty = faster drain, handicap = slower)
           const botMultiplier = getClockMultiplier(gameState, botPlayer.id);
-          const adjustedElapsed = Math.floor(aiElapsedSec * botMultiplier);
+          // Use exact (sub-second) elapsed time so the bot's clock doesn't appear to round up
+          const adjustedElapsed = aiElapsedSec * botMultiplier;
           gameState.playerTimes[botPlayer.id] = Math.max(0, botTimeBeforeAI - adjustedElapsed);
-          // Emit corrected time to clients
-          io.to(`game-${gameId}`).emit("timeUpdate", {
-            gameId,
-            playerTimes: gameState.playerTimes,
-            currentTurn: gameState.currentTurn
-          });
+          // The corrected playerTimes will be carried on the bot's upcoming
+          // moveMade event below — no separate timeUpdate is needed (and
+          // emitting one here causes client-side clock jitter).
         }
       } catch (aiError) {
         console.error(`[Bot] AI engine error in game ${gameId}:`, aiError);

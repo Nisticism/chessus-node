@@ -130,7 +130,9 @@ const LiveGame = () => {
     clearPremove: sendClearPremove,
     promotePiece,
     onGameEvent,
-    spectateGame
+    spectateGame,
+    pauseDisconnectTimer,
+    resumeDisconnectTimer
   } = useSocket();
 
   const [gameState, setGameState] = useState(null);
@@ -156,7 +158,7 @@ const LiveGame = () => {
   const [regenAnimations, setRegenAnimations] = useState([]); // HP/AD: floating regen numbers [{id, pieceId, healed, x, y}]
   const [burnAnimations, setBurnAnimations] = useState([]); // DOT: floating burn damage numbers [{id, pieceId, damage, x, y}]
   const [showMovableIndicators, setShowMovableIndicators] = useState(false);
-  const [showPromotionSquares, setShowPromotionSquares] = useState(false);
+  const [showAllSpecialSquares, setShowAllSpecialSquares] = useState(false);
   const [showCastlingInfo, setShowCastlingInfo] = useState(false);
   const [showBoardNotation, setShowBoardNotation] = useState(true);
   const [showBadges, setShowBadges] = useState(true);
@@ -182,6 +184,10 @@ const LiveGame = () => {
   const serverTimesRef = useRef({}); // Last raw server playerTimes
   const activeClockPlayerRef = useRef(null); // Which player's clock is ticking
 
+  // Disconnect-forfeit banner: { userId, username, durationMs, expiresAt, paused, remainingMs }
+  const [disconnectInfo, setDisconnectInfo] = useState(null);
+  const [disconnectNow, setDisconnectNow] = useState(Date.now()); // tick for live countdown
+
   // Turn confirmation for correspondence games
   const [turnConfirmEnabled, setTurnConfirmEnabled] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -197,6 +203,14 @@ const LiveGame = () => {
 
   const boardAnimationsEnabled = typeof window !== 'undefined' && localStorage.getItem('boardAnimations') !== 'false';
   const pieceShadowEnabled = typeof window !== 'undefined' && localStorage.getItem('pieceShadow') === 'true';
+  const persistLastMoveHighlight = typeof window !== 'undefined' && localStorage.getItem('persistLastMoveHighlight') !== 'false';
+
+  // Track previous lastMove so we can fade out the prior move's highlight for ~1s
+  // after a new move is made.
+  const [fadingLastMoves, setFadingLastMoves] = useState([]);
+  const prevLastMoveSigRef = useRef(null);
+  const prevLastMovesRef = useRef([]);
+  const fadeTimeoutRef = useRef(null);
 
   const showIllegalMoveWarning = useCallback((message, duration = 3000) => {
     setMoveError(message);
@@ -362,6 +376,50 @@ const LiveGame = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [ghostMoveIndex, gameState?.moveHistory]);
 
+  // Track lastMove changes to fade out the previous move's highlight for ~1s.
+  // Only active in non-ghost mode (live play). User-toggleable via preferences.
+  useEffect(() => {
+    if (!persistLastMoveHighlight) return;
+    if (ghostMoveIndex !== null) return;
+    const history = gameState?.moveHistory || [];
+    if (history.length === 0) return;
+    const lastIdx = history.length - 1;
+    const last = history[lastIdx];
+    const sig = `${lastIdx}:${last?.pieceId}:${last?.to?.x},${last?.to?.y}`;
+    if (prevLastMoveSigRef.current === sig) return;
+    // New last-move detected — snapshot the previous lastMoves as fading
+    if (prevLastMovesRef.current && prevLastMovesRef.current.length > 0) {
+      setFadingLastMoves(prevLastMovesRef.current);
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+      fadeTimeoutRef.current = setTimeout(() => setFadingLastMoves([]), 1000);
+    }
+    // Compute current lastMoves (including multi-action turn pieces) for next snapshot
+    const actionsPerTurn = gameState?.gameType?.actions_per_turn || 1;
+    const moves = [];
+    if (actionsPerTurn <= 1) {
+      moves.push(last);
+    } else {
+      const turnPosition = last?.position;
+      if (turnPosition != null) {
+        for (let i = lastIdx; i >= 0 && i > lastIdx - actionsPerTurn; i--) {
+          if (history[i].position !== turnPosition) break;
+          moves.push(history[i]);
+        }
+      } else {
+        moves.push(last);
+      }
+    }
+    prevLastMovesRef.current = moves;
+    prevLastMoveSigRef.current = sig;
+  }, [gameState?.moveHistory, gameState?.gameType?.actions_per_turn, ghostMoveIndex, persistLastMoveHighlight]);
+
+  // Cleanup any pending fade timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+    };
+  }, []);
+
   // Load game state on mount
   useEffect(() => {
     const loadGame = async () => {
@@ -380,7 +438,19 @@ const LiveGame = () => {
         }
         clearOptimisticMoveSnapshot();
         setGameState(state);
-        
+
+        // Anchor the local clock interpolation immediately so the displayed clock
+        // ticks down smoothly from the moment the game loads (without waiting for
+        // the first moveMade or botThinking event).
+        if (state?.playerTimes) {
+          serverTimesRef.current = { ...state.playerTimes };
+          lastServerTickRef.current = Date.now();
+          if (state.currentTurn != null && Array.isArray(state.players)) {
+            const cp = state.players.find(p => p.position === state.currentTurn);
+            activeClockPlayerRef.current = cp?.id ?? null;
+          }
+        }
+
         // Capture initial pieces for ghost board replay
         if (state.initialPieces) {
           initialPiecesRef.current = state.initialPieces;
@@ -447,32 +517,42 @@ const LiveGame = () => {
     };
   }, [socket, gameId]);
 
-  // Client-side countdown for bot's clock while thinking
-  // (server event loop is blocked during AI computation so timer ticks don't emit)
+  // Re-anchor the local clock interpolation when the bot starts thinking so the
+  // bot's clock keeps draining smoothly during the AI computation (the server
+  // event loop is blocked during minimax and can't tick). Once the bot finishes,
+  // moveMade re-anchors with the authoritative bot time.
   useEffect(() => {
     if (!botThinking || !gameState?.botPlayer || !gameState?.playerTimes) return;
     const botId = gameState.botPlayer.id || 'bot';
     if (gameState.playerTimes[botId] == null) return;
-    const multiplier = gameState?.clockMultipliers?.[botId] || 1;
-    
-    const interval = setInterval(() => {
-      setGameState(prev => {
-        if (!prev?.playerTimes || prev.playerTimes[botId] == null) return prev;
-        const newTime = Math.max(0, prev.playerTimes[botId] - multiplier);
-        // Also update server refs so the interpolation effect picks up the new base
-        // (otherwise interpolation overwrites displayTimes with stale serverTimesRef)
-        const updatedTimes = { ...prev.playerTimes, [botId]: newTime };
-        serverTimesRef.current = updatedTimes;
-        lastServerTickRef.current = Date.now();
-        return {
-          ...prev,
-          playerTimes: updatedTimes
-        };
-      });
-    }, 1000);
-    
-    return () => clearInterval(interval);
-  }, [botThinking, gameState?.botPlayer, gameState?.playerTimes, gameState?.clockMultipliers]);
+    serverTimesRef.current = { ...gameState.playerTimes };
+    lastServerTickRef.current = Date.now();
+    activeClockPlayerRef.current = botId;
+  }, [botThinking, gameState?.botPlayer, gameState?.playerTimes]);
+
+  // Defensive re-anchor: any time the authoritative server-side currentTurn
+  // changes, make sure the interpolation refs reflect the new active player.
+  // This guards against initial load races and any state path that updates
+  // gameState without going through the moveMade re-anchor block.
+  useEffect(() => {
+    if (gameState?.status !== 'active') return;
+    if (!gameState?.playerTimes || !Array.isArray(gameState?.players)) return;
+    if (gameState.currentTurn == null) return;
+    const cp = gameState.players.find(p => p.position === gameState.currentTurn);
+    const newActiveId = cp?.id ?? null;
+    if (newActiveId == null) return;
+    if (activeClockPlayerRef.current !== newActiveId) {
+      // Active player changed (or never set) — re-anchor with the latest
+      // server-authoritative times so we drain the correct player's clock.
+      serverTimesRef.current = { ...gameState.playerTimes };
+      lastServerTickRef.current = Date.now();
+      activeClockPlayerRef.current = newActiveId;
+    } else if (lastServerTickRef.current == null) {
+      // First time we see playerTimes — anchor without changing active player.
+      serverTimesRef.current = { ...gameState.playerTimes };
+      lastServerTickRef.current = Date.now();
+    }
+  }, [gameState?.status, gameState?.currentTurn, gameState?.playerTimes, gameState?.players]);
 
   // Subscribe to game events
   useEffect(() => {
@@ -486,6 +566,22 @@ const LiveGame = () => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
         clearOptimisticMoveSnapshot();
         setBotThinking(false);
+
+        // Re-anchor the local clock interpolation to the new server-authoritative times so
+        // the displayed clock doesn't "jump" the next time a timeUpdate arrives. Without
+        // this re-anchor, the interpolation keeps subtracting elapsed time from the OLD
+        // active clock player's stale times, then snaps when timeUpdate finally fires.
+        if (newState?.playerTimes) {
+          serverTimesRef.current = newState.playerTimes;
+          lastServerTickRef.current = Date.now();
+          if (newState.currentTurn != null) {
+            const playersList = newState.players || gameState?.players;
+            if (playersList) {
+              const nextPlayer = playersList.find(p => p.position === newState.currentTurn);
+              activeClockPlayerRef.current = nextPlayer?.id ?? null;
+            }
+          }
+        }
         
         setGameState(prev => {
           // Ensure allowPremoves is set
@@ -676,6 +772,27 @@ const LiveGame = () => {
       }
     });
 
+    const unsubscribeOpponentDisconnected = onGameEvent('opponentDisconnected', ({ gameId: gid, userId: uid, username, durationMs, expiresAt, paused }) => {
+      if (parseInt(gid) !== parseInt(gameId)) return;
+      // Only show banner if the disconnected user is NOT the current viewer.
+      if (currentUser && parseInt(uid) === parseInt(currentUser.id)) return;
+      setDisconnectInfo({ userId: uid, username: username || 'Opponent', durationMs, expiresAt, paused: !!paused, remainingMs: durationMs });
+    });
+
+    const unsubscribeOpponentReconnected = onGameEvent('opponentReconnected', ({ gameId: gid, userId: uid }) => {
+      if (parseInt(gid) !== parseInt(gameId)) return;
+      setDisconnectInfo(prev => (prev && prev.userId === uid ? null : prev));
+    });
+
+    const unsubscribeDisconnectPaused = onGameEvent('disconnectTimerPaused', ({ gameId: gid, userId: uid, remainingMs }) => {
+      if (parseInt(gid) !== parseInt(gameId)) return;
+      setDisconnectInfo(prev => (prev && prev.userId === uid ? { ...prev, paused: true, remainingMs } : prev));
+    });
+
+    const unsubscribeDisconnectResumed = onGameEvent('disconnectTimerResumed', ({ gameId: gid, userId: uid, durationMs, expiresAt }) => {
+      if (parseInt(gid) !== parseInt(gameId)) return;
+      setDisconnectInfo(prev => (prev && prev.userId === uid ? { ...prev, paused: false, durationMs, expiresAt, remainingMs: durationMs } : prev));
+    });
     const unsubscribePlayerJoined = onGameEvent("playerJoined", ({ gameId: joinedGameId, gameState: newState }) => {
       if (parseInt(joinedGameId) === parseInt(gameId)) {
         clearOptimisticMoveSnapshot();
@@ -951,6 +1068,10 @@ const LiveGame = () => {
       unsubscribeGameState();
       unsubscribeError();
       unsubscribeTimeUpdate();
+      unsubscribeOpponentDisconnected();
+      unsubscribeOpponentReconnected();
+      unsubscribeDisconnectPaused();
+      unsubscribeDisconnectResumed();
       unsubscribePremoveSet();
       unsubscribePremoveCancelled();
       unsubscribePremoveExecuted();
@@ -1042,6 +1163,14 @@ const LiveGame = () => {
     if (displayTimes[playerId] !== undefined) return displayTimes[playerId];
     return gameState?.playerTimes?.[playerId];
   }, [displayTimes, gameState?.playerTimes]);
+
+  // Disconnect-forfeit live countdown tick (only when banner visible and not paused)
+  useEffect(() => {
+    if (!disconnectInfo || disconnectInfo.paused) return;
+    setDisconnectNow(Date.now());
+    const id = setInterval(() => setDisconnectNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [disconnectInfo]);
 
   // Format correspondence days remaining
   const formatCorrespondenceTime = (isCurrentTurnPlayer) => {
@@ -1958,6 +2087,32 @@ const LiveGame = () => {
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
 
+    // Determine whether this piece's first-move-only abilities are blocked because of
+    // custom-square configuration:
+    //   - "Disable first-move abilities here" (disableFirstMoveHere) on the piece's CURRENT square
+    //   - "Restrict first-move to these squares" (restrictFirstMoveToCustom) set somewhere on the
+    //      board, with the piece NOT currently on one of those squares.
+    // When true, any move tagged isFirstMoveOnly should be filtered out (highlights match the
+    // server-side rules in shouldBlockFirstMoveAbilities).
+    const customSquareMap = specialSquares?.special || {};
+    let blockFirstMove = false;
+    {
+      const currentCfg = customSquareMap[`${piece.y},${piece.x}`];
+      if (currentCfg && currentCfg.disableFirstMoveHere) {
+        blockFirstMove = true;
+      } else {
+        let restrictExists = false;
+        let onAllowed = false;
+        for (const [key, cfg] of Object.entries(customSquareMap)) {
+          if (cfg && cfg.restrictFirstMoveToCustom) {
+            restrictExists = true;
+            if (key === `${piece.y},${piece.x}`) onAllowed = true;
+          }
+        }
+        if (restrictExists && !onAllowed) blockFirstMove = true;
+      }
+    }
+
     for (let toY = 0; toY < boardHeight; toY++) {
       for (let toX = 0; toX < boardWidth; toX++) {
         // Skip current position
@@ -2259,6 +2414,12 @@ const LiveGame = () => {
           
           // If this move requires first moves, check if the piece has moved too many times
           if (firstMovesRequired > 0) {
+            // Custom-square first-move blockers (restrictFirstMoveToCustom on another square,
+            // or disableFirstMoveHere on the piece's current square) gate first-move-only moves
+            // entirely regardless of moveCount.
+            if (blockFirstMove) {
+              continue;
+            }
             const pieceMovesCount = gameState?.moveHistory?.filter(move => move.pieceId === piece.id).length || 0;
             if (pieceMovesCount >= firstMovesRequired) {
               continue;
@@ -2453,7 +2614,7 @@ const LiveGame = () => {
     }
     
     return moves;
-  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep, gameState, currentPlayer, wouldMoveResolveCheck, applyRangeSquareBonus]);
+  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep, gameState, currentPlayer, wouldMoveResolveCheck, applyRangeSquareBonus, specialSquares]);
 
   // Handle square click
   /* eslint-disable react-hooks/exhaustive-deps */
@@ -3468,19 +3629,23 @@ const LiveGame = () => {
     // The modal will stay until a selection is made
   }, []);
 
-  // Helper to get special square type at a position
+  // Helper to get special square type at a position.
+  // Gated behind the global "Show all special squares" toggle so live games are not
+  // visually noisy by default — players opt in to see promotion / range / control / custom squares.
   const getSpecialSquareType = useCallback((row, col) => {
+    if (!showAllSpecialSquares) return null;
     const key = `${row},${col}`;
-    if (showPromotionSquares && specialSquares.promotion[key]) return 'promotion';
+    if (specialSquares.promotion[key]) return 'promotion';
     if (specialSquares.range[key]) return 'range';
     if (specialSquares.control[key]) return 'control';
     if (specialSquares.special[key]) return 'special';
     return null;
-  }, [specialSquares, showPromotionSquares]);
+  }, [specialSquares, showAllSpecialSquares]);
 
-  // Check if there are any special squares defined (excluding promotion which has its own toggle)
+  // True when this game has ANY special squares of ANY type defined.
   const hasSpecialSquares = useMemo(() => {
-    return Object.keys(specialSquares.range).length > 0 ||
+    return Object.keys(specialSquares.promotion).length > 0 ||
+           Object.keys(specialSquares.range).length > 0 ||
            Object.keys(specialSquares.control).length > 0 ||
            Object.keys(specialSquares.special).length > 0;
   }, [specialSquares]);
@@ -3691,6 +3856,20 @@ const LiveGame = () => {
           return lm.to && gameX >= lm.to.x && gameX < lm.to.x + lmpw
             && gameY >= lm.to.y && gameY < lm.to.y + lmph;
         });
+        // Fading previous-move highlight (persists ~1s after a new move so the prior
+        // move's squares fade out instead of disappearing instantly)
+        const isFadingLastMoveFrom = !isLastMoveFrom && !isLastMoveTo && fadingLastMoves.some(lm => {
+          const lmpw = lm.piece_width || 1;
+          const lmph = lm.piece_height || 1;
+          return lm.from && gameX >= lm.from.x && gameX < lm.from.x + lmpw
+            && gameY >= lm.from.y && gameY < lm.from.y + lmph;
+        });
+        const isFadingLastMoveTo = !isLastMoveFrom && !isLastMoveTo && fadingLastMoves.some(lm => {
+          const lmpw = lm.piece_width || 1;
+          const lmph = lm.piece_height || 1;
+          return lm.to && gameX >= lm.to.x && gameX < lm.to.x + lmpw
+            && gameY >= lm.to.y && gameY < lm.to.y + lmph;
+        });
         
         // Check if this piece can move (only shown when it's your turn)
         const canMove = piece && movablePieceIds.has(piece.id);
@@ -3764,6 +3943,8 @@ const LiveGame = () => {
               ${isRangedSelectedSource ? styles["selected"] : ''}
               ${isLastMoveFrom ? (isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]) : ''}
               ${isLastMoveTo ? styles["last-move-to"] : ''}
+              ${isFadingLastMoveFrom ? `${isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]} ${styles["last-move-fading"]}` : ''}
+              ${isFadingLastMoveTo ? `${styles["last-move-to"]} ${styles["last-move-fading"]}` : ''}
               ${canMove ? styles["can-move"] : ''}
               ${isInCheck ? styles["in-check"] : ''}
               ${isPremoveFrom || isPremoveTo ? styles["premove"] : ''}
@@ -3788,11 +3969,12 @@ const LiveGame = () => {
             {((isRangedMove && rangedMove?.isCapture) || (isRangedHover && hoveredRangedMove?.isCapture) || ((isRangedDragTarget || isRangedSelectedTarget) && piece)) && (
               <span className={styles["ranged-icon"]}>💥</span>
             )}
-            {/* Special square indicator */}
-            {specialSquareType && specialSquareType !== 'control' && (
+            {/* Special square indicator (letter overlay) */}
+            {specialSquareType && (
               <div className={`${styles["special-square-indicator"]} ${styles[specialSquareType]}`}>
                 {specialSquareType === 'promotion' && 'P'}
                 {specialSquareType === 'range' && 'R'}
+                {specialSquareType === 'control' && 'C'}
                 {specialSquareType === 'special' && (() => {
                   const cfg = specialSquares.special[`${gameY},${gameX}`] || {};
                   const parts = [];
@@ -4208,7 +4390,7 @@ const LiveGame = () => {
           <div className={`${styles["game-status"]} ${styles[gameState.status]}`}>
             {gameState.status === 'active' ? 'In Progress' : 
              gameState.status === 'completed' ? 'Game Over' : 
-             gameState.status === 'ready' ? (gameState.botPlayer ? 'vs Computer' : 'Starting...') : 
+             gameState.status === 'ready' ? (gameState.botPlayer ? 'vs Computer' : 'In Progress') : 
              gameState.status === 'waiting' ? 'Waiting for Opponent' : gameState.status}
           </div>
         </div>
@@ -4257,6 +4439,58 @@ const LiveGame = () => {
           </Link>
         </div>
       </div>
+
+      {/* Disconnect-forfeit banner — placed at the top so it's always visible */}
+      {disconnectInfo && (() => {
+        const remainingMs = disconnectInfo.paused
+          ? disconnectInfo.remainingMs
+          : Math.max(0, disconnectInfo.expiresAt - disconnectNow);
+        const remainingSecs = Math.ceil(remainingMs / 1000);
+        return (
+          <div
+            style={{
+              background: '#b91c1c',
+              color: '#fff',
+              padding: '10px 14px',
+              borderRadius: 6,
+              margin: '0 0 12px 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 10,
+              fontWeight: 600
+            }}
+          >
+            <span>
+              {disconnectInfo.username} disconnected.{' '}
+              {disconnectInfo.paused
+                ? <>Timer paused.</>
+                : <>You win in <strong>{remainingSecs}s</strong>.</>
+              }
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {disconnectInfo.paused ? (
+                <button
+                  type="button"
+                  onClick={() => resumeDisconnectTimer && resumeDisconnectTimer(gameId)}
+                  style={{ background: '#fff', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
+                >
+                  Resume
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => pauseDisconnectTimer && pauseDisconnectTimer(gameId)}
+                  style={{ background: '#fff', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
+                >
+                  Pause
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className={styles["game-layout"]}>
         {/* Top Clock Row - Only visible on small screens */}
@@ -4601,14 +4835,14 @@ const LiveGame = () => {
                 <span className={styles["toggle-slider"]} />
               </div>
             </label>
-            {Object.keys(specialSquares.promotion).length > 0 && (
+            {hasSpecialSquares && (
               <label className={styles["option-toggle"]}>
-                <span>Show promotion squares</span>
+                <span>Show all special squares</span>
                 <div className={styles["toggle-switch"]}>
                   <input
                     type="checkbox"
-                    checked={showPromotionSquares}
-                    onChange={(e) => setShowPromotionSquares(e.target.checked)}
+                    checked={showAllSpecialSquares}
+                    onChange={(e) => setShowAllSpecialSquares(e.target.checked)}
                   />
                   <span className={styles["toggle-slider"]} />
                 </div>
@@ -4760,9 +4994,9 @@ const LiveGame = () => {
             showRanged={false}
             showHopCapture={false}
             specialSquares={{
+              promotion: Object.keys(specialSquares.promotion).length > 0,
               range: Object.keys(specialSquares.range).length > 0,
               control: Object.keys(specialSquares.control).length > 0,
-              special: Object.keys(specialSquares.special).length > 0,
             }}
           />
           
@@ -5107,14 +5341,14 @@ const LiveGame = () => {
               <span className={styles["toggle-slider"]} />
             </div>
           </label>
-          {Object.keys(specialSquares.promotion).length > 0 && (
+          {hasSpecialSquares && (
             <label className={styles["option-toggle"]}>
-              <span>Show promotion squares</span>
+              <span>Show all special squares</span>
               <div className={styles["toggle-switch"]}>
                 <input
                   type="checkbox"
-                  checked={showPromotionSquares}
-                  onChange={(e) => setShowPromotionSquares(e.target.checked)}
+                  checked={showAllSpecialSquares}
+                  onChange={(e) => setShowAllSpecialSquares(e.target.checked)}
                 />
                 <span className={styles["toggle-slider"]} />
               </div>
@@ -5291,6 +5525,7 @@ const LiveGame = () => {
                gameOverData.reason === 'agreement' ? 'By Agreement' :
                gameOverData.reason === 'resignation' ? 'By Resignation' :
                gameOverData.reason === 'timeout' ? 'By Timeout' :
+               gameOverData.reason === 'disconnect' ? 'By Disconnect' :
                gameOverData.reason === 'piece_count' ? 'By Piece Count' :
                gameOverData.reason === 'equal_piece_count' ? 'Equal Piece Count - Draw' :
                gameOverData.reason === 'promotion' ? 'By Promotion' :

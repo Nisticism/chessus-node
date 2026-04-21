@@ -4,6 +4,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import {
   SET_LOBBY_OPEN_GAMES,
   SET_LOBBY_ONGOING_GAMES,
+  SET_LOBBY_MY_BOT_GAMES,
   SET_LOBBY_PRIVATE_GAMES,
   ADD_LOBBY_OPEN_GAME,
   REMOVE_LOBBY_OPEN_GAME,
@@ -75,6 +76,10 @@ export const SocketProvider = ({ children }) => {
 
     newSocket.on('ongoingGamesList', (games) => {
       dispatchRef.current({ type: SET_LOBBY_ONGOING_GAMES, payload: games });
+    });
+
+    newSocket.on('myBotGamesList', (games) => {
+      dispatchRef.current({ type: SET_LOBBY_MY_BOT_GAMES, payload: games });
     });
 
     newSocket.on('privateGamesList', (games) => {
@@ -153,6 +158,13 @@ export const SocketProvider = ({ children }) => {
   const fetchOngoingGames = useCallback(() => {
     if (socket && connected) {
       socket.emit('getOngoingGames');
+    }
+  }, [socket, connected]);
+
+  // Fetch the current user's ongoing games against the computer
+  const fetchMyBotGames = useCallback(() => {
+    if (socket && connected) {
+      socket.emit('getMyBotGames');
     }
   }, [socket, connected]);
 
@@ -432,6 +444,18 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected]);
 
+  // Pause the opponent's disconnect-forfeit timer (give them more time)
+  const pauseDisconnectTimer = useCallback((gameId) => {
+    if (!socket || !connected) return;
+    socket.emit('pauseDisconnectTimer', { gameId });
+  }, [socket, connected]);
+
+  // Resume (restart) the opponent's disconnect-forfeit timer
+  const resumeDisconnectTimer = useCallback((gameId) => {
+    if (!socket || !connected) return;
+    socket.emit('resumeDisconnectTimer', { gameId });
+  }, [socket, connected]);
+
   // Cancel a waiting game
   const cancelGame = useCallback((gameId) => {
     if (!socket || !connected) {
@@ -520,6 +544,7 @@ export const SocketProvider = ({ children }) => {
     fetchOpenGames,
     fetchOngoingGames,
     fetchPrivateGames,
+    fetchMyBotGames,
     createGame,
     createAnonymousGame,
     joinGame,
@@ -535,7 +560,9 @@ export const SocketProvider = ({ children }) => {
     setPremove,
     clearPremove,
     promotePiece,
-    onGameEvent
+    onGameEvent,
+    pauseDisconnectTimer,
+    resumeDisconnectTimer
   };
 
   return (
