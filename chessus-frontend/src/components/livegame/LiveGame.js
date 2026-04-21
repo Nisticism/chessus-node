@@ -4996,7 +4996,7 @@ const LiveGame = () => {
         </div>
       )}
 
-      {/* Special Squares Legend Row - below board and clocks */
+      {/* Special Squares Legend Row - below board and clocks */}
       {hasSpecialSquares && (
         <div className={styles["layout-row-legend"]}>
           {showAllSpecialSquares && (
