@@ -4988,19 +4988,21 @@ const LiveGame = () => {
       {/* Special Squares Legend Row - below board and clocks */}
       {hasSpecialSquares && (
         <div className={styles["layout-row-legend"]}>
-          <BoardLegend
-            showMove={false}
-            showFirstMove={false}
-            showAttack={false}
-            showFirstAttack={false}
-            showRanged={false}
-            showHopCapture={false}
-            specialSquares={{
-              promotion: Object.keys(specialSquares.promotion).length > 0,
-              range: Object.keys(specialSquares.range).length > 0,
-              control: Object.keys(specialSquares.control).length > 0,
-            }}
-          />
+          {showAllSpecialSquares && (
+            <BoardLegend
+              showMove={false}
+              showFirstMove={false}
+              showAttack={false}
+              showFirstAttack={false}
+              showRanged={false}
+              showHopCapture={false}
+              specialSquares={{
+                promotion: Object.keys(specialSquares.promotion).length > 0,
+                range: Object.keys(specialSquares.range).length > 0,
+                control: Object.keys(specialSquares.control).length > 0,
+              }}
+            />
+          )}
           
           {/* Control Square Progress Tracking */}
           {Object.keys(specialSquares.control).length > 0 && (
