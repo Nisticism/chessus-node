@@ -30,6 +30,11 @@ const GameWizard = ({ editGameId }) => {
   const [imageMismatchWarning, setImageMismatchWarning] = useState(null);
   const [saveError, setSaveError] = useState(null);
   const [missingFields, setMissingFields] = useState(null);
+  // First-move custom-square conflict warning. Triggered when leaving Step 3 if both
+  // restrictFirstMoveToCustom AND disableFirstMoveHere flags exist somewhere in the same board
+  // (the disable squares are redundant once first moves are already restricted to a subset of
+  // squares). The pendingAction holds the navigation/save callback to run if user dismisses.
+  const [firstMoveConflictWarning, setFirstMoveConflictWarning] = useState(null); // { onContinue }
   
   // Game data state - all fields from game_types table
   const [gameData, setGameData] = useState({
@@ -97,6 +102,39 @@ const GameWizard = ({ editGameId }) => {
   const goToStep = (step) => {
     setCurrentStep(step);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Returns true when the current step-3 special_squares_string contains BOTH
+  // restrictFirstMoveToCustom and disableFirstMoveHere flags on different squares.
+  // Once first moves are restricted to a specific set of squares, the "disable" flag is
+  // redundant (any square not in the allowed set already disables first-move abilities), so
+  // we surface this to the user before they leave step 3.
+  const hasRedundantFirstMoveFlags = () => {
+    try {
+      const raw = gameData.special_squares_string;
+      if (!raw) return false;
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!parsed || typeof parsed !== 'object') return false;
+      let hasRestrict = false;
+      let hasDisable = false;
+      for (const cfg of Object.values(parsed)) {
+        if (cfg?.restrictFirstMoveToCustom) hasRestrict = true;
+        if (cfg?.disableFirstMoveHere) hasDisable = true;
+        if (hasRestrict && hasDisable) return true;
+      }
+      return false;
+    } catch { return false; }
+  };
+
+  // Wrap a navigation/save action so that if we're leaving step 3 with the conflict, the user
+  // gets a one-time warning. The callback `action` is invoked when the user dismisses the
+  // modal (or immediately if no conflict exists).
+  const guardLeavingStep3 = (action) => {
+    if (currentStep === 3 && hasRedundantFirstMoveFlags()) {
+      setFirstMoveConflictWarning({ onContinue: action });
+      return;
+    }
+    action();
   };
 
   // Load existing game data when in edit mode
@@ -524,7 +562,7 @@ const GameWizard = ({ editGameId }) => {
           {currentUser && (
             <StandardButton 
               buttonText={isSavingDraft ? "Saving..." : (isPublishedGame ? "📋 Copy as Draft" : "💾 Save as Draft")} 
-              onClick={handleSaveDraft}
+              onClick={() => guardLeavingStep3(handleSaveDraft)}
               disabled={isSubmitting || isSavingDraft}
             />
           )}
@@ -539,7 +577,7 @@ const GameWizard = ({ editGameId }) => {
           {isEditMode && (
             <StandardButton 
               buttonText={isSubmitting ? "Saving..." : "Save and Exit"} 
-              onClick={() => handleSubmit()}
+              onClick={() => guardLeavingStep3(() => handleSubmit())}
               disabled={isSubmitting || isSavingDraft}
             />
           )}
@@ -551,7 +589,7 @@ const GameWizard = ({ editGameId }) => {
           <div 
             key={step.num}
             className={`${styles["progress-step"]} ${currentStep === step.num ? styles.active : ''} ${currentStep > step.num ? styles.completed : ''}`}
-            onClick={() => goToStep(step.num)}
+            onClick={() => guardLeavingStep3(() => goToStep(step.num))}
           >
             <span className={styles["step-circle"]}>{step.num}</span>
             <span className={styles["step-label"]}>{step.label}</span>
@@ -583,14 +621,14 @@ const GameWizard = ({ editGameId }) => {
             {currentUser && (
               <StandardButton 
                 buttonText={isSavingDraft ? "Saving..." : (isPublishedGame ? "📋 Copy as Draft" : "💾 Save as Draft")} 
-                onClick={handleSaveDraft}
+                onClick={() => guardLeavingStep3(handleSaveDraft)}
                 disabled={isSubmitting || isSavingDraft}
               />
             )}
             {isEditMode && (
               <StandardButton 
                 buttonText={isSubmitting ? "Saving..." : "Save and Exit"} 
-                onClick={() => handleSubmit()}
+                onClick={() => guardLeavingStep3(() => handleSubmit())}
                 disabled={isSubmitting || isSavingDraft}
               />
             )}
@@ -600,7 +638,7 @@ const GameWizard = ({ editGameId }) => {
             {currentStep < totalSteps && (
               <StandardButton 
                 buttonText="Next" 
-                onClick={nextStep}
+                onClick={() => guardLeavingStep3(nextStep)}
               />
             )}
             
@@ -633,6 +671,36 @@ const GameWizard = ({ editGameId }) => {
               <StandardButton 
                 buttonText="Create Anyway" 
                 onClick={() => { setShowCheckmateWarning(false); handleSubmit(true); }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {firstMoveConflictWarning && (
+        <div className={styles["warning-overlay"]}>
+          <div className={styles["warning-modal"]}>
+            <h3>⚠️ Conflicting First-Move Squares</h3>
+            <p>
+              You have custom squares with both <strong>"Restrict First-Move Abilities to These Squares"</strong> and
+              {' '}<strong>"Disable First-Move Abilities On This Square"</strong> set on the board.
+            </p>
+            <p>
+              Once first-move abilities are restricted to a specific set of squares, the "Disable" squares
+              will have no effect — first-move abilities are already disabled everywhere except the restricted squares.
+            </p>
+            <div className={styles["warning-buttons"]}>
+              <StandardButton
+                buttonText="Go Back"
+                onClick={() => setFirstMoveConflictWarning(null)}
+              />
+              <StandardButton
+                buttonText="Continue Anyway"
+                onClick={() => {
+                  const action = firstMoveConflictWarning?.onContinue;
+                  setFirstMoveConflictWarning(null);
+                  if (typeof action === 'function') action();
+                }}
               />
             </div>
           </div>

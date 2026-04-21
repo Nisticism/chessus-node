@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import styles from "./gamewizard.module.scss";
 import SpecialSquareSelector from "./SpecialSquareSelector";
 import NumberInput from "../common/NumberInput";
+import useUndoStack from "../../hooks/useUndoStack";
 
 const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [rangeSquares, setRangeSquares] = useState({});
@@ -13,6 +14,29 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [draggedSquare, setDraggedSquare] = useState(null);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const boardRef = useRef(null);
+
+  // Undo stack for special-square actions: placing/removing squares, drag-and-drop moves,
+  // mirror operations, and clear-all all snapshot the four square maps before mutating.
+  // Ctrl+Z restores the most recent snapshot.
+  const { pushUndo } = useUndoStack({ maxDepth: 50 });
+
+  // Capture a single snapshot of all four square-type maps and push a restorer onto the
+  // undo stack. Call this BEFORE mutating any of the four state maps as part of a single
+  // user-visible action (a drop, a square placement, a mirror, a clear, etc.).
+  const snapshotSquaresForUndo = useCallback(() => {
+    const snap = {
+      range: rangeSquares,
+      promotion: promotionSquares,
+      control: controlSquares,
+      custom: customSquares,
+    };
+    pushUndo(() => {
+      setRangeSquares(snap.range);
+      setPromotionSquares(snap.promotion);
+      setControlSquares(snap.control);
+      setCustomSquares(snap.custom);
+    });
+  }, [rangeSquares, promotionSquares, controlSquares, customSquares, pushUndo]);
   const touchDragRef = useRef({ key: null, type: null, data: null, startX: 0, startY: 0, isDragging: false });
   const [touchDragPos, setTouchDragPos] = useState(null);
   const [touchDragType, setTouchDragType] = useState(null);
@@ -203,6 +227,8 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
 
     const squareType = draggedSquare.type;
 
+    snapshotSquaresForUndo();
+
     // Remove from source in all square types
     setRangeSquares(prev => {
       const newSquares = { ...prev };
@@ -271,7 +297,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     }
 
     setDraggedSquare(null);
-  }, [draggedSquare]);
+  }, [draggedSquare, snapshotSquaresForUndo]);
 
   const handleDragEnd = useCallback((e) => {
     e.currentTarget.style.opacity = '1';
@@ -348,6 +374,8 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
 
   const handleSquareTypeSelected = (squareType, options = {}) => {
     if (!selectedSquare) return;
+
+    snapshotSquaresForUndo();
 
     const { fillRow, row, boardWidth: optionsBoardWidth } = options;
     const effectiveBoardWidth = optionsBoardWidth || gameData.board_width;
@@ -428,6 +456,8 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         asPromotion: false,
         asControl: false,
         controlConfig: null,
+        restrictFirstMoveToCustom: false,
+        disableFirstMoveHere: false,
       };
       setCustomSquares(prev => {
         const newSquares = { ...prev };
@@ -448,6 +478,8 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
 
   const handleRemoveSquare = () => {
     if (!selectedSquare) return;
+
+    snapshotSquaresForUndo();
 
     const key = selectedSquare.key;
 
@@ -479,6 +511,65 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const handleCancelSelector = () => {
     setShowSquareSelector(false);
     setSelectedSquare(null);
+  };
+
+  /**
+   * Mirror all special squares from one half of the board to the other.
+   * direction: 'topToBottom' copies row r → row (height-1-r) for r in top half.
+   *            'bottomToTop' copies row r → row (height-1-r) for r in bottom half.
+   * Middle row is excluded on odd-height boards.
+   * All per-type sub-data is preserved (rangeBonus, controlConfig, custom flags, etc.).
+   */
+  const mirrorSpecialSquares = (direction) => {
+    const height = gameData.board_height;
+    const width = gameData.board_width;
+    if (!height || !width) return;
+    const lastRow = height - 1;
+    // Source rows are the half being copied FROM.
+    // For odd heights, the middle row (Math.floor(height/2)) is skipped automatically because
+    // its mirror equals itself.
+    const sourceRows = [];
+    if (direction === 'topToBottom') {
+      for (let r = 0; r < Math.floor(height / 2); r++) sourceRows.push(r);
+    } else {
+      // bottomToTop
+      for (let r = lastRow; r > Math.floor(lastRow / 2); r--) sourceRows.push(r);
+    }
+    if (sourceRows.length === 0) return;
+
+    const action = direction === 'topToBottom' ? 'top half onto the bottom half' : 'bottom half onto the top half';
+    if (!window.confirm(
+      `Mirror special squares: copy the ${action}? ` +
+      `Existing squares on the destination rows will be overwritten where the source has a square.`
+    )) return;
+
+    snapshotSquaresForUndo();
+
+    const cloneAndAssign = (setter, sourceMap) => {
+      setter(prev => {
+        const next = { ...prev };
+        for (const sourceRow of sourceRows) {
+          const destRow = lastRow - sourceRow;
+          for (let col = 0; col < width; col++) {
+            const srcKey = `${sourceRow},${col}`;
+            const destKey = `${destRow},${col}`;
+            if (sourceMap[srcKey]) {
+              // Deep clone so dest doesn't share nested objects (controlConfig, etc.)
+              next[destKey] = JSON.parse(JSON.stringify(sourceMap[srcKey]));
+            }
+          }
+        }
+        return next;
+      });
+    };
+
+    // Also clear destination rows of any types NOT present in source for that exact cell?
+    // We chose: only OVERWRITE where source has a square; destination cells with no source
+    // counterpart are left alone. This is the least-destructive behavior.
+    cloneAndAssign(setRangeSquares, rangeSquares);
+    cloneAndAssign(setPromotionSquares, promotionSquares);
+    cloneAndAssign(setControlSquares, controlSquares);
+    cloneAndAssign(setCustomSquares, customSquares);
   };
 
   const renderBoard = React.useMemo(() => {
@@ -614,19 +705,38 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-        <button 
-          className={styles["clear-all-button"]}
-          onClick={() => {
-            if (window.confirm('Are you sure you want to remove all special squares from the board?')) {
-              setRangeSquares({});
-              setPromotionSquares({});
-              setControlSquares({});
-              setCustomSquares({});
-            }
-          }}
-        >
-          Clear All Special Squares
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center' }}>
+          <button 
+            className={styles["clear-all-button"]}
+            onClick={() => {
+              if (window.confirm('Are you sure you want to remove all special squares from the board?')) {
+                snapshotSquaresForUndo();
+                setRangeSquares({});
+                setPromotionSquares({});
+                setControlSquares({});
+                setCustomSquares({});
+              }
+            }}
+          >
+            Clear All Special Squares
+          </button>
+          <button
+            className={styles["mirror-button"]}
+            type="button"
+            title="Copy every special square (range, promotion, control, custom — including all per-square settings) from the bottom half of the board onto the top half. Middle row is excluded on odd-height boards."
+            onClick={() => mirrorSpecialSquares('bottomToTop')}
+          >
+            ⇡ Mirror Bottom → Top
+          </button>
+          <button
+            className={styles["mirror-button"]}
+            type="button"
+            title="Copy every special square (range, promotion, control, custom — including all per-square settings) from the top half of the board onto the bottom half. Middle row is excluded on odd-height boards."
+            onClick={() => mirrorSpecialSquares('topToBottom')}
+          >
+            ⇣ Mirror Top → Bottom
+          </button>
+        </div>
         <div className={styles["special-square-stats"]}>
           <div className={styles["stat-item"]} style={{ background: 'var(--sq-range-bg)' }}>
             <strong>Range:</strong> {counts.range}

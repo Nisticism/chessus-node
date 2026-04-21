@@ -13,6 +13,7 @@ import {
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import useUndoStack from "../../hooks/useUndoStack";
 import NumberInput from "../common/NumberInput";
 import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
@@ -31,6 +32,10 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   const [piecePlacements, setPiecePlacements] = useState({});
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
+  // Tracks the most recently placed piece (full placement data including all settings) so that
+  // right-clicking an empty square pre-selects it in the PieceSelector with all of its previous
+  // settings. Persists per-session only — cleared on full page reload.
+  const [lastPlacedPiece, setLastPlacedPiece] = useState(null);
   const [draggedPiece, setDraggedPiece] = useState(null);
   const [allowedStartingModes, setAllowedStartingModes] = useState(['none', 'backrow', 'mirrored', 'independent', 'shared', 'full']); // All enabled by default
   const [pieceDataMap, setPieceDataMap] = useState({});
@@ -49,6 +54,17 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   const [uniquenessCheckLoading, setUniquenessCheckLoading] = useState(false);
   const [uniquenessResult, setUniquenessResult] = useState(null);
   const [uniquenessError, setUniquenessError] = useState(null);
+
+  // Undo stack for piece placement actions: every placement, removal, drag-and-drop,
+  // mirror, and clear-all snapshots the entire piecePlacements map before mutating.
+  // Ctrl+Z restores the most recent snapshot. Native text undo inside form inputs is
+  // unaffected (the hook ignores keydowns originating from text fields).
+  const { pushUndo: pushPlacementUndo } = useUndoStack({ maxDepth: 50 });
+
+  const snapshotPlacementsForUndo = useCallback(() => {
+    const snap = piecePlacements;
+    pushPlacementUndo(() => setPiecePlacements(snap));
+  }, [piecePlacements, pushPlacementUndo]);
   
   // Check if the board setup is symmetric (for mirrored randomization)
   const isBoardSymmetric = useMemo(() => {
@@ -319,7 +335,11 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
 
       // Check if fill row is enabled
       const { fillRow, fillRowData } = pieceData;
-      
+
+      // Snapshot current placements so this entire action (single placement, multi-tile,
+      // or fill-row) can be undone with Ctrl+Z.
+      snapshotPlacementsForUndo();
+
       if (fillRow && fillRowData) {
         // Fill the entire row with this piece
         const { row, boardWidth: filledBoardWidth } = fillRowData;
@@ -459,13 +479,50 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           return newPlacements;
         });
       }
+
+      // Remember this placement so right-clicking the next empty square pre-selects it
+      // with all of its previous settings.
+      setLastPlacedPiece({
+        piece_id: pieceData.piece_id,
+        player_id: pieceData.player_id,
+        image_url: pieceData.image_url,
+        image_index: (pieceData.image_index != null && pieceData.image_index >= 0) ? pieceData.image_index : null,
+        piece_name: pieceData.piece_name,
+        ends_game_on_checkmate: pieceData.ends_game_on_checkmate || false,
+        ends_game_on_capture: pieceData.ends_game_on_capture || false,
+        can_control_squares: pieceData.can_control_squares || false,
+        hit_points: pieceData.hit_points ?? 1,
+        attack_damage: pieceData.attack_damage ?? 1,
+        show_hp_ad: pieceData.show_hp_ad || false,
+        show_regen: pieceData.show_regen ?? false,
+        hp_regen: pieceData.hp_regen ?? 0,
+        cannot_be_captured: pieceData.cannot_be_captured || false,
+        burn_damage: pieceData.burn_damage ?? 0,
+        burn_duration: pieceData.burn_duration ?? 0,
+        show_burn: pieceData.show_burn ?? false,
+        trample: pieceData.trample || false,
+        trample_radius: pieceData.trample_radius ?? 0,
+        ghostwalk: pieceData.ghostwalk || false,
+        die_on_capture: pieceData.die_on_capture || false,
+        attack_radius: pieceData.attack_radius ?? 0,
+        manual_castling_partners: pieceData.manual_castling_partners || false,
+        castling_partner_left_key: pieceData.castling_partner_left_key || null,
+        castling_partner_right_key: pieceData.castling_partner_right_key || null,
+        castling_distance: pieceData.castling_distance ?? 2,
+        promotion_pieces_override: pieceData.promotion_pieces_override ?? null,
+        can_promote_to_checkmate: pieceData.can_promote_to_checkmate || false,
+        limit_promote_checkmate_to_original: pieceData.limit_promote_checkmate_to_original || false,
+        can_promote_to_capture: pieceData.can_promote_to_capture || false,
+        limit_promote_capture_to_original: pieceData.limit_promote_capture_to_original || false
+      });
     }
     setShowPieceSelector(false);
     setSelectedSquare(null);
-  }, [selectedSquare, gameData.board_width, gameData.board_height, gameData.other_game_data, updateGameData]);
+  }, [selectedSquare, gameData.board_width, gameData.board_height, gameData.other_game_data, updateGameData, snapshotPlacementsForUndo]);
 
   const handleRemovePiece = useCallback(() => {
     if (selectedSquare) {
+      snapshotPlacementsForUndo();
       setPiecePlacements(prev => {
         const newPlacements = { ...prev };
         const placement = newPlacements[selectedSquare.key];
@@ -502,7 +559,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     }
     setShowPieceSelector(false);
     setSelectedSquare(null);
-  }, [selectedSquare]);
+  }, [selectedSquare, snapshotPlacementsForUndo]);
 
   const handleCancelSelector = useCallback(() => {
     setShowPieceSelector(false);
@@ -575,6 +632,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
       return;
     }
 
+    snapshotPlacementsForUndo();
+
     setPiecePlacements(prev => {
       const newPlacements = { ...prev };
       // Remove source anchor + all its extensions
@@ -638,7 +697,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     setDraggedPiece(null);
     setDraggedPiecePosition(null);
     setHoveredSquare(null);
-  }, [draggedPiece, gameData.board_width, gameData.board_height]);
+  }, [draggedPiece, gameData.board_width, gameData.board_height, snapshotPlacementsForUndo]);
 
   const handleDragEnd = useCallback((e) => {
     // Reset opacity
@@ -1337,12 +1396,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
       }
     });
 
+    snapshotPlacementsForUndo();
     setPiecePlacements(newPlacements);
 
     if (skipped > 0) {
       alert(`${skipped} piece(s) could not be mirrored because they would overlap with Player ${sourcePlayerId}'s own pieces.`);
     }
-  }, [gameData.board_height, gameData.board_width, piecePlacements]);
+  }, [gameData.board_height, gameData.board_width, piecePlacements, snapshotPlacementsForUndo]);
 
   const getPieceCounts = () => {
     const counts = {};
@@ -1381,6 +1441,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           className={styles["clear-all-button"]}
           onClick={() => {
             if (window.confirm('Are you sure you want to remove all pieces from the board?')) {
+              snapshotPlacementsForUndo();
               setPiecePlacements({});
             }
           }}
@@ -1829,7 +1890,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           onRemove={handleRemovePiece}
           onCancel={handleCancelSelector}
           playerCount={gameData.player_count}
-          currentPlacement={piecePlacements[selectedSquare?.key]}
+          currentPlacement={piecePlacements[selectedSquare?.key] || lastPlacedPiece}
           squarePosition={selectedSquare}
           mateCondition={gameData.mate_condition}
           captureCondition={gameData.capture_condition}

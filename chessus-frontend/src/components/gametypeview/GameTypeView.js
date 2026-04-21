@@ -166,6 +166,96 @@ const describePieceMovement = (pieceData) => {
   return movements.join('; ');
 };
 
+// Helper to generate piece ranged attack description
+const describePieceRangedAttack = (pieceData) => {
+  if (!pieceData.can_capture_enemy_via_range) return '';
+
+  const parts = [];
+
+  // Directional ranged attacks
+  const directions = [];
+  const up = describeMovementRange(pieceData.up_attack);
+  const down = describeMovementRange(pieceData.down_attack);
+  if (up && down && up === down) {
+    directions.push(`vertically ${up}`);
+  } else {
+    if (up) directions.push(`upward ${up}`);
+    if (down) directions.push(`downward ${down}`);
+  }
+  const left = describeMovementRange(pieceData.left_attack);
+  const right = describeMovementRange(pieceData.right_attack);
+  if (left && right && left === right) {
+    directions.push(`horizontally ${left}`);
+  } else {
+    if (left) directions.push(`leftward ${left}`);
+    if (right) directions.push(`rightward ${right}`);
+  }
+  const upLeft = describeMovementRange(pieceData.up_left_attack);
+  const upRight = describeMovementRange(pieceData.up_right_attack);
+  const downLeft = describeMovementRange(pieceData.down_left_attack);
+  const downRight = describeMovementRange(pieceData.down_right_attack);
+  const allDiagonals = [upLeft, upRight, downLeft, downRight].filter(Boolean);
+  const allSameDiagonal = allDiagonals.length === 4 && allDiagonals.every(d => d === allDiagonals[0]);
+  if (allSameDiagonal) {
+    directions.push(`diagonally ${allDiagonals[0]}`);
+  } else {
+    if (upLeft) directions.push(`diagonally up-left ${upLeft}`);
+    if (upRight) directions.push(`diagonally up-right ${upRight}`);
+    if (downLeft) directions.push(`diagonally down-left ${downLeft}`);
+    if (downRight) directions.push(`diagonally down-right ${downRight}`);
+  }
+  if (directions.length > 0) {
+    let dirText = directions.join(', ');
+    if (pieceData.repeating_directional_ranged_attack) {
+      const maxIter = pieceData.max_directional_ranged_attack_iterations;
+      if (maxIter && maxIter > 1) {
+        dirText += ` (repeating up to ${maxIter} times)`;
+      } else {
+        dirText += ' (repeating)';
+      }
+    }
+    parts.push(dirText);
+  }
+
+  // Ratio (L-shape) ranged attack
+  const r1 = pieceData.ratio_one_attack_range || pieceData.ratio_attack_1 || 0;
+  const r2 = pieceData.ratio_two_attack_range || pieceData.ratio_attack_2 || 0;
+  if (r1 > 0 && r2 > 0) {
+    parts.push(`in an L-shape (${r1} squares by ${r2} squares)`);
+  }
+
+  // Step-based ranged attack
+  const stepRange = pieceData.step_by_step_attack_range;
+  if (stepRange != null && stepRange !== 0) {
+    const isManhattan = stepRange < 0;
+    const range = describeMovementRange(stepRange);
+    if (range) {
+      parts.push(isManhattan
+        ? `within ${range} (counting horizontal and vertical steps)`
+        : `within ${range} in any direction`);
+    }
+  }
+
+  let text = parts.length > 0
+    ? `can fire ${parts.join('; ')}`
+    : 'has a ranged attack';
+
+  // Suffixes
+  const suffixes = [];
+  if (pieceData.max_piece_captures_per_ranged_attack != null && pieceData.max_piece_captures_per_ranged_attack > 0) {
+    const n = pieceData.max_piece_captures_per_ranged_attack;
+    suffixes.push(`max ${n} capture${n !== 1 ? 's' : ''} per attack`);
+  }
+  suffixes.push(pieceData.can_fire_over_enemies ? 'can fire over enemies' : 'blocked by enemies');
+  suffixes.push(pieceData.can_fire_over_allies ? 'can fire over allies' : 'blocked by allies');
+
+  if (suffixes.length > 0) {
+    text += ` (${suffixes.join(', ')})`;
+  }
+
+  return text;
+};
+
 // Helper to generate piece capture description
 const describePieceCapture = (pieceData) => {
   const captures = [];
@@ -666,6 +756,7 @@ const GameTypeView = () => {
       
       const movementDesc = describePieceMovement(pieceData);
       const captureDesc = describePieceCapture(pieceData);
+      const rangedDesc = describePieceRangedAttack(pieceData);
       
       let description = `**${pieceName}**:\n`;
       
@@ -685,6 +776,25 @@ const GameTypeView = () => {
         description += `• **Attack**: ${captureDesc.charAt(0).toUpperCase() + captureDesc.slice(1)}.\n`;
       } else {
         description += `• **Attack**: Not defined.\n`;
+      }
+
+      // Ranged attack description (separate from regular attack)
+      if (rangedDesc) {
+        description += `• **Ranged Attack**: ${rangedDesc.charAt(0).toUpperCase() + rangedDesc.slice(1)}.\n`;
+      }
+
+      // Capture on hop
+      if (pieceData.capture_on_hop) {
+        let hopText = 'Captures enemy pieces by hopping over them (like checkers)';
+        if (pieceData.chain_capture_enabled) {
+          hopText += '; can chain multiple captures in one turn';
+        }
+        description += `• **Hop Capture**: ${hopText}.\n`;
+      }
+
+      // Ally capture
+      if (pieceData.can_capture_allies) {
+        description += `• **Ally Capture**: Can capture friendly pieces.\n`;
       }
 
       // Piece Stats line - show if any stat is non-default or show flags are enabled
@@ -1091,17 +1201,41 @@ const GameTypeView = () => {
       const customEntries = Object.entries(specialSquares.special);
       const labelFor = (cfg) => {
         const parts = [];
-        if (cfg?.asRange) parts.push(`Range (+${cfg.rangeBonus || 1})`);
+        if (cfg?.asRange) parts.push(`Range Boost (+${cfg.rangeBonus || 1})`);
         if (cfg?.asPromotion) parts.push('Promotion');
         if (cfg?.asControl) parts.push('Control');
-        return parts.length > 0 ? parts.join(' + ') : 'no combined behavior yet';
+        if (cfg?.restrictFirstMoveToCustom) parts.push('First-move abilities allowed only on these squares');
+        if (cfg?.disableFirstMoveHere) parts.push('First-move abilities disabled while standing here');
+        return parts.length > 0 ? parts.join(' + ') : 'no combined behavior yet (visual placeholder)';
       };
-      const lines = customEntries.map(([key, cfg]) => {
+      const coordFor = (key) => {
         const [row, col] = key.split(',').map(Number);
-        return `• ${String.fromCharCode(97 + col)}${row + 1} — ${labelFor(cfg)}`;
+        return `${String.fromCharCode(97 + col)}${row + 1}`;
+      };
+      // Group squares with identical configurations together so we render one line per config
+      // (instead of repeating the same description for every square individually).
+      const groups = new Map();
+      for (const [key, cfg] of customEntries) {
+        // Normalize cfg into a stable signature key — only include fields that affect behavior.
+        const sig = JSON.stringify({
+          asRange: !!cfg?.asRange,
+          rangeBonus: cfg?.asRange ? (cfg?.rangeBonus || 1) : 0,
+          asPromotion: !!cfg?.asPromotion,
+          asControl: !!cfg?.asControl,
+          restrictFirstMoveToCustom: !!cfg?.restrictFirstMoveToCustom,
+          disableFirstMoveHere: !!cfg?.disableFirstMoveHere,
+        });
+        if (!groups.has(sig)) groups.set(sig, { cfg, coords: [] });
+        groups.get(sig).coords.push(coordFor(key));
+      }
+      const lines = Array.from(groups.values()).map(({ cfg, coords }) => {
+        // Sort coords by file (letter) then rank for stable, readable output
+        coords.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        const coordList = coords.length === 1 ? coords[0] : `[${coords.join(', ')}]`;
+        return `• ${coordList} — ${labelFor(cfg)}`;
       });
       specialRulesContent.push(
-        `**Custom Squares**\nCustom squares can act as any combination of the other special square types simultaneously (Range, Promotion, and/or Control).\n\n${lines.join('\n')}\n\nSquares with no combined behavior yet are visual placeholders only.`
+        `**Custom Squares**\nCustom squares can combine any of the other special-square behaviors (Range Boost, Promotion, Control) on a single square, and can also gate piece **first-move abilities** — either restricting "first move only" / "available for first N moves" abilities so they only work while standing on these squares, or disabling them while a piece is standing here. Squares with the same configuration are grouped together below.\n\n${lines.join('\n')}\n\nSquares listed with no combined behavior are visual placeholders only.`
       );
     }
 

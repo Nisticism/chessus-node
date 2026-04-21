@@ -3,10 +3,11 @@ import styles from "./gamewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
 import InfoTooltip from "../piecewizard/InfoTooltip";
-import { checkForLinks, checkOffensiveContent } from "../../utils/contentModeration";
+import { checkForLinks, checkOffensiveContent, checkProfessionalName } from "../../utils/contentModeration";
 
 const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
   const [contentWarnings, setContentWarnings] = useState({});
+  const [nameReviewWarning, setNameReviewWarning] = useState(false);
 
   const handleChange = (field, value) => {
     updateGameData({ [field]: value });
@@ -24,6 +25,15 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
         }
       }
       setContentWarnings(prev => ({ ...prev, [field]: warnings[field] || null }));
+
+      // Professional name check: warn that the game name will require moderator review
+      if (field === 'game_name') {
+        const profCheck = checkProfessionalName(value);
+        setNameReviewWarning(!profCheck.isProfessional);
+      }
+    }
+    if (field === 'game_name' && !value) {
+      setNameReviewWarning(false);
     }
   };
 
@@ -54,6 +64,11 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
         {contentWarnings.game_name && (
           <p className={styles["validation-error"]}>
             {contentWarnings.game_name}
+          </p>
+        )}
+        {nameReviewWarning && !contentWarnings.game_name && (
+          <p className={styles["validation-warning"]} style={{ color: '#e67e22', fontSize: '0.875rem', marginTop: '4px' }}>
+            This name contains terms that require moderator review. Your game will be hidden from public listings until it is approved.
           </p>
         )}
       </div>

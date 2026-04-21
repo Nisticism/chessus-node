@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import styles from "./gamewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import NumberInput from "../common/NumberInput";
+import ToggleSwitch from "../common/ToggleSwitch";
+import InfoTooltip from "../piecewizard/InfoTooltip";
 
 const SpecialSquareSelector = ({ 
   onSelect, 
@@ -31,6 +33,8 @@ const SpecialSquareSelector = ({
     rangeBonus: 1,
     asPromotion: false,
     asControl: false,
+    restrictFirstMoveToCustom: false,
+    disableFirstMoveHere: false,
   });
 
   // Plain range square: how much the bonus increases piece range by.
@@ -65,6 +69,8 @@ const SpecialSquareSelector = ({
         rangeBonus: Math.min(8, Math.max(1, currentConfig.rangeBonus || 1)),
         asPromotion: !!currentConfig.asPromotion,
         asControl: !!currentConfig.asControl,
+        restrictFirstMoveToCustom: !!currentConfig.restrictFirstMoveToCustom,
+        disableFirstMoveHere: !!currentConfig.disableFirstMoveHere,
       });
       if (currentConfig.asControl && currentConfig.controlConfig) {
         setControlConfig({
@@ -115,6 +121,8 @@ const SpecialSquareSelector = ({
         asPromotion: !!customCombo.asPromotion,
         asControl: !!customCombo.asControl,
         controlConfig: customCombo.asControl ? controlConfig : null,
+        restrictFirstMoveToCustom: !!customCombo.restrictFirstMoveToCustom,
+        disableFirstMoveHere: !!customCombo.disableFirstMoveHere,
       };
     }
     
@@ -129,7 +137,16 @@ const SpecialSquareSelector = ({
   };
 
   const handleCustomComboChange = (field, value) => {
-    setCustomCombo(prev => ({ ...prev, [field]: value }));
+    setCustomCombo(prev => {
+      const next = { ...prev, [field]: value };
+      // Mutual exclusion: "restrict first-move to these squares" and
+      // "disable first-move on this square" cannot both be on at once.
+      if (value === true) {
+        if (field === 'restrictFirstMoveToCustom') next.disableFirstMoveHere = false;
+        if (field === 'disableFirstMoveHere') next.restrictFirstMoveToCustom = false;
+      }
+      return next;
+    });
   };
 
   return (
@@ -242,19 +259,14 @@ const SpecialSquareSelector = ({
 
               {/* Consecutive Turns */}
               <div className={styles["control-config-row"]}>
-                <label className={styles["control-checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={controlConfig.consecutiveTurns}
-                    onChange={(e) => handleControlConfigChange('consecutiveTurns', e.target.checked)}
-                  />
-                  <span>Require Consecutive Turns</span>
-                </label>
-                <span className={styles["control-config-hint"]}>
-                  {controlConfig.consecutiveTurns 
-                    ? "Turns must be uninterrupted - counter resets if piece leaves" 
-                    : "Total turns - counter persists even if piece leaves temporarily"}
-                </span>
+                <ToggleSwitch
+                  checked={!!controlConfig.consecutiveTurns}
+                  onChange={(v) => handleControlConfigChange('consecutiveTurns', v)}
+                  label="Require Consecutive Turns"
+                  tooltip={<InfoTooltip text={controlConfig.consecutiveTurns
+                    ? "Turns must be uninterrupted \u2014 the counter resets if the piece leaves this square."
+                    : "Total turns held \u2014 the counter persists even if the piece leaves this square temporarily."} />}
+                />
               </div>
 
               {/* Player Applicability */}
@@ -292,19 +304,14 @@ const SpecialSquareSelector = ({
 
               {/* Require Specific Piece */}
               <div className={styles["control-config-row"]}>
-                <label className={styles["control-checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={controlConfig.requireSpecificPiece}
-                    onChange={(e) => handleControlConfigChange('requireSpecificPiece', e.target.checked)}
-                  />
-                  <span>Require Specific Piece Type</span>
-                </label>
-                <span className={styles["control-config-hint"]}>
-                  {controlConfig.requireSpecificPiece 
-                    ? "Only pieces marked as 'Can Control Squares' in Step 4 can control this square" 
-                    : "Any piece can control this square"}
-                </span>
+                <ToggleSwitch
+                  checked={!!controlConfig.requireSpecificPiece}
+                  onChange={(v) => handleControlConfigChange('requireSpecificPiece', v)}
+                  label="Require Specific Piece Type"
+                  tooltip={<InfoTooltip text={controlConfig.requireSpecificPiece
+                    ? "Only pieces marked 'Can Control Squares' in Step 4 can control this square."
+                    : "Any piece can control this square."} />}
+                />
               </div>
             </div>
           )}
@@ -322,17 +329,12 @@ const SpecialSquareSelector = ({
 
               {/* As Range */}
               <div className={styles["control-config-row"]}>
-                <label className={styles["control-checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={customCombo.asRange}
-                    onChange={(e) => handleCustomComboChange('asRange', e.target.checked)}
-                  />
-                  <span style={{ color: 'var(--sq-range, #ff8c00)' }}>Acts as Range Square</span>
-                </label>
-                <span className={styles["control-config-hint"]}>
-                  Boosts the movement / capture / attack range of pieces standing on it.
-                </span>
+                <ToggleSwitch
+                  checked={!!customCombo.asRange}
+                  onChange={(v) => handleCustomComboChange('asRange', v)}
+                  label={<span style={{ color: 'var(--sq-range, #ff8c00)' }}>Acts as Range Square</span>}
+                  tooltip={<InfoTooltip text="Boosts the movement / capture / attack range of pieces standing on this square." />}
+                />
                 {customCombo.asRange && (
                   <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '0.85rem' }}>Range Bonus:</span>
@@ -347,32 +349,43 @@ const SpecialSquareSelector = ({
 
               {/* As Promotion */}
               <div className={styles["control-config-row"]}>
-                <label className={styles["control-checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={customCombo.asPromotion}
-                    onChange={(e) => handleCustomComboChange('asPromotion', e.target.checked)}
-                  />
-                  <span style={{ color: 'var(--sq-promotion, #9b59b6)' }}>Acts as Promotion Square</span>
-                </label>
-                <span className={styles["control-config-hint"]}>
-                  Promotable pieces reaching this square can be promoted.
-                </span>
+                <ToggleSwitch
+                  checked={!!customCombo.asPromotion}
+                  onChange={(v) => handleCustomComboChange('asPromotion', v)}
+                  label={<span style={{ color: 'var(--sq-promotion, #9b59b6)' }}>Acts as Promotion Square</span>}
+                  tooltip={<InfoTooltip text="Promotable pieces reaching this square can be promoted." />}
+                />
               </div>
 
               {/* As Control */}
               <div className={styles["control-config-row"]}>
-                <label className={styles["control-checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={customCombo.asControl}
-                    onChange={(e) => handleCustomComboChange('asControl', e.target.checked)}
-                  />
-                  <span style={{ color: 'var(--sq-control, #32CD32)' }}>Acts as Control Square</span>
-                </label>
-                <span className={styles["control-config-hint"]}>
-                  Counts toward the Control Squares win condition (if enabled in Step 2).
-                </span>
+                <ToggleSwitch
+                  checked={!!customCombo.asControl}
+                  onChange={(v) => handleCustomComboChange('asControl', v)}
+                  label={<span style={{ color: 'var(--sq-control, #32CD32)' }}>Acts as Control Square</span>}
+                  tooltip={<InfoTooltip text="Counts toward the Control Squares win condition (must be enabled in Step 2)." />}
+                />
+              </div>
+
+              {/* First-Move Ability Restrictions \u2014 mutually exclusive */}
+              <div className={styles["control-config-row"]}>
+                <ToggleSwitch
+                  checked={!!customCombo.restrictFirstMoveToCustom}
+                  onChange={(v) => handleCustomComboChange('restrictFirstMoveToCustom', v)}
+                  disabled={!!customCombo.disableFirstMoveHere}
+                  label="Restrict First-Move Abilities to These Squares"
+                  tooltip={<InfoTooltip text="When ANY custom square in this game has this flag set, 'first move only' / 'available for first N moves' abilities are disabled everywhere EXCEPT when a piece is standing on a custom square with this flag. Useful for chess-style pawn double-step from a specific rank. Mutually exclusive with the next setting." />}
+                />
+              </div>
+
+              <div className={styles["control-config-row"]}>
+                <ToggleSwitch
+                  checked={!!customCombo.disableFirstMoveHere}
+                  onChange={(v) => handleCustomComboChange('disableFirstMoveHere', v)}
+                  disabled={!!customCombo.restrictFirstMoveToCustom}
+                  label="Disable First-Move Abilities On This Square"
+                  tooltip={<InfoTooltip text="While a piece is standing on this square, all 'first move only' / 'available for first N moves' abilities are unavailable for that piece. Mutually exclusive with the previous setting." />}
+                />
               </div>
 
               {/* Control config sub-panel for the custom square */}
@@ -395,14 +408,12 @@ const SpecialSquareSelector = ({
                   </div>
 
                   <div className={styles["control-config-row"]}>
-                    <label className={styles["control-checkbox-label"]}>
-                      <input
-                        type="checkbox"
-                        checked={controlConfig.consecutiveTurns}
-                        onChange={(e) => handleControlConfigChange('consecutiveTurns', e.target.checked)}
-                      />
-                      <span>Require Consecutive Turns</span>
-                    </label>
+                    <ToggleSwitch
+                      checked={!!controlConfig.consecutiveTurns}
+                      onChange={(v) => handleControlConfigChange('consecutiveTurns', v)}
+                      label="Require Consecutive Turns"
+                      tooltip={<InfoTooltip text="Turns must be uninterrupted \u2014 the counter resets if the piece leaves this square." />}
+                    />
                   </div>
 
                   <div className={styles["control-config-row"]}>
@@ -427,14 +438,12 @@ const SpecialSquareSelector = ({
                   </div>
 
                   <div className={styles["control-config-row"]}>
-                    <label className={styles["control-checkbox-label"]}>
-                      <input
-                        type="checkbox"
-                        checked={controlConfig.requireSpecificPiece}
-                        onChange={(e) => handleControlConfigChange('requireSpecificPiece', e.target.checked)}
-                      />
-                      <span>Require Specific Piece Type</span>
-                    </label>
+                    <ToggleSwitch
+                      checked={!!controlConfig.requireSpecificPiece}
+                      onChange={(v) => handleControlConfigChange('requireSpecificPiece', v)}
+                      label="Require Specific Piece Type"
+                      tooltip={<InfoTooltip text="Only pieces marked 'Can Control Squares' in Step 4 can control this square." />}
+                    />
                   </div>
                 </div>
               )}
