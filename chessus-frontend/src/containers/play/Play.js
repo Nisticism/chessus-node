@@ -17,13 +17,14 @@ const Play = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const { gamesList, pagination: gamesPagination } = useSelector((state) => state.games);
   const { onlineFriends } = useSelector((state) => state.friends);
-  const { openGames, ongoingGames, privateGames } = useSelector((state) => state.lobbyGames);
+  const { openGames, ongoingGames, privateGames, myBotGames } = useSelector((state) => state.lobbyGames);
   
   const { 
     connected, 
     socket,
     fetchOpenGames,
     fetchOngoingGames,
+    fetchMyBotGames,
     fetchPrivateGames,
     createGame,
     createAnonymousGame,
@@ -73,6 +74,30 @@ const Play = () => {
   const [ongoingLiveGamesPage, setOngoingLiveGamesPage] = useState(1);
   const [ongoingCorrespondenceGamesPage, setOngoingCorrespondenceGamesPage] = useState(1);
   const [privateGamesPage, setPrivateGamesPage] = useState(1);
+  const [computerGamesPage, setComputerGamesPage] = useState(1);
+
+  // Collapsible-section state, persisted per section in localStorage. Default open.
+  const readCollapsed = (key) => {
+    try { return localStorage.getItem(`playSection.${key}`) === '1'; } catch { return false; }
+  };
+  const writeCollapsed = (key, val) => {
+    try { localStorage.setItem(`playSection.${key}`, val ? '1' : '0'); } catch {}
+  };
+  const [gameTypesCollapsed, setGameTypesCollapsed] = useState(() => readCollapsed('gameTypes'));
+  const [friendsCollapsed, setFriendsCollapsed] = useState(() => readCollapsed('friends'));
+  const [openGamesCollapsed, setOpenGamesCollapsed] = useState(() => readCollapsed('openGames'));
+  const [liveGamesCollapsed, setLiveGamesCollapsed] = useState(() => readCollapsed('liveGames'));
+  const [correspondenceGamesCollapsed, setCorrespondenceGamesCollapsed] = useState(() => readCollapsed('correspondenceGames'));
+  const [privateGamesCollapsed, setPrivateGamesCollapsed] = useState(() => readCollapsed('privateGames'));
+  const [computerGamesCollapsed, setComputerGamesCollapsed] = useState(() => readCollapsed('computerGames'));
+  const [incomingChallengesCollapsed, setIncomingChallengesCollapsed] = useState(() => readCollapsed('incomingChallenges'));
+  const toggleGameTypes = () => setGameTypesCollapsed(prev => { writeCollapsed('gameTypes', !prev); return !prev; });
+  const toggleFriends = () => setFriendsCollapsed(prev => { writeCollapsed('friends', !prev); return !prev; });
+  const toggleOpenGames = () => setOpenGamesCollapsed(prev => { writeCollapsed('openGames', !prev); return !prev; });
+  const toggleLiveGames = () => setLiveGamesCollapsed(prev => { writeCollapsed('liveGames', !prev); return !prev; });
+  const toggleCorrespondenceGames = () => setCorrespondenceGamesCollapsed(prev => { writeCollapsed('correspondenceGames', !prev); return !prev; });
+  const togglePrivateGames = () => setPrivateGamesCollapsed(prev => { writeCollapsed('privateGames', !prev); return !prev; });
+  const toggleComputerGames = () => setComputerGamesCollapsed(prev => { writeCollapsed('computerGames', !prev); return !prev; });
 
   // Anonymous play state
   const [inviteCodeInput, setInviteCodeInput] = useState("");
@@ -308,9 +333,10 @@ const Play = () => {
       fetchOngoingGames();
       if (currentUser) {
         fetchPrivateGames();
+        fetchMyBotGames();
       }
     }
-  }, [connected, fetchOpenGames, fetchOngoingGames, fetchPrivateGames, currentUser]);
+  }, [connected, fetchOpenGames, fetchOngoingGames, fetchPrivateGames, fetchMyBotGames, currentUser]);
 
   // Fetch online friends when user is logged in
   useEffect(() => {
@@ -581,12 +607,19 @@ const Play = () => {
     return privateGames.slice(start, start + PAGE_SIZE);
   }, [privateGames, privateGamesPage]);
 
+  const paginatedComputerGames = useMemo(() => {
+    const list = myBotGames || [];
+    const start = (computerGamesPage - 1) * PAGE_SIZE;
+    return list.slice(start, start + PAGE_SIZE);
+  }, [myBotGames, computerGamesPage]);
+
   // Total pages for each section
   const totalFriendsPages = Math.ceil((onlineFriends?.length || 0) / PAGE_SIZE);
   const totalOpenGamesPages = Math.ceil(openGames.length / PAGE_SIZE);
   const totalOngoingLiveGamesPages = Math.ceil(ongoingLiveGames.length / PAGE_SIZE);
   const totalOngoingCorrespondenceGamesPages = Math.ceil(ongoingCorrespondenceGames.length / PAGE_SIZE);
   const totalPrivateGamesPages = Math.ceil(privateGames.length / PAGE_SIZE);
+  const totalComputerGamesPages = Math.ceil(((myBotGames || []).length) / PAGE_SIZE);
   // Format time control for display
   const formatTimeControl = (game) => {
     if (game.is_correspondence) {
@@ -735,10 +768,18 @@ const Play = () => {
         headers: authHeader()
       });
 
-      // Refresh game lists
+      // Optimistic UI: strip the deleted game from every lobby list
+      // immediately so the card disappears without waiting for the socket
+      // round-trip. The follow-up fetches below reconcile state if needed.
+      dispatch({ type: 'REMOVE_LOBBY_GAME', payload: gameId });
+
+      // Refresh game lists (including computer games — without this the
+      // deleted card would flash but stay on screen until the next manual
+      // refresh because myBotGames was never re-fetched)
       fetchOpenGames();
       fetchOngoingGames();
       fetchPrivateGames();
+      fetchMyBotGames();
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Failed to delete game");
     } finally {
@@ -841,7 +882,14 @@ const Play = () => {
       <div className={styles["play-content"]}>
         {/* Sidebar - Game Types */}
         <div className={styles["game-types-sidebar"]}>
-          <h2>Game Types</h2>
+          <h2
+            onClick={toggleGameTypes}
+            style={{ cursor: 'pointer', userSelect: 'none' }}
+          >
+            <span style={{ display: 'inline-block', width: '1em' }}>{gameTypesCollapsed ? '▶' : '▼'}</span>
+            Game Types
+          </h2>
+          {!gameTypesCollapsed && (<>
           <div className={styles["search-box"]}>
             <input
               type="text"
@@ -898,6 +946,7 @@ const Play = () => {
               </button>
             </div>
           )}
+          </>)}
         </div>
 
         {/* Main Content */}
@@ -905,10 +954,15 @@ const Play = () => {
           {/* Incoming Challenges Section */}
           {pendingChallenges.length > 0 && (
             <div className={styles["incoming-challenges-section"]}>
-              <h2>
+              <h2
+                onClick={() => setIncomingChallengesCollapsed(prev => !prev)}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                <span style={{ display: 'inline-block', width: '1em' }}>{incomingChallengesCollapsed ? '▶' : '▼'}</span>
                 Incoming Challenges
                 <span className={styles["match-count"]}>{pendingChallenges.length}</span>
               </h2>
+              {!incomingChallengesCollapsed && (
               <div className={styles["challenges-list"]}>
                 {pendingChallenges.map((challenge) => (
                   <div key={challenge.gameId} className={styles["challenge-card"]}>
@@ -936,6 +990,7 @@ const Play = () => {
                   </div>
                 ))}
               </div>
+              )}
             </div>
           )}
 
@@ -1001,10 +1056,15 @@ const Play = () => {
           {/* Private Games Section */}
           {currentUser && privateGames.length > 0 && (
             <div className={styles["private-games-section"]}>
-              <h2>
+              <h2
+                onClick={togglePrivateGames}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                <span style={{ display: 'inline-block', width: '1em' }}>{privateGamesCollapsed ? '▶' : '▼'}</span>
                 Private Games
                 <span className={styles["match-count"]}>{privateGames.length}</span>
               </h2>
+              {!privateGamesCollapsed && (<>
               <div className={styles["private-games-list"]}>
                 {paginatedPrivateGames.map((game) => {
                   const isHost = game.host_id === currentUser.id;
@@ -1081,16 +1141,22 @@ const Play = () => {
                   </button>
                 </div>
               )}
+              </>)}
             </div>
           )}
 
           {/* Online Friends Section */}
           {currentUser && onlineFriends && onlineFriends.length > 0 && (
             <div className={styles["online-friends-section"]}>
-              <h2>
+              <h2
+                onClick={toggleFriends}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                <span style={{ display: 'inline-block', width: '1em' }}>{friendsCollapsed ? '▶' : '▼'}</span>
                 Online Friends
                 <span className={styles["match-count"]}>{onlineFriends.length}</span>
               </h2>
+              {!friendsCollapsed && (<>
               <div className={styles["friends-compact-list"]}>
                 <FriendsList 
                   userId={currentUser.id} 
@@ -1121,19 +1187,25 @@ const Play = () => {
                   </button>
                 </div>
               )}
+              </>)}
             </div>
           )}
 
           {/* Open Matches Section */}
           <div className={styles["open-matches-section"]}>
-            <h2>
+            <h2
+              onClick={toggleOpenGames}
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+            >
+              <span style={{ display: 'inline-block', width: '1em' }}>{openGamesCollapsed ? '▶' : '▼'}</span>
               Open Matches
               {openGames.length > 0 && (
                 <span className={styles["match-count"]}>{openGames.length}</span>
               )}
             </h2>
-            
-            {openGames.length === 0 ? (
+
+            {!openGamesCollapsed && (
+              openGames.length === 0 ? (
               <div className={styles["no-matches"]}>
                 No open matches. Create one or wait for someone to host!
               </div>
@@ -1216,19 +1288,25 @@ const Play = () => {
                   </div>
                 )}
               </>
+            )
             )}
           </div>
 
           {/* Ongoing Live Games Section */}
           <div className={styles["ongoing-games-section"]}>
-            <h2>
+            <h2
+              onClick={toggleLiveGames}
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+            >
+              <span style={{ display: 'inline-block', width: '1em' }}>{liveGamesCollapsed ? '▶' : '▼'}</span>
               Live Games
               {ongoingLiveGames.length > 0 && (
                 <span className={styles["match-count"]}>{ongoingLiveGames.length}</span>
               )}
             </h2>
-            
-            {ongoingLiveGames.length === 0 ? (
+
+            {!liveGamesCollapsed && (
+              ongoingLiveGames.length === 0 ? (
               <div className={styles["no-matches"]}>
                 No live games to watch right now.
               </div>
@@ -1294,19 +1372,25 @@ const Play = () => {
                   </div>
                 )}
               </>
+            )
             )}
           </div>
 
           {/* Ongoing Correspondence Games Section */}
           <div className={styles["ongoing-games-section"]}>
-            <h2>
+            <h2
+              onClick={toggleCorrespondenceGames}
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+            >
+              <span style={{ display: 'inline-block', width: '1em' }}>{correspondenceGamesCollapsed ? '▶' : '▼'}</span>
               Correspondence Games
               {ongoingCorrespondenceGames.length > 0 && (
                 <span className={styles["match-count"]}>{ongoingCorrespondenceGames.length}</span>
               )}
             </h2>
-            
-            {ongoingCorrespondenceGames.length === 0 ? (
+
+            {!correspondenceGamesCollapsed && (
+              ongoingCorrespondenceGames.length === 0 ? (
               <div className={styles["no-matches"]}>
                 No correspondence games in progress right now.
               </div>
@@ -1372,8 +1456,86 @@ const Play = () => {
                   </div>
                 )}
               </>
+            )
             )}
           </div>
+
+          {/* Computer Games Section (current user's bot games) */}
+          {currentUser && (
+            <div className={styles["ongoing-games-section"]}>
+              <h2
+                onClick={toggleComputerGames}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                <span style={{ display: 'inline-block', width: '1em' }}>{computerGamesCollapsed ? '▶' : '▼'}</span>
+                Computer Games
+                {(myBotGames || []).length > 0 && (
+                  <span className={styles["match-count"]}>{(myBotGames || []).length}</span>
+                )}
+              </h2>
+
+              {!computerGamesCollapsed && (
+                (myBotGames || []).length === 0 ? (
+                  <div className={styles["no-matches"]}>
+                    You have no ongoing games against the computer.
+                  </div>
+                ) : (
+                  <>
+                    <div className={styles["ongoing-games-list"]}>
+                      {paginatedComputerGames.map((game) => (
+                        <div key={game.id} className={styles["ongoing-game-card"]}>
+                          <div className={styles["match-header"]}>
+                            <span className={styles["match-game-name"]}>{game.game_name}</span>
+                            <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
+                          </div>
+                          <div className={styles["match-players"]}>{game.player_names}</div>
+                          <div className={styles["match-actions"]}>
+                            <button
+                              className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
+                              onClick={() => navigate(`/play/${game.id}`)}
+                            >
+                              Resume
+                            </button>
+                            {isAdmin && (
+                              <button
+                                className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
+                                onClick={() => handleDeleteGame(game.id)}
+                                disabled={deletingGameId === game.id}
+                                title="Delete bugged game (admin only)"
+                              >
+                                {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {totalComputerGamesPages > 1 && (
+                      <div className={styles["pagination"]}>
+                        <button
+                          disabled={computerGamesPage === 1}
+                          onClick={() => setComputerGamesPage(p => p - 1)}
+                          className={styles["pagination-btn"]}
+                        >
+                          ← Prev
+                        </button>
+                        <span className={styles["pagination-info"]}>
+                          {computerGamesPage} / {totalComputerGamesPages}
+                        </span>
+                        <button
+                          disabled={computerGamesPage >= totalComputerGamesPages}
+                          onClick={() => setComputerGamesPage(p => p + 1)}
+                          className={styles["pagination-btn"]}
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -34,7 +34,7 @@ const CommunityHub = () => {
       title: "Leaderboard",
       description: "See top-ranked players and track standings across game types",
       icon: "🏆",
-      path: "/leaderboard",
+      path: "/community/leaderboard",
     },
   ];
 
