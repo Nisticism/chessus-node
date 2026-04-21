@@ -854,8 +854,10 @@ const PieceView = () => {
                 <h3>Step-by-Step Movement</h3>
               </div>
               <div className={styles["step-display"]}>
-                Can move up to <span className={styles["step-value"]}>{pieceToDisplay.step_by_step_movement_value}</span> squares,
-                changing direction within a single move
+                Can move up to <span className={styles["step-value"]}>{Math.abs(pieceToDisplay.step_by_step_movement_value || 0)}</span> squares,
+                {(pieceToDisplay.step_by_step_movement_value || 0) < 0
+                  ? ' counting only horizontal and vertical steps (Manhattan distance — diagonals excluded)'
+                  : ' in any direction including diagonals (Chebyshev distance)'}, changing direction within a single move
               </div>
             </div>
           )}
@@ -949,7 +951,12 @@ const PieceView = () => {
             {pieceToDisplay.can_castle && (
               <div className={styles["special-ability-card"]}>
                 <span className={styles["special-icon"]}>🏰</span>
-                <span className={styles["special-name"]}>Can Castle</span>
+                <span className={styles["special-name"]}>
+                  Can Castle
+                  {pieceToDisplay.castling_distance != null && (
+                    <span style={{ fontWeight: 400, opacity: 0.8 }}> ({pieceToDisplay.castling_distance} squares)</span>
+                  )}
+                </span>
               </div>
             )}
             {pieceToDisplay.has_checkmate_rule && (
@@ -1112,7 +1119,10 @@ const PieceView = () => {
                 {pieceToDisplay.step_by_step_capture != null && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>👣</span>
-                    Step Capture: {pieceToDisplay.step_by_step_capture} squares
+                    Step Capture: {Math.abs(pieceToDisplay.step_by_step_capture)} squares
+                    {pieceToDisplay.step_by_step_capture < 0
+                      ? ' (Manhattan — orthogonal only)'
+                      : ' (Chebyshev — any direction)'}
                   </div>
                 )}
                 {!!piece.repeating_capture && (
@@ -1202,7 +1212,7 @@ const PieceView = () => {
                 {pieceToDisplay.step_by_step_attack_range != null && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>👣</span>
-                    Step Range: {Math.abs(pieceToDisplay.step_by_step_attack_range)} squares{pieceToDisplay.step_by_step_attack_range < 0 ? ' (orthogonal only)' : ''}
+                    Step Range: {Math.abs(pieceToDisplay.step_by_step_attack_range)} squares{pieceToDisplay.step_by_step_attack_range < 0 ? ' (Manhattan — orthogonal only)' : ' (Chebyshev — any direction)'}
                   </div>
                 )}
                 {pieceToDisplay.max_piece_captures_per_ranged_attack != null && (
@@ -1216,6 +1226,28 @@ const PieceView = () => {
                     Can Repeat Attack
                     {pieceToDisplay.max_directional_ranged_attack_iterations != null && 
                       ` (max ${pieceToDisplay.max_directional_ranged_attack_iterations}x)`}
+                  </div>
+                )}
+                {pieceToDisplay.can_fire_over_enemies ? (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🎯</span>
+                    Can fire over enemy pieces
+                  </div>
+                ) : (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🚫</span>
+                    Blocked by enemy pieces
+                  </div>
+                )}
+                {pieceToDisplay.can_fire_over_allies ? (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🎯</span>
+                    Can fire over allied pieces
+                  </div>
+                ) : (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🚫</span>
+                    Blocked by allied pieces
                   </div>
                 )}
               </div>

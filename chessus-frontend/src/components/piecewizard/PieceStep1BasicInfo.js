@@ -4,7 +4,7 @@ import PieceBoardPreview from "./PieceBoardPreview";
 import InfoTooltip from "./InfoTooltip";
 import NumberInput from "../common/NumberInput";
 import { pieceImageLibrary } from "../../assets/piece-images";
-import { checkForLinks, checkOffensiveContent } from "../../utils/contentModeration";
+import { checkForLinks, checkOffensiveContent, checkProfessionalName } from "../../utils/contentModeration";
 
 // Compute average perceived brightness (0-255) of an image from its data URL
 const computeImageBrightness = (dataUrl) => {
@@ -85,6 +85,7 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
   }, [checkBrightness]);
 
   const [contentWarnings, setContentWarnings] = useState({});
+  const [pieceNameReviewWarning, setPieceNameReviewWarning] = useState(false);
 
   const handleChange = (field, value) => {
     updatePieceData({ [field]: value });
@@ -102,6 +103,15 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
         }
       }
       setContentWarnings(prev => ({ ...prev, [field]: warnings[field] || null }));
+
+      // Professional name check: warn that piece name will require moderator review
+      if (field === 'piece_name') {
+        const profCheck = checkProfessionalName(value);
+        setPieceNameReviewWarning(!profCheck.isProfessional);
+      }
+    }
+    if (field === 'piece_name' && !value) {
+      setPieceNameReviewWarning(false);
     }
   };
 
@@ -319,6 +329,11 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
         {contentWarnings.piece_name && (
           <p className={styles["validation-error"]}>
             {contentWarnings.piece_name}
+          </p>
+        )}
+        {pieceNameReviewWarning && !contentWarnings.piece_name && (
+          <p style={{ color: '#e67e22', fontSize: '0.875rem', marginTop: '4px' }}>
+            This name contains terms that require moderator review. Your piece will be hidden from public listings until it is approved.
           </p>
         )}
       </div>

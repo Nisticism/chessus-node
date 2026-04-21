@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from "react";
 import styles from "./piecewizard.module.scss";
+import useUndoStack from "../../hooks/useUndoStack";
 
 const BOARD_SIZE = 15; // 15x15 grid
 const CENTER = Math.floor(BOARD_SIZE / 2); // piece sits at center (7,7)
@@ -17,6 +18,15 @@ const CustomSquareSelector = ({
   const [paintMode, setPaintMode] = useState(null); // 'add' or 'remove'
   const [warning, setWarning] = useState("");
   const gridRef = useRef(null);
+
+  // Undo stack for paint strokes and clear-all. Snapshots the value of `squares` at the
+  // start of every paint stroke (mousedown / touchstart) and before clearAll, so each
+  // user-visible action can be reverted with a single Ctrl+Z.
+  const { pushUndo } = useUndoStack({ maxDepth: 50 });
+  const snapshotForUndo = useCallback(() => {
+    const snap = squares; // capture current value at stroke start
+    pushUndo(() => onChange(snap || null));
+  }, [squares, onChange, pushUndo]);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -83,6 +93,7 @@ const CustomSquareSelector = ({
 
   const handleMouseDown = (e, row, col) => {
     e.preventDefault();
+    snapshotForUndo();
     handleCellAction(row, col, null);
   };
 
@@ -116,6 +127,7 @@ const CustomSquareSelector = ({
     e.preventDefault();
     const cell = getCellFromTouch(e.touches[0]);
     if (!cell) return;
+    snapshotForUndo();
     lastTouchCell.current = `${cell.row},${cell.col}`;
     handleCellAction(cell.row, cell.col, null);
   };
@@ -139,6 +151,7 @@ const CustomSquareSelector = ({
 
   const clearAll = () => {
     setWarning("");
+    snapshotForUndo();
     onChange(null);
   };
 

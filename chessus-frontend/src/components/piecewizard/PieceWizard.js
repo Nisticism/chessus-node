@@ -218,6 +218,23 @@ const PieceWizard = ({ editPieceId = null }) => {
           }
           
           // Map database fields to state
+          // Detect "has any ranged attack" by inspecting all directional/ratio
+          // attack-range values. The flag may be missing or false on legacy
+          // pieces even if they have non-zero ranged-attack data, so we OR
+          // it with any actual ranged-attack values to keep the wizard's
+          // "Enable ranged attack" toggle in sync with the underlying data.
+          const hasAnyRangedAttack = !!piece.can_capture_enemy_via_range
+            || (piece.up_attack_range || 0) > 0
+            || (piece.down_attack_range || 0) > 0
+            || (piece.left_attack_range || 0) > 0
+            || (piece.right_attack_range || 0) > 0
+            || (piece.up_left_attack_range || 0) > 0
+            || (piece.up_right_attack_range || 0) > 0
+            || (piece.down_left_attack_range || 0) > 0
+            || (piece.down_right_attack_range || 0) > 0
+            || (piece.ratio_one_attack_range || 0) > 0
+            || (piece.ratio_two_attack_range || 0) > 0;
+
           setPieceData({
             piece_name: piece.piece_name || "",
             piece_description: piece.piece_description || "",
@@ -280,7 +297,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             repeating_capture: !!piece.repeating_capture,
             can_hop_attack_over_allies: !!piece.can_hop_attack_over_allies,
             can_hop_attack_over_enemies: !!piece.can_hop_attack_over_enemies,
-            can_capture_enemy_via_range: !!piece.can_capture_enemy_via_range,
+            can_capture_enemy_via_range: hasAnyRangedAttack,
             can_capture_ally_via_range: !!piece.can_capture_ally_via_range,
             can_capture_enemy_on_move: !!piece.can_capture_enemy_on_move,
             can_capture_ally_on_range: !!piece.can_capture_ally_on_range,
