@@ -128,6 +128,7 @@ const MatchView = () => {
       case 'checkmate': return 'Checkmate';
       case 'resignation': return 'Resignation';
       case 'timeout': return 'Time ran out';
+      case 'disconnect': return 'Opponent disconnected';
       case 'stalemate': return 'Stalemate';
       case 'promotion': return 'Promotion';
       case 'piece_count': return 'Piece count';

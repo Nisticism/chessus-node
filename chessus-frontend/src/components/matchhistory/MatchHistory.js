@@ -84,6 +84,7 @@ const MatchHistory = ({ userId, username }) => {
       case 'checkmate': return 'by checkmate';
       case 'resignation': return 'by resignation';
       case 'timeout': return 'by timeout';
+      case 'disconnect': return 'by disconnect';
       case 'stalemate': return 'by stalemate';
       case 'promotion': return 'by promotion';
       case 'piece_count': return 'by piece count';
