@@ -1078,12 +1078,12 @@ const Play = () => {
                         <span className={styles["match-game-name"]}>
                           <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                         </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span className={styles[isRated ? 'rated-badge' : 'unrated-badge']}>
-                            {isRated ? 'Rated' : 'Casual'}
-                          </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                           <span className={styles["match-time-control"]}>
                             {formatTimeControl(game)}
+                          </span>
+                          <span className={styles[isRated ? 'rated-badge' : 'unrated-badge']}>
+                            {isRated ? 'Rated' : 'Casual'}
                           </span>
                         </div>
                       </div>
@@ -1230,12 +1230,12 @@ const Play = () => {
                           <span className={styles["match-game-name"]}>
                             <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name || game.gameTypeName}</Link>
                           </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span className={styles[isRated ? 'rated-badge' : 'unrated-badge']}>
-                              {isRated ? 'Rated' : 'Casual'}
-                            </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                             <span className={styles["match-time-control"]}>
                               {formatTimeControl(game)}
+                            </span>
+                            <span className={styles[isRated ? 'rated-badge' : 'unrated-badge']}>
+                              {isRated ? 'Rated' : 'Casual'}
                             </span>
                           </div>
                         </div>
@@ -1334,15 +1334,15 @@ const Play = () => {
                         <span className={styles["match-game-name"]}>
                           <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                         </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <span className={styles["match-time-control"]}>
+                            {formatTimeControl(game)}
+                          </span>
                           {game.rated !== null && (
                             <span className={styles[game.rated ? 'rated-badge' : 'unrated-badge']}>
                               {game.rated ? 'Rated' : 'Casual'}
                             </span>
                           )}
-                          <span className={styles["match-time-control"]}>
-                            {formatTimeControl(game)}
-                          </span>
                         </div>
                       </div>
                       <div className={styles["match-players"]}>
@@ -1507,9 +1507,9 @@ const Play = () => {
                             <span className={styles["match-game-name"]}>
                               <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                             </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span className={styles["unrated-badge"]}>Unrated</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                               <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
+                              <span className={styles["unrated-badge"]}>Unrated</span>
                             </div>
                           </div>
                           <div className={styles["match-players"]}>{game.player_names}</div>

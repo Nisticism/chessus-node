@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Navigate, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
@@ -34,6 +34,7 @@ const AdminDashboard = () => {
   const [showDonorModal, setShowDonorModal] = useState(false);
   const [donorUser, setDonorUser] = useState(null);
   const [donorAmount, setDonorAmount] = useState('');
+  const donorOverlayMouseDown = useRef(false);
   
   // Featured games states
   const [featuredGames, setFeaturedGames] = useState([null, null, null]); // 3 slots
@@ -2152,37 +2153,44 @@ const AdminDashboard = () => {
     const current = Number(donorUser.total_donations) || 0;
     const currentTier = current >= 50 ? '⭐ Gold' : current >= 5 ? '✦ Silver' : 'No badge';
     return (
-      <div className={styles["modal-overlay"]} onClick={() => setShowDonorModal(false)}>
+      <div
+        className={styles["modal-overlay"]}
+        onMouseDown={(e) => { donorOverlayMouseDown.current = e.target === e.currentTarget; }}
+        onClick={(e) => { if (e.target === e.currentTarget && donorOverlayMouseDown.current) setShowDonorModal(false); }}
+      >
         <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
-          <h2>Donor Badge: {donorUser.username}</h2>
-          <p style={{ color: 'var(--text-dim)', marginBottom: 16 }}>
-            Current: <strong>{currentTier}</strong>{current > 0 ? ` ($${current.toFixed(2)})` : ''}
-          </p>
-          <div className={styles["form-group"]}>
-            <label>Total Donations ($) <span style={{ color: '#888', fontWeight: 400 }}>(0 = remove badge)</span></label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={donorAmount}
-              onChange={(e) => setDonorAmount(e.target.value)}
-              placeholder="e.g. 10.00"
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
-            />
-            <small style={{ color: 'var(--text-dim)', marginTop: 6, display: 'block' }}>
-              Silver badge: $5–$49.99 &nbsp;·&nbsp; Gold badge: $50+
-            </small>
+          <div className={styles["modal-header"]}>
+            <h2>Donor Badge: {donorUser.username}</h2>
           </div>
-          <div className={styles["modal-footer"]}>
-            <button className={styles["cancel-btn"]} onClick={() => setShowDonorModal(false)}>
-              Cancel
-            </button>
-            <button
-              className={styles["save-btn"]}
-              onClick={handleDonorSubmit}
-            >
-              Update Badge
-            </button>
+          <div className={styles["modal-body"]}>
+            <p style={{ color: 'var(--text-dim)', marginBottom: 20 }}>
+              Current tier: <strong>{currentTier}</strong>{current > 0 ? ` ($${current.toFixed(2)})` : ''}
+            </p>
+            <div className={styles["form-field"]}>
+              <label>Total Donations ($) <span style={{ color: '#888', fontWeight: 400 }}>(0 = remove badge)</span></label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={donorAmount}
+                onChange={(e) => setDonorAmount(e.target.value)}
+                placeholder="e.g. 10.00"
+              />
+              <small style={{ color: 'var(--text-dim)', marginTop: 6, display: 'block' }}>
+                Silver badge: $5–$49.99 &nbsp;·&nbsp; Gold badge: $50+
+              </small>
+            </div>
+            <div className={styles["modal-footer"]}>
+              <button className={styles["cancel-btn"]} onClick={() => setShowDonorModal(false)}>
+                Cancel
+              </button>
+              <button
+                className={styles["save-btn"]}
+                onClick={handleDonorSubmit}
+              >
+                Update Badge
+              </button>
+            </div>
           </div>
         </div>
       </div>

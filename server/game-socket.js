@@ -2269,6 +2269,11 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Not your turn" });
         }
 
+        // Enforce chain capture: if a chain capture is in progress, only the same piece can move
+        if (gameState.chainCapturePieceId != null && move.pieceId !== gameState.chainCapturePieceId) {
+          return socket.emit("error", { message: "You must complete the chain capture with the same piece" });
+        }
+
         // Start the game if this is the first move
         if (gameState.status === 'ready' && gameState.moveHistory.length === 0) {
           gameState.status = 'active';

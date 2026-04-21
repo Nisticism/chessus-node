@@ -370,7 +370,6 @@
 
   &:hover {
     color: var(--accent-primary);
-    text-decoration: underline;
   }
 }
 
@@ -379,7 +378,7 @@
   text-decoration: none;
 
   &:hover {
-    text-decoration: underline;
+    opacity: 0.8;
   }
 }
 

@@ -2,17 +2,18 @@ import React from 'react';
 import styles from './DonorBadge.module.scss';
 
 const DonorBadge = ({ totalDonations, hidden }) => {
+  const amount = parseFloat(totalDonations);
   // Don't show badge if no donations or hidden by user
-  if (!totalDonations || totalDonations < 5 || hidden === 1 || hidden === true) {
+  if (!amount || amount < 5 || hidden === 1 || hidden === true) {
     return null;
   }
 
   // Determine badge tier
-  const isGold = totalDonations >= 50;
+  const isGold = amount >= 50;
   const badgeClass = isGold ? styles.goldBadge : styles.silverBadge;
   const badgeTitle = isGold 
-    ? `Gold Supporter - $${totalDonations.toFixed(2)} donated` 
-    : `Silver Supporter - $${totalDonations.toFixed(2)} donated`;
+    ? `Gold Supporter - $${amount.toFixed(2)} donated` 
+    : `Silver Supporter - $${amount.toFixed(2)} donated`;
   const badgeIcon = isGold ? '⭐' : '✦';
   const badgeText = isGold ? 'Gold Supporter' : 'Silver Supporter';
 
