@@ -63,6 +63,11 @@ const AdminDashboard = () => {
   const [moderationLoading, setModerationLoading] = useState(false);
   const [moderationFilter, setModerationFilter] = useState('pending_review');
 
+  // Name review queue state
+  const [nameReviewQueue, setNameReviewQueue] = useState([]);
+  const [nameReviewLoading, setNameReviewLoading] = useState(false);
+  const [nameReviewFilter, setNameReviewFilter] = useState('pending_review');
+
   // Online players state
   const [onlinePlayers, setOnlinePlayers] = useState([]);
   const [onlineLoading, setOnlineLoading] = useState(false);
@@ -132,6 +137,8 @@ const AdminDashboard = () => {
       fetchOnlinePlayers();
     } else if (activeTab === 'moderation') {
       fetchModerationQueue(moderationFilter);
+    } else if (activeTab === 'name-reviews') {
+      fetchNameReviewQueue(nameReviewFilter);
     } else if (activeTab === 'server-stats') {
       fetchServerStats();
     } else {
@@ -328,6 +335,59 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error("Error approving piece:", error);
       setAlertMessage("Failed to approve piece images");
+      setAlertType("error");
+      setShowAlert(true);
+    }
+  };
+
+  const fetchNameReviewQueue = async (status = 'pending_review') => {
+    setNameReviewLoading(true);
+    try {
+      const response = await axios.get(
+        `${API_URL}admin/name-review-queue?status=${status}`,
+        { headers: authHeader() }
+      );
+      setNameReviewQueue(response.data.items || []);
+    } catch (error) {
+      console.error("Error fetching name review queue:", error);
+    } finally {
+      setNameReviewLoading(false);
+    }
+  };
+
+  const handleNameReviewApprove = async (itemId) => {
+    try {
+      await axios.post(
+        `${API_URL}admin/name-review-queue/${itemId}/approve`,
+        {},
+        { headers: authHeader() }
+      );
+      setAlertMessage("Name approved — item is now publicly visible");
+      setAlertType("success");
+      setShowAlert(true);
+      fetchNameReviewQueue(nameReviewFilter);
+    } catch (error) {
+      console.error("Error approving name:", error);
+      setAlertMessage("Failed to approve name");
+      setAlertType("error");
+      setShowAlert(true);
+    }
+  };
+
+  const handleNameReviewReject = async (itemId) => {
+    try {
+      await axios.post(
+        `${API_URL}admin/name-review-queue/${itemId}/reject`,
+        {},
+        { headers: authHeader() }
+      );
+      setAlertMessage("Name rejected — creator has been notified to rename");
+      setAlertType("success");
+      setShowAlert(true);
+      fetchNameReviewQueue(nameReviewFilter);
+    } catch (error) {
+      console.error("Error rejecting name:", error);
+      setAlertMessage("Failed to reject name");
       setAlertType("error");
       setShowAlert(true);
     }
@@ -713,6 +773,25 @@ const AdminDashboard = () => {
     }
   };
 
+  // Format last_active_at timestamp into MM/DD/YYYY h:mm am/pm in admin's local timezone
+  const formatLastActive = (raw) => {
+    try {
+      const d = parseServerDate(raw);
+      if (!d || isNaN(d.getTime())) return 'Never';
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const year = d.getFullYear();
+      let hours = d.getHours();
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'pm' : 'am';
+      hours = hours % 12;
+      if (hours === 0) hours = 12;
+      return `${month}/${day}/${year} ${hours}:${minutes}${ampm}`;
+    } catch {
+      return 'Never';
+    }
+  };
+
   const renderUsersTable = () => (
     <div className={styles["table-container"]}>
       <table className={styles["data-table"]}>
@@ -725,13 +804,14 @@ const AdminDashboard = () => {
             <th>Role</th>
             <th>Status</th>
             <th>ELO</th>
+            <th>Last Active</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
+              <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No users found'}
               </td>
             </tr>
@@ -762,6 +842,9 @@ const AdminDashboard = () => {
                 )}
               </td>
               <td>{user.elo || 1000}</td>
+              <td style={{ whiteSpace: 'nowrap', fontSize: '0.85em', color: 'var(--text-light-gray)' }}>
+                {user.last_active_at ? formatLastActive(user.last_active_at) : 'Never'}
+              </td>
               <td>
                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                   <button className={styles["edit-btn"]} onClick={() => handleEdit(user)}>
@@ -1562,6 +1645,75 @@ const AdminDashboard = () => {
     </div>
   );
 
+  const renderNameReviewTab = () => (
+    <div className={styles["table-container"]}>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', alignItems: 'center' }}>
+        <span style={{ fontWeight: 'bold' }}>Filter:</span>
+        {['pending_review', 'approved', 'rejected'].map(status => (
+          <button
+            key={status}
+            className={`${styles["tab"]} ${nameReviewFilter === status ? styles["active"] : ""}`}
+            style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+            onClick={() => { setNameReviewFilter(status); fetchNameReviewQueue(status); }}
+          >
+            {status === 'pending_review' ? 'Pending' : status.charAt(0).toUpperCase() + status.slice(1)}
+          </button>
+        ))}
+      </div>
+      {nameReviewLoading ? (
+        <div className={styles["loading"]}>Loading...</div>
+      ) : nameReviewQueue.length === 0 ? (
+        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          No {nameReviewFilter === 'pending_review' ? 'pending' : nameReviewFilter} items in the name review queue.
+        </div>
+      ) : (
+        <table className={styles["data-table"]}>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Flagged Name</th>
+              <th>Triggered Words</th>
+              <th>Submitter</th>
+              <th>Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {nameReviewQueue.map(item => (
+              <tr key={item.id}>
+                <td style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>{item.item_type}</td>
+                <td style={{ maxWidth: 200, wordBreak: 'break-word' }}>{item.flagged_name}</td>
+                <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: 200, wordBreak: 'break-word' }}>
+                  {item.triggered_words || 'N/A'}
+                </td>
+                <td>{item.submitter_username || 'Unknown'}</td>
+                <td style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                  {item.created_at ? formatDateTime(parseServerDate(item.created_at)) : 'N/A'}
+                </td>
+                <td>
+                  {nameReviewFilter === 'pending_review' && (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <StandardButton
+                        buttonText="Approve"
+                        onClick={() => handleNameReviewApprove(item.id)}
+                        style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                      />
+                      <StandardButton
+                        buttonText="Reject"
+                        onClick={() => handleNameReviewReject(item.id)}
+                        style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#c0392b' }}
+                      />
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
   const renderStreamsTab = () => (
     <div className={styles["table-container"]}>
       <div className={styles["table-header"]} style={{ marginBottom: '15px' }}>
@@ -2053,6 +2205,12 @@ const AdminDashboard = () => {
           Moderation
         </button>
         <button
+          className={`${styles["tab"]} ${activeTab === "name-reviews" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("name-reviews")}
+        >
+          Name Reviews
+        </button>
+        <button
           className={`${styles["tab"]} ${activeTab === "server-stats" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("server-stats")}
         >
@@ -2077,6 +2235,7 @@ const AdminDashboard = () => {
             {activeTab === "anonymous-games" && renderAnonymousGamesTable()}
             {activeTab === "deleted-users" && renderDeletedUsersTable()}
             {activeTab === "moderation" && renderModerationTab()}
+            {activeTab === "name-reviews" && renderNameReviewTab()}
             {activeTab === "server-stats" && renderServerStatsTab()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>

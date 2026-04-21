@@ -184,7 +184,7 @@ app.use((req, res, next) => {
 // const path = require('path');
 const db_pool = require("../configs/db");
 const dbHelpers = require("./db-helpers");
-const { checkUsername, validateContent } = require("./content-moderation");
+const { checkUsername, validateContent, checkProfessionalName } = require("./content-moderation");
 const imageModeration = require("./image-moderation");
 
 // NSFW model loads lazily on first image upload (avoids slow TensorFlow startup)
@@ -1792,6 +1792,12 @@ app.get("/api/pieces", async (req, res) => {
       whereParams.push(creatorId);
     }
 
+    // Exclude pieces whose name is pending professional-name review from public listings.
+    // When filtering by a specific creator, show their pending items so they can track status.
+    if (!creatorId) {
+      conditions.push("(p.name_review_status IS NULL OR p.name_review_status != 'pending_review')");
+    }
+
     if (search) {
       conditions.push('p.piece_name LIKE ?');
       whereParams.push(`%${search}%`);
@@ -1975,6 +1981,13 @@ app.get("/api/games", async (req, res) => {
     // Only show drafts when explicitly requested AND filtering by creator
     if (!includeDrafts || !creatorId) {
       conditions.push('(gt.is_draft = 0 OR gt.is_draft IS NULL)');
+    }
+
+    // Exclude games whose name is pending professional-name review from public listings.
+    // When filtering by a specific creator (e.g. My Games), show their pending items so
+    // they can see the review status on their own games.
+    if (!creatorId) {
+      conditions.push("(gt.name_review_status IS NULL OR gt.name_review_status != 'pending_review')");
     }
 
     if (creatorId) {
@@ -2212,6 +2225,10 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(400).send({ message: nameCheck.errors[0] });
     }
 
+    // Professional name check: flag games with sensitive terms for moderator review
+    const gameEditProfCheck = checkProfessionalName(gameData.game_name);
+    const gameEditNeedsNameReview = !gameEditProfCheck.isProfessional;
+
     // Content moderation: Check description
     if (gameData.descript) {
       const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000, allowLinks: 'whitelist' });
@@ -2403,18 +2420,36 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         const forumTitle = `${gameData.game_name} - Discussion`;
         const forumContent = `Welcome to the ${gameData.game_name} discussion forum! Share strategies, ask questions, and connect with other players of this game.${gameData.descript ? '\n\n' + gameData.descript : ''}`;
         const forumAuthorId = existingGame.is_anonymous_creator ? null : existingGame.creator_id;
+        const forumPublicValue = gameEditNeedsNameReview ? false : true;
         await db_pool.query(
           `INSERT INTO articles (author_id, game_type_id, title, content, created_at, public) VALUES (?, ?, ?, ?, ?, ?)`,
-          [forumAuthorId, gameId, forumTitle, forumContent, currentTime, true]
+          [forumAuthorId, gameId, forumTitle, forumContent, currentTime, forumPublicValue]
         );
       } catch (forumErr) {
         console.error('Error creating forum for published draft:', forumErr.message);
       }
     }
+
+    // Flag game for name review if the updated name contains sensitive terms
+    if (!isDraft && gameEditNeedsNameReview) {
+      try {
+        await db_pool.query(
+          "UPDATE game_types SET name_review_status = 'pending_review' WHERE id = ?",
+          [gameId]
+        );
+        await db_pool.query(
+          `INSERT INTO name_review_queue (item_type, item_id, submitter_id, flagged_name, triggered_words)
+           VALUES ('game', ?, ?, ?, ?)`,
+          [gameId, req.user.id, gameData.game_name, (gameEditProfCheck?.matches || []).join(', ')]
+        );
+      } catch (reviewErr) {
+        console.error('Error inserting into name_review_queue (game edit):', reviewErr.message);
+      }
+    }
     
     res.json({ 
-      message: isDraft ? "Draft saved successfully" : "Game updated successfully",
-      game: { id: gameId, ...gameData, is_draft: isDraft }
+      message: isDraft ? "Draft saved successfully" : (gameEditNeedsNameReview ? "Game updated! Your game name is under review and will be published once approved." : "Game updated successfully"),
+      game: { id: gameId, ...gameData, is_draft: isDraft, needs_name_review: gameEditNeedsNameReview }
     });
   } catch (err) {
     console.error("Error in PUT /api/games/:gameId:", err);
@@ -3848,7 +3883,7 @@ app.get("/api/admin/users", authenticateToken, async (req, res) => {
 
     const [users] = await db_pool.query(
       `SELECT id, username, email, first_name, last_name, role, elo, profile_picture, bio,
-              banned, ban_reason, banned_at, banned_by, ban_expires_at
+              banned, ban_reason, banned_at, banned_by, ban_expires_at, last_active_at
        FROM users
        ORDER BY id DESC
        LIMIT ? OFFSET ?`,
@@ -5005,6 +5040,16 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       return res.status(400).send({ message: nameCheck.errors[0] });
     }
 
+    // Professional name check: flag games with sensitive terms for moderator review
+    let gameNeedsNameReview = false;
+    let gameNameProfCheck = null;
+    if (!gameData.is_draft) {
+      gameNameProfCheck = checkProfessionalName(gameData.game_name);
+      if (!gameNameProfCheck.isProfessional) {
+        gameNeedsNameReview = true;
+      }
+    }
+
     // Content moderation: Check description
     if (gameData.descript) {
       const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000, allowLinks: 'whitelist' });
@@ -5206,9 +5251,28 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?)
       `;
       
-      await db_pool.query(forumSql, [forumAuthorId, gameId, forumTitle, forumContent, currentTime, true]);
+      // If the game name is flagged, suppress the public forum until the name is approved
+      const forumPublic = gameNeedsNameReview ? false : true;
+      await db_pool.query(forumSql, [forumAuthorId, gameId, forumTitle, forumContent, currentTime, forumPublic]);
     } catch (forumErr) {
       console.error('Error creating forum for game type:', forumErr.message);
+    }
+
+    // Flag game for name review if needed
+    if (gameNeedsNameReview) {
+      try {
+        await db_pool.query(
+          "UPDATE game_types SET name_review_status = 'pending_review' WHERE id = ?",
+          [gameId]
+        );
+        await db_pool.query(
+          `INSERT INTO name_review_queue (item_type, item_id, submitter_id, flagged_name, triggered_words)
+           VALUES ('game', ?, ?, ?, ?)`,
+          [gameId, creator_id, gameData.game_name, (gameNameProfCheck?.matches || []).join(', ')]
+        );
+      } catch (reviewErr) {
+        console.error('Error inserting into name_review_queue:', reviewErr.message);
+      }
     }
     } // end skip forum for drafts
 
@@ -5240,11 +5304,12 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     } // end skip notification for drafts
 
     res.status(201).send({
-      message: isDraft ? "Draft saved successfully!" : "Game created successfully!",
+      message: isDraft ? "Draft saved successfully!" : (gameNeedsNameReview ? "Game created! Your game name is under review and will be published once approved." : "Game created successfully!"),
       result: {
         id: result.insertId,
         game_name: gameData.game_name,
-        is_draft: isDraft
+        is_draft: isDraft,
+        needs_name_review: gameNeedsNameReview
       }
     });
 
@@ -5326,6 +5391,16 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
       const nameCheck = validateContent(pieceData.piece_name, { fieldName: 'Piece name', maxLength: 50 });
       if (!nameCheck.isValid) {
         return res.status(400).send({ message: nameCheck.errors[0] });
+      }
+    }
+
+    // Professional name check: flag piece names containing sensitive terms for review
+    let pieceNeedsNameReview = false;
+    let pieceProfCheck = null;
+    if (pieceData.piece_name) {
+      pieceProfCheck = checkProfessionalName(pieceData.piece_name);
+      if (!pieceProfCheck.isProfessional) {
+        pieceNeedsNameReview = true;
       }
     }
 
@@ -5644,6 +5719,23 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
       }
     }
 
+    // Flag piece for name review if the name contains sensitive terms
+    if (pieceNeedsNameReview) {
+      try {
+        await db_pool.query(
+          "UPDATE pieces SET name_review_status = 'pending_review' WHERE id = ?",
+          [pieceId]
+        );
+        await db_pool.query(
+          `INSERT INTO name_review_queue (item_type, item_id, submitter_id, flagged_name, triggered_words)
+           VALUES ('piece', ?, ?, ?, ?)`,
+          [pieceId, creator_id, pieceData.piece_name, (pieceProfCheck?.matches || []).join(', ')]
+        );
+      } catch (reviewErr) {
+        console.error('Error inserting into name_review_queue (piece create):', reviewErr.message);
+      }
+    }
+
     // Notify owner of new piece creation (non-blocking)
     dbHelpers.getOwnerUserId().then(async (ownerId) => {
       if (ownerId && ownerId !== creator_id) {
@@ -5672,12 +5764,13 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
     res.status(201).send({
       message: moderationStatus === 'pending_review'
         ? "Piece created! Your custom images are being reviewed and may take a short time to appear publicly."
-        : "Piece created successfully!",
+        : (pieceNeedsNameReview ? "Piece created! Your piece name is under review and will be published once approved." : "Piece created successfully!"),
       result: {
         id: pieceId,
         piece_name: pieceData.piece_name,
         piece_images: imagePaths,
-        moderation_status: moderationStatus
+        moderation_status: moderationStatus,
+        needs_name_review: pieceNeedsNameReview
       }
     });
 
@@ -5717,6 +5810,16 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
       const nameCheck = validateContent(pieceData.piece_name, { fieldName: 'Piece name', maxLength: 50 });
       if (!nameCheck.isValid) {
         return res.status(400).send({ message: nameCheck.errors[0] });
+      }
+    }
+
+    // Professional name check: flag piece names containing sensitive terms for review (edit path)
+    let pieceEditNeedsNameReview = false;
+    let pieceEditProfCheck = null;
+    if (pieceData.piece_name) {
+      pieceEditProfCheck = checkProfessionalName(pieceData.piece_name);
+      if (!pieceEditProfCheck.isProfessional) {
+        pieceEditNeedsNameReview = true;
       }
     }
 
@@ -6169,14 +6272,32 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
       }
     }
 
+    // Flag piece for name review if the updated name contains sensitive terms
+    if (pieceEditNeedsNameReview) {
+      try {
+        await db_pool.query(
+          "UPDATE pieces SET name_review_status = 'pending_review' WHERE id = ?",
+          [pieceId]
+        );
+        await db_pool.query(
+          `INSERT INTO name_review_queue (item_type, item_id, submitter_id, flagged_name, triggered_words)
+           VALUES ('piece', ?, ?, ?, ?)`,
+          [pieceId, userId, pieceData.piece_name, (pieceEditProfCheck?.matches || []).join(', ')]
+        );
+      } catch (reviewErr) {
+        console.error('Error inserting into name_review_queue (piece edit):', reviewErr.message);
+      }
+    }
+
     res.status(200).send({
       message: moderationStatus === 'pending_review'
         ? "Piece updated! Your new images are being reviewed and may take a short time to appear publicly."
-        : "Piece updated successfully!",
+        : (pieceEditNeedsNameReview ? "Piece updated! Your piece name is under review and will be published once approved." : "Piece updated successfully!"),
       result: {
         id: pieceId,
         piece_name: pieceData.piece_name,
-        moderation_status: moderationStatus
+        moderation_status: moderationStatus,
+        needs_name_review: pieceEditNeedsNameReview
       }
     });
 
@@ -6226,9 +6347,145 @@ app.delete("/api/pieces/:pieceId", authenticateToken, async (req, res) => {
   }
 });
 
-// ----------------------- Image Moderation Queue (Admin) ------------------------------
+// ----------------------- Name Review Queue (Admin) ------------------------------
 
-// List pending moderation items
+// List name review queue items
+app.get("/api/admin/name-review-queue", authenticateAdmin, async (req, res) => {
+  try {
+    const status = req.query.status || 'pending_review';
+    const [rows] = await db_pool.query(
+      `SELECT q.*, u.username as submitter_username
+       FROM name_review_queue q
+       LEFT JOIN users u ON q.submitter_id = u.id
+       WHERE q.status = ?
+       ORDER BY q.created_at DESC`,
+      [status]
+    );
+    res.json({ items: rows });
+  } catch (err) {
+    console.error("Error fetching name review queue:", err);
+    res.status(500).send({ message: "Failed to fetch name review queue" });
+  }
+});
+
+// Approve a name review queue item
+app.post("/api/admin/name-review-queue/:id/approve", authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reviewerId = req.user.id;
+    const { review_note } = req.body;
+
+    const [item] = await db_pool.query("SELECT * FROM name_review_queue WHERE id = ?", [id]);
+    if (item.length === 0) {
+      return res.status(404).send({ message: "Queue item not found" });
+    }
+
+    await db_pool.query(
+      `UPDATE name_review_queue SET status = 'approved', reviewer_id = ?, review_note = ?, reviewed_at = NOW() WHERE id = ?`,
+      [reviewerId, review_note || null, id]
+    );
+
+    // Clear the pending status on the underlying record
+    const { item_type, item_id } = item[0];
+    const table = item_type === 'game' ? 'game_types' : 'pieces';
+    await db_pool.query(
+      `UPDATE ${table} SET name_review_status = 'approved' WHERE id = ?`,
+      [item_id]
+    );
+
+    // If it's a game, also make its auto-created forum public
+    if (item_type === 'game') {
+      try {
+        await db_pool.query(
+          "UPDATE articles SET public = 1 WHERE game_type_id = ? AND public = 0",
+          [item_id]
+        );
+      } catch (forumErr) { console.error('Error publishing forum on name approval:', forumErr.message); }
+    }
+
+    // Notify the creator that their name was approved
+    try {
+      const creatorIdQuery = item_type === 'game'
+        ? "SELECT creator_id FROM game_types WHERE id = ?"
+        : "SELECT creator_id FROM pieces WHERE id = ?";
+      const [creatorRows] = await db_pool.query(creatorIdQuery, [item_id]);
+      const creatorId = creatorRows[0]?.creator_id;
+      if (creatorId) {
+        const label = item_type === 'game' ? 'Game' : 'Piece';
+        await dbHelpers.createNotification({
+          user_id: creatorId,
+          sender_id: reviewerId,
+          type: 'moderation_approved',
+          title: `${label} name approved`,
+          content: `Your ${item_type} "${item[0].flagged_name}" has been approved and is now publicly visible.`,
+          related_id: item_id,
+          action_url: item_type === 'game' ? `/games/${item_id}` : `/pieces/${item_id}`
+        });
+      }
+    } catch (notifyErr) { console.error('Failed to send name approval notification:', notifyErr.message); }
+
+    res.json({ message: "Name approved" });
+  } catch (err) {
+    console.error("Error approving name review item:", err);
+    res.status(500).send({ message: "Failed to approve item" });
+  }
+});
+
+// Reject a name review queue item
+app.post("/api/admin/name-review-queue/:id/reject", authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reviewerId = req.user.id;
+    const { review_note } = req.body;
+
+    const [item] = await db_pool.query("SELECT * FROM name_review_queue WHERE id = ?", [id]);
+    if (item.length === 0) {
+      return res.status(404).send({ message: "Queue item not found" });
+    }
+
+    await db_pool.query(
+      `UPDATE name_review_queue SET status = 'rejected', reviewer_id = ?, review_note = ?, reviewed_at = NOW() WHERE id = ?`,
+      [reviewerId, review_note || null, id]
+    );
+
+    // Mark the underlying record as rejected (keeps it hidden from public)
+    const { item_type, item_id } = item[0];
+    const table = item_type === 'game' ? 'game_types' : 'pieces';
+    await db_pool.query(
+      `UPDATE ${table} SET name_review_status = 'rejected' WHERE id = ?`,
+      [item_id]
+    );
+
+    // Notify the creator that their name was rejected
+    try {
+      const creatorIdQuery = item_type === 'game'
+        ? "SELECT creator_id FROM game_types WHERE id = ?"
+        : "SELECT creator_id FROM pieces WHERE id = ?";
+      const [creatorRows] = await db_pool.query(creatorIdQuery, [item_id]);
+      const creatorId = creatorRows[0]?.creator_id;
+      if (creatorId) {
+        const noteText = review_note ? ` Reason: ${review_note}` : '';
+        const label = item_type === 'game' ? 'Game' : 'Piece';
+        await dbHelpers.createNotification({
+          user_id: creatorId,
+          sender_id: reviewerId,
+          type: 'moderation_rejected',
+          title: `${label} name rejected`,
+          content: `Your ${item_type} name "${item[0].flagged_name}" was rejected by a moderator. Please rename it.${noteText}`,
+          related_id: item_id,
+          action_url: item_type === 'game' ? `/games/${item_id}` : `/pieces/${item_id}`
+        });
+      }
+    } catch (notifyErr) { console.error('Failed to send name rejection notification:', notifyErr.message); }
+
+    res.json({ message: "Name rejected" });
+  } catch (err) {
+    console.error("Error rejecting name review item:", err);
+    res.status(500).send({ message: "Failed to reject item" });
+  }
+});
+
+// ----------------------- Image Moderation Queue (Admin) ------------------------------
 app.get("/api/admin/moderation-queue", authenticateAdmin, async (req, res) => {
   try {
     const status = req.query.status || 'pending_review';
@@ -7745,7 +8002,7 @@ app.put("/api/users/:userId/messaging-preferences", authenticateToken, async (re
     if (req.user.id !== userId) {
       return res.status(403).json({ error: "Unauthorized" });
     }
-    const { allow_non_friend_dms, disable_game_chat, sound_enabled, chat_public_for_spectators } = req.body;
+    const { allow_non_friend_dms, disable_game_chat, sound_enabled, chat_public_for_spectators, show_computer_games_publicly } = req.body;
     const updates = [];
     const values = [];
     if (allow_non_friend_dms !== undefined) {
@@ -7763,6 +8020,10 @@ app.put("/api/users/:userId/messaging-preferences", authenticateToken, async (re
     if (chat_public_for_spectators !== undefined) {
       updates.push("chat_public_for_spectators = ?");
       values.push(chat_public_for_spectators ? 1 : 0);
+    }
+    if (show_computer_games_publicly !== undefined) {
+      updates.push("show_computer_games_publicly = ?");
+      values.push(show_computer_games_publicly ? 1 : 0);
     }
     if (updates.length === 0) {
       return res.status(400).json({ error: "No preferences to update" });

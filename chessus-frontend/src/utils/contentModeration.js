@@ -47,6 +47,97 @@ const USERNAME_OFFENSIVE_SUBSTRINGS = [
 const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?/gi;
 const BARE_DOMAIN_PATTERN = /\b[a-zA-Z0-9][-a-zA-Z0-9]*\.(?:com|net|org|io|co|dev|gg|me|tv|cc|xyz|info|biz|us|uk|ca|au|de|fr|ru|cn|jp|app|site|online|store|shop|tech|live|pro|club|link|click|win|top|work|space|fun|website|stream|download|review|party|trade|bid|date|racing|science|faith|accountant|cricket|loan|zip|mov|nexus)\b/gi;
 
+/**
+ * Patterns for terms that are inappropriate in official game/piece names but may be
+ * acceptable in forum posts, bios, and other free-form content.
+ * Mirror of server/content-moderation.js PROFESSIONAL_NAME_PATTERNS.
+ */
+const PROFESSIONAL_NAME_PATTERNS = [
+  // Sexual orientation / gender identity
+  /\bgays?\b/i,
+  /\blesbians?\b/i,
+  /\bhomosexuals?\b/i,
+  /\bbisexuals?\b/i,
+  /\bpansexuals?\b/i,
+  /\bqueers?\b/i,
+  /\blgbtq?\+?\b/i,
+  /\btransgenders?\b/i,
+  /\btrans(?:sexual|gender|man|woman|girl|boy|femme|masc|nb)?\b/i,
+  /\bnonbinary\b/i,
+  /\basexuals?\b/i,
+  /\bheterosexuals?\b/i,
+
+  // Political figures / movements
+  /\brepublicans?\b/i,
+  /\bdemocrats?\b/i,
+  /\bsocialists?\b/i,
+  /\bcommunists?\b/i,
+  /\bmarxists?\b/i,
+  /\bfascists?\b/i,
+  /\banarchists?\b/i,
+  /\bliberals?\b/i,
+  /\bconservatives?\b/i,
+  /\bmaga\b/i,
+  /\bantifa\b/i,
+  /\btrump\b/i,
+  /\bbiden\b/i,
+  /\bobama\b/i,
+  /\bkkk\b/i,
+  /\bbolsheviks?\b/i,
+  /\bnationalists?\b/i,
+
+  // Drugs / narcotics
+  /\bweed\b/i,
+  /\bmarijuana\b/i,
+  /\bcannabis\b/i,
+  /\bcocaine\b/i,
+  /\bheroin\b/i,
+  /\bmeth(?:amphetamine)?\b/i,
+  /\becstasy\b/i,
+  /\bmdma\b/i,
+  /\blsd\b/i,
+  /\bshrooms\b/i,
+  /\bfentanyl\b/i,
+  /\bketamine\b/i,
+  /\bpcp\b/i,
+  /\bamphetamines?\b/i,
+  /\bopioids?\b/i,
+  /\bstoners?\b/i,
+  /\bcrack\s+cocaine\b/i,
+
+  // Sexual content (milder terms not covered by the strict offensive list)
+  /\bsex(?:y|ual|ually)?\b/i,
+  /\bporn(?:ography|ographic)?\b/i,
+  /\berotica?\b/i,
+  /\bfetish(?:es)?\b/i,
+  /\bbdsm\b/i,
+  /\borgasms?\b/i,
+  /\bmasturbat(?:e|ing|ion)\b/i,
+  /\bdildos?\b/i,
+  /\bvibrators?\b/i,
+  /\bnudes?\b/i,
+  /\bnaked\b/i,
+  /\bprostitut(?:e|es|ion)\b/i,
+  /\bstrippers?\b/i,
+  /\bhentai\b/i,
+  /\bforeplay\b/i,
+  /\bintercourse\b/i,
+  /\bsexting\b/i,
+  /\bescorts?\b/i,
+
+  // Violence / dark themes not already in the strict offensive list
+  /\bgenocide\b/i,
+  /\btorture\b/i,
+  /\bpedophil(?:e|es|ia|ic)\b/i,
+  /\bincest\b/i,
+  /\bnecrophilia\b/i,
+
+  // Religious extremism
+  /\bjihad\b/i,
+  /\bterroris(?:t|ts|m)\b/i,
+  /\bshari[a']?a\b/i,
+];
+
 export function checkOffensiveContent(text) {
   if (!text || typeof text !== 'string') return { isClean: true, matches: [] };
   const matches = [];
@@ -97,4 +188,18 @@ export function validateContent(text, options = {}) {
     }
   }
   return { isValid: errors.length === 0, errors };
+}
+
+/**
+ * Check whether a proposed game or piece name is suitable for a professional context.
+ * Returns { isProfessional: boolean, matches: string[] }
+ */
+export function checkProfessionalName(text) {
+  if (!text || typeof text !== 'string') return { isProfessional: true, matches: [] };
+  const matches = [];
+  for (const pattern of PROFESSIONAL_NAME_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) matches.push(match[0]);
+  }
+  return { isProfessional: matches.length === 0, matches: [...new Set(matches)] };
 }

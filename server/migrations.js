@@ -308,6 +308,27 @@ const tableMigrations = [
       INDEX idx_deleted_users_deleted_at (deleted_at)
     )`,
     description: "Create deleted_users audit table"
+  },
+  {
+    table: 'name_review_queue',
+    sql: `CREATE TABLE IF NOT EXISTS name_review_queue (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      item_type ENUM('game', 'piece') NOT NULL,
+      item_id INT UNSIGNED NOT NULL,
+      submitter_id INT UNSIGNED,
+      flagged_name VARCHAR(200) NOT NULL,
+      triggered_words VARCHAR(500),
+      status ENUM('pending_review', 'approved', 'rejected') DEFAULT 'pending_review',
+      reviewer_id INT UNSIGNED,
+      review_note VARCHAR(500),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at DATETIME,
+      FOREIGN KEY (submitter_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (reviewer_id) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_name_review_status (status),
+      INDEX idx_name_review_item (item_type, item_id)
+    )`,
+    description: "Create name_review_queue table for flagging game/piece names that contain sensitive terms"
   }
 ];
 
@@ -631,6 +652,18 @@ const migrations = [
     column: 'must_move_uses_action',
     sql: "ALTER TABLE pieces ADD COLUMN must_move_uses_action TINYINT(1) DEFAULT 0",
     description: "Add must_move_uses_action column - when enabled (and must_move_if_able is set), the forced move consumes one of the player's actions per turn instead of being free."
+  },
+  {
+    table: 'game_types',
+    column: 'name_review_status',
+    sql: "ALTER TABLE game_types ADD COLUMN name_review_status ENUM('approved', 'pending_review', 'rejected') DEFAULT 'approved'",
+    description: "Add name_review_status to game_types - tracks whether the game name passed the professional name review"
+  },
+  {
+    table: 'pieces',
+    column: 'name_review_status',
+    sql: "ALTER TABLE pieces ADD COLUMN name_review_status ENUM('approved', 'pending_review', 'rejected') DEFAULT 'approved'",
+    description: "Add name_review_status to pieces - tracks whether the piece name passed the professional name review"
   }
 ];
 
@@ -848,6 +881,29 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error modifying games.pieces:', err.message);
+  }
+
+  // Increase size of special-square JSON columns on game_types — these can grow
+  // large on big boards (every cell may be a custom square with nested config).
+  // VARCHAR(1000) overflows easily; bump to MEDIUMTEXT (16MB).
+  for (const col of ['special_squares_string', 'range_squares_string', 'promotion_squares_string', 'control_squares_string']) {
+    try {
+      const [columns] = await db_pool.query(
+        `SELECT DATA_TYPE
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'game_types' AND COLUMN_NAME = ?`,
+        [process.env.DB_NAME || 'chessusnode', col]
+      );
+      if (columns.length > 0 && columns[0].DATA_TYPE !== 'mediumtext') {
+        await runMigration(
+          `ALTER TABLE game_types MODIFY COLUMN ${col} MEDIUMTEXT`,
+          `Increase game_types.${col} to MEDIUMTEXT for large boards`
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error(`Error modifying game_types.${col}:`, err.message);
+    }
   }
 
   // Add allow_spectators column to games table
@@ -2480,6 +2536,20 @@ const runMigrations = async () => {
       }
     } catch (err) {
       console.error('Error adding chat_public_for_spectators column:', err.message);
+    }
+
+    // Add show_computer_games_publicly column to users (default 0 = private)
+    try {
+      const showBotCol = await columnExists('users', 'show_computer_games_publicly');
+      if (!showBotCol) {
+        await runMigration(
+          "ALTER TABLE users ADD COLUMN show_computer_games_publicly TINYINT(1) DEFAULT 0 COMMENT 'If true, the user\\'s ongoing games against the computer appear in the public ongoing games list'",
+          "Add show_computer_games_publicly column to users table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding show_computer_games_publicly column:', err.message);
     }
 
     // Add custom_movement_squares column to pieces (JSON for click-to-select custom movement)
