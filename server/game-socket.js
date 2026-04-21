@@ -306,6 +306,9 @@ function startDisconnectForfeitTimer(io, gameId, userId, durationMs) {
   // Skip bot games — there's no human opponent to award a win to on the bot side,
   // and the human's own disconnect can be resumed by reload anyway.
   if (gameState.botPlayer) return;
+  // Skip unlimited time control games — there is no clock pressure so there
+  // is no reason to forfeit on disconnect.
+  if (!gameState.timeControl) return;
 
   const expiresAt = Date.now() + durationMs;
   const timeoutId = setTimeout(() => {
@@ -2111,7 +2114,7 @@ function initializeSocket(server) {
             allowSpectators: game.allow_spectators !== 0,
             showPieceHelpers: game.show_piece_helpers === 1,
             allowPremoves: game.allow_premoves !== 0,
-            rated: game.is_rated !== 0,
+            rated: (() => { try { const od = JSON.parse(game.other_data || '{}'); return od.rated !== false; } catch { return true; } })(),
             startingMode: (() => {
               try {
                 const otherData = JSON.parse(game.other_data || '{}');
