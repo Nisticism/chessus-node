@@ -480,3 +480,215 @@
     font-size: 1.5rem;
   }
 }
+
+// ----- Other Ways to Give (Venmo / Cash App) -----
+.altPayments {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.altPaymentsTitle {
+  font-size: 1.3rem;
+  color: var(--text-heading);
+  text-align: center;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.altPaymentsHint {
+  text-align: center;
+  color: var(--text-light-gray, rgba(255, 255, 255, 0.7));
+  font-size: 0.95rem;
+  margin-bottom: 1.5rem;
+}
+
+.altPaymentsManualNote {
+  text-align: center;
+  color: var(--text-light-gray, rgba(255, 255, 255, 0.65));
+  font-size: 0.85rem;
+  font-style: italic;
+  line-height: 1.5;
+  max-width: 640px;
+  margin: -0.5rem auto 1.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--accent-primary, #4a44b5);
+  border-radius: 4px;
+}
+
+.altPaymentsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+}
+
+.altPaymentCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1.25rem 1rem 1rem;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  color: var(--text-heading);
+  position: relative;
+  user-select: none;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--accent-primary);
+  }
+}
+
+.venmoCard {
+  background: linear-gradient(135deg, rgba(0, 140, 255, 0.55) 0%, rgba(0, 100, 199, 0.55) 100%);
+  border-color: rgba(0, 100, 199, 0.6);
+}
+
+.cashappCard {
+  background: linear-gradient(135deg, rgba(0, 213, 75, 0.55) 0%, rgba(0, 168, 61, 0.55) 100%);
+  border-color: rgba(0, 168, 61, 0.6);
+}
+
+.altPaymentLogo {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: #fff;
+}
+
+.altPaymentBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  margin-bottom: 0.85rem;
+}
+
+.altPaymentName {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.altPaymentHandle {
+  font-size: 1rem;
+  font-weight: 500;
+  opacity: 0.95;
+}
+
+.altPaymentTapHint {
+  font-size: 0.8rem;
+  opacity: 0.85;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+.altPaymentLink {
+  display: inline-block;
+  padding: 0.4rem 0.9rem;
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.45);
+  }
+}
+
+// ----- QR Code Modal -----
+.qrModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+  animation: qrFadeIn 0.15s ease-out;
+}
+
+@keyframes qrFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.qrModalContent {
+  position: relative;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
+  border-radius: 10px;
+  padding: 2rem 2rem 1.5rem;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.qrModalClose {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: transparent;
+  color: var(--text-heading);
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 8px;
+
+  &:hover { opacity: 0.75; }
+}
+
+.qrModalTitle {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  color: var(--text-heading);
+  font-weight: 600;
+}
+
+.qrModalImage {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  margin: 0 auto 1rem;
+  background: #fff;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.qrModalHint {
+  color: var(--text-light-gray, rgba(255, 255, 255, 0.7));
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.qrModalLink {
+  display: inline-block;
+  color: var(--accent-primary-text);
+  font-size: 0.95rem;
+  word-break: break-all;
+  text-decoration: none;
+
+  &:hover { text-decoration: underline; }
+}

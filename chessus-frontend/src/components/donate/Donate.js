@@ -5,9 +5,12 @@ import styles from "./donate.module.scss";
 import Divider from "../Divider/Divider";
 import StandardButton from "../standardbutton/StandardButton";
 import { trackDonation } from "../../analytics/GoogleAnalytics";
+import cashappQR from "../../assets/cashapp-qr.png";
+import venmoQR from "../../assets/venmo-qr.png";
 
 const Donate = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
+  const [qrModal, setQrModal] = useState(null); // 'cashapp' | 'venmo' | null
   const [selectedAmount, setSelectedAmount] = useState(null);
   const [customAmount, setCustomAmount] = useState("");
   const [showThankYou, setShowThankYou] = useState(false);
@@ -371,7 +374,7 @@ const Donate = () => {
 
             <div className={styles.paymentNote}>
               <p className={styles.secureNote}>
-                🔒 All payments are processed securely through industry-leading payment providers
+                🔒 Donations are processed securely. We never see or store your payment details — card, PayPal, Venmo, and Cash App information stays with the payment provider.
               </p>
               {(!process.env.REACT_APP_STRIPE_PUBLIC_KEY || !process.env.REACT_APP_PAYPAL_CLIENT_ID) && (
                 <p className={styles.note}>
@@ -379,6 +382,102 @@ const Donate = () => {
                 </p>
               )}
             </div>
+
+            {/* Other ways to give: Venmo + Cash App */}
+            <div className={styles.altPayments}>
+              <h3 className={styles.altPaymentsTitle}>Other Ways to Give</h3>
+              <p className={styles.altPaymentsHint}>
+                Prefer to send directly? Use Venmo or Cash App. Tap a card to view the QR code, or use the link below it.
+              </p>
+              <p className={styles.altPaymentsManualNote}>
+                Note: Venmo and Cash App don’t expose a public payment-confirmation API, so donor badges from these methods
+                are awarded as soon as we can manually verify your payment. Badges are based on the amount you sent (not the
+                amount we receive after processor fees). If your badge hasn’t shown up within a day or two, please reach out
+                to support and we’ll get it sorted.
+              </p>
+              <div className={styles.altPaymentsGrid}>
+                <div
+                  className={`${styles.altPaymentCard} ${styles.venmoCard}`}
+                  onClick={() => setQrModal('venmo')}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setQrModal('venmo'); }}
+                  aria-label="Show Venmo QR code"
+                >
+                  <div className={styles.altPaymentLogo} aria-hidden="true">V</div>
+                  <div className={styles.altPaymentBody}>
+                    <div className={styles.altPaymentName}>Venmo</div>
+                    <div className={styles.altPaymentHandle}>@GridGrove</div>
+                    <div className={styles.altPaymentTapHint}>Tap to show QR code</div>
+                  </div>
+                  <a
+                    href="https://www.venmo.com/u/GridGrove"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.altPaymentLink}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Open Venmo ↗
+                  </a>
+                </div>
+
+                <div
+                  className={`${styles.altPaymentCard} ${styles.cashappCard}`}
+                  onClick={() => setQrModal('cashapp')}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setQrModal('cashapp'); }}
+                  aria-label="Show Cash App QR code"
+                >
+                  <div className={styles.altPaymentLogo} aria-hidden="true">$</div>
+                  <div className={styles.altPaymentBody}>
+                    <div className={styles.altPaymentName}>Cash App</div>
+                    <div className={styles.altPaymentHandle}>$GridGrove</div>
+                    <div className={styles.altPaymentTapHint}>Tap to show QR code</div>
+                  </div>
+                  <a
+                    href="https://cash.app/$gridgrove"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.altPaymentLink}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Open Cash App ↗
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {qrModal && (
+              <div className={styles.qrModalOverlay} onClick={() => setQrModal(null)}>
+                <div className={styles.qrModalContent} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className={styles.qrModalClose}
+                    onClick={() => setQrModal(null)}
+                    aria-label="Close QR code"
+                  >✕</button>
+                  <h3 className={styles.qrModalTitle}>
+                    {qrModal === 'venmo' ? 'Venmo — @GridGrove' : 'Cash App — $GridGrove'}
+                  </h3>
+                  <img
+                    src={qrModal === 'venmo' ? venmoQR : cashappQR}
+                    alt={qrModal === 'venmo' ? 'Venmo QR code for @GridGrove' : 'Cash App QR code for $GridGrove'}
+                    className={styles.qrModalImage}
+                  />
+                  <p className={styles.qrModalHint}>
+                    Scan with your {qrModal === 'venmo' ? 'Venmo' : 'Cash App'} app, or use the link below.
+                  </p>
+                  <a
+                    href={qrModal === 'venmo' ? 'https://www.venmo.com/u/GridGrove' : 'https://cash.app/$gridgrove'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.qrModalLink}
+                  >
+                    {qrModal === 'venmo' ? 'https://www.venmo.com/u/GridGrove' : 'https://cash.app/$gridgrove'}
+                  </a>
+                </div>
+              </div>
+            )}
         </div>
 
         <Divider />
