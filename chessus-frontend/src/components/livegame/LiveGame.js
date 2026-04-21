@@ -4985,7 +4985,18 @@ const LiveGame = () => {
         </div>
       </div>
 
-      {/* Special Squares Legend Row - below board and clocks */}
+      {/* Mobile Turn Confirmation - directly below board on small screens */}
+      {pendingMove && (
+        <div className={styles["layout-row-move-confirm"]}>
+          <span className={styles["move-confirm-label"]}>Confirm your move?</span>
+          <div className={styles["move-confirm-buttons"]}>
+            <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
+            <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Special Squares Legend Row - below board and clocks */
       {hasSpecialSquares && (
         <div className={styles["layout-row-legend"]}>
           {showAllSpecialSquares && (
@@ -5062,17 +5073,6 @@ const LiveGame = () => {
               })()}
             </div>
           )}
-        </div>
-      )}
-
-      {/* Mobile Turn Confirmation - Only visible on small screens */}
-      {pendingMove && (
-        <div className={styles["layout-row-move-confirm"]}>
-          <span className={styles["move-confirm-label"]}>Confirm your move?</span>
-          <div className={styles["move-confirm-buttons"]}>
-            <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
-            <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
-          </div>
         </div>
       )}
 
