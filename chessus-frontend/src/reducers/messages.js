@@ -45,6 +45,11 @@ export default function messagesReducer(state = initialState, action) {
       };
 
     case types.SEND_MESSAGE_SUCCESS:
+      // Dedup: don't append if a message with the same ID already exists
+      // (guards against double-send race conditions / duplicate dispatches)
+      if (payload?.id && state.activeMessages.some((m) => m.id === payload.id)) {
+        return state;
+      }
       return {
         ...state,
         activeMessages: [...state.activeMessages, payload],
@@ -58,9 +63,11 @@ export default function messagesReducer(state = initialState, action) {
     case types.NEW_DIRECT_MESSAGE: {
       const senderId = payload.sender_id;
       const isActiveConversation = state.activeConversationUserId === senderId;
+      // Dedup: don't append if a message with the same ID already exists
+      const alreadyAppended = payload?.id && state.activeMessages.some((m) => m.id === payload.id);
       return {
         ...state,
-        activeMessages: isActiveConversation
+        activeMessages: isActiveConversation && !alreadyAppended
           ? [...state.activeMessages, payload]
           : state.activeMessages,
         unreadDMCount: isActiveConversation ? state.unreadDMCount : state.unreadDMCount + 1,

@@ -142,6 +142,10 @@ const Preferences = () => {
     return localStorage.getItem('boardAnimations') !== 'false';
   });
 
+  const [persistLastMoveHighlight, setPersistLastMoveHighlight] = useState(() => {
+    return localStorage.getItem('persistLastMoveHighlight') !== 'false';
+  });
+
   const [siteTheme, setSiteTheme] = useState(() => {
     return localStorage.getItem('siteTheme') || 'grove';
   });
@@ -166,6 +170,10 @@ const Preferences = () => {
 
   const [chatPublicForSpectators, setChatPublicForSpectators] = useState(() => {
     return currentUser?.chat_public_for_spectators === 1 || currentUser?.chat_public_for_spectators === true;
+  });
+
+  const [showComputerGamesPublicly, setShowComputerGamesPublicly] = useState(() => {
+    return currentUser?.show_computer_games_publicly === 1 || currentUser?.show_computer_games_publicly === true;
   });
 
   // Email notification preferences (loaded async from /email-preferences)
@@ -243,6 +251,10 @@ const Preferences = () => {
   }, [boardAnimations]);
 
   useEffect(() => {
+    localStorage.setItem('persistLastMoveHighlight', persistLastMoveHighlight ? 'true' : 'false');
+  }, [persistLastMoveHighlight]);
+
+  useEffect(() => {
     localStorage.setItem('pieceShadow', pieceShadow ? 'true' : 'false');
   }, [pieceShadow]);
 
@@ -273,6 +285,7 @@ const Preferences = () => {
           disable_game_chat: disableGameChat,
           sound_enabled: soundEnabled,
           chat_public_for_spectators: chatPublicForSpectators,
+          show_computer_games_publicly: showComputerGamesPublicly,
         },
         { headers: authHeader() }
       );
@@ -297,6 +310,7 @@ const Preferences = () => {
         disable_game_chat: disableGameChat ? 1 : 0,
         sound_enabled: soundEnabled ? 1 : 0,
         chat_public_for_spectators: chatPublicForSpectators ? 1 : 0,
+        show_computer_games_publicly: showComputerGamesPublicly ? 1 : 0,
       };
       localStorage.setItem("user", JSON.stringify(updatedUser));
       
@@ -557,6 +571,17 @@ const Preferences = () => {
                 <span className={styles["toggle-slider"]} />
               </div>
             </label>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Persist last-move highlight <InfoTooltip text="Keeps the previous move's highlight on the board for 1 second after a new move is made (with a fade-out), so you can see what just changed." /></span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={persistLastMoveHighlight}
+                  onChange={(e) => setPersistLastMoveHighlight(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
           </div>
 
           {/* Sound Effects Section */}
@@ -628,7 +653,7 @@ const Preferences = () => {
         <Divider muted />
 
         <section className={styles["preference-section"]}>
-          <h2>Donation Badge</h2>
+          <h2>Privacy</h2>
           <div className={styles["animations-section"]}>
             <label className={styles["toggle-row"]}>
               <span className={styles["toggle-text"]}>Hide donation badge <InfoTooltip text="When enabled, your donor badge will not be displayed on your profile page" /></span>
@@ -641,14 +666,6 @@ const Preferences = () => {
                 <span className={styles["toggle-slider"]} />
               </div>
             </label>
-          </div>
-        </section>
-
-        <Divider muted />
-
-        <section className={styles["preference-section"]}>
-          <h2>Messaging & Chat</h2>
-          <div className={styles["animations-section"]}>
             <label className={styles["toggle-row"]}>
               <span className={styles["toggle-text"]}>Allow DMs from non-friends <InfoTooltip text="When enabled, any user can send you direct messages. When disabled, only friends can message you." /></span>
               <div className={styles["toggle-switch"]}>
@@ -678,6 +695,17 @@ const Preferences = () => {
                   type="checkbox"
                   checked={chatPublicForSpectators}
                   onChange={(e) => setChatPublicForSpectators(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+            <label className={styles["toggle-row"]}>
+              <span className={styles["toggle-text"]}>Show my computer games publicly <InfoTooltip text="When enabled, your ongoing games against the computer will appear in the public Live Games list so others can spectate." /></span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={showComputerGamesPublicly}
+                  onChange={(e) => setShowComputerGamesPublicly(e.target.checked)}
                 />
                 <span className={styles["toggle-slider"]} />
               </div>
