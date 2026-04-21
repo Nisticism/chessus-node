@@ -4,9 +4,13 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
-    date: "April 22, 2026",
-    title: "Cleaner Live Games, Privacy Section, Sub-Second Clocks & Detail Page Improvements",
+    date: "April 21, 2026",
+    title: "Admin Donor Badges, Rated/Casual Badges on Game Cards, Stricter Name Moderation & Clock Improvements",
     items: [
+      "Admin dashboard — Donor Badge: admins can now manually grant or adjust donor badges for Venmo / Cash App contributors from the Users tab (enter the payment amount to award Silver or Gold status, or set to 0 to remove a badge)",
+      "/play page — game cards now show a 'Rated' or 'Casual' badge so you know before you join whether ELO is on the line",
+      "/play page — clicking the game title on any game card now links to that game's detail page; clicking a host's username links to their profile",
+      "Live games — disconnect banner: the Pause / Resume timer button is now hidden once the game has already ended by disconnect, since the timer is no longer active",
       "Live games: removed the leftover 'Custom' entry from the board legend when a game has no custom squares — the legend no longer shows categories that aren't in use",
       "Live games: fixed a bug where bot games sometimes showed 'Starting…' under the title even after the game was already in progress; the status now correctly reads 'In Progress'",
       "Live games: the 'Your turn' / 'Waiting for opponent' indicator is now centered above the board (in its own column of the game header) so it's always easy to glance at, regardless of how long the game title is",
@@ -21,12 +25,6 @@ const changelogData = [
       "Piece detail page: the 'Can Castle' badge now also displays the configured castling distance (in squares)",
       "Piece detail page: step-by-step movement, capture, and ranged attack entries now label themselves as 'Manhattan' (orthogonal only) or 'Chebyshev' (any direction including diagonals), so you can tell at a glance which counting rule applies",
       "Game detail page: the Piece Settings section now describes ranged attacks for any piece that has them — including direction/range, ratio (L-shape) and step-based ranged patterns, the per-attack capture cap, the repeat-attack flag, and whether the attack can fire over enemies / allies. It also lists Hop Capture (with chain-capture indicator) and Ally Capture for pieces that have those abilities",
-    ]
-  },
-  {
-    date: "April 21, 2026",
-    title: "Stricter Game & Piece Name Moderation",
-    items: [
       "Game and piece names are now held to a higher professional standard — names containing sexual orientation terms, political figures or movements, drug references, explicit sexual content, or related categories are automatically flagged and held for moderator review before becoming publicly visible",
       "Flagged games and pieces still get created normally; you'll receive a notification once a moderator approves or rejects the name. Your item remains visible to you in your personal library during the review window",
       "The auto-created discussion forum for a flagged game is also held as private until the game name is approved",

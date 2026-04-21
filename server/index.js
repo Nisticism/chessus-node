@@ -3883,7 +3883,8 @@ app.get("/api/admin/users", authenticateToken, async (req, res) => {
 
     const [users] = await db_pool.query(
       `SELECT id, username, email, first_name, last_name, role, elo, profile_picture, bio,
-              banned, ban_reason, banned_at, banned_by, ban_expires_at, last_active_at
+              banned, ban_reason, banned_at, banned_by, ban_expires_at, last_active_at,
+              total_donations
        FROM users
        ORDER BY id DESC
        LIMIT ? OFFSET ?`,
@@ -4064,6 +4065,45 @@ app.post("/api/admin/users/:userId/promote", authenticateToken, async (req, res)
   } catch (err) {
     console.error("Error promoting user:", err);
     res.status(500).send({ message: "Failed to promote user", err: err.message });
+  }
+});
+
+// Set user's total donations / donor badge (admin/owner only)
+app.post("/api/admin/users/:userId/set-donations", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requesterRole = req.user.role;
+
+    if (requesterRole !== 'admin' && requesterRole !== 'owner') {
+      return res.status(403).send({ message: "Access denied. Admin or owner role required." });
+    }
+
+    const { amount } = req.body;
+    const parsedAmount = parseFloat(amount);
+
+    if (isNaN(parsedAmount) || parsedAmount < 0) {
+      return res.status(400).send({ message: "Invalid donation amount — must be 0 or a positive number" });
+    }
+
+    const [users] = await db_pool.query(
+      "SELECT id, username FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+    await db_pool.query(
+      "UPDATE users SET total_donations = ? WHERE id = ?",
+      [parsedAmount, userId]
+    );
+
+    console.log(`Admin ${req.user.id} set total_donations=${parsedAmount} for user ${users[0].username} (id ${userId})`);
+    res.json({ message: `Donor badge updated for ${users[0].username}`, total_donations: parsedAmount });
+  } catch (err) {
+    console.error("Error setting donations:", err);
+    res.status(500).send({ message: "Failed to update donor badge", err: err.message });
   }
 });
 

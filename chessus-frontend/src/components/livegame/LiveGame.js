@@ -4469,25 +4469,27 @@ const LiveGame = () => {
                 : <>You win in <strong>{remainingSecs}s</strong>.</>
               }
             </span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {disconnectInfo.paused ? (
-                <button
-                  type="button"
-                  onClick={() => resumeDisconnectTimer && resumeDisconnectTimer(gameId)}
-                  style={{ background: '#fff', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
-                >
-                  Resume
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => pauseDisconnectTimer && pauseDisconnectTimer(gameId)}
-                  style={{ background: '#fff', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
-                >
-                  Pause
-                </button>
-              )}
-            </div>
+            {!showGameOver && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                {disconnectInfo.paused ? (
+                  <button
+                    type="button"
+                    onClick={() => resumeDisconnectTimer && resumeDisconnectTimer(gameId)}
+                    style={{ background: '#fff', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
+                  >
+                    Resume
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => pauseDisconnectTimer && pauseDisconnectTimer(gameId)}
+                    style={{ background: '#fff', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
+                  >
+                    Pause
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         );
       })()}

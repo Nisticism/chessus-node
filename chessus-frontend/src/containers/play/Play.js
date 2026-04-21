@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation, Link } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
 import { getGames, getGameById } from "../../actions/games";
 import { getOnlineFriends, setOnlineUsers, getFriends } from "../../actions/friends";
@@ -1068,6 +1068,7 @@ const Play = () => {
               <div className={styles["private-games-list"]}>
                 {paginatedPrivateGames.map((game) => {
                   const isHost = game.host_id === currentUser.id;
+                  const isRated = game.rated !== 0 && game.rated !== false && game.rated !== null && !game.is_correspondence;
                   return (
                     <div
                       key={game.id}
@@ -1075,17 +1076,22 @@ const Play = () => {
                     >
                       <div className={styles["match-header"]}>
                         <span className={styles["match-game-name"]}>
-                          {game.game_name}
+                          <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                         </span>
-                        <span className={styles["match-time-control"]}>
-                          {formatTimeControl(game)}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span className={styles[isRated ? 'rated-badge' : 'unrated-badge']}>
+                            {isRated ? 'Rated' : 'Casual'}
+                          </span>
+                          <span className={styles["match-time-control"]}>
+                            {formatTimeControl(game)}
+                          </span>
+                        </div>
                       </div>
                       <div className={styles["match-host"]}>
                         {isHost ? (
-                          <span>⚔️ You challenged <strong>{game.challenged_username}</strong></span>
+                          <span>⚔️ You challenged <Link to={`/profile/${game.challenged_username}`} className={styles["username-link"]}><strong>{game.challenged_username}</strong></Link></span>
                         ) : (
-                          <span>⚔️ <strong>{game.host_username}</strong> challenged you</span>
+                          <span>⚔️ <Link to={`/profile/${game.host_username}`} className={styles["username-link"]}><strong>{game.host_username}</strong></Link> challenged you</span>
                         )}
                       </div>
                       <div className={styles["match-actions"]}>
@@ -1214,6 +1220,7 @@ const Play = () => {
                 <div className={styles["open-matches-list"]}>
                   {paginatedOpenGames.map((game) => {
                     const isOwnGame = currentUser ? game.host_id === currentUser.id : false;
+                    const isRated = game.rated !== 0 && game.rated !== false && game.rated !== null && !game.is_correspondence;
                     return (
                       <div 
                         key={game.id || game.gameId} 
@@ -1221,17 +1228,22 @@ const Play = () => {
                       >
                         <div className={styles["match-header"]}>
                           <span className={styles["match-game-name"]}>
-                            {game.game_name || game.gameTypeName}
+                            <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name || game.gameTypeName}</Link>
                           </span>
-                          <span className={styles["match-time-control"]}>
-                            {formatTimeControl(game)}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span className={styles[isRated ? 'rated-badge' : 'unrated-badge']}>
+                              {isRated ? 'Rated' : 'Casual'}
+                            </span>
+                            <span className={styles["match-time-control"]}>
+                              {formatTimeControl(game)}
+                            </span>
+                          </div>
                         </div>
                         <div className={styles["match-host"]}>
                           {isOwnGame ? (
                             <span className={styles["your-game"]}>Your Game</span>
                           ) : (
-                            <>Hosted by <span>{game.host_username || game.hostUsername}</span></>
+                            <>Hosted by <Link to={`/profile/${game.host_username || game.hostUsername}`} className={styles["username-link"]}>{game.host_username || game.hostUsername}</Link></>
                           )}
                         </div>
                         <div className={styles["match-actions"]}>
@@ -1320,11 +1332,18 @@ const Play = () => {
                     >
                       <div className={styles["match-header"]}>
                         <span className={styles["match-game-name"]}>
-                          {game.game_name}
+                          <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                         </span>
-                        <span className={styles["match-time-control"]}>
-                          {formatTimeControl(game)}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {game.rated !== null && (
+                            <span className={styles[game.rated ? 'rated-badge' : 'unrated-badge']}>
+                              {game.rated ? 'Rated' : 'Casual'}
+                            </span>
+                          )}
+                          <span className={styles["match-time-control"]}>
+                            {formatTimeControl(game)}
+                          </span>
+                        </div>
                       </div>
                       <div className={styles["match-players"]}>
                         {game.player_names}
@@ -1404,7 +1423,7 @@ const Play = () => {
                     >
                       <div className={styles["match-header"]}>
                         <span className={styles["match-game-name"]}>
-                          {game.game_name}
+                          <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                         </span>
                         <span className={styles["match-time-control"]}>
                           {formatTimeControl(game)}
@@ -1485,8 +1504,13 @@ const Play = () => {
                       {paginatedComputerGames.map((game) => (
                         <div key={game.id} className={styles["ongoing-game-card"]}>
                           <div className={styles["match-header"]}>
-                            <span className={styles["match-game-name"]}>{game.game_name}</span>
-                            <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
+                            <span className={styles["match-game-name"]}>
+                              <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span className={styles["unrated-badge"]}>Unrated</span>
+                              <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
+                            </div>
                           </div>
                           <div className={styles["match-players"]}>{game.player_names}</div>
                           <div className={styles["match-actions"]}>

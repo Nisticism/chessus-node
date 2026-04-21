@@ -5721,7 +5721,8 @@ function initializeSocket(server) {
 async function getOpenLiveGames() {
   try {
     const [games] = await db_pool.query(
-      `SELECT g.*, gt.game_name, gt.board_width, gt.board_height, u.username as host_username
+      `SELECT g.*, gt.game_name, gt.board_width, gt.board_height, u.username as host_username,
+              CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
        JOIN users u ON g.host_id = u.id
@@ -5743,7 +5744,8 @@ async function getPrivateGames(userId) {
     const [games] = await db_pool.query(
       `SELECT g.*, gt.game_name, gt.board_width, gt.board_height,
               u.username as host_username,
-              cu.username as challenged_username
+              cu.username as challenged_username,
+              CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
        JOIN users u ON g.host_id = u.id
@@ -5769,6 +5771,7 @@ async function getOngoingGames() {
       `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
               g.allow_spectators, g.show_piece_helpers,
               g.is_correspondence, g.correspondence_days, g.other_data,
+              CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
               GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
@@ -5824,6 +5827,7 @@ async function getMyBotGames(userId) {
       `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
               g.allow_spectators, g.show_piece_helpers,
               g.is_correspondence, g.correspondence_days, g.other_data,
+              CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
               GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids
