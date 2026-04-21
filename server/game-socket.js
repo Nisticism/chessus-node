@@ -309,6 +309,12 @@ function startDisconnectForfeitTimer(io, gameId, userId, durationMs) {
   // Skip unlimited time control games — there is no clock pressure so there
   // is no reason to forfeit on disconnect.
   if (!gameState.timeControl) return;
+  // Skip until every human player has made at least one move — prevents a
+  // forfeit when one player hasn't loaded yet and the other navigates away
+  // before the game is properly underway.
+  const humanPlayers = (gameState.players || []).filter(p => !p.isBot);
+  const playersWhoMoved = new Set((gameState.moveHistory || []).map(m => m.player));
+  if (humanPlayers.length > 0 && !humanPlayers.every(p => playersWhoMoved.has(p.id))) return;
 
   const expiresAt = Date.now() + durationMs;
   const timeoutId = setTimeout(() => {
