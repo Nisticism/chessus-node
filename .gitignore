@@ -15,3 +15,10 @@ uploads/
 server/.jwt-secrets.json
 sound-library-backup/
 node_modules
+
+# AI training artifacts (models, logs, rules dumps)
+ai-training/
+
+# Rust build output
+ai-engine-rs/target/
+ai-engine-rs/Cargo.lock

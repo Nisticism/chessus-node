@@ -333,11 +333,48 @@ const { backfillGameTypePieces } = require("../scripts/backfill-game-type-pieces
 // Run migrations to add any missing columns, then backfill game_type_pieces
 runMigrations().then(() => {
   return backfillGameTypePieces();
+}).then(() => {
+  // After migrations, mark any orphaned AI training jobs as interrupted.
+  try {
+    const trainingManager = require('./ai/training-manager');
+    return trainingManager.markInterruptedJobs();
+  } catch (e) {
+    // Not fatal — training is an optional subsystem.
+    console.warn('AI training subsystem unavailable:', e.message);
+  }
 }).catch(err => {
   console.error("Migration/backfill error:", err);
 });
 
 //  -----------  End Auto-create Tables -----------------
+
+// ----- AI training rules auto-sync -----
+//
+// When a game type or piece is edited, the cached `ai-training/<id>/rules.json`
+// dump becomes stale. We re-export it best-effort (fire-and-forget). Failures
+// never block the user's save.
+const _aiExport = (() => {
+  try { return require('./ai/export-game-rules'); }
+  catch (e) { return null; }
+})();
+function _resyncAiRules(gameTypeId) {
+  if (!_aiExport || !gameTypeId) return;
+  Promise.resolve()
+    .then(() => _aiExport.exportGameRules(gameTypeId))
+    .catch((e) => console.warn(`AI rules re-export failed for game ${gameTypeId}:`, e.message));
+}
+async function _resyncAiRulesForPiece(pieceId) {
+  if (!_aiExport || !pieceId) return;
+  try {
+    const [rows] = await db_pool.query(
+      'SELECT DISTINCT game_type_id FROM game_type_pieces WHERE piece_id = ?',
+      [pieceId],
+    );
+    for (const row of rows) _resyncAiRules(row.game_type_id);
+  } catch (e) {
+    console.warn(`AI rules re-export lookup failed for piece ${pieceId}:`, e.message);
+  }
+}
 
 //  ----------------- End of seeding/tables ----------------------
 
@@ -2451,6 +2488,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       message: isDraft ? "Draft saved successfully" : (gameEditNeedsNameReview ? "Game updated! Your game name is under review and will be published once approved." : "Game updated successfully"),
       game: { id: gameId, ...gameData, is_draft: isDraft, needs_name_review: gameEditNeedsNameReview }
     });
+    _resyncAiRules(gameId);
   } catch (err) {
     console.error("Error in PUT /api/games/:gameId:", err);
     res.status(500).send({ message: "Failed to update game", err: err.message });
@@ -2492,6 +2530,13 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
     await db_pool.query("DELETE FROM game_types WHERE id = ?", [gameId]);
     
     res.json({ message: "Game deleted successfully" });
+    // Best-effort cleanup of cached AI rules dump
+    try {
+      const fsMod = require('fs');
+      const pathMod = require('path');
+      const dir = pathMod.join(__dirname, '..', 'ai-training', String(gameId));
+      if (fsMod.existsSync(dir)) fsMod.rmSync(dir, { recursive: true, force: true });
+    } catch (_) { /* ignore */ }
   } catch (err) {
     console.error("Error in DELETE /api/games/:gameId:", err);
     res.status(500).send({ message: "Failed to delete game", err: err.message });
@@ -5352,6 +5397,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         needs_name_review: gameNeedsNameReview
       }
     });
+    _resyncAiRules(result.insertId);
 
   } catch (err) {
     console.error("Error in /api/games/create:", err);
@@ -5813,6 +5859,7 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
         needs_name_review: pieceNeedsNameReview
       }
     });
+    _resyncAiRulesForPiece(pieceId);
 
   } catch (err) {
     console.error("Error in /api/pieces/create:", err);
@@ -6340,6 +6387,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_imag
         needs_name_review: pieceEditNeedsNameReview
       }
     });
+    _resyncAiRulesForPiece(pieceId);
 
   } catch (err) {
     console.error("Error in /api/pieces/:pieceId (PUT):", err);
@@ -6711,6 +6759,195 @@ app.post("/api/admin/pieces/:pieceId/approve-moderation", authenticateAdmin, asy
     console.error("Error approving piece:", err);
     res.status(500).send({ message: "Failed to approve piece" });
   }
+});
+
+// =====================================================================
+//   AI TRAINING (admin) — see AI_OVERHAUL_PLAN.md
+// =====================================================================
+//
+// Endpoints:
+//   GET  /api/admin/ai-training/status         — engine availability + active job count
+//   GET  /api/admin/ai-training/jobs           — recent jobs (any status)
+//   GET  /api/admin/ai-training/jobs/:id       — one job + recent log events
+//   POST /api/admin/ai-training/jobs           — start a new job
+//   POST /api/admin/ai-training/jobs/:id/stop  — signal SIGTERM to a running job
+//
+// All gated by `authenticateAdmin`. The trainer is sandboxed in a
+// subprocess (1 GB / 1 core by default) so the game server is unaffected.
+
+const trainingManager = require('./ai/training-manager');
+
+app.get('/api/admin/ai-training/status', authenticateAdmin, async (req, res) => {
+  try {
+    const built = trainingManager.REMOTE_MODE
+      ? await trainingManager.isRustBuiltRemote()
+      : trainingManager.isRustBuilt();
+    const jobs = await trainingManager.listJobs(20);
+    const active = jobs.filter(j => j.status === 'running' || j.status === 'queued').length;
+    res.json({
+      engineAvailable: built,
+      enginePath: trainingManager.RUST_BIN,
+      maxConcurrentJobs: trainingManager.MAX_CONCURRENT_JOBS,
+      activeJobs: active,
+      remoteMode: !!trainingManager.REMOTE_MODE,
+      jobs,
+    });
+  } catch (err) {
+    console.error('AI training status error:', err);
+    res.status(500).send({ message: 'Failed to load AI training status' });
+  }
+});
+
+app.get('/api/admin/ai-training/jobs', authenticateAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const jobs = await trainingManager.listJobs(limit);
+    res.json({ jobs });
+  } catch (err) {
+    console.error('List AI training jobs error:', err);
+    res.status(500).send({ message: 'Failed to list training jobs' });
+  }
+});
+
+app.get('/api/admin/ai-training/jobs/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
+    const status = await trainingManager.getJobStatus(id);
+    if (!status) return res.status(404).send({ message: 'Job not found' });
+    res.json(status);
+  } catch (err) {
+    console.error('Get AI training job error:', err);
+    res.status(500).send({ message: 'Failed to load training job' });
+  }
+});
+
+app.post('/api/admin/ai-training/jobs', authenticateAdmin, async (req, res) => {
+  try {
+    const {
+      gameTypeId,
+      games,
+      mctsIters,
+      maxRssMb,
+      checkpointEvery,
+      seed,
+    } = req.body || {};
+    const gid = parseInt(gameTypeId, 10);
+    if (!Number.isFinite(gid) || gid <= 0) {
+      return res.status(400).send({ message: 'gameTypeId is required' });
+    }
+    // Server-side caps so a hand-crafted POST cannot blow up resources.
+    const safeGames = Math.max(1, Math.min(parseInt(games, 10) || 200, 100000));
+    const safeIters = Math.max(10, Math.min(parseInt(mctsIters, 10) || 200, 5000));
+    const safeRss = Math.max(128, Math.min(parseInt(maxRssMb, 10) || 1024, 8192));
+    const safeCkpt = Math.max(1, Math.min(parseInt(checkpointEvery, 10) || 25, 10000));
+    const safeSeed = parseInt(seed, 10) || 0;
+    const job = await trainingManager.startJob({
+      gameTypeId: gid,
+      games: safeGames,
+      mctsIters: safeIters,
+      maxRssMb: safeRss,
+      checkpointEvery: safeCkpt,
+      seed: safeSeed,
+      userId: req.user && req.user.id,
+    });
+    res.status(201).json({ job });
+  } catch (err) {
+    console.error('Start AI training job error:', err);
+    res.status(400).send({ message: err.message || 'Failed to start training job' });
+  }
+});
+
+app.post('/api/admin/ai-training/jobs/:id/stop', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
+    const stopped = trainingManager.stopJob(id);
+    if (!stopped) {
+      return res.status(409).send({ message: 'Job is not running on this server (already finished or restarted).' });
+    }
+    res.json({ message: 'Stop signal sent' });
+  } catch (err) {
+    console.error('Stop AI training job error:', err);
+    res.status(500).send({ message: 'Failed to stop training job' });
+  }
+});
+
+app.post('/api/admin/ai-training/jobs/:id/resume', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
+    const job = await trainingManager.resumeJob(id);
+    res.json({ job });
+  } catch (err) {
+    console.error('Resume AI training job error:', err);
+    res.status(400).send({ message: err.message || 'Failed to resume training job' });
+  }
+});
+
+// Public endpoint — used by the create-game UI to decide whether the
+// "Adaptive" computer difficulty should be enabled for a given game type.
+// No auth required: returns only an aggregate game-count and whether a
+// trained model exists, no PII.
+app.get('/api/ai-models/:gameTypeId/availability', async (req, res) => {
+  try {
+    const gid = parseInt(req.params.gameTypeId, 10);
+    if (!Number.isFinite(gid)) return res.status(400).send({ message: 'Invalid game type id' });
+    const meta = await trainingManager.getModelMetaForGameType(gid);
+    if (!meta) {
+      return res.json({
+        available: false,
+        gamesPlayed: 0,
+      });
+    }
+    res.json({
+      available: !!meta.hasModel,
+      gamesPlayed: meta.totalGamesPlayed || 0,
+      latestJobAt: meta.latestJobAt || null,
+    });
+  } catch (err) {
+    console.error('AI model availability error:', err);
+    res.status(500).send({ message: 'Failed to check model availability' });
+  }
+});
+
+// Admin: pause / resume new training jobs. Existing in-flight jobs are
+// not affected. Status is in-memory only — a server restart resets to
+// "not paused" (intentional: we don't want a forgotten pause to silently
+// block training forever).
+app.get('/api/admin/ai-training/pause-status', authenticateAdmin, (req, res) => {
+  res.json(trainingManager.isNewJobsPaused());
+});
+
+app.post('/api/admin/ai-training/pause', authenticateAdmin, (req, res) => {
+  trainingManager.pauseNewJobs(req.body?.reason || 'paused by admin');
+  res.json(trainingManager.isNewJobsPaused());
+});
+
+app.post('/api/admin/ai-training/resume', authenticateAdmin, (req, res) => {
+  trainingManager.resumeNewJobs();
+  res.json(trainingManager.isNewJobsPaused());
+});
+
+// SNS / Lambda webhook for CloudWatch-driven auto-pause when the
+// frontend EC2 instance's CPUCreditBalance drops below threshold.
+// Authenticated via shared-secret header `X-Trainer-Token` so a Lambda
+// function with the secret in env can call it without an admin JWT.
+//
+// Body: { paused: bool, reason?: string }
+app.post('/api/admin/ai-training/auto-pause', (req, res) => {
+  const provided = req.headers['x-trainer-token'] || '';
+  const secret = process.env.TRAINER_SHARED_SECRET || '';
+  if (!secret || provided !== secret) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  const desired = !!(req.body && req.body.paused);
+  if (desired) {
+    trainingManager.pauseNewJobs(req.body?.reason || 'auto-paused: low CPU credits');
+  } else {
+    trainingManager.resumeNewJobs();
+  }
+  res.json(trainingManager.isNewJobsPaused());
 });
 
 // ----------------------- Middleware ------------------------------

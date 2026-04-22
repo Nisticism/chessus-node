@@ -1386,6 +1386,24 @@ function initializeSocket(server) {
           gameState.status = 'ready';
           gameState.rated = false; // Bot games are never rated
 
+          // Apply randomized starting positions if the host enabled them.
+          // (Standard human-vs-human games run this in the joinGame handler,
+          // but bot games skip joinGame, so do it here.)
+          const botStartingMode = gameState.startingMode || startingMode || 'none';
+          if (botStartingMode && botStartingMode !== 'none') {
+            try {
+              gameState.pieces = randomizePiecePositions(
+                gameState.pieces, gameState.players, botStartingMode, gameState.gameType
+              );
+              await db_pool.query(
+                "UPDATE games SET pieces = ? WHERE id = ?",
+                [JSON.stringify(gameState.pieces), gameId]
+              );
+            } catch (err) {
+              console.error(`[Bot] Randomization failed for game ${gameId}:`, err.message);
+            }
+          }
+
           // Set player times (timeControl is in minutes, convert to seconds)
           if (timeControl) {
             gameState.playerTimes[hostId] = timeControl * 60;
@@ -10652,9 +10670,10 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
 // =============================================
 
 const BOT_PLAYERS = {
-  easy:   { id: 'bot', username: 'Computer (Easy)',   difficulty: 'easy' },
-  medium: { id: 'bot', username: 'Computer (Medium)', difficulty: 'medium' },
-  hard:   { id: 'bot', username: 'Computer (Hard)',   difficulty: 'hard' }
+  easy:     { id: 'bot', username: 'Computer (Easy)',     difficulty: 'easy' },
+  medium:   { id: 'bot', username: 'Computer (Medium)',   difficulty: 'medium' },
+  hard:     { id: 'bot', username: 'Computer (Hard)',     difficulty: 'hard' },
+  adaptive: { id: 'bot', username: 'Computer (Adaptive)', difficulty: 'adaptive' },
 };
 
 function isBotPlayer(player) {
@@ -10723,7 +10742,7 @@ async function processBotTurn(io, gameId, gameState) {
       }
 
       try {
-        bestMove = aiEngine.getBestMove(gameState, botPlayer.position, botPlayer.difficulty);
+        bestMove = await aiEngine.getBestMove(gameState, botPlayer.position, botPlayer.difficulty);
         const aiElapsedMs = Date.now() - aiStartTime;
         console.log(`[Bot] AI computed in ${aiElapsedMs}ms for game ${gameId}`);
         // Correct the bot's clock using wall-clock time, since the setInterval

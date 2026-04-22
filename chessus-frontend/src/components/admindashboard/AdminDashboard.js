@@ -7,6 +7,7 @@ import authHeader from "../../services/auth-header";
 import styles from "./admin-dashboard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import { formatDateTime, parseServerDate } from "../../helpers/date-formatter";
+import AiTrainingPanel from "./AiTrainingPanel";
 
 const AdminDashboard = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -147,6 +148,9 @@ const AdminDashboard = () => {
       fetchNameReviewQueue(nameReviewFilter);
     } else if (activeTab === 'server-stats') {
       fetchServerStats();
+    } else if (activeTab === 'ai-training') {
+      // AiTrainingPanel manages its own data; nothing to do here.
+      setLoading(false);
     } else {
       fetchData(activeTab, 1);
     }
@@ -2312,10 +2316,16 @@ const AdminDashboard = () => {
         >
           Server Stats
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "ai-training" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("ai-training")}
+        >
+          AI Training
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -2333,6 +2343,7 @@ const AdminDashboard = () => {
             {activeTab === "moderation" && renderModerationTab()}
             {activeTab === "name-reviews" && renderNameReviewTab()}
             {activeTab === "server-stats" && renderServerStatsTab()}
+            {activeTab === "ai-training" && <AiTrainingPanel />}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>

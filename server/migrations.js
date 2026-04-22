@@ -329,6 +329,48 @@ const tableMigrations = [
       INDEX idx_name_review_item (item_type, item_id)
     )`,
     description: "Create name_review_queue table for flagging game/piece names that contain sensitive terms"
+  },
+  {
+    table: 'ai_training_jobs',
+    sql: `CREATE TABLE IF NOT EXISTS ai_training_jobs (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      game_type_id INT UNSIGNED NOT NULL,
+      status ENUM('queued','running','completed','stopped','failed','aborted_oom','interrupted') NOT NULL DEFAULT 'queued',
+      games_target INT UNSIGNED NOT NULL DEFAULT 100,
+      games_played INT UNSIGNED NOT NULL DEFAULT 0,
+      mcts_iters INT UNSIGNED NOT NULL DEFAULT 200,
+      max_rss_mb INT UNSIGNED NOT NULL DEFAULT 1024,
+      checkpoint_every INT UNSIGNED NOT NULL DEFAULT 25,
+      seed BIGINT UNSIGNED NOT NULL DEFAULT 0,
+      rules_path VARCHAR(500),
+      created_by_user_id INT UNSIGNED,
+      started_at DATETIME,
+      ended_at DATETIME,
+      error_message TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_ai_jobs_game_type (game_type_id),
+      INDEX idx_ai_jobs_status (status),
+      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    )`,
+    description: "Create ai_training_jobs table for AI self-play training tracking"
+  },
+  {
+    table: 'ai_models',
+    sql: `CREATE TABLE IF NOT EXISTS ai_models (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      game_type_id INT UNSIGNED NOT NULL,
+      job_id INT UNSIGNED,
+      file_path VARCHAR(500) NOT NULL,
+      games_trained INT UNSIGNED NOT NULL DEFAULT 0,
+      is_current TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_ai_models_game (game_type_id),
+      INDEX idx_ai_models_current (game_type_id, is_current),
+      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+      FOREIGN KEY (job_id) REFERENCES ai_training_jobs(id) ON DELETE SET NULL
+    )`,
+    description: "Create ai_models table tracking trained AI model checkpoints"
   }
 ];
 

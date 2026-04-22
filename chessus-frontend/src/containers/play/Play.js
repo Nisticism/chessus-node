@@ -108,6 +108,9 @@ const Play = () => {
   // Bot / Play vs Computer state
   const [vsComputer, setVsComputer] = useState(false);
   const [botDifficulty, setBotDifficulty] = useState("medium");
+  // Per-game-type training availability for the "Adaptive" tier.
+  // Shape: { available: bool, gamesPlayed: number } | null while loading
+  const [adaptiveAvailability, setAdaptiveAvailability] = useState(null);
   const [materialClockPenalty, setMaterialClockPenalty] = useState(false);
   const [materialClockHandicap, setMaterialClockHandicap] = useState(false);
   const [showAnonCreateModal, setShowAnonCreateModal] = useState(false);
@@ -202,6 +205,35 @@ const Play = () => {
       setGameTypesPage(totalGameTypePages);
     }
   }, [gameTypesPage, totalGameTypePages]);
+
+  // Look up adaptive-bot availability whenever the player picks a game type
+  // (and only when they're actually configuring a vs-Computer game).
+  useEffect(() => {
+    if (!vsComputer || !selectedGameType?.id) {
+      setAdaptiveAvailability(null);
+      return;
+    }
+    let cancelled = false;
+    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+    axios.get(`${API_URL}/api/ai-models/${selectedGameType.id}/availability`)
+      .then(res => {
+        if (cancelled) return;
+        setAdaptiveAvailability(res.data || { available: false, gamesPlayed: 0 });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAdaptiveAvailability({ available: false, gamesPlayed: 0 });
+      });
+    return () => { cancelled = true; };
+  }, [vsComputer, selectedGameType]);
+
+  // If the user had picked Adaptive but switches to a game type with no
+  // training data, fall back to medium so the form stays valid.
+  useEffect(() => {
+    if (botDifficulty === 'adaptive' && adaptiveAvailability && !adaptiveAvailability.available) {
+      setBotDifficulty('medium');
+    }
+  }, [botDifficulty, adaptiveAvailability]);
 
   // Handle incoming challenge navigation from profile pages
   useEffect(() => {
@@ -1655,7 +1687,17 @@ const Play = () => {
                       {[
                         { value: 'easy', label: 'Easy', desc: 'Casual play' },
                         { value: 'medium', label: 'Medium', desc: 'Moderate challenge' },
-                        { value: 'hard', label: 'Hard', desc: 'Strong opponent' }
+                        { value: 'hard', label: 'Hard', desc: 'Strong opponent' },
+                        // Adaptive only appears when training data exists
+                        // for this game type — see useEffect that fetches
+                        // adaptiveAvailability from /api/ai-models/:id/availability.
+                        ...(adaptiveAvailability?.available
+                          ? [{
+                              value: 'adaptive',
+                              label: 'Adaptive',
+                              desc: `Trained on ${adaptiveAvailability.gamesPlayed} games`,
+                            }]
+                          : []),
                       ].map(d => (
                         <button
                           key={d.value}

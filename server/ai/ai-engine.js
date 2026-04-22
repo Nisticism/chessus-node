@@ -24,8 +24,58 @@ const SCORE_DRAW = 0;
 const DIFFICULTY = {
   easy:   { depth: 1, timeLimit: 1000,  randomness: 0.35, thinkDelay: 600, quiescenceDepth: 0 },
   medium: { depth: 4, timeLimit: 8000, randomness: 0.03, thinkDelay: 400, quiescenceDepth: 3 },
-  hard:   { depth: 5, timeLimit: 12000, randomness: 0.00, thinkDelay: 200, quiescenceDepth: 5 }
+  hard:   { depth: 5, timeLimit: 12000, randomness: 0.00, thinkDelay: 200, quiescenceDepth: 5 },
+  // Baseline for "adaptive" — should always be at least as strong as
+  // hard (we hide it from the UI when no training data exists, so this
+  // baseline is only ever reached as a defensive fallback).
+  adaptive: { depth: 5, timeLimit: 12000, randomness: 0, thinkDelay: 200, quiescenceDepth: 5 },
 };
+
+/**
+ * Build per-decision search settings for the "adaptive" difficulty tier.
+ * Reads the game type's training metadata at decision time so the bot
+ * automatically gets stronger as more training games accumulate.
+ *
+ * Today the strength scaling comes from search depth + quiescence (the
+ * model artifact is a placeholder visit-count blob — see
+ * AI_OVERHAUL_PLAN.md). When a real policy/value net or opening book
+ * is wired up, this is also where it would attach.
+ */
+async function resolveAdaptiveSettings(gameTypeId) {
+  const base = { ...DIFFICULTY.adaptive };
+  if (!gameTypeId) return base;
+  let trainingManager;
+  try {
+    trainingManager = require('./training-manager');
+  } catch (_) {
+    return base;
+  }
+  let meta;
+  try {
+    meta = await trainingManager.getModelMetaForGameType(gameTypeId);
+  } catch (_) {
+    return base;
+  }
+  if (!meta || !meta.totalGamesPlayed) return base;
+  const games = meta.totalGamesPlayed;
+  // Adaptive is gated by the UI on `available: true` (which requires at
+  // least some training), so the base case here is already hard-tier.
+  // Each milestone adds another ply or quiescence ply.
+  let depth = base.depth;
+  let quiescenceDepth = base.quiescenceDepth;
+  let timeLimit = base.timeLimit;
+  if (games >= 100) { depth = 5; quiescenceDepth = 5; }
+  if (games >= 500) { depth = 6; quiescenceDepth = 6; timeLimit = 15000; }
+  if (games >= 2000) { depth = 7; quiescenceDepth = 7; timeLimit = 20000; }
+  return {
+    ...base,
+    depth,
+    quiescenceDepth,
+    timeLimit,
+    randomness: 0,
+    _adaptiveMeta: meta,
+  };
+}
 
 // =============================================
 // Console suppression (game-socket functions log heavily)
@@ -1152,7 +1202,61 @@ function minimax(state, depth, alpha, beta, maximizing, perspective, startTime, 
  * @returns {Object|null} - Best move { pieceId, from, to } or null if no moves
  */
 function getBestMove(gameState, botPosition, difficulty = 'medium') {
-  const settings = DIFFICULTY[difficulty] || DIFFICULTY.medium;
+  // Adaptive difficulty needs to look up training metadata at decision time,
+  // which is async. Return a Promise in that case; the single caller in
+  // game-socket.js awaits the result.
+  if (difficulty === 'adaptive') {
+    const gtid = gameState?.gameTypeId
+      ?? gameState?.gameType?.id
+      ?? gameState?.gameType?.game_type_id
+      ?? null;
+    return resolveAdaptiveSettings(gtid).then((settings) => {
+      // Phase 1 model consumption: try the opening book before falling
+      // back to minimax. Only consults book inside its ply window.
+      const bookMove = tryOpeningBook(gtid, gameState, botPosition);
+      if (bookMove) {
+        console.log(
+          `[AI] Adaptive: opening-book move chosen (W/L/D = ${bookMove._book.w}/${bookMove._book.l}/${bookMove._book.d}, winRate=${bookMove._book.winRate.toFixed(2)})`,
+        );
+        return bookMove;
+      }
+      return getBestMoveSync(gameState, botPosition, difficulty, settings);
+    });
+  }
+  return getBestMoveSync(gameState, botPosition, difficulty, null);
+}
+
+/**
+ * Try to pick a move from the opening book for the current position.
+ * Returns a legal-move object (with `_book` metadata attached) or null.
+ *
+ * The book is keyed off the same position signature the Rust trainer
+ * computed during self-play. Lookup is fast (single hash get) and the
+ * book file is mtime-cached.
+ */
+function tryOpeningBook(gameTypeId, gameState, botPosition) {
+  if (!gameTypeId) return null;
+  let book;
+  try {
+    book = require('./opening-book');
+  } catch (_) {
+    return null;
+  }
+  const legalMoves = silent(() => {
+    const { getAllLegalMovesForPlayer } = getGameSocket();
+    return getAllLegalMovesForPlayer(gameState, botPosition);
+  });
+  if (!legalMoves || legalMoves.length === 0) return null;
+  const lookup = book.lookupBookMove(gameTypeId, gameState, botPosition);
+  if (!lookup) return null;
+  const matched = book.matchBookMove(legalMoves, lookup.moveString);
+  if (!matched) return null;
+  matched._book = lookup;
+  return matched;
+}
+
+function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
+  const settings = settingsOverride || DIFFICULTY[difficulty] || DIFFICULTY.medium;
   const startTime = Date.now();
 
   // Get accurate legal moves at root level using full game-socket validation
