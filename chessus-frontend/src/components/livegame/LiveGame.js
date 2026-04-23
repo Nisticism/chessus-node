@@ -840,10 +840,7 @@ const LiveGame = () => {
     // Listen for premove events
     const unsubscribePremoveSet = onGameEvent("premoveSet", ({ gameId: premoveGameId }) => {
       if (parseInt(premoveGameId) === parseInt(gameId)) {
-        // Premove confirmed - UI already set
-        if (soundEnabledRef.current) {
-          soundManager.playPremove();
-        }
+        // Premove confirmed — no sound on set; regular move sound plays when the premove actually executes
       }
     });
 

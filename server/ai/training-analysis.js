@@ -60,9 +60,20 @@ const DRAW_REASONS = [
 /**
  * Pure aggregator. Takes a list of game_complete events (possibly merged
  * from many jobs) and produces a summary object.
+ *
+ * Options:
+ *   - filterLegacy (default true): drop events without an `end_reason`
+ *     field. Those come from trainer runs that pre-date the draw-reason
+ *     instrumentation and produce a meaningless `winner: null` for every
+ *     non-checkmate, which poisons the balance/draw numbers. We still
+ *     report how many were excluded via `legacyExcluded`.
  */
-function summarize(events, jobMeta) {
-  const total = events.length;
+function summarize(events, jobMeta, { filterLegacy = true } = {}) {
+  const eligible = filterLegacy
+    ? events.filter((ev) => typeof ev.end_reason === 'string' && ev.end_reason.length > 0)
+    : events;
+  const legacyExcluded = events.length - eligible.length;
+  const total = eligible.length;
   let wins1 = 0, wins2 = 0, draws = 0;
   let totalMoves = 0, totalElapsed = 0;
   let minMoves = Infinity, maxMoves = 0;
@@ -70,7 +81,7 @@ function summarize(events, jobMeta) {
     rollout_cap: 0, no_move: 0, royal_capture: 0, unknown: 0 };
   const decisiveBy = { checkmate: 0, royal_capture: 0, other: 0 };
 
-  for (const ev of events) {
+  for (const ev of eligible) {
     const moves = Number(ev.moves) || 0;
     totalMoves += moves;
     if (moves > 0) {
@@ -116,16 +127,19 @@ function summarize(events, jobMeta) {
     note = `Only ${total} game${total === 1 ? '' : 's'} in the dataset — run more training before drawing conclusions.`;
   } else if (severity === 'severe') {
     const heavy = wins1 > wins2 ? 1 : 2;
-    note = `Side ${heavy} wins ${(Math.max(winShare1, winShare2) * 100).toFixed(1)}% of decisive games — the matchup may be heavily favored. Consider mirroring the starting position or rebalancing pieces.`;
+    note = `Player ${heavy} wins ${(Math.max(winShare1, winShare2) * 100).toFixed(1)}% of decisive games — the matchup may be heavily favored. Consider mirroring the starting position or rebalancing pieces.`;
   } else if (severity === 'notable') {
     const heavy = wins1 > wins2 ? 1 : 2;
-    note = `Side ${heavy} has a meaningful edge (${(Math.max(winShare1, winShare2) * 100).toFixed(1)}% of decisive games).`;
+    note = `Player ${heavy} has a meaningful edge (${(Math.max(winShare1, winShare2) * 100).toFixed(1)}% of decisive games).`;
   } else if (drawShare >= 0.5) {
     note = `${(drawShare * 100).toFixed(1)}% of games drew — the rules may make decisive results hard to reach.`;
   }
 
   return {
     totalGames: total,
+    totalGamesRaw: events.length,
+    legacyExcluded,
+    filteredLegacy: filterLegacy,
     decisive,
     draws,
     perSide: {
@@ -148,7 +162,7 @@ function summarize(events, jobMeta) {
 /**
  * Compute a fresh summary from disk for a given game type.
  */
-function computeAnalysis(gameTypeId) {
+function computeAnalysis(gameTypeId, opts = {}) {
   const jobs = listJobLogs(gameTypeId);
   const allEvents = [];
   const jobMeta = [];
@@ -157,19 +171,19 @@ function computeAnalysis(gameTypeId) {
     allEvents.push(...evs);
     jobMeta.push({ jobId: j.jobId, games: evs.length });
   }
-  return summarize(allEvents, jobMeta);
+  return summarize(allEvents, jobMeta, opts);
 }
 
 /**
  * REMOTE_MODE-aware: in remote mode, ask the trainer-service which has
  * filesystem access; otherwise compute locally.
  */
-async function computeAnalysisAuto(gameTypeId) {
+async function computeAnalysisAuto(gameTypeId, opts = {}) {
   if (trainerClient.isEnabled()) {
-    const r = await trainerClient.fetchAnalysis(gameTypeId);
-    return r && r.summary ? r.summary : computeAnalysis(gameTypeId);
+    const r = await trainerClient.fetchAnalysis(gameTypeId, opts);
+    return r && r.summary ? r.summary : computeAnalysis(gameTypeId, opts);
   }
-  return computeAnalysis(gameTypeId);
+  return computeAnalysis(gameTypeId, opts);
 }
 
 function makeSlug() {
@@ -181,8 +195,8 @@ function makeSlug() {
  * Recompute and upsert the analysis row. Preserves the existing
  * visibility/slug if a row already exists; otherwise stores as `private`.
  */
-async function regenerateAndStore(gameTypeId, userId) {
-  const summary = await computeAnalysisAuto(gameTypeId);
+async function regenerateAndStore(gameTypeId, userId, opts = {}) {
+  const summary = await computeAnalysisAuto(gameTypeId, opts);
   const summaryJson = JSON.stringify(summary);
   const [existing] = await db_pool.query(
     `SELECT id, visibility, slug FROM ai_training_analyses WHERE game_type_id = ? LIMIT 1`,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
@@ -18,27 +18,22 @@ const AiAnalysis = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoading(true); setError(null);
-      try {
-        const url = params.slug
-          ? `${API_URL}ai-training/analysis/by-slug/${params.slug}`
-          : `${API_URL}ai-training/analysis/${params.gameId}`;
-        const res = await axios.get(url, { headers: authHeader() });
-        if (!cancelled) setData(res.data);
-      } catch (err) {
-        if (!cancelled) setError(
-          err?.response?.data?.message || err.message || 'Failed to load analysis'
-        );
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const url = params.slug
+        ? `${API_URL}ai-training/analysis/by-slug/${params.slug}`
+        : `${API_URL}ai-training/analysis/${params.gameId}`;
+      const res = await axios.get(url, { headers: authHeader() });
+      setData(res.data);
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || 'Failed to load analysis');
+    } finally {
+      setLoading(false);
+    }
   }, [params.slug, params.gameId]);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) return <div className={styles.page}><p>Loading analysis…</p></div>;
   if (error) return (
@@ -76,28 +71,28 @@ const AiAnalysis = () => {
       </div>
 
       <div className={styles.section}>
-        <h3>Side balance</h3>
+        <h3>Player balance</h3>
         <div className={styles.sideRow}>
           <div className={styles.sideBlock}>
-            <h4>Side 1</h4>
+            <h4>{labelForPlayer(1)}</h4>
             <div className={styles.bigNumber}>{(s.perSide['1'].winRate * 100).toFixed(1)}%</div>
-            <div>{s.perSide['1'].wins} wins</div>
+            <div className={styles.sideSublabel}>{s.perSide['1'].wins} wins</div>
           </div>
           <div className={styles.sideBlock}>
-            <h4>Side 2</h4>
+            <h4>{labelForPlayer(2)}</h4>
             <div className={styles.bigNumber}>{(s.perSide['2'].winRate * 100).toFixed(1)}%</div>
-            <div>{s.perSide['2'].wins} wins</div>
+            <div className={styles.sideSublabel}>{s.perSide['2'].wins} wins</div>
           </div>
           <div className={styles.sideBlock}>
             <h4>Drew</h4>
             <div className={styles.bigNumber}>{(s.balance.drawShare * 100).toFixed(1)}%</div>
-            <div>{s.draws} games</div>
+            <div className={styles.sideSublabel}>{s.draws} games</div>
           </div>
         </div>
         <div className={`${styles.balanceCard} ${styles[`severity_${s.balance.severity}`] || ''}`}>
           <strong>Imbalance: {s.balance.severity}</strong> (
-          {(s.balance.imbalance * 100).toFixed(1)}% gap between the two sides
-          across decisive games)
+          {(s.balance.imbalance * 100).toFixed(1)}% gap between the two
+          players across decisive games)
           {s.balance.note && <p>{s.balance.note}</p>}
         </div>
       </div>
@@ -126,6 +121,12 @@ const AiAnalysis = () => {
           <li>{s.jobCount} training job{s.jobCount === 1 ? '' : 's'}</li>
           <li>{s.totalGames} total games (game length: {s.minMoves}–{s.maxMoves} moves)</li>
           <li>Average game time: {(s.avgElapsedMs / 1000).toFixed(1)}s</li>
+          {s.filteredLegacy && s.legacyExcluded > 0 && (
+            <li>
+              {s.legacyExcluded} older game{s.legacyExcluded === 1 ? '' : 's'} excluded
+              (from training runs before draw/end-reason tracking was added).
+            </li>
+          )}
         </ul>
       </div>
 
@@ -146,6 +147,13 @@ const Stat = ({ label, value }) => (
 );
 
 const pct = (n, d) => d > 0 ? `${((n / d) * 100).toFixed(1)}%` : '0%';
+
+// Color labels are not stored on game types today, so we just use the
+// generic "Player 1" / "Player 2" terminology. If a per-game-type color
+// field is added later, surface it here (e.g. "Player 1 (White)").
+function labelForPlayer(n) {
+  return `Player ${n}`;
+}
 
 const REASON_LABELS = {
   stalemate: 'Stalemate',

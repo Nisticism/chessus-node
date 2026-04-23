@@ -115,7 +115,12 @@ module.exports = {
   resumeJob: (jobId) => request('POST', `/trainer/jobs/${jobId}/resume`).then((r) => r.job),
   tailLog: (jobId, maxLines) => request('GET', `/trainer/jobs/${jobId}/log?lines=${maxLines || 200}`).then((r) => r.events || []),
   fetchBook: (gameTypeId) => request('GET', `/trainer/book/${Number(gameTypeId)}`),
-  fetchAnalysis: (gameTypeId) => request('GET', `/trainer/analysis/${Number(gameTypeId)}`),
+  fetchAnalysis: (gameTypeId, opts = {}) => {
+    const qs = [];
+    if (opts.filterLegacy === false) qs.push('filterLegacy=false');
+    const suffix = qs.length ? `?${qs.join('&')}` : '';
+    return request('GET', `/trainer/analysis/${Number(gameTypeId)}${suffix}`);
+  },
   uploadArtifact: ({ gameTypeId, kind, buffer, userId }) => {
     const qs = new URLSearchParams({ gameTypeId: String(gameTypeId), kind });
     if (userId) qs.set('userId', String(userId));

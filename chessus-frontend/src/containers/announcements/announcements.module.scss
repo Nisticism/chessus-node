@@ -1,8 +1,8 @@
 .page {
-  max-width: 800px;
-  margin: 2rem auto;
-  padding: 0 1.25rem;
-  color: var(--color-text, #222);
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 0 20px;
+  color: var(--text-muted);
 }
 
 .header {
@@ -10,132 +10,237 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  h1 { margin: 0; }
+  gap: 1rem;
+  margin-bottom: 10px;
+
+  h1 {
+    margin: 0;
+    font-size: 2.5rem;
+    color: var(--accent-primary-text);
+  }
 }
 
 .composeBtn {
-  background: #2a4f8a;
-  color: #fff;
+  background: var(--accent-primary);
+  color: var(--accent-primary-contrast, #fff);
   border: 0;
-  padding: 0.55rem 0.9rem;
+  padding: 0.6rem 1.1rem;
   border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
-  &:hover { background: #1f3d6e; }
+  font-size: 0.95rem;
+  transition: filter 0.15s ease;
+
+  &:hover {
+    filter: brightness(1.1);
+  }
 }
 
-.intro { color: #555; }
+.intro {
+  color: var(--text-dim);
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin: 0 0 1.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--panel-border);
+}
 
 .composeForm {
-  background: #f6f8fa;
-  border: 1px solid #e1e4e8;
-  border-radius: 8px;
-  padding: 1rem 1.1rem;
-  margin: 1rem 0 1.5rem;
+  background: var(--panel-bg, var(--bg-secondary));
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 1.25rem 1.4rem;
+  margin: 0 0 1.75rem;
+
   label {
     display: block;
-    margin-bottom: 0.85rem;
+    margin-bottom: 1rem;
     font-weight: 600;
-    font-size: 0.92rem;
-    input, textarea {
+    font-size: 0.95rem;
+    color: var(--text-heading);
+
+    input,
+    textarea {
       display: block;
       width: 100%;
-      margin-top: 0.3rem;
-      padding: 0.45rem 0.55rem;
-      border: 1px solid #cdd2d8;
-      border-radius: 4px;
+      box-sizing: border-box;
+      margin-top: 0.4rem;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      background: var(--bg-primary, #1a1a1a);
+      color: var(--text-heading);
       font: inherit;
+
+      &:focus {
+        outline: none;
+        border-color: var(--accent-primary);
+      }
     }
-    textarea { resize: vertical; }
+
+    textarea {
+      resize: vertical;
+      font-family: inherit;
+      line-height: 1.5;
+    }
   }
+
   button[type="submit"] {
-    background: #2a4f8a;
-    color: #fff;
+    background: var(--accent-primary);
+    color: var(--accent-primary-contrast, #fff);
     border: 0;
-    padding: 0.55rem 1rem;
+    padding: 0.6rem 1.1rem;
     border-radius: 6px;
     cursor: pointer;
     font-weight: 600;
-    &:disabled { background: #888; cursor: wait; }
+
+    &:disabled {
+      background: var(--panel-border);
+      cursor: wait;
+    }
   }
 }
 
 .warn {
-  margin-top: 0.5rem;
-  color: #b00020;
+  margin: 0.6rem 0 0;
+  color: var(--error-text, #ff6b6b);
   font-size: 0.85rem;
 }
 
-.error { color: #b00020; }
+.error {
+  color: var(--error-text, #ff6b6b);
+}
 
 .list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
+
 .item {
-  background: #fff;
-  border: 1px solid #e1e4e8;
-  border-radius: 8px;
-  padding: 1rem 1.1rem;
-  margin-bottom: 0.9rem;
+  background: var(--panel-bg, var(--bg-secondary));
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 1.1rem 1.3rem;
+  margin-bottom: 1rem;
   position: relative;
+  transition: border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--accent-primary);
+  }
+
   h3 {
-    margin: 0 0 0.25rem;
-    a { color: #2a4f8a; text-decoration: none; &:hover { text-decoration: underline; } }
+    margin: 0 0 0.35rem;
+    font-size: 1.35rem;
+
+    a {
+      color: var(--accent-primary-text);
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
   }
 }
-.meta { color: #777; font-size: 0.85rem; }
-.preview { margin: 0.5rem 0 0; color: #333; line-height: 1.5; white-space: pre-wrap; }
+
+.meta {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.preview {
+  margin: 0.6rem 0 0;
+  color: var(--text-muted);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
 
 .deleteBtn {
   position: absolute;
-  top: 0.7rem; right: 0.7rem;
+  top: 0.8rem;
+  right: 0.9rem;
   background: transparent;
-  color: #b00020;
-  border: 1px solid #b00020;
+  color: var(--error-text, #ff6b6b);
+  border: 1px solid var(--error-text, #ff6b6b);
   border-radius: 4px;
-  padding: 0.25rem 0.5rem;
+  padding: 0.3rem 0.6rem;
   cursor: pointer;
   font-size: 0.8rem;
-  &:hover { background: #fff4f4; }
+
+  &:hover {
+    background: rgba(255, 107, 107, 0.1);
+  }
 }
 
 .pager {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: 1.25rem;
+  margin-top: 2rem;
+  color: var(--text-dim);
+
   button {
-    background: #fff;
-    border: 1px solid #cdd2d8;
-    border-radius: 4px;
-    padding: 0.4rem 0.75rem;
+    background: var(--panel-bg, var(--bg-secondary));
+    border: 1px solid var(--panel-border);
+    color: var(--text-heading);
+    border-radius: 6px;
+    padding: 0.45rem 0.9rem;
     cursor: pointer;
-    &:disabled { color: #aaa; cursor: not-allowed; }
+    font-weight: 600;
+
+    &:hover:not(:disabled) {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary-text);
+    }
+
+    &:disabled {
+      color: var(--text-dim);
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
   }
 }
 
 .backLink {
   display: inline-block;
   margin-bottom: 1rem;
-  color: #2a4f8a;
+  color: var(--accent-primary-text);
   text-decoration: none;
-  &:hover { text-decoration: underline; }
+  font-size: 0.95rem;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
+
 .body {
-  margin-top: 1rem;
-  line-height: 1.6;
-  color: #222;
-  p { margin: 0 0 0.85rem; }
+  margin-top: 1.25rem;
+  line-height: 1.75;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+
+  p {
+    margin: 0 0 1rem;
+  }
 }
+
 .actionLink {
   display: inline-block;
-  margin-top: 0.5rem;
-  color: #2a4f8a;
+  margin-top: 1rem;
+  color: var(--accent-primary-text);
   text-decoration: none;
   font-weight: 600;
-  &:hover { text-decoration: underline; }
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--accent-primary);
+  border-radius: 6px;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--accent-primary);
+    color: var(--accent-primary-contrast, #fff);
+    text-decoration: none;
+  }
 }

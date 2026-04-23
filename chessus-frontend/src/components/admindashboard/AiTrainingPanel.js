@@ -186,6 +186,33 @@ const AiTrainingPanel = () => {
     }
   };
 
+  const handleDownload = async (jobId) => {
+    try {
+      const res = await axios.get(
+        `${API_URL}admin/ai-training/jobs/${jobId}/download`,
+        { headers: authHeader(), responseType: 'blob' },
+      );
+      const blob = new Blob([res.data], { type: 'application/zip' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ai-job-${jobId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      // response might be a blob containing JSON error
+      let msg = 'Failed to download job';
+      if (err?.response?.data instanceof Blob) {
+        try { msg = JSON.parse(await err.response.data.text()).message || msg; } catch (_) { /* ignore */ }
+      } else {
+        msg = err?.response?.data?.message || err.message || msg;
+      }
+      alert(msg);
+    }
+  };
+
   const handleArtifactUpload = async (e) => {
     e.preventDefault();
     setUploadError(null);
@@ -530,6 +557,19 @@ const AiTrainingPanel = () => {
                           Resume
                         </button>
                       )}
+                    {!status?.remoteMode && (j.games_played || 0) > 0 && (
+                      <button
+                        type="button"
+                        title="Download this job's data as a ZIP. Upload the result on the live site's admin portal to merge it into production training data."
+                        style={{ marginLeft: 4 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownload(j.id);
+                        }}
+                      >
+                        ⬇ Download
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -603,6 +643,7 @@ const AnalysisSection = ({ gameTypes }) => {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [filterLegacy, setFilterLegacy] = useState(true);
 
   const loadExisting = useCallback(async (gtid) => {
     if (!gtid) { setAnalysis(null); return; }
@@ -626,7 +667,7 @@ const AnalysisSection = ({ gameTypes }) => {
     try {
       const res = await axios.post(
         `${API_URL}admin/ai-training/analysis/${analysisGameTypeId}/regenerate`,
-        {},
+        { filterLegacy },
         { headers: authHeader() },
       );
       setAnalysis(res.data);
@@ -686,6 +727,14 @@ const AnalysisSection = ({ gameTypes }) => {
         >
           {analysis ? 'Regenerate analysis' : 'Generate analysis'}
         </button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
+          <input
+            type="checkbox"
+            checked={filterLegacy}
+            onChange={(e) => setFilterLegacy(e.target.checked)}
+          />
+          <span>Exclude pre-tracking games (recommended — omits games from before draw/end-reason tracking, which all report as unknown draws)</span>
+        </label>
         {err && <div className={styles.error}>{err}</div>}
       </div>
 
@@ -701,8 +750,13 @@ const AnalysisSection = ({ gameTypes }) => {
           <div className={styles.analysisStats}>
             <div><strong>Total games:</strong> {summary.totalGames} (across {summary.jobCount} job{summary.jobCount === 1 ? '' : 's'})</div>
             <div><strong>Decisive:</strong> {summary.decisive} ({((summary.decisive / Math.max(1, summary.totalGames)) * 100).toFixed(1)}%) — <strong>Draws:</strong> {summary.draws} ({((summary.draws / Math.max(1, summary.totalGames)) * 100).toFixed(1)}%)</div>
-            <div><strong>Side 1 wins:</strong> {summary.perSide['1'].wins} ({(summary.perSide['1'].winRate * 100).toFixed(1)}%)</div>
-            <div><strong>Side 2 wins:</strong> {summary.perSide['2'].wins} ({(summary.perSide['2'].winRate * 100).toFixed(1)}%)</div>
+            <div><strong>Player 1 wins:</strong> {summary.perSide['1'].wins} ({(summary.perSide['1'].winRate * 100).toFixed(1)}%)</div>
+            <div><strong>Player 2 wins:</strong> {summary.perSide['2'].wins} ({(summary.perSide['2'].winRate * 100).toFixed(1)}%)</div>
+            {summary.filteredLegacy && summary.legacyExcluded > 0 && (
+              <div style={{ fontStyle: 'italic', color: '#888' }}>
+                {summary.legacyExcluded} pre-tracking game{summary.legacyExcluded === 1 ? '' : 's'} excluded from these numbers.
+              </div>
+            )}
             <div><strong>Balance:</strong> {summary.balance.severity} (imbalance {(summary.balance.imbalance * 100).toFixed(1)}%)</div>
             {summary.balance.note && (
               <div className={styles.balanceNote}>{summary.balance.note}</div>

@@ -129,11 +129,21 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                 // (checkmate / stalemate / move-limit / royal-capture / cap)
                 // when it gives us something more specific than "move cap".
                 let (rr, rreason) = crate::mcts::rollout_with_reason(&mut board, &rules, &mut rng, 200);
-                let reason = match rreason {
-                    crate::protocol::EndReason::RolloutCap => crate::protocol::EndReason::MoveCapRollout,
-                    other => other,
+                // In mate_condition games a royal capture is *not* a legal
+                // terminal — it can only occur because the rollout uses
+                // pseudo-legal moves for speed. Report it as an
+                // indeterminate rollout-cap draw instead of a spurious
+                // decisive result, so analysis doesn't claim "Player X won
+                // by royal capture" for a game type that only allows
+                // checkmate.
+                let (rr_final, reason) = match rreason {
+                    crate::protocol::EndReason::RolloutCap => (rr, crate::protocol::EndReason::MoveCapRollout),
+                    crate::protocol::EndReason::RoyalCapture if rules.game.mate_condition => {
+                        (GameResult::Draw, crate::protocol::EndReason::MoveCapRollout)
+                    }
+                    other => (rr, other),
                 };
-                break (rr, reason);
+                break (rr_final, reason);
             }
             let mv = match mcts.choose(&mut rng, &board, &rules) {
                 Some(m) => m,

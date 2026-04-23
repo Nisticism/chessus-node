@@ -6885,6 +6885,44 @@ app.post('/api/admin/ai-training/jobs/:id/resume', authenticateAdmin, async (req
   }
 });
 
+// Package a job's on-disk directory as a ZIP for devs to download and
+// later upload into the production admin portal. Only available when the
+// trainer runs locally (same host as the backend) — in REMOTE_MODE the
+// files live on a different machine, and the live-site admin portal
+// already accepts the uploads we'd be producing.
+app.get('/api/admin/ai-training/jobs/:id/download', authenticateAdmin, async (req, res) => {
+  try {
+    if (trainingManager.REMOTE_MODE) {
+      return res.status(400).send({
+        message: 'Downloads are only available when the trainer runs on the same host as the backend (local dev). In remote mode, fetch the artifacts from the trainer service host directly.',
+      });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
+    const job = await trainingManager.getJobStatus(id);
+    if (!job || !job.job) return res.status(404).send({ message: 'Job not found' });
+    const fs = require('fs');
+    const path = require('path');
+    const AdmZip = require('adm-zip');
+    const { trainingDirFor } = require('./ai/export-game-rules');
+    const jobDir = path.join(trainingDirFor(job.job.game_type_id), 'jobs', String(id));
+    if (!fs.existsSync(jobDir)) {
+      return res.status(404).send({ message: 'Job directory does not exist on disk' });
+    }
+    const zip = new AdmZip();
+    zip.addLocalFolder(jobDir);
+    const buf = zip.toBuffer();
+    const fname = `ai-job-${job.job.game_type_id}-${id}.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    res.setHeader('Content-Length', buf.length);
+    res.end(buf);
+  } catch (err) {
+    console.error('Download AI training job error:', err);
+    res.status(500).send({ message: err.message || 'Failed to package job for download' });
+  }
+});
+
 // Public endpoint — used by the create-game UI to decide whether the
 // "Adaptive" computer difficulty should be enabled for a given game type.
 // No auth required: returns only an aggregate game-count and whether a
@@ -7033,7 +7071,8 @@ app.post(
       if (!Number.isFinite(gameTypeId)) {
         return res.status(400).send({ message: 'Invalid gameTypeId' });
       }
-      const stored = await trainingAnalysis.regenerateAndStore(gameTypeId, req.user?.id || null);
+      const filterLegacy = req.query.filterLegacy !== 'false' && req.body?.filterLegacy !== false;
+      const stored = await trainingAnalysis.regenerateAndStore(gameTypeId, req.user?.id || null, { filterLegacy });
       res.json(stored);
     } catch (err) {
       console.error('AI analysis regenerate error:', err);

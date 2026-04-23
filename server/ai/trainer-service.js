@@ -125,8 +125,9 @@ app.get('/trainer/analysis/:gameTypeId', (req, res) => {
     if (!Number.isFinite(gameTypeId)) {
       return res.status(400).json({ message: 'Invalid gameTypeId' });
     }
+    const filterLegacy = req.query.filterLegacy !== 'false';
     const { computeAnalysis } = require('./training-analysis');
-    res.json({ summary: computeAnalysis(gameTypeId) });
+    res.json({ summary: computeAnalysis(gameTypeId, { filterLegacy }) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

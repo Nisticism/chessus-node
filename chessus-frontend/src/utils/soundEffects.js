@@ -6,7 +6,6 @@ import captureSound from '../assets/sounds/game/capture.wav';
 import checkSound from '../assets/sounds/game/check.wav';
 import checkmateSound from '../assets/sounds/game/checkmate.wav';
 import gameStartSound from '../assets/sounds/game/gameStart.wav';
-import premoveSound from '../assets/sounds/game/premove.wav';
 import illegalMoveSound from '../assets/sounds/game/illegalMove.wav';
 import hitSound from '../assets/sounds/game/hit.wav';
 
@@ -18,7 +17,6 @@ class SoundManager {
       check: new Audio(checkSound),
       checkmate: new Audio(checkmateSound),
       gameStart: new Audio(gameStartSound),
-      premove: new Audio(premoveSound),
       illegalMove: new Audio(illegalMoveSound),
       hit: new Audio(hitSound)
     };
@@ -131,10 +129,6 @@ class SoundManager {
 
   playGameStart() {
     this.play('gameStart');
-  }
-
-  playPremove() {
-    this.play('premove');
   }
 
   playIllegalMove() {
