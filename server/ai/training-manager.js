@@ -119,11 +119,41 @@ async function tailLog(jobId, maxLines = 200) {
   if (!job) return [];
   const logPath = path.join(jobsDirFor(job.game_type_id, jobId), 'log.ndjson');
   if (!fs.existsSync(logPath)) return [];
-  const text = fs.readFileSync(logPath, 'utf8');
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  return lines.slice(-maxLines).map((l) => {
-    try { return JSON.parse(l); } catch { return { type: 'raw', line: l }; }
-  });
+
+  // Real tail: read at most TAIL_BYTES from the end of the file instead of
+  // slurping the whole thing into memory. Each game_complete event is ~300
+  // bytes, so 64 KiB comfortably covers the default 50–200 line tails the
+  // admin UI requests, and a 1 MiB cap covers the 5 000-line poll path
+  // used by listJobs() for in-flight reconciliation. This avoids gigabytes
+  // of disk reads per minute when admin polling hits long-running jobs
+  // (the previous implementation `readFileSync(entire file)` was the main
+  // source of EBS IOPS spikes on the trainer instance).
+  const TAIL_BYTES = Math.min(
+    Math.max(maxLines * 1024, 64 * 1024), // ~1 KiB headroom per line, min 64 KiB
+    1 * 1024 * 1024,                      // hard cap 1 MiB
+  );
+
+  let fd;
+  try {
+    fd = fs.openSync(logPath, 'r');
+    const { size } = fs.fstatSync(fd);
+    const readLen = Math.min(size, TAIL_BYTES);
+    const buf = Buffer.alloc(readLen);
+    fs.readSync(fd, buf, 0, readLen, size - readLen);
+    let text = buf.toString('utf8');
+    // If we sliced into the middle of a line, drop the (likely truncated)
+    // first partial line so JSON.parse below doesn't fail on it.
+    if (size > readLen) {
+      const nl = text.indexOf('\n');
+      if (nl >= 0) text = text.slice(nl + 1);
+    }
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    return lines.slice(-maxLines).map((l) => {
+      try { return JSON.parse(l); } catch { return { type: 'raw', line: l }; }
+    });
+  } finally {
+    if (fd != null) { try { fs.closeSync(fd); } catch (_) { /* ignore */ } }
+  }
 }
 
 async function activeJobCount() {
@@ -241,6 +271,11 @@ function spawnTrainer({
         [status, played, err, jobId],
       );
     } catch (_) { /* ignore */ }
+    try {
+      const [[row]] = await db_pool.query(
+        'SELECT game_type_id FROM ai_training_jobs WHERE id = ?', [jobId]);
+      if (row) _invalidateModelMetaCache(row.game_type_id);
+    } catch (_) { /* ignore */ }
   });
 
   child.on('error', async (e) => {
@@ -334,6 +369,7 @@ async function startJob({
     seed,
   });
 
+  _invalidateModelMetaCache(gameTypeId);
   return await getJob(jobId);
 }
 
@@ -415,6 +451,7 @@ async function resumeJob(jobId) {
      WHERE id = ?`,
     [actualPlayed, jobId],
   );
+  _invalidateModelMetaCache(job.game_type_id);
 
   // Pick a fresh sub-seed so resumed runs aren't a deterministic replay of
   // the killed run. We mix the original seed with the current resume point.
@@ -452,6 +489,16 @@ async function resumeJob(jobId) {
 async function getModelMetaForGameType(gameTypeId) {
   const gid = parseInt(gameTypeId, 10);
   if (!Number.isFinite(gid)) return null;
+
+  // Cache the result for a short TTL. The Play page hits this endpoint
+  // every time a user picks a game type, and the underlying answer only
+  // changes when a training job runs to completion. Without the cache,
+  // every page interaction triggers a DB query plus a `readdirSync` +
+  // `statSync` over every model checkpoint on disk.
+  const now = Date.now();
+  const cached = _modelMetaCache.get(gid);
+  if (cached && now - cached.at < MODEL_META_TTL_MS) return cached.value;
+
   let rows;
   try {
     [rows] = await db_pool.query(
@@ -465,59 +512,70 @@ async function getModelMetaForGameType(gameTypeId) {
     // Table may not exist yet (fresh install before migrations).
     return null;
   }
-  if (!rows || rows.length === 0) return null;
+  if (!rows || rows.length === 0) {
+    _modelMetaCache.set(gid, { at: now, value: null });
+    return null;
+  }
 
   let totalGamesPlayed = 0;
   for (const r of rows) {
     if (r.status === 'failed') continue;
     totalGamesPlayed += r.games_played || 0;
   }
-  // For currently-running jobs, also reconcile from the log so our count
-  // reflects in-flight progress.
-  for (const r of rows) {
-    if (r.status !== 'running' && r.status !== 'queued') continue;
-    try {
-      const events = await tailLog(r.id, 100000);
-      let played = r.games_played || 0;
-      for (const ev of events) {
-        if (ev && typeof ev.index === 'number' && ev.index > played) {
-          played = ev.index;
-        }
-      }
-      totalGamesPlayed += Math.max(0, played - (r.games_played || 0));
-    } catch (_) { /* non-fatal */ }
-  }
+  // NOTE: We intentionally do NOT reconcile in-flight progress from the
+  // log files here. The Adaptive-bot button only needs a rough "trained on
+  // ~N games" count, and the DB row is updated at every checkpoint. Reading
+  // every running job's log on every Play-page interaction was a major
+  // EBS IOPS contributor.
 
-  // Find newest checkpoint across every job dir for this game type.
+  // Find newest checkpoint across every job dir for this game type. In
+  // REMOTE_MODE the trainer host owns the files, so the local directories
+  // never exist on the API host — skip the disk scan entirely.
   let latestCheckpointPath = null;
-  let latestCheckpointMtime = 0;
-  for (const r of rows) {
-    const dir = jobsDirFor(gid, r.id);
-    if (!fs.existsSync(dir)) continue;
-    try {
-      const entries = fs.readdirSync(dir);
-      for (const name of entries) {
-        if (!/^model-\d+\.bin$/.test(name)) continue;
-        const full = path.join(dir, name);
-        const st = fs.statSync(full);
-        if (st.mtimeMs > latestCheckpointMtime) {
-          latestCheckpointMtime = st.mtimeMs;
-          latestCheckpointPath = full;
+  if (!REMOTE_MODE) {
+    let latestCheckpointMtime = 0;
+    for (const r of rows) {
+      const dir = jobsDirFor(gid, r.id);
+      if (!fs.existsSync(dir)) continue;
+      try {
+        const entries = fs.readdirSync(dir);
+        for (const name of entries) {
+          if (!/^model-\d+\.bin$/.test(name)) continue;
+          const full = path.join(dir, name);
+          const st = fs.statSync(full);
+          if (st.mtimeMs > latestCheckpointMtime) {
+            latestCheckpointMtime = st.mtimeMs;
+            latestCheckpointPath = full;
+          }
         }
-      }
-    } catch (_) { /* skip */ }
+      } catch (_) { /* skip */ }
+    }
   }
 
   const latest = rows[0];
-  return {
+  const value = {
     gameTypeId: gid,
     totalGamesPlayed,
     latestJobId: latest.id,
     latestJobStatus: latest.status,
     latestJobAt: latest.ended_at || latest.started_at,
     latestCheckpointPath,
+    // In REMOTE_MODE we can't see the checkpoint files; fall back to
+    // games_played as the "has model" signal.
     hasModel: latestCheckpointPath != null || totalGamesPlayed > 0,
   };
+  _modelMetaCache.set(gid, { at: now, value });
+  return value;
+}
+
+// In-memory cache for getModelMetaForGameType. Cleared automatically when
+// a training job's status changes via the existing job lifecycle hooks
+// (or on TTL expiration).
+const _modelMetaCache = new Map();
+const MODEL_META_TTL_MS = 60 * 1000; // 1 minute
+function _invalidateModelMetaCache(gameTypeId) {
+  if (gameTypeId == null) _modelMetaCache.clear();
+  else _modelMetaCache.delete(parseInt(gameTypeId, 10));
 }
 
 /** Stop a running job. Returns true if a live process was signalled. */

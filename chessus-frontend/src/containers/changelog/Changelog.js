@@ -23,6 +23,8 @@ const changelogData = [
       "Live game clocks: fixed an issue where playing as Player 1 against the computer caused the clock to only visually update on each move instead of ticking down in real time",
       "Admin dashboard — AI Training: the 'Show trained games only' filter now correctly includes game types with any training data, not just those with a fully completed job",
       "Live game vs computer: offering a draw during the computer's thinking delay is now handled immediately — the game ends right away instead of waiting for the computer to finish computing its move",
+      "Performance: game detail pages for games that have published AI analysis now load noticeably faster — the page no longer pulls down the full analysis snapshot just to decide whether to show the link to it",
+      "Performance: the admin AI-training panel and the Adaptive-bot availability check on the Play page do far less disk I/O when polling running training jobs, which should reduce CloudWatch IOPS alarms on the trainer instance",
     ],
   },
   {

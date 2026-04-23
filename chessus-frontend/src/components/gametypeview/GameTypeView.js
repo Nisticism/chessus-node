@@ -549,14 +549,15 @@ const GameTypeView = () => {
   }, [gameId, dispatch, location.key]);
 
   // Probe whether an AI training analysis exists AND is visible to the
-  // current viewer. The endpoint returns 200 when allowed, 403/404 when
-  // not — we only show the link in the 200 case.
+  // current viewer. Uses the lightweight /exists endpoint so we don't
+  // pull the full summary_json LONGTEXT on every game detail page load
+  // (which used to make games with public AI data noticeably laggy).
   useEffect(() => {
     let cancelled = false;
     setAiAnalysisAvailable(false);
     if (!gameId) return undefined;
     axios
-      .get(`${API_URL}ai-training/analysis/${gameId}`, { headers: authHeader() })
+      .get(`${API_URL}ai-training/analysis/${gameId}/exists`, { headers: authHeader() })
       .then(() => { if (!cancelled) setAiAnalysisAvailable(true); })
       .catch(() => { if (!cancelled) setAiAnalysisAvailable(false); });
     return () => { cancelled = true; };

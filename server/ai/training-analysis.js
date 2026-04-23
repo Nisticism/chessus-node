@@ -299,6 +299,20 @@ async function getAnalysisBySlug(slug) {
   };
 }
 
+// Cheap existence + visibility check that avoids reading the (potentially
+// large) summary_json LONGTEXT column. Used by the game detail page to
+// decide whether to show the "View AI analysis" link without paying the
+// cost of fetching/parsing the full snapshot on every page load.
+async function getAnalysisExistence(gameTypeId) {
+  const [rows] = await db_pool.query(
+    `SELECT visibility, slug FROM ai_training_analyses
+       WHERE game_type_id = ? LIMIT 1`,
+    [gameTypeId],
+  );
+  if (rows.length === 0) return null;
+  return { visibility: rows[0].visibility, slug: rows[0].slug };
+}
+
 module.exports = {
   computeAnalysis,
   computeAnalysisAuto,
@@ -307,4 +321,5 @@ module.exports = {
   setVisibility,
   getStoredAnalysis,
   getAnalysisBySlug,
+  getAnalysisExistence,
 };

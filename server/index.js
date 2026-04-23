@@ -7117,6 +7117,43 @@ app.put(
   },
 );
 
+// Lightweight existence + visibility probe used by the game detail page so
+// it can decide whether to show the "View AI analysis" link without
+// pulling the full summary_json LONGTEXT (and parsing it) on every page
+// load. Returns 200 { exists: true, visibility, slug } when an analysis
+// exists AND the caller can see it; 404 otherwise.
+app.get(
+  '/api/ai-training/analysis/:gameTypeId/exists',
+  optionalAuthenticate,
+  async (req, res) => {
+    try {
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      if (!Number.isFinite(gameTypeId)) {
+        return res.status(400).send({ message: 'Invalid gameTypeId' });
+      }
+      const meta = await trainingAnalysis.getAnalysisExistence(gameTypeId);
+      if (!meta) return res.status(404).send({ exists: false });
+
+      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'owner';
+      let allowed = false;
+      if (meta.visibility === 'public') allowed = true;
+      else if (isAdmin) allowed = true;
+      else if (meta.visibility === 'creator' && req.user?.id) {
+        const [[gt]] = await db_pool.query(
+          'SELECT creator_id FROM game_types WHERE id = ? LIMIT 1',
+          [gameTypeId],
+        );
+        if (gt && gt.creator_id === req.user.id) allowed = true;
+      }
+      if (!allowed) return res.status(404).send({ exists: false });
+      res.json({ exists: true, visibility: meta.visibility, slug: meta.slug });
+    } catch (err) {
+      console.error('AI analysis exists probe error:', err);
+      res.status(500).send({ message: err.message || 'Probe failed' });
+    }
+  },
+);
+
 app.get(
   '/api/ai-training/analysis/:gameTypeId',
   optionalAuthenticate,
