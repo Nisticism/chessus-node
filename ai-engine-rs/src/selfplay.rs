@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use crate::board::Board;
 use crate::book::{aggregate_book, move_string, position_signature, write_pending, PendingBookRecord, BOOK_PLY_LIMIT};
-use crate::mcts::{rollout, GameResult, Mcts};
+use crate::mcts::{GameResult, Mcts};
 use crate::moves::{in_check, legal_moves};
 use crate::protocol::ProgressEvent;
 use crate::rules::Rules;
@@ -111,23 +111,33 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         let mut board = Board::from_rules(&rules);
         let mut moves_played = 0u32;
         let mut book_buffer: Vec<PendingBookRecord> = Vec::with_capacity(BOOK_PLY_LIMIT as usize);
-        let result = loop {
+        let (result, end_reason) = loop {
             let moves = legal_moves(&board, &rules);
             if moves.is_empty() {
                 if rules.game.mate_condition && in_check(&board, &rules, board.turn) {
-                    break GameResult::Win(if board.turn == 1 { 2 } else { 1 });
+                    break (
+                        GameResult::Win(if board.turn == 1 { 2 } else { 1 }),
+                        crate::protocol::EndReason::Checkmate,
+                    );
                 }
-                break GameResult::Draw;
+                break (GameResult::Draw, crate::protocol::EndReason::Stalemate);
             }
             // Cap any single self-play game to keep training tractable.
             if moves_played > 400 {
                 // Finish via random rollout to a definite verdict so the game has a
-                // reportable outcome.
-                break rollout(&mut board, &rules, &mut rng, 200);
+                // reportable outcome. Preserve the rollout's own end reason
+                // (checkmate / stalemate / move-limit / royal-capture / cap)
+                // when it gives us something more specific than "move cap".
+                let (rr, rreason) = crate::mcts::rollout_with_reason(&mut board, &rules, &mut rng, 200);
+                let reason = match rreason {
+                    crate::protocol::EndReason::RolloutCap => crate::protocol::EndReason::MoveCapRollout,
+                    other => other,
+                };
+                break (rr, reason);
             }
             let mv = match mcts.choose(&mut rng, &board, &rules) {
                 Some(m) => m,
-                None => break GameResult::Draw,
+                None => break (GameResult::Draw, crate::protocol::EndReason::NoMove),
             };
             // Record opening-book entry BEFORE applying the move so the
             // signature represents the position the mover faced.
@@ -143,7 +153,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             moves_played += 1;
             if let Some(limit) = rules.game.draw_move_limit {
                 if board.plies_since_capture as i32 >= limit * 2 {
-                    break GameResult::Draw;
+                    break (GameResult::Draw, crate::protocol::EndReason::MoveLimit);
                 }
             }
         };
@@ -164,6 +174,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                 index: absolute_index,
                 moves: moves_played,
                 winner,
+                end_reason,
                 elapsed_ms: game_started.elapsed().as_millis(),
             },
         )?;

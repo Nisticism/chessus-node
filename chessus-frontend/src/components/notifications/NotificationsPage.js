@@ -19,6 +19,7 @@ const NOTIFICATION_ICONS = {
   game_thread: "🎮",
   game_move: "♟️",
   system: "📢",
+  announcement: "📣",
 };
 
 const formatTimeAgo = (dateStr) => {

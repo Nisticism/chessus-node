@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
+import axios from "../../services/axios-interceptor";
+import API_URL from "../../global/global";
+import authHeader from "../../services/auth-header";
 import { getGameById, deleteGame, toggleUpvote, getUpvoteStatus, runUniquenessCheck } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import styles from "./gametypeview.module.scss";
@@ -174,26 +177,26 @@ const describePieceRangedAttack = (pieceData) => {
 
   // Directional ranged attacks
   const directions = [];
-  const up = describeMovementRange(pieceData.up_attack);
-  const down = describeMovementRange(pieceData.down_attack);
+  const up = describeMovementRange(pieceData.up_attack_range);
+  const down = describeMovementRange(pieceData.down_attack_range);
   if (up && down && up === down) {
     directions.push(`vertically ${up}`);
   } else {
     if (up) directions.push(`upward ${up}`);
     if (down) directions.push(`downward ${down}`);
   }
-  const left = describeMovementRange(pieceData.left_attack);
-  const right = describeMovementRange(pieceData.right_attack);
+  const left = describeMovementRange(pieceData.left_attack_range);
+  const right = describeMovementRange(pieceData.right_attack_range);
   if (left && right && left === right) {
     directions.push(`horizontally ${left}`);
   } else {
     if (left) directions.push(`leftward ${left}`);
     if (right) directions.push(`rightward ${right}`);
   }
-  const upLeft = describeMovementRange(pieceData.up_left_attack);
-  const upRight = describeMovementRange(pieceData.up_right_attack);
-  const downLeft = describeMovementRange(pieceData.down_left_attack);
-  const downRight = describeMovementRange(pieceData.down_right_attack);
+  const upLeft = describeMovementRange(pieceData.up_left_attack_range);
+  const upRight = describeMovementRange(pieceData.up_right_attack_range);
+  const downLeft = describeMovementRange(pieceData.down_left_attack_range);
+  const downRight = describeMovementRange(pieceData.down_right_attack_range);
   const allDiagonals = [upLeft, upRight, downLeft, downRight].filter(Boolean);
   const allSameDiagonal = allDiagonals.length === 4 && allDiagonals.every(d => d === allDiagonals[0]);
   if (allSameDiagonal) {
@@ -406,6 +409,8 @@ const GameTypeView = () => {
   const [upvoteCount, setUpvoteCount] = useState(0);
   const [hasUpvoted, setHasUpvoted] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  // AI training analysis link (only shown when caller is allowed to view it).
+  const [aiAnalysisAvailable, setAiAnalysisAvailable] = useState(false);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -539,6 +544,20 @@ const GameTypeView = () => {
       loadGame();
     }
   }, [gameId, dispatch, location.key]);
+
+  // Probe whether an AI training analysis exists AND is visible to the
+  // current viewer. The endpoint returns 200 when allowed, 403/404 when
+  // not — we only show the link in the 200 case.
+  useEffect(() => {
+    let cancelled = false;
+    setAiAnalysisAvailable(false);
+    if (!gameId) return undefined;
+    axios
+      .get(`${API_URL}ai-training/analysis/${gameId}`, { headers: authHeader() })
+      .then(() => { if (!cancelled) setAiAnalysisAvailable(true); })
+      .catch(() => { if (!cancelled) setAiAnalysisAvailable(false); });
+    return () => { cancelled = true; };
+  }, [gameId, currentUser]);
 
   const handleUpvote = async () => {
     if (!currentUser) return;
@@ -1842,6 +1861,16 @@ const GameTypeView = () => {
           >
             ♟ Play this Game
           </button>
+          {aiAnalysisAvailable && (
+            <button
+              type="button"
+              onClick={() => navigate(`/games/${gameId}/analysis`)}
+              className={styles["play-button"]}
+              title="View AI training analysis (win rates, balance report)"
+            >
+              📊 AI Analysis
+            </button>
+          )}
           {canEdit() && (
             <>
               <button 

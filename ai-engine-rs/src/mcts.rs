@@ -177,6 +177,18 @@ pub fn rollout(
     rng: &mut Xoshiro256PlusPlus,
     cap: u32,
 ) -> GameResult {
+    rollout_with_reason(state, rules, rng, cap).0
+}
+
+/// Same as `rollout` but also returns the [`EndReason`] that terminated the
+/// rollout. Used by self-play so the trainer can report *why* a game drew.
+pub fn rollout_with_reason(
+    state: &mut Board,
+    rules: &Rules,
+    rng: &mut Xoshiro256PlusPlus,
+    cap: u32,
+) -> (GameResult, crate::protocol::EndReason) {
+    use crate::protocol::EndReason;
     for _ in 0..cap {
         let mover = state.turn;
         let moves = pseudo_legal(state, rules);
@@ -186,9 +198,12 @@ pub fn rollout(
             let legal = legal_moves(state, rules);
             if legal.is_empty() {
                 if rules.game.mate_condition && in_check(state, rules, state.turn) {
-                    return GameResult::Win(if state.turn == 1 { 2 } else { 1 });
+                    return (
+                        GameResult::Win(if state.turn == 1 { 2 } else { 1 }),
+                        EndReason::Checkmate,
+                    );
                 }
-                return GameResult::Draw;
+                return (GameResult::Draw, EndReason::Stalemate);
             }
             // Pseudo was empty but legal isn't (shouldn't happen, but be safe).
             let mv = legal.choose(rng).unwrap().clone();
@@ -211,7 +226,7 @@ pub fn rollout(
         }
         if royal_target.is_some() {
             // Capturing the opponent's royal is an immediate, decisive win.
-            return GameResult::Win(mover);
+            return (GameResult::Win(mover), EndReason::RoyalCapture);
         }
         let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
         let mv = if !captures.is_empty() && rng.gen_bool(0.5) {
@@ -222,9 +237,9 @@ pub fn rollout(
         state.apply(&mv);
         if let Some(limit) = rules.game.draw_move_limit {
             if state.plies_since_capture as i32 >= limit * 2 {
-                return GameResult::Draw;
+                return (GameResult::Draw, EndReason::MoveLimit);
             }
         }
     }
-    GameResult::Draw
+    (GameResult::Draw, EndReason::RolloutCap)
 }

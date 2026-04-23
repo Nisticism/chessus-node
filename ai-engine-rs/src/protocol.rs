@@ -238,6 +238,28 @@ pub struct StartingPosition {
     pub player_number: i32,
 }
 
+/// Why a self-play game ended. Helps the admin UI distinguish between the
+/// several "draw" categories (which all collapse to `winner: null`) and the
+/// genuine decisive results.
+#[derive(Debug, Serialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum EndReason {
+    /// Side to move had no legal moves and was in check.
+    Checkmate,
+    /// Side to move had no legal moves but was not in check.
+    Stalemate,
+    /// `rules.game.draw_move_limit` (fifty-move-rule analog) reached.
+    MoveLimit,
+    /// Trainer's hard 400-ply cap was hit; finished via random rollout.
+    MoveCapRollout,
+    /// Random rollout itself ran to its internal cap without a verdict.
+    RolloutCap,
+    /// MCTS produced no move (defensive; should be unreachable).
+    NoMove,
+    /// A royal piece was captured during a rollout (treated as a decisive win).
+    RoyalCapture,
+}
+
 /// One progress event written to `log.ndjson` (one per line).
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -247,6 +269,7 @@ pub enum ProgressEvent<'a> {
         index: u32,
         moves: u32,
         winner: Option<i32>,
+        end_reason: EndReason,
         elapsed_ms: u128,
     },
     Checkpoint { path: &'a str, games_played: u32 },

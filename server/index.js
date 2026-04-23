@@ -7009,6 +7009,256 @@ app.post(
   },
 );
 
+// ----------------------- AI Training Analysis ----------------------------
+//
+// Analysis routes:
+//   POST   /api/admin/ai-training/analysis/:gameTypeId/regenerate  (admin)
+//   PUT    /api/admin/ai-training/analysis/:gameTypeId/visibility  (admin)
+//   GET    /api/ai-training/analysis/:gameTypeId                   (visibility-aware)
+//   GET    /api/ai-training/analysis/by-slug/:slug                 (public)
+//
+// Visibility values:
+//   private  — only admins/owner can view
+//   creator  — game creator and admins/owner can view
+//   public   — anyone (including unauthenticated) can view via slug
+
+const trainingAnalysis = require('./ai/training-analysis');
+
+app.post(
+  '/api/admin/ai-training/analysis/:gameTypeId/regenerate',
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      if (!Number.isFinite(gameTypeId)) {
+        return res.status(400).send({ message: 'Invalid gameTypeId' });
+      }
+      const stored = await trainingAnalysis.regenerateAndStore(gameTypeId, req.user?.id || null);
+      res.json(stored);
+    } catch (err) {
+      console.error('AI analysis regenerate error:', err);
+      res.status(500).send({ message: err.message || 'Failed to regenerate analysis' });
+    }
+  },
+);
+
+app.put(
+  '/api/admin/ai-training/analysis/:gameTypeId/visibility',
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      const visibility = String(req.body?.visibility || '').toLowerCase();
+      if (!Number.isFinite(gameTypeId)) {
+        return res.status(400).send({ message: 'Invalid gameTypeId' });
+      }
+      const stored = await trainingAnalysis.setVisibility(gameTypeId, visibility);
+      res.json(stored);
+    } catch (err) {
+      console.error('AI analysis visibility error:', err);
+      res.status(400).send({ message: err.message || 'Failed to update visibility' });
+    }
+  },
+);
+
+app.get(
+  '/api/ai-training/analysis/:gameTypeId',
+  optionalAuthenticate,
+  async (req, res) => {
+    try {
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      if (!Number.isFinite(gameTypeId)) {
+        return res.status(400).send({ message: 'Invalid gameTypeId' });
+      }
+      const stored = await trainingAnalysis.getStoredAnalysis(gameTypeId);
+      if (!stored) return res.status(404).send({ message: 'No analysis published yet' });
+
+      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'owner';
+      let allowed = false;
+      if (stored.visibility === 'public') allowed = true;
+      else if (isAdmin) allowed = true;
+      else if (stored.visibility === 'creator' && req.user?.id) {
+        const [[gt]] = await db_pool.query(
+          'SELECT creator_id FROM game_types WHERE id = ? LIMIT 1',
+          [gameTypeId],
+        );
+        if (gt && gt.creator_id === req.user.id) allowed = true;
+      }
+      if (!allowed) return res.status(403).send({ message: 'Not visible to you' });
+      res.json(stored);
+    } catch (err) {
+      console.error('AI analysis fetch error:', err);
+      res.status(500).send({ message: err.message || 'Failed to load analysis' });
+    }
+  },
+);
+
+app.get('/api/ai-training/analysis/by-slug/:slug', async (req, res) => {
+  try {
+    const slug = String(req.params.slug || '').slice(0, 40);
+    if (!slug) return res.status(400).send({ message: 'Missing slug' });
+    const stored = await trainingAnalysis.getAnalysisBySlug(slug);
+    if (!stored) return res.status(404).send({ message: 'Not found' });
+    res.json(stored);
+  } catch (err) {
+    console.error('AI analysis slug fetch error:', err);
+    res.status(500).send({ message: err.message || 'Failed to load analysis' });
+  }
+});
+
+// ----------------------- Announcements ------------------------------
+//
+// Announcements are one-shot site-wide updates. POSTing one (admin only)
+// inserts an `announcements` row AND fans out a `type='announcement'`
+// notification to every user, with a real-time socket emit to anyone
+// online.
+//
+//   POST   /api/announcements                  (admin) — create + fan out
+//   GET    /api/announcements?page=&limit=     (public, paginated)
+//   GET    /api/announcements/:id              (public)
+//   DELETE /api/announcements/:id              (admin)
+
+app.post('/api/announcements', authenticateAdmin, async (req, res) => {
+  try {
+    const title = String(req.body?.title || '').trim().slice(0, 200);
+    const content = String(req.body?.content || '').trim().slice(0, 5000);
+    const actionUrl = req.body?.action_url
+      ? String(req.body.action_url).trim().slice(0, 300)
+      : null;
+    if (!title || !content) {
+      return res.status(400).send({ message: 'title and content are required' });
+    }
+    const [insert] = await db_pool.query(
+      `INSERT INTO announcements (title, content, action_url, author_id)
+       VALUES (?, ?, ?, ?)`,
+      [title, content, actionUrl, req.user?.id || null],
+    );
+    const announcementId = insert.insertId;
+    const linkUrl = actionUrl || `/announcements/${announcementId}`;
+
+    // Fan out: insert one notification per user. Chunk to keep the
+    // single statement size bounded on large user bases.
+    const [users] = await db_pool.query('SELECT id FROM users WHERE banned = 0 OR banned IS NULL');
+    const CHUNK = 1000;
+    let totalInserted = 0;
+    for (let i = 0; i < users.length; i += CHUNK) {
+      const slice = users.slice(i, i + CHUNK);
+      if (slice.length === 0) continue;
+      const values = slice.flatMap((u) => [
+        u.id, req.user?.id || null, 'announcement', title,
+        content.length > 480 ? content.slice(0, 477) + '...' : content,
+        announcementId, linkUrl,
+      ]);
+      const placeholders = slice.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(',');
+      await db_pool.query(
+        `INSERT INTO notifications
+           (user_id, sender_id, type, title, content, related_id, action_url)
+         VALUES ${placeholders}`,
+        values,
+      );
+      totalInserted += slice.length;
+    }
+
+    // Real-time push to anyone online.
+    const io = app.get('io');
+    if (io) {
+      try {
+        const { userSockets } = require('./game-socket');
+        if (userSockets) {
+          for (const u of users) {
+            const socketId = userSockets.get(u.id);
+            if (socketId) {
+              io.to(socketId).emit('newNotification', {
+                type: 'announcement',
+                title,
+                content: content.length > 480 ? content.slice(0, 477) + '...' : content,
+                related_id: announcementId,
+                action_url: linkUrl,
+                created_at: new Date().toISOString(),
+              });
+            }
+          }
+        }
+      } catch (e) { /* non-fatal */ }
+    }
+
+    res.status(201).json({
+      announcement: {
+        id: announcementId, title, content, action_url: linkUrl,
+        author_id: req.user?.id || null,
+      },
+      notificationsCreated: totalInserted,
+    });
+  } catch (err) {
+    console.error('Announcement create error:', err);
+    res.status(500).send({ message: err.message || 'Failed to create announcement' });
+  }
+});
+
+app.get('/api/announcements', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
+    const offset = (page - 1) * limit;
+    const [[{ total }]] = await db_pool.query(
+      'SELECT COUNT(*) AS total FROM announcements',
+    );
+    const [rows] = await db_pool.query(
+      `SELECT a.id, a.title, a.content, a.action_url, a.created_at,
+              a.author_id, u.username AS author_username
+         FROM announcements a
+         LEFT JOIN users u ON u.id = a.author_id
+        ORDER BY a.created_at DESC
+        LIMIT ? OFFSET ?`,
+      [limit, offset],
+    );
+    res.json({
+      announcements: rows,
+      page, limit, total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (err) {
+    console.error('Announcements list error:', err);
+    res.status(500).send({ message: 'Failed to load announcements' });
+  }
+});
+
+app.get('/api/announcements/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid id' });
+    const [rows] = await db_pool.query(
+      `SELECT a.id, a.title, a.content, a.action_url, a.created_at,
+              a.author_id, u.username AS author_username
+         FROM announcements a
+         LEFT JOIN users u ON u.id = a.author_id
+        WHERE a.id = ? LIMIT 1`,
+      [id],
+    );
+    if (rows.length === 0) return res.status(404).send({ message: 'Not found' });
+    res.json({ announcement: rows[0] });
+  } catch (err) {
+    console.error('Announcement fetch error:', err);
+    res.status(500).send({ message: 'Failed to load announcement' });
+  }
+});
+
+app.delete('/api/announcements/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid id' });
+    await db_pool.query(
+      'DELETE FROM notifications WHERE type = ? AND related_id = ?',
+      ['announcement', id],
+    );
+    const [r] = await db_pool.query('DELETE FROM announcements WHERE id = ?', [id]);
+    res.json({ deleted: r.affectedRows });
+  } catch (err) {
+    console.error('Announcement delete error:', err);
+    res.status(500).send({ message: 'Failed to delete announcement' });
+  }
+});
+
 // ----------------------- Middleware ------------------------------
 
 function authenticateToken(req, res, next) {

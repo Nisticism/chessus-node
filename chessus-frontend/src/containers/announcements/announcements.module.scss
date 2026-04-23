@@ -1,0 +1,141 @@
+.page {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 0 1.25rem;
+  color: var(--color-text, #222);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  h1 { margin: 0; }
+}
+
+.composeBtn {
+  background: #2a4f8a;
+  color: #fff;
+  border: 0;
+  padding: 0.55rem 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  &:hover { background: #1f3d6e; }
+}
+
+.intro { color: #555; }
+
+.composeForm {
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  margin: 1rem 0 1.5rem;
+  label {
+    display: block;
+    margin-bottom: 0.85rem;
+    font-weight: 600;
+    font-size: 0.92rem;
+    input, textarea {
+      display: block;
+      width: 100%;
+      margin-top: 0.3rem;
+      padding: 0.45rem 0.55rem;
+      border: 1px solid #cdd2d8;
+      border-radius: 4px;
+      font: inherit;
+    }
+    textarea { resize: vertical; }
+  }
+  button[type="submit"] {
+    background: #2a4f8a;
+    color: #fff;
+    border: 0;
+    padding: 0.55rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    &:disabled { background: #888; cursor: wait; }
+  }
+}
+
+.warn {
+  margin-top: 0.5rem;
+  color: #b00020;
+  font-size: 0.85rem;
+}
+
+.error { color: #b00020; }
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.item {
+  background: #fff;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.9rem;
+  position: relative;
+  h3 {
+    margin: 0 0 0.25rem;
+    a { color: #2a4f8a; text-decoration: none; &:hover { text-decoration: underline; } }
+  }
+}
+.meta { color: #777; font-size: 0.85rem; }
+.preview { margin: 0.5rem 0 0; color: #333; line-height: 1.5; white-space: pre-wrap; }
+
+.deleteBtn {
+  position: absolute;
+  top: 0.7rem; right: 0.7rem;
+  background: transparent;
+  color: #b00020;
+  border: 1px solid #b00020;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  &:hover { background: #fff4f4; }
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  button {
+    background: #fff;
+    border: 1px solid #cdd2d8;
+    border-radius: 4px;
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+    &:disabled { color: #aaa; cursor: not-allowed; }
+  }
+}
+
+.backLink {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: #2a4f8a;
+  text-decoration: none;
+  &:hover { text-decoration: underline; }
+}
+.body {
+  margin-top: 1rem;
+  line-height: 1.6;
+  color: #222;
+  p { margin: 0 0 0.85rem; }
+}
+.actionLink {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: #2a4f8a;
+  text-decoration: none;
+  font-weight: 600;
+  &:hover { text-decoration: underline; }
+}

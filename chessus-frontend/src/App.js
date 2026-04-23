@@ -64,7 +64,9 @@ const FAQ = lazy(() => import("./containers/faq/FAQ"));
 const About = lazy(() => import("./containers/about/About"));
 const Tutorial = lazy(() => import("./containers/tutorial/Tutorial"));
 const InfoHub = lazy(() => import("./containers/infohub/InfoHub"));
-const Changelog = lazy(() => import("./containers/changelog/Changelog"));
+const Announcements = lazy(() => import("./containers/announcements/Announcements"));
+const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));
+const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));
 
 function App() {
 
@@ -141,6 +143,7 @@ function App() {
       '/notifications': 'Notifications | GridGrove',
       '/inbox': 'Inbox | GridGrove',
       '/admin/dashboard': 'Admin Dashboard | GridGrove',
+      '/announcements': 'Announcements | GridGrove',
       '/faq': 'FAQ | GridGrove',
       '/tutorial/chess': 'Chess Tutorial | GridGrove',
     };
@@ -225,6 +228,10 @@ function App() {
             <Route exact path="/notifications" element={<NotificationsPage />} />
             <Route exact path="/inbox" element={<Inbox />} />
             <Route exact path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route exact path="/announcements" element={<Announcements />} />
+            <Route exact path="/announcements/:id" element={<AnnouncementDetail />} />
+            <Route exact path="/ai-analysis/:slug" element={<AiAnalysis />} />
+            <Route exact path="/games/:gameId/analysis" element={<AiAnalysis />} />
             <Route path="/*" element={<NotFound />} />
           </Routes>
           </Suspense>

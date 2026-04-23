@@ -552,9 +552,207 @@ const AiTrainingPanel = () => {
           <div className={styles.eventLog}>
             {(jobDetail.events || []).slice().reverse().map((ev, i) => (
               <div key={i} className={styles.event}>
-                <code>{JSON.stringify(ev)}</code>
+                <code>{formatTrainingEvent(ev)}</code>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      <AnalysisSection gameTypes={gameTypes} />
+    </div>
+  );
+};
+
+const END_REASON_LABELS = {
+  checkmate: 'checkmate',
+  stalemate: 'draw (stalemate)',
+  move_limit: 'draw (move-limit rule)',
+  move_cap_rollout: 'draw (trainer move cap)',
+  rollout_cap: 'draw (rollout cap)',
+  no_move: 'draw (no legal move)',
+  royal_capture: 'royal piece captured',
+};
+
+function formatTrainingEvent(ev) {
+  if (!ev || typeof ev !== 'object') return JSON.stringify(ev);
+  if (ev.type === 'game_complete') {
+    const reason = END_REASON_LABELS[ev.end_reason] || (ev.winner ? 'win' : 'draw');
+    const outcome = ev.winner
+      ? `P${ev.winner} wins by ${reason}`
+      : reason;
+    return `Game ${ev.index}: ${outcome} — ${ev.moves} moves (${ev.elapsed_ms}ms)`;
+  }
+  if (ev.type === 'started')    return `Started: target ${ev.games_target} (seed ${ev.seed})`;
+  if (ev.type === 'checkpoint') return `Checkpoint @ ${ev.games_played}: ${ev.path}`;
+  if (ev.type === 'finished')   return `Finished: ${ev.games_played} games (${ev.elapsed_ms}ms)`;
+  if (ev.type === 'aborted')    return `Aborted: ${ev.reason}`;
+  if (ev.type === 'warning')    return `Warning: ${ev.msg}`;
+  return JSON.stringify(ev);
+}
+
+const VISIBILITY_LABELS = {
+  private: 'Admins only',
+  creator: 'Game creator + admins',
+  public: 'Public (anyone with the link)',
+};
+
+const AnalysisSection = ({ gameTypes }) => {
+  const [analysisGameTypeId, setAnalysisGameTypeId] = useState('');
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const loadExisting = useCallback(async (gtid) => {
+    if (!gtid) { setAnalysis(null); return; }
+    setLoading(true); setErr(null);
+    try {
+      const res = await axios.get(`${API_URL}ai-training/analysis/${gtid}`, {
+        headers: authHeader(),
+      });
+      setAnalysis(res.data);
+    } catch (e) {
+      if (e?.response?.status === 404) setAnalysis(null);
+      else setErr(e?.response?.data?.message || e.message);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadExisting(analysisGameTypeId); }, [analysisGameTypeId, loadExisting]);
+
+  const regenerate = async () => {
+    if (!analysisGameTypeId) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await axios.post(
+        `${API_URL}admin/ai-training/analysis/${analysisGameTypeId}/regenerate`,
+        {},
+        { headers: authHeader() },
+      );
+      setAnalysis(res.data);
+    } catch (e) {
+      setErr(e?.response?.data?.message || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const updateVisibility = async (visibility) => {
+    if (!analysisGameTypeId) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await axios.put(
+        `${API_URL}admin/ai-training/analysis/${analysisGameTypeId}/visibility`,
+        { visibility },
+        { headers: authHeader() },
+      );
+      setAnalysis(res.data);
+    } catch (e) {
+      setErr(e?.response?.data?.message || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const summary = analysis?.summary;
+  const publicLink = analysis?.slug
+    ? `${window.location.origin}/ai-analysis/${analysis.slug}`
+    : null;
+
+  return (
+    <div className={styles.section}>
+      <h4>AI Training Analysis</h4>
+      <p className={styles.intro}>
+        Aggregate every job's results for a game type into a balance report
+        (per-side win rate, draw breakdown, sample size). Publish the
+        analysis to the game's creator only, or to everyone via a shareable
+        link.
+      </p>
+      <div className={styles.form}>
+        <label>
+          Game type
+          <select
+            value={analysisGameTypeId}
+            onChange={(e) => setAnalysisGameTypeId(e.target.value)}
+          >
+            <option value="">— select —</option>
+            {gameTypes.map((g) => (
+              <option key={g.id} value={g.id}>
+                #{g.id} — {g.game_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={regenerate}
+          disabled={!analysisGameTypeId || busy}
+        >
+          {analysis ? 'Regenerate analysis' : 'Generate analysis'}
+        </button>
+        {err && <div className={styles.error}>{err}</div>}
+      </div>
+
+      {loading && <div>Loading…</div>}
+      {!loading && analysisGameTypeId && !analysis && (
+        <div className={styles.empty}>
+          No analysis yet for this game type. Click "Generate analysis" once
+          enough training games exist.
+        </div>
+      )}
+      {summary && (
+        <div className={styles.analysisBlock}>
+          <div className={styles.analysisStats}>
+            <div><strong>Total games:</strong> {summary.totalGames} (across {summary.jobCount} job{summary.jobCount === 1 ? '' : 's'})</div>
+            <div><strong>Decisive:</strong> {summary.decisive} ({((summary.decisive / Math.max(1, summary.totalGames)) * 100).toFixed(1)}%) — <strong>Draws:</strong> {summary.draws} ({((summary.draws / Math.max(1, summary.totalGames)) * 100).toFixed(1)}%)</div>
+            <div><strong>Side 1 wins:</strong> {summary.perSide['1'].wins} ({(summary.perSide['1'].winRate * 100).toFixed(1)}%)</div>
+            <div><strong>Side 2 wins:</strong> {summary.perSide['2'].wins} ({(summary.perSide['2'].winRate * 100).toFixed(1)}%)</div>
+            <div><strong>Balance:</strong> {summary.balance.severity} (imbalance {(summary.balance.imbalance * 100).toFixed(1)}%)</div>
+            {summary.balance.note && (
+              <div className={styles.balanceNote}>{summary.balance.note}</div>
+            )}
+            <div><strong>Avg game length:</strong> {summary.avgMoves.toFixed(1)} moves (range {summary.minMoves}–{summary.maxMoves})</div>
+            <details>
+              <summary>Draw breakdown</summary>
+              <ul>
+                {Object.entries(summary.drawBreakdown).map(([k, v]) => (
+                  v > 0 ? <li key={k}>{k}: {v}</li> : null
+                )).filter(Boolean)}
+                {Object.values(summary.drawBreakdown).every((v) => v === 0) && (
+                  <li>No draws recorded.</li>
+                )}
+              </ul>
+              <small>
+                Draws labeled "unknown" come from games run before per-draw
+                reasons were tracked. New training runs (after rebuilding the
+                Rust trainer) will populate these categories.
+              </small>
+            </details>
+          </div>
+
+          <div className={styles.visibilityControls}>
+            <strong>Visibility:</strong> {VISIBILITY_LABELS[analysis.visibility]}
+            <div className={styles.visibilityButtons}>
+              {['private', 'creator', 'public'].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  disabled={busy || analysis.visibility === v}
+                  onClick={() => updateVisibility(v)}
+                >
+                  {v === analysis.visibility ? `✓ ${VISIBILITY_LABELS[v]}` : `Set ${v}`}
+                </button>
+              ))}
+            </div>
+            {publicLink && analysis.visibility === 'public' && (
+              <div className={styles.publicLink}>
+                Public link:{' '}
+                <a href={publicLink} target="_blank" rel="noreferrer">{publicLink}</a>
+                {' '}
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(publicLink)}
+                >
+                  Copy
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

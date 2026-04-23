@@ -116,6 +116,22 @@ app.get('/trainer/book/:gameTypeId', (req, res) => {
   }
 });
 
+// Aggregate every training job's log.ndjson for a game type into a
+// summary the backend persists in `ai_training_analyses`. The trainer
+// host has the files; the backend orchestrates storage + visibility.
+app.get('/trainer/analysis/:gameTypeId', (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.gameTypeId, 10);
+    if (!Number.isFinite(gameTypeId)) {
+      return res.status(400).json({ message: 'Invalid gameTypeId' });
+    }
+    const { computeAnalysis } = require('./training-analysis');
+    res.json({ summary: computeAnalysis(gameTypeId) });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Upload pre-trained artifacts (raw book.jsonl or a zip of a job dir).
 // Body is the raw bytes of the file. Query string carries metadata.
 //   POST /trainer/upload?gameTypeId=N&kind=jsonl|zip&userId=N

@@ -15,6 +15,12 @@ const InfoHub = () => {
       path: "/news",
     },
     {
+      title: "Announcements",
+      description: "Site-wide updates and important news from the GridGrove team",
+      icon: "📢",
+      path: "/announcements",
+    },
+    {
       title: "FAQ",
       description: "Find answers to common questions about creating pieces, games, and more",
       icon: "❓",

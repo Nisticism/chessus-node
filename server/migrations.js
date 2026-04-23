@@ -3084,6 +3084,58 @@ const runMigrations = async () => {
     console.error('Error adding source column to ai_training_jobs:', err.message);
   }
 
+  // AI training analyses: persistent per-game-type summary of training
+  // results (win-rate by side, draw-type breakdown, sample size, etc.)
+  // with a visibility flag controlling who can see the published view.
+  try {
+    if (!(await tableExists('ai_training_analyses'))) {
+      await runMigration(
+        `CREATE TABLE ai_training_analyses (
+          id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          game_type_id INT UNSIGNED NOT NULL UNIQUE,
+          summary_json LONGTEXT NOT NULL COMMENT 'JSON: totals, per-side win rates, draw breakdown, etc.',
+          visibility ENUM('private','creator','public') NOT NULL DEFAULT 'private'
+            COMMENT 'private = admins only; creator = game creator + admins; public = anyone',
+          slug VARCHAR(40) UNIQUE COMMENT 'shareable link slug (set when published public)',
+          generated_by_user_id INT UNSIGNED,
+          generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_analysis_visibility (visibility),
+          INDEX idx_analysis_slug (slug),
+          FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+          FOREIGN KEY (generated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+        )`,
+        "Create ai_training_analyses table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating ai_training_analyses:', err.message);
+  }
+
+  // Announcements: site-wide one-shot updates the team posts and that fan
+  // out as `announcement`-type notifications to every user.
+  try {
+    if (!(await tableExists('announcements'))) {
+      await runMigration(
+        `CREATE TABLE announcements (
+          id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          title VARCHAR(200) NOT NULL,
+          content TEXT NOT NULL,
+          action_url VARCHAR(300),
+          author_id INT UNSIGNED,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_announcements_created (created_at DESC),
+          FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL
+        )`,
+        "Create announcements table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating announcements:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {
