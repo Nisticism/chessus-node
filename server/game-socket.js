@@ -5807,6 +5807,7 @@ async function getOngoingGames() {
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
               GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
+              COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) as move_count,
               MAX(u.show_computer_games_publicly) as host_show_bot_public
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
@@ -5862,7 +5863,8 @@ async function getMyBotGames(userId) {
               CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
-              GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids
+              GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
+              COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) as move_count
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
        JOIN players p ON g.id = p.game_id

@@ -41,6 +41,7 @@ pub struct GameType {
     pub hill_y: Option<i32>,
     pub hill_turns: Option<i32>,
     pub draw_move_limit: Option<i32>,
+    pub repetition_draw_count: Option<i32>,
 
     // Special-square JSON blobs (parsed lazily in rules.rs)
     pub range_squares_string: Option<String>,
@@ -258,6 +259,10 @@ pub enum EndReason {
     NoMove,
     /// A royal piece was captured during a rollout (treated as a decisive win).
     RoyalCapture,
+    /// Position repeated `repetition_draw_count` times.
+    Repetition,
+    /// Only royal pieces remain on the board (one each) — no mate possible.
+    InsufficientMaterial,
 }
 
 /// One progress event written to `log.ndjson` (one per line).

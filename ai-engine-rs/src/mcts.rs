@@ -243,3 +243,107 @@ pub fn rollout_with_reason(
     }
     (GameResult::Draw, EndReason::RolloutCap)
 }
+
+/// Aggressive variant of [`rollout_with_reason`] used by self-play past the
+/// 400-ply cap. Differences from the regular rollout:
+///   * always takes a capture when one is available (vs. 50/50)
+///   * among non-capture moves, biases toward moves whose destination is
+///     further from the moving player's home edge — this is a cheap proxy
+///     for "advance promotable pieces toward their promotion rank" that
+///     doesn't require parsing promotion-square JSON for every variant.
+///   * also honors the fifty-move draw rule and a lightweight royals-only
+///     insufficient-material check so forced draw conditions can still
+///     fire inside the rollout.
+pub fn rollout_with_reason_aggressive(
+    state: &mut Board,
+    rules: &Rules,
+    rng: &mut Xoshiro256PlusPlus,
+    cap: u32,
+) -> (GameResult, crate::protocol::EndReason) {
+    use crate::protocol::EndReason;
+    let board_height = rules.board_height();
+    for _ in 0..cap {
+        // Insufficient-material check inside the rollout too — in mate-only
+        // variants, once only royals remain nothing can force a result.
+        if rules.game.mate_condition
+            && !state.pieces.is_empty()
+            && state.pieces.iter().all(|p| is_royal_piece(rules, p.piece_id))
+        {
+            return (GameResult::Draw, EndReason::InsufficientMaterial);
+        }
+
+        let mover = state.turn;
+        let moves = pseudo_legal(state, rules);
+        if moves.is_empty() {
+            let legal = legal_moves(state, rules);
+            if legal.is_empty() {
+                if rules.game.mate_condition && in_check(state, rules, state.turn) {
+                    return (
+                        GameResult::Win(if state.turn == 1 { 2 } else { 1 }),
+                        EndReason::Checkmate,
+                    );
+                }
+                return (GameResult::Draw, EndReason::Stalemate);
+            }
+            let mv = legal.choose(rng).unwrap().clone();
+            state.apply(&mv);
+            continue;
+        }
+
+        // Prioritize royal captures (decisive). Only meaningful in
+        // non-mate_condition variants — in mate_condition games the
+        // self-play loop rewrites this outcome to an indeterminate draw.
+        for m in &moves {
+            if let Some(cap_id) = m.capture {
+                if let Some(target) = state.pieces.iter().find(|p| p.id == cap_id) {
+                    if is_royal_piece(rules, target.piece_id) {
+                        return (GameResult::Win(mover), EndReason::RoyalCapture);
+                    }
+                }
+            }
+        }
+
+        // Aggressive selection: always capture if possible.
+        let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
+        let mv = if !captures.is_empty() {
+            (*captures.choose(rng).unwrap()).clone()
+        } else {
+            // Forward-bias for non-captures: player 1 advances toward high
+            // y, player 2 advances toward low y. Pick the move with the
+            // largest forward progress; ties broken randomly.
+            let target_forward = |m: &Move| -> i32 {
+                if mover == 1 { m.to.y - m.from.y } else { m.from.y - m.to.y }
+            };
+            let mut best_score = i32::MIN;
+            for m in &moves {
+                let s = target_forward(m);
+                if s > best_score {
+                    best_score = s;
+                }
+            }
+            // 80% chance to pick a max-forward move; 20% fully random to
+            // avoid pathological stuck states.
+            if rng.gen_bool(0.8) && best_score > i32::MIN {
+                let forward: Vec<&Move> = moves
+                    .iter()
+                    .filter(|m| target_forward(m) == best_score)
+                    .collect();
+                if !forward.is_empty() {
+                    (*forward.choose(rng).unwrap()).clone()
+                } else {
+                    moves.choose(rng).unwrap().clone()
+                }
+            } else {
+                moves.choose(rng).unwrap().clone()
+            }
+        };
+        let _ = board_height; // reserved for future promotion-square heuristics
+        state.apply(&mv);
+        if let Some(limit) = rules.game.draw_move_limit {
+            if state.plies_since_capture as i32 >= limit * 2 {
+                return (GameResult::Draw, EndReason::MoveLimit);
+            }
+        }
+    }
+    (GameResult::Draw, EndReason::RolloutCap)
+}

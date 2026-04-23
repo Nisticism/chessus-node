@@ -340,7 +340,9 @@
 
 // Rated / Unrated badge
 .rated-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -349,10 +351,14 @@
   background: rgba(255, 193, 7, 0.15);
   color: #f5c542;
   border: 1px solid rgba(255, 193, 7, 0.4);
+  min-width: 68px;
+  box-sizing: border-box;
 }
 
 .unrated-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -361,6 +367,38 @@
   background: rgba(150, 150, 150, 0.12);
   color: #999;
   border: 1px solid rgba(150, 150, 150, 0.3);
+  min-width: 68px;
+  box-sizing: border-box;
+}
+
+.move-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(100, 180, 255, 0.10);
+  color: var(--color-teal, #4fb3ff);
+  border: 1px solid rgba(100, 180, 255, 0.28);
+  min-width: 68px;
+  box-sizing: border-box;
+}
+
+.meta-column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+
+  // Extra spacing so the rated/casual badge isn't sitting flush under the
+  // time-control pill.
+  .match-time-control + .rated-badge,
+  .match-time-control + .unrated-badge {
+    margin-top: 2px;
+  }
 }
 
 // Clickable game name and username links inside cards
@@ -379,6 +417,55 @@
 
   &:hover {
     opacity: 0.8;
+  }
+}
+
+// Player stack for ongoing / private cards — two usernames stacked vertically
+// with a stylized "vs" between them, left-aligned.
+.player-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  color: var(--color-teal);
+  font-size: 0.95rem;
+  font-weight: 500;
+
+  .player-name {
+    color: var(--color-teal);
+    font-weight: 600;
+    text-decoration: none;
+
+    &:hover {
+      color: var(--accent-primary);
+      text-decoration: underline;
+    }
+  }
+
+  .player-name-plain {
+    color: var(--text-muted, #aaa);
+    font-weight: 500;
+    font-style: italic;
+  }
+
+  .vs-separator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-muted, #888);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-left: 2px;
+
+    &::before {
+      content: "⚔";
+      font-style: normal;
+      opacity: 0.75;
+      font-size: 0.9rem;
+      letter-spacing: 0;
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, useSearchParams, useLocation, Link } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
@@ -8,6 +8,7 @@ import authHeader from "../../services/auth-header";
 import axios from "../../services/axios-interceptor";
 import styles from "./play.module.scss";
 import FriendsList from "../../components/friendslist/FriendsList";
+import InfoTooltip from "../../components/piecewizard/InfoTooltip";
 
 const Play = () => {
   const navigate = useNavigate();
@@ -44,6 +45,7 @@ const Play = () => {
   const [allowPremoves, setAllowPremoves] = useState(true);
   const [premoveTimeCost, setPremoveTimeCost] = useState(false);
   const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
+  const additionalOptionsRef = useRef(null);
   const [startingMode, setStartingMode] = useState("none");
   const [playerSide, setPlayerSide] = useState("random"); // "p1", "p2", or "random"
   const [isCreating, setIsCreating] = useState(false);
@@ -370,6 +372,38 @@ const Play = () => {
     }
   }, [connected, fetchOpenGames, fetchOngoingGames, fetchPrivateGames, fetchMyBotGames, currentUser]);
 
+  // Lightweight polling so the move-count badge on ongoing game cards stays
+  // fresh without us needing to open a per-game socket channel. Only active
+  // while the tab is visible to avoid pointless work in background tabs.
+  useEffect(() => {
+    if (!connected) return undefined;
+    const INTERVAL_MS = 5000;
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchOngoingGames();
+      fetchOpenGames();
+    };
+    const id = setInterval(tick, INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [connected, fetchOngoingGames, fetchOpenGames]);
+
+  // Close the host-modal "additional options" popover when clicking outside
+  // of it. (The popover itself floats above the toggle button; clicking
+  // anywhere else in the modal or on the backdrop should collapse it.)
+  useEffect(() => {
+    if (!showAdditionalOptions) return undefined;
+    const handler = (e) => {
+      const root = additionalOptionsRef.current;
+      if (root && !root.contains(e.target)) {
+        setShowAdditionalOptions(false);
+      }
+    };
+    // Use mousedown so the close fires before any click handlers inside the
+    // modal content get a chance to execute.
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showAdditionalOptions]);
+
   // Fetch online friends when user is logged in
   useEffect(() => {
     if (currentUser && connected) {
@@ -644,6 +678,39 @@ const Play = () => {
     const start = (computerGamesPage - 1) * PAGE_SIZE;
     return list.slice(start, start + PAGE_SIZE);
   }, [myBotGames, computerGamesPage]);
+
+  // Render two players stacked vertically with a stylized "vs" between them.
+  // Each player links to their profile unless the entry is a Computer player.
+  const renderPlayerStack = (game) => {
+    const raw = game?.player_names || '';
+    const parts = raw.split(' vs ').map(s => s.trim()).filter(Boolean);
+    // Fallback for malformed / empty lists.
+    if (parts.length === 0) {
+      return <div className={styles["player-stack"]} />;
+    }
+    const isComputer = (name) => /^Computer\s*\(/i.test(name);
+    const renderName = (name, key) => (
+      isComputer(name)
+        ? <span key={key} className={styles["player-name-plain"]}>{name}</span>
+        : <Link key={key} to={`/profile/${encodeURIComponent(name)}`} className={styles["player-name"]}>{name}</Link>
+    );
+    if (parts.length === 1) {
+      return (
+        <div className={styles["player-stack"]}>
+          {renderName(parts[0], 'p0')}
+        </div>
+      );
+    }
+    // 2+ players — render first vs second vs third, etc.
+    const out = [];
+    parts.forEach((name, i) => {
+      if (i > 0) {
+        out.push(<span key={`sep-${i}`} className={styles["vs-separator"]}>vs</span>);
+      }
+      out.push(renderName(name, `p-${i}`));
+    });
+    return <div className={styles["player-stack"]}>{out}</div>;
+  };
 
   // Total pages for each section
   const totalFriendsPages = Math.ceil((onlineFriends?.length || 0) / PAGE_SIZE);
@@ -1110,7 +1177,7 @@ const Play = () => {
                         <span className={styles["match-game-name"]}>
                           <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                         </span>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                        <div className={styles["meta-column"]}>
                           <span className={styles["match-time-control"]}>
                             {formatTimeControl(game)}
                           </span>
@@ -1119,12 +1186,10 @@ const Play = () => {
                           </span>
                         </div>
                       </div>
-                      <div className={styles["match-host"]}>
-                        {isHost ? (
-                          <span>⚔️ You challenged <Link to={`/profile/${game.challenged_username}`} className={styles["username-link"]}><strong>{game.challenged_username}</strong></Link></span>
-                        ) : (
-                          <span>⚔️ <Link to={`/profile/${game.host_username}`} className={styles["username-link"]}><strong>{game.host_username}</strong></Link> challenged you</span>
-                        )}
+                      <div className={styles["player-stack"]}>
+                        <Link to={`/profile/${game.host_username}`} className={styles["player-name"]}>{game.host_username}</Link>
+                        <span className={styles["vs-separator"]}>vs</span>
+                        <Link to={`/profile/${game.challenged_username}`} className={styles["player-name"]}>{game.challenged_username}</Link>
                       </div>
                       <div className={styles["match-actions"]}>
                         {isHost ? (
@@ -1262,7 +1327,7 @@ const Play = () => {
                           <span className={styles["match-game-name"]}>
                             <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name || game.gameTypeName}</Link>
                           </span>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <div className={styles["meta-column"]}>
                             <span className={styles["match-time-control"]}>
                               {formatTimeControl(game)}
                             </span>
@@ -1366,7 +1431,7 @@ const Play = () => {
                         <span className={styles["match-game-name"]}>
                           <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                         </span>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                        <div className={styles["meta-column"]}>
                           <span className={styles["match-time-control"]}>
                             {formatTimeControl(game)}
                           </span>
@@ -1375,11 +1440,14 @@ const Play = () => {
                               {game.rated ? 'Rated' : 'Casual'}
                             </span>
                           )}
+                          {typeof game.move_count === 'number' && (
+                            <span className={styles["move-count-badge"]} title="Moves played so far">
+                              {game.move_count} {game.move_count === 1 ? 'move' : 'moves'}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className={styles["match-players"]}>
-                        {game.player_names}
-                      </div>
+                      {renderPlayerStack(game)}
                       <div className={styles["match-actions"]}>
                         <button
                           className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
@@ -1457,13 +1525,18 @@ const Play = () => {
                         <span className={styles["match-game-name"]}>
                           <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                         </span>
-                        <span className={styles["match-time-control"]}>
-                          {formatTimeControl(game)}
-                        </span>
+                        <div className={styles["meta-column"]}>
+                          <span className={styles["match-time-control"]}>
+                            {formatTimeControl(game)}
+                          </span>
+                          {typeof game.move_count === 'number' && (
+                            <span className={styles["move-count-badge"]} title="Moves played so far">
+                              {game.move_count} {game.move_count === 1 ? 'move' : 'moves'}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className={styles["match-players"]}>
-                        {game.player_names}
-                      </div>
+                      {renderPlayerStack(game)}
                       <div className={styles["match-actions"]}>
                         <button
                           className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
@@ -1876,7 +1949,7 @@ const Play = () => {
               </label>
             </div>
 
-            <div className={styles["additional-options-section"]}>
+            <div className={styles["additional-options-section"]} ref={additionalOptionsRef}>
               <button 
                 type="button"
                 className={styles["additional-options-toggle"]}
@@ -1890,8 +1963,7 @@ const Play = () => {
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["toggle-label-row"]}>
                 <div className={styles["toggle-label-text"]}>
-                  <span>Allow Premoves</span>
-                  <span className={styles["toggle-tooltip"]}>Queue your next move while waiting for your opponent to play</span>
+                  <span>Allow Premoves <InfoTooltip text="Queue your next move while waiting for your opponent to play" /></span>
                 </div>
                 <div className={styles["toggle-switch"]}>
                   <input
@@ -1908,8 +1980,7 @@ const Play = () => {
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]} ${styles["sub-option"]}`}>
               <label className={styles["toggle-label-row"]}>
                 <div className={styles["toggle-label-text"]}>
-                  <span>Premove Clock Cost</span>
-                  <span className={styles["toggle-tooltip"]}>Deducts 0.1 seconds from the clock per premove instead of being free</span>
+                  <span>Premove Clock Cost <InfoTooltip text="Deducts 0.1 seconds from the clock per premove instead of being free" /></span>
                 </div>
                 <div className={styles["toggle-switch"]}>
                   <input
@@ -1926,8 +1997,7 @@ const Play = () => {
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["toggle-label-row"]}>
                 <div className={styles["toggle-label-text"]}>
-                  <span>Show Movement Helpers</span>
-                  <span className={styles["toggle-tooltip"]}>Display movement and capture indicators when hovering over pieces</span>
+                  <span>Show Movement Helpers <InfoTooltip text="Display movement and capture indicators when hovering over pieces" /></span>
                 </div>
                 <div className={styles["toggle-switch"]}>
                   <input
@@ -1943,8 +2013,7 @@ const Play = () => {
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["toggle-label-row"]}>
                 <div className={styles["toggle-label-text"]}>
-                  <span>Allow Spectators</span>
-                  <span className={styles["toggle-tooltip"]}>Let other players watch the game in progress</span>
+                  <span>Allow Spectators <InfoTooltip text="Let other players watch the game in progress" /></span>
                 </div>
                 <div className={styles["toggle-switch"]}>
                   <input
@@ -1961,8 +2030,7 @@ const Play = () => {
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["toggle-label-row"]}>
                 <div className={styles["toggle-label-text"]}>
-                  <span>Material Clock Penalty</span>
-                  <span className={styles["toggle-tooltip"]}>Lose time for each piece captured — the more material you lose, the less time you have</span>
+                  <span>Material Clock Penalty <InfoTooltip text="Lose time for each piece captured — the more material you lose, the less time you have" /></span>
                 </div>
                 <div className={styles["toggle-switch"]}>
                   <input
@@ -1979,8 +2047,7 @@ const Play = () => {
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
               <label className={styles["toggle-label-row"]}>
                 <div className={styles["toggle-label-text"]}>
-                  <span>Material Clock Handicap</span>
-                  <span className={styles["toggle-tooltip"]}>The player with more material gets less time, balancing the advantage</span>
+                  <span>Material Clock Handicap <InfoTooltip text="The player with more material gets less time, balancing the advantage" /></span>
                 </div>
                 <div className={styles["toggle-switch"]}>
                   <input

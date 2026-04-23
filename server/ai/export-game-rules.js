@@ -168,6 +168,7 @@ async function exportGameRules(gameTypeId) {
       hill_y: g.hill_y == null ? null : intOr(g.hill_y, null),
       hill_turns: g.hill_turns == null ? null : intOr(g.hill_turns, null),
       draw_move_limit: g.draw_move_limit == null ? null : intOr(g.draw_move_limit, null),
+      repetition_draw_count: g.repetition_draw_count == null ? null : intOr(g.repetition_draw_count, null),
       range_squares_string: g.range_squares_string || null,
       promotion_squares_string: g.promotion_squares_string || null,
       special_squares_string: g.special_squares_string || null,

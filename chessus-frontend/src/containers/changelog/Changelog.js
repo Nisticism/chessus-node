@@ -7,6 +7,12 @@ const changelogData = [
     date: "April 22, 2026",
     title: "Adaptive AI Computer Opponent, Trainer Moved to Frontend EC2, Resume & Pause Training Controls",
     items: [
+      "Play page — game cards: added a per-game move counter under the rated/casual badge on every live game in progress. Auto-refreshes every 5 seconds while the tab is open",
+      "Play page — game cards: rated/casual badges (and the new move-counter) are now all the same width, with a little breathing room between the time-control pill and the badges below it",
+      "Play page — game cards: usernames are now clickable links to each player's profile, stacked vertically on separate lines with a stylized '⚔ vs' between them instead of a single comma-free line",
+      "Host Game modal: the 'Additional Options' popover now closes automatically when you click outside of it, and each option's explanation has moved into a hover tooltip (ℹ️) next to the label to save vertical space",
+      "AI self-play / training: added full draw-rule enforcement in the self-play loop so games no longer run up to the 400-move trainer cap as often: n-fold repetition (when the variant defines one), the 50-move / nth-move drawing rule, stalemate, and a royals-only insufficient-material draw for checkmate-only variants all now fire as real game-ending reasons",
+      "AI self-play / training: the fallback we used past 400 moves is now an aggressive capture-biased rollout with a 'advance toward the far edge' heuristic for non-capture moves, instead of a random rollout. In practice the rule checks above almost always end the game first; this path is only for exotic variants that don't define any drawing rule",
       "Live games — sounds: removed the separate premove-set sound effect. Now when you queue a premove nothing plays on setup, the regular move sound plays when the premove actually executes, and nothing plays if your premove is invalidated by the opponent's move",
       "Announcements and AI Analysis pages: restyled for the dark theme (previously used light-mode colors that were unreadable on the site background)",
       "Admin dashboard — AI Training: when running the trainer locally (dev mode), each completed job row now shows a Download button that packages the job directory as a ZIP, so devs can train offline and upload the result into the live admin portal",

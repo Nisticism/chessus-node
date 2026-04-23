@@ -54,7 +54,7 @@ function readGameEvents(logPath) {
 
 const DRAW_REASONS = [
   'stalemate', 'move_limit', 'move_cap_rollout',
-  'rollout_cap', 'no_move',
+  'rollout_cap', 'no_move', 'repetition', 'insufficient_material',
 ];
 
 /**
@@ -78,7 +78,8 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
   let totalMoves = 0, totalElapsed = 0;
   let minMoves = Infinity, maxMoves = 0;
   const drawBreakdown = { stalemate: 0, move_limit: 0, move_cap_rollout: 0,
-    rollout_cap: 0, no_move: 0, royal_capture: 0, unknown: 0 };
+    rollout_cap: 0, no_move: 0, royal_capture: 0,
+    repetition: 0, insufficient_material: 0, unknown: 0 };
   const decisiveBy = { checkmate: 0, royal_capture: 0, other: 0 };
 
   for (const ev of eligible) {

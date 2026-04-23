@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
@@ -17,7 +18,7 @@ use std::time::Instant;
 use crate::board::Board;
 use crate::book::{aggregate_book, move_string, position_signature, write_pending, PendingBookRecord, BOOK_PLY_LIMIT};
 use crate::mcts::{GameResult, Mcts};
-use crate::moves::{in_check, legal_moves};
+use crate::moves::{in_check, is_royal_piece, legal_moves};
 use crate::protocol::ProgressEvent;
 use crate::rules::Rules;
 
@@ -111,6 +112,10 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         let mut board = Board::from_rules(&rules);
         let mut moves_played = 0u32;
         let mut book_buffer: Vec<PendingBookRecord> = Vec::with_capacity(BOOK_PLY_LIMIT as usize);
+        // Track position occurrences for n-fold repetition. Seeded with the
+        // starting position so a cycle back to the opening counts.
+        let mut position_history: HashMap<String, u32> = HashMap::new();
+        position_history.insert(position_signature(&board, &rules), 1);
         let (result, end_reason) = loop {
             let moves = legal_moves(&board, &rules);
             if moves.is_empty() {
@@ -122,22 +127,37 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                 }
                 break (GameResult::Draw, crate::protocol::EndReason::Stalemate);
             }
-            // Cap any single self-play game to keep training tractable.
+
+            // Insufficient-material draw: in mate_condition games (where the
+            // only decisive outcome is checkmate), if every remaining piece
+            // on the board is a royal piece, neither side can ever achieve
+            // mate — declare a draw instead of grinding out the move cap.
+            if rules.game.mate_condition
+                && !board.pieces.is_empty()
+                && board.pieces.iter().all(|p| is_royal_piece(&rules, p.piece_id))
+            {
+                break (
+                    GameResult::Draw,
+                    crate::protocol::EndReason::InsufficientMaterial,
+                );
+            }
+
+            // Hard cap: if a game somehow dodges every drawing rule and runs
+            // past 400 plies, finish with an aggressive capture-biased
+            // rollout. This is only a fallback for game variants that have
+            // no fifty-move rule, no repetition rule, and no way to reach
+            // insufficient-material — otherwise the checks above fire first.
             if moves_played > 400 {
-                // Finish via random rollout to a definite verdict so the game has a
-                // reportable outcome. Preserve the rollout's own end reason
-                // (checkmate / stalemate / move-limit / royal-capture / cap)
-                // when it gives us something more specific than "move cap".
-                let (rr, rreason) = crate::mcts::rollout_with_reason(&mut board, &rules, &mut rng, 200);
-                // In mate_condition games a royal capture is *not* a legal
-                // terminal — it can only occur because the rollout uses
-                // pseudo-legal moves for speed. Report it as an
-                // indeterminate rollout-cap draw instead of a spurious
-                // decisive result, so analysis doesn't claim "Player X won
-                // by royal capture" for a game type that only allows
-                // checkmate.
+                let (rr, rreason) =
+                    crate::mcts::rollout_with_reason_aggressive(&mut board, &rules, &mut rng, 800);
+                // Royal captures during a rollout are pseudo-legal shortcuts,
+                // not reachable under the real rules of a mate_condition
+                // game. Fold them to the indeterminate cap outcome so the
+                // analysis report doesn't claim a spurious decisive result.
                 let (rr_final, reason) = match rreason {
-                    crate::protocol::EndReason::RolloutCap => (rr, crate::protocol::EndReason::MoveCapRollout),
+                    crate::protocol::EndReason::RolloutCap => {
+                        (rr, crate::protocol::EndReason::MoveCapRollout)
+                    }
                     crate::protocol::EndReason::RoyalCapture if rules.game.mate_condition => {
                         (GameResult::Draw, crate::protocol::EndReason::MoveCapRollout)
                     }
@@ -164,6 +184,15 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             if let Some(limit) = rules.game.draw_move_limit {
                 if board.plies_since_capture as i32 >= limit * 2 {
                     break (GameResult::Draw, crate::protocol::EndReason::MoveLimit);
+                }
+            }
+            if let Some(rep_limit) = rules.game.repetition_draw_count {
+                if rep_limit > 1 {
+                    let sig = position_signature(&board, &rules);
+                    let count = position_history.entry(sig).and_modify(|c| *c += 1).or_insert(1);
+                    if (*count) as i32 >= rep_limit {
+                        break (GameResult::Draw, crate::protocol::EndReason::Repetition);
+                    }
                 }
             }
         };
