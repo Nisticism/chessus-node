@@ -433,8 +433,8 @@ const GameWizard = ({ editGameId }) => {
       navigate("/create/games");
     } catch (error) {
       // Backend rejected the save because the starting position is already
-      // decided. Surface via the non-dismissible ValidationWarningModal so
-      // the user understands they must change the game before retrying.
+      // decided. Surface via the ValidationWarningModal so the user understands
+      // they must fix the starting position and try saving again.
       const initStateErr = error?.response?.data?.initialStateError;
       if (initStateErr) {
         setInitialStateError(initStateErr);
@@ -786,7 +786,6 @@ const GameWizard = ({ editGameId }) => {
           warnings={[initialStateError.reason || 'The starting position is already in a decided state.']}
           title="⚠️ Starting Position Already Decided"
           description="This game cannot be saved as published because the starting position would already determine a winner, loser, or draw before any moves are made."
-          nonDismissible
           onClose={() => setInitialStateError(null)}
         />
       )}
