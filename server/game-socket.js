@@ -10727,6 +10727,19 @@ async function processBotTurn(io, gameId, gameState) {
 
   setTimeout(async () => {
     try {
+      // Guard: game may have ended or been drawn during the thinking delay.
+      // This check MUST come before getBestMove because that call blocks the
+      // event loop (synchronous minimax) — any status change that arrived as
+      // a queued socket event during the delay won't be visible until after
+      // computation. Bailing here avoids useless computation AND prevents
+      // the bot from making a move after the game has already ended.
+      if (gameState.status === 'completed') {
+        console.log(`[Bot] Game ${gameId} ended during thinking delay, skipping computation`);
+        clearTimeout(safetyTimer);
+        io.to(`game-${gameId}`).emit('botThinking', { gameId, thinking: false });
+        return;
+      }
+
       // 1. Compute AI move
       let bestMove;
       const aiStartTime = Date.now();

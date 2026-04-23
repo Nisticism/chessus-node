@@ -21,6 +21,8 @@ const changelogData = [
       "Comments and forum posts: clicking an emoji in the emoji picker now immediately inserts it into the text field and closes the picker",
       "Notifications: clicking a win/loss result notification now takes you directly to the match detail page instead of your profile",
       "Live game clocks: fixed an issue where playing as Player 1 against the computer caused the clock to only visually update on each move instead of ticking down in real time",
+      "Admin dashboard — AI Training: the 'Show trained games only' filter now correctly includes game types with any training data, not just those with a fully completed job",
+      "Live game vs computer: offering a draw during the computer's thinking delay is now handled immediately — the game ends right away instead of waiting for the computer to finish computing its move",
     ],
   },
   {

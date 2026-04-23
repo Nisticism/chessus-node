@@ -7069,7 +7069,7 @@ app.get('/api/admin/ai-training/trained-game-types', authenticateAdmin, async (r
   try {
     const [rows] = await db_pool.query(
       `SELECT DISTINCT game_type_id FROM ai_training_jobs
-       WHERE status IN ('completed', 'uploaded')
+       WHERE games_played > 0
        ORDER BY game_type_id`
     );
     res.json({ gameTypeIds: rows.map(r => r.game_type_id) });
