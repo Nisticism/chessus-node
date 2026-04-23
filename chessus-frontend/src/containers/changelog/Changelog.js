@@ -9,6 +9,8 @@ const changelogData = [
     items: [
       "Play page — game cards: rated/casual badges now also appear on correspondence games (both in the open-games list and the ongoing-correspondence-games list), matching the live-game cards",
       "Admin dashboard: new 'Private Games' tab listing every active game whose host disabled spectating. Read-only — admins still cannot watch these games per the host's choice — but they're now visible in case staff need to know they exist",
+      "Announcements: delete button is now restricted to the site owner only (previously visible to all admins). Regular admins can still post announcements but cannot remove them",
+      "Admin dashboard: fixed a flash of 'No users found' that appeared when first loading the Users tab or switching between tabs before the data arrived",
     ],
   },
   {

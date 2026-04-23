@@ -11,6 +11,7 @@ const PAGE_SIZE = 10;
 
 const Announcements = () => {
   const { user: currentUser } = useSelector((s) => s.authReducer);
+  const isOwner = currentUser && currentUser.role === 'owner';
   const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'owner');
 
   const [page, setPage] = useState(1);
@@ -143,7 +144,7 @@ const Announcements = () => {
             <p className={styles.preview}>
               {a.content.length > 280 ? a.content.slice(0, 280) + '…' : a.content}
             </p>
-            {isAdmin && (
+            {isOwner && (
               <button
                 type="button"
                 className={styles.deleteBtn}

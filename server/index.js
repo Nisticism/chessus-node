@@ -7282,7 +7282,10 @@ app.get('/api/announcements/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/announcements/:id', authenticateAdmin, async (req, res) => {
+app.delete('/api/announcements/:id', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'owner') {
+    return res.status(403).send({ message: 'Only the site owner can delete announcements' });
+  }
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid id' });

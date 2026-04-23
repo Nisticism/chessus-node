@@ -16,7 +16,7 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState("users");
   const [data, setData] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [editingItem, setEditingItem] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState({});
@@ -514,6 +514,15 @@ const AdminDashboard = () => {
     // leftovers from the previously-viewed tab.
     setData([]);
     setPagination({ page: 1, limit: 10, total: 0, totalPages: 0 });
+    // Pre-emptively show the loading spinner for any tab that drives itself
+    // through the shared fetchData / fetchAnonymousGames / etc. path. Without
+    // this there is a one-render flash of "No X found" between the tab click
+    // and the moment the fetch sets loading = true.
+    const loadingTabs = new Set([
+      'users', 'pieces', 'games', 'drafts', 'forums', 'news', 'streams',
+      'anonymous-games', 'private-games', 'deleted-users',
+    ]);
+    if (loadingTabs.has(tab)) setLoading(true);
   };
 
   const handlePageChange = (newPage) => {
