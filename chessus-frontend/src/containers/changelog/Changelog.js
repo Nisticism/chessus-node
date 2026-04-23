@@ -5,12 +5,16 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 23, 2026",
-    title: "Rated/Casual badges on correspondence cards, Admin Private-Games view",
+    title: "AI Analysis request button, admin tools polish, rated badges, private-games visibility",
     items: [
-      "Play page — game cards: rated/casual badges now also appear on correspondence games (both in the open-games list and the ongoing-correspondence-games list), matching the live-game cards",
-      "Admin dashboard: new 'Private Games' tab listing every active game whose host disabled spectating. Read-only — admins still cannot watch these games per the host's choice — but they're now visible in case staff need to know they exist",
-      "Announcements: delete button is now restricted to the site owner only (previously visible to all admins). Regular admins can still post announcements but cannot remove them",
-      "Admin dashboard: fixed a flash of 'No users found' that appeared when first loading the Users tab or switching between tabs before the data arrived",
+      "Game detail page: added a 'Request AI Analysis' button (visible to the game creator and admins) that appears when no analysis exists yet. Pressing it sends a notification to the site owner with a direct link to start training for that game",
+      "Admin dashboard — AI Training Analysis: game-type dropdown now defaults to 'trained games only', showing how many of your total games have training data. Uncheck the filter to see all games",
+      "Admin dashboard — AI Training Analysis: visibility buttons (Admins only / Creator + admins / Public link) are now clearly labeled with icons and tooltips explaining what each option does. The active setting is highlighted in green",
+      "Admin dashboard — Anonymous Games: added a 'Moves' column showing the total move count per game, and a Refresh button to reload the list without switching tabs",
+      "Play page — game cards: rated/casual badges now also appear on correspondence games, matching the live-game cards",
+      "Admin dashboard: new 'Private Games' tab listing every active game whose host disabled spectating. Read-only — admins cannot watch these games per the host's choice",
+      "Announcements: delete button is now restricted to the site owner only. Regular admins can still post but cannot remove announcements",
+      "Admin dashboard: fixed a flash of 'No users found' when first loading the Users tab or switching tabs before data arrives",
     ],
   },
   {

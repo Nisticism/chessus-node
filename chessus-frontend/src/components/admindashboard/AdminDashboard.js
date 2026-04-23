@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Navigate, useNavigate, Link } from 'react-router-dom';
+import { Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
@@ -12,8 +12,16 @@ import AiTrainingPanel from "./AiTrainingPanel";
 const AdminDashboard = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const navigate = useNavigate();
-  
-  const [activeTab, setActiveTab] = useState("users");
+  const location = useLocation();
+
+  // Read ?tab= and ?gameTypeId= from the URL so other pages can deep-link
+  // into a specific tab (e.g. the "Request AI analysis" button on game pages).
+  const urlParams = new URLSearchParams(location.search);
+  const tabFromUrl = urlParams.get('tab');
+  const gameTypeIdFromUrl = urlParams.get('gameTypeId');
+
+  const [activeTab, setActiveTab] = useState(tabFromUrl || "users");
+  const [aiPanelInitialGameTypeId] = useState(gameTypeIdFromUrl ? parseInt(gameTypeIdFromUrl, 10) : null);
   const [data, setData] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
@@ -1219,6 +1227,14 @@ const AdminDashboard = () => {
     };
     return (
     <div className={styles["table-container"]}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <button
+          className={styles["edit-btn"]}
+          onClick={() => fetchAnonymousGames(pagination?.page || 1)}
+        >
+          ↻ Refresh
+        </button>
+      </div>
       <table className={styles["data-table"]}>
         <thead>
           <tr>
@@ -1227,6 +1243,7 @@ const AdminDashboard = () => {
             <th>Status</th>
             <th>Invite Code</th>
             <th>Time Control</th>
+            <th>Moves</th>
             <th>Created</th>
             <th>Started</th>
             <th>Ended</th>
@@ -1236,7 +1253,7 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
+              <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No anonymous games found'}
               </td>
             </tr>
@@ -1251,6 +1268,7 @@ const AdminDashboard = () => {
                 <td>{statusLabel(game.status)}</td>
                 <td style={{ fontFamily: 'monospace', letterSpacing: '2px' }}>{game.invite_code}</td>
                 <td>{game.turn_length ? `${game.turn_length}+${game.increment || 0}` : 'No limit'}</td>
+                <td>{game.move_count ?? 0}</td>
                 <td>{game.created_at ? formatDateTime(game.created_at) : 'N/A'}</td>
                 <td>{started ? (game.start_time ? formatDateTime(game.start_time) : '—') : '—'}</td>
                 <td>{ended ? (game.end_time ? formatDateTime(game.end_time) : '—') : '—'}</td>
@@ -2458,7 +2476,7 @@ const AdminDashboard = () => {
             {activeTab === "moderation" && renderModerationTab()}
             {activeTab === "name-reviews" && renderNameReviewTab()}
             {activeTab === "server-stats" && renderServerStatsTab()}
-            {activeTab === "ai-training" && <AiTrainingPanel />}
+            {activeTab === "ai-training" && <AiTrainingPanel initialAnalysisGameTypeId={aiPanelInitialGameTypeId} />}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>

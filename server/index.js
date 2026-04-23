@@ -7054,6 +7054,7 @@ app.post(
 //   PUT    /api/admin/ai-training/analysis/:gameTypeId/visibility  (admin)
 //   GET    /api/ai-training/analysis/:gameTypeId                   (visibility-aware)
 //   GET    /api/ai-training/analysis/by-slug/:slug                 (public)
+//   GET    /api/admin/ai-training/trained-game-types               (admin) — game type IDs that have any training data
 //
 // Visibility values:
 //   private  — only admins/owner can view
@@ -7061,6 +7062,22 @@ app.post(
 //   public   — anyone (including unauthenticated) can view via slug
 
 const trainingAnalysis = require('./ai/training-analysis');
+
+// Return the set of game_type_ids that have at least one completed/uploaded training job.
+// Used by the admin UI to filter the analysis dropdown to only games with actual data.
+app.get('/api/admin/ai-training/trained-game-types', authenticateAdmin, async (req, res) => {
+  try {
+    const [rows] = await db_pool.query(
+      `SELECT DISTINCT game_type_id FROM ai_training_jobs
+       WHERE status IN ('completed', 'uploaded')
+       ORDER BY game_type_id`
+    );
+    res.json({ gameTypeIds: rows.map(r => r.game_type_id) });
+  } catch (err) {
+    console.error('Trained game types error:', err);
+    res.status(500).send({ message: 'Failed to load trained game types' });
+  }
+});
 
 app.post(
   '/api/admin/ai-training/analysis/:gameTypeId/regenerate',
@@ -7142,6 +7159,72 @@ app.get('/api/ai-training/analysis/by-slug/:slug', async (req, res) => {
   } catch (err) {
     console.error('AI analysis slug fetch error:', err);
     res.status(500).send({ message: err.message || 'Failed to load analysis' });
+  }
+});
+
+// POST /api/game-types/:id/request-analysis  (must be logged in + creator or admin)
+// Sends a notification to the site owner requesting AI analysis for the game.
+// If the requester is already an admin/owner the notification is still sent so
+// there is a record of the request (and the admin can immediately act on it).
+app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(gameTypeId)) return res.status(400).send({ message: 'Invalid game id' });
+
+    const [[gameType]] = await db_pool.query(
+      'SELECT id, game_name, creator_id FROM game_types WHERE id = ? LIMIT 1',
+      [gameTypeId]
+    );
+    if (!gameType) return res.status(404).send({ message: 'Game not found' });
+
+    const requester = req.user;
+    const role = (requester.role || '').toLowerCase();
+    const isCreator = Number(gameType.creator_id) === Number(requester.id);
+    if (!isCreator && role !== 'admin' && role !== 'owner') {
+      return res.status(403).send({ message: 'Only the game creator or an admin can request AI analysis' });
+    }
+
+    // Find the owner account to notify
+    const [[owner]] = await db_pool.query(
+      "SELECT id, username FROM users WHERE role = 'owner' LIMIT 1"
+    );
+    if (!owner) return res.status(404).send({ message: 'No owner account found' });
+
+    // Deduplicate: if an unread request for this game already exists, bump it
+    const existing = await dbHelpers.findUnreadNotification(owner.id, 'ai_analysis_request', gameTypeId);
+    if (existing) {
+      await dbHelpers.updateNotification(existing.id, {
+        sender_id: requester.id,
+        title: `AI analysis requested for "${gameType.game_name}"`,
+        content: `${requester.username} (re-)requested AI analysis training for game #${gameTypeId}.`,
+      });
+      return res.json({ message: 'Analysis request updated', notificationId: existing.id });
+    }
+
+    const notification = await dbHelpers.createNotification({
+      user_id: owner.id,
+      sender_id: requester.id,
+      type: 'ai_analysis_request',
+      title: `AI analysis requested for "${gameType.game_name}"`,
+      content: `${requester.username} requested AI analysis training for game #${gameTypeId} — "${gameType.game_name}".`,
+      related_id: gameTypeId,
+      action_url: `/admin?tab=ai-training&gameTypeId=${gameTypeId}`,
+    });
+
+    // Real-time push if owner is online
+    const io = app.get('io');
+    if (io) {
+      const { userSockets } = require('./game-socket');
+      const ownerSocket = userSockets?.get(owner.id);
+      if (ownerSocket) {
+        io.to(ownerSocket).emit('newNotification', { ...notification, sender_username: requester.username });
+      }
+    }
+
+    res.json({ message: 'Analysis request sent', notificationId: notification.id });
+  } catch (err) {
+    console.error('Request AI analysis error:', err);
+    res.status(500).send({ message: 'Failed to send analysis request' });
   }
 });
 
@@ -7645,7 +7728,8 @@ app.get("/api/admin/anonymous-games", authenticateAdmin, async (req, res) => {
 
     const [games] = await db_pool.query(
       `SELECT g.id, g.created_at, g.start_time, g.end_time, g.status, g.invite_code,
-       g.turn_length, g.increment, gt.game_name, gt.board_width, gt.board_height
+       g.turn_length, g.increment, gt.game_name, gt.board_width, gt.board_height,
+       COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) AS move_count
        FROM games g
        LEFT JOIN game_types gt ON g.game_type_id = gt.id
        WHERE g.is_anonymous = 1

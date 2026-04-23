@@ -157,3 +157,133 @@
   border-bottom: 1px solid #1a1a1a;
   word-break: break-all;
 }
+
+/* ---- Analysis block ---- */
+.analysisBlock {
+  margin-top: 16px;
+}
+
+.analysisStats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9em;
+  color: #d0d0d0;
+  margin-bottom: 16px;
+}
+
+.balanceNote {
+  color: #ffd96b;
+  font-size: 0.88em;
+  font-style: italic;
+}
+
+/* ---- Visibility controls ---- */
+.visibilityControls {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 14px;
+  margin-top: 8px;
+}
+
+.visibilityHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 0.9em;
+  color: #d0d0d0;
+}
+
+.visibilityBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.82em;
+  font-weight: 600;
+  background: #333;
+}
+
+.vis_private  { background: rgba(150, 100, 220, 0.25); color: #c8a0f8; }
+.vis_creator  { background: rgba(33, 150, 243, 0.22);  color: #82cffe; }
+.vis_public   { background: rgba(76, 175, 80, 0.22);   color: #a0e8a3; }
+
+.visibilityButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.visBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: #d0d0d0;
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.3);
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.visBtnActive {
+  background: rgba(76, 175, 80, 0.18) !important;
+  border-color: rgba(76, 175, 80, 0.5) !important;
+  color: #a0e8a3 !important;
+  cursor: default;
+}
+
+.visBtnIcon {
+  font-size: 1.05em;
+}
+
+.visBtnLabel {
+  white-space: nowrap;
+}
+
+.publicLink {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  border-radius: 6px;
+  font-size: 0.85em;
+
+  a {
+    color: #82d884;
+    word-break: break-all;
+    &:hover { text-decoration: underline; }
+  }
+}
+
+.copyBtn {
+  padding: 4px 10px;
+  background: rgba(76, 175, 80, 0.25);
+  border: 1px solid rgba(76, 175, 80, 0.5);
+  border-radius: 4px;
+  color: #a0e8a3;
+  font-size: 0.85em;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover { background: rgba(76, 175, 80, 0.4); }
+}

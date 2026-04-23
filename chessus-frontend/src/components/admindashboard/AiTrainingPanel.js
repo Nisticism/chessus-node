@@ -13,7 +13,7 @@ import styles from "./ai-training-panel.module.scss";
  *
  * See AI_OVERHAUL_PLAN.md for the broader design.
  */
-const AiTrainingPanel = () => {
+const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -599,7 +599,7 @@ const AiTrainingPanel = () => {
         </div>
       )}
 
-      <AnalysisSection gameTypes={gameTypes} />
+      <AnalysisSection gameTypes={gameTypes} initialGameTypeId={initialAnalysisGameTypeId} />
     </div>
   );
 };
@@ -631,19 +631,56 @@ function formatTrainingEvent(ev) {
   return JSON.stringify(ev);
 }
 
-const VISIBILITY_LABELS = {
-  private: 'Admins only',
-  creator: 'Game creator + admins',
-  public: 'Public (anyone with the link)',
+const VISIBILITY_META = {
+  private: {
+    label: 'Admins only',
+    icon: '🔒',
+    tooltip: 'Only admins and the site owner can view this analysis. The game creator cannot see it.',
+  },
+  creator: {
+    label: 'Creator + admins',
+    icon: '👤',
+    tooltip: 'The game\'s creator can see this analysis on the game detail page, along with admins and the site owner.',
+  },
+  public: {
+    label: 'Public link',
+    icon: '🌐',
+    tooltip: 'Anyone can view this analysis via a shareable link — useful for sharing balance data with the community.',
+  },
 };
 
-const AnalysisSection = ({ gameTypes }) => {
-  const [analysisGameTypeId, setAnalysisGameTypeId] = useState('');
+const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
+  const [analysisGameTypeId, setAnalysisGameTypeId] = useState(initialGameTypeId ? String(initialGameTypeId) : '');
+  const initializedRef = React.useRef(false);
+
+  // If a new initialGameTypeId arrives (e.g. user navigated from game detail
+  // page), apply it — but only once so the user's own changes aren't overridden.
+  useEffect(() => {
+    if (!initializedRef.current && initialGameTypeId) {
+      setAnalysisGameTypeId(String(initialGameTypeId));
+      initializedRef.current = true;
+    }
+  }, [initialGameTypeId]);
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [filterLegacy, setFilterLegacy] = useState(true);
+  // IDs of game types that have at least one completed training job.
+  const [trainedGameTypeIds, setTrainedGameTypeIds] = useState(null); // null = not yet loaded
+  const [filterTrained, setFilterTrained] = useState(true);
+
+  // Load which game types actually have training data so we can offer a
+  // "show trained only" filter on the dropdown.
+  useEffect(() => {
+    axios.get(`${API_URL}admin/ai-training/trained-game-types`, { headers: authHeader() })
+      .then(res => setTrainedGameTypeIds(new Set(res.data.gameTypeIds.map(String))))
+      .catch(() => setTrainedGameTypeIds(new Set())); // fail silently — show all
+  }, []);
+
+  const visibleGameTypes = filterTrained && trainedGameTypeIds
+    ? gameTypes.filter(g => trainedGameTypeIds.has(String(g.id)))
+    : gameTypes;
 
   const loadExisting = useCallback(async (gtid) => {
     if (!gtid) { setAnalysis(null); return; }
@@ -713,12 +750,24 @@ const AnalysisSection = ({ gameTypes }) => {
             onChange={(e) => setAnalysisGameTypeId(e.target.value)}
           >
             <option value="">— select —</option>
-            {gameTypes.map((g) => (
+            {visibleGameTypes.map((g) => (
               <option key={g.id} value={g.id}>
                 #{g.id} — {g.game_name}
               </option>
             ))}
           </select>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
+          <input
+            type="checkbox"
+            checked={filterTrained}
+            onChange={(e) => setFilterTrained(e.target.checked)}
+          />
+          <span style={{ fontSize: '0.88rem', color: 'var(--text-dim)' }}>
+            {trainedGameTypeIds
+              ? `Show trained games only (${trainedGameTypeIds.size} of ${gameTypes.length})`
+              : 'Show trained games only'}
+          </span>
         </label>
         <button
           type="button"
@@ -781,29 +830,44 @@ const AnalysisSection = ({ gameTypes }) => {
           </div>
 
           <div className={styles.visibilityControls}>
-            <strong>Visibility:</strong> {VISIBILITY_LABELS[analysis.visibility]}
+            <div className={styles.visibilityHeader}>
+              <span><strong>Visibility:</strong></span>
+              <span className={`${styles.visibilityBadge} ${styles[`vis_${analysis.visibility}`]}`}>
+                {VISIBILITY_META[analysis.visibility]?.icon} {VISIBILITY_META[analysis.visibility]?.label}
+              </span>
+            </div>
             <div className={styles.visibilityButtons}>
-              {['private', 'creator', 'public'].map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  disabled={busy || analysis.visibility === v}
-                  onClick={() => updateVisibility(v)}
-                >
-                  {v === analysis.visibility ? `✓ ${VISIBILITY_LABELS[v]}` : `Set ${v}`}
-                </button>
-              ))}
+              {['private', 'creator', 'public'].map((v) => {
+                const meta = VISIBILITY_META[v];
+                const isActive = analysis.visibility === v;
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    disabled={busy || isActive}
+                    onClick={() => updateVisibility(v)}
+                    title={meta.tooltip}
+                    className={`${styles.visBtn} ${isActive ? styles.visBtnActive : ''}`}
+                  >
+                    <span className={styles.visBtnIcon}>{meta.icon}</span>
+                    <span className={styles.visBtnLabel}>
+                      {isActive ? `✓ ${meta.label}` : `Set ${meta.label}`}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
             {publicLink && analysis.visibility === 'public' && (
               <div className={styles.publicLink}>
-                Public link:{' '}
+                <span>Public link:</span>
                 <a href={publicLink} target="_blank" rel="noreferrer">{publicLink}</a>
-                {' '}
                 <button
                   type="button"
+                  className={styles.copyBtn}
                   onClick={() => navigator.clipboard.writeText(publicLink)}
+                  title="Copy shareable link to clipboard"
                 >
-                  Copy
+                  📋 Copy
                 </button>
               </div>
             )}

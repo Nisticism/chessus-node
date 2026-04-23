@@ -411,6 +411,9 @@ const GameTypeView = () => {
   const [showDetails, setShowDetails] = useState(false);
   // AI training analysis link (only shown when caller is allowed to view it).
   const [aiAnalysisAvailable, setAiAnalysisAvailable] = useState(false);
+  // "Request AI Analysis" button state
+  const [requestingAnalysis, setRequestingAnalysis] = useState(false);
+  const [analysisRequestSent, setAnalysisRequestSent] = useState(false);
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -567,6 +570,23 @@ const GameTypeView = () => {
       setHasUpvoted(result.upvoted);
     } catch (err) {
       console.error("Error toggling upvote:", err);
+    }
+  };
+
+  const handleRequestAnalysis = async () => {
+    if (!currentUser || requestingAnalysis) return;
+    setRequestingAnalysis(true);
+    try {
+      await axios.post(
+        `${API_URL}game-types/${gameId}/request-analysis`,
+        {},
+        { headers: authHeader() }
+      );
+      setAnalysisRequestSent(true);
+    } catch (err) {
+      alert(err?.response?.data?.message || err.message || 'Failed to send analysis request');
+    } finally {
+      setRequestingAnalysis(false);
     }
   };
 
@@ -1869,6 +1889,20 @@ const GameTypeView = () => {
               title="View AI training analysis (win rates, balance report)"
             >
               📊 AI Analysis
+            </button>
+          )}
+          {canEdit() && !aiAnalysisAvailable && (
+            <button
+              type="button"
+              onClick={analysisRequestSent ? undefined : handleRequestAnalysis}
+              className={styles["play-button"]}
+              disabled={requestingAnalysis || analysisRequestSent}
+              title={analysisRequestSent
+                ? 'Analysis request sent — the site owner has been notified'
+                : 'Request AI analysis training for this game. Sends a notification to the site owner.'}
+              style={analysisRequestSent ? { opacity: 0.7, cursor: 'default' } : undefined}
+            >
+              {analysisRequestSent ? '✓ Analysis Requested' : requestingAnalysis ? 'Sending…' : '📊 Request AI Analysis'}
             </button>
           )}
           {canEdit() && (
