@@ -4,6 +4,14 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 23, 2026",
+    title: "Rated/Casual badges on correspondence cards, Admin Private-Games view",
+    items: [
+      "Play page — game cards: rated/casual badges now also appear on correspondence games (both in the open-games list and the ongoing-correspondence-games list), matching the live-game cards",
+      "Admin dashboard: new 'Private Games' tab listing every active game whose host disabled spectating. Read-only — admins still cannot watch these games per the host's choice — but they're now visible in case staff need to know they exist",
+    ],
+  },
+  {
     date: "April 22, 2026",
     title: "Adaptive AI Computer Opponent, Trainer Moved to Frontend EC2, Resume & Pause Training Controls",
     items: [

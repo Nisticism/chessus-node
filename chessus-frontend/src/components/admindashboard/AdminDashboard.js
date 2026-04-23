@@ -136,6 +136,8 @@ const AdminDashboard = () => {
       fetchFeaturedGames();
     } else if (activeTab === 'anonymous-games') {
       fetchAnonymousGames(1);
+    } else if (activeTab === 'private-games') {
+      fetchPrivateGames(1);
     } else if (activeTab === 'deleted-users') {
       fetchDeletedUsers(1);
     } else if (activeTab === 'settings') {
@@ -170,6 +172,26 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error("Error fetching anonymous games:", error);
       setAlertMessage("Failed to load anonymous games");
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchPrivateGames = async (page = 1) => {
+    setLoading(true);
+    try {
+      const limit = pagination?.limit || 25;
+      const response = await axios.get(
+        `${API_URL}admin/private-games?page=${page}&limit=${limit}`,
+        { headers: authHeader() }
+      );
+      setData(response.data.data);
+      setPagination(response.data.pagination);
+    } catch (error) {
+      console.error("Error fetching private games:", error);
+      setAlertMessage("Failed to load private games");
       setAlertType('error');
       setShowAlert(true);
     } finally {
@@ -497,6 +519,8 @@ const AdminDashboard = () => {
   const handlePageChange = (newPage) => {
     if (activeTab === 'anonymous-games') {
       fetchAnonymousGames(newPage);
+    } else if (activeTab === 'private-games') {
+      fetchPrivateGames(newPage);
     } else if (activeTab === 'deleted-users') {
       fetchDeletedUsers(newPage);
     } else {
@@ -1238,6 +1262,81 @@ const AdminDashboard = () => {
         </tbody>
       </table>
     </div>
+    );
+  };
+
+  const renderPrivateGamesTable = () => {
+    const statusLabel = (status) => {
+      switch (status) {
+        case 'waiting': return 'Waiting for players';
+        case 'ready': return 'Ready';
+        case 'active': return 'In progress';
+        default: return status || 'Unknown';
+      }
+    };
+    const formatTC = (g) => {
+      if (g.is_correspondence) {
+        return g.correspondence_days ? `${g.correspondence_days}d/move` : 'Correspondence';
+      }
+      if (g.turn_length) {
+        return `${g.turn_length}+${g.increment || 0}`;
+      }
+      return 'No limit';
+    };
+    return (
+      <div className={styles["table-container"]}>
+        <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', margin: '0 0 12px 0' }}>
+          Active games where the host disabled spectating. Read-only — admins cannot watch these per the host's choice.
+        </p>
+        <table className={styles["data-table"]}>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Game Name</th>
+              <th>Host</th>
+              <th>Players</th>
+              <th>Status</th>
+              <th>Time Control</th>
+              <th>Moves</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!data || data.length === 0 ? (
+              <tr>
+                <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
+                  {!data ? 'Loading...' : 'No active private games right now'}
+                </td>
+              </tr>
+            ) : (
+              data.map(game => (
+                <tr key={game.id}>
+                  <td>{game.id}</td>
+                  <td>
+                    {game.game_type_id ? (
+                      <Link to={`/games/${game.game_type_id}`} style={{ color: 'var(--link-color, #4a9eff)' }}>
+                        {game.game_name || 'Unnamed'}
+                      </Link>
+                    ) : (game.game_name || 'Unnamed')}
+                  </td>
+                  <td>
+                    {game.host_username ? (
+                      <Link to={`/profile/${game.host_username}`} style={{ color: 'var(--link-color, #4a9eff)' }}>
+                        {game.host_username}
+                      </Link>
+                    ) : (game.host_id ? `User #${game.host_id}` : '—')}
+                  </td>
+                  <td>{game.player_names || '—'}</td>
+                  <td>{statusLabel(game.status)}</td>
+                  <td>{formatTC(game)}</td>
+                  <td>{game.move_count ?? 0}</td>
+                  <td>{game.created_at ? formatDateTime(game.created_at) : '—'}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     );
   };
 
@@ -2287,6 +2386,12 @@ const AdminDashboard = () => {
           Anonymous Games
         </button>
         <button
+          className={`${styles["tab"]} ${activeTab === "private-games" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("private-games")}
+        >
+          Private Games
+        </button>
+        <button
           className={`${styles["tab"]} ${activeTab === "deleted-users" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("deleted-users")}
         >
@@ -2339,6 +2444,7 @@ const AdminDashboard = () => {
             {activeTab === "streams" && renderStreamsTab()}
             {activeTab === "online" && renderOnlinePlayersTab()}
             {activeTab === "anonymous-games" && renderAnonymousGamesTable()}
+            {activeTab === "private-games" && renderPrivateGamesTable()}
             {activeTab === "deleted-users" && renderDeletedUsersTable()}
             {activeTab === "moderation" && renderModerationTab()}
             {activeTab === "name-reviews" && renderNameReviewTab()}

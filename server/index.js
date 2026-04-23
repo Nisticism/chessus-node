@@ -7670,6 +7670,52 @@ app.get("/api/admin/anonymous-games", authenticateAdmin, async (req, res) => {
   }
 });
 
+// Admin: list games where the host disabled spectating. Read-only — admins
+// cannot spectate these (per host's choice), but should still know they exist.
+app.get("/api/admin/private-games", authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 25;
+    const offset = (page - 1) * limit;
+
+    const [games] = await db_pool.query(
+      `SELECT g.id, g.created_at, g.start_time, g.end_time, g.status,
+              g.turn_length, g.increment, g.is_correspondence, g.correspondence_days,
+              g.host_id, hu.username AS host_username,
+              gt.id AS game_type_id, gt.game_name,
+              GROUP_CONCAT(pu.username ORDER BY p.player_position SEPARATOR ', ') AS player_names,
+              COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) AS move_count
+       FROM games g
+       LEFT JOIN game_types gt ON g.game_type_id = gt.id
+       LEFT JOIN users hu ON g.host_id = hu.id
+       LEFT JOIN players p ON p.game_id = g.id
+       LEFT JOIN users pu ON p.user_id = pu.id
+       WHERE g.allow_spectators = 0
+         AND g.status IN ('waiting','ready','active')
+         AND (g.is_anonymous = 0 OR g.is_anonymous IS NULL)
+       GROUP BY g.id
+       ORDER BY g.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    const [[{ total }]] = await db_pool.query(
+      `SELECT COUNT(*) as total FROM games
+       WHERE allow_spectators = 0
+         AND status IN ('waiting','ready','active')
+         AND (is_anonymous = 0 OR is_anonymous IS NULL)`
+    );
+
+    res.json({
+      data: games,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/private-games:", err);
+    res.status(500).send({ message: "Failed to fetch private games", err: err.message });
+  }
+});
+
 // Get deleted users audit log for admin tracking
 app.get("/api/admin/deleted-users", authenticateAdmin, async (req, res) => {
   try {

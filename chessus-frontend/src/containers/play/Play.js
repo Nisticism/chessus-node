@@ -1167,7 +1167,7 @@ const Play = () => {
               <div className={styles["private-games-list"]}>
                 {paginatedPrivateGames.map((game) => {
                   const isHost = game.host_id === currentUser.id;
-                  const isRated = game.rated !== 0 && game.rated !== false && game.rated !== null && !game.is_correspondence;
+                  const isRated = game.rated !== 0 && game.rated !== false && game.rated !== null;
                   return (
                     <div
                       key={game.id}
@@ -1317,7 +1317,7 @@ const Play = () => {
                 <div className={styles["open-matches-list"]}>
                   {paginatedOpenGames.map((game) => {
                     const isOwnGame = currentUser ? game.host_id === currentUser.id : false;
-                    const isRated = game.rated !== 0 && game.rated !== false && game.rated !== null && !game.is_correspondence;
+                    const isRated = game.rated !== 0 && game.rated !== false && game.rated !== null;
                     return (
                       <div 
                         key={game.id || game.gameId} 
@@ -1529,6 +1529,11 @@ const Play = () => {
                           <span className={styles["match-time-control"]}>
                             {formatTimeControl(game)}
                           </span>
+                          {game.rated !== null && (
+                            <span className={styles[game.rated ? 'rated-badge' : 'unrated-badge']}>
+                              {game.rated ? 'Rated' : 'Casual'}
+                            </span>
+                          )}
                           {typeof game.move_count === 'number' && (
                             <span className={styles["move-count-badge"]} title="Moves played so far">
                               {game.move_count} {game.move_count === 1 ? 'move' : 'moves'}

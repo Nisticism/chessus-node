@@ -168,5 +168,15 @@ app.post('/trainer/upload', async (req, res) => {
     console.log(`[trainer-service] listening on ${BIND_HOST}:${PORT}`);
     console.log(`[trainer-service] rust binary: ${trainingManager.RUST_BIN}`);
     console.log(`[trainer-service] rust built: ${trainingManager.isRustBuilt()}`);
+    // Surface the binary's mtime so it's obvious in PM2 logs whether
+    // a `cargo build --release` step was actually run after a `git pull`.
+    // A stale mtime here is a strong signal the binary needs rebuilding.
+    try {
+      const fs = require('fs');
+      const st = fs.statSync(trainingManager.RUST_BIN);
+      console.log(`[trainer-service] rust binary built at: ${st.mtime.toISOString()} (size: ${st.size} bytes)`);
+    } catch (e) {
+      console.warn(`[trainer-service] could not stat rust binary: ${e.message}`);
+    }
   });
 })();
