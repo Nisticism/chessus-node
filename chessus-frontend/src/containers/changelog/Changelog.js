@@ -18,6 +18,9 @@ const changelogData = [
       "AI Training: training jobs that were stopped due to running out of memory now automatically resume with a higher memory limit (50% more, rounded up to the nearest 256 MB) so they don't hit the same ceiling again",
       "Live game: spectators are no longer shown while the game is in the lobby / waiting for players. The spectators list only appears once the game has actually started",
       "Live game: players in a match are no longer incorrectly listed in the spectators panel for their own game",
+      "Comments and forum posts: clicking an emoji in the emoji picker now immediately inserts it into the text field and closes the picker",
+      "Notifications: clicking a win/loss result notification now takes you directly to the match detail page instead of your profile",
+      "Live game clocks: fixed an issue where playing as Player 1 against the computer caused the clock to only visually update on each move instead of ticking down in real time",
     ],
   },
   {

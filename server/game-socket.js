@@ -217,9 +217,8 @@ async function notifyPlayersOfGameOutcome(io, gameId, gameState, winnerId, reaso
         ? `Victory in "${gameName}"${reasonText}.`
         : `Defeat in "${gameName}"${reasonText}.`;
 
-      // action_url points to the player's profile match history section
-      const username = player?.username || '';
-      const actionUrl = username ? `/profile/${encodeURIComponent(username)}#match-history` : `/profile`;
+      // action_url points to the match history detail page for this specific game
+      const actionUrl = `/match/${gameId}`;
 
       const notification = await dbHelpers.createNotification({
         user_id: pid,
@@ -2617,6 +2616,7 @@ function initializeSocket(server) {
             gameId,
             move: placeMoveRecord,
             gameState: {
+              status: gameState.status,
               pieces: gameState.pieces,
               currentTurn: gameState.currentTurn,
               playerTimes: gameState.playerTimes,
@@ -2860,6 +2860,7 @@ function initializeSocket(server) {
             gameId,
             move: moveRecord,
             gameState: {
+              status: gameState.status,
               pieces: gameState.pieces,
               currentTurn: gameState.currentTurn,
               playerTimes: gameState.playerTimes,
@@ -4234,6 +4235,7 @@ function initializeSocket(server) {
             gameId,
             move: moveRecord,
             gameState: {
+              status: gameState.status,
               pieces: gameState.pieces,
               currentTurn: gameState.currentTurn,
               playerTimes: gameState.playerTimes,
@@ -11128,6 +11130,7 @@ async function processBotTurn(io, gameId, gameState) {
         gameId,
         move: moveRecord,
         gameState: {
+          status: gameState.status,
           pieces: gameState.pieces,
           currentTurn: gameState.currentTurn,
           playerTimes: gameState.playerTimes,
@@ -11521,6 +11524,7 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
     gameId,
     move: moveRecord,
     gameState: {
+      status: gameState.status,
       pieces: gameState.pieces,
       currentTurn: gameState.currentTurn,
       playerTimes: gameState.playerTimes,
