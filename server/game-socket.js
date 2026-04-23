@@ -845,6 +845,12 @@ function initializeSocket(server) {
 
   // Store io instance for access from other modules
   ioInstance = io;
+
+  // Periodically cancel live games that have been waiting for over 24 hours
+  // without a player joining. Run once at startup to handle games that were
+  // already stale before the server restarted, then every 15 minutes.
+  cancelStaleLiveGames();
+  setInterval(cancelStaleLiveGames, 15 * 60 * 1000);
   
   // Global error handler for socket.io engine
   io.engine.on("connection_error", (err) => {
@@ -11558,6 +11564,40 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
   });
 
   console.log(`[Bot] Game ${gameId} ended: ${winResult.reason}, winner: ${winResult.winner || 'draw'}`);
+}
+
+/**
+ * Cancel live games that have been in "waiting" status for more than 24 hours
+ * without a move being made. Neither player's ELO is affected (game never started).
+ */
+async function cancelStaleLiveGames() {
+  try {
+    const [staleGames] = await db_pool.query(`
+      SELECT id FROM games
+      WHERE status = 'ready'
+        AND (is_correspondence = 0 OR is_correspondence IS NULL)
+        AND created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)
+    `);
+
+    if (staleGames.length === 0) return;
+
+    for (const { id: gameId } of staleGames) {
+      const gameIdStr = gameId.toString();
+      try {
+        await db_pool.query("DELETE FROM players WHERE game_id = ?", [gameId]);
+        await db_pool.query("DELETE FROM games WHERE id = ?", [gameId]);
+        activeGames.delete(gameIdStr);
+        if (ioInstance) {
+          ioInstance.emit("gameRemoved", { gameId });
+        }
+        console.log(`[cleanup] Stale live game ${gameId} auto-cancelled: both players joined but no moves made in 24 h.`);
+      } catch (innerErr) {
+        console.error(`[cleanup] Failed to cancel stale game ${gameId}:`, innerErr);
+      }
+    }
+  } catch (err) {
+    console.error("[cleanup] Error querying stale live games:", err);
+  }
 }
 
 /**

@@ -5,8 +5,10 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 23, 2026",
-    title: "AI Analysis request button, admin tools polish, rated badges, private-games visibility",
+    title: "Live game note, stale game cleanup, AI Analysis request button, admin tools polish",
     items: [
+      "Play page — Live Games section: added a note recommending Correspondence games while the player base grows, and explaining the 24-hour stale-game rule",
+      "Live games where both players have joined but no moves have been made are now automatically cancelled after 24 hours — no ELO is affected. Open matches (waiting for a second player) are not affected",
       "Game detail page: added a 'Request AI Analysis' button (visible to the game creator and admins) that appears when no analysis exists yet. Pressing it sends a notification to the site owner with a direct link to start training for that game",
       "Admin dashboard — AI Training Analysis: game-type dropdown now defaults to 'trained games only', showing how many of your total games have training data. Uncheck the filter to see all games",
       "Admin dashboard — AI Training Analysis: visibility buttons (Admins only / Creator + admins / Public link) are now clearly labeled with icons and tooltips explaining what each option does. The active setting is highlighted in green",

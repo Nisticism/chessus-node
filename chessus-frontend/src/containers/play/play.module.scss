@@ -751,6 +751,19 @@
 }
 
 // Info message (for notifications like game deleted)
+.section-note {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #aaa);
+  margin: -6px 0 12px 0;
+  line-height: 1.5;
+  padding: 0 2px;
+
+  strong {
+    color: var(--text-primary, #ccc);
+  }
+}
+
+// Info message (for notifications like game deleted)
 .info-message {
   background: var(--panel-bg-end);
   color: var(--text-info);
