@@ -35,6 +35,11 @@ if (process.env.REMOTE_TRAINER_URL) {
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
+// Raw body parser used by the artifact upload endpoint. The backend
+// proxies the user's file as a single binary blob with a kind=jsonl|zip
+// query string, which keeps the wire protocol simple (no multipart on
+// the trainer side).
+app.use('/trainer/upload', express.raw({ type: '*/*', limit: '500mb' }));
 
 // Auth middleware — single shared secret, constant-time compare.
 app.use((req, res, next) => {
@@ -89,6 +94,48 @@ app.get('/trainer/jobs/:id/log', async (req, res) => {
     const lines = Math.min(parseInt(req.query.lines, 10) || 200, 5000);
     const events = await trainingManager.tailLog(id, lines);
     res.json({ events });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// Return the merged opening book for a game type. Books from every job
+// directory for this game type are summed (W/L/D per position+move).
+// Fingerprint lets the caller avoid re-parsing unchanged data.
+app.get('/trainer/book/:gameTypeId', (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.gameTypeId, 10);
+    if (!Number.isFinite(gameTypeId)) {
+      return res.status(400).json({ message: 'Invalid gameTypeId' });
+    }
+    const openingBook = require('./opening-book');
+    const { book, fingerprint } = openingBook.loadLocalMergedBook(gameTypeId);
+    res.json({ book, fingerprint });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Upload pre-trained artifacts (raw book.jsonl or a zip of a job dir).
+// Body is the raw bytes of the file. Query string carries metadata.
+//   POST /trainer/upload?gameTypeId=N&kind=jsonl|zip&userId=N
+app.post('/trainer/upload', async (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.query.gameTypeId, 10);
+    const kind = String(req.query.kind || '').toLowerCase();
+    const userId = req.query.userId ? parseInt(req.query.userId, 10) : null;
+    if (!Number.isFinite(gameTypeId)) {
+      return res.status(400).json({ message: 'Missing or invalid gameTypeId query param' });
+    }
+    if (kind !== 'jsonl' && kind !== 'zip') {
+      return res.status(400).json({ message: 'kind must be "jsonl" or "zip"' });
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ message: 'Empty upload body' });
+    }
+    const { importUpload } = require('./artifact-uploader');
+    const result = await importUpload(gameTypeId, { kind, buffer: req.body }, { userId });
+    res.json(result);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

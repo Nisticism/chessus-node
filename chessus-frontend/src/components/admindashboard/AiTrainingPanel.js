@@ -35,6 +35,14 @@ const AiTrainingPanel = () => {
   const pollRef = useRef(null);
   const [pauseStatus, setPauseStatus] = useState(null);
 
+  // Artifact upload state
+  const [uploadGameTypeId, setUploadGameTypeId] = useState("");
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadingArtifact, setUploadingArtifact] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const uploadInputRef = useRef(null);
+
   const fetchStatus = useCallback(async () => {
     try {
       const res = await axios.get(`${API_URL}admin/ai-training/status`, {
@@ -175,6 +183,47 @@ const AiTrainingPanel = () => {
       await fetchStatus();
     } catch (err) {
       alert(err?.response?.data?.message || err.message || "Failed to resume job");
+    }
+  };
+
+  const handleArtifactUpload = async (e) => {
+    e.preventDefault();
+    setUploadError(null);
+    setUploadResult(null);
+    if (!uploadFile) {
+      setUploadError("Choose a .jsonl or .zip file first.");
+      return;
+    }
+    const gtid = parseInt(uploadGameTypeId, 10);
+    if (!Number.isFinite(gtid) || gtid <= 0) {
+      setUploadError("Choose a game type to attach this upload to.");
+      return;
+    }
+    const lower = uploadFile.name.toLowerCase();
+    if (!lower.endsWith('.jsonl') && !lower.endsWith('.zip')) {
+      setUploadError("File must be a .jsonl (raw book) or .zip (full job dir).");
+      return;
+    }
+    setUploadingArtifact(true);
+    try {
+      const fd = new FormData();
+      fd.append('artifact', uploadFile);
+      fd.append('gameTypeId', String(gtid));
+      const res = await axios.post(
+        `${API_URL}admin/ai-training/upload-artifacts`,
+        fd,
+        {
+          headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' },
+        },
+      );
+      setUploadResult(res.data);
+      setUploadFile(null);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+      await fetchStatus();
+    } catch (err) {
+      setUploadError(err?.response?.data?.message || err.message || 'Upload failed');
+    } finally {
+      setUploadingArtifact(false);
     }
   };
 
@@ -320,6 +369,88 @@ const AiTrainingPanel = () => {
       </div>
 
       <div className={styles.section}>
+        <h4>Upload pre-trained artifacts</h4>
+        <p className={styles.intro}>
+          Train on a dev machine and upload the results here. Uploaded data
+          is merged with everything already gathered by cloud training — it
+          stacks rather than replaces.
+        </p>
+        <details className={styles.details}>
+          <summary>Local training instructions</summary>
+          <ol>
+            <li>
+              Build the Rust trainer:
+              <pre className={styles.code}>cd ai-engine-rs && cargo build --release</pre>
+            </li>
+            <li>
+              Export the rules JSON for the game type you want to train (run
+              from the project root):
+              <pre className={styles.code}>{`node -e "require('./server/ai/export-game-rules').exportGameRules(<gameTypeId>).then(r => console.log(JSON.stringify(r, null, 2)))" > rules.json`}</pre>
+            </li>
+            <li>
+              Run training:
+              <pre className={styles.code}>{`./ai-engine-rs/target/release/ai-engine train --rules rules.json --out ./local-job --games 200 --mcts-iters 200`}</pre>
+            </li>
+            <li>
+              Upload the resulting <code>book.jsonl</code> directly, OR zip
+              the entire <code>local-job/</code> directory and upload that.
+              A zip may also include <code>log.ndjson</code> and{' '}
+              <code>model-*.bin</code> checkpoints — they will be preserved.
+            </li>
+          </ol>
+          <p>
+            The upload is recorded as a completed training job tagged{' '}
+            <em>uploaded</em>. The adaptive bot consults the merged book
+            from <strong>all</strong> jobs (cloud + uploaded) for that game
+            type.
+          </p>
+        </details>
+        <form onSubmit={handleArtifactUpload} className={styles.form}>
+          <label>
+            Game type
+            <select
+              value={uploadGameTypeId}
+              onChange={(e) => setUploadGameTypeId(e.target.value)}
+              required
+            >
+              <option value="">— select —</option>
+              {gameTypes.map((g) => (
+                <option key={g.id} value={g.id}>
+                  #{g.id} — {g.game_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Artifact file (.jsonl or .zip)
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept=".jsonl,.zip,application/zip,application/x-zip-compressed"
+              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={uploadingArtifact || !uploadFile || !uploadGameTypeId}
+          >
+            {uploadingArtifact ? 'Uploading…' : 'Upload artifact'}
+          </button>
+          {uploadError && <div className={styles.error}>{uploadError}</div>}
+          {uploadResult && (
+            <div className={styles.success || ''}>
+              Uploaded job #{uploadResult.jobId} — {uploadResult.gamesEstimate} games,{' '}
+              {uploadResult.recordCount} positions
+              {uploadResult.extrasImported?.length
+                ? ` (extras: ${uploadResult.extrasImported.join(', ')})`
+                : ''}
+              .
+            </div>
+          )}
+        </form>
+      </div>
+
+      <div className={styles.section}>
         <h4>Recent jobs</h4>
         {(!status || !status.jobs || status.jobs.length === 0) ? (
           <div className={styles.empty}>No training jobs yet.</div>
@@ -349,6 +480,23 @@ const AiTrainingPanel = () => {
                     <span className={`${styles.status} ${styles[`status_${j.status}`] || ""}`}>
                       {j.status}
                     </span>
+                    {j.source === 'uploaded' && (
+                      <span
+                        className={styles.uploadedBadge || ''}
+                        style={{
+                          marginLeft: 6,
+                          fontSize: '0.75em',
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: '#e0f2fe',
+                          color: '#075985',
+                          border: '1px solid #7dd3fc',
+                        }}
+                        title="Imported from a file upload (not cloud-trained)"
+                      >
+                        uploaded
+                      </span>
+                    )}
                   </td>
                   <td>
                     {j.games_played} / {j.games_target}

@@ -1210,10 +1210,10 @@ function getBestMove(gameState, botPosition, difficulty = 'medium') {
       ?? gameState?.gameType?.id
       ?? gameState?.gameType?.game_type_id
       ?? null;
-    return resolveAdaptiveSettings(gtid).then((settings) => {
+    return resolveAdaptiveSettings(gtid).then(async (settings) => {
       // Phase 1 model consumption: try the opening book before falling
       // back to minimax. Only consults book inside its ply window.
-      const bookMove = tryOpeningBook(gtid, gameState, botPosition);
+      const bookMove = await tryOpeningBook(gtid, gameState, botPosition);
       if (bookMove) {
         console.log(
           `[AI] Adaptive: opening-book move chosen (W/L/D = ${bookMove._book.w}/${bookMove._book.l}/${bookMove._book.d}, winRate=${bookMove._book.winRate.toFixed(2)})`,
@@ -1230,11 +1230,11 @@ function getBestMove(gameState, botPosition, difficulty = 'medium') {
  * Try to pick a move from the opening book for the current position.
  * Returns a legal-move object (with `_book` metadata attached) or null.
  *
- * The book is keyed off the same position signature the Rust trainer
- * computed during self-play. Lookup is fast (single hash get) and the
- * book file is mtime-cached.
+ * Async because in REMOTE_MODE the book is fetched over HTTP from the
+ * trainer-service; locally it hits the filesystem (still async for a
+ * single code path).
  */
-function tryOpeningBook(gameTypeId, gameState, botPosition) {
+async function tryOpeningBook(gameTypeId, gameState, botPosition) {
   if (!gameTypeId) return null;
   let book;
   try {
@@ -1247,7 +1247,14 @@ function tryOpeningBook(gameTypeId, gameState, botPosition) {
     return getAllLegalMovesForPlayer(gameState, botPosition);
   });
   if (!legalMoves || legalMoves.length === 0) return null;
-  const lookup = book.lookupBookMove(gameTypeId, gameState, botPosition);
+  let doc;
+  try {
+    doc = await book.loadBook(gameTypeId);
+  } catch (_) {
+    return null;
+  }
+  if (!doc) return null;
+  const lookup = book.lookupBookMove(doc, gameState, botPosition);
   if (!lookup) return null;
   const matched = book.matchBookMove(legalMoves, lookup.moveString);
   if (!matched) return null;

@@ -3066,6 +3066,24 @@ const runMigrations = async () => {
     console.error('Error seeding default site settings:', err.message);
   }
 
+  // Add `source` column to ai_training_jobs so admins can tell apart
+  // cloud-trained jobs from artifacts uploaded from a dev machine.
+  try {
+    if (await tableExists('ai_training_jobs')) {
+      if (!(await columnExists('ai_training_jobs', 'source'))) {
+        await runMigration(
+          `ALTER TABLE ai_training_jobs
+           ADD COLUMN source ENUM('cloud','uploaded') NOT NULL DEFAULT 'cloud'
+             COMMENT 'cloud = run on this trainer; uploaded = artifacts imported from elsewhere'`,
+          "Add source column to ai_training_jobs"
+        );
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error adding source column to ai_training_jobs:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

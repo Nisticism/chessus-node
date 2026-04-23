@@ -1,87 +1,165 @@
 /**
  * Opening-book consumer for the adaptive bot.
  *
- * Loads `book.json` files produced by the Rust trainer (one per training
- * job's output dir, but we only consult the most recent across all jobs
- * for a given game type).
+ * Loads `book.json` files produced by the Rust trainer AND merges them
+ * across every training job for a given game type. That way, uploading
+ * artifacts from a dev machine stacks with cloud-trained data instead
+ * of replacing it.
+ *
+ * In REMOTE_MODE (trainer lives on a separate EC2 instance) the book
+ * is fetched from the trainer-service HTTP endpoint, which does the
+ * merge on its side because the book.json files live on that box.
  *
  * Position signature and move serialization MUST match the Rust side
- * (see ai-engine-rs/src/book.rs). Both sides use REAL piece IDs (the
- * user-visible pieces.id, never the per-placement virtual ids).
- *
- * Format: see ai-engine-rs/src/book.rs `BookDoc`.
+ * (see ai-engine-rs/src/book.rs). Both sides use REAL piece IDs.
  */
 const fs = require('fs');
 const path = require('path');
+const trainerClient = require('./trainer-client');
 
-// Cache: gameTypeId -> { mtime, book, sourcePath }
+// Cache: gameTypeId -> { loadedAt, book, fingerprint }
+// fingerprint = ';'-joined "path|mtime" for local, or a remote fingerprint.
 const _cache = new Map();
 const CACHE_TTL_MS = 60_000;
 
+const BOOK_FORMAT = 'squarestrat-book-v1';
+const BOOK_PLY_LIMIT = 20;
+
+function _emptyBook() {
+  return { format: BOOK_FORMAT, ply_limit: BOOK_PLY_LIMIT, positions: {} };
+}
+
 /**
- * Discover the newest book.json for a game type by scanning training-job
- * output directories. Mirrors `getModelMetaForGameType` traversal.
- *
- * Returns the path, or null if no book exists.
+ * Scan every training job dir for a game type and return all existing
+ * book.json paths with their mtimes (newest first).
  */
-function findLatestBookPath(gameTypeId) {
-  // training-manager exposes the same dir-resolver used at training time.
-  // We resolve lazily to avoid a circular require at module load.
+function findAllBookPaths(gameTypeId) {
   let trainingDirFor;
   try {
     ({ trainingDirFor } = require('./export-game-rules'));
   } catch (_) {
-    return null;
+    return [];
   }
   const baseDir = trainingDirFor(gameTypeId);
   const jobsRoot = path.join(baseDir, 'jobs');
-  if (!fs.existsSync(jobsRoot)) return null;
-  let newest = null;
-  let newestMtime = 0;
+  if (!fs.existsSync(jobsRoot)) return [];
+  const out = [];
   for (const entry of fs.readdirSync(jobsRoot)) {
     const candidate = path.join(jobsRoot, entry, 'book.json');
     if (!fs.existsSync(candidate)) continue;
     try {
       const st = fs.statSync(candidate);
-      if (st.mtimeMs > newestMtime) {
-        newestMtime = st.mtimeMs;
-        newest = candidate;
-      }
+      out.push({ path: candidate, mtime: st.mtimeMs });
     } catch (_) { /* skip */ }
   }
-  return newest;
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out;
 }
 
 /**
- * Load + cache the book for a game type. Returns null if no book exists.
- * Cache invalidates on mtime change or every CACHE_TTL_MS.
+ * Sum W/L/D counts per (position, move) across any number of BookDoc
+ * objects. Pure function — safe to run on backend, trainer-service,
+ * or dev machine. Merge is commutative and idempotent for distinct
+ * jobs (we never double-count because the trainer writes each record
+ * exactly once to its job's book.jsonl).
  */
-function loadBook(gameTypeId) {
+function mergeBooks(books) {
+  const merged = _emptyBook();
+  for (const book of books) {
+    if (!book || !book.positions) continue;
+    for (const sig of Object.keys(book.positions)) {
+      const stats = book.positions[sig];
+      if (!stats || !Array.isArray(stats.moves)) continue;
+      if (!merged.positions[sig]) {
+        merged.positions[sig] = { moves: [], total: 0 };
+      }
+      const mergedPos = merged.positions[sig];
+      const moveMap = new Map(mergedPos.moves.map((m) => [m.mv, m]));
+      for (const m of stats.moves) {
+        if (!m || typeof m.mv !== 'string') continue;
+        const existing = moveMap.get(m.mv);
+        if (existing) {
+          existing.w += m.w || 0;
+          existing.l += m.l || 0;
+          existing.d += m.d || 0;
+        } else {
+          const copy = { mv: m.mv, w: m.w || 0, l: m.l || 0, d: m.d || 0 };
+          mergedPos.moves.push(copy);
+          moveMap.set(m.mv, copy);
+        }
+      }
+      mergedPos.total = mergedPos.moves.reduce(
+        (s, m) => s + (m.w || 0) + (m.l || 0) + (m.d || 0),
+        0,
+      );
+    }
+  }
+  return merged;
+}
+
+/**
+ * Load + merge every book.json for this game type from the local
+ * filesystem. Used by the trainer-service (same box as the books) and
+ * by the backend when not in REMOTE_MODE.
+ */
+function loadLocalMergedBook(gameTypeId) {
+  const entries = findAllBookPaths(gameTypeId);
+  if (entries.length === 0) return { book: null, fingerprint: '' };
+  const books = [];
+  const fpParts = [];
+  for (const e of entries) {
+    try {
+      const raw = fs.readFileSync(e.path, 'utf8');
+      books.push(JSON.parse(raw));
+      fpParts.push(`${e.path}|${e.mtime}`);
+    } catch (err) {
+      console.warn(`[opening-book] failed to load ${e.path}: ${err.message}`);
+    }
+  }
+  if (books.length === 0) return { book: null, fingerprint: '' };
+  return { book: mergeBooks(books), fingerprint: fpParts.join(';') };
+}
+
+/**
+ * Async loader the adaptive bot calls. In REMOTE_MODE this hits the
+ * trainer-service (which merges on its side); otherwise it merges
+ * from disk.
+ */
+async function loadBook(gameTypeId) {
   const now = Date.now();
   const cached = _cache.get(gameTypeId);
   if (cached && (now - cached.loadedAt) < CACHE_TTL_MS) {
     return cached.book;
   }
-  const bookPath = findLatestBookPath(gameTypeId);
-  if (!bookPath) {
-    _cache.set(gameTypeId, { loadedAt: now, book: null, sourcePath: null });
-    return null;
+
+  if (trainerClient.isEnabled()) {
+    let payload;
+    try {
+      payload = await trainerClient.fetchBook(gameTypeId);
+    } catch (e) {
+      if (cached) {
+        cached.loadedAt = now - (CACHE_TTL_MS - 5_000);
+        return cached.book;
+      }
+      console.warn(`[opening-book] remote fetch failed: ${e.message}`);
+      return null;
+    }
+    const book = payload && payload.book ? payload.book : null;
+    const fingerprint = (payload && payload.fingerprint) || String(now);
+    if (cached && cached.fingerprint === fingerprint) {
+      cached.loadedAt = now;
+      return cached.book;
+    }
+    _cache.set(gameTypeId, { loadedAt: now, book, fingerprint });
+    return book;
   }
-  // If the cached entry already points at the same path AND mtime
-  // hasn't changed, refresh just the timestamp.
-  let st;
-  try { st = fs.statSync(bookPath); } catch { return null; }
-  if (cached && cached.sourcePath === bookPath && cached.mtime === st.mtimeMs) {
+
+  const { book, fingerprint } = loadLocalMergedBook(gameTypeId);
+  if (cached && cached.fingerprint === fingerprint) {
     cached.loadedAt = now;
     return cached.book;
   }
-  let book = null;
-  try {
-    book = JSON.parse(fs.readFileSync(bookPath, 'utf8'));
-  } catch (e) {
-    console.warn(`[opening-book] failed to load ${bookPath}: ${e.message}`);
-  }
-  _cache.set(gameTypeId, { loadedAt: now, mtime: st.mtimeMs, sourcePath: bookPath, book });
+  _cache.set(gameTypeId, { loadedAt: now, book, fingerprint });
   return book;
 }
 
@@ -138,16 +216,11 @@ function moveString(move) {
 }
 
 /**
- * Look up the best book move for the current position.
- *
- * Strategy: pick the move with the highest Wilson lower bound on win
- * rate (W / (W+L), draws ignored), provided at least 2 games covered
- * that move. Returns null if not in book or insufficient sample size.
- *
- * Returns: `{ moveString, w, l, d, total }` or null.
+ * Look up the best book move for the current position against a
+ * pre-loaded BookDoc (from loadBook). Wilson lower bound at 95%
+ * with a 2-decisive-game floor.
  */
-function lookupBookMove(gameTypeId, gameState, turn, opts = {}) {
-  const book = loadBook(gameTypeId);
+function lookupBookMove(book, gameState, turn, opts = {}) {
   if (!book || !book.positions) return null;
   const sig = positionSignature(gameState, turn);
   const stats = book.positions[sig];
@@ -199,7 +272,10 @@ module.exports = {
   matchBookMove,
   moveString,
   positionSignature,
-  // Test/debug
-  _findLatestBookPath: findLatestBookPath,
+  mergeBooks,
+  loadLocalMergedBook,
+  findAllBookPaths,
+  BOOK_FORMAT,
+  BOOK_PLY_LIMIT,
   _clearCache: () => _cache.clear(),
 };

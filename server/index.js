@@ -6950,6 +6950,65 @@ app.post('/api/admin/ai-training/auto-pause', (req, res) => {
   res.json(trainingManager.isNewJobsPaused());
 });
 
+// Upload externally-trained AI artifacts (raw book.jsonl OR a zip of a
+// completed job dir). On REMOTE_MODE the file is streamed to the
+// trainer-service on the frontend EC2; otherwise it's imported locally.
+//
+// Form field `artifact` (multer single-file). Query/body field `gameTypeId`
+// is required. `kind` is auto-detected from the filename (".jsonl" or
+// ".zip") but can be overridden.
+const artifactUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB matches trainer-service raw limit
+});
+app.post(
+  '/api/admin/ai-training/upload-artifacts',
+  authenticateAdmin,
+  artifactUpload.single('artifact'),
+  async (req, res) => {
+    try {
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).send({ message: 'Missing file (form field "artifact")' });
+      }
+      const gameTypeId = parseInt(req.body?.gameTypeId || req.query?.gameTypeId, 10);
+      if (!Number.isFinite(gameTypeId) || gameTypeId <= 0) {
+        return res.status(400).send({ message: 'gameTypeId is required' });
+      }
+      const lower = (req.file.originalname || '').toLowerCase();
+      let kind = (req.body?.kind || req.query?.kind || '').toLowerCase();
+      if (!kind) {
+        if (lower.endsWith('.jsonl')) kind = 'jsonl';
+        else if (lower.endsWith('.zip')) kind = 'zip';
+      }
+      if (kind !== 'jsonl' && kind !== 'zip') {
+        return res.status(400).send({
+          message: 'Could not determine upload kind. Use a .jsonl or .zip file.',
+        });
+      }
+      const userId = req.user?.id || null;
+
+      let result;
+      if (trainingManager.REMOTE_MODE) {
+        const trainerClient = require('./ai/trainer-client');
+        result = await trainerClient.uploadArtifact({
+          gameTypeId, kind, buffer: req.file.buffer, userId,
+        });
+      } else {
+        const { importUpload } = require('./ai/artifact-uploader');
+        result = await importUpload(
+          gameTypeId,
+          { kind, buffer: req.file.buffer },
+          { userId },
+        );
+      }
+      res.json(result);
+    } catch (err) {
+      console.error('AI artifact upload error:', err);
+      res.status(400).send({ message: err.message || 'Failed to import artifacts' });
+    }
+  },
+);
+
 // ----------------------- Middleware ------------------------------
 
 function authenticateToken(req, res, next) {

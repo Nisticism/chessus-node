@@ -76,7 +76,8 @@ function jobsDirFor(gameTypeId, jobId) {
 async function listJobs(limit = 50) {
   const [rows] = await db_pool.query(
     `SELECT id, game_type_id, status, games_target, games_played, mcts_iters,
-            max_rss_mb, started_at, ended_at, error_message, created_by_user_id
+            max_rss_mb, started_at, ended_at, error_message, created_by_user_id,
+            source
      FROM ai_training_jobs
      ORDER BY id DESC
      LIMIT ?`,
