@@ -39,6 +39,31 @@ async function loadInitialStateForGameType(gameTypeId) {
   );
   if (!gameType) return { gameType: null, pieces: [] };
 
+  // Build a "y,x" -> playerNum map from pieces_string as ground-truth for
+  // player assignment. The junction table migration used player_number ||
+  // player || 1 but old games stored the value as player_id, so every piece
+  // would have been migrated as player 1. Mirrors the same fallback already
+  // present in server/db-helpers.js.
+  const originalPlayerMap = {};
+  if (gameType.pieces_string) {
+    try {
+      const parsed = JSON.parse(gameType.pieces_string);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        Object.entries(parsed).forEach(([key, p]) => {
+          const pn = p.player_id || p.player_number || p.player;
+          if (pn) originalPlayerMap[key] = Number(pn);
+        });
+      } else if (Array.isArray(parsed)) {
+        parsed.forEach(p => {
+          if (p && p.x != null && p.y != null) {
+            const pn = p.player_id || p.player_number || p.player;
+            if (pn) originalPlayerMap[`${p.y},${p.x}`] = Number(pn);
+          }
+        });
+      }
+    } catch (e) { /* ignore parse errors */ }
+  }
+
   // Load placements from the junction table.
   const [junctionPieces] = await db_pool.query(
     `SELECT gtp.*, gtp.ends_game_on_checkmate, gtp.ends_game_on_capture,
@@ -52,11 +77,14 @@ async function loadInitialStateForGameType(gameTypeId) {
   const pieceIdsToLoad = new Set();
   let pieces = junctionPieces.map(piece => {
     if (piece.piece_id) pieceIdsToLoad.add(piece.piece_id);
+    // Prefer player assignment from pieces_string (more reliable for old games
+    // that were migrated before player_id was written to the junction table).
+    const playerNum = originalPlayerMap[`${piece.y},${piece.x}`] || piece.player_number || 1;
     return {
       ...piece,
       id: `${piece.piece_id}_${piece.y}_${piece.x}`,
-      player_id: piece.player_number || 1,
-      team: piece.player_number || 1,
+      player_id: playerNum,
+      team: playerNum,
       initial_x: piece.x,
       initial_y: piece.y,
       ends_game_on_checkmate: !!piece.ends_game_on_checkmate,

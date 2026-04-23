@@ -11973,6 +11973,12 @@ function evaluateInitialPosition(gameType, initialPieces) {
     const requireAll = !!gameType.capture_condition_requires_all;
     const capturePieceType = gameType.capture_piece || null;
 
+    // Only use the per-piece `ends_game_on_capture` path when at least one
+    // piece in the game actually has that flag set.  If none do, the designer
+    // didn't configure individual capture targets and the intent is the
+    // default "capture-all" behaviour — so fall through to that branch.
+    const anyFlagged = pieces.some(p => p.ends_game_on_capture && !p._occupied);
+
     for (const sidePos of [1, 2]) {
       const sidePieces = pieces.filter(p =>
         (p.team || p.player_id) === sidePos && !p._occupied
@@ -11988,7 +11994,7 @@ function evaluateInitialPosition(gameType, initialPieces) {
           triggered = true;
           label = `Player ${sidePos} starts with none of the required capture-target piece`;
         }
-      } else if (requireAll) {
+      } else if (requireAll && anyFlagged) {
         // ALL ends_game_on_capture pieces must be captured to lose. If they
         // start with zero of those, they've already lost.
         const flagged = sidePieces.filter(p => p.ends_game_on_capture);
