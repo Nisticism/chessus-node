@@ -143,6 +143,7 @@ const MatchView = () => {
       case 'insufficient_material': return 'Insufficient material';
       case 'lose_all_pieces': return 'Anti-chess (lost all pieces)';
       case 'stalemate_win': return 'Stalemate win';
+      case 'initial_position': return 'Initial position (no rating change)';
       default: return 'Game completed';
     }
   };
@@ -417,7 +418,11 @@ const MatchView = () => {
         {userResult === 'draw' && (
           <>
             <h1>Draw</h1>
-            <p>The game ended in a draw</p>
+            <p>
+              {match.reason && match.reason !== 'unknown'
+                ? `The game ended in a draw — ${getReasonText(match.reason).toLowerCase()}`
+                : 'The game ended in a draw'}
+            </p>
           </>
         )}
         {!isUserInGame && (

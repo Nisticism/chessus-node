@@ -14,9 +14,10 @@ const GameForums = () => {
   const dispatch = useDispatch();
 
   useEffect(() => {
-    // Fetch game forums with gameTypeId filter - for now we fetch all and filter on frontend
-    // In a real implementation, you'd pass the specific gameTypeId
-    dispatch(forums(currentPage, 20));
+    // Server-side filter to game scope so pagination total / pages reflect
+    // ONLY game forums (previously we used the unfiltered total which left
+    // empty pages when general forums dominated).
+    dispatch(forums(currentPage, 20, null, 'game'));
   }, [currentPage, dispatch]);
 
   const handlePageChange = (newPage) => {
@@ -33,9 +34,8 @@ const GameForums = () => {
 
 
 
-  // Filter forums to only show game-specific forums (those with game_type_id)
-  const gameForums = allForums.forums ? 
-    allForums.forums.filter(forum => forum.game_type_id !== null) : [];
+  // Server already filtered to game forums; client search trims further.
+  const gameForums = allForums.forums || [];
 
   // Filter by search term
   const filteredForums = gameForums.filter(forum => 
@@ -73,7 +73,7 @@ const GameForums = () => {
                 <th>Replies</th>
                 <th>Likes</th>
                 <th>Content</th>
-                <th>Created At</th>
+                <th>Last Comment</th>
               </tr>
               {filteredForums.map(function(forum) {
                 return (
@@ -126,7 +126,24 @@ const GameForums = () => {
                     </td>
                     <td className={styles["date-td"]}>
                       <div className={styles["forums-date"]}>
-                        {formatDateLegacy(forum.created_at)}
+                        {forum.last_comment_at ? (
+                          <>
+                            {formatDateLegacy(forum.last_comment_at)}
+                            {forum.last_comment_author_name && (
+                              <div style={{ fontSize: '0.8em', opacity: 0.8 }}>
+                                by{' '}
+                                <Link
+                                  to={`/profile/${forum.last_comment_author_name}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {forum.last_comment_author_name}
+                                </Link>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ opacity: 0.6 }}>No comments yet</span>
+                        )}
                       </div>
                     </td>
                   </tr>

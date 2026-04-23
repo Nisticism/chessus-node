@@ -186,6 +186,7 @@ const db_pool = require("../configs/db");
 const dbHelpers = require("./db-helpers");
 const { checkUsername, validateContent, checkProfessionalName } = require("./content-moderation");
 const imageModeration = require("./image-moderation");
+const initialStateValidator = require("./initial-state-validator");
 
 // NSFW model loads lazily on first image upload (avoids slow TensorFlow startup)
 // imageModeration.initialize();
@@ -2308,6 +2309,27 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     const isDraft = gameData.is_draft ? 1 : 0;
     const draftSavedStep = gameData.draft_saved_step || null;
     const wasPublished = !existingGame.is_draft;
+
+    // Initial-position validation: only enforce for published games (drafts
+    // can be in any state). Mirrors the check in POST /api/games/create.
+    if (!isDraft) {
+      try {
+        const checkResult = await initialStateValidator.validateGameTypeFromRequestBody(gameData);
+        if (checkResult && checkResult.decided) {
+          return res.status(400).send({
+            message: checkResult.reason,
+            initialStateError: {
+              type: checkResult.type,
+              code: checkResult.code,
+              reason: checkResult.reason,
+              forPlayer: checkResult.forPlayer || null,
+            },
+          });
+        }
+      } catch (validationErr) {
+        console.error('[initial-state] Pre-update validation error:', validationErr.message);
+      }
+    }
     
     const sql = `
       UPDATE game_types SET
@@ -2489,6 +2511,10 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       game: { id: gameId, ...gameData, is_draft: isDraft, needs_name_review: gameEditNeedsNameReview }
     });
     _resyncAiRules(gameId);
+    // Clear any stale "starting position is decided" warning since the
+    // content just passed validation. Drafts also clear (they're not visible
+    // anyway, but keeps the column clean).
+    initialStateValidator.writeInitialStateWarning(gameId, null).catch(() => {});
   } catch (err) {
     console.error("Error in PUT /api/games/:gameId:", err);
     res.status(500).send({ message: "Failed to update game", err: err.message });
@@ -4321,8 +4347,17 @@ app.get("/api/article", async (params, res) => {
 
 app.post("/api/forums/new", async (req, res) => {
   try {
-    const { title, content, created_at, author_id, game_type_id } = req.body;
+    const { title, content, created_at, author_id, game_type_id, category } = req.body;
     console.log(content);
+
+    // Whitelist of valid general-forum categories. Game forums force 'game'.
+    const VALID_CATEGORIES = ['general', 'bug-report', 'social', 'misc', 'gameplay', 'feedback', 'announcement'];
+    let finalCategory;
+    if (game_type_id) {
+      finalCategory = 'game';
+    } else {
+      finalCategory = category && VALID_CATEGORIES.includes(category) ? category : 'general';
+    }
 
     // Content moderation
     if (title) {
@@ -4348,7 +4383,7 @@ app.post("/api/forums/new", async (req, res) => {
       }
     }
     
-    const forum = await dbHelpers.createForum({ author_id, title, content, created_at, game_type_id });
+    const forum = await dbHelpers.createForum({ author_id, title, content, created_at, game_type_id, category: finalCategory });
 
     // Notify game creator when a forum thread is created for their game
     if (game_type_id) {
@@ -4392,26 +4427,59 @@ app.get("/api/forums", async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
     const gameTypeId = req.query.gameTypeId;
-    
-    // Build query with optional gameTypeId filter
-    // Always exclude career postings (is_career = 1) and news articles (is_news = 1)
-    let whereConditions = ["(is_career IS NULL OR is_career = 0)", "(is_news IS NULL OR is_news = 0)"];
-    
+    const scope = req.query.scope; // 'general' | 'game' | undefined (all)
+    const category = req.query.category;
+
+    // Build query with optional gameTypeId / scope / category filter.
+    // Always exclude career postings (is_career = 1) and news articles (is_news = 1).
+    let whereConditions = ["(a.is_career IS NULL OR a.is_career = 0)", "(a.is_news IS NULL OR a.is_news = 0)"];
+
     if (gameTypeId) {
-      whereConditions.push(`game_type_id = ${db_pool.escape(gameTypeId)}`);
+      whereConditions.push(`a.game_type_id = ${db_pool.escape(gameTypeId)}`);
     }
-    
+    if (scope === 'general') {
+      whereConditions.push("a.game_type_id IS NULL");
+    } else if (scope === 'game') {
+      whereConditions.push("a.game_type_id IS NOT NULL");
+    }
+    if (category) {
+      whereConditions.push(`a.category = ${db_pool.escape(category)}`);
+    }
+
     const whereClause = whereConditions.length > 0 ? ` WHERE ${whereConditions.join(" AND ")}` : "";
-    
-    let countQuery = "SELECT COUNT(*) as total FROM articles" + whereClause;
-    let articlesQuery = "SELECT * FROM articles" + whereClause;
-    
-    articlesQuery += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
-    
+
+    // Sort by most-recent comment, falling back to created_at when there are
+    // no comments yet. Subquery `lc` finds the latest comment per article.
+    const articlesQuery = `
+      SELECT a.*,
+             lc.last_comment_at,
+             lc.last_comment_id,
+             lc.last_comment_author_id,
+             u.username AS last_comment_author_name
+        FROM articles a
+        LEFT JOIN (
+          SELECT c1.article_id,
+                 c1.id AS last_comment_id,
+                 c1.author_id AS last_comment_author_id,
+                 c1.created_at AS last_comment_at
+            FROM comments c1
+            INNER JOIN (
+              SELECT article_id, MAX(created_at) AS max_created
+                FROM comments
+                GROUP BY article_id
+            ) c2 ON c2.article_id = c1.article_id AND c2.max_created = c1.created_at
+        ) lc ON lc.article_id = a.id
+        LEFT JOIN users u ON u.id = lc.last_comment_author_id
+        ${whereClause}
+        ORDER BY COALESCE(lc.last_comment_at, a.created_at) DESC
+        LIMIT ${limit} OFFSET ${offset}
+    `;
+    const countQuery = `SELECT COUNT(*) as total FROM articles a ${whereClause}`;
+
     // Get total count
     const [countResult] = await db_pool.query(countQuery);
     const total = countResult[0].total;
-    
+
     // Get paginated articles
     const [articles] = await db_pool.query(articlesQuery);
     
@@ -4447,7 +4515,6 @@ app.get("/api/forums", async (req, res) => {
       return forum;
     }));
     
-    console.log("in get all forums route. Forums: " + forums.length);
     res.json({
       forums,
       pagination: {
@@ -5184,6 +5251,32 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       return res.status(400).send({ message: "Game name must be at least 3 characters" });
     }
 
+    // Initial-position validation: a published game type must not start in
+    // a decided state (one side already in checkmate, no legal moves with
+    // no_moves_condition, stalemate under stalemate_draw_condition, capture
+    // condition already satisfied, etc.). Drafts skip this check so users
+    // can iterate freely.
+    if (!isDraft) {
+      try {
+        const checkResult = await initialStateValidator.validateGameTypeFromRequestBody(gameData);
+        if (checkResult && checkResult.decided) {
+          return res.status(400).send({
+            message: checkResult.reason,
+            initialStateError: {
+              type: checkResult.type,
+              code: checkResult.code,
+              reason: checkResult.reason,
+              forPlayer: checkResult.forPlayer || null,
+            },
+          });
+        }
+      } catch (validationErr) {
+        // Don't block on validator failures — log and continue. The admin
+        // scan tool will catch persistent issues later.
+        console.error('[initial-state] Pre-create validation error:', validationErr.message);
+      }
+    }
+
     // Build the SQL query
     const sql = `
       INSERT INTO game_types (
@@ -5398,6 +5491,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       }
     });
     _resyncAiRules(result.insertId);
+    // Game just passed initial-state validation, so explicitly clear any
+    // stored warning (defaults to NULL on insert, but be defensive).
+    initialStateValidator.writeInitialStateWarning(result.insertId, null).catch(() => {});
 
   } catch (err) {
     console.error("Error in /api/games/create:", err);
@@ -7753,6 +7849,80 @@ app.delete("/api/admin/drafts/:draftId", authenticateAdmin, async (req, res) => 
   } catch (err) {
     console.error("Error deleting draft:", err);
     res.status(500).send({ message: "Failed to delete draft", err: err.message });
+  }
+});
+
+// ----------------------- Initial Position Validation (admin) ------------------------
+
+// Run a fresh scan of every published game type and store / clear the
+// `initial_state_warning` column based on the validator result. Returns a
+// summary so the admin UI can show progress.
+app.post("/api/admin/initial-state/scan", authenticateAdmin, async (req, res) => {
+  try {
+    const [rows] = await db_pool.query(
+      "SELECT id FROM game_types WHERE (is_draft = 0 OR is_draft IS NULL) ORDER BY id ASC"
+    );
+    let scanned = 0;
+    let flagged = 0;
+    let cleared = 0;
+    let errored = 0;
+    const flaggedItems = [];
+    for (const { id } of rows) {
+      try {
+        const result = await initialStateValidator.validateGameTypeInitialState(id);
+        scanned++;
+        if (result && result.decided) {
+          flagged++;
+          await initialStateValidator.writeInitialStateWarning(id, result.reason || 'Starting position is already in a decided state.');
+          flaggedItems.push({ id, reason: result.reason, type: result.type, code: result.code });
+        } else {
+          await initialStateValidator.writeInitialStateWarning(id, null);
+          cleared++;
+        }
+      } catch (err) {
+        errored++;
+        console.error(`[admin-scan] Game type ${id} failed:`, err.message);
+      }
+    }
+    console.log(`Admin ${req.user.id} ran initial-state scan: ${scanned} scanned, ${flagged} flagged, ${errored} errored.`);
+    res.json({ scanned, flagged, cleared, errored, flaggedItems });
+  } catch (err) {
+    console.error("Error in /api/admin/initial-state/scan:", err);
+    res.status(500).send({ message: "Failed to scan initial states", err: err.message });
+  }
+});
+
+// List currently flagged game types (those whose `initial_state_warning` is
+// non-null). Used by the admin UI to render the report without re-scanning.
+app.get("/api/admin/initial-state/flagged", authenticateAdmin, async (req, res) => {
+  try {
+    const [rows] = await db_pool.query(`
+      SELECT gt.id, gt.game_name, gt.creator_id, gt.is_draft,
+             gt.initial_state_warning, gt.initial_state_checked_at,
+             u.username AS creator_name
+        FROM game_types gt
+        LEFT JOIN users u ON gt.creator_id = u.id
+       WHERE gt.initial_state_warning IS NOT NULL
+       ORDER BY gt.initial_state_checked_at DESC, gt.id ASC
+    `);
+    res.json({ data: rows });
+  } catch (err) {
+    console.error("Error in /api/admin/initial-state/flagged:", err);
+    res.status(500).send({ message: "Failed to load flagged game types", err: err.message });
+  }
+});
+
+// Clear a single game type's warning manually (e.g. after the creator fixes
+// it offline). Useful escape hatch from the admin UI.
+app.post("/api/admin/initial-state/:gameTypeId/clear", authenticateAdmin, async (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.gameTypeId);
+    if (!gameTypeId) return res.status(400).send({ message: "Invalid game type id" });
+    await initialStateValidator.writeInitialStateWarning(gameTypeId, null);
+    res.json({ message: "Warning cleared" });
+  } catch (err) {
+    console.error("Error clearing initial-state warning:", err);
+    res.status(500).send({ message: "Failed to clear warning", err: err.message });
   }
 });
 

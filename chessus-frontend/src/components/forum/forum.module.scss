@@ -388,3 +388,20 @@
     padding-left: 10px;
   }
 }
+
+
+.forum-category-row {
+  margin: 8px 0 12px 0;
+}
+
+.category-pill {
+  display: inline-block;
+  padding: 4px 12px;
+  background: rgba(255, 200, 50, 0.12);
+  border: 1px solid rgba(255, 200, 50, 0.4);
+  color: #ffc832;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}

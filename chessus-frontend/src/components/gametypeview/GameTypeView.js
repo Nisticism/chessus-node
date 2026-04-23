@@ -1933,6 +1933,24 @@ const GameTypeView = () => {
             {game.created_at && ` on ${parseServerDate(game.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`}
           </p>
         )}
+
+        {game.initial_state_warning && (
+          <div
+            style={{
+              background: 'rgba(255, 80, 80, 0.12)',
+              border: '1px solid rgba(255, 120, 120, 0.5)',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              margin: '12px 0',
+              color: '#ffd2d2',
+              fontSize: '0.9rem',
+              lineHeight: 1.5,
+            }}
+          >
+            <strong style={{ color: '#ff8484' }}>⚠️ Starting Position Issue:</strong>{' '}
+            {game.initial_state_warning} The game's creator should edit this game so the starting position is not already decided.
+          </div>
+        )}
         
         {game.article_id ? (
           <div className={styles["forum-link"]}>

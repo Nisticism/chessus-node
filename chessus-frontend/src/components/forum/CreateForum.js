@@ -7,6 +7,7 @@ import StandardButton from "../standardbutton/StandardButton";
 import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 import EmojiPickerButton from "../common/EmojiPickerButton";
 import ValidationWarningModal from "../common/ValidationWarningModal";
+import { FORUM_CATEGORIES } from "../../helpers/forum-categories";
 
 import { forums } from "../../actions/forums";
 
@@ -21,6 +22,7 @@ const CreateForum = () => {
   const form = useRef();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [category, setCategory] = useState("general");
   const [successful] = useState(false);
   const [validationWarnings, setValidationWarnings] = useState(null);
   const { message } = useSelector(state => state.message);
@@ -47,7 +49,10 @@ const CreateForum = () => {
     if (warnings.length > 0) { setValidationWarnings(warnings); return; }
 
     const todaysDate = getCurrentMySQLDateTime();
-    dispatch(newForum(currentUser.id, title, content, todaysDate, gameTypeId))
+    // Game forums always force category 'game' on the server; for general
+    // forums we send the user's chosen category from the dropdown.
+    const finalCategory = gameTypeId ? 'game' : category;
+    dispatch(newForum(currentUser.id, title, content, todaysDate, gameTypeId, finalCategory))
       //  Must run dispatch(forums()) to load the newly created forum into state, which is how /forums displays everything
       .then(() => {
         dispatch(forums());
@@ -98,6 +103,22 @@ const CreateForum = () => {
                 />
                 <div className={`${styles["char-counter"]} ${title.length > TITLE_MAX * 0.9 ? styles["char-counter-warn"] : ""}`}>{title.length}/{TITLE_MAX}</div>
               </div>
+
+              {!gameTypeId && (
+                <div className={styles["form-group"]}>
+                  <label htmlFor="category-field" className={styles["create-field-label"]}>Category</label>
+                  <select
+                    id="category-field"
+                    className={styles["forum-title-input"]}
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                  >
+                    {FORUM_CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className={styles["form-group"]}>
                 <label htmlFor="content-field" className={styles["create-field-label"]}>Content</label>

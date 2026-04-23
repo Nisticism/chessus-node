@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./forum.module.scss";
+import { categoryLabel } from "../../helpers/forum-categories";
 import { deleteComment, getForum, newComment, editComment, deleteForum } from "../../actions/forums";
 import StandardButton from "../standardbutton/StandardButton";
 import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
@@ -204,6 +205,13 @@ const Forum = () => {
               <div className={styles["forum-username"]}>{ currentForum.author_name || 'User Deleted' }</div>
             )}
             <br/> {formatDateLegacy(currentForum.created_at)}</div>
+            {!currentForum.game_type_id && (
+              <div className={styles["forum-category-row"]}>
+                <span className={styles["category-pill"]}>
+                  Category: {categoryLabel(currentForum.category)}
+                </span>
+              </div>
+            )}
             {currentForum.game_type_id && (
               <div className={styles["forum-game-link"]}>
                 <Link to={`/games/${currentForum.game_type_id}`}>

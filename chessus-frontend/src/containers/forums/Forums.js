@@ -5,6 +5,7 @@ import styles from "./forums.module.scss";
 import StandardButton from "../../components/standardbutton/StandardButton";
 import { forums, firstForumsRender } from "../../actions/forums";
 import { formatDateLegacy } from "../../helpers/date-formatter";
+import { categoryLabel } from "../../helpers/forum-categories";
 import Pagination from "../../components/pagination/Pagination";
 
 const Forums = () => {
@@ -17,7 +18,10 @@ const Forums = () => {
   const dispatch = useDispatch();
 
   useEffect(() => {
-    dispatch(forums(currentPage, 20));
+    // Server-side filter to general scope so pagination total / pages
+    // reflect ONLY non-game forums (previous behaviour leaked the total
+    // article count, causing empty pages when game forums dominated).
+    dispatch(forums(currentPage, 20, null, 'general'));
     if (!firstRender) {
       dispatch(firstForumsRender());
     }
@@ -37,21 +41,15 @@ const Forums = () => {
   }
 
   function handleRowClick(forumId, e) {
-    // Don't navigate if clicking on a link
     if (e.target.tagName === 'A' || e.target.closest('a')) {
       return;
     }
     navigate(`/forums/${forumId}`);
   }
 
-
-
-  // Filter forums to only show general forums (those without game_type_id)
-  const generalForums = allForums.forums ? 
-    allForums.forums.filter(forum => forum.game_type_id === null) : [];
-
-  // Filter by search term
-  const filteredForums = generalForums.filter(forum => 
+  // Server already returns only general forums; client search trims further.
+  const generalForums = allForums.forums || [];
+  const filteredForums = generalForums.filter(forum =>
     forum.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (forum.content && forum.content.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (forum.author_name && forum.author_name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -64,7 +62,7 @@ const Forums = () => {
           General Forums
         </h3>
       </header>
-      
+
       <div className={styles["search-container"]}>
         <input
           type="text"
@@ -76,54 +74,43 @@ const Forums = () => {
       </div>
 
     <div className={styles["forums"]}>
-      {/* This line allows the fake forum with idk of -1 to load in upon deletion of the last article from state, immediately switching to
-      rendering "No Forums Found" instead of having a blank table until refresh. */}
-      {filteredForums && filteredForums.length > 0 ? 
+      {filteredForums && filteredForums.length > 0 ?
     <table className={styles["forums-table"]}>
       <tbody>
         <tr>
-          <th>
-            Subject
-          </th>
-          <th>
-            Written By
-          </th>
-          <th>
-            Replies
-          </th>
-          <th>
-            Likes
-          </th>
-          <th>
-            Content
-          </th>
-          <th>
-            Created At
-          </th>
+          <th>Subject</th>
+          <th>Category</th>
+          <th>Written By</th>
+          <th>Replies</th>
+          <th>Likes</th>
+          <th>Content</th>
+          <th>Last Comment</th>
         </tr>
           {
             filteredForums.map(function(forum) {
               return (
-                <tr 
-                  key={forum.id} 
+                <tr
+                  key={forum.id}
                   className={styles["forum-row"]}
                   onClick={(e) => handleRowClick(forum.id, e)}
                 >
                     <td className={styles["subject-cell"]}>
                       <div className={styles["forums-link"]}>
-                        <strong><div className={styles["forum-title"]}>{ forum.title }</div></strong> <br/> <div className={styles["forums-comments-likes"]}></div>
+                        <strong><div className={styles["forum-title"]}>{ forum.title }</div></strong>
                       </div>
+                    </td>
+                    <td>
+                      <span className={styles["category-pill"]}>{categoryLabel(forum.category)}</span>
                     </td>
                     <td className={styles["author-cell"]}>
                       <div className={styles["forums-link"]}>
-                        { forum.author_name && forum.author_name !== 'Anonymous' && forum.author_name !== 'User Deleted' ? 
+                        { forum.author_name && forum.author_name !== 'Anonymous' && forum.author_name !== 'User Deleted' ?
                           <Link to={`/profile/${forum.author_name}`} onClick={(e) => e.stopPropagation()}>
                             <div className={styles["forums-username"]}>{ forum.author_name }</div>
                           </Link>
-                        : 
+                        :
                           <div className={styles["forums-username"]}>{ forum.author_name || 'User Deleted' }</div>
-                      
-                      }
+                        }
                       </div>
                     </td>
                     <td>
@@ -143,9 +130,24 @@ const Forums = () => {
                     </td>
                     <td className={styles["date-td"]}>
                       <div className={styles["forums-date"]}>
-                        {
-                        formatDateLegacy(forum.created_at)
-                        }
+                        {forum.last_comment_at ? (
+                          <>
+                            {formatDateLegacy(forum.last_comment_at)}
+                            {forum.last_comment_author_name && (
+                              <div style={{ fontSize: '0.8em', opacity: 0.8 }}>
+                                by{' '}
+                                <Link
+                                  to={`/profile/${forum.last_comment_author_name}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {forum.last_comment_author_name}
+                                </Link>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ opacity: 0.6 }}>No comments yet</span>
+                        )}
                       </div>
                     </td>
                 </tr>
@@ -154,7 +156,7 @@ const Forums = () => {
           }
       </tbody>
     </table>
-    : 
+    :
     <h1>{searchTerm ? "No forums found matching your search" : "No Forums Found"}</h1>
       }
     </div>

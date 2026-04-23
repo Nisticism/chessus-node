@@ -50,14 +50,21 @@ const listItemStyle = {
   borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
 };
 
-const ValidationWarningModal = ({ warnings, onClose }) => {
+const ValidationWarningModal = ({ warnings, onClose, title, description, nonDismissible }) => {
   if (!warnings || warnings.length === 0) return null;
 
+  // When `nonDismissible` is set, suppress overlay-click and OK-button dismiss.
+  // The caller is expected to clear the modal only when the underlying problem
+  // is fixed (e.g. user edits the offending field). Used by the initial-state
+  // validator so a player can't bypass a pre-decided starting position.
+  const handleOverlayClick = nonDismissible ? undefined : onClose;
+  const showOk = !nonDismissible;
+
   return (
-    <div style={overlayStyle} onClick={onClose}>
+    <div style={overlayStyle} onClick={handleOverlayClick}>
       <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-        <h3 style={titleStyle}>⚠️ Please Fix the Following</h3>
-        <p style={descStyle}>The following fields need attention before saving:</p>
+        <h3 style={titleStyle}>{title || "⚠️ Please Fix the Following"}</h3>
+        <p style={descStyle}>{description || "The following fields need attention before saving:"}</p>
         <ul style={listStyle}>
           {warnings.map((warning, i) => (
             <li key={i} style={listItemStyle}>
@@ -66,9 +73,16 @@ const ValidationWarningModal = ({ warnings, onClose }) => {
             </li>
           ))}
         </ul>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <StandardButton buttonText="OK" onClick={onClose} />
-        </div>
+        {showOk && (
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <StandardButton buttonText="OK" onClick={onClose} />
+          </div>
+        )}
+        {nonDismissible && (
+          <p style={{ ...descStyle, fontSize: "0.78rem", marginTop: "10px", marginBottom: 0, color: "#9ab0c4", fontStyle: "italic" }}>
+            Adjust the game so the starting position is not already decided, then save again.
+          </p>
+        )}
       </div>
     </div>
   );

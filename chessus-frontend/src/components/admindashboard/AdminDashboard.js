@@ -73,6 +73,15 @@ const AdminDashboard = () => {
   const [forumInviteDraft, setForumInviteDraft] = useState('');
   const [savingForumInvite, setSavingForumInvite] = useState(false);
 
+  // Initial-state scan tool: lists game types whose starting position is
+  // already in a decided state (checkmate, stalemate, capture-condition met,
+  // etc.). The Run Scan button validates every published game and updates
+  // the persisted warning column.
+  const [initialStateLoading, setInitialStateLoading] = useState(false);
+  const [initialStateScanning, setInitialStateScanning] = useState(false);
+  const [initialStateFlagged, setInitialStateFlagged] = useState([]);
+  const [initialStateScanSummary, setInitialStateScanSummary] = useState(null);
+
   // Moderation queue state
   const [moderationQueue, setModerationQueue] = useState([]);
   const [moderationLoading, setModerationLoading] = useState(false);
@@ -161,6 +170,9 @@ const AdminDashboard = () => {
     } else if (activeTab === 'ai-training') {
       // AiTrainingPanel manages its own data; nothing to do here.
       setLoading(false);
+    } else if (activeTab === 'initial-state') {
+      setLoading(false);
+      fetchInitialStateFlagged();
     } else {
       fetchData(activeTab, 1);
     }
@@ -1632,6 +1644,119 @@ const AdminDashboard = () => {
     }
   };
 
+  // ----- Initial-position scan tool ---------------------------------------
+  const fetchInitialStateFlagged = useCallback(async () => {
+    setInitialStateLoading(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await axios.get(`${API_URL}admin/initial-state/flagged`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setInitialStateFlagged(res.data?.data || []);
+    } catch (err) {
+      console.error('fetchInitialStateFlagged failed', err);
+      setAlertMessage('Failed to load flagged game types: ' + (err?.response?.data?.message || err.message));
+      setShowAlert(true);
+    } finally {
+      setInitialStateLoading(false);
+    }
+  }, []);
+
+  const runInitialStateScan = async () => {
+    if (!window.confirm('Run a fresh scan of every published game type? This may take a few seconds for large libraries.')) return;
+    setInitialStateScanning(true);
+    setInitialStateScanSummary(null);
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await axios.post(`${API_URL}admin/initial-state/scan`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setInitialStateScanSummary(res.data || null);
+      await fetchInitialStateFlagged();
+    } catch (err) {
+      console.error('runInitialStateScan failed', err);
+      setAlertMessage('Scan failed: ' + (err?.response?.data?.message || err.message));
+      setShowAlert(true);
+    } finally {
+      setInitialStateScanning(false);
+    }
+  };
+
+  const clearInitialStateWarning = async (gameTypeId) => {
+    try {
+      const token = localStorage.getItem("authToken");
+      await axios.post(`${API_URL}admin/initial-state/${gameTypeId}/clear`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setInitialStateFlagged((prev) => prev.filter((g) => g.id !== gameTypeId));
+    } catch (err) {
+      console.error('clearInitialStateWarning failed', err);
+      setAlertMessage('Failed to clear warning: ' + (err?.response?.data?.message || err.message));
+      setShowAlert(true);
+    }
+  };
+
+  const renderInitialStateTab = () => (
+    <div className={styles["table-container"]}>
+      <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+        <div>
+          <div style={{ fontWeight: 600 }}>Initial Position Scan</div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginTop: '4px' }}>
+            Detects published game types whose starting position is already won, lost, or drawn before any moves.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <StandardButton onClick={fetchInitialStateFlagged} buttonText="Refresh List" disabled={initialStateLoading || initialStateScanning} />
+          <StandardButton onClick={runInitialStateScan} buttonText={initialStateScanning ? 'Scanning…' : 'Run Scan'} disabled={initialStateScanning} />
+        </div>
+      </div>
+      {initialStateScanSummary && (
+        <div style={{ background: 'rgba(255,200,50,0.08)', border: '1px solid rgba(255,200,50,0.3)', padding: '10px 14px', borderRadius: '6px', marginBottom: '12px', fontSize: '0.9em' }}>
+          Scan complete — <strong>{initialStateScanSummary.scanned}</strong> game types checked,{' '}
+          <strong>{initialStateScanSummary.flagged}</strong> flagged,{' '}
+          <strong>{initialStateScanSummary.cleared}</strong> cleared,{' '}
+          <strong>{initialStateScanSummary.errored}</strong> errored.
+        </div>
+      )}
+      {initialStateLoading ? (
+        <div className={styles["loading"]}>Loading…</div>
+      ) : initialStateFlagged.length === 0 ? (
+        <p style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '30px 0' }}>
+          No flagged game types. Click <strong>Run Scan</strong> to check the entire library.
+        </p>
+      ) : (
+        <table className={styles["table"]}>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Game Name</th>
+              <th>Creator</th>
+              <th>Warning</th>
+              <th>Last Checked</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {initialStateFlagged.map((g) => (
+              <tr key={g.id}>
+                <td>{g.id}</td>
+                <td>
+                  <a href={`/games/${g.id}`} target="_blank" rel="noreferrer">{g.game_name}</a>
+                </td>
+                <td>{g.creator_name || '—'}</td>
+                <td style={{ color: '#ffb0b0', fontSize: '0.85em' }}>{g.initial_state_warning}</td>
+                <td style={{ fontSize: '0.8em' }}>{g.initial_state_checked_at ? new Date(g.initial_state_checked_at).toLocaleString() : '—'}</td>
+                <td>
+                  <StandardButton buttonText="Clear" onClick={() => clearInitialStateWarning(g.id)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
   const renderServerStatsTab = () => (
     <div className={styles["table-container"]}>
       <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2454,10 +2579,16 @@ const AdminDashboard = () => {
         >
           AI Training
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "initial-state" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("initial-state")}
+        >
+          Initial Position Scan
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -2477,6 +2608,7 @@ const AdminDashboard = () => {
             {activeTab === "name-reviews" && renderNameReviewTab()}
             {activeTab === "server-stats" && renderServerStatsTab()}
             {activeTab === "ai-training" && <AiTrainingPanel initialAnalysisGameTypeId={aiPanelInitialGameTypeId} />}
+            {activeTab === "initial-state" && renderInitialStateTab()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>

@@ -777,14 +777,19 @@ const getAllArticles = async () => {
  * @param {Object} forumData - Forum post data
  * @returns {Promise<Object>} Created forum object
  */
-const createForum = async ({ author_id, title, content, created_at, game_type_id }) => {
+const createForum = async ({ author_id, title, content, created_at, game_type_id, category }) => {
+  // Game forums are always categorized as 'game' regardless of what the
+  // client sent. General forums fall back to 'general' when no category is
+  // supplied. The set of valid general-forum categories is enforced at the
+  // route layer (server/index.js) so this helper stays permissive.
+  const finalCategory = game_type_id ? 'game' : (category || 'general');
   const result = await query(
-    "INSERT INTO chessusnode.articles (author_id, title, content, created_at, game_type_id) VALUES (?,?,?,?,?)",
-    [author_id, title, content, created_at, game_type_id || null]
+    "INSERT INTO chessusnode.articles (author_id, title, content, created_at, game_type_id, category) VALUES (?,?,?,?,?,?)",
+    [author_id, title, content, created_at, game_type_id || null, finalCategory]
   );
   const newArticleId = result.insertId;
-  
-  return { id: newArticleId, author_id, title, content, created_at, game_type_id };
+
+  return { id: newArticleId, author_id, title, content, created_at, game_type_id, category: finalCategory };
 };
 
 /**

@@ -31,9 +31,9 @@ export const firstForumsRender = (first_render) => (dispatch) => {
 }
 
 // update arguments
-export const newForum = (author_id, title, content, created_at, game_type_id = null) => async (dispatch) => {
+export const newForum = (author_id, title, content, created_at, game_type_id = null, category = null) => async (dispatch) => {
   try {
-    const response = await ForumsService.newForum(author_id, title, content, created_at, game_type_id);
+    const response = await ForumsService.newForum(author_id, title, content, created_at, game_type_id, category);
     dispatch({
       type: POST_SUCCESS,
       payload: response.result,
@@ -73,9 +73,9 @@ export const editForum = (title, content, last_updated_at, id) => async (dispatc
   }
 };
 
-export const forums = (page = 1, limit = 20, gameTypeId = null) => async (dispatch) => {
+export const forums = (page = 1, limit = 20, gameTypeId = null, scope = null, category = null) => async (dispatch) => {
   try {
-    const response = await ForumsService.getForums(page, limit, gameTypeId);
+    const response = await ForumsService.getForums(page, limit, gameTypeId, scope, category);
     dispatch({
       type: ALL_FORUMS,
       payload: response.data,

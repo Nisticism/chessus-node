@@ -5,6 +5,7 @@ import styles from "./forumshub.module.scss";
 import StandardButton from "../../components/standardbutton/StandardButton";
 import { forums, firstForumsRender } from "../../actions/forums";
 import { formatDateLegacy } from "../../helpers/date-formatter";
+import { categoryLabel } from "../../helpers/forum-categories";
 
 const ForumsHub = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -56,7 +57,7 @@ const ForumsHub = () => {
   const filteredGeneral = filterBySearch(generalForums);
   const filteredGame = filterBySearch(gameForums);
 
-  const renderForumRow = (forum, showGame) => (
+  const renderForumRow = (forum, showGame, showCategory) => (
     <tr
       key={forum.id}
       className={styles["forum-row"]}
@@ -67,6 +68,11 @@ const ForumsHub = () => {
           <strong><div className={styles["forum-title"]}>{forum.title}</div></strong>
         </div>
       </td>
+      {showCategory && (
+        <td>
+          <span className={styles["category-pill"]}>{categoryLabel(forum.category)}</span>
+        </td>
+      )}
       {showGame && (
         <td>
           {forum.game_type_id && forum.game_name ? (
@@ -108,7 +114,24 @@ const ForumsHub = () => {
       </td>
       <td className={styles["date-td"]}>
         <div className={styles["forums-date"]}>
-          {formatDateLegacy(forum.created_at)}
+          {forum.last_comment_at ? (
+            <>
+              {formatDateLegacy(forum.last_comment_at)}
+              {forum.last_comment_author_name && (
+                <div style={{ fontSize: '0.8em', opacity: 0.8 }}>
+                  by{' '}
+                  <Link
+                    to={`/profile/${forum.last_comment_author_name}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {forum.last_comment_author_name}
+                  </Link>
+                </div>
+              )}
+            </>
+          ) : (
+            <span style={{ opacity: 0.6 }}>No comments yet</span>
+          )}
         </div>
       </td>
     </tr>
@@ -156,15 +179,16 @@ const ForumsHub = () => {
                 <thead>
                   <tr>
                     <th>Subject</th>
+                    <th>Category</th>
                     <th>Written By</th>
                     <th>Replies</th>
                     <th>Likes</th>
                     <th>Content</th>
-                    <th>Created At</th>
+                    <th>Last Comment</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredGeneral.map(forum => renderForumRow(forum, false))}
+                  {filteredGeneral.map(forum => renderForumRow(forum, false, true))}
                 </tbody>
               </table>
             ) : (
@@ -204,11 +228,11 @@ const ForumsHub = () => {
                     <th>Replies</th>
                     <th>Likes</th>
                     <th>Content</th>
-                    <th>Created At</th>
+                    <th>Last Comment</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredGame.map(forum => renderForumRow(forum, true))}
+                  {filteredGame.map(forum => renderForumRow(forum, true, false))}
                 </tbody>
               </table>
             ) : (

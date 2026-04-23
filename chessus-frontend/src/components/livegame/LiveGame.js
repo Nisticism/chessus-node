@@ -147,6 +147,9 @@ const LiveGame = () => {
   const [showGameOver, setShowGameOver] = useState(false);
   const [gameOverData, setGameOverData] = useState(null);
   const [stalemateNotice, setStalemateNotice] = useState(null);
+  // Transient notice shown when the server re-rolls a randomized starting
+  // position because the original roll resulted in an already-decided game.
+  const [rerollNotice, setRerollNotice] = useState(null);
   const [hoveredPiece, setHoveredPiece] = useState(null);
   const [hoveredMoves, setHoveredMoves] = useState([]);
   const [draggedPiece, setDraggedPiece] = useState(null);
@@ -438,6 +441,24 @@ const LiveGame = () => {
         }
         clearOptimisticMoveSnapshot();
         setGameState(state);
+
+        // If the game ended before this client mounted (or during a reload),
+        // re-display the game-over modal so the user has a definitive
+        // signal that the game is over (e.g. initial-position ends where
+        // joinGame and gameOver fire back-to-back faster than the modal
+        // listener can attach).
+        if (state.status === 'completed') {
+          const winnerPlayer = Array.isArray(state.players)
+            ? state.players.find(p => p.id === state.winner)
+            : null;
+          setGameOverData({
+            winner: state.winner || null,
+            winnerUsername: winnerPlayer?.username || null,
+            reason: state.winReason || 'game_complete',
+            eloChanges: state.eloChanges || null,
+          });
+          setShowGameOver(true);
+        }
 
         // Anchor the local clock interpolation immediately so the displayed clock
         // ticks down smoothly from the moment the game loads (without waiting for
@@ -1059,12 +1080,23 @@ const LiveGame = () => {
       setTimeout(() => setStalemateNotice(null), 12000);
     });
 
+    // gameRerolling: server is re-rolling the randomized starting position
+    // because the rolled position would have ended the game immediately.
+    // Show a transient banner so both players understand the brief delay.
+    const unsubscribeReroll = onGameEvent("gameRerolling", ({ gameId: rerollGameId, attempts, reason }) => {
+      if (parseInt(rerollGameId) !== parseInt(gameId)) return;
+      const msg = reason || `The starting position was already decided — re-rolled ${attempts || 1} time(s).`;
+      setRerollNotice(msg);
+      setTimeout(() => setRerollNotice(null), 6000);
+    });
+
     return () => {
       unsubscribeBotThinking();
       unsubscribeMove();
       unsubscribeCheck();
       unsubscribeGameOver();
       unsubscribeStalemateNotice();
+      unsubscribeReroll();
       unsubscribePlayerJoined();
       unsubscribeGameState();
       unsubscribeError();
@@ -4431,6 +4463,17 @@ const LiveGame = () => {
                 >×</button>
               </span>
             )}
+            {rerollNotice && (
+              <span className={styles["move-error"]} style={{ background: 'rgba(80, 160, 255, 0.18)', color: '#9bd0ff' }}>
+                🎲 {rerollNotice}
+                <button
+                  type="button"
+                  onClick={() => setRerollNotice(null)}
+                  style={{ marginLeft: 8, background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 'bold' }}
+                  aria-label="Dismiss notice"
+                >×</button>
+              </span>
+            )}
           </div>
         )}
         
@@ -5539,6 +5582,7 @@ const LiveGame = () => {
                gameOverData.reason === 'no_moves' ? 'By No Legal Moves' :
                gameOverData.reason === 'no_legal_moves' ? 'By No Legal Moves' :
                gameOverData.reason === 'elimination' ? 'By Elimination' :
+               gameOverData.reason === 'initial_position' ? 'Initial Position — No Moves Played (No ELO Change)' :
                gameOverData.reason}
             </div>
             {(gameOverData.reason === 'piece_count' || gameOverData.reason === 'equal_piece_count') && 

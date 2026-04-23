@@ -275,6 +275,87 @@ function broadcastGameOver(io, gameId, gameState, payload) {
 }
 
 /**
+ * Detect a brand-new game whose starting position is already in a decided
+ * state (checkmate / stalemate / capture-condition met / etc.) and end it
+ * immediately with reason 'initial_position'. Skips ELO updates so neither
+ * player gains or loses rating from a degenerate roll or a bad fixed
+ * position. Returns `true` if the game was ended.
+ *
+ * Call this AFTER the game has reached the 'ready' state (both players
+ * present, randomization re-roll loop already finished). For non-randomized
+ * games, the wizard-time validator should have caught this at publish time
+ * — this is the safety net for legacy games and exhausted re-rolls.
+ */
+async function endIfInitialPositionDecided(io, gameId, gameState) {
+  if (!gameState || !gameState.gameType || gameState.status === 'completed') return false;
+  if (Array.isArray(gameState.moveHistory) && gameState.moveHistory.length > 0) return false;
+
+  let evalResult;
+  try {
+    evalResult = evaluateInitialPosition(gameState.gameType, gameState.pieces);
+  } catch (e) {
+    console.warn(`[initial-position] evaluation threw for game ${gameId}:`, e.message);
+    return false;
+  }
+  if (!evalResult || !evalResult.decided) return false;
+
+  // Resolve winner_id from the evaluator's player perspective.
+  let winnerId = null;
+  if (evalResult.type === 'win' && evalResult.forPlayer) {
+    winnerId = gameState.players?.find(p => p.position === evalResult.forPlayer)?.id || null;
+  } else if (evalResult.type === 'loss' && evalResult.forPlayer) {
+    const winnerPos = evalResult.forPlayer === 1 ? 2 : 1;
+    winnerId = gameState.players?.find(p => p.position === winnerPos)?.id || null;
+  }
+  // 'draw' and 'invalid' leave winnerId = null.
+
+  gameState.status = 'completed';
+  gameState.winner = winnerId;
+  gameState.winReason = 'initial_position';
+  gameState.initialPositionEval = evalResult;
+  if (!gameState.initialPieces) {
+    try { gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces)); } catch (_) {}
+  }
+
+  const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  try {
+    await db_pool.query(
+      `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+      [
+        endTime,
+        winnerId ? sanitizeWinnerId(winnerId) : null,
+        JSON.stringify(gameState.pieces),
+        buildOtherData(gameState, {
+          winner: winnerId,
+          reason: 'initial_position',
+          initialPositionEval: evalResult,
+          eloChanges: null,
+        }),
+        gameId,
+      ]
+    );
+  } catch (dbErr) {
+    console.error(`[initial-position] DB update failed for game ${gameId}:`, dbErr.message);
+  }
+
+  try { stopGameTimer(gameId); } catch (_) {}
+
+  broadcastGameOver(io, gameId, gameState, {
+    gameId,
+    winner: winnerId,
+    reason: 'initial_position',
+    initialPositionReason: evalResult.reason,
+    initialPositionType: evalResult.type,
+    initialPositionForPlayer: evalResult.forPlayer || null,
+    finalState: gameState,
+    eloChanges: null,
+  });
+
+  console.log(`[initial-position] Game ${gameId} ended at move 0 (${evalResult.code}): ${evalResult.reason}`);
+  return true;
+}
+
+/**
  * Disconnect-forfeit window in milliseconds, scaled by time control.
  * timeControlMinutes: null/0/undefined = unlimited.
  *   - unlimited or >= 60 min  -> 60s
@@ -1397,9 +1478,14 @@ function initializeSocket(server) {
           const botStartingMode = gameState.startingMode || startingMode || 'none';
           if (botStartingMode && botStartingMode !== 'none') {
             try {
-              gameState.pieces = randomizePiecePositions(
-                gameState.pieces, gameState.players, botStartingMode, gameState.gameType
-              );
+              const rerollInfo = applyRandomizationWithRerollGuard(gameState, botStartingMode);
+              if (rerollInfo.rerollCount > 0) {
+                io.to(`game-${gameId}`).emit('gameRerolling', {
+                  gameId,
+                  attempts: rerollInfo.rerollCount,
+                  reason: 'The randomized starting position would have decided the game immediately. Re-rolling…',
+                });
+              }
               await db_pool.query(
                 "UPDATE games SET pieces = ? WHERE id = ?",
                 [JSON.stringify(gameState.pieces), gameId]
@@ -1438,6 +1524,16 @@ function initializeSocket(server) {
 
           // Notify owner of new game (non-blocking)
           notifyOwnerOfGameCreation(io, gameId, hostId, hostUsername, gameState);
+
+          // Initial-position safety net: if the (possibly randomized) starting
+          // position is decided before either side has moved, end the game now
+          // with reason 'initial_position'. Bot games are unrated so ELO is
+          // already skipped, but we still want a clean game-over instead of a
+          // timeout-loss for the player who can't move.
+          const endedAtStart = await endIfInitialPositionDecided(io, gameId, gameState);
+          if (endedAtStart) {
+            return; // Skip the bot's first turn — the game is already over.
+          }
 
           // If bot is Player 1, it moves first — start the game and trigger bot turn
           if (botPosition === 1) {
@@ -1911,6 +2007,46 @@ function initializeSocket(server) {
               shuffledTeam2 = shufflePositions(team2Pieces);
             }
             gameState.pieces = [...shuffledTeam1, ...shuffledTeam2];
+
+            // Re-roll guard: if the rolled position is already in a decided
+            // state (checkmate, stalemate, capture-condition met, etc.),
+            // re-shuffle up to 12 times before accepting it. Notify both
+            // players so they understand the brief stall during loading.
+            try {
+              let rerollCount = 0;
+              const seen = new Set([hashPiecesPositions(gameState.pieces)]);
+              const MAX = 12;
+              let lastEval = evaluateInitialPosition(gameState.gameType, gameState.pieces);
+              while (lastEval && lastEval.decided && rerollCount < MAX) {
+                rerollCount++;
+                const reShuffledTeam1 = shufflePositions(team1Pieces);
+                let reShuffledTeam2;
+                if (gameState.startingMode === 'mirrored') {
+                  reShuffledTeam2 = team2Pieces.map((p, i) => {
+                    const mirrorP = reShuffledTeam1[i];
+                    if (mirrorP) return { ...p, x: mirrorP.x, y: boardHeight - 1 - mirrorP.y };
+                    return p;
+                  });
+                } else {
+                  reShuffledTeam2 = shufflePositions(team2Pieces);
+                }
+                const candidate = [...reShuffledTeam1, ...reShuffledTeam2];
+                const hash = hashPiecesPositions(candidate);
+                if (seen.has(hash)) continue;
+                seen.add(hash);
+                gameState.pieces = candidate;
+                lastEval = evaluateInitialPosition(gameState.gameType, gameState.pieces);
+              }
+              if (rerollCount > 0) {
+                io.to(`game-${gameId}`).emit('gameRerolling', {
+                  gameId,
+                  attempts: rerollCount,
+                  reason: 'The randomized starting position would have decided the game immediately. Re-rolling…',
+                });
+              }
+            } catch (rerollErr) {
+              console.warn(`[reroll] Game ${gameId} reroll guard failed:`, rerollErr.message);
+            }
           }
         }
 
@@ -1937,6 +2073,10 @@ function initializeSocket(server) {
         io.emit("gameRemoved", { gameId });
 
         console.log(`${playerUsername} joined anonymous game ${gameId} via invite code ${code}`);
+
+        // Initial-position safety net: if the position is decided before any
+        // move, end the game with reason 'initial_position' (no ELO change).
+        await endIfInitialPositionDecided(io, gameId, gameState);
       } catch (error) {
         console.error("Error joining by invite code:", error);
         socket.emit("error", { message: "Failed to join game" });
@@ -2214,11 +2354,23 @@ function initializeSocket(server) {
 
         // Check if randomized starting positions is enabled (use startingMode from game creation)
         const mode = gameState.startingMode || 'none';
-        
+
         if (mode && mode !== 'none') {
           console.log(`Randomizing starting positions for game ${gameId} with mode: ${mode}`);
-          gameState.pieces = randomizePiecePositions(gameState.pieces, gameState.players, mode, gameState.gameType);
-          
+          // Use the shared re-roll guard so that randomized rolls which
+          // happen to land on an already-decided position (checkmate /
+          // stalemate / capture-condition met) are re-shuffled up to 12
+          // times before being accepted. Re-rolling MUST happen before the
+          // initial-position safety net runs below.
+          const rerollInfo = applyRandomizationWithRerollGuard(gameState, mode);
+          if (rerollInfo.rerollCount > 0) {
+            io.to(`game-${gameId}`).emit('gameRerolling', {
+              gameId,
+              attempts: rerollInfo.rerollCount,
+              reason: 'The randomized starting position would have decided the game immediately. Re-rolling…',
+            });
+          }
+
           // Update the database with randomized pieces
           await db_pool.query(
             "UPDATE games SET pieces = ? WHERE id = ?",
@@ -2253,6 +2405,10 @@ function initializeSocket(server) {
         io.emit("gameRemoved", { gameId });
 
         console.log(`${username} joined game ${gameId}`);
+
+        // Initial-position safety net: if the position is decided before any
+        // move, end the game with reason 'initial_position' (no ELO change).
+        await endIfInitialPositionDecided(io, gameId, gameState);
       } catch (error) {
         console.error("Error joining game:", error);
         socket.emit("error", { message: "Failed to join game" });
@@ -2748,6 +2904,7 @@ function initializeSocket(server) {
             gameState.pendingPromotion = null;
 
             if (promotedPiece) {
+              attachPromotionToLastMove(gameState, promotedPiece);
               const hasFreeMoveAfterPromotion = promotedPiece.free_move_after_promotion === 1 || promotedPiece.free_move_after_promotion === true;
               if (!hasFreeMoveAfterPromotion) {
                 gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
@@ -3140,6 +3297,7 @@ function initializeSocket(server) {
                 gameState.pendingPromotion = null;
 
                 if (promotedPiece) {
+                  attachPromotionToLastMove(gameState, promotedPiece);
                   // Check free_move_after_promotion
                   const hasFreeMoveAfterPromotion = promotedPiece.free_move_after_promotion === 1 || promotedPiece.free_move_after_promotion === true;
                   if (!hasFreeMoveAfterPromotion) {
@@ -4455,6 +4613,7 @@ function initializeSocket(server) {
         if (!promotedPiece) {
           return socket.emit("error", { message: "Promotion piece type not found" });
         }
+        attachPromotionToLastMove(gameState, promotedPiece);
         const fullPieceData = {
           free_move_after_promotion: promotedPiece.free_move_after_promotion
         };
@@ -4475,9 +4634,13 @@ function initializeSocket(server) {
         }
 
         // Update database
+        // NOTE: include other_data so the promotion stamp on the latest
+        // moveHistory entry is persisted immediately. Otherwise match-history
+        // replays would be missing the promotion until the next move flushes
+        // moveHistory back to disk.
         await db_pool.query(
-          "UPDATE games SET pieces = ?, player_turn = ? WHERE id = ?",
-          [JSON.stringify(gameState.pieces), gameState.currentTurn, gameId]
+          "UPDATE games SET pieces = ?, player_turn = ?, other_data = ? WHERE id = ?",
+          [JSON.stringify(gameState.pieces), gameState.currentTurn, buildOtherData(gameState), gameId]
         );
 
         // Broadcast the promotion to all players
@@ -5143,7 +5306,14 @@ function initializeSocket(server) {
             lastMoveTime: otherData?.lastMoveTime || null,
             materialClockPenalty: !!otherData?.materialClockPenalty,
             materialClockHandicap: !!otherData?.materialClockHandicap,
-            actionsThisTurn: otherData?.actionsThisTurn || 0
+            actionsThisTurn: otherData?.actionsThisTurn || 0,
+            // Persisted game-over context so the client can re-display the
+            // game-over modal after a reload (e.g. on initial-position ends
+            // where the player joined just as the game ended).
+            winner: game.winner_id || otherData?.winner || null,
+            winReason: otherData?.reason || null,
+            eloChanges: otherData?.eloChanges || null,
+            initialPositionEval: otherData?.initialPositionEval || null,
           };
 
           // Check if current player is in check (if game is active)
@@ -7338,8 +7508,26 @@ function getPositionHash(pieces, currentTurn) {
  * @param {string|number} promoteToPieceId - The piece type ID to promote to
  * @returns {Object|null} - The promoted piece object, or null on failure
  */
-async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {
-  const pieceIndex = gameState.pieces.findIndex(p => p.id === pieceId);
+/**
+ * Stamp promotion info onto the most recent move record so match-history
+ * replays can transform the moving piece. Without this, the replay board
+ * keeps showing the pre-promotion piece (e.g. a pawn) on every move from
+ * the promotion forward.
+ */
+function attachPromotionToLastMove(gameState, promotedPiece) {
+  if (!gameState || !Array.isArray(gameState.moveHistory) || gameState.moveHistory.length === 0) return;
+  if (!promotedPiece) return;
+  const lastMove = gameState.moveHistory[gameState.moveHistory.length - 1];
+  if (!lastMove || lastMove.pieceId !== promotedPiece.id) return;
+  lastMove.promotion = {
+    piece_id: promotedPiece.piece_id,
+    piece_name: promotedPiece.piece_name,
+    image_url: promotedPiece.image_url || promotedPiece.image || null,
+    image_location: promotedPiece.image_location || null,
+  };
+}
+
+async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  const pieceIndex = gameState.pieces.findIndex(p => p.id === pieceId);
   if (pieceIndex === -1) return null;
 
   const piece = gameState.pieces[pieceIndex];
@@ -11607,6 +11795,417 @@ function getIO() {
   return ioInstance;
 }
 
+/**
+ * Build a minimal "fresh game" gameState from a game_types row + a parsed
+ * pieces array. Used by `evaluateInitialPosition` so we can run the same
+ * win/draw detectors that real games use, without needing a `games` row.
+ *
+ * @param {Object} gameType   Row from `game_types` (raw DB shape).
+ * @param {Array}  pieces     Parsed pieces array (the same shape stored in
+ *                            `games.pieces`). Each piece must have `id`,
+ *                            `x`, `y`, and `team` or `player_id`.
+ * @param {Number} currentTurn Which player's position is to move (1 or 2).
+ * @returns {Object} A gameState shape compatible with checkWinCondition,
+ *                   isCheckmate, getAllLegalMovesForPlayer.
+ */
+function buildSyntheticInitialState(gameType, pieces, currentTurn = 1) {
+  const players = [
+    { id: -1, position: 1 },
+    { id: -2, position: 2 },
+  ];
+  // Parse other_game_data so placement-action checks (Othello-style games)
+  // can see `place_pieces_action` / `placeable_pieces` / `flanking_captures`.
+  let otherGameData = {};
+  try {
+    if (gameType && gameType.other_game_data) {
+      otherGameData = typeof gameType.other_game_data === 'string'
+        ? JSON.parse(gameType.other_game_data)
+        : gameType.other_game_data;
+    }
+  } catch (e) { /* ignore parse errors */ }
+  return {
+    gameType,
+    pieces: Array.isArray(pieces) ? pieces.map(p => ({ ...p })) : [],
+    players,
+    currentTurn,
+    moveHistory: [],
+    movesWithoutCapture: 0,
+    positionHistory: {},
+    controlSquareTracking: {},
+    actionsThisTurn: 0,
+    status: 'active',
+    isCorrespondence: false,
+    otherGameData,
+  };
+}
+
+/**
+ * Evaluate whether the given starting position is already in a decided
+ * (win / loss / draw) state for the player to move. This is intentionally
+ * conservative — it only flags states the live engine would actually call
+ * at move 0:
+ *   - checkmate of the player to move (mate_condition)
+ *   - no-legal-moves with no_moves_condition (player to move loses)
+ *   - stalemate (no legal moves, not in check) when stalemate_draw_condition
+ *     is set (draw) OR stalemate_win_condition (player to move wins)
+ *   - capture_condition already satisfied (one side has 0 capturable pieces
+ *     or 0 of the required `ends_game_on_capture` piece type)
+ *   - lose_all_pieces_condition already satisfied (a player has 0 pieces)
+ *
+ * Conditions that depend on move history (n-fold repetition, 50-move rule)
+ * cannot trigger at move 0 and are skipped.
+ *
+ * @param {Object} gameType      Raw `game_types` row.
+ * @param {Array}  initialPieces Parsed pieces array as it would appear in a
+ *                               brand-new `games.pieces` column.
+ * @returns {Object} { decided: boolean, reason?: string, type?: 'win'|'loss'|'draw',
+ *                     forPlayer?: 1|2, code?: string }
+ */
+function evaluateInitialPosition(gameType, initialPieces) {
+  if (!gameType) return { decided: false };
+  const pieces = Array.isArray(initialPieces) ? initialPieces : [];
+  if (pieces.length === 0) return { decided: false };
+
+  // NOTE: this validator only evaluates the FIXED starting position the
+  // wizard saved — i.e. the position a player gets if they choose the
+  // non-randomized ("none") play mode. The runtime re-roll loop in
+  // joinGame / vs-bot setup handles randomized rolls separately and never
+  // writes a warning back to the game type. We do NOT skip games that
+  // also offer randomization, because for any such game "none" is just
+  // one of several playable modes and the fixed position must still be
+  // valid on its own.
+
+  // Sanity check: detect placement data corruption (two pieces sharing the
+  // same square). The validator would otherwise produce false positives
+  // because one piece is silently shadowed in the synthetic board state.
+  {
+    const seen = new Map();
+    for (const p of pieces) {
+      if (!p || p._occupied) continue;
+      const key = `${p.x},${p.y}`;
+      const existing = seen.get(key);
+      if (existing) {
+        return {
+          decided: true,
+          type: 'invalid',
+          code: 'overlapping_pieces',
+          reason: `Starting position has two pieces on square (${p.x},${p.y}): "${existing.piece_name || existing.piece_id}" (player ${existing.team || existing.player_id}) and "${p.piece_name || p.piece_id}" (player ${p.team || p.player_id}). Re-check the wizard's piece placements.`,
+        };
+      }
+      seen.set(key, p);
+    }
+  }
+
+  // Player 1 is always the player to move on a brand-new game.
+  const toMove = 1;
+  const opponent = 2;
+
+  const state = buildSyntheticInitialState(gameType, pieces, toMove);
+
+  // --- 1. lose_all_pieces (anti-chess): if either side starts with 0 pieces,
+  //         the game is already won by the side with none.
+  if (gameType.lose_all_pieces_condition) {
+    const p1Pieces = pieces.filter(p => (p.team || p.player_id) === 1 && !p._occupied);
+    const p2Pieces = pieces.filter(p => (p.team || p.player_id) === 2 && !p._occupied);
+    if (p1Pieces.length === 0 && p2Pieces.length === 0) {
+      return {
+        decided: true,
+        type: 'draw',
+        code: 'lose_all_both_empty',
+        reason: 'Anti-chess (lose all pieces): both players start with no pieces, so the game is decided immediately.',
+      };
+    }
+    if (p1Pieces.length === 0) {
+      return {
+        decided: true,
+        type: 'win',
+        forPlayer: 1,
+        code: 'lose_all_player1',
+        reason: 'Anti-chess (lose all pieces): Player 1 starts with no pieces and would win on move 0.',
+      };
+    }
+    if (p2Pieces.length === 0) {
+      return {
+        decided: true,
+        type: 'win',
+        forPlayer: 2,
+        code: 'lose_all_player2',
+        reason: 'Anti-chess (lose all pieces): Player 2 starts with no pieces and would win on move 0.',
+      };
+    }
+  }
+
+  // --- 2. capture_condition (regular): if the OPPONENT of the player to move
+  //         has zero capturable pieces (or zero of the required piece type),
+  //         the player to move has already won.
+  if (gameType.capture_condition) {
+    const requireAll = !!gameType.capture_condition_requires_all;
+    const capturePieceType = gameType.capture_piece || null;
+
+    for (const sidePos of [1, 2]) {
+      const sidePieces = pieces.filter(p =>
+        (p.team || p.player_id) === sidePos && !p._occupied
+      );
+      let triggered = false;
+      let label = '';
+      if (capturePieceType) {
+        // Count pieces of the specific capture-target type on this side.
+        const targetCount = sidePieces.filter(p =>
+          parseInt(p.piece_id || p.pieceId) === parseInt(capturePieceType)
+        ).length;
+        if (targetCount === 0) {
+          triggered = true;
+          label = `Player ${sidePos} starts with none of the required capture-target piece`;
+        }
+      } else if (requireAll) {
+        // ALL ends_game_on_capture pieces must be captured to lose. If they
+        // start with zero of those, they've already lost.
+        const flagged = sidePieces.filter(p => p.ends_game_on_capture);
+        if (flagged.length === 0) {
+          triggered = true;
+          label = `Player ${sidePos} starts with no "lose if captured" pieces`;
+        }
+      } else {
+        // Capture-all: if the side has zero capturable pieces, opponent wins.
+        if (sidePieces.length === 0) {
+          triggered = true;
+          label = `Player ${sidePos} starts with no pieces`;
+        }
+      }
+      if (triggered) {
+        const winnerPos = sidePos === 1 ? 2 : 1;
+        return {
+          decided: true,
+          type: 'win',
+          forPlayer: winnerPos,
+          code: `capture_condition_player${sidePos}`,
+          reason: `Capture win condition: ${label}, so Player ${winnerPos} would win on move 0.`,
+        };
+      }
+    }
+  }
+
+  // --- 3. mate_condition: checkmate of the player to move
+  if (gameType.mate_condition) {
+    // Skip the checkmate flag for placement-based variants — `isCheckmate`
+    // only enumerates on-board moves, so a king with no escape squares
+    // could still legally be defended by placing a new piece next turn.
+    let placementGameType = false;
+    try {
+      const otherData = state.otherGameData || {};
+      placementGameType = !!otherData.place_pieces_action;
+    } catch (e) { /* ignore */ }
+    if (!placementGameType) {
+      try {
+        if (isCheckmate(state, toMove)) {
+          return {
+            decided: true,
+            type: 'loss',
+            forPlayer: toMove,
+            code: 'checkmate_at_start',
+            reason: `Player ${toMove} starts in checkmate, so the game would end immediately.`,
+          };
+        }
+        // Also check the opponent: if they are already in checkmate from a
+        // theoretical previous move, the position is still degenerate. The
+        // engine wouldn't normally fire this until that side has the move,
+        // but it's still bad design.
+        if (isCheckmate(state, opponent)) {
+          return {
+            decided: true,
+            type: 'loss',
+            forPlayer: opponent,
+            code: 'opponent_checkmate_at_start',
+            reason: `Player ${opponent} starts in checkmate, so the game is already decided.`,
+          };
+        }
+      } catch (e) {
+        console.warn('[initial-state] isCheckmate threw, skipping mate check:', e.message);
+      }
+    }
+  }
+
+  // --- 4. Legal-move based outcomes for the player to move
+  //         (no_moves_condition / stalemate_win_condition / stalemate_draw_condition)
+  let toMoveLegalCount = 0;
+  let toMoveInCheck = false;
+  try {
+    toMoveLegalCount = getAllLegalMovesForPlayer(state, toMove).length;
+  } catch (e) {
+    console.warn('[initial-state] getAllLegalMovesForPlayer threw:', e.message);
+    toMoveLegalCount = -1; // unknown; skip downstream checks
+  }
+
+  // Piece-placement actions (Othello-style "place" moves) also count as
+  // legal moves. If the game type allows placing new pieces and at least
+  // one legal placement exists for the player to move, do not flag the
+  // position as "no legal moves".
+  let placementMovesAvailable = 0;
+  try {
+    const otherData = state.otherGameData || {};
+    if (otherData.place_pieces_action) {
+      const boardWidth = gameType.board_width || 8;
+      const boardHeight = gameType.board_height || 8;
+      const placeable = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
+      // If flanking is required, only flanking-valid squares count.
+      if (otherData.flanking_captures && otherData.must_flank) {
+        try {
+          const valid = getValidFlankingPlacements(state, toMove);
+          placementMovesAvailable = valid.length * Math.max(1, placeable.length);
+        } catch (e) { /* ignore */ }
+      } else {
+        // Otherwise any empty square is a valid placement target.
+        let emptySquares = 0;
+        for (let y = 0; y < boardHeight; y++) {
+          for (let x = 0; x < boardWidth; x++) {
+            if (!state.pieces.find(p => p.x === x && p.y === y && !p._occupied)) {
+              emptySquares++;
+            }
+          }
+        }
+        const piecesToPlace = placeable.length > 0 ? placeable.length : 1;
+        placementMovesAvailable = emptySquares * piecesToPlace;
+      }
+    }
+  } catch (e) {
+    console.warn('[initial-state] placement availability check threw:', e.message);
+  }
+
+  if (gameType.mate_condition && toMoveLegalCount === 0 && placementMovesAvailable === 0) {
+    try {
+      const cr = checkForCheck(state, toMove);
+      toMoveInCheck = !!cr.inCheck;
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  if (toMoveLegalCount === 0 && placementMovesAvailable === 0) {
+    // No-moves-loses: player to move has zero legal moves and the game type
+    // says "no moves = loss".
+    if (gameType.no_moves_condition) {
+      const winnerPos = opponent;
+      return {
+        decided: true,
+        type: 'loss',
+        forPlayer: toMove,
+        code: 'no_moves_at_start',
+        reason: `Player ${toMove} has no legal moves on move 0 and would lose immediately under the "no legal moves loses" rule.`,
+      };
+    }
+    // Stalemate win: stalemated player wins
+    if (!toMoveInCheck && gameType.stalemate_win_condition) {
+      return {
+        decided: true,
+        type: 'win',
+        forPlayer: toMove,
+        code: 'stalemate_win_at_start',
+        reason: `Player ${toMove} starts with no legal moves (stalemated) and would win immediately under the "stalemate wins" rule.`,
+      };
+    }
+    // Stalemate draw (default): stalemate ends in draw
+    if (!toMoveInCheck && gameType.stalemate_draw_condition !== 0 && gameType.stalemate_draw_condition !== false) {
+      return {
+        decided: true,
+        type: 'draw',
+        code: 'stalemate_draw_at_start',
+        reason: `Player ${toMove} starts with no legal moves (stalemated) and the game would end in a draw immediately.`,
+      };
+    }
+  }
+
+  // --- 5. Master win-condition pass (handles instant-loss flags, control
+  //         square elimination, insufficient material, etc.).
+  try {
+    const result = checkWinCondition(state, null);
+    if (result && result.gameOver) {
+      const reasonText = (() => {
+        switch (result.reason) {
+          case 'mate': return 'Starting position is already a checkmate.';
+          case 'capture': return 'Starting position already satisfies the capture win condition.';
+          case 'control': return 'Starting position already satisfies the control-squares win condition.';
+          case 'lose_all': return 'Starting position already satisfies the anti-chess win condition.';
+          case 'insufficient_material': return 'Starting position has insufficient material — the game would end in a draw.';
+          default: return `Starting position already satisfies a win condition (${result.reason}).`;
+        }
+      })();
+      return {
+        decided: true,
+        type: result.winner ? 'win' : 'draw',
+        code: `win_condition_${result.reason || 'unknown'}`,
+        reason: reasonText,
+      };
+    }
+  } catch (e) {
+    console.warn('[initial-state] checkWinCondition threw:', e.message);
+  }
+
+  return { decided: false };
+}
+
+/**
+ * Hash a pieces array down to a stable string for de-duplication during
+ * randomization re-rolls. Order-independent; only positions + ownership
+ * matter.
+ */
+function hashPiecesPositions(pieces) {
+  if (!Array.isArray(pieces)) return '';
+  const tokens = pieces
+    .filter(p => p && !p._occupied)
+    .map(p => `${p.id}:${p.team || p.player_id}:${p.x},${p.y}`)
+    .sort();
+  return tokens.join('|');
+}
+
+/**
+ * Apply randomized starting positions, re-rolling up to MAX_REROLLS times if
+ * the rolled position is already in a decided (win/loss/draw) state. Each
+ * re-roll is de-duplicated against previous attempts so we don't loop on the
+ * same shuffle. If all attempts fail, the LAST roll is kept and the caller
+ * should let normal first-move detection handle it.
+ *
+ * @param {object} gameState  Live gameState (mutated: `pieces` is replaced).
+ * @param {string} mode       Randomization mode string ('full', 'mirrored', etc.).
+ * @returns {{ rerollCount: number, decided: boolean, reason: string|null }}
+ */
+function applyRandomizationWithRerollGuard(gameState, mode) {
+  const MAX_REROLLS = 12;
+  if (!mode || mode === 'none') return { rerollCount: 0, decided: false, reason: null };
+
+  const seen = new Set([hashPiecesPositions(gameState.pieces)]);
+  let lastResult = null;
+  for (let attempt = 0; attempt <= MAX_REROLLS; attempt++) {
+    const rolled = randomizePiecePositions(
+      gameState.pieces, gameState.players, mode, gameState.gameType
+    );
+    const hash = hashPiecesPositions(rolled);
+    if (attempt > 0 && seen.has(hash)) {
+      // Same position rolled again — shuffle once more to dodge loops.
+      continue;
+    }
+    seen.add(hash);
+    gameState.pieces = rolled;
+
+    let result;
+    try {
+      result = evaluateInitialPosition(gameState.gameType, rolled);
+    } catch (e) {
+      result = { decided: false };
+    }
+    lastResult = result;
+    if (!result.decided) {
+      return { rerollCount: attempt, decided: false, reason: null };
+    }
+    console.warn(`[reroll] Game ${gameState.id || '?'} attempt ${attempt + 1} rolled a decided position (${result.code}); re-rolling…`);
+  }
+
+  return {
+    rerollCount: MAX_REROLLS,
+    decided: !!(lastResult && lastResult.decided),
+    reason: lastResult ? lastResult.reason : null,
+  };
+}
+
 module.exports = {
   initializeSocket,
   activeGames,
@@ -11625,5 +12224,9 @@ module.exports = {
   validateAndApplyMove,
   wouldMoveLeaveInCheck,
   findPieceAtSquare,
-  doesPieceOccupySquare
+  doesPieceOccupySquare,
+  // Initial-state validation
+  evaluateInitialPosition,
+  buildSyntheticInitialState,
+  hashPiecesPositions,
 };

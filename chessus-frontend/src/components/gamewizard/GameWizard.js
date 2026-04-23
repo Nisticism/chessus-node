@@ -12,6 +12,7 @@ import Step1BasicInfo from "./Step1BasicInfo";
 import Step2WinConditions from "./Step2WinConditions";
 import Step3BoardSpecialSquares from "./Step3BoardSpecialSquares";
 import Step4PiecePlacement from "./Step4PiecePlacement";
+import ValidationWarningModal from "../common/ValidationWarningModal";
 
 const GameWizard = ({ editGameId }) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -35,6 +36,12 @@ const GameWizard = ({ editGameId }) => {
   // (the disable squares are redundant once first moves are already restricted to a subset of
   // squares). The pendingAction holds the navigation/save callback to run if user dismisses.
   const [firstMoveConflictWarning, setFirstMoveConflictWarning] = useState(null); // { onContinue }
+  // Server-side initial-state validation error: triggered when the wizard
+  // attempts to save a published (non-draft) game whose starting position is
+  // already in a decided state (checkmate, stalemate, capture-condition met,
+  // etc.). The modal is non-dismissible — the user must change the game and
+  // re-save to clear it. Stored as { reason, type, code, forPlayer }.
+  const [initialStateError, setInitialStateError] = useState(null);
   
   // Game data state - all fields from game_types table
   const [gameData, setGameData] = useState({
@@ -274,6 +281,7 @@ const GameWizard = ({ editGameId }) => {
 
   const handleSubmit = async (skipWarning = false) => {
     setSaveError(null);
+    setInitialStateError(null);
 
     // Collect all missing required fields
     const missing = [];
@@ -424,8 +432,16 @@ const GameWizard = ({ editGameId }) => {
       // Navigate to success page or game list
       navigate("/create/games");
     } catch (error) {
-      const msg = error?.response?.data?.message || error?.message || 'An unexpected error occurred while saving.';
-      setSaveError(msg);
+      // Backend rejected the save because the starting position is already
+      // decided. Surface via the non-dismissible ValidationWarningModal so
+      // the user understands they must change the game before retrying.
+      const initStateErr = error?.response?.data?.initialStateError;
+      if (initStateErr) {
+        setInitialStateError(initStateErr);
+      } else {
+        const msg = error?.response?.data?.message || error?.message || 'An unexpected error occurred while saving.';
+        setSaveError(msg);
+      }
       console.error("Error saving game:", error);
     } finally {
       setIsSubmitting(false);
@@ -763,6 +779,16 @@ const GameWizard = ({ editGameId }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {initialStateError && (
+        <ValidationWarningModal
+          warnings={[initialStateError.reason || 'The starting position is already in a decided state.']}
+          title="⚠️ Starting Position Already Decided"
+          description="This game cannot be saved as published because the starting position would already determine a winner, loser, or draw before any moves are made."
+          nonDismissible
+          onClose={() => setInitialStateError(null)}
+        />
       )}
     </div>
   );

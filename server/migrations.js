@@ -3136,6 +3136,62 @@ const runMigrations = async () => {
     console.error('Error creating announcements:', err.message);
   }
 
+  // Add initial_state_warning column to game_types table.
+  // Populated by the admin "Initial Position Scan" tool (and after edits).
+  // When non-null, the game detail page shows a banner explaining that the
+  // starting position is already in a decided state (win / loss / draw).
+  try {
+    if (!(await columnExists('game_types', 'initial_state_warning'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN initial_state_warning VARCHAR(300) DEFAULT NULL COMMENT 'If set, the starting position of this game type is already in a decided state (win/loss/draw).'`,
+        "Add initial_state_warning column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding initial_state_warning column:', err.message);
+  }
+
+  // Add initial_state_checked_at column to game_types table.
+  try {
+    if (!(await columnExists('game_types', 'initial_state_checked_at'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN initial_state_checked_at DATETIME DEFAULT NULL COMMENT 'Last time the initial-position validator was run against this game type.'`,
+        "Add initial_state_checked_at column to game_types table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding initial_state_checked_at column:', err.message);
+  }
+
+  // Add category column to articles table for forum categorization.
+  // Game forums always have category='game'; general forums get a user-chosen
+  // category (general / bug-report / social / misc / gameplay / feedback / etc.)
+  try {
+    if (!(await columnExists('articles', 'category'))) {
+      await runMigration(
+        `ALTER TABLE articles ADD COLUMN category VARCHAR(32) NOT NULL DEFAULT 'general' COMMENT 'Forum category: general | bug-report | social | misc | gameplay | feedback | game (game-specific forum).'`,
+        "Add category column to articles table"
+      );
+      // Backfill: every article that has a game_type_id is a 'game' forum;
+      // everything else stays 'general' (the column default already covers
+      // brand-new rows, but explicitly set existing rows so the data is
+      // consistent for any later filtering).
+      try {
+        await runMigration(
+          `UPDATE articles SET category = 'game' WHERE game_type_id IS NOT NULL`,
+          "Backfill category='game' for existing game forums"
+        );
+      } catch (backfillErr) {
+        console.error('Error backfilling article category:', backfillErr.message);
+      }
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding category column to articles:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

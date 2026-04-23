@@ -932,12 +932,22 @@ export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) =>
   }
 
   const captureSymbol = move.captured ? 'x' : '-';
-  
-  if (includeFrom) {
-    return `${fromSquare}${captureSymbol}${toSquare}` + suffix;
+
+  // Promotion suffix (chess-style "=Q"). We use the first letter of the
+  // promoted-to piece name when a full piece name is available; otherwise
+  // we fall back to "=" alone so reviewers still see *that* a promotion
+  // happened.
+  let promoSuffix = '';
+  if (move.promotion) {
+    const name = move.promotion.piece_name || '';
+    promoSuffix = name ? `=${name.charAt(0).toUpperCase()}` : '=';
   }
-  
-  return `${move.captured ? 'x' : ''}${toSquare}` + suffix;
+
+  if (includeFrom) {
+    return `${fromSquare}${captureSymbol}${toSquare}${promoSuffix}` + suffix;
+  }
+
+  return `${move.captured ? 'x' : ''}${toSquare}${promoSuffix}` + suffix;
 };
 
 /**
@@ -980,6 +990,21 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
     if (movingPiece && !move.moveCancelled && !move.isRangedAttack) {
       movingPiece.x = move.to.x;
       movingPiece.y = move.to.y;
+    }
+
+    // Promotion: transform the moving piece into the promoted-to piece on
+    // the move it promoted (so the replay board shows the new piece for
+    // every position from this move forward).
+    if (movingPiece && move.promotion) {
+      if (move.promotion.piece_id != null) movingPiece.piece_id = move.promotion.piece_id;
+      if (move.promotion.piece_name) movingPiece.piece_name = move.promotion.piece_name;
+      if (move.promotion.image_url) {
+        movingPiece.image_url = move.promotion.image_url;
+        movingPiece.image = move.promotion.image_url;
+      }
+      if (move.promotion.image_location) {
+        movingPiece.image_location = move.promotion.image_location;
+      }
     }
 
     // Handle castling partner movement
