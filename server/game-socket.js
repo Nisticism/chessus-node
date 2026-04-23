@@ -2261,19 +2261,30 @@ function initializeSocket(server) {
 
       const gameState = activeGames.get(gameId.toString());
       if (gameState) {
-        // Track spectators
-        if (!gameState.spectators) gameState.spectators = [];
-        const spectatorName = anonymous ? 'Anonymous' : (username || 'Guest');
-        const spectatorEntry = {
-          id: anonymous ? `anon_${socket.id}` : (userId || socket.id),
-          username: spectatorName,
-          socketId: socket.id,
-          anonymous: !!anonymous
-        };
-        // Avoid duplicates
-        if (!gameState.spectators.some(s => s.socketId === socket.id)) {
-          gameState.spectators.push(spectatorEntry);
-          io.to(`game-${gameId}`).emit("spectatorUpdate", { spectators: gameState.spectators.map(s => ({ id: s.id, username: s.username })) });
+        // Only track spectators once the game is actually running. Before that,
+        // viewers are watching the lobby/waiting screen — they shouldn't appear
+        // in the spectators list that players see.
+        if (gameState.status === 'active') {
+          // Don't list the actual players as spectators, even if their client
+          // emits spectateGame (e.g. on a page reload before state resolves).
+          const isPlayer = userId && gameState.players?.some(
+            p => p.id === userId || p.id === String(userId)
+          );
+          if (!isPlayer) {
+            if (!gameState.spectators) gameState.spectators = [];
+            const spectatorName = anonymous ? 'Anonymous' : (username || 'Guest');
+            const spectatorEntry = {
+              id: anonymous ? `anon_${socket.id}` : (userId || socket.id),
+              username: spectatorName,
+              socketId: socket.id,
+              anonymous: !!anonymous
+            };
+            // Avoid duplicates
+            if (!gameState.spectators.some(s => s.socketId === socket.id)) {
+              gameState.spectators.push(spectatorEntry);
+              io.to(`game-${gameId}`).emit("spectatorUpdate", { spectators: gameState.spectators.map(s => ({ id: s.id, username: s.username })) });
+            }
+          }
         }
         socket.emit("gameState", gameState);
       }

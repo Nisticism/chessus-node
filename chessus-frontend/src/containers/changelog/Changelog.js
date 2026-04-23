@@ -15,6 +15,9 @@ const changelogData = [
       "Admin dashboard: new 'Private Games' tab listing every active game whose host disabled spectating. Read-only — admins cannot watch these games per the host's choice",
       "Announcements: delete button is now restricted to the site owner only. Regular admins can still post but cannot remove announcements",
       "Admin dashboard: fixed a flash of 'No users found' when first loading the Users tab or switching tabs before data arrives",
+      "AI Training: training jobs that were stopped due to running out of memory now automatically resume with a higher memory limit (50% more, rounded up to the nearest 256 MB) so they don't hit the same ceiling again",
+      "Live game: spectators are no longer shown while the game is in the lobby / waiting for players. The spectators list only appears once the game has actually started",
+      "Live game: players in a match are no longer incorrectly listed in the spectators panel for their own game",
     ],
   },
   {

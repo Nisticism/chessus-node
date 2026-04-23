@@ -500,13 +500,17 @@ const LiveGame = () => {
   }, [gameId, connected, getGameState, clearOptimisticMoveSnapshot]);
 
   /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
-  // When not a player, register as a spectator
+  // When not a player, register as a spectator.
+  // Also re-registers when game status changes to 'active' so that users who
+  // were watching the lobby (before the game started) get added to the
+  // spectators list as soon as the match begins.
   const isSpectator = !!(gameState && (anonSpectate || !gameState.players?.some(p => p.id === currentUser?.id || (socket?.id && p.id === `anon_${socket.id}`))));
   useEffect(() => {
     if (isSpectator && connected && gameId && spectateGame) {
       spectateGame(parseInt(gameId), { anonymous: anonSpectate });
     }
-  }, [isSpectator, connected, gameId, spectateGame, anonSpectate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSpectator, connected, gameId, spectateGame, anonSpectate, gameState?.status]);
 
   // Leave game room on unmount so notifications can be sent
   useEffect(() => {

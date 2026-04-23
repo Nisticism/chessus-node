@@ -395,6 +395,19 @@ async function resumeJob(jobId) {
   const outDir = jobsDirFor(job.game_type_id, jobId);
   fs.mkdirSync(outDir, { recursive: true });
 
+  // If the previous run was killed by the RAM guard, bump the limit so the
+  // resumed run has headroom. Round up to the nearest 256 MiB boundary.
+  let maxRssMb = job.max_rss_mb || 1024;
+  if (job.status === 'aborted_oom') {
+    const bumped = Math.ceil((maxRssMb * 1.5) / 256) * 256;
+    maxRssMb = Math.max(bumped, maxRssMb + 256); // at least +256 MiB
+    // Persist the raised cap so future resumes (if any) also start higher.
+    await db_pool.query(
+      `UPDATE ai_training_jobs SET max_rss_mb = ? WHERE id = ?`,
+      [maxRssMb, jobId],
+    );
+  }
+
   await db_pool.query(
     `UPDATE ai_training_jobs
        SET status = 'running', ended_at = NULL, error_message = NULL,
@@ -417,7 +430,7 @@ async function resumeJob(jobId) {
     startIndex: actualPlayed,
     mctsIters: job.mcts_iters,
     checkpointEvery: job.checkpoint_every,
-    maxRssMb: job.max_rss_mb,
+    maxRssMb,
     seed: resumeSeed,
   });
 
