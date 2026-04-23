@@ -7509,17 +7509,46 @@ function getPositionHash(pieces, currentTurn) {
  * @returns {Object|null} - The promoted piece object, or null on failure
  */
 /**
- * Stamp promotion info onto the most recent move record so match-history
- * replays can transform the moving piece. Without this, the replay board
- * keeps showing the pre-promotion piece (e.g. a pawn) on every move from
- * the promotion forward.
+ * Stamp promotion info onto the most recent move record for this piece so
+ * match-history replays can transform the moving piece. Without this, the
+ * replay board keeps showing the pre-promotion piece (e.g. a pawn) on every
+ * move from the promotion forward.
+ *
+ * Searches backward through moveHistory for the most recent move with a
+ * matching pieceId (instead of blindly using the last entry), so it is safe
+ * even if the bot or opponent moved after the human's promotion move was
+ * recorded but before the promotion was confirmed.
+ *
+ * @param {Object} gameState
+ * @param {Object} promotedPiece  - The result of applyPromotionToPiece; its
+ *   `.id` field carries the original piece instance ID.
+ * @param {string|number} [fallbackPieceId] - Original pieceId to use if
+ *   promotedPiece.id is falsy (e.g. bot inline-promotion path).
  */
-function attachPromotionToLastMove(gameState, promotedPiece) {
+function attachPromotionToLastMove(gameState, promotedPiece, fallbackPieceId) {
   if (!gameState || !Array.isArray(gameState.moveHistory) || gameState.moveHistory.length === 0) return;
   if (!promotedPiece) return;
-  const lastMove = gameState.moveHistory[gameState.moveHistory.length - 1];
-  if (!lastMove || lastMove.pieceId !== promotedPiece.id) return;
-  lastMove.promotion = {
+
+  const targetId = (promotedPiece.id != null ? String(promotedPiece.id) : null) || (fallbackPieceId != null ? String(fallbackPieceId) : null);
+
+  // Walk backward to find the most recent move that moved this piece.
+  let targetMove = null;
+  for (let i = gameState.moveHistory.length - 1; i >= 0; i--) {
+    const m = gameState.moveHistory[i];
+    if (m && targetId && String(m.pieceId) === targetId) {
+      targetMove = m;
+      break;
+    }
+  }
+
+  if (!targetMove) {
+    // Fall back: just stamp the last move (pre-existing behaviour for safety).
+    targetMove = gameState.moveHistory[gameState.moveHistory.length - 1];
+    if (!targetMove) return;
+    console.warn(`[promotion-stamp] Could not find move for pieceId=${targetId}; stamping last move (pieceId=${targetMove.pieceId})`);
+  }
+
+  targetMove.promotion = {
     piece_id: promotedPiece.piece_id,
     piece_name: promotedPiece.piece_name,
     image_url: promotedPiece.image_url || promotedPiece.image || null,
@@ -11088,7 +11117,7 @@ async function processBotTurn(io, gameId, gameState) {
               if (fullPieceData) {
                 const piece = gameState.pieces[pieceIndex];
                 const imageUrl = getImageUrlForPlayer(fullPieceData.image_location, piece.player_id || piece.team || 1);
-                gameState.pieces[pieceIndex] = {
+                const botPromotedPiece = {
                   ...piece,
                   piece_id: fullPieceData.id,
                   piece_name: fullPieceData.piece_name,
@@ -11127,6 +11156,8 @@ async function processBotTurn(io, gameId, gameState) {
                   moveCount: 0,
                   hasMoved: false
                 };
+                gameState.pieces[pieceIndex] = botPromotedPiece;
+                attachPromotionToLastMove(gameState, botPromotedPiece);
                 console.log(`[Bot] Auto-promoted to ${fullPieceData.piece_name} in game ${gameId}`);
               }
             } catch (promoError) {
