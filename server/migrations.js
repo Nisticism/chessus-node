@@ -3192,6 +3192,21 @@ const runMigrations = async () => {
     console.error('Error adding category column to articles:', err.message);
   }
 
+  // Widen notifications.content from VARCHAR(500) to TEXT so that full
+  // announcement bodies (up to 5000 chars) can be stored without truncation.
+  try {
+    const notifContentType = await getColumnType('notifications', 'content');
+    if (notifContentType && notifContentType.DATA_TYPE === 'varchar') {
+      await runMigration(
+        `ALTER TABLE notifications MODIFY COLUMN content TEXT`,
+        "Widen notifications.content from VARCHAR(500) to TEXT"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error widening notifications.content:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

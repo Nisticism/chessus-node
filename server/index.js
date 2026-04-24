@@ -7387,7 +7387,7 @@ app.post('/api/announcements', authenticateAdmin, async (req, res) => {
       if (slice.length === 0) continue;
       const values = slice.flatMap((u) => [
         u.id, req.user?.id || null, 'announcement', title,
-        content.length > 480 ? content.slice(0, 477) + '...' : content,
+        content,
         announcementId, linkUrl,
       ]);
       const placeholders = slice.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(',');
@@ -7412,7 +7412,7 @@ app.post('/api/announcements', authenticateAdmin, async (req, res) => {
               io.to(socketId).emit('newNotification', {
                 type: 'announcement',
                 title,
-                content: content.length > 480 ? content.slice(0, 477) + '...' : content,
+                content,
                 related_id: announcementId,
                 action_url: linkUrl,
                 created_at: new Date().toISOString(),
@@ -7501,6 +7501,11 @@ app.put('/api/announcements/:id', authenticateAdmin, async (req, res) => {
     await db_pool.query(
       'UPDATE announcements SET title = ?, content = ?, action_url = ? WHERE id = ?',
       [title, content, actionUrl, id],
+    );
+    // Keep the fanned-out notifications in sync with the edited announcement.
+    await db_pool.query(
+      `UPDATE notifications SET title = ?, content = ? WHERE type = 'announcement' AND related_id = ?`,
+      [title, content, id],
     );
     res.json({ message: 'Announcement updated' });
   } catch (err) {

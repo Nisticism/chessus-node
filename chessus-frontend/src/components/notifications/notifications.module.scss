@@ -26,6 +26,28 @@
   margin: 0;
 }
 
+.notifications-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.view-announcements-link {
+  color: var(--accent-highlight, #81c784);
+  font-size: 0.82rem;
+  text-decoration: none;
+  border: 1px solid var(--border-medium, #2a8b5d);
+  padding: 6px 14px;
+  border-radius: 6px;
+
+  &:hover {
+    background: var(--accent-primary, #4a9e5a);
+    color: var(--text-heading);
+    text-decoration: none;
+  }
+}
+
 .mark-all-read-btn {
   background: transparent;
   border: 1px solid var(--border-medium, #2a8b5d);

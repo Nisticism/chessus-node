@@ -122,7 +122,7 @@ async function notifyOwnerOfGameCreation(io, gameId, hostId, hostUsername, gameS
       sender_id: hostId,
       type: 'system',
       title: `New game started: ${gameName}`,
-      content: `${hostUsername} created a new "${gameName}" game.`,
+      content: `${hostUsername} started a game of "${gameName}".`,
       related_id: gameId,
       action_url: `/play/${gameId}`
     });

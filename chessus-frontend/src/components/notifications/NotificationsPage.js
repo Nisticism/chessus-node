@@ -146,6 +146,9 @@ const NotificationsPage = () => {
           Notifications {unreadCount > 0 && `(${unreadCount})`}
         </h1>
         <div className={styles["notifications-actions"]}>
+          <Link to="/announcements" className={styles["view-announcements-link"]}>
+            📣 View all announcements
+          </Link>
           <button
             className={styles["mark-all-read-btn"]}
             onClick={handleMarkAllRead}
@@ -277,6 +280,21 @@ const NotificationsPage = () => {
                         }}
                       >
                         {notification.action_url.startsWith('/profile') ? 'View Profile' : 'View'}
+                      </button>
+                    </div>
+                  )}
+
+                  {notification.type === "announcement" && (
+                    <div className={styles["notification-actions-row"]}>
+                      <button
+                        className={`${styles["notification-action-btn"]} ${styles.view}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dispatch(markNotificationRead(currentUser.id, notification.id));
+                          navigate(`/announcements/${notification.related_id}`);
+                        }}
+                      >
+                        View Announcement
                       </button>
                     </div>
                   )}

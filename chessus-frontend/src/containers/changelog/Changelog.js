@@ -34,6 +34,8 @@ const changelogData = [
       "Performance: opening a forum post now loads comments with author names in a single query instead of one query per comment",
       "Performance: game detail page now fetches the forum link and upvote count in parallel instead of sequentially",
       "Announcements: each card now has a 'View announcement' button that goes directly to the announcement detail page. If the announcement has an optional link, clicking the body text navigates to that link. Admins can now edit announcements inline on both the list page and the detail page",
+      "Notifications: announcement notifications now show the full announcement text instead of cutting it off. Editing an announcement also updates the text in everyone's existing notifications. A 'View Announcement' button now appears on announcement notifications. A 'View all announcements' shortcut link has been added to the top of the notifications page",
+      "Notifications: fixed notification wording for new games — changed 'Username created a new X game' to 'Username started a game of X', consistent with the notification title",
       "Play page — game cards: rated/casual badges now also appear on correspondence games, matching the live-game cards",
       "Admin dashboard: new 'Private Games' tab listing every active game whose host disabled spectating. Read-only — admins cannot watch these games per the host's choice",
       "Announcements: delete button is now restricted to the site owner only. Regular admins can still post but cannot remove announcements",
