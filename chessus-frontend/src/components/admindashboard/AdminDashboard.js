@@ -1648,9 +1648,8 @@ const AdminDashboard = () => {
   const fetchInitialStateFlagged = useCallback(async () => {
     setInitialStateLoading(true);
     try {
-      const token = localStorage.getItem("authToken");
       const res = await axios.get(`${API_URL}admin/initial-state/flagged`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeader(),
       });
       setInitialStateFlagged(res.data?.data || []);
     } catch (err) {
@@ -1667,9 +1666,8 @@ const AdminDashboard = () => {
     setInitialStateScanning(true);
     setInitialStateScanSummary(null);
     try {
-      const token = localStorage.getItem("authToken");
       const res = await axios.post(`${API_URL}admin/initial-state/scan`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeader(),
       });
       setInitialStateScanSummary(res.data || null);
       await fetchInitialStateFlagged();
@@ -1684,9 +1682,8 @@ const AdminDashboard = () => {
 
   const clearInitialStateWarning = async (gameTypeId) => {
     try {
-      const token = localStorage.getItem("authToken");
       await axios.post(`${API_URL}admin/initial-state/${gameTypeId}/clear`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeader(),
       });
       setInitialStateFlagged((prev) => prev.filter((g) => g.id !== gameTypeId));
     } catch (err) {
@@ -1795,6 +1792,10 @@ const AdminDashboard = () => {
                 { label: 'Game Timers', value: num(serverStats.gameTimers) },
                 { label: 'Disconnect Timeouts', value: num(serverStats.disconnectTimeouts) },
                 { label: 'Online Users', value: num(serverStats.onlineUsers) },
+                { label: '429s (since restart)', value: num(serverStats.rateLimitHits) },
+                { label: 'DB Connections (total)', value: num(serverStats.dbPool?.total) },
+                { label: 'DB Connections (free)', value: num(serverStats.dbPool?.free) },
+                { label: 'DB Queue Depth', value: num(serverStats.dbPool?.queued) },
                 { label: 'RSS Memory', value: mb(serverStats.memory?.rssMB) },
                 { label: 'Heap Used', value: mb(serverStats.memory?.heapUsedMB) },
                 { label: 'Heap Total', value: mb(serverStats.memory?.heapTotalMB) },

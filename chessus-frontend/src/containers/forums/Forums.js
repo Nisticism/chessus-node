@@ -120,7 +120,7 @@ const Forums = () => {
                     </td>
                     <td>
                       <div className={styles["forums-link"]}>
-                        <div className={styles["forums-comment-likes"]}>{forum.likes ? forum.likes.length : 0}</div>
+                        <div className={styles["forums-comment-likes"]}>{forum.like_count || 0}</div>
                       </div>
                     </td>
                     <td className={styles["forums-link-content"]}>

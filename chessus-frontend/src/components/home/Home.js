@@ -402,13 +402,9 @@ const Home = () => {
                       </button>
                     ))}
                   </div>
-                  {popularGames[selectedGameIndex]?.play_count > 0 ? (
+                  {popularGames[selectedGameIndex]?.play_count > 0 && (
                     <div className={styles["play-count-tag"]}>
                       {popularGames[selectedGameIndex].play_count} {popularGames[selectedGameIndex].play_count === 1 ? 'game' : 'games'} played
-                    </div>
-                  ) : (
-                    <div className={styles["play-count-tag"]}>
-                      0 games played
                     </div>
                   )}
                 </>

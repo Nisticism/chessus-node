@@ -121,8 +121,11 @@ const corsOptions = {
     if (isAllowed) {
       callback(null, true);
     } else {
-      console.log('CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
+      // Silently reject — callback(null, false) tells the cors middleware NOT
+      // to set Access-Control-Allow-Origin, so the browser blocks the response.
+      // Using callback(new Error()) instead would log an unhandled error in PM2
+      // every time a bot or crawler hits the API from a foreign origin.
+      callback(null, false);
     }
   },
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
@@ -143,13 +146,19 @@ app.use(helmet({
 // Gzip compression for all responses
 app.use(compression());
 
+// Track 429s in-memory so the admin memory-stats endpoint can surface them.
+let rateLimitHits = 0;
+
 // Rate limiting configuration
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 500, // 500 requests per 15 minutes (generous for heavy API usage)
-  message: { message: "Too many requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res, _next, options) => {
+    rateLimitHits++;
+    res.status(options.statusCode).json({ message: "Too many requests, please try again later" });
+  },
 });
 
 const authLimiter = rateLimit({
@@ -1934,13 +1943,15 @@ app.get("/api/games/popular", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 3;
 
-    // First, check for admin-featured games. We do NOT need play_count here
-    // (featured games are hand-picked and ordered by featured_order), so skip
-    // the expensive LEFT JOIN + COUNT against the entire games table.
+    // First, check for admin-featured games. Include real play counts so the
+    // home page can display them accurately. The COUNT JOIN is cheap here
+    // because there are at most a handful of featured games.
     const [featuredGames] = await db_pool.query(`
-      SELECT gt.*, 0 as play_count
+      SELECT gt.*, COUNT(g.id) as play_count
       FROM game_types gt
+      LEFT JOIN games g ON gt.id = g.game_type_id
       WHERE gt.featured_order IS NOT NULL
+      GROUP BY gt.id
       ORDER BY gt.featured_order ASC
       LIMIT ?
     `, [limit]);
@@ -2122,21 +2133,16 @@ app.get("/api/games/:gameId", async (req, res) => {
       return res.status(404).send({ message: "Game not found" });
     }
     
-    // Find forum by querying articles table with game_type_id
-    const [forumRows] = await db_pool.query(
-      'SELECT id FROM articles WHERE game_type_id = ? LIMIT 1',
-      [gameId]
-    );
-    if (forumRows.length > 0) {
-      game.article_id = forumRows[0].id;
-    }
+    // forum_id and upvote_count are independent — run them in parallel
+    const [forumRows, upvoteResult] = await Promise.all([
+      db_pool.query('SELECT id FROM articles WHERE game_type_id = ? LIMIT 1', [gameId]),
+      db_pool.query('SELECT COUNT(*) as count FROM game_type_upvotes WHERE game_type_id = ?', [gameId]),
+    ]);
 
-    // Get upvote count
-    const [upvoteResult] = await db_pool.query(
-      'SELECT COUNT(*) as count FROM game_type_upvotes WHERE game_type_id = ?',
-      [gameId]
-    );
-    game.upvote_count = upvoteResult[0].count;
+    if (forumRows[0].length > 0) {
+      game.article_id = forumRows[0][0].id;
+    }
+    game.upvote_count = upvoteResult[0][0].count;
     
     res.json(game);
   } catch (err) {
@@ -4448,14 +4454,19 @@ app.get("/api/forums", async (req, res) => {
 
     const whereClause = whereConditions.length > 0 ? ` WHERE ${whereConditions.join(" AND ")}` : "";
 
-    // Sort by most-recent comment, falling back to created_at when there are
-    // no comments yet. Subquery `lc` finds the latest comment per article.
+    // Single query: sort by most-recent comment, pull comment/like counts and
+    // author/game names via aggregation subqueries and JOINs so there are zero
+    // per-forum round trips. Previously this was 4 queries × N forums.
     const articlesQuery = `
       SELECT a.*,
              lc.last_comment_at,
              lc.last_comment_id,
              lc.last_comment_author_id,
-             u.username AS last_comment_author_name
+             ulc.username AS last_comment_author_name,
+             COALESCE(cc.comment_count, 0) AS comment_count,
+             COALESCE(lk.like_count, 0) AS like_count,
+             CASE WHEN a.author_id IS NULL THEN 'Anonymous' ELSE ua.username END AS author_name,
+             gt.game_name
         FROM articles a
         LEFT JOIN (
           SELECT c1.article_id,
@@ -4469,52 +4480,32 @@ app.get("/api/forums", async (req, res) => {
                 GROUP BY article_id
             ) c2 ON c2.article_id = c1.article_id AND c2.max_created = c1.created_at
         ) lc ON lc.article_id = a.id
-        LEFT JOIN users u ON u.id = lc.last_comment_author_id
+        LEFT JOIN users ulc ON ulc.id = lc.last_comment_author_id
+        LEFT JOIN (
+          SELECT article_id, COUNT(*) AS comment_count
+            FROM comments
+            GROUP BY article_id
+        ) cc ON cc.article_id = a.id
+        LEFT JOIN (
+          SELECT article_id, COUNT(*) AS like_count
+            FROM likes
+            GROUP BY article_id
+        ) lk ON lk.article_id = a.id
+        LEFT JOIN users ua ON ua.id = a.author_id
+        LEFT JOIN game_types gt ON gt.id = a.game_type_id
         ${whereClause}
         ORDER BY COALESCE(lc.last_comment_at, a.created_at) DESC
         LIMIT ${limit} OFFSET ${offset}
     `;
     const countQuery = `SELECT COUNT(*) as total FROM articles a ${whereClause}`;
 
-    // Get total count
-    const [countResult] = await db_pool.query(countQuery);
+    // Run both queries in parallel
+    const [[countResult], [forums]] = await Promise.all([
+      db_pool.query(countQuery),
+      db_pool.query(articlesQuery),
+    ]);
     const total = countResult[0].total;
 
-    // Get paginated articles
-    const [articles] = await db_pool.query(articlesQuery);
-    
-    // Enrich each forum with author name, comment count, likes, and game name
-    const forums = await Promise.all(articles.map(async (forum) => {
-      // Get comment count
-      const comments = await dbHelpers.getCommentsByArticleId(forum.id);
-      forum.comment_count = comments.length;
-      
-      // Get likes
-      const likes = await dbHelpers.getLikesByArticleId(forum.id);
-      forum.likes = likes;
-      
-      // Get author name
-      if (forum.author_id) {
-        const author = await dbHelpers.findUserById(forum.author_id);
-        forum.author_name = author ? author.username : "User Deleted";
-      } else {
-        forum.author_name = "Anonymous";
-      }
-      
-      // Get game name if this is a game forum
-      if (forum.game_type_id) {
-        try {
-          const [gameRows] = await db_pool.query('SELECT game_name FROM game_types WHERE id = ?', [forum.game_type_id]);
-          forum.game_name = gameRows.length > 0 ? gameRows[0].game_name : null;
-        } catch (err) {
-          console.error(`Error fetching game name for game_type_id ${forum.game_type_id}:`, err);
-          forum.game_name = null;
-        }
-      }
-      
-      return forum;
-    }));
-    
     res.json({
       forums,
       pagination: {
@@ -4549,37 +4540,32 @@ app.get("/api/forum", async (params, res) => {
       forum.author_name = "Anonymous";
     }
 
-    // Get likes
-    const likes = await dbHelpers.getLikesByArticleId(forum_id);
+    // Get likes, game name, and comments — run likes + game name in parallel,
+    // then fetch comments with author names in a single JOIN query.
+    const [
+      likes,
+      gameNameRows,
+      commentsWithAuthors,
+    ] = await Promise.all([
+      dbHelpers.getLikesByArticleId(forum_id),
+      forum.game_type_id
+        ? db_pool.query('SELECT game_name FROM game_types WHERE id = ?', [forum.game_type_id])
+        : Promise.resolve([[]])
+      ,
+      db_pool.query(`
+        SELECT c.*,
+               COALESCE(u.username, 'User Deleted') AS author_name
+          FROM chessusnode.comments c
+          LEFT JOIN chessusnode.users u ON u.id = c.author_id
+          WHERE c.article_id = ?
+          ORDER BY c.created_at ASC
+      `, [forum.id]),
+    ]);
+
     forum.likes = likes;
-    
-    // Get game name if this is a game forum
-    if (forum.game_type_id) {
-      try {
-        const [gameRows] = await db_pool.query('SELECT game_name FROM game_types WHERE id = ?', [forum.game_type_id]);
-        forum.game_name = gameRows.length > 0 ? gameRows[0].game_name : null;
-      } catch (err) {
-        console.error(`Error fetching game name for game_type_id ${forum.game_type_id}:`, err);
-        forum.game_name = null;
-      }
-    }
+    forum.game_name = gameNameRows[0]?.[0]?.game_name ?? null;
+    forum.comments = commentsWithAuthors[0];
 
-    // Get all comments
-    const comments = await dbHelpers.getCommentsByArticleId(forum.id);
-    console.log("got the comments");
-    console.log(comments);
-
-    // Get author names for all comments
-    if (comments.length > 0) {
-      const enrichedComments = await Promise.all(comments.map(async (comment) => {
-        const commentAuthor = await dbHelpers.findUserById(comment.author_id);
-        comment.author_name = commentAuthor ? commentAuthor.username : "User Deleted";
-        return comment;
-      }));
-      forum.comments = enrichedComments;
-    }
-
-    console.log("Forum before json send: " + forum);
     res.json({ result: forum, message: "Forum found" });
   } catch (err) {
     console.error("Error in /api/forum:", err);
@@ -9404,12 +9390,26 @@ setInterval(cleanupAnonymousGames, 6 * 60 * 60 * 1000);
 app.get("/api/admin/memory-stats", authenticateAdmin, (req, res) => {
   try {
     const mem = process.memoryUsage();
+
+    // DB pool depth — mysql2 stores these on the internal pool object.
+    // Access is safe but unofficial; falls back to null if internals change.
+    const rawPool = db_pool.pool;
+    const dbPool = rawPool ? {
+      total: rawPool._allConnections?.length ?? null,
+      free: rawPool._freeConnections?.length ?? null,
+      queued: rawPool._connectionQueue?.length ?? null,
+    } : null;
+
     res.json({
       uptimeSeconds: Math.round(process.uptime()),
       activeGames: gsActiveGames ? gsActiveGames.size : 0,
       gameTimers: gsGameTimers ? gsGameTimers.size : 0,
       disconnectTimeouts: gsDisconnectTimeouts ? gsDisconnectTimeouts.size : 0,
       onlineUsers: onlineUsers ? onlineUsers.size : 0,
+      // 429 counter — resets on process restart
+      rateLimitHits,
+      // DB connection pool
+      dbPool,
       memory: {
         rssMB: +(mem.rss / 1024 / 1024).toFixed(1),
         heapUsedMB: +(mem.heapUsed / 1024 / 1024).toFixed(1),
