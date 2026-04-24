@@ -5,8 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 23, 2026",
-    title: "Live game note, stale game cleanup, AI Analysis request button, admin tools polish",
+    title: "Link insertion, live game note, stale game cleanup, AI Analysis request button, admin tools polish",
     items: [
+      "Piece detail page now describes first-move-only restrictions next to ratio movement, step-by-step movement, custom movement, and ranged attack — matching the purple highlighting on the board preview.",
+      "Game detail page now lists each piece's custom movement and custom attack squares as compact [row, col] arrays in the Piece Settings section.",
+      "Announcements page now shows the full announcement text instead of cutting off after 280 characters. The Optional Link URL field has been removed — admins can insert specific gridgrove.gg links directly into the body via the 🔗 button instead. All announcement notifications now also render those inserted links as clickable.",
+      "Bots can now place pieces in Othello-style games and prioritize placements in piece-count win-condition games.",
+      "Match history now shows piece-count win and equal-piece-count draw reasons in plain English.",
+      "Live game cap: each user can be in at most 8 live games at a time (4 for anonymous players). Correspondence cap: 24 (12 for anonymous). Challenge and open-match caps also added.",
+      "Text areas across the site (forums, comments, game descriptions, piece descriptions, announcements, news, careers, and user bios) now support clickable links to gridgrove.gg pages. Use the 🔗 link button that appears below the text area to insert a link — you can give it a custom display label. Only gridgrove.gg links are supported at this time",
       "Match history: promoted pieces now display correctly when you replay past games. Previously a promoted pawn would still appear as a pawn for the rest of the replay; the replay board now swaps in the promoted piece on the move it promoted. The text move list also shows promotion notation (e.g. 'e7-e8=Q')",
       "Match history: games that ended on the initial position now show a clear reason ('by initial position — no rating change') in both the match list and the match detail page, instead of the generic 'won by game complete' / 'the game ended in a draw'",
       "Live game: if a game ends on the initial position, the game-over modal now reliably appears (previously the modal could be missed if you joined just as the game ended, since joinGame and gameOver fired back-to-back). Reloading a completed game also re-displays the modal",

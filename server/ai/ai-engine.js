@@ -140,6 +140,30 @@ function cloneState(state) {
  * Returns array of captured pieces for win-condition checking.
  */
 function applyMove(state, move) {
+  // Placement action: add a new piece to the board, switch turns, no captures.
+  if (move.type === 'place' || move.isPlacement) {
+    const playerToMove = state.currentTurn;
+    const otherData = state.otherGameData || {};
+    const placeable = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
+    const template = move.placePieceId != null
+      ? placeable.find(pp => pp.piece_id === move.placePieceId) || placeable[0]
+      : placeable[0];
+    const newId = `placed_${state.moveCount || 0}_${move.to.x}_${move.to.y}`;
+    state.pieces.push({
+      ...(template || {}),
+      id: newId,
+      x: move.to.x,
+      y: move.to.y,
+      team: playerToMove,
+      player_id: playerToMove,
+      hasMoved: true,
+      moveCount: 1,
+    });
+    state.currentTurn = state.currentTurn === 1 ? 2 : 1;
+    state.moveCount = (state.moveCount || 0) + 1;
+    state.movesWithoutCapture = (state.movesWithoutCapture || 0) + 1;
+    return [];
+  }
   const piece = state.pieces.find(p => p.id === move.pieceId);
   if (!piece) return [];
 
@@ -430,7 +454,13 @@ function orderMoves(moves, state) {
     posMap.set(`${p.x},${p.y}`, p);
   }
 
+  const isPieceCountGame = !!(state.gameType?.piece_count_condition || state.otherGameData?.place_pieces_action);
   moves.sort((a, b) => {
+    if (isPieceCountGame) {
+      const aPlace = a.type === 'place' ? 1 : 0;
+      const bPlace = b.type === 'place' ? 1 : 0;
+      if (aPlace !== bPlace) return bPlace - aPlace;
+    }
     const targetA = posMap.get(`${a.to.x},${a.to.y}`);
     const targetB = posMap.get(`${b.to.x},${b.to.y}`);
 

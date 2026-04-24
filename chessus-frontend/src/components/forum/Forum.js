@@ -13,7 +13,9 @@ import { FaReply } from "react-icons/fa";
 import { FaArrowLeft } from "react-icons/fa";
 import LikesModule from "./LikesModule";
 import EmojiPickerButton from "../common/EmojiPickerButton";
+import LinkInsertButton from "../common/LinkInsertButton";
 import ValidationWarningModal from "../common/ValidationWarningModal";
+import { renderContent } from "../../helpers/render-content";
 
 const COMMENT_MAX = 10000;
 
@@ -219,7 +221,7 @@ const Forum = () => {
                 </Link>
               </div>
             )}
-            <div className={styles["forum-content"]}>{currentForum.content}</div>
+            <div className={styles["forum-content"]}>{renderContent(currentForum.content)}</div>
             <div className={styles["likes-container"]}>
               {currentUser ? (
                 <LikesModule isLiked={false} likeCount={currentForum.likes ? currentForum.likes.length : 0} userId={currentUser.id} forumId={currentForum.id}/>
@@ -278,7 +280,7 @@ const Forum = () => {
                         </div>
                       </div>
                     </div>
-                    <div className={styles["comment-content-container"]}> { comment.content }</div>
+                    <div className={styles["comment-content-container"]}>{renderContent(comment.content)}</div>
                     {editingCommentId === comment.id && (
                       <div
                         id={comment.id + "edit"}
@@ -295,6 +297,18 @@ const Forum = () => {
                           autoFocus
                         ></textarea>
                         <div className={styles["submit-comment-button"]} style={{ display: 'flex', gap: '8px' }}>
+                          <LinkInsertButton onInsert={(text) => {
+                            const ta = document.getElementById(comment.id + "edit-field");
+                            if (ta) {
+                              const start = ta.selectionStart;
+                              const end = ta.selectionEnd;
+                              const val = ta.value;
+                              ta.value = val.substring(0, start) + text + val.substring(end);
+                              const ev = new Event('input', { bubbles: true });
+                              ta.dispatchEvent(ev);
+                              onChangeCommentContent({ target: { value: ta.value } });
+                            }
+                          }} />
                           <StandardButton buttonText={"Update Comment"} onClick={(event) => handleEditComment(event, comment.id + "edit-field", comment.id)}/>
                           <StandardButton buttonText={"Cancel"} onClick={cancelCommentEdit}/>
                         </div>
@@ -310,6 +324,7 @@ const Forum = () => {
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(e, comment.id); } }}                            maxLength={COMMENT_MAX}                        />
                         <div className={styles["emoji-row"]}>
                           <EmojiPickerButton onEmojiSelect={(emoji) => setReplyContent(prev => prev + emoji)} />
+                          <LinkInsertButton onInsert={(text) => setReplyContent(prev => prev + text)} />
                         </div>
                         <div className={styles["reply-form-buttons"]}>
                           <StandardButton buttonText={"Reply"} onClick={(e) => handleReply(e, comment.id)}/>
@@ -334,6 +349,7 @@ const Forum = () => {
             {currentUser && (
               <div className={styles["emoji-row"]}>
                 <EmojiPickerButton onEmojiSelect={(emoji) => setNewCommentText(prev => prev + emoji)} />
+                <LinkInsertButton onInsert={(text) => setNewCommentText(prev => prev + text)} />
               </div>
             )}
           </div>

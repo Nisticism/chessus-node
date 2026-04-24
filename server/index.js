@@ -1,3 +1,52 @@
+// --- Game Session Limits ---
+const GAME_LIMITS = {
+  live: 8,
+  correspondence: 24,
+  challenge: 16,
+  open: 8,
+  live_anon: 4,
+  correspondence_anon: 12,
+  challenge_anon: 8,
+  open_anon: 4,
+};
+
+/**
+ * Count the number of active games for a user (by userId or anonId).
+ * Types: live, correspondence, challenge, open. Status: waiting, ready, active.
+ * Returns { live, correspondence, challenge, open }
+ */
+async function countUserActiveGames(identifier) {
+  // identifier: userId (number) or anonId (string)
+  const isAnon = typeof identifier === 'string' && identifier.startsWith('anon_');
+  let userWhere = isAnon
+    ? '(g.player1_anon_id = ? OR g.player2_anon_id = ?)' // adjust if anon columns differ
+    : '(p1.user_id = ? OR p2.user_id = ?)';
+  let params = isAnon ? [identifier, identifier] : [identifier, identifier];
+  const [rows] = await db_pool.query(`
+    SELECT g.is_correspondence, g.is_challenge, g.status
+    FROM games g
+    LEFT JOIN players p1 ON g.id = p1.game_id AND p1.player_position = 1
+    LEFT JOIN players p2 ON g.id = p2.game_id AND p2.player_position = 2
+    WHERE ${userWhere} AND g.status IN ('active','ready','waiting')
+  `, params);
+  let live = 0, correspondence = 0, challenge = 0, open = 0;
+  for (const row of rows) {
+    if (row.is_challenge) challenge++;
+    else if (row.is_correspondence) correspondence++;
+    else if (row.status === 'waiting' || row.status === 'ready' || row.status === 'active') live++;
+    // Open matches: status 'waiting' and not challenge/correspondence
+    if (!row.is_challenge && !row.is_correspondence && row.status === 'waiting') open++;
+  }
+  return { live, correspondence, challenge, open };
+}
+
+// --- Enforce session/game limits in game creation/join endpoints ---
+// Example usage in POST /api/games and join logic:
+//   const limits = await countUserActiveGames(userIdOrAnonId);
+//   const isAnon = ...;
+//   if (limits.live >= (isAnon ? GAME_LIMITS.live_anon : GAME_LIMITS.live)) {
+//     return res.status(400).json({ message: 'You are already in 8 live games...' });
+//   }
 require("dotenv").config();
 
 //  Constants
@@ -7363,19 +7412,18 @@ app.post('/api/announcements', authenticateAdmin, async (req, res) => {
   try {
     const title = String(req.body?.title || '').trim().slice(0, 200);
     const content = String(req.body?.content || '').trim().slice(0, 5000);
-    const actionUrl = req.body?.action_url
-      ? String(req.body.action_url).trim().slice(0, 300)
-      : null;
     if (!title || !content) {
       return res.status(400).send({ message: 'title and content are required' });
     }
     const [insert] = await db_pool.query(
       `INSERT INTO announcements (title, content, action_url, author_id)
        VALUES (?, ?, ?, ?)`,
-      [title, content, actionUrl, req.user?.id || null],
+      [title, content, null, req.user?.id || null],
     );
     const announcementId = insert.insertId;
-    const linkUrl = actionUrl || `/announcements/${announcementId}`;
+    // All announcement notifications now link to the announcement detail page.
+    // Use renderContent on the client to surface any inline gridgrove links inside the body.
+    const linkUrl = `/announcements/${announcementId}`;
 
     // Fan out: insert one notification per user. Chunk to keep the
     // single statement size bounded on large user bases.
@@ -7490,22 +7538,21 @@ app.put('/api/announcements/:id', authenticateAdmin, async (req, res) => {
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid id' });
     const title = String(req.body?.title || '').trim().slice(0, 200);
     const content = String(req.body?.content || '').trim().slice(0, 5000);
-    const actionUrl = req.body?.action_url
-      ? String(req.body.action_url).trim().slice(0, 300)
-      : null;
     if (!title || !content) {
       return res.status(400).send({ message: 'title and content are required' });
     }
     const [[existing]] = await db_pool.query('SELECT id FROM announcements WHERE id = ?', [id]);
     if (!existing) return res.status(404).send({ message: 'Announcement not found' });
+    // Custom action_url has been removed; force it back to the canonical detail page link.
+    const actionUrl = `/announcements/${id}`;
     await db_pool.query(
       'UPDATE announcements SET title = ?, content = ?, action_url = ? WHERE id = ?',
       [title, content, actionUrl, id],
     );
     // Keep the fanned-out notifications in sync with the edited announcement.
     await db_pool.query(
-      `UPDATE notifications SET title = ?, content = ? WHERE type = 'announcement' AND related_id = ?`,
-      [title, content, id],
+      `UPDATE notifications SET title = ?, content = ?, action_url = ? WHERE type = 'announcement' AND related_id = ?`,
+      [title, content, actionUrl, id],
     );
     res.json({ message: 'Announcement updated' });
   } catch (err) {

@@ -6,6 +6,7 @@ import styles from "./create-forum.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 import EmojiPickerButton from "../common/EmojiPickerButton";
+import LinkInsertButton from "../common/LinkInsertButton";
 import ValidationWarningModal from "../common/ValidationWarningModal";
 import { FORUM_CATEGORIES } from "../../helpers/forum-categories";
 
@@ -133,6 +134,7 @@ const CreateForum = () => {
                 />
                 <div className={styles["emoji-row"]}>
                   <EmojiPickerButton onEmojiSelect={(emoji) => setContent(prev => prev + emoji)} />
+                  <LinkInsertButton onInsert={(text) => setContent(prev => prev + text)} />
                   <div className={`${styles["char-counter"]} ${content.length > CONTENT_MAX * 0.9 ? styles["char-counter-warn"] : ""}`}>{content.length.toLocaleString()}/{CONTENT_MAX.toLocaleString()}</div>
                 </div>
               </div>

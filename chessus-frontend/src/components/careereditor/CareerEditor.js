@@ -4,6 +4,7 @@ import { useNavigate, useParams, Navigate } from "react-router-dom";
 import styles from "./career-editor.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import API_URL from "../../global/global";
+import LinkInsertButton from "../common/LinkInsertButton";
 
 const CareerEditor = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -179,8 +180,11 @@ const CareerEditor = () => {
               disabled={loading}
             />
             <p className={styles.hint}>
-              Supports basic markdown: **bold**, *italic*, new lines
+              Supports basic markdown: **bold**, *italic*, new lines, and [link text](url)
             </p>
+            <div style={{ marginTop: '6px' }}>
+              <LinkInsertButton onInsert={(text) => setContent(prev => prev + text)} />
+            </div>
           </div>
 
           <div className={styles.buttonGroup}>

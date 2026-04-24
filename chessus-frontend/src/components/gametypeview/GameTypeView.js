@@ -18,6 +18,7 @@ import {
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { parseServerDate } from "../../helpers/date-formatter";
 import BoardLegend from "../common/BoardLegend";
+import { renderContent } from "../../helpers/render-content";
 import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 import InfoTooltip from "../piecewizard/InfoTooltip";
@@ -381,6 +382,22 @@ const describePieceCapture = (pieceData) => {
   }
   
   return captures.join('; ');
+};
+
+// Helper to format a custom_movement_squares / custom_attack_squares JSON column as a
+// compact one-line array of relative [row, col] offsets.
+const formatCustomSquaresLine = (rawValue) => {
+  if (!rawValue) return '';
+  let parsed = rawValue;
+  if (typeof rawValue === 'string') {
+    try { parsed = JSON.parse(rawValue); } catch { return ''; }
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return '';
+  const coords = parsed
+    .filter((sq) => Number.isInteger(sq?.row) && Number.isInteger(sq?.col))
+    .map((sq) => `[${sq.row}, ${sq.col}]`);
+  if (coords.length === 0) return '';
+  return coords.join(', ');
 };
 
 const GameTypeView = () => {
@@ -821,6 +838,18 @@ const GameTypeView = () => {
       // Ranged attack description (separate from regular attack)
       if (rangedDesc) {
         description += `• **Ranged Attack**: ${rangedDesc.charAt(0).toUpperCase() + rangedDesc.slice(1)}.\n`;
+      }
+
+      // Custom movement squares (one line, compact array of relative offsets)
+      const customMoveLine = formatCustomSquaresLine(pieceData.custom_movement_squares);
+      if (customMoveLine) {
+        description += `• **Custom Movement**: relative [row, col] offsets: ${customMoveLine}.\n`;
+      }
+
+      // Custom attack squares (one line, compact array of relative offsets)
+      const customAttackLine = formatCustomSquaresLine(pieceData.custom_attack_squares);
+      if (customAttackLine) {
+        description += `• **Custom Attack**: relative [row, col] offsets: ${customAttackLine}.\n`;
       }
 
       // Capture on hop
@@ -2111,7 +2140,7 @@ const GameTypeView = () => {
 
         <div className={styles["section"]}>
           <h2>Description</h2>
-          <p>{game.descript || "No description provided."}</p>
+          {game.descript ? renderContent(game.descript) : <p>No description provided.</p>}
         </div>
 
         {/* Placeable Pieces Visual Section */}

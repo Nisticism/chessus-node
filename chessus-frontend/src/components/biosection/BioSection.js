@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import styles from "./bio-section.module.scss";
 import ValidationWarningModal from "../common/ValidationWarningModal";
+import LinkInsertButton from "../common/LinkInsertButton";
+import { renderContent } from "../../helpers/render-content";
 
 const BIO_MAX = 500;
 
@@ -66,6 +68,9 @@ const BioSection = ({
           <div style={{ textAlign: 'right', fontSize: '0.8rem', color: editValue.length > BIO_MAX * 0.9 ? '#e74c3c' : '#999', marginTop: '4px' }}>
             {editValue.length}/{BIO_MAX}
           </div>
+          <div style={{ marginTop: '6px', marginBottom: '6px' }}>
+            <LinkInsertButton onInsert={(text) => setEditValue(prev => prev + text)} />
+          </div>
           <div className={styles["edit-actions"]}>
             <button 
               type="button"
@@ -86,7 +91,7 @@ const BioSection = ({
       ) : (
         <div className={styles["bio-content"]}>
           {bio && bio.trim() !== "" && bio !== "null" ? (
-            <p className={styles["bio-text"]}>{bio}</p>
+            <div className={styles["bio-text"]}>{renderContent(bio)}</div>
           ) : (
             <div className={styles["bio-empty"]}>
               {emptyMessage}

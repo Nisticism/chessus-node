@@ -6,6 +6,7 @@ import StandardButton from "../standardbutton/StandardButton";
 import { getForum, editForum } from "../../actions/forums";
 import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 import EmojiPickerButton from "../common/EmojiPickerButton";
+import LinkInsertButton from "../common/LinkInsertButton";
 import ValidationWarningModal from "../common/ValidationWarningModal";
 
 const TITLE_MAX = 200;
@@ -147,6 +148,18 @@ const EditForum = () => {
                       const end = textarea.selectionEnd;
                       const val = textarea.value;
                       textarea.value = val.substring(0, start) + emoji + val.substring(end);
+                      const event = new Event('input', { bubbles: true });
+                      textarea.dispatchEvent(event);
+                      onChangeContent({ target: { value: textarea.value } });
+                    }
+                  }} />
+                  <LinkInsertButton onInsert={(text) => {
+                    const textarea = document.querySelector(`textarea[name="content"]`);
+                    if (textarea) {
+                      const start = textarea.selectionStart;
+                      const end = textarea.selectionEnd;
+                      const val = textarea.value;
+                      textarea.value = val.substring(0, start) + text + val.substring(end);
                       const event = new Event('input', { bubbles: true });
                       textarea.dispatchEvent(event);
                       onChangeContent({ target: { value: textarea.value } });

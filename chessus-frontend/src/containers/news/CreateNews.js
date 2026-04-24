@@ -4,6 +4,7 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { newNews, news as fetchNews } from "../../actions/news";
 import styles from "./createnews.module.scss";
 import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
+import LinkInsertButton from "../../components/common/LinkInsertButton";
 
 const CreateNews = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -88,6 +89,9 @@ const CreateNews = () => {
                 placeholder="Write your news article content here. Use clear paragraphs and formatting for better readability."
               />
             <div className={styles["textarea-hint"]}>Use double line breaks to separate paragraphs</div>
+            <div style={{ marginTop: '6px' }}>
+              <LinkInsertButton onInsert={(text) => setContent(prev => prev + text)} />
+            </div>
           </div>
 
           {message && (

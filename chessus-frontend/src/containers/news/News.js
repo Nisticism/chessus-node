@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import styles from "./news.module.scss";
 import { news, deleteNews } from "../../actions/news";
 import { parseServerDate } from "../../helpers/date-formatter";
+import { renderContent } from "../../helpers/render-content";
 const News = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allNews = useSelector((state) => state.news);
@@ -95,7 +96,7 @@ const News = () => {
                   )}
                   
                   <div className={styles["article-content"]}>
-                    {newsItem.content}
+                    {renderContent(newsItem.content)}
                   </div>
                   
                   {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'owner') && (

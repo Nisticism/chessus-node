@@ -10476,7 +10476,66 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
       }
     }
   }
-  
+
+  // ---- Placement actions (Othello-style "place a piece" moves) ----
+  // If the game type allows the current player to place new pieces, enumerate
+  // every legal placement so the bot / no-moves detection sees them too.
+  try {
+    const otherData = gameState.otherGameData || {};
+    if (otherData.place_pieces_action) {
+      const boardWidth = gameType?.board_width || 8;
+      const boardHeight = gameType?.board_height || 8;
+      const placeable = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
+      const piecesToPlace = placeable.length > 0 ? placeable : [{ piece_id: null }];
+
+      // Determine which squares are valid placement targets.
+      let validSquares = null;
+      if (otherData.flanking_captures && otherData.must_flank) {
+        try {
+          validSquares = getValidFlankingPlacements(gameState, playerPosition) || [];
+        } catch (e) {
+          validSquares = [];
+        }
+      }
+
+      if (validSquares) {
+        for (const sq of validSquares) {
+          const x = sq.x ?? sq.col;
+          const y = sq.y ?? sq.row;
+          if (x == null || y == null) continue;
+          for (const p of piecesToPlace) {
+            legalMoves.push({
+              type: 'place',
+              from: { x, y },
+              to: { x, y },
+              placePieceId: p.piece_id ?? null,
+              isPlacement: true,
+            });
+          }
+        }
+      } else {
+        // Free placement: any unoccupied square is valid.
+        for (let y = 0; y < boardHeight; y++) {
+          for (let x = 0; x < boardWidth; x++) {
+            const occupied = pieces.some(p => p.x === x && p.y === y && !p._occupied);
+            if (occupied) continue;
+            for (const p of piecesToPlace) {
+              legalMoves.push({
+                type: 'place',
+                from: { x, y },
+                to: { x, y },
+                placePieceId: p.piece_id ?? null,
+                isPlacement: true,
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[getAllLegalMovesForPlayer] placement enumeration failed:', e.message);
+  }
+
   return legalMoves;
 }
 

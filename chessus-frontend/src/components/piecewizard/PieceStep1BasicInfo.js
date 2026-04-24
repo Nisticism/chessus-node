@@ -5,6 +5,7 @@ import InfoTooltip from "./InfoTooltip";
 import NumberInput from "../common/NumberInput";
 import { pieceImageLibrary } from "../../assets/piece-images";
 import { checkForLinks, checkOffensiveContent, checkProfessionalName } from "../../utils/contentModeration";
+import LinkInsertButton from "../common/LinkInsertButton";
 
 // Compute average perceived brightness (0-255) of an image from its data URL
 const computeImageBrightness = (dataUrl) => {
@@ -99,7 +100,15 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
       } else {
         const linkCheck = checkForLinks(value);
         if (linkCheck.hasLinks) {
-          warnings[field] = 'Links and URLs are not allowed in this field. Please remove any links.';
+          const hasDisallowedLinks = linkCheck.links.some((link) => {
+            if (/^https?:\/\//.test(link)) {
+              return !/^https?:\/\/(?:www\.)?gridgrove\.gg(?:\/|$)/i.test(link);
+            }
+            return !/^(?:www\.)?gridgrove\.gg(?:\/|$)/i.test(link);
+          });
+          if (hasDisallowedLinks) {
+            warnings[field] = 'Only gridgrove.gg links are supported. Please remove external links.';
+          }
         }
       }
       setContentWarnings(prev => ({ ...prev, [field]: warnings[field] || null }));
@@ -352,6 +361,9 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
         />
         <div className={styles["char-count"]}>
           {pieceData.piece_description.length} / 1000 characters
+        </div>
+        <div style={{ marginTop: '6px' }}>
+          <LinkInsertButton onInsert={(text) => handleChange("piece_description", pieceData.piece_description + text)} />
         </div>
         {contentWarnings.piece_description && (
           <p className={styles["validation-error"]}>

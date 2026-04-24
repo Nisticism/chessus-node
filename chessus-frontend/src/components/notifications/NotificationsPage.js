@@ -11,6 +11,7 @@ import {
 import { acceptFriendRequest, declineFriendRequest } from "../../actions/friends";
 import styles from "./notifications.module.scss";
 import { parseServerDate } from "../../helpers/date-formatter";
+import { renderContent } from "../../helpers/render-content";
 
 const NOTIFICATION_ICONS = {
   friend_request: "👥",
@@ -188,7 +189,7 @@ const NotificationsPage = () => {
                   </div>
                   {notification.content && (
                     <div className={styles["notification-content"]}>
-                      {notification.content}
+                      {renderContent(notification.content)}
                     </div>
                   )}
                   <div className={styles["notification-time"]}>

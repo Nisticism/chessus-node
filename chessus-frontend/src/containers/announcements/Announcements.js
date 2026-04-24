@@ -6,6 +6,8 @@ import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import { parseServerDate } from "../../helpers/date-formatter";
 import styles from "./announcements.module.scss";
+import LinkInsertButton from "../../components/common/LinkInsertButton";
+import { renderContent } from "../../helpers/render-content";
 
 const PAGE_SIZE = 10;
 
@@ -21,12 +23,12 @@ const Announcements = () => {
 
   // Admin compose form state
   const [composing, setComposing] = useState(false);
-  const [form, setForm] = useState({ title: '', content: '', action_url: '' });
+  const [form, setForm] = useState({ title: '', content: '' });
   const [posting, setPosting] = useState(false);
 
   // Admin inline edit state
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ title: '', content: '', action_url: '' });
+  const [editForm, setEditForm] = useState({ title: '', content: '' });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async (p) => {
@@ -51,11 +53,10 @@ const Announcements = () => {
         {
           title: form.title.trim(),
           content: form.content.trim(),
-          action_url: form.action_url.trim() || null,
         },
         { headers: authHeader() },
       );
-      setForm({ title: '', content: '', action_url: '' });
+      setForm({ title: '', content: '' });
       setComposing(false);
       setPage(1);
       load(1);
@@ -75,8 +76,7 @@ const Announcements = () => {
   };
 
   const handleEdit = (a) => {
-    const customUrl = a.action_url && a.action_url !== `/announcements/${a.id}` ? a.action_url : '';
-    setEditForm({ title: a.title, content: a.content, action_url: customUrl });
+    setEditForm({ title: a.title, content: a.content });
     setEditingId(a.id);
   };
 
@@ -90,7 +90,6 @@ const Announcements = () => {
         {
           title: editForm.title.trim(),
           content: editForm.content.trim(),
-          action_url: editForm.action_url.trim() || null,
         },
         { headers: authHeader() },
       );
@@ -138,14 +137,9 @@ const Announcements = () => {
               onChange={(e) => setForm({ ...form, content: e.target.value })}
             />
           </label>
-          <label>
-            Optional link URL
-            <input
-              type="text" maxLength={300} placeholder="/changelog or https://..."
-              value={form.action_url}
-              onChange={(e) => setForm({ ...form, action_url: e.target.value })}
-            />
-          </label>
+          <div style={{ marginBottom: '10px' }}>
+            <LinkInsertButton onInsert={(text) => setForm((f) => ({ ...f, content: f.content + text }))} />
+          </div>
           <button type="submit" disabled={posting}>
             {posting ? 'Posting…' : 'Post announcement to all users'}
           </button>
@@ -165,7 +159,6 @@ const Announcements = () => {
 
       <ul className={styles.list}>
         {data.announcements.map((a) => {
-          const hasCustomLink = a.action_url && a.action_url !== `/announcements/${a.id}`;
           return (
             <li key={a.id} className={styles.item}>
               {editingId === a.id ? (
@@ -186,14 +179,9 @@ const Announcements = () => {
                       onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
                     />
                   </label>
-                  <label>
-                    Optional link URL
-                    <input
-                      type="text" maxLength={300} placeholder="/changelog or https://..."
-                      value={editForm.action_url}
-                      onChange={(e) => setEditForm({ ...editForm, action_url: e.target.value })}
-                    />
-                  </label>
+                  <div style={{ marginBottom: '10px' }}>
+                    <LinkInsertButton onInsert={(text) => setEditForm((f) => ({ ...f, content: f.content + text }))} />
+                  </div>
                   <div className={styles.editFormButtons}>
                     <button type="submit" disabled={saving}>
                       {saving ? 'Saving…' : 'Save changes'}
@@ -210,30 +198,9 @@ const Announcements = () => {
                     {parseServerDate(a.created_at).toLocaleString()}
                     {a.author_username && <> · by {a.author_username}</>}
                   </div>
-                  {hasCustomLink ? (
-                    hasCustomLink && a.action_url.startsWith('http') ? (
-                      <a
-                        href={a.action_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={styles.previewLink}
-                      >
-                        <p className={styles.preview}>
-                          {a.content.length > 280 ? a.content.slice(0, 280) + '…' : a.content}
-                        </p>
-                      </a>
-                    ) : (
-                      <Link to={a.action_url} className={styles.previewLink}>
-                        <p className={styles.preview}>
-                          {a.content.length > 280 ? a.content.slice(0, 280) + '…' : a.content}
-                        </p>
-                      </Link>
-                    )
-                  ) : (
-                    <p className={styles.preview}>
-                      {a.content.length > 280 ? a.content.slice(0, 280) + '…' : a.content}
-                    </p>
-                  )}
+                  <div className={styles.preview}>
+                    {renderContent(a.content)}
+                  </div>
                   <div className={styles.itemFooter}>
                     <Link to={`/announcements/${a.id}`} className={styles.viewBtn}>
                       View announcement →

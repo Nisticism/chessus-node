@@ -6,6 +6,8 @@ import authHeader from "../../services/auth-header";
 import API_URL from "../../global/global";
 import { parseServerDate } from "../../helpers/date-formatter";
 import styles from "./announcements.module.scss";
+import LinkInsertButton from "../../components/common/LinkInsertButton";
+import { renderContent } from "../../helpers/render-content";
 
 const AnnouncementDetail = () => {
   const { id } = useParams();
@@ -17,7 +19,7 @@ const AnnouncementDetail = () => {
   const [loading, setLoading] = useState(true);
 
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ title: '', content: '', action_url: '' });
+  const [editForm, setEditForm] = useState({ title: '', content: '' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -30,8 +32,7 @@ const AnnouncementDetail = () => {
   }, [id]);
 
   const handleEdit = () => {
-    const customUrl = a.action_url && a.action_url !== `/announcements/${a.id}` ? a.action_url : '';
-    setEditForm({ title: a.title, content: a.content, action_url: customUrl });
+    setEditForm({ title: a.title, content: a.content });
     setEditing(true);
   };
 
@@ -45,7 +46,6 @@ const AnnouncementDetail = () => {
         {
           title: editForm.title.trim(),
           content: editForm.content.trim(),
-          action_url: editForm.action_url.trim() || null,
         },
         { headers: authHeader() },
       );
@@ -53,7 +53,6 @@ const AnnouncementDetail = () => {
         ...prev,
         title: editForm.title.trim(),
         content: editForm.content.trim(),
-        action_url: editForm.action_url.trim() || null,
       }));
       setEditing(false);
     } catch (e) {
@@ -64,8 +63,6 @@ const AnnouncementDetail = () => {
   if (loading) return <div className={styles.page}><p>Loading…</p></div>;
   if (err) return <div className={styles.page}><p className={styles.error}>{err}</p></div>;
   if (!a) return null;
-
-  const hasCustomLink = a.action_url && a.action_url !== `/announcements/${a.id}`;
 
   return (
     <div className={styles.page}>
@@ -88,14 +85,9 @@ const AnnouncementDetail = () => {
               onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
             />
           </label>
-          <label>
-            Optional link URL
-            <input
-              type="text" maxLength={300} placeholder="/changelog or https://..."
-              value={editForm.action_url}
-              onChange={(e) => setEditForm({ ...editForm, action_url: e.target.value })}
-            />
-          </label>
+          <div style={{ marginBottom: '10px' }}>
+            <LinkInsertButton onInsert={(text) => setEditForm((f) => ({ ...f, content: f.content + text }))} />
+          </div>
           <div className={styles.editFormButtons}>
             <button type="submit" disabled={saving}>
               {saving ? 'Saving…' : 'Save changes'}
@@ -120,21 +112,8 @@ const AnnouncementDetail = () => {
             {a.author_username && <> · by {a.author_username}</>}
           </div>
           <div className={styles.body}>
-            {a.content.split(/\n+/).map((para, i) => <p key={i}>{para}</p>)}
+            {renderContent(a.content)}
           </div>
-          {hasCustomLink && (
-            <p>
-              {a.action_url.startsWith('http') ? (
-                <a href={a.action_url} target="_blank" rel="noopener noreferrer" className={styles.actionLink}>
-                  Open link →
-                </a>
-              ) : (
-                <Link to={a.action_url} className={styles.actionLink}>
-                  Read more →
-                </Link>
-              )}
-            </p>
-          )}
         </>
       )}
     </div>

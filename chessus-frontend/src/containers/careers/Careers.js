@@ -82,8 +82,19 @@ const Careers = () => {
   const renderMarkdown = (text) => {
     if (!text) return '';
     
+    // Convert [label](url) links — only gridgrove.gg or relative paths are stored
+    const withLinks = text.replace(
+      /\[([^\]]*)\]\(((?:https?:\/\/(?:www\.)?gridgrove\.gg|\/)[^)]*)\)/g,
+      (_, label, url) => {
+        const safeLabel = label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const safeUrl = url.replace(/"/g, '%22');
+        const extra = url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"';
+        return `<a href="${safeUrl}"${extra}>${safeLabel}</a>`;
+      }
+    );
+
     // Simple markdown rendering
-    return text
+    return withLinks
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/\n\n/g, '</p><p>')

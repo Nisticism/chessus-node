@@ -303,7 +303,7 @@ const GameWizard = ({ editGameId }) => {
       return;
     }
     if (gameData.descript) {
-      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000 });
+      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000, allowLinks: true });
       if (!descCheck.isValid) {
         setSaveError(descCheck.errors[0]);
         goToStep(1);
@@ -311,7 +311,7 @@ const GameWizard = ({ editGameId }) => {
       }
     }
     if (gameData.rules) {
-      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000 });
+      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000, allowLinks: true });
       if (!rulesCheck.isValid) {
         setSaveError(rulesCheck.errors[0]);
         goToStep(1);

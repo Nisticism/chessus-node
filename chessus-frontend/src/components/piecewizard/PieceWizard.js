@@ -614,7 +614,7 @@ const PieceWizard = ({ editPieceId = null }) => {
       }
     }
     if (pieceData.piece_description) {
-      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000 });
+      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000, allowLinks: true });
       if (!descCheck.isValid) {
         alert(descCheck.errors[0]);
         return;

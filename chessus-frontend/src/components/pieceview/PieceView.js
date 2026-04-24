@@ -9,6 +9,7 @@ import Pagination from "../pagination/Pagination";
 import styles from "./pieceview.module.scss";
 import { parseServerDate } from "../../helpers/date-formatter";
 import authHeader from "../../services/auth-header";
+import { renderContent } from "../../helpers/render-content";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 const API_URL = (process.env.REACT_APP_API_URL || "") + "/api/";
@@ -657,7 +658,7 @@ const PieceView = () => {
         {pieceToDisplay.piece_description && (
           <div className={styles["section"]}>
             <h2>Description</h2>
-            <p>{pieceToDisplay.piece_description}</p>
+            <div>{renderContent(pieceToDisplay.piece_description)}</div>
           </div>
         )}
 
@@ -838,6 +839,12 @@ const PieceView = () => {
                 <span className={styles["ability-icon"]}>🔀</span>
                 <h3>Ratio Movement (L-Shape)</h3>
               </div>
+              {pieceToDisplay.first_move_only && (
+                <div className={styles["global-modifier"]}>
+                  <span className={styles["modifier-icon"]}>⏱️</span>
+                  <span>Ratio movement is first-move only</span>
+                </div>
+              )}
               <div className={styles["ratio-display"]}>
                 Pattern: <span className={styles["ratio-value"]}>
                   {pieceToDisplay.ratio_one_movement || '?'}:{pieceToDisplay.ratio_two_movement || '?'}
@@ -853,6 +860,12 @@ const PieceView = () => {
                 <span className={styles["ability-icon"]}>👣</span>
                 <h3>Step-by-Step Movement</h3>
               </div>
+              {pieceToDisplay.first_move_only && (
+                <div className={styles["global-modifier"]}>
+                  <span className={styles["modifier-icon"]}>⏱️</span>
+                  <span>Step-by-step movement is first-move only</span>
+                </div>
+              )}
               <div className={styles["step-display"]}>
                 Can move up to <span className={styles["step-value"]}>{Math.abs(pieceToDisplay.step_by_step_movement_value || 0)}</span> squares,
                 {(pieceToDisplay.step_by_step_movement_value || 0) < 0
@@ -868,6 +881,12 @@ const PieceView = () => {
                 <span className={styles["ability-icon"]}>🟩</span>
                 <h3>Custom Square Movement ({customMovementSquares.length})</h3>
               </div>
+              {pieceToDisplay.first_move_only && (
+                <div className={styles["global-modifier"]}>
+                  <span className={styles["modifier-icon"]}>⏱️</span>
+                  <span>Custom movement is first-move only</span>
+                </div>
+              )}
               <div className={styles["custom-square-summary"]}>
                 Relative offsets [row, col]:
                 <span className={styles["custom-square-array"]}>{formatCustomSquareArray(customMovementSquares)}</span>
@@ -1148,6 +1167,12 @@ const PieceView = () => {
                 <span className={styles["ability-icon"]}>🟥</span>
                 <h3>Custom Square Attack ({customAttackSquares.length})</h3>
               </div>
+              {pieceToDisplay.first_move_only_capture && (
+                <div className={styles["global-modifier"]}>
+                  <span className={styles["modifier-icon"]}>⏱️</span>
+                  <span>Custom attack is first-move only</span>
+                </div>
+              )}
               <div className={styles["custom-square-summary"]}>
                 Relative capture offsets [row, col]:
                 <span className={styles["custom-square-array"]}>{formatCustomSquareArray(customAttackSquares)}</span>
@@ -1185,6 +1210,12 @@ const PieceView = () => {
                 <span className={styles["ability-icon"]}>💥</span>
                 <h3>Ranged Attack</h3>
               </div>
+              {pieceToDisplay.first_move_only_capture && (
+                <div className={styles["global-modifier"]}>
+                  <span className={styles["modifier-icon"]}>⏱️</span>
+                  <span>All ranged attacks are first-move only</span>
+                </div>
+              )}
               {getDirectionalAttackDetails().length > 0 && (
                 <div className={styles["direction-list"]}>
                   {getDirectionalAttackDetails().map(dir => (

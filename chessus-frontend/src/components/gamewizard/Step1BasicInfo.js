@@ -4,6 +4,7 @@ import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import { checkForLinks, checkOffensiveContent, checkProfessionalName } from "../../utils/contentModeration";
+import LinkInsertButton from "../common/LinkInsertButton";
 
 const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
   const [contentWarnings, setContentWarnings] = useState({});
@@ -21,7 +22,15 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
       } else {
         const linkCheck = checkForLinks(value);
         if (linkCheck.hasLinks) {
-          warnings[field] = 'Links and URLs are not allowed in this field. Please remove any links.';
+          const hasDisallowedLinks = linkCheck.links.some((link) => {
+            if (/^https?:\/\//.test(link)) {
+              return !/^https?:\/\/(?:www\.)?gridgrove\.gg(?:\/|$)/i.test(link);
+            }
+            return !/^(?:www\.)?gridgrove\.gg(?:\/|$)/i.test(link);
+          });
+          if (hasDisallowedLinks) {
+            warnings[field] = 'Only gridgrove.gg links are supported. Please remove external links.';
+          }
         }
       }
       setContentWarnings(prev => ({ ...prev, [field]: warnings[field] || null }));
@@ -87,6 +96,9 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
         />
         <div className={styles["char-count"]}>
           {gameData.descript.length} / 8000 characters
+        </div>
+        <div style={{ marginTop: '6px' }}>
+          <LinkInsertButton onInsert={(text) => handleChange("descript", gameData.descript + text)} />
         </div>
         {contentWarnings.descript && (
           <p className={styles["validation-error"]}>
