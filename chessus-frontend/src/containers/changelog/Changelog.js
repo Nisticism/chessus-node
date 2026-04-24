@@ -33,6 +33,7 @@ const changelogData = [
       "Performance: forums list now loads significantly faster — previously loaded each forum's comment count, like count, author name, and game name with separate database queries (up to 81 queries for a page of 20). All of this is now resolved in 2 queries using SQL joins",
       "Performance: opening a forum post now loads comments with author names in a single query instead of one query per comment",
       "Performance: game detail page now fetches the forum link and upvote count in parallel instead of sequentially",
+      "Announcements: each card now has a 'View announcement' button that goes directly to the announcement detail page. If the announcement has an optional link, clicking the body text navigates to that link. Admins can now edit announcements inline on both the list page and the detail page",
       "Play page — game cards: rated/casual badges now also appear on correspondence games, matching the live-game cards",
       "Admin dashboard: new 'Private Games' tab listing every active game whose host disabled spectating. Read-only — admins cannot watch these games per the host's choice",
       "Announcements: delete button is now restricted to the site owner only. Regular admins can still post but cannot remove announcements",

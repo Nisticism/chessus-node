@@ -24,6 +24,11 @@ const Announcements = () => {
   const [form, setForm] = useState({ title: '', content: '', action_url: '' });
   const [posting, setPosting] = useState(false);
 
+  // Admin inline edit state
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ title: '', content: '', action_url: '' });
+  const [saving, setSaving] = useState(false);
+
   const load = useCallback(async (p) => {
     setLoading(true); setErr(null);
     try {
@@ -67,6 +72,33 @@ const Announcements = () => {
     } catch (e) {
       alert(e?.response?.data?.message || e.message);
     }
+  };
+
+  const handleEdit = (a) => {
+    const customUrl = a.action_url && a.action_url !== `/announcements/${a.id}` ? a.action_url : '';
+    setEditForm({ title: a.title, content: a.content, action_url: customUrl });
+    setEditingId(a.id);
+  };
+
+  const submitEdit = async (e, id) => {
+    e.preventDefault();
+    if (!editForm.title.trim() || !editForm.content.trim()) return;
+    setSaving(true);
+    try {
+      await axios.put(
+        `${API_URL}announcements/${id}`,
+        {
+          title: editForm.title.trim(),
+          content: editForm.content.trim(),
+          action_url: editForm.action_url.trim() || null,
+        },
+        { headers: authHeader() },
+      );
+      setEditingId(null);
+      load(page);
+    } catch (e) {
+      alert(e?.response?.data?.message || e.message || 'Failed to update announcement');
+    } finally { setSaving(false); }
   };
 
   return (
@@ -132,29 +164,104 @@ const Announcements = () => {
       )}
 
       <ul className={styles.list}>
-        {data.announcements.map((a) => (
-          <li key={a.id} className={styles.item}>
-            <h3>
-              <Link to={`/announcements/${a.id}`}>{a.title}</Link>
-            </h3>
-            <div className={styles.meta}>
-              {parseServerDate(a.created_at).toLocaleString()}
-              {a.author_username && <> · by {a.author_username}</>}
-            </div>
-            <p className={styles.preview}>
-              {a.content.length > 280 ? a.content.slice(0, 280) + '…' : a.content}
-            </p>
-            {isOwner && (
-              <button
-                type="button"
-                className={styles.deleteBtn}
-                onClick={() => handleDelete(a.id)}
-              >
-                Delete
-              </button>
-            )}
-          </li>
-        ))}
+        {data.announcements.map((a) => {
+          const hasCustomLink = a.action_url && a.action_url !== `/announcements/${a.id}`;
+          return (
+            <li key={a.id} className={styles.item}>
+              {editingId === a.id ? (
+                <form className={styles.editForm} onSubmit={(e) => submitEdit(e, a.id)}>
+                  <label>
+                    Title
+                    <input
+                      type="text" maxLength={200} required
+                      value={editForm.title}
+                      onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Content
+                    <textarea
+                      rows={6} maxLength={5000} required
+                      value={editForm.content}
+                      onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Optional link URL
+                    <input
+                      type="text" maxLength={300} placeholder="/changelog or https://..."
+                      value={editForm.action_url}
+                      onChange={(e) => setEditForm({ ...editForm, action_url: e.target.value })}
+                    />
+                  </label>
+                  <div className={styles.editFormButtons}>
+                    <button type="submit" disabled={saving}>
+                      {saving ? 'Saving…' : 'Save changes'}
+                    </button>
+                    <button type="button" onClick={() => setEditingId(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <h3>{a.title}</h3>
+                  <div className={styles.meta}>
+                    {parseServerDate(a.created_at).toLocaleString()}
+                    {a.author_username && <> · by {a.author_username}</>}
+                  </div>
+                  {hasCustomLink ? (
+                    hasCustomLink && a.action_url.startsWith('http') ? (
+                      <a
+                        href={a.action_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.previewLink}
+                      >
+                        <p className={styles.preview}>
+                          {a.content.length > 280 ? a.content.slice(0, 280) + '…' : a.content}
+                        </p>
+                      </a>
+                    ) : (
+                      <Link to={a.action_url} className={styles.previewLink}>
+                        <p className={styles.preview}>
+                          {a.content.length > 280 ? a.content.slice(0, 280) + '…' : a.content}
+                        </p>
+                      </Link>
+                    )
+                  ) : (
+                    <p className={styles.preview}>
+                      {a.content.length > 280 ? a.content.slice(0, 280) + '…' : a.content}
+                    </p>
+                  )}
+                  <div className={styles.itemFooter}>
+                    <Link to={`/announcements/${a.id}`} className={styles.viewBtn}>
+                      View announcement →
+                    </Link>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        className={styles.editBtn}
+                        onClick={() => handleEdit(a)}
+                      >
+                        Edit
+                      </button>
+                    )}
+                    {isOwner && (
+                      <button
+                        type="button"
+                        className={styles.deleteBtn}
+                        onClick={() => handleDelete(a.id)}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </li>
+          );
+        })}
       </ul>
 
       {data.totalPages > 1 && (
@@ -179,3 +286,4 @@ const Announcements = () => {
 };
 
 export default Announcements;
+

@@ -7484,6 +7484,31 @@ app.get('/api/announcements/:id', async (req, res) => {
   }
 });
 
+app.put('/api/announcements/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid id' });
+    const title = String(req.body?.title || '').trim().slice(0, 200);
+    const content = String(req.body?.content || '').trim().slice(0, 5000);
+    const actionUrl = req.body?.action_url
+      ? String(req.body.action_url).trim().slice(0, 300)
+      : null;
+    if (!title || !content) {
+      return res.status(400).send({ message: 'title and content are required' });
+    }
+    const [[existing]] = await db_pool.query('SELECT id FROM announcements WHERE id = ?', [id]);
+    if (!existing) return res.status(404).send({ message: 'Announcement not found' });
+    await db_pool.query(
+      'UPDATE announcements SET title = ?, content = ?, action_url = ? WHERE id = ?',
+      [title, content, actionUrl, id],
+    );
+    res.json({ message: 'Announcement updated' });
+  } catch (err) {
+    console.error('Announcement update error:', err);
+    res.status(500).send({ message: err.message || 'Failed to update announcement' });
+  }
+});
+
 app.delete('/api/announcements/:id', authenticateToken, async (req, res) => {
   if (req.user.role !== 'owner') {
     return res.status(403).send({ message: 'Only the site owner can delete announcements' });
