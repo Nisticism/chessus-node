@@ -767,6 +767,8 @@ fn pseudo_moves_no_castle(board: &Board, rules: &Rules, p: &PieceOnBoard) -> Vec
                 game: rules.game.clone(),
                 pieces: tmp_rules_pieces,
                 starting_positions: rules.starting_positions.clone(),
+                control_squares: rules.control_squares.clone(),
+                control_half_turns_required: rules.control_half_turns_required,
             };
             return moves_for(board, &tmp_rules, p);
         }

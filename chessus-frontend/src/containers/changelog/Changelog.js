@@ -12,6 +12,7 @@ const changelogData = [
       "Admin portal — Initial-state scan: games with no pieces placed and no piece-placement action enabled are now correctly flagged as invalid (previously they were silently skipped)",
       "Global leaderboard: page now loads faster — the player count and player list queries now run in parallel instead of sequentially",
       "Admin portal — AI Training: added a '🗑 Clear Data' button per job. Deletes the on-disk log and model files and resets the game count to 0. The job record is kept in history. Only shown for non-running jobs that have training data",
+      "AI engine: Control Squares win condition now works in AI training — games correctly end when a player holds enough control squares for the required number of turns. MCTS rollouts now bias moves toward control squares so training converges. Stalemate-Win and No-Moves-Loss conditions are also now honoured during MCTS rollouts",
     ],
   },
   {

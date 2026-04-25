@@ -262,6 +262,8 @@ pub enum EndReason {
     CaptureCondition,
     /// `lose_all_pieces_condition`: one side lost all their pieces (anti-chess win).
     LoseAllPieces,
+    /// `squares_condition`: a player held enough control squares for the required number of turns.
+    SquaresCondition,
     /// `rules.game.draw_move_limit` (fifty-move-rule analog) reached.
     MoveLimit,
     /// Trainer's hard 400-ply cap was hit; finished via random rollout.

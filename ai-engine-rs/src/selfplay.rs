@@ -17,7 +17,7 @@ use std::time::Instant;
 
 use crate::board::Board;
 use crate::book::{aggregate_book, move_string, position_signature, write_pending, PendingBookRecord, BOOK_PLY_LIMIT};
-use crate::mcts::{GameResult, Mcts};
+use crate::mcts::{check_squares_winner, update_control_tracking, GameResult, Mcts};
 use crate::moves::{in_check, is_royal_piece, legal_moves};
 use crate::protocol::ProgressEvent;
 use crate::rules::Rules;
@@ -239,6 +239,15 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                     break (GameResult::Win(2), crate::protocol::EndReason::CaptureCondition);
                 } else if check_side_gone(2) {
                     break (GameResult::Win(1), crate::protocol::EndReason::CaptureCondition);
+                }
+            }
+
+            // squares_condition: update holding counter and check if a player
+            // has held enough control squares for the required half-turns.
+            if rules.game.squares_condition && !rules.control_squares.is_empty() {
+                update_control_tracking(&mut board, &rules);
+                if let Some(winner) = check_squares_winner(&board, &rules) {
+                    break (GameResult::Win(winner), crate::protocol::EndReason::SquaresCondition);
                 }
             }
 

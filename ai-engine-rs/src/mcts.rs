@@ -203,6 +203,15 @@ pub fn rollout_with_reason(
                         EndReason::Checkmate,
                     );
                 }
+                if rules.game.stalemate_win_condition {
+                    return (GameResult::Win(state.turn), EndReason::StalemateWin);
+                }
+                if rules.game.no_moves_condition {
+                    return (
+                        GameResult::Win(if state.turn == 1 { 2 } else { 1 }),
+                        EndReason::NoMovesLoss,
+                    );
+                }
                 return (GameResult::Draw, EndReason::Stalemate);
             }
             // Pseudo was empty but legal isn't (shouldn't happen, but be safe).
@@ -228,13 +237,45 @@ pub fn rollout_with_reason(
             // Capturing the opponent's royal is an immediate, decisive win.
             return (GameResult::Win(mover), EndReason::RoyalCapture);
         }
-        let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
-        let mv = if !captures.is_empty() && rng.gen_bool(0.5) {
-            (*captures.choose(rng).unwrap()).clone()
+
+        // If squares_condition is active, bias 70% toward moves that land on
+        // a control square — this gives MCTS a meaningful gradient to learn from.
+        let mv = if rules.game.squares_condition && !rules.control_squares.is_empty() {
+            let ctrl_moves: Vec<&Move> = moves
+                .iter()
+                .filter(|m| {
+                    rules
+                        .control_squares
+                        .iter()
+                        .any(|&(cx, cy)| m.to.x == cx && m.to.y == cy)
+                })
+                .collect();
+            if !ctrl_moves.is_empty() && rng.gen_bool(0.7) {
+                (*ctrl_moves.choose(rng).unwrap()).clone()
+            } else {
+                let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
+                if !captures.is_empty() && rng.gen_bool(0.5) {
+                    (*captures.choose(rng).unwrap()).clone()
+                } else {
+                    moves.choose(rng).unwrap().clone()
+                }
+            }
         } else {
-            moves.choose(rng).unwrap().clone()
+            let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
+            if !captures.is_empty() && rng.gen_bool(0.5) {
+                (*captures.choose(rng).unwrap()).clone()
+            } else {
+                moves.choose(rng).unwrap().clone()
+            }
         };
         state.apply(&mv);
+        // squares_condition: update consecutive holding counter; check for winner.
+        if rules.game.squares_condition && !rules.control_squares.is_empty() {
+            update_control_tracking(state, rules);
+            if let Some(winner) = check_squares_winner(state, rules) {
+                return (GameResult::Win(winner), EndReason::SquaresCondition);
+            }
+        }
         if let Some(limit) = rules.game.draw_move_limit {
             if state.plies_since_capture as i32 >= limit * 2 {
                 return (GameResult::Draw, EndReason::MoveLimit);
@@ -283,6 +324,15 @@ pub fn rollout_with_reason_aggressive(
                         EndReason::Checkmate,
                     );
                 }
+                if rules.game.stalemate_win_condition {
+                    return (GameResult::Win(state.turn), EndReason::StalemateWin);
+                }
+                if rules.game.no_moves_condition {
+                    return (
+                        GameResult::Win(if state.turn == 1 { 2 } else { 1 }),
+                        EndReason::NoMovesLoss,
+                    );
+                }
                 return (GameResult::Draw, EndReason::Stalemate);
             }
             let mv = legal.choose(rng).unwrap().clone();
@@ -303,42 +353,84 @@ pub fn rollout_with_reason_aggressive(
             }
         }
 
-        // Aggressive selection: always capture if possible.
-        let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
-        let mv = if !captures.is_empty() {
-            (*captures.choose(rng).unwrap()).clone()
-        } else {
-            // Forward-bias for non-captures: player 1 advances toward high
-            // y, player 2 advances toward low y. Pick the move with the
-            // largest forward progress; ties broken randomly.
-            let target_forward = |m: &Move| -> i32 {
-                if mover == 1 { m.to.y - m.from.y } else { m.from.y - m.to.y }
-            };
-            let mut best_score = i32::MIN;
-            for m in &moves {
-                let s = target_forward(m);
-                if s > best_score {
-                    best_score = s;
+        // If squares_condition is active, bias strongly (80%) toward moves
+        // that land on a control square, overriding the aggressive capture preference.
+        let mv = if rules.game.squares_condition && !rules.control_squares.is_empty() {
+            let ctrl_moves: Vec<&Move> = moves
+                .iter()
+                .filter(|m| {
+                    rules
+                        .control_squares
+                        .iter()
+                        .any(|&(cx, cy)| m.to.x == cx && m.to.y == cy)
+                })
+                .collect();
+            if !ctrl_moves.is_empty() && rng.gen_bool(0.8) {
+                (*ctrl_moves.choose(rng).unwrap()).clone()
+            } else {
+                // Fall back to aggressive capture-first logic.
+                let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
+                if !captures.is_empty() {
+                    (*captures.choose(rng).unwrap()).clone()
+                } else {
+                    let target_forward = |m: &Move| -> i32 {
+                        if mover == 1 { m.to.y - m.from.y } else { m.from.y - m.to.y }
+                    };
+                    let best_score = moves.iter().map(|m| target_forward(m)).max().unwrap_or(0);
+                    if rng.gen_bool(0.8) {
+                        let forward: Vec<&Move> = moves
+                            .iter()
+                            .filter(|m| target_forward(m) == best_score)
+                            .collect();
+                        if !forward.is_empty() {
+                            (*forward.choose(rng).unwrap()).clone()
+                        } else {
+                            moves.choose(rng).unwrap().clone()
+                        }
+                    } else {
+                        moves.choose(rng).unwrap().clone()
+                    }
                 }
             }
-            // 80% chance to pick a max-forward move; 20% fully random to
-            // avoid pathological stuck states.
-            if rng.gen_bool(0.8) && best_score > i32::MIN {
-                let forward: Vec<&Move> = moves
-                    .iter()
-                    .filter(|m| target_forward(m) == best_score)
-                    .collect();
-                if !forward.is_empty() {
-                    (*forward.choose(rng).unwrap()).clone()
+        } else {
+            // Aggressive selection: always capture if possible.
+            let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
+            if !captures.is_empty() {
+                (*captures.choose(rng).unwrap()).clone()
+            } else {
+                // Forward-bias for non-captures: player 1 advances toward high
+                // y, player 2 advances toward low y. Pick the move with the
+                // largest forward progress; ties broken randomly.
+                let target_forward = |m: &Move| -> i32 {
+                    if mover == 1 { m.to.y - m.from.y } else { m.from.y - m.to.y }
+                };
+                let best_score = moves.iter().map(|m| target_forward(m)).max().unwrap_or(0);
+                // 80% chance to pick a max-forward move; 20% fully random to
+                // avoid pathological stuck states.
+                if rng.gen_bool(0.8) {
+                    let forward: Vec<&Move> = moves
+                        .iter()
+                        .filter(|m| target_forward(m) == best_score)
+                        .collect();
+                    if !forward.is_empty() {
+                        (*forward.choose(rng).unwrap()).clone()
+                    } else {
+                        moves.choose(rng).unwrap().clone()
+                    }
                 } else {
                     moves.choose(rng).unwrap().clone()
                 }
-            } else {
-                moves.choose(rng).unwrap().clone()
             }
         };
         let _ = board_height; // reserved for future promotion-square heuristics
         state.apply(&mv);
+        // squares_condition: update consecutive holding counter; check for winner.
+        if rules.game.squares_condition && !rules.control_squares.is_empty() {
+            update_control_tracking(state, rules);
+            if let Some(winner) = check_squares_winner(state, rules) {
+                return (GameResult::Win(winner), EndReason::SquaresCondition);
+            }
+        }
         if let Some(limit) = rules.game.draw_move_limit {
             if state.plies_since_capture as i32 >= limit * 2 {
                 return (GameResult::Draw, EndReason::MoveLimit);
@@ -346,4 +438,50 @@ pub fn rollout_with_reason_aggressive(
         }
     }
     (GameResult::Draw, EndReason::RolloutCap)
+}
+
+// ---------------------------------------------------------------------------
+// Control-square helpers (pub so selfplay.rs can call them too).
+// ---------------------------------------------------------------------------
+
+/// Update each player's consecutive-control-half-turn counter on `board`.
+/// Call this immediately after every `board.apply()` when `squares_condition`
+/// is active.  Index 0 = player 1, index 1 = player 2.
+pub fn update_control_tracking(board: &mut Board, rules: &Rules) {
+    if rules.control_squares.is_empty() {
+        return;
+    }
+    let need = rules.game.squares_count.unwrap_or(rules.control_squares.len() as i32);
+    for player_idx in 0..2usize {
+        let player = (player_idx as i32) + 1;
+        let held = rules
+            .control_squares
+            .iter()
+            .filter(|&&(cx, cy)| {
+                board
+                    .pieces
+                    .iter()
+                    .any(|p| p.player == player && p.x == cx && p.y == cy)
+            })
+            .count() as i32;
+        if held >= need {
+            board.control_half_turns[player_idx] += 1;
+        } else {
+            board.control_half_turns[player_idx] = 0;
+        }
+    }
+}
+
+/// Returns `Some(winner_player)` if `squares_condition` is now satisfied for
+/// any player, `None` otherwise.
+pub fn check_squares_winner(board: &Board, rules: &Rules) -> Option<i32> {
+    if !rules.game.squares_condition || rules.control_squares.is_empty() {
+        return None;
+    }
+    for player_idx in 0..2usize {
+        if board.control_half_turns[player_idx] >= rules.control_half_turns_required {
+            return Some((player_idx as i32) + 1);
+        }
+    }
+    None
 }

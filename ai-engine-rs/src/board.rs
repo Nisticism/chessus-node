@@ -49,6 +49,11 @@ pub struct Board {
     pub ply: u32,
     #[serde(default)]
     pub next_id: u32,
+    /// Consecutive half-turns each player (index 0 = player 1, index 1 = player 2)
+    /// has held enough control squares. Compared against Rules::control_half_turns_required.
+    /// Reset to 0 the moment a player drops below the required square count.
+    #[serde(default)]
+    pub control_half_turns: [u32; 2],
 }
 
 impl Board {
@@ -61,6 +66,7 @@ impl Board {
             plies_since_capture: 0,
             ply: 0,
             next_id: 0,
+            control_half_turns: [0; 2],
         };
         for sp in &rules.starting_positions {
             let id = b.next_id;
