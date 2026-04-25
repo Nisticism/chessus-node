@@ -4,6 +4,20 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 25, 2026",
+    title: "Admin portal polish, AI training resume fix, confirm move fix at medium widths",
+    items: [
+      "Admin portal — Users tab: page now loads faster; the user list and count queries now run in parallel instead of sequentially",
+      "Admin portal — Anonymous Games tab: now shows a Players column (e.g. 1/2) so unstarted games are obvious at a glance; 'Ready (starting)' status now displays correctly instead of 'Unknown'",
+      "Admin portal — Server Stats: DB connection display now shows Limit, Opened, Active, Idle, and Queue Depth separately. Previously always showed 10/10 because mysql2 opens all connections upfront and counts opened vs. idle — Active (opened − idle) is now the useful signal",
+      "Admin portal — Game Session Limits settings added: configure the max simultaneous live, correspondence, and open-match games for logged-in and anonymous users directly from the settings tab",
+      "Game detail page: '404 not found' console error for AI analysis check no longer appears for games with no AI data — the request is now handled silently",
+      "AI Training: resuming an aborted_oom job now correctly bumps the memory limit before handing off to the remote trainer service. Previously the remote trainer would read the unchanged limit from the DB and OOM again immediately",
+      "Correspondence games: Confirm / Cancel move buttons now appear below the board at 900 px–1200 px (the stacked layout). Previously the sidebar confirm was hidden and the below-board row only showed at <900 px, leaving a dead zone",
+      "AI engine: anti-chess (lose-all-pieces) games, stalemate-win games, and no-moves-loss games now report correct results in AI analysis instead of always drawing",
+    ],
+  },
+  {
     date: "April 23, 2026",
     title: "Link insertion, live game note, stale game cleanup, AI Analysis request button, admin tools polish",
     items: [

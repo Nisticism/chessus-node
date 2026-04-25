@@ -23,6 +23,90 @@ const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grac
 
 // Game-disconnect (forfeit) timers. Keyed by `${gameId}:${userId}`.
 // Value: { timeoutId, expiresAt, durationMs, paused, remainingMs, gameId, userId }
+
+// ---- Game session limit helpers ----
+
+/**
+ * Read a numeric site setting. Falls back to `defaultVal` on any error or
+ * missing key. Non-positive values are treated as "no limit" (returns the
+ * default instead so callers can always do a numeric comparison).
+ */
+async function getSiteSettingInt(key, defaultVal) {
+  try {
+    const [[row]] = await db_pool.query(
+      'SELECT setting_value FROM site_settings WHERE setting_key = ? LIMIT 1', [key]
+    );
+    if (row) {
+      const n = parseInt(row.setting_value, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  } catch (e) { /* ignore */ }
+  return defaultVal;
+}
+
+/**
+ * Count active/ready live (non-correspondence, non-anonymous) games a
+ * logged-in user is a player in.
+ */
+async function countActiveLiveGames(userId) {
+  const [rows] = await db_pool.query(`
+    SELECT COUNT(*) AS cnt
+      FROM games g
+      INNER JOIN players p ON g.id = p.game_id
+     WHERE p.user_id = ?
+       AND g.status IN ('active', 'ready')
+       AND (g.is_correspondence IS NULL OR g.is_correspondence = 0)
+       AND (g.is_anonymous IS NULL OR g.is_anonymous = 0)
+  `, [userId]);
+  return Number(rows[0]?.cnt) || 0;
+}
+
+/**
+ * Count waiting/ready/active correspondence games a logged-in user is in.
+ */
+async function countActiveCorrespondenceGames(userId) {
+  const [rows] = await db_pool.query(`
+    SELECT COUNT(*) AS cnt
+      FROM games g
+      INNER JOIN players p ON g.id = p.game_id
+     WHERE p.user_id = ?
+       AND g.status IN ('active', 'ready', 'waiting')
+       AND g.is_correspondence = 1
+       AND (g.is_anonymous IS NULL OR g.is_anonymous = 0)
+  `, [userId]);
+  return Number(rows[0]?.cnt) || 0;
+}
+
+/**
+ * Count open (non-challenge, non-correspondence) games in 'waiting' state
+ * that a logged-in user created (is the host of).
+ */
+async function countOpenWaitingGames(userId) {
+  const [rows] = await db_pool.query(`
+    SELECT COUNT(*) AS cnt
+      FROM games g
+      INNER JOIN players p ON g.id = p.game_id
+     WHERE p.user_id = ?
+       AND g.status = 'waiting'
+       AND (g.is_challenge IS NULL OR g.is_challenge = 0)
+       AND (g.is_correspondence IS NULL OR g.is_correspondence = 0)
+       AND (g.is_anonymous IS NULL OR g.is_anonymous = 0)
+  `, [userId]);
+  return Number(rows[0]?.cnt) || 0;
+}
+
+/**
+ * Count how many non-completed anonymous games are tracked in memory for a
+ * given anonymous player ID (anon_<socketId>).
+ */
+function countAnonActiveGames(anonPlayerId) {
+  let count = 0;
+  for (const gs of activeGames.values()) {
+    if (gs.status === 'completed') continue;
+    if (gs.players?.some(p => p.id === anonPlayerId)) count++;
+  }
+  return count;
+}
 const gameDisconnectTimers = new Map();
 function gdtKey(gameId, userId) { return `${gameId}:${userId}`; }
 
@@ -1094,7 +1178,39 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Game type not found" });
         }
 
-        // Create the live game in database
+        // --- Game session limit enforcement ---
+        const numericHostId = parseInt(hostId, 10);
+        const hostIsLoggedIn = !vsComputer && Number.isFinite(numericHostId) && numericHostId > 0;
+        if (hostIsLoggedIn) {
+          if (isCorrespondence) {
+            const limit = await getSiteSettingInt('game_limit_correspondence', 24);
+            const count = await countActiveCorrespondenceGames(numericHostId);
+            if (count >= limit) {
+              return socket.emit("error", {
+                message: `You are already in ${count} correspondence game${count !== 1 ? 's' : ''} (limit: ${limit}). Please finish some before starting new ones.`
+              });
+            }
+          } else {
+            // Check open match limit (non-challenge, waiting games)
+            if (!challengedUserId) {
+              const openLimit = await getSiteSettingInt('game_limit_open', 8);
+              const openCount = await countOpenWaitingGames(numericHostId);
+              if (openCount >= openLimit) {
+                return socket.emit("error", {
+                  message: `You already have ${openCount} open match${openCount !== 1 ? 'es' : ''} waiting for opponents (limit: ${openLimit}). Please cancel some before creating new ones.`
+                });
+              }
+            }
+            // Check live game limit
+            const liveLimit = await getSiteSettingInt('game_limit_live', 8);
+            const liveCount = await countActiveLiveGames(numericHostId);
+            if (liveCount >= liveLimit) {
+              return socket.emit("error", {
+                message: `You are already in ${liveCount} live game${liveCount !== 1 ? 's' : ''} (limit: ${liveLimit}). Please finish some before starting new ones.`
+              });
+            }
+          }
+        }
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
         
         // Load pieces from junction table with full piece movement data
@@ -1668,6 +1784,18 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Game type not found" });
         }
 
+        // --- Anonymous game session limit enforcement ---
+        {
+          const anonPlayerId = `anon_${socket.id}`;
+          const anonLiveLimit = await getSiteSettingInt('game_limit_live_anon', 4);
+          const anonCount = countAnonActiveGames(anonPlayerId);
+          if (anonCount >= anonLiveLimit) {
+            return socket.emit("error", {
+              message: `Anonymous users can have at most ${anonLiveLimit} open game${anonLiveLimit !== 1 ? 's' : ''} at once.`
+            });
+          }
+        }
+
         // Get pieces for this game type from junction table (same as createGame)
         const [junctionPieces] = await db_pool.query(
           `SELECT gtp.*, gtp.ends_game_on_checkmate, gtp.ends_game_on_capture, p.piece_name, p.image_location
@@ -1949,6 +2077,30 @@ function initializeSocket(server) {
         // Check not joining own game
         if (gameState.players.some(p => p.id === playerId)) {
           return socket.emit("error", { message: "You are already in this game" });
+        }
+
+        // --- Game session limit enforcement for invite-code joiner ---
+        if (userId) {
+          // Logged-in user
+          const numericJoinerId = parseInt(userId, 10);
+          if (Number.isFinite(numericJoinerId) && numericJoinerId > 0) {
+            const liveLimit = await getSiteSettingInt('game_limit_live', 8);
+            const liveCount = await countActiveLiveGames(numericJoinerId);
+            if (liveCount >= liveLimit) {
+              return socket.emit("error", {
+                message: `You are already in ${liveCount} live game${liveCount !== 1 ? 's' : ''} (limit: ${liveLimit}). Please finish some before joining new ones.`
+              });
+            }
+          }
+        } else {
+          // Anonymous user
+          const anonLiveLimit = await getSiteSettingInt('game_limit_live_anon', 4);
+          const anonCount = countAnonActiveGames(playerId);
+          if (anonCount >= anonLiveLimit) {
+            return socket.emit("error", {
+              message: `Anonymous users can be in at most ${anonLiveLimit} live game${anonLiveLimit !== 1 ? 's' : ''} at once.`
+            });
+          }
         }
 
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -2298,7 +2450,9 @@ function initializeSocket(server) {
             })(),
             premove: null,
             isChallenge: !!game.is_challenge,
-            challengedUserId: game.challenged_user_id
+            challengedUserId: game.challenged_user_id,
+            isCorrespondence: !!game.is_correspondence,
+            correspondenceDays: game.correspondence_days || null,
           };
 
           activeGames.set(gameIdStr, gameState);
@@ -2317,6 +2471,28 @@ function initializeSocket(server) {
         // Check if user is already in the game
         if (gameState.players.some(p => p.id === userId)) {
           return socket.emit("error", { message: "You are already in this game" });
+        }
+
+        // --- Game session limit enforcement for the joiner ---
+        const numericJoinerId = parseInt(userId, 10);
+        if (Number.isFinite(numericJoinerId) && numericJoinerId > 0) {
+          if (gameState.isCorrespondence) {
+            const limit = await getSiteSettingInt('game_limit_correspondence', 24);
+            const count = await countActiveCorrespondenceGames(numericJoinerId);
+            if (count >= limit) {
+              return socket.emit("error", {
+                message: `You are already in ${count} correspondence game${count !== 1 ? 's' : ''} (limit: ${limit}). Please finish some before joining new ones.`
+              });
+            }
+          } else {
+            const liveLimit = await getSiteSettingInt('game_limit_live', 8);
+            const liveCount = await countActiveLiveGames(numericJoinerId);
+            if (liveCount >= liveLimit) {
+              return socket.emit("error", {
+                message: `You are already in ${liveCount} live game${liveCount !== 1 ? 's' : ''} (limit: ${liveLimit}). Please finish some before joining new ones.`
+              });
+            }
+          }
         }
 
         // Add player to game
@@ -11954,7 +12130,33 @@ function buildSyntheticInitialState(gameType, pieces, currentTurn = 1) {
 function evaluateInitialPosition(gameType, initialPieces) {
   if (!gameType) return { decided: false };
   const pieces = Array.isArray(initialPieces) ? initialPieces : [];
-  if (pieces.length === 0) return { decided: false };
+
+  // If there are no pieces, check whether the game type supports in-game
+  // piece placement (e.g. Othello-style `place_pieces_action`). If it does,
+  // an empty starting board is intentional — return false so the downstream
+  // per-condition checks (which assume fixed pieces) don't fire false positives.
+  // If it does NOT, the game has nothing to play with and is unplayable.
+  if (pieces.length === 0) {
+    let hasPiecePlacement = false;
+    try {
+      const otherData = gameType.other_game_data
+        ? (typeof gameType.other_game_data === 'string'
+            ? JSON.parse(gameType.other_game_data)
+            : gameType.other_game_data)
+        : {};
+      hasPiecePlacement = !!otherData.place_pieces_action;
+    } catch (e) { /* ignore parse errors */ }
+
+    if (!hasPiecePlacement) {
+      return {
+        decided: true,
+        type: 'invalid',
+        code: 'no_pieces',
+        reason: 'The game has no pieces and no in-game piece placement enabled. There is nothing to play with.',
+      };
+    }
+    return { decided: false };
+  }
 
   // NOTE: this validator only evaluates the FIXED starting position the
   // wizard saved — i.e. the position a player gets if they choose the

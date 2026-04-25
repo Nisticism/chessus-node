@@ -43,6 +43,11 @@ pub struct GameType {
     pub draw_move_limit: Option<i32>,
     pub repetition_draw_count: Option<i32>,
 
+    // Additional win/loss/draw conditions (newer DB columns)
+    pub lose_all_pieces_condition: bool,
+    pub stalemate_win_condition: bool,
+    pub no_moves_condition: bool,
+
     // Special-square JSON blobs (parsed lazily in rules.rs)
     pub range_squares_string: Option<String>,
     pub promotion_squares_string: Option<String>,
@@ -249,6 +254,14 @@ pub enum EndReason {
     Checkmate,
     /// Side to move had no legal moves but was not in check.
     Stalemate,
+    /// Side to move had no legal moves and `stalemate_win_condition` is set — they win.
+    StalemateWin,
+    /// Side to move had no legal moves and `no_moves_condition` is set — they lose.
+    NoMovesLoss,
+    /// `capture_condition`: one side had all capturable pieces eliminated.
+    CaptureCondition,
+    /// `lose_all_pieces_condition`: one side lost all their pieces (anti-chess win).
+    LoseAllPieces,
     /// `rules.game.draw_move_limit` (fifty-move-rule analog) reached.
     MoveLimit,
     /// Trainer's hard 400-ply cap was hit; finished via random rollout.

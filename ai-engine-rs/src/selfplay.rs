@@ -125,6 +125,20 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                         crate::protocol::EndReason::Checkmate,
                     );
                 }
+                // stalemate_win_condition: the player who is stalemated WINS
+                if rules.game.stalemate_win_condition {
+                    break (
+                        GameResult::Win(board.turn),
+                        crate::protocol::EndReason::StalemateWin,
+                    );
+                }
+                // no_moves_condition: the player who is stalemated LOSES
+                if rules.game.no_moves_condition {
+                    break (
+                        GameResult::Win(if board.turn == 1 { 2 } else { 1 }),
+                        crate::protocol::EndReason::NoMovesLoss,
+                    );
+                }
                 break (GameResult::Draw, crate::protocol::EndReason::Stalemate);
             }
 
@@ -181,6 +195,53 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             }
             board.apply(&mv);
             moves_played += 1;
+
+            // --- Post-move win condition checks ---
+
+            // lose_all_pieces_condition (anti-chess): a player WINS when they
+            // have lost all their pieces. Check both sides after each capture.
+            if rules.game.lose_all_pieces_condition && mv.capture.is_some() {
+                let p1_count = board.pieces.iter().filter(|p| p.player == 1).count();
+                let p2_count = board.pieces.iter().filter(|p| p.player == 2).count();
+                if p1_count == 0 && p2_count == 0 {
+                    // Both empty simultaneously — draw (extremely unlikely)
+                    break (GameResult::Draw, crate::protocol::EndReason::LoseAllPieces);
+                } else if p1_count == 0 {
+                    break (GameResult::Win(1), crate::protocol::EndReason::LoseAllPieces);
+                } else if p2_count == 0 {
+                    break (GameResult::Win(2), crate::protocol::EndReason::LoseAllPieces);
+                }
+            }
+
+            // capture_condition: the side that captured all opponent pieces wins.
+            // For the simple case (no specific piece type required): if any side
+            // reaches 0 pieces, the other wins. When `capture_piece` specifies a
+            // virtual template id, check that the matching piece is gone.
+            if rules.game.capture_condition && mv.capture.is_some() {
+                let check_side_gone = |player: i32| -> bool {
+                    if let Some(cp_id) = rules.game.capture_piece {
+                        // A specific piece type must be eliminated.
+                        !board.pieces.iter().any(|p| p.player == player && {
+                            // Map virtual piece id back via the rules piece map.
+                            p.piece_id == cp_id
+                            || rules.piece(p.piece_id)
+                                .map(|t| t.real_piece_id == cp_id || t.id == cp_id)
+                                .unwrap_or(false)
+                        })
+                    } else {
+                        // Capture all opponent pieces.
+                        !board.pieces.iter().any(|p| p.player == player)
+                    }
+                };
+                if check_side_gone(1) && check_side_gone(2) {
+                    break (GameResult::Draw, crate::protocol::EndReason::CaptureCondition);
+                } else if check_side_gone(1) {
+                    break (GameResult::Win(2), crate::protocol::EndReason::CaptureCondition);
+                } else if check_side_gone(2) {
+                    break (GameResult::Win(1), crate::protocol::EndReason::CaptureCondition);
+                }
+            }
+
             if let Some(limit) = rules.game.draw_move_limit {
                 if board.plies_since_capture as i32 >= limit * 2 {
                     break (GameResult::Draw, crate::protocol::EndReason::MoveLimit);

@@ -384,6 +384,27 @@ async function startJob({
  */
 async function resumeJob(jobId) {
   if (REMOTE_MODE) {
+    // In remote mode, the trainer service owns the process lifecycle, but
+    // our shared MySQL is the source of truth for job configuration.
+    // Apply the OOM memory bump HERE (before delegating) so that when the
+    // remote trainer reads the job row it already has the higher cap.
+    // Without this the trainer would read the same max_rss_mb that caused
+    // the original abort and OOM again on every resume.
+    try {
+      const jobForBump = await getJob(jobId);
+      if (jobForBump && jobForBump.status === 'aborted_oom') {
+        let maxRssMb = jobForBump.max_rss_mb || 1024;
+        const bumped = Math.ceil((maxRssMb * 1.5) / 256) * 256;
+        maxRssMb = Math.max(bumped, maxRssMb + 256); // at least +256 MiB
+        await db_pool.query(
+          'UPDATE ai_training_jobs SET max_rss_mb = ? WHERE id = ?',
+          [maxRssMb, jobId],
+        );
+      }
+    } catch (bumpErr) {
+      // Non-fatal — the remote service will still attempt the resume
+      console.warn(`[resumeJob] OOM bump for job ${jobId} failed:`, bumpErr.message);
+    }
     return await trainerClient.resumeJob(jobId);
   }
   if (_newJobsPaused) {

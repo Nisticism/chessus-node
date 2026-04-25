@@ -3046,7 +3046,14 @@ const runMigrations = async () => {
           "Head over to our community forums to discuss bugs you've run into, ask questions, and share " +
           "what changes you'd like to see. Heads-up: while we're rolling out improvements, expect frequent " +
           "server restarts as new updates go live."
-      }
+      },
+      // Game session limits
+      { key: 'game_limit_live', value: '8' },
+      { key: 'game_limit_correspondence', value: '24' },
+      { key: 'game_limit_open', value: '8' },
+      { key: 'game_limit_live_anon', value: '4' },
+      { key: 'game_limit_correspondence_anon', value: '12' },
+      { key: 'game_limit_open_anon', value: '4' },
     ];
     for (const setting of defaultSettings) {
       const [rows] = await db_pool.query(

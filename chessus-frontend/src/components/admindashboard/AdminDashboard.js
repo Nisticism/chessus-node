@@ -1231,6 +1231,7 @@ const AdminDashboard = () => {
     const statusLabel = (status) => {
       switch (status) {
         case 'waiting': return 'Waiting for players';
+        case 'ready': return 'Ready (starting)';
         case 'active': return 'In progress';
         case 'completed': return 'Completed';
         case 'abandoned': return 'Abandoned';
@@ -1252,6 +1253,7 @@ const AdminDashboard = () => {
           <tr>
             <th>ID</th>
             <th>Game Name</th>
+            <th>Players</th>
             <th>Status</th>
             <th>Invite Code</th>
             <th>Time Control</th>
@@ -1265,18 +1267,19 @@ const AdminDashboard = () => {
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
+              <td colSpan="11" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No anonymous games found'}
               </td>
             </tr>
           ) : (
             data.map(game => {
-              const started = game.status === 'active' || game.status === 'completed';
+              const started = game.status === 'active' || game.status === 'ready' || game.status === 'completed';
               const ended = game.status === 'completed' || game.status === 'abandoned';
               return (
               <tr key={game.id}>
                 <td>{game.id}</td>
                 <td>{game.game_name || 'Unnamed'}</td>
+                <td style={{ textAlign: 'center' }}>{game.player_count ?? 0}/2</td>
                 <td>{statusLabel(game.status)}</td>
                 <td style={{ fontFamily: 'monospace', letterSpacing: '2px' }}>{game.invite_code}</td>
                 <td>{game.turn_length ? `${game.turn_length}+${game.increment || 0}` : 'No limit'}</td>
@@ -1793,8 +1796,10 @@ const AdminDashboard = () => {
                 { label: 'Disconnect Timeouts', value: num(serverStats.disconnectTimeouts) },
                 { label: 'Online Users', value: num(serverStats.onlineUsers) },
                 { label: '429s (since restart)', value: num(serverStats.rateLimitHits) },
-                { label: 'DB Connections (total)', value: num(serverStats.dbPool?.total) },
-                { label: 'DB Connections (free)', value: num(serverStats.dbPool?.free) },
+                { label: 'DB Conn Limit', value: num(serverStats.dbPool?.limit) },
+                { label: 'DB Connections (opened)', value: num(serverStats.dbPool?.total) },
+                { label: 'DB Connections (active)', value: num(serverStats.dbPool?.active) },
+                { label: 'DB Connections (idle)', value: num(serverStats.dbPool?.free) },
                 { label: 'DB Queue Depth', value: num(serverStats.dbPool?.queued) },
                 { label: 'RSS Memory', value: mb(serverStats.memory?.rssMB) },
                 { label: 'Heap Used', value: mb(serverStats.memory?.heapUsedMB) },
@@ -2667,6 +2672,40 @@ const AdminDashboard = () => {
                     </button>
                   </div>
                 </div>
+
+                <h3 style={{ marginTop: '2rem' }}>Game Session Limits</h3>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                  Maximum simultaneous games per user. Users already over the limit when it is lowered can finish their existing games.
+                </p>
+                {[
+                  { key: 'game_limit_live', label: 'Live games (logged-in users)', desc: 'Max active/ready live games a logged-in user may be in at once', defaultVal: 8 },
+                  { key: 'game_limit_correspondence', label: 'Correspondence games (logged-in users)', desc: 'Max waiting/active correspondence games a logged-in user may be in at once', defaultVal: 24 },
+                  { key: 'game_limit_open', label: 'Open matches (logged-in users)', desc: 'Max open (waiting for opponent) matches a logged-in user may have at once', defaultVal: 8 },
+                  { key: 'game_limit_live_anon', label: 'Live games (anonymous users)', desc: 'Max live games an anonymous (not logged-in) user may be in per browser session', defaultVal: 4 },
+                  { key: 'game_limit_correspondence_anon', label: 'Correspondence games (anonymous users)', desc: 'Not currently enforced (anonymous users cannot create correspondence games)', defaultVal: 12 },
+                  { key: 'game_limit_open_anon', label: 'Open matches (anonymous users)', desc: 'Max open anonymous games a guest may have waiting per browser session', defaultVal: 4 },
+                ].map(({ key, label, desc, defaultVal }) => (
+                  <div key={key} className={styles["setting-row"]}>
+                    <div className={styles["setting-info"]}>
+                      <span className={styles["setting-label"]}>{label}</span>
+                      <span className={styles["setting-desc"]}>{desc}</span>
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max="200"
+                      className={styles["setting-number-input"]}
+                      value={siteSettings[key] ?? String(defaultVal)}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        if (Number.isFinite(v) && v >= 1) {
+                          updateSiteSetting(key, v);
+                        }
+                      }}
+                      style={{ width: '80px', textAlign: 'center' }}
+                    />
+                  </div>
+                ))}
               </div>
             )}
             {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && activeTab !== "server-stats" && activeTab !== "moderation" && renderPagination()}

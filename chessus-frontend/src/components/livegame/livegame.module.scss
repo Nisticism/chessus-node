@@ -1741,7 +1741,10 @@
   justify-content: space-between;
   gap: 10px;
 
-  @media (max-width: 900px) {
+  // The move-history-column (which holds the sidebar confirm section) is
+  // hidden at ≤1200px, so show this below-board row instead for the full
+  // stacked-layout range — not just the narrow mobile range.
+  @media (max-width: 1200px) {
     display: flex;
   }
 }

@@ -574,8 +574,11 @@ const GameTypeView = () => {
     setAiAnalysisAvailable(false);
     if (!gameId) return undefined;
     axios
-      .get(`${API_URL}ai-training/analysis/${gameId}/exists`, { headers: authHeader() })
-      .then(() => { if (!cancelled) setAiAnalysisAvailable(true); })
+      .get(`${API_URL}ai-training/analysis/${gameId}/exists`, {
+        headers: authHeader(),
+        validateStatus: () => true, // treat 404 as a non-error so browsers don't log a network error
+      })
+      .then((res) => { if (!cancelled) setAiAnalysisAvailable(res.status === 200 && !!res.data?.exists); })
       .catch(() => { if (!cancelled) setAiAnalysisAvailable(false); });
     return () => { cancelled = true; };
   }, [gameId, currentUser]);

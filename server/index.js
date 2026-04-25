@@ -4007,17 +4007,18 @@ app.get("/api/admin/users", authenticateToken, async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    const [users] = await db_pool.query(
-      `SELECT id, username, email, first_name, last_name, role, elo, profile_picture, bio,
-              banned, ban_reason, banned_at, banned_by, ban_expires_at, last_active_at,
-              total_donations
-       FROM users
-       ORDER BY id DESC
-       LIMIT ? OFFSET ?`,
-      [limit, offset]
-    );
-
-    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM users");
+    const [[users], [[{ total }]]] = await Promise.all([
+      db_pool.query(
+        `SELECT id, username, email, first_name, last_name, role, elo, profile_picture, bio,
+                banned, ban_reason, banned_at, banned_by, ban_expires_at, last_active_at,
+                total_donations
+         FROM users
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?`,
+        [limit, offset]
+      ),
+      db_pool.query("SELECT COUNT(*) as total FROM users"),
+    ]);
 
     // Don't send passwords or refresh tokens
     const sanitizedUsers = users.map(user => {
@@ -7999,10 +8000,13 @@ app.get("/api/admin/anonymous-games", authenticateAdmin, async (req, res) => {
     const [games] = await db_pool.query(
       `SELECT g.id, g.created_at, g.start_time, g.end_time, g.status, g.invite_code,
        g.turn_length, g.increment, gt.game_name, gt.board_width, gt.board_height,
-       COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) AS move_count
+       COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) AS move_count,
+       COUNT(p.id) AS player_count
        FROM games g
        LEFT JOIN game_types gt ON g.game_type_id = gt.id
+       LEFT JOIN players p ON p.game_id = g.id
        WHERE g.is_anonymous = 1
+       GROUP BY g.id
        ORDER BY g.created_at DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
@@ -9468,12 +9472,24 @@ app.get("/api/admin/memory-stats", authenticateAdmin, (req, res) => {
   try {
     const mem = process.memoryUsage();
 
-    // DB pool depth — mysql2 stores these on the internal pool object.
-    // Access is safe but unofficial; falls back to null if internals change.
+    // DB pool introspection.
+    // mysql2/promise createPool() returns a PromisePool; its underlying raw
+    // Pool is at .pool. The raw Pool tracks three internal arrays:
+    //   _allConnections  – every connection ever opened (grows up to connectionLimit)
+    //   _freeConnections – connections currently idle and available
+    //   _connectionQueue – callers waiting because the pool is exhausted
+    //
+    // On a quiet server mysql2 opens connections lazily, so _allConnections
+    // may be less than connectionLimit. On a busy server all slots fill and
+    // _freeConnections shrinks. "active" = total opened − currently idle.
     const rawPool = db_pool.pool;
     const dbPool = rawPool ? {
+      limit: rawPool.config?.connectionLimit ?? null,
       total: rawPool._allConnections?.length ?? null,
       free: rawPool._freeConnections?.length ?? null,
+      active: (rawPool._allConnections?.length != null && rawPool._freeConnections?.length != null)
+        ? rawPool._allConnections.length - rawPool._freeConnections.length
+        : null,
       queued: rawPool._connectionQueue?.length ?? null,
     } : null;
 
