@@ -635,11 +635,17 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
 const END_REASON_LABELS = {
   checkmate: 'checkmate',
   stalemate: 'draw (stalemate)',
+  stalemate_win: 'win (stalemate — player stalemated wins)',
+  lose_all_pieces: 'anti-chess (lost all pieces)',
+  no_moves_loss: 'win (no legal moves — player with no moves loses)',
+  capture_condition: 'win (capture condition)',
   move_limit: 'draw (move-limit rule)',
   move_cap_rollout: 'draw (trainer move cap)',
   rollout_cap: 'draw (rollout cap)',
   no_move: 'draw (no legal move)',
   royal_capture: 'royal piece captured',
+  repetition: 'draw (repetition)',
+  insufficient_material: 'draw (insufficient material)',
 };
 
 function formatTrainingEvent(ev) {
@@ -839,6 +845,17 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
               <div className={styles.balanceNote}>{summary.balance.note}</div>
             )}
             <div><strong>Avg game length:</strong> {summary.avgMoves.toFixed(1)} moves (range {summary.minMoves}–{summary.maxMoves})</div>
+            <details>
+              <summary>Win breakdown</summary>
+              <ul>
+                {summary.decisiveBy && Object.entries(summary.decisiveBy).map(([k, v]) => (
+                  v > 0 ? <li key={k}>{k.replace(/_/g, ' ')}: {v}</li> : null
+                )).filter(Boolean)}
+                {(!summary.decisiveBy || Object.values(summary.decisiveBy).every((v) => v === 0)) && (
+                  <li>No decisive games recorded.</li>
+                )}
+              </ul>
+            </details>
             <details>
               <summary>Draw breakdown</summary>
               <ul>

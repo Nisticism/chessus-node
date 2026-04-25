@@ -55,6 +55,8 @@ function readGameEvents(logPath) {
 const DRAW_REASONS = [
   'stalemate', 'move_limit', 'move_cap_rollout',
   'rollout_cap', 'no_move', 'repetition', 'insufficient_material',
+  // lose_all_pieces can be a draw if both sides reach 0 simultaneously
+  'lose_all_pieces',
 ];
 
 /**
@@ -79,8 +81,17 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
   let minMoves = Infinity, maxMoves = 0;
   const drawBreakdown = { stalemate: 0, move_limit: 0, move_cap_rollout: 0,
     rollout_cap: 0, no_move: 0, royal_capture: 0,
-    repetition: 0, insufficient_material: 0, unknown: 0 };
-  const decisiveBy = { checkmate: 0, royal_capture: 0, other: 0 };
+    repetition: 0, insufficient_material: 0,
+    lose_all_pieces: 0, unknown: 0 };
+  const decisiveBy = {
+    checkmate: 0,
+    lose_all_pieces: 0,
+    stalemate_win: 0,
+    no_moves_loss: 0,
+    capture_condition: 0,
+    royal_capture: 0,
+    other: 0,
+  };
 
   for (const ev of eligible) {
     const moves = Number(ev.moves) || 0;
@@ -104,6 +115,10 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
     if (ev.winner === 1 || ev.winner === 2) {
       const r = ev.end_reason;
       if (r === 'checkmate') decisiveBy.checkmate++;
+      else if (r === 'lose_all_pieces') decisiveBy.lose_all_pieces++;
+      else if (r === 'stalemate_win') decisiveBy.stalemate_win++;
+      else if (r === 'no_moves_loss') decisiveBy.no_moves_loss++;
+      else if (r === 'capture_condition') decisiveBy.capture_condition++;
       else if (r === 'royal_capture') decisiveBy.royal_capture++;
       else decisiveBy.other++;
     }

@@ -26,6 +26,7 @@ const changelogData = [
       "AI Training: resuming an aborted_oom job now correctly bumps the memory limit before handing off to the remote trainer service. Previously the remote trainer would read the unchanged limit from the DB and OOM again immediately",
       "Correspondence games: Confirm / Cancel move buttons now appear below the board at 900 px–1200 px (the stacked layout). Previously the sidebar confirm was hidden and the below-board row only showed at <900 px, leaving a dead zone",
       "AI engine: anti-chess (lose-all-pieces) games, stalemate-win games, and no-moves-loss games now report correct results in AI analysis instead of always drawing",
+      "AI Training Analysis: anti-chess wins (Lose All Pieces), Stalemate Win, No Moves Loss, and Capture Condition wins are now tracked and displayed separately in the win breakdown — previously they all collapsed into 'other'",
     ],
   },
   {
