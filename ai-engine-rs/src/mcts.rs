@@ -238,36 +238,7 @@ pub fn rollout_with_reason(
             return (GameResult::Win(mover), EndReason::RoyalCapture);
         }
 
-        // If squares_condition is active, bias 70% toward moves that land on
-        // a control square — this gives MCTS a meaningful gradient to learn from.
-        let mv = if rules.game.squares_condition && !rules.control_squares.is_empty() {
-            let ctrl_moves: Vec<&Move> = moves
-                .iter()
-                .filter(|m| {
-                    rules
-                        .control_squares
-                        .iter()
-                        .any(|&(cx, cy)| m.to.x == cx && m.to.y == cy)
-                })
-                .collect();
-            if !ctrl_moves.is_empty() && rng.gen_bool(0.7) {
-                (*ctrl_moves.choose(rng).unwrap()).clone()
-            } else {
-                let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
-                if !captures.is_empty() && rng.gen_bool(0.5) {
-                    (*captures.choose(rng).unwrap()).clone()
-                } else {
-                    moves.choose(rng).unwrap().clone()
-                }
-            }
-        } else {
-            let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
-            if !captures.is_empty() && rng.gen_bool(0.5) {
-                (*captures.choose(rng).unwrap()).clone()
-            } else {
-                moves.choose(rng).unwrap().clone()
-            }
-        };
+        let mv = pick_rollout_move(&moves, state, rules, rng, mover, false).clone();
         state.apply(&mv);
         // squares_condition: update consecutive holding counter; check for winner.
         if rules.game.squares_condition && !rules.control_squares.is_empty() {
@@ -355,73 +326,7 @@ pub fn rollout_with_reason_aggressive(
 
         // If squares_condition is active, bias strongly (80%) toward moves
         // that land on a control square, overriding the aggressive capture preference.
-        let mv = if rules.game.squares_condition && !rules.control_squares.is_empty() {
-            let ctrl_moves: Vec<&Move> = moves
-                .iter()
-                .filter(|m| {
-                    rules
-                        .control_squares
-                        .iter()
-                        .any(|&(cx, cy)| m.to.x == cx && m.to.y == cy)
-                })
-                .collect();
-            if !ctrl_moves.is_empty() && rng.gen_bool(0.8) {
-                (*ctrl_moves.choose(rng).unwrap()).clone()
-            } else {
-                // Fall back to aggressive capture-first logic.
-                let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
-                if !captures.is_empty() {
-                    (*captures.choose(rng).unwrap()).clone()
-                } else {
-                    let target_forward = |m: &Move| -> i32 {
-                        if mover == 1 { m.to.y - m.from.y } else { m.from.y - m.to.y }
-                    };
-                    let best_score = moves.iter().map(|m| target_forward(m)).max().unwrap_or(0);
-                    if rng.gen_bool(0.8) {
-                        let forward: Vec<&Move> = moves
-                            .iter()
-                            .filter(|m| target_forward(m) == best_score)
-                            .collect();
-                        if !forward.is_empty() {
-                            (*forward.choose(rng).unwrap()).clone()
-                        } else {
-                            moves.choose(rng).unwrap().clone()
-                        }
-                    } else {
-                        moves.choose(rng).unwrap().clone()
-                    }
-                }
-            }
-        } else {
-            // Aggressive selection: always capture if possible.
-            let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
-            if !captures.is_empty() {
-                (*captures.choose(rng).unwrap()).clone()
-            } else {
-                // Forward-bias for non-captures: player 1 advances toward high
-                // y, player 2 advances toward low y. Pick the move with the
-                // largest forward progress; ties broken randomly.
-                let target_forward = |m: &Move| -> i32 {
-                    if mover == 1 { m.to.y - m.from.y } else { m.from.y - m.to.y }
-                };
-                let best_score = moves.iter().map(|m| target_forward(m)).max().unwrap_or(0);
-                // 80% chance to pick a max-forward move; 20% fully random to
-                // avoid pathological stuck states.
-                if rng.gen_bool(0.8) {
-                    let forward: Vec<&Move> = moves
-                        .iter()
-                        .filter(|m| target_forward(m) == best_score)
-                        .collect();
-                    if !forward.is_empty() {
-                        (*forward.choose(rng).unwrap()).clone()
-                    } else {
-                        moves.choose(rng).unwrap().clone()
-                    }
-                } else {
-                    moves.choose(rng).unwrap().clone()
-                }
-            }
-        };
+        let mv = pick_rollout_move(&moves, state, rules, rng, mover, true).clone();
         let _ = board_height; // reserved for future promotion-square heuristics
         state.apply(&mv);
         // squares_condition: update consecutive holding counter; check for winner.
@@ -484,4 +389,126 @@ pub fn check_squares_winner(board: &Board, rules: &Rules) -> Option<i32> {
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// Multi-tier biased move selection (shared by both rollout variants).
+// ---------------------------------------------------------------------------
+
+/// Select a move from `moves` using a priority-ordered bias heuristic.
+///
+/// **Priority order (highest first)**:
+///
+/// 1. **Promotion** (85 %) — `can_promote` piece lands on a promotion square.
+///    Mirrors `checkPromotionEligibility` in game-socket.js.
+/// 2. **Control squares** (70 % standard / 80 % aggressive) — any piece lands
+///    on a control square when `squares_condition` is active.  Gives MCTS a
+///    meaningful gradient for King-of-the-Hill / squares-win variants.
+/// 3. **Range squares** (40 %) — any piece lands on a range-bonus square,
+///    gaining extra movement distance on its *next* turn.  Mild bias because
+///    the benefit is indirect.
+/// 4. **Capture** (50 % standard / 100 % aggressive) — speeds up rollout
+///    convergence and is correct for most variants.
+/// 5. **Forward advance** (aggressive only, 80 %) — among non-capture moves,
+///    prefer moves that advance toward the opponent's back rank.  Cheap proxy
+///    for "get promotable pieces toward the promotion zone".
+/// 6. **Random** — fallthrough.
+///
+/// Custom squares (entries in `special_squares_string` with multiple flags set)
+/// are handled automatically — they appear in both the relevant tier lists
+/// (`control_squares`, `range_squares`, etc.) because `Rules` already merged
+/// them during construction.
+pub fn pick_rollout_move<'a>(
+    moves: &'a [Move],
+    state: &Board,
+    rules: &Rules,
+    rng: &mut Xoshiro256PlusPlus,
+    mover: i32,
+    aggressive: bool,
+) -> &'a Move {
+    // Tier 1: Promotion — strong bias for games with promotion squares.
+    if !rules.promotion_squares.is_empty() {
+        let promo: Vec<&Move> = moves
+            .iter()
+            .filter(|m| {
+                rules
+                    .promotion_squares
+                    .iter()
+                    .any(|&(px, py)| m.to.x == px && m.to.y == py)
+                    && state
+                        .pieces
+                        .iter()
+                        .any(|p| p.id == m.piece_id
+                            && rules
+                                .piece(p.piece_id)
+                                .map(|t| t.can_promote)
+                                .unwrap_or(false))
+            })
+            .collect();
+        if !promo.is_empty() && rng.gen_bool(0.85) {
+            return *promo.choose(rng).unwrap();
+        }
+    }
+
+    // Tier 2: Control squares.
+    if rules.game.squares_condition && !rules.control_squares.is_empty() {
+        let ctrl: Vec<&Move> = moves
+            .iter()
+            .filter(|m| {
+                rules
+                    .control_squares
+                    .iter()
+                    .any(|&(cx, cy)| m.to.x == cx && m.to.y == cy)
+            })
+            .collect();
+        let ctrl_bias = if aggressive { 0.8 } else { 0.7 };
+        if !ctrl.is_empty() && rng.gen_bool(ctrl_bias) {
+            return *ctrl.choose(rng).unwrap();
+        }
+    }
+
+    // Tier 3: Range squares (positional benefit on next turn).
+    if !rules.range_squares.is_empty() {
+        let range: Vec<&Move> = moves
+            .iter()
+            .filter(|m| {
+                rules
+                    .range_squares
+                    .iter()
+                    .any(|&(rx, ry)| m.to.x == rx && m.to.y == ry)
+            })
+            .collect();
+        if !range.is_empty() && rng.gen_bool(0.4) {
+            return *range.choose(rng).unwrap();
+        }
+    }
+
+    // Tier 4: Capture preference.
+    let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
+    if !captures.is_empty() {
+        let threshold = if aggressive { 1.0 } else { 0.5 };
+        if rng.gen_bool(threshold) {
+            return *captures.choose(rng).unwrap();
+        }
+    }
+
+    // Tier 5: Forward bias (aggressive mode only).
+    if aggressive {
+        let target_forward = |m: &Move| -> i32 {
+            if mover == 1 { m.to.y - m.from.y } else { m.from.y - m.to.y }
+        };
+        let best_score = moves.iter().map(|m| target_forward(m)).max().unwrap_or(0);
+        if rng.gen_bool(0.8) {
+            let forward: Vec<&Move> = moves
+                .iter()
+                .filter(|m| target_forward(m) == best_score)
+                .collect();
+            if !forward.is_empty() {
+                return *forward.choose(rng).unwrap();
+            }
+        }
+    }
+
+    // Tier 6: Random fallthrough.
+    moves.choose(rng).unwrap()
 }

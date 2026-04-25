@@ -4,8 +4,8 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
-    date: "April 26, 2026",
-    title: "Forced capture display fix, initial-state scan fix, leaderboard speed, AI training data management",
+    date: "April 25, 2026",
+    title: "Forced capture display fix, initial-state scan fix, leaderboard speed, AI training data management, AI engine special-squares support",
     items: [
       "Game cards and game detail page: Forced Capture is no longer listed under Win Conditions — it is a movement mechanic, not a win condition. It now appears in the Special Rules section of the game detail page instead",
       "Wizard review step: Forced Capture now appears under Special Rules instead of Win Conditions",
@@ -13,21 +13,8 @@ const changelogData = [
       "Global leaderboard: page now loads faster — the player count and player list queries now run in parallel instead of sequentially",
       "Admin portal — AI Training: added a '🗑 Clear Data' button per job. Deletes the on-disk log and model files and resets the game count to 0. The job record is kept in history. Only shown for non-running jobs that have training data",
       "AI engine: Control Squares win condition now works in AI training — games correctly end when a player holds enough control squares for the required number of turns. MCTS rollouts now bias moves toward control squares so training converges. Stalemate-Win and No-Moves-Loss conditions are also now honoured during MCTS rollouts",
-    ],
-  },
-  {
-    date: "April 25, 2026",
-    title: "Admin portal polish, AI training resume fix, confirm move fix at medium widths",
-    items: [
-      "Admin portal — Users tab: page now loads faster; the user list and count queries now run in parallel instead of sequentially",
-      "Admin portal — Anonymous Games tab: now shows a Players column (e.g. 1/2) so unstarted games are obvious at a glance; 'Ready (starting)' status now displays correctly instead of 'Unknown'",
-      "Admin portal — Server Stats: DB connection display now shows Limit, Opened, Active, Idle, and Queue Depth separately. Previously always showed 10/10 because mysql2 opens all connections upfront and counts opened vs. idle — Active (opened − idle) is now the useful signal",
-      "Admin portal — Game Session Limits settings added: configure the max simultaneous live, correspondence, and open-match games for logged-in and anonymous users directly from the settings tab",
-      "Game detail page: '404 not found' console error for AI analysis check no longer appears for games with no AI data — the request is now handled silently",
-      "AI Training: resuming an aborted_oom job now correctly bumps the memory limit before handing off to the remote trainer service. Previously the remote trainer would read the unchanged limit from the DB and OOM again immediately",
-      "Correspondence games: Confirm / Cancel move buttons now appear below the board at 900 px–1200 px (the stacked layout). Previously the sidebar confirm was hidden and the below-board row only showed at <900 px, leaving a dead zone",
-      "AI engine: anti-chess (lose-all-pieces) games, stalemate-win games, and no-moves-loss games now report correct results in AI analysis instead of always drawing",
-      "AI Training Analysis: anti-chess wins (Lose All Pieces), Stalemate Win, No Moves Loss, and Capture Condition wins are now tracked and displayed separately in the win breakdown — previously they all collapsed into 'other'",
+      "AI engine: MCTS rollouts now understand all special square types — promotion squares (strong bias for promotable pieces), range squares (positional bias for landing on squares that boost movement range), and custom squares (composite squares combining multiple effects). Promotion square detection also fixed in move generation to use the game's configured promotion squares instead of only the back rank",
+      "Admin portal — AI Training: anti-chess wins (Lose All Pieces), Stalemate Win, No Moves Loss, and Capture Condition wins are now tracked and displayed separately in the win breakdown — previously they all collapsed into 'other'",
     ],
   },
   {

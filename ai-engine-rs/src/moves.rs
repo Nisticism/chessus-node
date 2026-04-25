@@ -664,11 +664,18 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
         });
     }
 
-    // -------- promotion flag (back-rank) --------
+    // -------- promotion flag (back-rank + custom promotion squares) --------
+    // Mirrors checkPromotionEligibility in game-socket.js:
+    //   if promotion_squares_string / asPromotion squares are configured,
+    //   use those; otherwise fall back to the back-rank (row 0 for P1, row
+    //   bh-1 for P2) so standard-chess-style games still work.
     if tpl.can_promote {
         let promo_y = if is_player2 { bh - 1 } else { 0 };
         for mv in out.iter_mut() {
-            if mv.to.y == promo_y {
+            let on_back_rank = mv.to.y == promo_y;
+            let on_custom_square = !rules.promotion_squares.is_empty()
+                && rules.promotion_squares.iter().any(|&(px, py)| px == mv.to.x && py == mv.to.y);
+            if on_back_rank || on_custom_square {
                 mv.is_promotion = true;
             }
         }
@@ -769,6 +776,8 @@ fn pseudo_moves_no_castle(board: &Board, rules: &Rules, p: &PieceOnBoard) -> Vec
                 starting_positions: rules.starting_positions.clone(),
                 control_squares: rules.control_squares.clone(),
                 control_half_turns_required: rules.control_half_turns_required,
+                promotion_squares: rules.promotion_squares.clone(),
+                range_squares: rules.range_squares.clone(),
             };
             return moves_for(board, &tmp_rules, p);
         }
