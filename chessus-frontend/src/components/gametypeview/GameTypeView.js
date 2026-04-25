@@ -1383,10 +1383,6 @@ const GameTypeView = () => {
       winConditions.push(`• **Stalemate Win**: A stalemated player (no legal moves and not in check) WINS instead of the game being a draw.`);
     }
 
-    if (game.forced_capture_condition) {
-      winConditions.push(`• **Forced Capture**: If any of your pieces can make a capturing move, you MUST make a capture this turn (any capture). Non-capturing moves will be rejected when captures are available.`);
-    }
-
     if (winConditions.length > 0) {
       // Build piece links for win condition pieces
       const winPieceLinks = [];
@@ -1508,6 +1504,11 @@ const GameTypeView = () => {
 • A piece cannot move through other pieces unless it has jumping ability.
 • The game continues until a win condition is met or players agree to a draw.${(game.actions_per_turn || 1) > 1 && game.mate_condition ? `\n• **Important**: In this multi-action game, checkmate is evaluated after all ${game.actions_per_turn} actions are completed. You cannot capture a checkmate piece — it must be checkmated.` : ''}`
     });
+
+    // Forced Capture mechanic
+    if (game.forced_capture_condition) {
+      specialRulesContent.push(`**Forced Capture**\nIf any of your pieces can make a capturing move on your turn, you MUST make a capture (any capture). Non-capturing moves are rejected whenever a capture is available. Combine with Lose All Pieces for classic anti-chess.`);
+    }
 
     // Add the combined Special Rules section if any content exists
     if (specialRulesContent.length > 0) {

@@ -4,6 +4,17 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 26, 2026",
+    title: "Forced capture display fix, initial-state scan fix, leaderboard speed, AI training data management",
+    items: [
+      "Game cards and game detail page: Forced Capture is no longer listed under Win Conditions — it is a movement mechanic, not a win condition. It now appears in the Special Rules section of the game detail page instead",
+      "Wizard review step: Forced Capture now appears under Special Rules instead of Win Conditions",
+      "Admin portal — Initial-state scan: games with no pieces placed and no piece-placement action enabled are now correctly flagged as invalid (previously they were silently skipped)",
+      "Global leaderboard: page now loads faster — the player count and player list queries now run in parallel instead of sequentially",
+      "Admin portal — AI Training: added a '🗑 Clear Data' button per job. Deletes the on-disk log and model files and resets the game count to 0. The job record is kept in history. Only shown for non-running jobs that have training data",
+    ],
+  },
+  {
     date: "April 25, 2026",
     title: "Admin portal polish, AI training resume fix, confirm move fix at medium widths",
     items: [

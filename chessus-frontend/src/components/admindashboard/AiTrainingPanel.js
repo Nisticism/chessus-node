@@ -186,6 +186,21 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
     }
   };
 
+  const handleDeleteData = async (jobId) => {
+    if (!window.confirm(
+      `Delete all on-disk training data for job #${jobId}?\n\nThis removes the log file and model files from disk and resets games_played to 0. The job record itself is kept for history. This cannot be undone.`
+    )) return;
+    try {
+      await axios.delete(
+        `${API_URL}admin/ai-training/jobs/${jobId}/data`,
+        { headers: authHeader() },
+      );
+      await fetchStatus();
+    } catch (err) {
+      alert(err?.response?.data?.message || err.message || "Failed to delete job data");
+    }
+  };
+
   const handleDownload = async (jobId) => {
     try {
       const res = await axios.get(
@@ -568,6 +583,19 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                         }}
                       >
                         ⬇ Download
+                      </button>
+                    )}
+                    {j.status !== "running" && (j.games_played || 0) > 0 && (
+                      <button
+                        type="button"
+                        title="Delete on-disk training data (log + model files). Resets games_played to 0. Job record is kept."
+                        style={{ marginLeft: 4, color: '#c0392b' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteData(j.id);
+                        }}
+                      >
+                        🗑 Clear Data
                       </button>
                     )}
                   </td>

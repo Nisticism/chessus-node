@@ -125,10 +125,14 @@ const Step4Advanced = ({ gameData, updateGameData }) => {
             gameData.piece_count_condition && "Piece Count",
             gameData.promotion_condition && "Win on Promotion",
             gameData.lose_all_pieces_condition && "Lose All Pieces",
-            gameData.stalemate_win_condition && "Stalemate Win",
-            gameData.forced_capture_condition && "Forced Capture"
+            gameData.stalemate_win_condition && "Stalemate Win"
           ].filter(Boolean).join(", ") || "Capture (default)"}
         </div>
+        {gameData.forced_capture_condition && (
+          <div className={styles["summary-item"]}>
+            <strong>Special Rules:</strong> Forced Capture
+          </div>
+        )}
       </div>
     </div>
   );

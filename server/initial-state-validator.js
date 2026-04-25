@@ -216,7 +216,7 @@ async function loadInitialStateForGameType(gameTypeId) {
 async function validateGameTypeInitialState(gameTypeId) {
   try {
     const { gameType, pieces } = await loadInitialStateForGameType(gameTypeId);
-    if (!gameType || pieces.length === 0) return { decided: false };
+    if (!gameType) return { decided: false };
     return evaluateInitialPosition(gameType, pieces);
   } catch (err) {
     console.error(`[initial-state] validateGameTypeInitialState(${gameTypeId}) failed:`, err);
@@ -257,7 +257,22 @@ async function validateGameTypeFromRequestBody(gameData) {
   } catch (e) {
     return { decided: false };
   }
-  if (placements.length === 0) return { decided: false };
+  if (placements.length === 0) {
+    // Check if this game uses in-game piece placement — if so, an empty
+    // starting board is intentional and we can't evaluate it statically.
+    try {
+      const od = typeof gameData.other_game_data === 'string'
+        ? JSON.parse(gameData.other_game_data)
+        : (gameData.other_game_data || {});
+      if (od && od.place_pieces_action) return { decided: false };
+    } catch (_) {}
+    return {
+      decided: true,
+      type: 'invalid',
+      code: 'no_pieces',
+      reason: 'The game has no pieces and no in-game piece placement enabled. There is nothing to play with.',
+    };
+  }
 
   // Hydrate movement data from the pieces table.
   const pieceIds = Array.from(new Set(placements.map(p => p.piece_id).filter(Boolean)));

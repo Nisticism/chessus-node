@@ -1132,14 +1132,17 @@ app.get("/api/users", async (req, res) => {
 
     const whereSQL = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
 
-    // Get total count with filters
+    // Build query strings
     const countQuery = `SELECT COUNT(*) as total FROM users u ${joinClause} ${whereSQL}`;
-    const [countResult] = await db_pool.query(countQuery, whereParams);
-    const total = countResult[0].total;
-    
     // Get paginated users - exclude personal information (email, first_name, last_name)
     const dataQuery = `SELECT u.id, u.username, u.role, u.profile_picture, u.elo, u.last_active_at FROM users u ${joinClause} ${whereSQL} ORDER BY u.${sortBy} ${sortOrder} LIMIT ? OFFSET ?`;
-    const [users] = await db_pool.query(dataQuery, [...whereParams, limit, offset]);
+
+    // Get total count with filters and paginated data in parallel
+    const [[countResult], [users]] = await Promise.all([
+      db_pool.query(countQuery, whereParams),
+      db_pool.query(dataQuery, [...whereParams, limit, offset])
+    ]);
+    const total = countResult[0].total;
     
     res.json({
       users,
@@ -7052,6 +7055,41 @@ app.get('/api/admin/ai-training/jobs/:id/download', authenticateAdmin, async (re
   } catch (err) {
     console.error('Download AI training job error:', err);
     res.status(500).send({ message: err.message || 'Failed to package job for download' });
+  }
+});
+
+// Delete the on-disk training artifacts (log.ndjson, model-*.bin, etc.)
+// for a specific job. The DB row is preserved so job history remains
+// visible. In remote mode the trainer and backend share the same MySQL
+// instance and filesystem path conventions, so we delete directly.
+app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
+    const jobStatus = await trainingManager.getJobStatus(id);
+    if (!jobStatus || !jobStatus.job) return res.status(404).send({ message: 'Job not found' });
+    const { job } = jobStatus;
+    if (job.status === 'running') {
+      return res.status(400).send({ message: 'Cannot delete data for a running job. Stop it first.' });
+    }
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingDirFor } = require('./ai/export-game-rules');
+    const jobDir = path.join(trainingDirFor(job.game_type_id), 'jobs', String(id));
+    let deletedDir = false;
+    if (fs.existsSync(jobDir)) {
+      fs.rmSync(jobDir, { recursive: true, force: true });
+      deletedDir = true;
+    }
+    // Mark the job as having its data cleared in the DB (reset games_played to 0).
+    await db_pool.query(
+      `UPDATE ai_training_jobs SET games_played = 0, status = 'stopped', error_message = CONCAT(IFNULL(error_message, ''), ' [data cleared]') WHERE id = ?`,
+      [id]
+    );
+    res.json({ ok: true, deletedDir, jobId: id });
+  } catch (err) {
+    console.error('Delete AI training job data error:', err);
+    res.status(500).send({ message: err.message || 'Failed to delete job data' });
   }
 });
 
