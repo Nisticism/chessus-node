@@ -14,7 +14,7 @@ const changelogData = [
       "Admin portal — AI Training: added a '🗑 Clear Data' button per job. Deletes the on-disk log and model files and resets the game count to 0. The job record is kept in history. Only shown for non-running jobs that have training data",
       "AI engine: Control Squares win condition now works in AI training — games correctly end when a player holds enough control squares for the required number of turns. MCTS rollouts now bias moves toward control squares so training converges. Stalemate-Win and No-Moves-Loss conditions are also now honoured during MCTS rollouts",
       "AI engine: MCTS rollouts now understand all special square types — promotion squares (strong bias for promotable pieces), range squares (positional bias for landing on squares that boost movement range), and custom squares (composite squares combining multiple effects). Promotion square detection also fixed in move generation to use the game's configured promotion squares instead of only the back rank",
-      "Admin portal — AI Training: anti-chess wins (Lose All Pieces), Stalemate Win, No Moves Loss, and Capture Condition wins are now tracked and displayed separately in the win breakdown — previously they all collapsed into 'other'",
+      "Admin portal — AI Training: anti-chess wins (Lose All Pieces), Stalemate Win, No Moves Loss, Capture Condition, and Control Squares wins are now all tracked and displayed separately in the win breakdown — previously they collapsed into 'other'. Control Squares games also now display 'win (control squares)' in the training log instead of 'P1 wins by win'",
     ],
   },
   {

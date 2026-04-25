@@ -89,6 +89,7 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
     stalemate_win: 0,
     no_moves_loss: 0,
     capture_condition: 0,
+    squares_condition: 0,
     royal_capture: 0,
     other: 0,
   };
@@ -119,6 +120,7 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
       else if (r === 'stalemate_win') decisiveBy.stalemate_win++;
       else if (r === 'no_moves_loss') decisiveBy.no_moves_loss++;
       else if (r === 'capture_condition') decisiveBy.capture_condition++;
+      else if (r === 'squares_condition') decisiveBy.squares_condition++;
       else if (r === 'royal_capture') decisiveBy.royal_capture++;
       else decisiveBy.other++;
     }

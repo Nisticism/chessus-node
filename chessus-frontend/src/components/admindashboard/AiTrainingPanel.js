@@ -639,6 +639,7 @@ const END_REASON_LABELS = {
   lose_all_pieces: 'anti-chess (lost all pieces)',
   no_moves_loss: 'win (no legal moves — player with no moves loses)',
   capture_condition: 'win (capture condition)',
+  squares_condition: 'win (control squares)',
   move_limit: 'draw (move-limit rule)',
   move_cap_rollout: 'draw (trainer move cap)',
   rollout_cap: 'draw (rollout cap)',
