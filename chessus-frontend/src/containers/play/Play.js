@@ -46,11 +46,13 @@ const Play = () => {
   const [premoveTimeCost, setPremoveTimeCost] = useState(false);
   const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
   const additionalOptionsRef = useRef(null);
+  const ongoingGamesRef = useRef(null); // for scroll-to in limit modal
   const [startingMode, setStartingMode] = useState("none");
   const [playerSide, setPlayerSide] = useState("random"); // "p1", "p2", or "random"
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState(null);
+  const [limitError, setLimitError] = useState(null); // { limitType, limitCount, limitMax, message }
   const [deletingGameId, setDeletingGameId] = useState(null);
   
   // Correspondence / game mode state
@@ -567,7 +569,11 @@ const Play = () => {
       setPendingChallenges(prev => prev.filter(c => c.gameId !== challenge.gameId));
       navigate(`/play/${challenge.gameId}`);
     } catch (err) {
-      setError(err.message || "Failed to join challenge");
+      if (err.code === 'LIMIT_EXCEEDED') {
+        setLimitError({ limitType: err.limitType, limitCount: err.limitCount, limitMax: err.limitMax, message: err.message });
+      } else {
+        setError(err.message || "Failed to join challenge");
+      }
     }
   };
 
@@ -779,7 +785,12 @@ const Play = () => {
       // Navigate to the game page where host can wait and still browse
       navigate(`/play/${result.gameId}`);
     } catch (err) {
-      setError(err.message || "Failed to create game");
+      if (err.code === 'LIMIT_EXCEEDED') {
+        closeCreateModal();
+        setLimitError({ limitType: err.limitType, limitCount: err.limitCount, limitMax: err.limitMax, message: err.message });
+      } else {
+        setError(err.message || "Failed to create game");
+      }
     } finally {
       setIsCreating(false);
     }
@@ -798,7 +809,11 @@ const Play = () => {
       await joinGame(gameId);
       navigate(`/play/${gameId}`);
     } catch (err) {
-      setError(err.message || "Failed to join game");
+      if (err.code === 'LIMIT_EXCEEDED') {
+        setLimitError({ limitType: err.limitType, limitCount: err.limitCount, limitMax: err.limitMax, message: err.message });
+      } else {
+        setError(err.message || "Failed to join game");
+      }
     } finally {
       setIsJoining(false);
     }
@@ -826,7 +841,12 @@ const Play = () => {
       setShowAnonCreateModal(false);
       navigate(`/play/${result.gameId}`);
     } catch (err) {
-      setError(err.message || "Failed to create anonymous game");
+      if (err.code === 'LIMIT_EXCEEDED') {
+        setShowAnonCreateModal(false);
+        setLimitError({ limitType: err.limitType, limitCount: err.limitCount, limitMax: err.limitMax, message: err.message });
+      } else {
+        setError(err.message || "Failed to create anonymous game");
+      }
     } finally {
       setIsCreatingAnonymous(false);
     }
@@ -845,7 +865,11 @@ const Play = () => {
       const result = await joinByInviteCode(inviteCodeInput.trim(), guestName || 'Guest');
       navigate(`/play/${result.gameId}`);
     } catch (err) {
-      setError(err.message || "Failed to join game");
+      if (err.code === 'LIMIT_EXCEEDED') {
+        setLimitError({ limitType: err.limitType, limitCount: err.limitCount, limitMax: err.limitMax, message: err.message });
+      } else {
+        setError(err.message || "Failed to join game");
+      }
     } finally {
       setIsJoiningByCode(false);
     }
@@ -1401,7 +1425,7 @@ const Play = () => {
           </div>
 
           {/* Ongoing Live Games Section */}
-          <div className={styles["ongoing-games-section"]}>
+          <div className={styles["ongoing-games-section"]} ref={ongoingGamesRef}>
             <h2
               onClick={toggleLiveGames}
               style={{ cursor: 'pointer', userSelect: 'none' }}
@@ -1498,7 +1522,7 @@ const Play = () => {
           </div>
 
           {/* Ongoing Correspondence Games Section */}
-          <div className={styles["ongoing-games-section"]}>
+          <div className={styles["ongoing-games-section"]} data-section="correspondence-games">
             <h2
               onClick={toggleCorrespondenceGames}
               style={{ cursor: 'pointer', userSelect: 'none' }}
@@ -2185,6 +2209,64 @@ const Play = () => {
                 disabled={isCreatingAnonymous}
               >
                 {isCreatingAnonymous ? "Creating..." : "Create & Get Invite Code"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Game Limit Reached Modal */}
+      {limitError && (
+        <div className={styles["modal-overlay"]} onClick={() => setLimitError(null)}>
+          <div className={styles["limit-modal"]} onClick={(e) => e.stopPropagation()}>
+            <div className={styles["limit-modal-header"]}>
+              <span className={styles["limit-modal-icon"]}>
+                {limitError.limitType === 'correspondence' ? '📬' :
+                 limitError.limitType === 'open' ? '🕐' : '⚡'}
+              </span>
+              <h2>
+                {limitError.limitType === 'correspondence' && 'Correspondence Game Limit Reached'}
+                {limitError.limitType === 'live' && 'Live Game Limit Reached'}
+                {limitError.limitType === 'open' && 'Open Match Limit Reached'}
+                {limitError.limitType === 'live_anon' && 'Anonymous Game Limit Reached'}
+              </h2>
+            </div>
+            <div className={styles["limit-modal-count"]}>
+              {limitError.limitCount !== undefined && limitError.limitMax !== undefined && (
+                <span>{limitError.limitCount} / {limitError.limitMax}</span>
+              )}
+            </div>
+            <p className={styles["limit-modal-message"]}>{limitError.message}</p>
+            <div className={styles["limit-modal-actions"]}>
+              {(limitError.limitType === 'live' || limitError.limitType === 'open') && currentUser && (
+                <button
+                  className={`${styles.btn} ${styles["btn-secondary"]}`}
+                  onClick={() => {
+                    setLimitError(null);
+                    ongoingGamesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
+                  View My Live Games
+                </button>
+              )}
+              {limitError.limitType === 'correspondence' && currentUser && (
+                <button
+                  className={`${styles.btn} ${styles["btn-secondary"]}`}
+                  onClick={() => {
+                    setLimitError(null);
+                    // Scroll to correspondence section (after live games section)
+                    document.querySelector('[data-section="correspondence-games"]')
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
+                  View My Correspondence Games
+                </button>
+              )}
+              <button
+                className={`${styles.btn} ${styles["btn-primary"]}`}
+                onClick={() => setLimitError(null)}
+              >
+                OK
               </button>
             </div>
           </div>

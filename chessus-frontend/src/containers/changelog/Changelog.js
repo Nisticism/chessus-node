@@ -4,6 +4,14 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 26, 2026",
+    title: "Clearer game limit warnings, AI analysis data integrity fix",
+    items: [
+      "When you hit a game limit (correspondence, live, open match, or anonymous), a modal now pops up with a clear explanation of the cap, why it exists, and what to do next. The current count and maximum are displayed prominently. Buttons let you jump straight to your ongoing games so you can resign or check them quickly",
+      "Admin portal — AI Training: clearing a job's data now immediately updates the analysis summary. Previously, deleted training data could still appear in the AI analysis totals until an admin manually clicked Regenerate",
+    ],
+  },
+  {
     date: "April 25, 2026",
     title: "Forced capture display fix, initial-state scan fix, leaderboard speed, AI training data management, AI engine special-squares support",
     items: [

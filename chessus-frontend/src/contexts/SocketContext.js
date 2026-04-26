@@ -190,9 +190,14 @@ export const SocketProvider = ({ children }) => {
         resolve({ gameId, gameState });
       };
 
-      const handleError = ({ message }) => {
+      const handleError = (errorData) => {
         cleanup();
-        reject(new Error(message));
+        const err = new Error(errorData.message);
+        if (errorData.code) err.code = errorData.code;
+        if (errorData.limitType) err.limitType = errorData.limitType;
+        if (errorData.limitCount !== undefined) err.limitCount = errorData.limitCount;
+        if (errorData.limitMax !== undefined) err.limitMax = errorData.limitMax;
+        reject(err);
       };
 
       socket.on('gameCreated', handleGameCreated);
@@ -237,9 +242,14 @@ export const SocketProvider = ({ children }) => {
         }
       };
 
-      const handleError = ({ message }) => {
+      const handleError = (errorData) => {
         cleanup();
-        reject(new Error(message));
+        const err = new Error(errorData.message);
+        if (errorData.code) err.code = errorData.code;
+        if (errorData.limitType) err.limitType = errorData.limitType;
+        if (errorData.limitCount !== undefined) err.limitCount = errorData.limitCount;
+        if (errorData.limitMax !== undefined) err.limitMax = errorData.limitMax;
+        reject(err);
       };
 
       socket.on('playerJoined', handlePlayerJoined);
@@ -281,9 +291,14 @@ export const SocketProvider = ({ children }) => {
         resolve({ gameId, gameState, inviteCode });
       };
 
-      const handleError = ({ message }) => {
+      const handleError = (errorData) => {
         cleanup();
-        reject(new Error(message));
+        const err = new Error(errorData.message);
+        if (errorData.code) err.code = errorData.code;
+        if (errorData.limitType) err.limitType = errorData.limitType;
+        if (errorData.limitCount !== undefined) err.limitCount = errorData.limitCount;
+        if (errorData.limitMax !== undefined) err.limitMax = errorData.limitMax;
+        reject(err);
       };
 
       socket.on('gameCreated', handleGameCreated);
@@ -320,9 +335,14 @@ export const SocketProvider = ({ children }) => {
         resolve({ gameId, gameState, newPlayer });
       };
 
-      const handleError = ({ message }) => {
+      const handleError = (errorData) => {
         cleanup();
-        reject(new Error(message));
+        const err = new Error(errorData.message);
+        if (errorData.code) err.code = errorData.code;
+        if (errorData.limitType) err.limitType = errorData.limitType;
+        if (errorData.limitCount !== undefined) err.limitCount = errorData.limitCount;
+        if (errorData.limitMax !== undefined) err.limitMax = errorData.limitMax;
+        reject(err);
       };
 
       socket.on('playerJoined', handlePlayerJoined);

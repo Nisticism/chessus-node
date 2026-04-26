@@ -792,6 +792,62 @@
   }
 }
 
+// Limit Reached Modal
+.limit-modal {
+  background: var(--bg-dark);
+  border: 1px solid #6b3a3a;
+  border-radius: 10px;
+  padding: 28px 28px 24px;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+
+  .limit-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 8px;
+
+    h2 {
+      color: #f08080;
+      margin: 0;
+      font-size: 1.1rem;
+    }
+  }
+
+  .limit-modal-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .limit-modal-count {
+    display: inline-block;
+    background: #5a2222;
+    color: #ff9999;
+    font-size: 1.4rem;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 4px 16px;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
+
+  .limit-modal-message {
+    color: var(--text-secondary, #ccc);
+    font-size: 0.92rem;
+    line-height: 1.55;
+    margin: 0 0 22px 0;
+  }
+
+  .limit-modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
+
 // Modal
 .modal-overlay {
   position: fixed;

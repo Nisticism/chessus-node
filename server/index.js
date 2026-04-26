@@ -7086,6 +7086,14 @@ app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin, async (req
       `UPDATE ai_training_jobs SET games_played = 0, status = 'stopped', error_message = CONCAT(IFNULL(error_message, ''), ' [data cleared]') WHERE id = ?`,
       [id]
     );
+    // Auto-invalidate the cached analysis so it no longer reflects deleted data.
+    // Best-effort: don't fail the whole request if regeneration errors.
+    try {
+      const _trainingAnalysis = require('./ai/training-analysis');
+      await _trainingAnalysis.regenerateAndStore(job.game_type_id, null, { filterLegacy: true });
+    } catch (analysisErr) {
+      console.warn('Could not auto-regenerate analysis after data clear:', analysisErr.message);
+    }
     res.json({ ok: true, deletedDir, jobId: id });
   } catch (err) {
     console.error('Delete AI training job data error:', err);

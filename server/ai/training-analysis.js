@@ -179,9 +179,27 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
 
 /**
  * Compute a fresh summary from disk for a given game type.
+ * Cross-references the DB so that jobs whose data has been cleared
+ * (games_played = 0) are excluded even if stale log files remain on disk.
  */
-function computeAnalysis(gameTypeId, opts = {}) {
-  const jobs = listJobLogs(gameTypeId);
+async function computeAnalysis(gameTypeId, opts = {}) {
+  // Fetch the set of job IDs that still have data (games_played > 0).
+  // Jobs cleared via "Clear Data" are reset to games_played = 0 and should
+  // not appear in the analysis even if their directory lingers on disk.
+  let activeJobIds = null;
+  try {
+    const [rows] = await db_pool.query(
+      `SELECT id FROM ai_training_jobs WHERE game_type_id = ? AND games_played > 0`,
+      [gameTypeId],
+    );
+    activeJobIds = new Set(rows.map((r) => r.id));
+  } catch (_) {
+    // DB unavailable — fall back to disk-only (original behaviour)
+  }
+
+  const jobs = listJobLogs(gameTypeId).filter(
+    (j) => activeJobIds === null || activeJobIds.has(j.jobId),
+  );
   const allEvents = [];
   const jobMeta = [];
   for (const j of jobs) {

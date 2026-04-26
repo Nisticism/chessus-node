@@ -1187,7 +1187,11 @@ function initializeSocket(server) {
             const count = await countActiveCorrespondenceGames(numericHostId);
             if (count >= limit) {
               return socket.emit("error", {
-                message: `You are already in ${count} correspondence game${count !== 1 ? 's' : ''} (limit: ${limit}). Please finish some before starting new ones.`
+                code: 'LIMIT_EXCEEDED',
+                limitType: 'correspondence',
+                limitCount: count,
+                limitMax: limit,
+                message: `You've reached the correspondence game limit (${count}/${limit}). This cap keeps the site running smoothly and ensures no games pile up unplayed. Once you finish or resign some of your ongoing correspondence games, you'll be able to start new ones.`
               });
             }
           } else {
@@ -1197,7 +1201,11 @@ function initializeSocket(server) {
               const openCount = await countOpenWaitingGames(numericHostId);
               if (openCount >= openLimit) {
                 return socket.emit("error", {
-                  message: `You already have ${openCount} open match${openCount !== 1 ? 'es' : ''} waiting for opponents (limit: ${openLimit}). Please cancel some before creating new ones.`
+                  code: 'LIMIT_EXCEEDED',
+                  limitType: 'open',
+                  limitCount: openCount,
+                  limitMax: openLimit,
+                  message: `You already have ${openCount} open match${openCount !== 1 ? 'es' : ''} waiting for opponents (limit: ${openLimit}). This cap prevents game flooding and helps opponents find active games. Please cancel some waiting matches before creating a new one.`
                 });
               }
             }
@@ -1206,7 +1214,11 @@ function initializeSocket(server) {
             const liveCount = await countActiveLiveGames(numericHostId);
             if (liveCount >= liveLimit) {
               return socket.emit("error", {
-                message: `You are already in ${liveCount} live game${liveCount !== 1 ? 's' : ''} (limit: ${liveLimit}). Please finish some before starting new ones.`
+                code: 'LIMIT_EXCEEDED',
+                limitType: 'live',
+                limitCount: liveCount,
+                limitMax: liveLimit,
+                message: `You've reached the live game limit (${liveCount}/${liveLimit}). This cap keeps games active and prevents abandoned games from blocking new ones. Once some of your live games finish or you resign from them, you'll be free to start more.`
               });
             }
           }
@@ -1791,7 +1803,11 @@ function initializeSocket(server) {
           const anonCount = countAnonActiveGames(anonPlayerId);
           if (anonCount >= anonLiveLimit) {
             return socket.emit("error", {
-              message: `Anonymous users can have at most ${anonLiveLimit} open game${anonLiveLimit !== 1 ? 's' : ''} at once.`
+              code: 'LIMIT_EXCEEDED',
+              limitType: 'live_anon',
+              limitCount: anonCount,
+              limitMax: anonLiveLimit,
+              message: `You've reached the anonymous game limit (${anonLiveLimit} at a time). This limit prevents abuse and ensures fair access for everyone. Please finish your current games before starting a new one, or create a free account to unlock higher limits.`
             });
           }
         }
@@ -2088,7 +2104,11 @@ function initializeSocket(server) {
             const liveCount = await countActiveLiveGames(numericJoinerId);
             if (liveCount >= liveLimit) {
               return socket.emit("error", {
-                message: `You are already in ${liveCount} live game${liveCount !== 1 ? 's' : ''} (limit: ${liveLimit}). Please finish some before joining new ones.`
+                code: 'LIMIT_EXCEEDED',
+                limitType: 'live',
+                limitCount: liveCount,
+                limitMax: liveLimit,
+                message: `You've reached the live game limit (${liveCount}/${liveLimit}). This cap keeps games active and prevents abandoned games from blocking new ones. Once some of your live games finish or you resign from them, you'll be free to join more.`
               });
             }
           }
@@ -2098,14 +2118,17 @@ function initializeSocket(server) {
           const anonCount = countAnonActiveGames(playerId);
           if (anonCount >= anonLiveLimit) {
             return socket.emit("error", {
-              message: `Anonymous users can be in at most ${anonLiveLimit} live game${anonLiveLimit !== 1 ? 's' : ''} at once.`
+              code: 'LIMIT_EXCEEDED',
+              limitType: 'live_anon',
+              limitCount: anonCount,
+              limitMax: anonLiveLimit,
+              message: `You've reached the anonymous game limit (${anonLiveLimit} at a time). This limit prevents abuse and ensures fair access for everyone. Please finish your current games before joining a new one, or create a free account to unlock higher limits.`
             });
           }
         }
 
+        // Add player to game
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
-
-        // Insert player record
         await db_pool.query(
           `INSERT INTO players (created_at, player_position, time_remaining, game_id, user_id, game_type_id)
            VALUES (?, ?, ?, ?, ?, ?)`,
@@ -2481,7 +2504,11 @@ function initializeSocket(server) {
             const count = await countActiveCorrespondenceGames(numericJoinerId);
             if (count >= limit) {
               return socket.emit("error", {
-                message: `You are already in ${count} correspondence game${count !== 1 ? 's' : ''} (limit: ${limit}). Please finish some before joining new ones.`
+                code: 'LIMIT_EXCEEDED',
+                limitType: 'correspondence',
+                limitCount: count,
+                limitMax: limit,
+                message: `You've reached the correspondence game limit (${count}/${limit}). This cap keeps the site running smoothly and ensures no games pile up unplayed. Once you finish or resign some of your ongoing correspondence games, you'll be able to join new ones.`
               });
             }
           } else {
@@ -2489,7 +2516,11 @@ function initializeSocket(server) {
             const liveCount = await countActiveLiveGames(numericJoinerId);
             if (liveCount >= liveLimit) {
               return socket.emit("error", {
-                message: `You are already in ${liveCount} live game${liveCount !== 1 ? 's' : ''} (limit: ${liveLimit}). Please finish some before joining new ones.`
+                code: 'LIMIT_EXCEEDED',
+                limitType: 'live',
+                limitCount: liveCount,
+                limitMax: liveLimit,
+                message: `You've reached the live game limit (${liveCount}/${liveLimit}). This cap keeps games active and prevents abandoned games from blocking new ones. Once some of your live games finish or you resign from them, you'll be free to join more.`
               });
             }
           }
