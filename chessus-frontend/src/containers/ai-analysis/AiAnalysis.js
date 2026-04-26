@@ -73,16 +73,20 @@ const AiAnalysis = () => {
       <div className={styles.section}>
         <h3>Player balance</h3>
         <div className={styles.sideRow}>
+          {s.perSide && s.perSide['1'] && (
           <div className={styles.sideBlock}>
             <h4>{labelForPlayer(1)}</h4>
             <div className={styles.bigNumber}>{(s.perSide['1'].winRate * 100).toFixed(1)}%</div>
             <div className={styles.sideSublabel}>{s.perSide['1'].wins} wins</div>
           </div>
+          )}
+          {s.perSide && s.perSide['2'] && (
           <div className={styles.sideBlock}>
             <h4>{labelForPlayer(2)}</h4>
             <div className={styles.bigNumber}>{(s.perSide['2'].winRate * 100).toFixed(1)}%</div>
             <div className={styles.sideSublabel}>{s.perSide['2'].wins} wins</div>
           </div>
+          )}
           <div className={styles.sideBlock}>
             <h4>Drew</h4>
             <div className={styles.bigNumber}>{(s.balance.drawShare * 100).toFixed(1)}%</div>
@@ -102,14 +106,14 @@ const AiAnalysis = () => {
         <h4>Draws ({s.draws})</h4>
         <ul>
           {Object.entries(s.drawBreakdown)
-            .filter(([, v]) => v > 0)
+            .filter(([k, v]) => v > 0 && !(k === 'stalemate' && s.stalemate_draw_condition === false))
             .map(([k, v]) => <li key={k}>{prettyReason(k)}: {v} ({pct(v, s.draws)})</li>)}
           {s.draws === 0 && <li>None — every game produced a winner.</li>}
         </ul>
         <h4>Decisive ({s.decisive})</h4>
         <ul>
           {Object.entries(s.decisiveBy)
-            .filter(([, v]) => v > 0)
+            .filter(([k, v]) => v > 0 && !(k === 'stalemate_win' && s.stalemate_win_condition === false))
             .map(([k, v]) => <li key={k}>{prettyReason(k)}: {v}</li>)}
           {s.decisive === 0 && <li>No decisive games yet.</li>}
         </ul>

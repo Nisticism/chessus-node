@@ -12,6 +12,7 @@ const changelogData = [
       "News: articles can now link to an external blog post (e.g. a Lichess blog). The preview card automatically fetches the page's title, description, and banner image so readers can see what the link is about before clicking. The link label (e.g. 'Lichess Blog Post', 'Official Announcement') is now customisable per article",
       "When you hit a game limit (correspondence, live, open match, or anonymous), a modal now pops up with a clear explanation of the cap, why it exists, and what to do next. The current count and maximum are displayed prominently. Buttons let you jump straight to your ongoing games so you can resign or check them quickly",
       "Admin portal — AI Training: clearing a job's data now immediately updates the analysis summary. Previously, deleted training data could still appear in the AI analysis totals until an admin manually clicked Regenerate",
+      "Admin portal — AI Training: fixed a bug where resuming a job that was interrupted by a server restart (instead of stopped cleanly) would silently fail to apply the memory bump, causing the job to OOM again. The server now detects OOM jobs from their log at startup and also checks the log when resuming any interrupted job",
     ],
   },
   {

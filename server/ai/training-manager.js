@@ -173,12 +173,42 @@ async function markInterruptedJobs() {
   // service performs its own markInterruptedJobs() on its startup.
   if (REMOTE_MODE) return;
   try {
+    // Collect the jobs that are about to be interrupted so we can inspect
+    // their logs afterward and restore the correct status if needed.
+    const [toInterrupt] = await db_pool.query(
+      `SELECT id, game_type_id FROM ai_training_jobs WHERE status IN ('running','queued')`,
+    );
+
     await db_pool.query(
       `UPDATE ai_training_jobs
          SET status = 'interrupted', ended_at = NOW(),
              error_message = COALESCE(error_message, 'Server restarted while training was running')
        WHERE status IN ('running','queued')`,
     );
+
+    // If the Rust process exited with OOM (code 2) and wrote an Aborted
+    // event to the log before Node had a chance to persist the status, the
+    // job would land here as 'interrupted' even though it was really
+    // 'aborted_oom'. Correct the status now so the next resume will apply
+    // the memory bump automatically.
+    for (const row of toInterrupt) {
+      try {
+        const events = await tailLog(row.id, 20);
+        const hadOom = events.some(
+          (ev) => ev && ev.type === 'Aborted' &&
+            typeof ev.reason === 'string' && ev.reason.includes('memory'),
+        );
+        if (hadOom) {
+          await db_pool.query(
+            `UPDATE ai_training_jobs
+               SET status = 'aborted_oom',
+                   error_message = 'Memory limit exceeded (status corrected from log on server restart)'
+             WHERE id = ?`,
+            [row.id],
+          );
+        }
+      } catch (_) { /* non-fatal: log may not exist yet */ }
+    }
   } catch (e) {
     // Table may not exist yet on the first run before migrations apply on
     // a fresh install; non-fatal.
@@ -400,6 +430,26 @@ async function resumeJob(jobId) {
           'UPDATE ai_training_jobs SET max_rss_mb = ? WHERE id = ?',
           [maxRssMb, jobId],
         );
+      } else if (jobForBump && jobForBump.status === 'interrupted') {
+        // The job may have OOM'd and then been clobbered to 'interrupted'
+        // by a server restart before the exit handler could persist the
+        // status. Check the log tail for an Aborted event.
+        try {
+          const events = await trainerClient.tailLog(jobId, 20);
+          const logHadOom = events.some(
+            (ev) => ev && ev.type === 'Aborted' &&
+              typeof ev.reason === 'string' && ev.reason.includes('memory'),
+          );
+          if (logHadOom) {
+            let maxRssMb = jobForBump.max_rss_mb || 1024;
+            const bumped = Math.ceil((maxRssMb * 1.5) / 256) * 256;
+            maxRssMb = Math.max(bumped, maxRssMb + 256);
+            await db_pool.query(
+              'UPDATE ai_training_jobs SET max_rss_mb = ? WHERE id = ?',
+              [maxRssMb, jobId],
+            );
+          }
+        } catch (_) { /* non-fatal: log fetch may fail */ }
       }
     } catch (bumpErr) {
       // Non-fatal — the remote service will still attempt the resume
@@ -452,10 +502,19 @@ async function resumeJob(jobId) {
   const outDir = jobsDirFor(job.game_type_id, jobId);
   fs.mkdirSync(outDir, { recursive: true });
 
+  // Detect OOM either from the stored status or from an Aborted event in
+  // the log. The latter catches the case where the server restarted before
+  // the exit handler persisted 'aborted_oom', leaving the job as
+  // 'interrupted' even though Rust exited with code 2.
+  const logHadOom = events.some(
+    (ev) => ev && ev.type === 'Aborted' &&
+      typeof ev.reason === 'string' && ev.reason.includes('memory'),
+  );
+
   // If the previous run was killed by the RAM guard, bump the limit so the
   // resumed run has headroom. Round up to the nearest 256 MiB boundary.
   let maxRssMb = job.max_rss_mb || 1024;
-  if (job.status === 'aborted_oom') {
+  if (job.status === 'aborted_oom' || logHadOom) {
     const bumped = Math.ceil((maxRssMb * 1.5) / 256) * 256;
     maxRssMb = Math.max(bumped, maxRssMb + 256); // at least +256 MiB
     // Persist the raised cap so future resumes (if any) also start higher.

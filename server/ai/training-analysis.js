@@ -233,6 +233,23 @@ function makeSlug() {
  */
 async function regenerateAndStore(gameTypeId, userId, opts = {}) {
   const summary = await computeAnalysisAuto(gameTypeId, opts);
+
+  // Bake relevant game-type rule flags into the summary so display layers can
+  // filter out inapplicable draw/win types without a separate DB fetch.
+  try {
+    const [[gt]] = await db_pool.query(
+      `SELECT stalemate_draw_condition, stalemate_win_condition
+       FROM game_types WHERE id = ? LIMIT 1`,
+      [gameTypeId],
+    );
+    if (gt) {
+      summary.stalemate_draw_condition = gt.stalemate_draw_condition !== 0 && gt.stalemate_draw_condition !== false;
+      summary.stalemate_win_condition  = !!gt.stalemate_win_condition;
+    }
+  } catch (_) {
+    // Non-fatal — callers should treat missing flags as "enabled" (safe default).
+  }
+
   const summaryJson = JSON.stringify(summary);
   const [existing] = await db_pool.query(
     `SELECT id, visibility, slug FROM ai_training_analyses WHERE game_type_id = ? LIMIT 1`,

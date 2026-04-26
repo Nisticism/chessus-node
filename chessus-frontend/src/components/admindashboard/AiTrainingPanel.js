@@ -834,8 +834,12 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
           <div className={styles.analysisStats}>
             <div><strong>Total games:</strong> {summary.totalGames} (across {summary.jobCount} job{summary.jobCount === 1 ? '' : 's'})</div>
             <div><strong>Decisive:</strong> {summary.decisive} ({((summary.decisive / Math.max(1, summary.totalGames)) * 100).toFixed(1)}%) — <strong>Draws:</strong> {summary.draws} ({((summary.draws / Math.max(1, summary.totalGames)) * 100).toFixed(1)}%)</div>
-            <div><strong>Player 1 wins:</strong> {summary.perSide['1'].wins} ({(summary.perSide['1'].winRate * 100).toFixed(1)}%)</div>
-            <div><strong>Player 2 wins:</strong> {summary.perSide['2'].wins} ({(summary.perSide['2'].winRate * 100).toFixed(1)}%)</div>
+            {summary.perSide && summary.perSide['1'] && (
+              <div><strong>Player 1 wins:</strong> {summary.perSide['1'].wins} ({(summary.perSide['1'].winRate * 100).toFixed(1)}%)</div>
+            )}
+            {summary.perSide && summary.perSide['2'] && (
+              <div><strong>Player 2 wins:</strong> {summary.perSide['2'].wins} ({(summary.perSide['2'].winRate * 100).toFixed(1)}%)</div>
+            )}
             {summary.filteredLegacy && summary.legacyExcluded > 0 && (
               <div style={{ fontStyle: 'italic', color: '#888' }}>
                 {summary.legacyExcluded} pre-tracking game{summary.legacyExcluded === 1 ? '' : 's'} excluded from these numbers.
@@ -849,9 +853,11 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
             <details>
               <summary>Win breakdown</summary>
               <ul>
-                {summary.decisiveBy && Object.entries(summary.decisiveBy).map(([k, v]) => (
-                  v > 0 ? <li key={k}>{k.replace(/_/g, ' ')}: {v}</li> : null
-                )).filter(Boolean)}
+                {summary.decisiveBy && Object.entries(summary.decisiveBy).map(([k, v]) => {
+                  if (v <= 0) return null;
+                  if (k === 'stalemate_win' && summary.stalemate_win_condition === false) return null;
+                  return <li key={k}>{k.replace(/_/g, ' ')}: {v}</li>;
+                }).filter(Boolean)}
                 {(!summary.decisiveBy || Object.values(summary.decisiveBy).every((v) => v === 0)) && (
                   <li>No decisive games recorded.</li>
                 )}
@@ -860,9 +866,11 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
             <details>
               <summary>Draw breakdown</summary>
               <ul>
-                {Object.entries(summary.drawBreakdown).map(([k, v]) => (
-                  v > 0 ? <li key={k}>{k}: {v}</li> : null
-                )).filter(Boolean)}
+                {Object.entries(summary.drawBreakdown).map(([k, v]) => {
+                  if (v <= 0) return null;
+                  if (k === 'stalemate' && summary.stalemate_draw_condition === false) return null;
+                  return <li key={k}>{k}: {v}</li>;
+                }).filter(Boolean)}
                 {Object.values(summary.drawBreakdown).every((v) => v === 0) && (
                   <li>No draws recorded.</li>
                 )}
