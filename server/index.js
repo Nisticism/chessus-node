@@ -4915,16 +4915,16 @@ app.post("/api/likes/delete", async (req, res) => {
 
 app.post("/api/news/new", async (req, res) => {
   try {
-    const { author_id, title, content, created_at } = req.body;
+    const { author_id, title, content, created_at, external_blog_url } = req.body;
     
     if (!author_id || !title || !content) {
       return res.status(400).send({ message: "Missing required fields" });
     }
 
     const [result] = await db_pool.query(
-      `INSERT INTO articles (author_id, title, content, created_at, game_type_id, is_news, public) 
-       VALUES (?, ?, ?, ?, NULL, 1, 1)`,
-      [author_id, title, content, created_at || new Date()]
+      `INSERT INTO articles (author_id, title, content, created_at, game_type_id, is_news, public, external_blog_url) 
+       VALUES (?, ?, ?, ?, NULL, 1, 1, ?)`,
+      [author_id, title, content, created_at || new Date(), external_blog_url || null]
     );
 
     const newsArticle = {
@@ -4932,6 +4932,7 @@ app.post("/api/news/new", async (req, res) => {
       author_id,
       title,
       content,
+      external_blog_url: external_blog_url || null,
       created_at: created_at || new Date()
     };
 

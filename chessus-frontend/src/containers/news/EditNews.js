@@ -14,6 +14,7 @@ const EditNews = () => {
   const form = useRef();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [externalBlogUrl, setExternalBlogUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -33,6 +34,7 @@ const EditNews = () => {
         setNewsArticle(article);
         setTitle(article.title || "");
         setContent(article.content || "");
+        setExternalBlogUrl(article.external_blog_url || "");
         setLoading(false);
       } catch (error) {
         console.error("Error fetching news article:", error);
@@ -75,7 +77,7 @@ const EditNews = () => {
       
       await axios.put(
         `${API_URL}admin/news/${newsId}`,
-        { title, content, last_updated_at },
+        { title, content, last_updated_at, external_blog_url: externalBlogUrl.trim() || null },
         { headers: authHeader() }
       );
       
@@ -162,6 +164,19 @@ const EditNews = () => {
             <div style={{ marginTop: '6px' }}>
               <LinkInsertButton onInsert={(text) => setContent(prev => prev + text)} />
             </div>
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label htmlFor="external_blog_url" className={styles["form-label"]}>External Blog URL <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(optional)</span></label>
+            <input
+              type="url"
+              className={styles["form-input"]}
+              name="external_blog_url"
+              value={externalBlogUrl}
+              onChange={(e) => setExternalBlogUrl(e.target.value)}
+              placeholder="https://lichess.org/@/username/blog/..."
+            />
+            <div className={styles["textarea-hint"]}>When set, a preview card with a link to this URL is shown below the article content</div>
           </div>
 
           {message && (

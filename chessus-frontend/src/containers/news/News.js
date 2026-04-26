@@ -98,6 +98,26 @@ const News = () => {
                   <div className={styles["article-content"]}>
                     {renderContent(newsItem.content)}
                   </div>
+
+                  {newsItem.external_blog_url && (
+                    <a
+                      href={newsItem.external_blog_url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className={styles["blog-preview"]}
+                    >
+                      <div className={styles["blog-preview-label"]}>
+                        <span className={styles["blog-preview-icon"]}>🔗</span>
+                        External Blog Post
+                      </div>
+                      <div className={styles["blog-preview-url"]}>
+                        {newsItem.external_blog_url}
+                      </div>
+                      <div className={styles["blog-preview-cta"]}>
+                        Read the full post →
+                      </div>
+                    </a>
+                  )}
                   
                   {currentUser && (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'owner') && (
                     <div className={styles["article-actions"]}>

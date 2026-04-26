@@ -267,7 +267,7 @@ const Forum = () => {
                         <div className={styles["comment-edit-button"]}>
                           { currentUser && (comment.author_id === currentUser.id || currentUser.role?.toLowerCase() === "admin" || currentUser.role?.toLowerCase() === "owner") ?
                             <div>
-                              <div onClick={(event) => handleEdit(event, comment.id + "edit", comment.id)}><FaEdit/></div>
+                              <div onClick={(event) => handleEdit(event, comment.id)}><FaEdit/></div>
                             </div>
                           : "" }
                         </div>

@@ -11,6 +11,7 @@ const CreateNews = () => {
   const form = useRef();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [externalBlogUrl, setExternalBlogUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const dispatch = useDispatch();
@@ -42,7 +43,7 @@ const CreateNews = () => {
     
     const todaysDate = getCurrentMySQLDateTime();
     
-    dispatch(newNews(currentUser.id, title, content, todaysDate))
+    dispatch(newNews(currentUser.id, title, content, todaysDate, externalBlogUrl.trim() || null))
       .then(() => {
         dispatch(fetchNews());
         setMessage("News article created successfully!");
@@ -92,6 +93,19 @@ const CreateNews = () => {
             <div style={{ marginTop: '6px' }}>
               <LinkInsertButton onInsert={(text) => setContent(prev => prev + text)} />
             </div>
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label htmlFor="external_blog_url" className={styles["form-label"]}>External Blog URL <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(optional)</span></label>
+            <input
+              type="url"
+              className={styles["form-input"]}
+              name="external_blog_url"
+              value={externalBlogUrl}
+              onChange={(e) => setExternalBlogUrl(e.target.value)}
+              placeholder="https://lichess.org/@/username/blog/..."
+            />
+            <div className={styles["textarea-hint"]}>When set, a preview card with a link to this URL is shown below the article content</div>
           </div>
 
           {message && (

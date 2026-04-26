@@ -10,19 +10,19 @@ const getNews = async () => {
   return response;
 };
 
-const newNews = async (author_id, title, content, created_at) => {
+const newNews = async (author_id, title, content, created_at, external_blog_url) => {
   const response = await axios.post(
     API_URL + "news/new",
-    { author_id, title, content, created_at },
+    { author_id, title, content, created_at, external_blog_url: external_blog_url || null },
     { headers: authHeader() }
   );
   return response;
 };
 
-const editNews = async (title, content, last_updated_at, id) => {
+const editNews = async (title, content, last_updated_at, id, external_blog_url) => {
   const response = await axios.put(
     API_URL + `admin/news/${id}`,
-    { title, content, last_updated_at },
+    { title, content, last_updated_at, external_blog_url: external_blog_url || null },
     { headers: authHeader() }
   );
   return response;

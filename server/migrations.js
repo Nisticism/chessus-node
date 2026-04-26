@@ -3214,6 +3214,20 @@ const runMigrations = async () => {
     console.error('Error widening notifications.content:', err.message);
   }
 
+  // Add external_blog_url column to articles table for news articles that
+  // embed or link to an external blog post (e.g., a Lichess blog).
+  try {
+    if (!(await columnExists('articles', 'external_blog_url'))) {
+      await runMigration(
+        "ALTER TABLE articles ADD COLUMN external_blog_url TEXT NULL AFTER is_news",
+        "Add external_blog_url column to articles table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding external_blog_url column to articles:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {
