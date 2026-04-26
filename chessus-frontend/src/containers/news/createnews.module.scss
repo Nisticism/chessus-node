@@ -99,6 +99,17 @@
   margin-top: -4px;
 }
 
+.char-counter {
+  text-align: right;
+  font-size: 0.78rem;
+  color: var(--text-dim, rgba(255, 255, 255, 0.45));
+  margin-top: 5px;
+}
+
+.char-counter-warn {
+  color: #ff8a8a;
+}
+
 .alert-success,
 .alert-error {
   padding: 16px 20px;

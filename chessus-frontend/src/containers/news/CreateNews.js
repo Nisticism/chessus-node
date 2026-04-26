@@ -75,9 +75,10 @@ const CreateNews = () => {
               name="title"
               value={title}
               onChange={onChangeTitle}
-              placeholder="Enter a compelling title (max 50 characters)"
-              maxLength="50"
+              placeholder="Enter a compelling title"
+              maxLength={200}
             />
+            <div className={`${styles["char-counter"]} ${title.length > 180 ? styles["char-counter-warn"] : ""}`}>{title.length} / 200</div>
           </div>
 
           <div className={styles["form-group"]}>
@@ -91,8 +92,9 @@ const CreateNews = () => {
                 placeholder="Write your news article content here. Use clear paragraphs and formatting for better readability."
               />
             <div className={styles["textarea-hint"]}>Use double line breaks to separate paragraphs</div>
-            <div style={{ marginTop: '6px' }}>
+            <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <LinkInsertButton onInsert={(text) => setContent(prev => prev + text)} />
+              <div className={styles["char-counter"]}>{content.length.toLocaleString()} chars</div>
             </div>
           </div>
 

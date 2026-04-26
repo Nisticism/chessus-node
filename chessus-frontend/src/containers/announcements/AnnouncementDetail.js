@@ -76,6 +76,7 @@ const AnnouncementDetail = () => {
               value={editForm.title}
               onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
             />
+            <div className={`${styles.charCounter} ${editForm.title.length > 180 ? styles.charCounterWarn : ''}`}>{editForm.title.length} / 200</div>
           </label>
           <label>
             Content
@@ -84,6 +85,7 @@ const AnnouncementDetail = () => {
               value={editForm.content}
               onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
             />
+            <div className={`${styles.charCounter} ${editForm.content.length > 4500 ? styles.charCounterWarn : ''}`}>{editForm.content.length.toLocaleString()} / 5,000</div>
           </label>
           <div style={{ marginBottom: '10px' }}>
             <LinkInsertButton onInsert={(text) => setEditForm((f) => ({ ...f, content: f.content + text }))} />
