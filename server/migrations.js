@@ -3228,6 +3228,19 @@ const runMigrations = async () => {
     console.error('Error adding external_blog_url column to articles:', err.message);
   }
 
+  // Add external_blog_label column to articles — lets admins customise the link-card label text.
+  try {
+    if (!(await columnExists('articles', 'external_blog_label'))) {
+      await runMigration(
+        "ALTER TABLE articles ADD COLUMN external_blog_label TEXT NULL AFTER external_blog_url",
+        "Add external_blog_label column to articles table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding external_blog_label column to articles:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

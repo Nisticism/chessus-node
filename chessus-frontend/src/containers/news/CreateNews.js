@@ -12,6 +12,7 @@ const CreateNews = () => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [externalBlogUrl, setExternalBlogUrl] = useState("");
+  const [externalBlogLabel, setExternalBlogLabel] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const dispatch = useDispatch();
@@ -43,7 +44,7 @@ const CreateNews = () => {
     
     const todaysDate = getCurrentMySQLDateTime();
     
-    dispatch(newNews(currentUser.id, title, content, todaysDate, externalBlogUrl.trim() || null))
+    dispatch(newNews(currentUser.id, title, content, todaysDate, externalBlogUrl.trim() || null, externalBlogLabel.trim() || null))
       .then(() => {
         dispatch(fetchNews());
         setMessage("News article created successfully!");
@@ -96,7 +97,7 @@ const CreateNews = () => {
           </div>
 
           <div className={styles["form-group"]}>
-            <label htmlFor="external_blog_url" className={styles["form-label"]}>External Blog URL <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(optional)</span></label>
+            <label htmlFor="external_blog_url" className={styles["form-label"]}>External Link URL <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(optional)</span></label>
             <input
               type="url"
               className={styles["form-input"]}
@@ -105,7 +106,21 @@ const CreateNews = () => {
               onChange={(e) => setExternalBlogUrl(e.target.value)}
               placeholder="https://lichess.org/@/username/blog/..."
             />
-            <div className={styles["textarea-hint"]}>When set, a preview card with a link to this URL is shown below the article content</div>
+            <div className={styles["textarea-hint"]}>When set, a preview card linking to this URL is shown below the article content</div>
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label htmlFor="external_blog_label" className={styles["form-label"]}>Link Label <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(optional)</span></label>
+            <input
+              type="text"
+              className={styles["form-input"]}
+              name="external_blog_label"
+              value={externalBlogLabel}
+              onChange={(e) => setExternalBlogLabel(e.target.value)}
+              placeholder="e.g. Lichess Blog Post, Official Announcement, Source Article"
+              maxLength="80"
+            />
+            <div className={styles["textarea-hint"]}>Replaces the default “External Link” label on the preview card</div>
           </div>
 
           {message && (

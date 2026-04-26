@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import styles from "./news.module.scss";
 import { news, deleteNews } from "../../actions/news";
 import { parseServerDate } from "../../helpers/date-formatter";
 import { renderContent } from "../../helpers/render-content";
+import API_URL from "../../global/global";
 const News = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allNews = useSelector((state) => state.news);
   const navigate = useNavigate();
   const [firstRender, setFirstRender] = useState(false);
+  const [linkPreviews, setLinkPreviews] = useState({});
+  const fetchedPreviewUrls = useRef(new Set());
   const dispatch = useDispatch();
 
   useEffect(() => {
@@ -18,6 +21,19 @@ const News = () => {
       setFirstRender(true);
     }
   }, [firstRender, dispatch]);
+
+  useEffect(() => {
+    if (!allNews.all_news) return;
+    allNews.all_news.forEach((item) => {
+      if (item.external_blog_url && !fetchedPreviewUrls.current.has(item.external_blog_url)) {
+        fetchedPreviewUrls.current.add(item.external_blog_url);
+        fetch(`${API_URL}news/link-preview?url=${encodeURIComponent(item.external_blog_url)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => setLinkPreviews((prev) => ({ ...prev, [item.external_blog_url]: data || null })))
+          .catch(() => setLinkPreviews((prev) => ({ ...prev, [item.external_blog_url]: null })));
+      }
+    });
+  }, [allNews.all_news]);
 
   function createNewPost() {
     if (!currentUser) {
@@ -59,6 +75,7 @@ const News = () => {
         <div className={styles["news-articles"]}>
           {
             allNews.all_news.map(function(newsItem) {
+              const meta = linkPreviews[newsItem.external_blog_url] || null;
               return (
                 <article key={newsItem.id} className={styles["news-article"]}>
                   <div className={styles["article-header"]}>
@@ -106,15 +123,26 @@ const News = () => {
                       rel="noreferrer noopener"
                       className={styles["blog-preview"]}
                     >
-                      <div className={styles["blog-preview-label"]}>
-                        <span className={styles["blog-preview-icon"]}>🔗</span>
-                        External Blog Post
-                      </div>
-                      <div className={styles["blog-preview-url"]}>
-                        {newsItem.external_blog_url}
-                      </div>
-                      <div className={styles["blog-preview-cta"]}>
-                        Read the full post →
+                      {meta?.image && (
+                        <div className={styles["blog-preview-image"]}>
+                          <img src={meta.image} alt="" loading="lazy" />
+                        </div>
+                      )}
+                      <div className={styles["blog-preview-body"]}>
+                        <div className={styles["blog-preview-label"]}>
+                          <span className={styles["blog-preview-icon"]}>🔗</span>
+                          {newsItem.external_blog_label || meta?.site_name || "External Link"}
+                        </div>
+                        {meta?.title && (
+                          <div className={styles["blog-preview-title"]}>{meta.title}</div>
+                        )}
+                        {meta?.description && (
+                          <div className={styles["blog-preview-description"]}>{meta.description}</div>
+                        )}
+                        <div className={styles["blog-preview-url"]}>
+                          {newsItem.external_blog_url}
+                        </div>
+                        <div className={styles["blog-preview-cta"]}>Read the full post →</div>
                       </div>
                     </a>
                   )}

@@ -13,8 +13,8 @@ import {
 import NewsService from "../services/news.service";
 
 // update arguments
-export const newNews = (author_id, title, content, created_at, external_blog_url) => (dispatch) => {
-  return NewsService.newNews(author_id, title, content, created_at, external_blog_url).then(
+export const newNews = (author_id, title, content, created_at, external_blog_url, external_blog_label) => (dispatch) => {
+  return NewsService.newNews(author_id, title, content, created_at, external_blog_url, external_blog_label).then(
     (response) => {
       dispatch({
         type: NEWS_SUCCESS,
@@ -41,8 +41,8 @@ export const newNews = (author_id, title, content, created_at, external_blog_url
   );
 };
 
-export const editNews = (title, content, last_updated_at, id, external_blog_url) => (dispatch) => {
-  return NewsService.editNews(title, content, last_updated_at, id, external_blog_url).then(
+export const editNews = (title, content, last_updated_at, id, external_blog_url, external_blog_label) => (dispatch) => {
+  return NewsService.editNews(title, content, last_updated_at, id, external_blog_url, external_blog_label).then(
     (response) => {
       dispatch({
         type: EDIT_NEWS_SUCCESS,

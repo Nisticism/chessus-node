@@ -918,7 +918,8 @@ const getAllNews = async () => {
            NULL as image_url,
            NULL as url,
            NULL as source_name,
-           a.external_blog_url
+           a.external_blog_url,
+           a.external_blog_label
     FROM chessusnode.articles a
     LEFT JOIN chessusnode.users u ON a.author_id = u.id
     WHERE a.is_news = 1

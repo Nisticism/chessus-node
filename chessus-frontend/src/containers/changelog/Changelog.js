@@ -9,7 +9,7 @@ const changelogData = [
     items: [
       "Forum: the edit icon (✏) on comments now works correctly — clicking it opens the inline edit form. Previously it failed silently due to a mismatch between the button and the state it was setting",
       "About page: redesigned with panel cards matching the rest of the site. Mission and Team sections use bordered cards; Future Goals now displays as a responsive icon grid",
-      "News: articles can now link to an external blog post (e.g. a Lichess blog). A clickable preview card is shown below the article content, opening the external post in a new tab. Admins can set or edit the URL in the Create/Edit News forms",
+      "News: articles can now link to an external blog post (e.g. a Lichess blog). The preview card automatically fetches the page's title, description, and banner image so readers can see what the link is about before clicking. The link label (e.g. 'Lichess Blog Post', 'Official Announcement') is now customisable per article",
       "When you hit a game limit (correspondence, live, open match, or anonymous), a modal now pops up with a clear explanation of the cap, why it exists, and what to do next. The current count and maximum are displayed prominently. Buttons let you jump straight to your ongoing games so you can resign or check them quickly",
       "Admin portal — AI Training: clearing a job's data now immediately updates the analysis summary. Previously, deleted training data could still appear in the AI analysis totals until an admin manually clicked Regenerate",
     ],

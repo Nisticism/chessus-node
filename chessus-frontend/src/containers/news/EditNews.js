@@ -15,6 +15,7 @@ const EditNews = () => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [externalBlogUrl, setExternalBlogUrl] = useState("");
+  const [externalBlogLabel, setExternalBlogLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -35,6 +36,7 @@ const EditNews = () => {
         setTitle(article.title || "");
         setContent(article.content || "");
         setExternalBlogUrl(article.external_blog_url || "");
+        setExternalBlogLabel(article.external_blog_label || "");
         setLoading(false);
       } catch (error) {
         console.error("Error fetching news article:", error);
@@ -77,7 +79,7 @@ const EditNews = () => {
       
       await axios.put(
         `${API_URL}admin/news/${newsId}`,
-        { title, content, last_updated_at, external_blog_url: externalBlogUrl.trim() || null },
+        { title, content, last_updated_at, external_blog_url: externalBlogUrl.trim() || null, external_blog_label: externalBlogLabel.trim() || null },
         { headers: authHeader() }
       );
       
@@ -167,7 +169,7 @@ const EditNews = () => {
           </div>
 
           <div className={styles["form-group"]}>
-            <label htmlFor="external_blog_url" className={styles["form-label"]}>External Blog URL <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(optional)</span></label>
+            <label htmlFor="external_blog_url" className={styles["form-label"]}>External Link URL <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(optional)</span></label>
             <input
               type="url"
               className={styles["form-input"]}
@@ -176,7 +178,21 @@ const EditNews = () => {
               onChange={(e) => setExternalBlogUrl(e.target.value)}
               placeholder="https://lichess.org/@/username/blog/..."
             />
-            <div className={styles["textarea-hint"]}>When set, a preview card with a link to this URL is shown below the article content</div>
+            <div className={styles["textarea-hint"]}>When set, a preview card linking to this URL is shown below the article content</div>
+          </div>
+
+          <div className={styles["form-group"]}>
+            <label htmlFor="external_blog_label" className={styles["form-label"]}>Link Label <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(optional)</span></label>
+            <input
+              type="text"
+              className={styles["form-input"]}
+              name="external_blog_label"
+              value={externalBlogLabel}
+              onChange={(e) => setExternalBlogLabel(e.target.value)}
+              placeholder="e.g. Lichess Blog Post, Official Announcement, Source Article"
+              maxLength="80"
+            />
+            <div className={styles["textarea-hint"]}>Replaces the default “External Link” label on the preview card</div>
           </div>
 
           {message && (

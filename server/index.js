@@ -4915,16 +4915,16 @@ app.post("/api/likes/delete", async (req, res) => {
 
 app.post("/api/news/new", async (req, res) => {
   try {
-    const { author_id, title, content, created_at, external_blog_url } = req.body;
+    const { author_id, title, content, created_at, external_blog_url, external_blog_label } = req.body;
     
     if (!author_id || !title || !content) {
       return res.status(400).send({ message: "Missing required fields" });
     }
 
     const [result] = await db_pool.query(
-      `INSERT INTO articles (author_id, title, content, created_at, game_type_id, is_news, public, external_blog_url) 
-       VALUES (?, ?, ?, ?, NULL, 1, 1, ?)`,
-      [author_id, title, content, created_at || new Date(), external_blog_url || null]
+      `INSERT INTO articles (author_id, title, content, created_at, game_type_id, is_news, public, external_blog_url, external_blog_label) 
+       VALUES (?, ?, ?, ?, NULL, 1, 1, ?, ?)`,
+      [author_id, title, content, created_at || new Date(), external_blog_url || null, external_blog_label || null]
     );
 
     const newsArticle = {
@@ -4933,6 +4933,7 @@ app.post("/api/news/new", async (req, res) => {
       title,
       content,
       external_blog_url: external_blog_url || null,
+      external_blog_label: external_blog_label || null,
       created_at: created_at || new Date()
     };
 
@@ -4940,6 +4941,103 @@ app.post("/api/news/new", async (req, res) => {
   } catch (err) {
     console.error("Error creating news article:", err);
     res.status(500).send({ message: "Failed to create news article", err: err.message });
+  }
+});
+
+// ── Link-preview helpers (OG metadata scraping) ───────────────────────────────
+function _isAllowedPreviewUrl(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    if (u.protocol !== 'https:') return false;
+    const h = u.hostname.toLowerCase();
+    if (/^(localhost$|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0$)/.test(h)) return false;
+    return true;
+  } catch { return false; }
+}
+
+function _decodeHtmlEntities(str) {
+  return str
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'");
+}
+
+function _extractOgMeta(html, baseUrl) {
+  const result = { title: null, description: null, image: null, site_name: null };
+  const metaRegex = /<meta\b([^>]+)>/gi;
+  let m;
+  while ((m = metaRegex.exec(html)) !== null) {
+    const tag = m[1];
+    const prop = /(?:property|name)\s*=\s*["']og:(\w+)["']/i.exec(tag);
+    const cont = /content\s*=\s*["']([^"']*)["']/i.exec(tag);
+    if (prop && cont) {
+      const key = prop[1].toLowerCase();
+      if (key in result && !result[key]) result[key] = _decodeHtmlEntities(cont[1]);
+    }
+  }
+  if (!result.title) {
+    const t = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+    if (t) result.title = _decodeHtmlEntities(t[1].replace(/<[^>]*>/g, '').trim());
+  }
+  if (result.image && !result.image.startsWith('http')) {
+    try { result.image = new URL(result.image, baseUrl).href; } catch {}
+  }
+  return result;
+}
+
+const _linkPreviewCache = new Map();
+const _LINK_PREVIEW_TTL_MS = 30 * 60 * 1000;
+
+function _fetchHtmlWithRedirects(urlStr, maxHops) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const attempt = (u, hops) => {
+      try {
+        const req = https.get(u, {
+          timeout: 6000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; GridGroveNewsBot/1.0)',
+            'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+          }
+        }, (res) => {
+          if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && hops < maxHops) {
+            try {
+              const nextUrl = new URL(res.headers.location, u).href;
+              if (!_isAllowedPreviewUrl(nextUrl)) return reject(new Error('redirect to blocked URL'));
+              res.resume();
+              return attempt(nextUrl, hops + 1);
+            } catch (e) { return reject(e); }
+          }
+          let html = '';
+          res.on('data', (chunk) => { html += chunk; if (html.length > 300000) res.destroy(); });
+          res.on('end', () => resolve(html));
+          res.on('error', reject);
+        });
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+        req.on('error', reject);
+      } catch (e) { reject(e); }
+    };
+    attempt(urlStr, 0);
+  });
+}
+
+app.get("/api/news/link-preview", async (req, res) => {
+  const { url } = req.query;
+  if (!url || !_isAllowedPreviewUrl(url)) {
+    return res.status(400).json({ message: "Invalid or disallowed URL" });
+  }
+  const cached = _linkPreviewCache.get(url);
+  if (cached && Date.now() < cached.expiresAt) {
+    return res.json(cached.data);
+  }
+  try {
+    const html = await _fetchHtmlWithRedirects(url, 5);
+    const meta = _extractOgMeta(html, url);
+    const result = { url, ...meta };
+    _linkPreviewCache.set(url, { data: result, expiresAt: Date.now() + _LINK_PREVIEW_TTL_MS });
+    res.json(result);
+  } catch (err) {
+    console.error('Link preview fetch error:', err.message);
+    res.status(502).json({ message: "Could not fetch link preview" });
   }
 });
 
