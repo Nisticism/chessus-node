@@ -137,6 +137,12 @@ async function exportGameRules(gameTypeId) {
       // OR-merge boolean flags that exist on both tables.
       cannot_be_captured: toBool(tpl.cannot_be_captured) || toBool(pos.placement_cannot_be_captured),
       ghostwalk: toBool(tpl.ghostwalk) || toBool(pos.placement_ghostwalk),
+      // Per-placement override: die_on_capture forces the moving piece
+      // to be removed when it captures (kamikaze-style). Live server
+      // honors the placement value when set, otherwise the piece-template
+      // default. Currently informational for the trainer (no special
+      // logic in moves.rs yet) but exported so future ports can read it.
+      die_on_capture: toBool(tpl.die_on_capture) || toBool(pos.placement_die_on_capture),
     };
     pieces.push(merged);
   }
@@ -178,6 +184,11 @@ async function exportGameRules(gameTypeId) {
       // lines. Skewed sampling is also a major source of spurious
       // stalemates in capture-heavy variants.
       forced_capture_condition: toBool(g.forced_capture_condition),
+      // Promotion-as-win and capture-requires-all: both implemented in the
+      // live server (game-socket.js) and required for the trainer to
+      // produce models that match production behavior.
+      promotion_condition: toBool(g.promotion_condition),
+      capture_condition_requires_all: toBool(g.capture_condition_requires_all),
       // stalemate_draw_condition defaults to true (classic chess) when the
       // DB column is null/missing, matching the live-game default.
       stalemate_draw_condition: g.stalemate_draw_condition === false || g.stalemate_draw_condition === 0
@@ -252,6 +263,15 @@ async function exportGameRules(gameTypeId) {
       ratio_movement_2: intOr(p.ratio_movement_2, 0),
       repeating_ratio: toBool(p.repeating_ratio),
       max_ratio_iterations: intOr(p.max_ratio_iterations, 1),
+
+      // Step-by-step movement (checkers-king-style "up to N squares").
+      // Negative value = no diagonals (Manhattan), positive = with diagonals
+      // (Chebyshev). Zero / null means no step-by-step movement.
+      step_by_step_movement_value:
+        toBool(p.step_by_step_movement_style)
+          ? intOr(p.step_by_step_movement_value, 0)
+          : 0,
+      step_by_step_capture: intOr(p.step_by_step_capture, 0),
 
       can_hop_over_allies: toBool(p.can_hop_over_allies),
       can_hop_over_enemies: toBool(p.can_hop_over_enemies),

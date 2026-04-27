@@ -605,6 +605,114 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
         }
     }
 
+    // -------- step-by-step movement (king-style, up to N squares) --------
+    // Mirrors `canReachStepByStep` and the step-by-step branch in
+    // `isValidTargetSquare` in server/game-socket.js. The piece walks one
+    // square at a time (8 directions, or 4 cardinal if value is negative)
+    // and may travel up to |value| squares total. Intermediate squares
+    // must be empty; the final square may be empty (move) or contain an
+    // enemy piece (capture, when `can_capture_enemy_on_move` is true).
+    //
+    // CRITICAL: without this, any piece configured with ONLY step-by-step
+    // movement (the common checkers-king pattern) generates zero moves
+    // and the trainer stalemates almost every game in such variants.
+    let step_value_raw = tpl.step_by_step_movement_value;
+    if step_value_raw != 0 && !global_first_move_block {
+        let max_steps = step_value_raw.abs();
+        let no_diagonal = step_value_raw < 0;
+        let step_dirs: &[(i32, i32)] = if no_diagonal {
+            &[(0, -1), (0, 1), (-1, 0), (1, 0)]
+        } else {
+            &[(0, -1), (0, 1), (-1, 0), (1, 0),
+              (-1, -1), (1, -1), (-1, 1), (1, 1)]
+        };
+        // BFS over the empty-square graph rooted at the mover's current
+        // position. Visited squares cap distance traveled at max_steps.
+        use std::collections::VecDeque;
+        let mut visited: HashMap<(i32, i32), i32> = HashMap::new();
+        visited.insert((mover.x, mover.y), 0);
+        let mut queue: VecDeque<(i32, i32)> = VecDeque::new();
+        queue.push_back((mover.x, mover.y));
+        while let Some((cx, cy)) = queue.pop_front() {
+            let dist = *visited.get(&(cx, cy)).unwrap_or(&0);
+            if dist >= max_steps { continue; }
+            for (dx, dy) in step_dirs.iter() {
+                let nx = cx + dx;
+                let ny = cy + dy;
+                if !in_bounds(nx, ny) { continue; }
+                if visited.contains_key(&(nx, ny)) { continue; }
+                if (nx, ny) == (mover.x, mover.y) { continue; }
+                let occupant = piece_at_excluding(board, nx, ny, mover.id);
+                match occupant {
+                    None => {
+                        // Empty square reachable as a move.
+                        visited.insert((nx, ny), dist + 1);
+                        queue.push_back((nx, ny));
+                        // Multi-tile fit + dest-clear filter applied below.
+                        let pw = tpl.piece_width.max(1);
+                        let ph = tpl.piece_height.max(1);
+                        if does_piece_fit_on_board(nx, ny, pw, ph, bw, bh)
+                            && is_destination_clear(board, rules, mover, &tpl, nx, ny)
+                        {
+                            push(&mut out, nx, ny, None);
+                        }
+                    }
+                    Some(target) => {
+                        // Occupied: cannot pass through, but may be captured
+                        // as a final destination if the piece can capture
+                        // on move and the target is enemy & capturable.
+                        if target.player != mover.player
+                            && tpl.can_capture_enemy_on_move
+                            && !cannot_be_captured(rules, target)
+                        {
+                            push(&mut out, nx, ny, Some(target.id));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -------- step-by-step CAPTURE (separate range, capture only) --------
+    let step_capture_raw = tpl.step_by_step_capture;
+    if step_capture_raw != 0 && !global_first_move_capture_block {
+        let max_steps = step_capture_raw.abs();
+        let no_diagonal = step_capture_raw < 0;
+        let step_dirs: &[(i32, i32)] = if no_diagonal {
+            &[(0, -1), (0, 1), (-1, 0), (1, 0)]
+        } else {
+            &[(0, -1), (0, 1), (-1, 0), (1, 0),
+              (-1, -1), (1, -1), (-1, 1), (1, 1)]
+        };
+        use std::collections::VecDeque;
+        let mut visited: HashMap<(i32, i32), i32> = HashMap::new();
+        visited.insert((mover.x, mover.y), 0);
+        let mut queue: VecDeque<(i32, i32)> = VecDeque::new();
+        queue.push_back((mover.x, mover.y));
+        while let Some((cx, cy)) = queue.pop_front() {
+            let dist = *visited.get(&(cx, cy)).unwrap_or(&0);
+            if dist >= max_steps { continue; }
+            for (dx, dy) in step_dirs.iter() {
+                let nx = cx + dx;
+                let ny = cy + dy;
+                if !in_bounds(nx, ny) { continue; }
+                if visited.contains_key(&(nx, ny)) { continue; }
+                if (nx, ny) == (mover.x, mover.y) { continue; }
+                if let Some(target) = piece_at_excluding(board, nx, ny, mover.id) {
+                    if target.player != mover.player
+                        && !cannot_be_captured(rules, target)
+                    {
+                        push(&mut out, nx, ny, Some(target.id));
+                    }
+                    // Stop traversal at any occupied square.
+                } else {
+                    visited.insert((nx, ny), dist + 1);
+                    queue.push_back((nx, ny));
+                }
+            }
+        }
+    }
+
     // -------- custom_movement_squares --------
     if let Some(s) = &tpl.custom_movement_squares {
         if let Ok(arr) = serde_json::from_str::<Value>(s) {

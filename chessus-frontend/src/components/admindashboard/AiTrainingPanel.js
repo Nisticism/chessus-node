@@ -243,6 +243,42 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
     }
   };
 
+  // Wipe state
+  const [wipeGameTypeId, setWipeGameTypeId] = useState('');
+  const [wiping, setWiping] = useState(false);
+  const [wipeResult, setWipeResult] = useState(null);
+  const [wipeError, setWipeError] = useState(null);
+
+  const handleWipe = async () => {
+    const targetLabel = wipeGameTypeId
+      ? `ALL training jobs for game type #${wipeGameTypeId}`
+      : 'ALL training jobs for ALL game types';
+    const proceed = window.confirm(
+      `DESTRUCTIVE ACTION — wipe ${targetLabel}?\n\n` +
+      `This will permanently delete every job record AND the on-disk training data (logs, models, book files) for the selected scope.\n\n` +
+      `Running jobs must be stopped first. This CANNOT be undone.\n\n` +
+      `Press OK to confirm.`
+    );
+    if (!proceed) return;
+    setWiping(true);
+    setWipeResult(null);
+    setWipeError(null);
+    try {
+      const body = { confirm: true };
+      if (wipeGameTypeId) body.gameTypeId = parseInt(wipeGameTypeId, 10);
+      const res = await axios.delete(`${API_URL}admin/ai-training/wipe`, {
+        headers: authHeader(),
+        data: body,
+      });
+      setWipeResult(res.data);
+      await fetchStatus();
+    } catch (err) {
+      setWipeError(err?.response?.data?.message || err.message || 'Wipe failed');
+    } finally {
+      setWiping(false);
+    }
+  };
+
   const handleArtifactUpload = async (e) => {
     e.preventDefault();
     setUploadError(null);
@@ -655,6 +691,48 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
         </div>
       )}
 
+      <div className={styles.section}>
+        <h4>Global wipe analysis data</h4>
+        <p className={styles.intro}>
+          Permanently deletes all training job records and on-disk data (logs,
+          models, book files) for a specific game type, or for every game type
+          at once. Stop any running jobs first. This cannot be undone.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            Game type ID (blank = all games)
+            <select
+              value={wipeGameTypeId}
+              onChange={(e) => { setWipeGameTypeId(e.target.value); setWipeResult(null); setWipeError(null); }}
+              style={{ marginLeft: 6 }}
+            >
+              <option value="">— all game types —</option>
+              {gameTypes.map((g) => (
+                <option key={g.id} value={g.id}>
+                  #{g.id} — {g.game_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={wiping}
+            style={{ background: '#8b0000', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 4, cursor: wiping ? 'not-allowed' : 'pointer', fontWeight: 600 }}
+            onClick={handleWipe}
+          >
+            {wiping ? 'Wiping…' : wipeGameTypeId ? `⚠ Wipe game #${wipeGameTypeId}` : '⚠ Wipe ALL games'}
+          </button>
+        </div>
+        {wipeError && <div className={styles.error} style={{ marginTop: 8 }}>{wipeError}</div>}
+        {wipeResult && (
+          <div style={{ marginTop: 8, color: '#4caf50' }}>
+            Wiped {wipeResult.deletedJobs} job{wipeResult.deletedJobs === 1 ? '' : 's'}
+            {wipeResult.deletedDirs > 0 ? `, removed ${wipeResult.deletedDirs} on-disk director${wipeResult.deletedDirs === 1 ? 'y' : 'ies'}` : ''}
+            {wipeResult.affectedGameTypes?.length > 0 ? ` (game types: ${wipeResult.affectedGameTypes.join(', ')})` : ''}.
+          </div>
+        )}
+      </div>
+
       <AnalysisSection gameTypes={gameTypes} initialGameTypeId={initialAnalysisGameTypeId} />
     </div>
   );
@@ -860,8 +938,8 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
       {summary && (
         <div className={styles.analysisBlock}>
           <div className={styles.analysisStats}>
-            <div><strong>Total games:</strong> {summary.totalGames} (across {summary.jobCount} job{summary.jobCount === 1 ? '' : 's'})</div>
-            <div><strong>Decisive:</strong> {summary.decisive} ({((summary.decisive / Math.max(1, summary.totalGames)) * 100).toFixed(1)}%) — <strong>Draws:</strong> {summary.draws} ({((summary.draws / Math.max(1, summary.totalGames)) * 100).toFixed(1)}%)</div>
+            <div><strong>Total games:</strong> {summary.totalGames ?? 0} (across {summary.jobCount ?? 0} job{(summary.jobCount ?? 0) === 1 ? '' : 's'})</div>
+            <div><strong>Decisive:</strong> {summary.decisive ?? 0} ({(((summary.decisive ?? 0) / Math.max(1, summary.totalGames ?? 0)) * 100).toFixed(1)}%) — <strong>Draws:</strong> {summary.draws ?? 0} ({(((summary.draws ?? 0) / Math.max(1, summary.totalGames ?? 0)) * 100).toFixed(1)}%)</div>
             {summary.perSide && summary.perSide['1'] && (
               <div><strong>Player 1 wins:</strong> {summary.perSide['1'].wins} ({(summary.perSide['1'].winRate * 100).toFixed(1)}%)</div>
             )}
@@ -883,7 +961,7 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
             ) : (
               <div style={{ fontStyle: 'italic', color: '#888' }}>Balance data not available — regenerate analysis to compute it.</div>
             )}
-            <div><strong>Avg game length:</strong> {summary.avgMoves.toFixed(1)} moves (range {summary.minMoves}–{summary.maxMoves})</div>
+            <div><strong>Avg game length:</strong> {(summary.avgMoves ?? 0).toFixed(1)} moves (range {summary.minMoves ?? 0}–{summary.maxMoves ?? 0})</div>
             <details>
               <summary>Win breakdown</summary>
               <ul>
@@ -900,12 +978,12 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
             <details>
               <summary>Draw breakdown</summary>
               <ul>
-                {Object.entries(summary.drawBreakdown).map(([k, v]) => {
+                {Object.entries(summary.drawBreakdown || {}).map(([k, v]) => {
                   if (v <= 0) return null;
                   if (k === 'stalemate' && summary.stalemate_draw_condition === false) return null;
                   return <li key={k}>{k}: {v}</li>;
                 }).filter(Boolean)}
-                {Object.values(summary.drawBreakdown).every((v) => v === 0) && (
+                {(!summary.drawBreakdown || Object.values(summary.drawBreakdown).every((v) => v === 0)) && (
                   <li>No draws recorded.</li>
                 )}
               </ul>

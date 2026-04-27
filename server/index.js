@@ -7189,7 +7189,18 @@ app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin, async (req
     // Best-effort: don't fail the whole request if regeneration errors.
     try {
       const _trainingAnalysis = require('./ai/training-analysis');
-      await _trainingAnalysis.regenerateAndStore(job.game_type_id, null, { filterLegacy: true });
+      const [[remaining]] = await db_pool.query(
+        `SELECT COUNT(*) AS c FROM ai_training_jobs WHERE game_type_id = ? AND games_played > 0`,
+        [job.game_type_id],
+      );
+      if ((remaining?.c || 0) === 0) {
+        // No jobs with data left for this game type — drop the cached
+        // analysis row entirely so the admin UI shows "No analysis yet"
+        // instead of a stale (possibly schema-mismatched) summary.
+        await _trainingAnalysis.deleteAnalysis(job.game_type_id);
+      } else {
+        await _trainingAnalysis.regenerateAndStore(job.game_type_id, null, { filterLegacy: true });
+      }
     } catch (analysisErr) {
       console.warn('Could not auto-regenerate analysis after data clear:', analysisErr.message);
     }
@@ -7229,7 +7240,15 @@ app.delete('/api/admin/ai-training/jobs/:id', authenticateAdmin, async (req, res
     // Refresh cached analysis so the removed job's data isn't double-counted.
     try {
       const _trainingAnalysis = require('./ai/training-analysis');
-      await _trainingAnalysis.regenerateAndStore(job.game_type_id, null, { filterLegacy: true });
+      const [[remaining]] = await db_pool.query(
+        `SELECT COUNT(*) AS c FROM ai_training_jobs WHERE game_type_id = ? AND games_played > 0`,
+        [job.game_type_id],
+      );
+      if ((remaining?.c || 0) === 0) {
+        await _trainingAnalysis.deleteAnalysis(job.game_type_id);
+      } else {
+        await _trainingAnalysis.regenerateAndStore(job.game_type_id, null, { filterLegacy: true });
+      }
     } catch (analysisErr) {
       console.warn('Could not auto-regenerate analysis after job delete:', analysisErr.message);
     }
@@ -7283,6 +7302,93 @@ app.post('/api/admin/ai-training/pause', authenticateAdmin, (req, res) => {
 app.post('/api/admin/ai-training/resume', authenticateAdmin, (req, res) => {
   trainingManager.resumeNewJobs();
   res.json(trainingManager.isNewJobsPaused());
+});
+
+// Bulk wipe: delete ALL training jobs (and their on-disk data) for every
+// game type, or for a single game type when `gameTypeId` is supplied in
+// the request body. Running jobs are refused — caller must stop them first.
+//
+// This is a destructive nuclear option — admin must pass `confirm: true`
+// in the request body to prevent accidental invocations.
+app.delete('/api/admin/ai-training/wipe', authenticateAdmin, async (req, res) => {
+  try {
+    const { gameTypeId, confirm: confirmed } = req.body || {};
+    if (!confirmed) {
+      return res.status(400).send({ message: 'Pass { confirm: true } in the body to confirm this destructive operation.' });
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingDirFor, exportGameRules: _export } = require('./ai/export-game-rules');
+    const _trainingAnalysis = require('./ai/training-analysis');
+
+    // Find the jobs to wipe.
+    let jobRows;
+    if (gameTypeId) {
+      const gtid = parseInt(gameTypeId, 10);
+      if (!Number.isFinite(gtid) || gtid <= 0) {
+        return res.status(400).send({ message: 'Invalid gameTypeId' });
+      }
+      const [rows] = await db_pool.query(
+        `SELECT id, game_type_id, status FROM ai_training_jobs WHERE game_type_id = ?`,
+        [gtid],
+      );
+      jobRows = rows;
+    } else {
+      const [rows] = await db_pool.query(
+        `SELECT id, game_type_id, status FROM ai_training_jobs`,
+      );
+      jobRows = rows;
+    }
+
+    // Refuse if any are running/queued.
+    const active = jobRows.filter((j) => j.status === 'running' || j.status === 'queued');
+    if (active.length > 0) {
+      return res.status(400).send({
+        message: `Cannot wipe — ${active.length} job(s) are still running or queued. Stop them first.`,
+        activeIds: active.map((j) => j.id),
+      });
+    }
+
+    // Delete on-disk directories and DB rows.
+    let deletedJobs = 0;
+    let deletedDirs = 0;
+    const affectedGameTypes = new Set();
+    for (const job of jobRows) {
+      const jobDir = path.join(trainingDirFor(job.game_type_id), 'jobs', String(job.id));
+      if (fs.existsSync(jobDir)) {
+        fs.rmSync(jobDir, { recursive: true, force: true });
+        deletedDirs++;
+      }
+      affectedGameTypes.add(job.game_type_id);
+      deletedJobs++;
+    }
+    if (jobRows.length > 0) {
+      const ids = jobRows.map((j) => j.id);
+      const placeholders = ids.map(() => '?').join(',');
+      await db_pool.query(`DELETE FROM ai_training_jobs WHERE id IN (${placeholders})`, ids);
+    }
+
+    // Also delete analysis rows for each affected game type.
+    for (const gtid of affectedGameTypes) {
+      try {
+        await _trainingAnalysis.deleteAnalysis(gtid);
+      } catch (_) { /* non-fatal */ }
+      try {
+        trainingManager._invalidateModelMetaCache?.(gtid);
+      } catch (_) { /* non-fatal */ }
+    }
+
+    res.json({
+      ok: true,
+      deletedJobs,
+      deletedDirs,
+      affectedGameTypes: Array.from(affectedGameTypes),
+    });
+  } catch (err) {
+    console.error('Wipe AI training data error:', err);
+    res.status(500).send({ message: err.message || 'Wipe failed' });
+  }
 });
 
 // SNS / Lambda webhook for CloudWatch-driven auto-pause when the
@@ -9498,9 +9604,10 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin, async (req, res) => 
 });
 
 // Admin: upload a team-member picture for the About Us page. Reuses the
-// profile-picture multer pipeline (same dir, same size cap, same NSFW
-// scan) and returns the relative URL the admin UI saves into the
-// `about_team_members` JSON.
+// profile-picture multer pipeline (same dir, same size cap) but skips
+// the NSFW scan — this endpoint is admin-only and the NSFW model cold-load
+// (~30 s) was exceeding nginx's upstream timeout (504) on first use.
+// Admins are trusted to upload appropriate images.
 app.post(
   "/api/admin/about/upload-picture",
   authenticateAdmin,
@@ -9510,19 +9617,6 @@ app.post(
       const imageFile = req.file;
       if (!imageFile) {
         return res.status(400).send({ message: "Picture is required" });
-      }
-      const filePath = path.join(imageFile.destination, imageFile.filename);
-      try {
-        const scanResult = await imageModeration.classifyImage(filePath);
-        if (scanResult.status === 'rejected') {
-          try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
-          return res.status(400).send({
-            message: "Picture was rejected by our content filter. Please use an appropriate image.",
-            details: [scanResult.reason],
-          });
-        }
-      } catch (scanErr) {
-        console.warn('About-team picture NSFW scan failed (allowing):', scanErr.message);
       }
       dedupeUploadedFile(imageFile);
       const url = `/uploads/profile-pictures/${imageFile.filename}`;

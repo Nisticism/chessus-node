@@ -60,6 +60,17 @@ pub struct GameType {
     /// Defaults to false (no forced-capture rule).
     pub forced_capture_condition: bool,
 
+    /// When true, reaching a promotion square (with a `can_promote`
+    /// piece) instantly wins the game for the moving side. Mirrors
+    /// `promotion_condition` in server/game-socket.js.
+    pub promotion_condition: bool,
+
+    /// When true, ALL pieces on a side that have `ends_game_on_capture`
+    /// must be captured before the capture_condition fires; if false
+    /// (default) any one such piece's loss decides the game. Mirrors
+    /// `capture_condition_requires_all` in server/game-socket.js.
+    pub capture_condition_requires_all: bool,
+
     /// When true (default), a side with no legal moves and not in check
     /// ends the game in a draw. When false the trainer treats stalemate
     /// as non-decisive and switches the turn instead — mirrors the
@@ -160,6 +171,17 @@ pub struct PieceTemplate {
     /// -1 means "no cap" (uses board size).
     pub max_ratio_iterations: i32,
 
+    // ---- Step-by-step movement (king-style N-square movement) ----
+    /// Maximum number of squares the piece can move per turn from its
+    /// origin, traversing one square at a time. Negative value disables
+    /// diagonals (Manhattan distance). Zero/None means no step-by-step
+    /// movement. Mirrors `step_by_step_movement_value` in pieces table.
+    pub step_by_step_movement_value: i32,
+    /// Step-by-step CAPTURE range. Same encoding as movement value.
+    /// Zero means "reuse step_by_step_movement_value if the piece can
+    /// capture on move".
+    pub step_by_step_capture: i32,
+
     // ---- Hopping & blocking ----
     pub can_hop_over_allies: bool,
     pub can_hop_over_enemies: bool,
@@ -231,6 +253,8 @@ impl Default for PieceTemplate {
             ratio_movement_2: 0,
             repeating_ratio: false,
             max_ratio_iterations: 1,
+            step_by_step_movement_value: 0,
+            step_by_step_capture: 0,
             can_hop_over_allies: false,
             can_hop_over_enemies: false,
             directional_hop_disabled: false,
@@ -299,6 +323,9 @@ pub enum EndReason {
     Repetition,
     /// Only royal pieces remain on the board (one each) — no mate possible.
     InsufficientMaterial,
+    /// `promotion_condition`: a piece reached a promotion square (and
+    /// has `can_promote`), instantly winning the game for its owner.
+    Promotion,
 }
 
 /// One progress event written to `log.ndjson` (one per line).

@@ -91,6 +91,7 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
     capture_condition: 0,
     squares_condition: 0,
     royal_capture: 0,
+    promotion: 0,
     other: 0,
   };
 
@@ -122,6 +123,7 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
       else if (r === 'capture_condition') decisiveBy.capture_condition++;
       else if (r === 'squares_condition') decisiveBy.squares_condition++;
       else if (r === 'royal_capture') decisiveBy.royal_capture++;
+      else if (r === 'promotion') decisiveBy.promotion++;
       else decisiveBy.other++;
     }
   }
@@ -365,6 +367,18 @@ async function getAnalysisExistence(gameTypeId) {
   return { visibility: rows[0].visibility, slug: rows[0].slug };
 }
 
+/**
+ * Delete the cached analysis row for a game type. Used after every job
+ * for the game type has been deleted/cleared so we don't surface a
+ * stale (and possibly schema-mismatched) summary to the admin UI.
+ */
+async function deleteAnalysis(gameTypeId) {
+  await db_pool.query(
+    `DELETE FROM ai_training_analyses WHERE game_type_id = ?`,
+    [gameTypeId],
+  );
+}
+
 module.exports = {
   computeAnalysis,
   computeAnalysisAuto,
@@ -374,4 +388,5 @@ module.exports = {
   getStoredAnalysis,
   getAnalysisBySlug,
   getAnalysisExistence,
+  deleteAnalysis,
 };

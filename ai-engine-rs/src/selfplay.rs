@@ -216,6 +216,19 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             moves_played += 1;
 
             // --- Post-move win condition checks ---
+            // Capture the moving side BEFORE we read board.turn (which now
+            // points at the opponent thanks to apply()).
+            let mover_side = if board.turn == 1 { 2 } else { 1 };
+
+            // promotion_condition: if the move ended on a promotion square
+            // with a `can_promote` piece, the moving side wins instantly.
+            // Mirrors server/game-socket.js win-on-promotion handling.
+            if rules.game.promotion_condition && mv.is_promotion {
+                break (
+                    GameResult::Win(mover_side),
+                    crate::protocol::EndReason::Promotion,
+                );
+            }
 
             // lose_all_pieces_condition (anti-chess): a player WINS when they
             // have lost all their pieces. Check both sides after each capture.
@@ -236,7 +249,12 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             // For the simple case (no specific piece type required): if any side
             // reaches 0 pieces, the other wins. When `capture_piece` specifies a
             // virtual template id, check that the matching piece is gone.
+            // When `capture_condition_requires_all` is set, ALL pieces flagged
+            // `ends_game_on_capture` must be removed (mirrors the live server's
+            // anti-king-only-capture logic for variants where every named piece
+            // must fall before the game ends).
             if rules.game.capture_condition && mv.capture.is_some() {
+                let requires_all = rules.game.capture_condition_requires_all;
                 let check_side_gone = |player: i32| -> bool {
                     if let Some(cp_id) = rules.game.capture_piece {
                         // A specific piece type must be eliminated.
@@ -247,8 +265,14 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                                 .map(|t| t.real_piece_id == cp_id || t.id == cp_id)
                                 .unwrap_or(false)
                         })
+                    } else if requires_all {
+                        // Every piece flagged ends_game_on_capture must be gone.
+                        !board.pieces.iter().any(|p| p.player == player
+                            && rules.piece(p.piece_id)
+                                .map(|t| t.ends_game_on_capture)
+                                .unwrap_or(false))
                     } else {
-                        // Capture all opponent pieces.
+                        // Default: capture all opponent pieces.
                         !board.pieces.iter().any(|p| p.player == player)
                     }
                 };
