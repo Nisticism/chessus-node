@@ -280,19 +280,33 @@ function spawnTrainer({
     liveJobs.delete(jobId);
     let status = 'completed';
     let err = null;
-    if (signal === 'SIGTERM' || signal === 'SIGINT' || signal === 'SIGKILL') {
-      status = 'stopped';
-    } else if (code !== 0) {
-      status = code === 2 ? 'aborted_oom' : 'failed';
-      err = `Exited with code ${code}${signal ? ` (signal ${signal})` : ''}`;
-    }
     let played = 0;
+    let logHadOom = false;
     try {
       const events = await tailLog(jobId, 100000);
       for (const ev of events) {
         if (ev && typeof ev.index === 'number') played = Math.max(played, ev.index);
+        if (ev && ev.type === 'Aborted' && typeof ev.reason === 'string' &&
+            ev.reason.includes('memory')) {
+          logHadOom = true;
+        }
       }
     } catch (_) { /* ignore */ }
+    if (signal === 'SIGTERM' || signal === 'SIGINT' || signal === 'SIGKILL') {
+      status = 'stopped';
+    } else if (code !== 0) {
+      // Exit code 2 alone is ambiguous — Rust's clap also uses code 2 for
+      // argument-parse failures. Only treat it as OOM when the trainer
+      // actually emitted an Aborted{reason: "...memory..."} event into the
+      // log. Otherwise it's a regular failure (and the next resume should
+      // NOT bump max_rss_mb).
+      if (logHadOom) {
+        status = 'aborted_oom';
+      } else {
+        status = 'failed';
+      }
+      err = `Exited with code ${code}${signal ? ` (signal ${signal})` : ''}`;
+    }
     try {
       await db_pool.query(
         `UPDATE ai_training_jobs
@@ -535,8 +549,15 @@ async function resumeJob(jobId) {
 
   // Pick a fresh sub-seed so resumed runs aren't a deterministic replay of
   // the killed run. We mix the original seed with the current resume point.
+  // IMPORTANT: mask to 64 bits — clap parses --seed as u64 and rejects
+  // (exit code 2) if the value exceeds u64::MAX. Without the mask the XOR
+  // of seed * golden-ratio constant overflows u64 for actualPlayed >= 2,
+  // and Rust's clap exits with code 2 — which our exit handler then
+  // mis-reports as 'aborted_oom'. That's why every resume after a few
+  // games immediately flipped to aborted_oom status.
+  const U64_MASK = 0xFFFFFFFFFFFFFFFFn;
   const resumeSeed =
-    (BigInt(job.seed || 0) ^ (BigInt(actualPlayed) * 0x9E3779B97F4A7C15n))
+    ((BigInt(job.seed || 0) ^ (BigInt(actualPlayed) * 0x9E3779B97F4A7C15n)) & U64_MASK)
       .toString();
 
   spawnTrainer({
@@ -713,4 +734,5 @@ module.exports = {
   resumeNewJobs,
   isNewJobsPaused,
   MAX_CONCURRENT_JOBS,
+  _invalidateModelMetaCache,
 };

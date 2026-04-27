@@ -7200,6 +7200,47 @@ app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin, async (req
   }
 });
 
+// Delete a training job entirely — wipes the on-disk directory AND removes
+// the DB row from `ai_training_jobs`. Refuses to delete a running job;
+// admin must stop it first. Use this when a job is no longer wanted in
+// history at all (vs. /data which keeps the row for audit).
+app.delete('/api/admin/ai-training/jobs/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
+    const jobStatus = await trainingManager.getJobStatus(id);
+    if (!jobStatus || !jobStatus.job) return res.status(404).send({ message: 'Job not found' });
+    const { job } = jobStatus;
+    if (job.status === 'running' || job.status === 'queued') {
+      return res.status(400).send({
+        message: `Cannot delete a ${job.status} job. Stop it first.`,
+      });
+    }
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingDirFor } = require('./ai/export-game-rules');
+    const jobDir = path.join(trainingDirFor(job.game_type_id), 'jobs', String(id));
+    let deletedDir = false;
+    if (fs.existsSync(jobDir)) {
+      fs.rmSync(jobDir, { recursive: true, force: true });
+      deletedDir = true;
+    }
+    await db_pool.query('DELETE FROM ai_training_jobs WHERE id = ?', [id]);
+    // Refresh cached analysis so the removed job's data isn't double-counted.
+    try {
+      const _trainingAnalysis = require('./ai/training-analysis');
+      await _trainingAnalysis.regenerateAndStore(job.game_type_id, null, { filterLegacy: true });
+    } catch (analysisErr) {
+      console.warn('Could not auto-regenerate analysis after job delete:', analysisErr.message);
+    }
+    try { trainingManager._invalidateModelMetaCache?.(job.game_type_id); } catch (_) { /* ignore */ }
+    res.json({ ok: true, deletedDir, jobId: id });
+  } catch (err) {
+    console.error('Delete AI training job error:', err);
+    res.status(500).send({ message: err.message || 'Failed to delete job' });
+  }
+});
+
 // Public endpoint — used by the create-game UI to decide whether the
 // "Adaptive" computer difficulty should be enabled for a given game type.
 // No auth required: returns only an aggregate game-count and whether a
@@ -9455,6 +9496,43 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin, async (req, res) => 
     res.status(500).json({ message: "Failed to update setting" });
   }
 });
+
+// Admin: upload a team-member picture for the About Us page. Reuses the
+// profile-picture multer pipeline (same dir, same size cap, same NSFW
+// scan) and returns the relative URL the admin UI saves into the
+// `about_team_members` JSON.
+app.post(
+  "/api/admin/about/upload-picture",
+  authenticateAdmin,
+  profilePictureUpload.single('picture'),
+  async (req, res) => {
+    try {
+      const imageFile = req.file;
+      if (!imageFile) {
+        return res.status(400).send({ message: "Picture is required" });
+      }
+      const filePath = path.join(imageFile.destination, imageFile.filename);
+      try {
+        const scanResult = await imageModeration.classifyImage(filePath);
+        if (scanResult.status === 'rejected') {
+          try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+          return res.status(400).send({
+            message: "Picture was rejected by our content filter. Please use an appropriate image.",
+            details: [scanResult.reason],
+          });
+        }
+      } catch (scanErr) {
+        console.warn('About-team picture NSFW scan failed (allowing):', scanErr.message);
+      }
+      dedupeUploadedFile(imageFile);
+      const url = `/uploads/profile-pictures/${imageFile.filename}`;
+      res.json({ url });
+    } catch (err) {
+      console.error("About-team picture upload error:", err.message);
+      res.status(500).send({ message: "Failed to upload picture" });
+    }
+  }
+);
 
 // (catch-all /api/* handler is registered at the end of the file, after all
 // real route definitions, so it doesn't accidentally swallow routes that are

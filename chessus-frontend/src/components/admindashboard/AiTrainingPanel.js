@@ -201,6 +201,21 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
     }
   };
 
+  const handleDeleteJob = async (jobId) => {
+    if (!window.confirm(
+      `Permanently DELETE job #${jobId}?\n\nThis removes the job from the list AND wipes all on-disk training data (log + models). The job will no longer appear in history. This cannot be undone.`
+    )) return;
+    try {
+      await axios.delete(
+        `${API_URL}admin/ai-training/jobs/${jobId}`,
+        { headers: authHeader() },
+      );
+      await fetchStatus();
+    } catch (err) {
+      alert(err?.response?.data?.message || err.message || "Failed to delete job");
+    }
+  };
+
   const handleDownload = async (jobId) => {
     try {
       const res = await axios.get(
@@ -598,6 +613,19 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                         🗑 Clear Data
                       </button>
                     )}
+                    {j.status !== "running" && j.status !== "queued" && (
+                      <button
+                        type="button"
+                        title="Permanently delete this job from the list AND wipe its on-disk data. The job record is removed entirely."
+                        style={{ marginLeft: 4, color: '#fff', background: '#c0392b', border: 'none', padding: '2px 6px', borderRadius: 3, cursor: 'pointer' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteJob(j.id);
+                        }}
+                      >
+                        ✕ Delete Job
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -845,9 +873,15 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
                 {summary.legacyExcluded} pre-tracking game{summary.legacyExcluded === 1 ? '' : 's'} excluded from these numbers.
               </div>
             )}
-            <div><strong>Balance:</strong> {summary.balance.severity} (imbalance {(summary.balance.imbalance * 100).toFixed(1)}%)</div>
-            {summary.balance.note && (
-              <div className={styles.balanceNote}>{summary.balance.note}</div>
+            {summary.balance ? (
+              <>
+                <div><strong>Balance:</strong> {summary.balance.severity} (imbalance {(summary.balance.imbalance * 100).toFixed(1)}%)</div>
+                {summary.balance.note && (
+                  <div className={styles.balanceNote}>{summary.balance.note}</div>
+                )}
+              </>
+            ) : (
+              <div style={{ fontStyle: 'italic', color: '#888' }}>Balance data not available — regenerate analysis to compute it.</div>
             )}
             <div><strong>Avg game length:</strong> {summary.avgMoves.toFixed(1)} moves (range {summary.minMoves}–{summary.maxMoves})</div>
             <details>

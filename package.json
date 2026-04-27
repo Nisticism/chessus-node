@@ -11,8 +11,9 @@
     "seed": "node server/seed.js",
     "frontend": "cd chessus-frontend && npm start",
     "backend": "nodemon server/index.js",
-    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
-    "start:all": "concurrently \"npm run backend\" \"npm run frontend\""
+    "build:rust": "node scripts/build-rust.js",
+    "dev": "npm run build:rust && concurrently \"npm run backend\" \"npm run frontend\"",
+    "start:all": "npm run build:rust && concurrently \"npm run backend\" \"npm run frontend\""
   },
   "engines": {
     "node": "17.9.0"

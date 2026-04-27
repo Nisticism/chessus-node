@@ -72,6 +72,16 @@ const AdminDashboard = () => {
   // Draft state for the editable forum-invite text (so admins can type without saving on every keystroke)
   const [forumInviteDraft, setForumInviteDraft] = useState('');
   const [savingForumInvite, setSavingForumInvite] = useState(false);
+  // About Us editor state — drafts are local until "Save" is clicked.
+  // Mission is plain text (paragraphs separated by blank lines). Team is
+  // a JSON array of { username, profile_link, role, contribution,
+  // picture_url } capped at 20 entries.
+  const ABOUT_TEAM_MAX = 20;
+  const [aboutMissionDraft, setAboutMissionDraft] = useState('');
+  const [aboutTeamDraft, setAboutTeamDraft] = useState([]);
+  const [savingAboutMission, setSavingAboutMission] = useState(false);
+  const [savingAboutTeam, setSavingAboutTeam] = useState(false);
+  const [aboutTeamUploadingIdx, setAboutTeamUploadingIdx] = useState(null);
 
   // Initial-state scan tool: lists game types whose starting position is
   // already in a decided state (checkmate, stalemate, capture-condition met,
@@ -252,6 +262,15 @@ const AdminDashboard = () => {
       // Seed the editable draft with the loaded value (only if not already dirty)
       if (map.forum_invite_text !== undefined) {
         setForumInviteDraft(map.forum_invite_text);
+      }
+      if (map.about_mission_text !== undefined) {
+        setAboutMissionDraft(map.about_mission_text || '');
+      }
+      if (map.about_team_members !== undefined) {
+        try {
+          const parsed = JSON.parse(map.about_team_members);
+          if (Array.isArray(parsed)) setAboutTeamDraft(parsed.slice(0, ABOUT_TEAM_MAX));
+        } catch (_) { setAboutTeamDraft([]); }
       }
     } catch (error) {
       console.error("Error fetching site settings:", error);
@@ -2706,6 +2725,254 @@ const AdminDashboard = () => {
                     />
                   </div>
                 ))}
+
+                <h3 style={{ marginTop: '2rem' }}>About Us Page</h3>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                  Edit the public-facing /community/about page. The Mission section accepts plain text — separate paragraphs with a blank line. The Team list is capped at {ABOUT_TEAM_MAX} entries.
+                </p>
+
+                <div className={styles["setting-textarea-row"]}>
+                  <div className={styles["setting-info"]}>
+                    <span className={styles["setting-label"]}>Our Mission Body Text</span>
+                    <span className={styles["setting-desc"]}>Shown in the "Our Mission" section on the About page. Leave blank to fall back to the built-in default.</span>
+                  </div>
+                  <textarea
+                    className={styles["setting-textarea"]}
+                    value={aboutMissionDraft}
+                    onChange={(e) => setAboutMissionDraft(e.target.value)}
+                    placeholder="Write the mission statement..."
+                    rows={8}
+                    maxLength={4000}
+                  />
+                  <div className={styles["setting-textarea-actions"]}>
+                    <button
+                      className={styles["setting-save-button"]}
+                      disabled={savingAboutMission || aboutMissionDraft === (siteSettings.about_mission_text || '')}
+                      onClick={async () => {
+                        setSavingAboutMission(true);
+                        await updateSiteSetting('about_mission_text', aboutMissionDraft);
+                        setSavingAboutMission(false);
+                      }}
+                    >
+                      {savingAboutMission ? 'Saving...' : 'Save Mission Text'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className={styles["setting-info"]} style={{ marginTop: '1.5rem' }}>
+                  <span className={styles["setting-label"]}>
+                    Team Members ({aboutTeamDraft.length}/{ABOUT_TEAM_MAX})
+                  </span>
+                  <span className={styles["setting-desc"]}>
+                    Each entry can include a username (display name), a link (relative path like <code>/profile/Nisticism</code> or a full URL), a role, a short contribution paragraph, and a picture.
+                  </span>
+                </div>
+
+                {aboutTeamDraft.map((member, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '110px 1fr',
+                      gap: 12,
+                      padding: 12,
+                      marginTop: 8,
+                      border: '1px solid var(--panel-border)',
+                      borderRadius: 6,
+                      background: 'rgba(0,0,0,0.05)',
+                    }}
+                  >
+                    <div style={{ textAlign: 'center' }}>
+                      {member.picture_url ? (
+                        <img
+                          src={
+                            /^https?:\/\//i.test(member.picture_url)
+                              ? member.picture_url
+                              : `${process.env.REACT_APP_ASSET_URL || 'http://localhost:3001'}${member.picture_url}`
+                          }
+                          alt={member.username || 'team member'}
+                          style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: '50%', display: 'block', margin: '0 auto 6px' }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: 90, height: 90, borderRadius: '50%',
+                            background: 'var(--accent-primary)',
+                            color: '#fff', fontSize: 32, fontWeight: 700,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto 6px',
+                          }}
+                        >
+                          {(member.username || '?').charAt(0).toUpperCase() || '?'}
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        id={`about-team-pic-${idx}`}
+                        style={{ display: 'none' }}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setAboutTeamUploadingIdx(idx);
+                          try {
+                            const fd = new FormData();
+                            fd.append('picture', file);
+                            const res = await axios.post(
+                              `${API_URL}admin/about/upload-picture`,
+                              fd,
+                              {
+                                headers: {
+                                  ...authHeader(),
+                                  'Content-Type': 'multipart/form-data',
+                                },
+                              }
+                            );
+                            const url = res.data?.url;
+                            if (url) {
+                              setAboutTeamDraft((prev) => prev.map((m, i) => i === idx ? { ...m, picture_url: url } : m));
+                            }
+                          } catch (err) {
+                            alert(err?.response?.data?.message || err.message || 'Upload failed');
+                          } finally {
+                            setAboutTeamUploadingIdx(null);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className={styles["setting-save-button"]}
+                        style={{ fontSize: 12, padding: '4px 8px' }}
+                        disabled={aboutTeamUploadingIdx === idx}
+                        onClick={() => document.getElementById(`about-team-pic-${idx}`)?.click()}
+                      >
+                        {aboutTeamUploadingIdx === idx ? 'Uploading...' : (member.picture_url ? 'Replace' : 'Upload')}
+                      </button>
+                      {member.picture_url && (
+                        <button
+                          type="button"
+                          style={{ fontSize: 12, padding: '4px 8px', marginTop: 4, background: 'transparent', border: '1px solid var(--panel-border)', color: 'var(--text-secondary)', cursor: 'pointer', borderRadius: 4 }}
+                          onClick={() => setAboutTeamDraft((prev) => prev.map((m, i) => i === idx ? { ...m, picture_url: '' } : m))}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <label style={{ display: 'grid', gap: 2, fontSize: 13 }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Username / display name</span>
+                        <input
+                          type="text"
+                          value={member.username || ''}
+                          maxLength={60}
+                          onChange={(e) => setAboutTeamDraft((prev) => prev.map((m, i) => i === idx ? { ...m, username: e.target.value } : m))}
+                          placeholder="e.g. Nisticism"
+                        />
+                      </label>
+                      <label style={{ display: 'grid', gap: 2, fontSize: 13 }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Profile link (optional — defaults to <code>/profile/&lt;username&gt;</code>)</span>
+                        <input
+                          type="text"
+                          value={member.profile_link || ''}
+                          maxLength={300}
+                          onChange={(e) => setAboutTeamDraft((prev) => prev.map((m, i) => i === idx ? { ...m, profile_link: e.target.value } : m))}
+                          placeholder="/profile/Nisticism  or  https://example.com/somebody"
+                        />
+                      </label>
+                      <label style={{ display: 'grid', gap: 2, fontSize: 13 }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Role</span>
+                        <input
+                          type="text"
+                          value={member.role || ''}
+                          maxLength={120}
+                          onChange={(e) => setAboutTeamDraft((prev) => prev.map((m, i) => i === idx ? { ...m, role: e.target.value } : m))}
+                          placeholder="Founder & Lead Developer"
+                        />
+                      </label>
+                      <label style={{ display: 'grid', gap: 2, fontSize: 13 }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Contribution / bio</span>
+                        <textarea
+                          value={member.contribution || ''}
+                          maxLength={1000}
+                          rows={3}
+                          onChange={(e) => setAboutTeamDraft((prev) => prev.map((m, i) => i === idx ? { ...m, contribution: e.target.value } : m))}
+                          placeholder="What this person does for the project."
+                        />
+                      </label>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => setAboutTeamDraft((prev) => {
+                            if (idx === 0) return prev;
+                            const next = [...prev];
+                            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                            return next;
+                          })}
+                        >
+                          ↑ Move Up
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === aboutTeamDraft.length - 1}
+                          onClick={() => setAboutTeamDraft((prev) => {
+                            if (idx === prev.length - 1) return prev;
+                            const next = [...prev];
+                            [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                            return next;
+                          })}
+                        >
+                          ↓ Move Down
+                        </button>
+                        <button
+                          type="button"
+                          style={{ marginLeft: 'auto', color: '#c0392b' }}
+                          onClick={() => {
+                            if (!window.confirm(`Remove team member "${member.username || 'this entry'}"?`)) return;
+                            setAboutTeamDraft((prev) => prev.filter((_, i) => i !== idx));
+                          }}
+                        >
+                          ✕ Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className={styles["setting-save-button"]}
+                    disabled={aboutTeamDraft.length >= ABOUT_TEAM_MAX}
+                    onClick={() => setAboutTeamDraft((prev) => [
+                      ...prev,
+                      { username: '', profile_link: '', role: '', contribution: '', picture_url: '' },
+                    ])}
+                  >
+                    + Add Team Member
+                  </button>
+                  <button
+                    type="button"
+                    className={styles["setting-save-button"]}
+                    disabled={savingAboutTeam || JSON.stringify(aboutTeamDraft) === (siteSettings.about_team_members || '[]')}
+                    onClick={async () => {
+                      // Strip empty rows (no username AND no role AND no contribution AND no picture)
+                      const cleaned = aboutTeamDraft.filter((m) =>
+                        (m.username && m.username.trim()) ||
+                        (m.role && m.role.trim()) ||
+                        (m.contribution && m.contribution.trim()) ||
+                        (m.picture_url && m.picture_url.trim())
+                      ).slice(0, ABOUT_TEAM_MAX);
+                      setSavingAboutTeam(true);
+                      await updateSiteSetting('about_team_members', JSON.stringify(cleaned));
+                      setAboutTeamDraft(cleaned);
+                      setSavingAboutTeam(false);
+                    }}
+                  >
+                    {savingAboutTeam ? 'Saving...' : 'Save Team'}
+                  </button>
+                </div>
               </div>
             )}
             {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && activeTab !== "server-stats" && activeTab !== "moderation" && renderPagination()}

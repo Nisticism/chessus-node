@@ -7,6 +7,12 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Serde-default helper used for fields whose semantic default is `true`
+/// (i.e. the rule applies unless explicitly disabled).
+fn _default_true() -> bool {
+    true
+}
+
 /// Top-level rules.json document.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RulesDoc {
@@ -47,6 +53,21 @@ pub struct GameType {
     pub lose_all_pieces_condition: bool,
     pub stalemate_win_condition: bool,
     pub no_moves_condition: bool,
+
+    /// When true, the side to move MUST play a capturing move if any
+    /// capture is available (any piece, any victim). Mirrors the
+    /// `forced_capture_condition` flag enforced in the live game server.
+    /// Defaults to false (no forced-capture rule).
+    pub forced_capture_condition: bool,
+
+    /// When true (default), a side with no legal moves and not in check
+    /// ends the game in a draw. When false the trainer treats stalemate
+    /// as non-decisive and switches the turn instead — mirrors the
+    /// stalemateNotice / skip-turn behavior in server/game-socket.js.
+    /// Defaults to true so older rules.json files (written before this
+    /// flag existed) still behave like classic chess.
+    #[serde(default = "_default_true")]
+    pub stalemate_draw_condition: bool,
 
     // Special-square JSON blobs (parsed lazily in rules.rs)
     pub range_squares_string: Option<String>,

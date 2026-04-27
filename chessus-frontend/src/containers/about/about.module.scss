@@ -92,6 +92,13 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  object-fit: cover;
+}
+
+img.member-avatar,
+.team-member img.member-avatar {
+  display: block;
+  background: var(--panel-border);
 }
 
 .member-info {

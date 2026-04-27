@@ -116,6 +116,11 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         // starting position so a cycle back to the opening counts.
         let mut position_history: HashMap<String, u32> = HashMap::new();
         position_history.insert(position_signature(&board, &rules), 1);
+        // Tracks how many times in a row the side-to-move had no legal
+        // moves and the game-rules said to skip rather than end. Two
+        // consecutive skips means BOTH sides are stuck — break out as a
+        // non-decisive draw to avoid an infinite loop.
+        let mut consecutive_skips: u32 = 0;
         let (result, end_reason) = loop {
             let moves = legal_moves(&board, &rules);
             if moves.is_empty() {
@@ -139,8 +144,22 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                         crate::protocol::EndReason::NoMovesLoss,
                     );
                 }
-                break (GameResult::Draw, crate::protocol::EndReason::Stalemate);
+                // stalemate_draw_condition: classic chess rule — draw.
+                if rules.game.stalemate_draw_condition {
+                    break (GameResult::Draw, crate::protocol::EndReason::Stalemate);
+                }
+                // No stalemate rule applies — mirror live-game behavior:
+                // skip the stuck player's turn and continue. If the
+                // opponent is ALSO stuck (two consecutive skips) the game
+                // is a non-decisive draw rather than infinite-looping.
+                consecutive_skips += 1;
+                if consecutive_skips >= 2 {
+                    break (GameResult::Draw, crate::protocol::EndReason::NoMove);
+                }
+                board.turn = if board.turn == 1 { 2 } else { 1 };
+                continue;
             }
+            consecutive_skips = 0;
 
             // Insufficient-material draw: in mate_condition games (where the
             // only decisive outcome is checkmate), if every remaining piece

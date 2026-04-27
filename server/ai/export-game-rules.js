@@ -172,6 +172,17 @@ async function exportGameRules(gameTypeId) {
       lose_all_pieces_condition: toBool(g.lose_all_pieces_condition),
       stalemate_win_condition: toBool(g.stalemate_win_condition),
       no_moves_condition: toBool(g.no_moves_condition),
+      // forced-capture: live game enforces this in handleMove; the trainer
+      // must too, otherwise self-play diverges from production rules and
+      // produces an opening book / model that suggests illegal-at-runtime
+      // lines. Skewed sampling is also a major source of spurious
+      // stalemates in capture-heavy variants.
+      forced_capture_condition: toBool(g.forced_capture_condition),
+      // stalemate_draw_condition defaults to true (classic chess) when the
+      // DB column is null/missing, matching the live-game default.
+      stalemate_draw_condition: g.stalemate_draw_condition === false || g.stalemate_draw_condition === 0
+        ? false
+        : true,
       range_squares_string: g.range_squares_string || null,
       promotion_squares_string: g.promotion_squares_string || null,
       special_squares_string: g.special_squares_string || null,

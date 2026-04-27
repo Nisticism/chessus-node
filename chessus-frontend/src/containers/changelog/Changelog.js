@@ -4,6 +4,18 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 27, 2026",
+    title: "About Us via admin, AI training resume fix, AI trainer respects forced capture & stalemate rules, dev script auto-builds Rust, delete training jobs",
+    items: [
+      "About Us page: the Mission text and Team Members section are now editable from the admin portal under Site Settings → About Us Page. Admins can add up to 20 team members, each with a username, profile link (relative or external URL), role, contribution paragraph, and uploaded picture. Team members can be reordered or removed. The page ships blank and admins populate it post-deploy",
+      "Admin portal — AI Training: fixed a 100% reproducible bug where clicking Resume on a paused/stopped/interrupted job would immediately re-mark it as 'aborted_oom'. The resume seed was overflowing the 64-bit limit Rust's CLI parser expects, causing the trainer to exit with code 2 (clap arg error) — which we mis-classified as an out-of-memory abort. Resume seeds are now masked to 64 bits, and we only flag jobs as OOM when the trainer log actually contains an Aborted{memory} event",
+      "AI training engine: now enforces the Forced Capture rule during self-play. Previously the trainer ignored this flag, so AI training games played fundamentally different rules than the live server. This skewed the opening book and the win-rate model toward illegal-at-runtime lines and produced far more spurious stalemates than it should have in capture-heavy variants",
+      "AI training engine: now respects the Stalemate Draw Rule toggle. When a variant has the rule disabled (and has no stalemate-win or no-legal-moves rule either), the trainer now skips the stuck player's turn instead of arbitrarily ending the game in a stalemate draw — matching live-game behavior. If both sides are stuck on consecutive turns, the game ends as a non-decisive draw to avoid an infinite loop",
+      "Dev workflow: `npm run dev` and `npm run start:all` now automatically rebuild the Rust trainer binary (cargo build --release) before starting the backend and frontend. If Rust isn't installed, the script prints a friendly warning and continues — backend dev is never blocked by a missing toolchain",
+      "Admin portal — AI Training: added a '✕ Delete Job' button per non-running job. Permanently removes the job from the list AND wipes its on-disk training data (log + model files). Use this to clean up stale jobs you no longer want in history. The existing 'Clear Data' button still preserves the row for audit",
+    ],
+  },
+  {
     date: "April 26, 2026",
     title: "Edit comment fix, About page redesign, news external blog links, AI analysis fix, clearer game limit warnings",
     items: [

@@ -835,17 +835,30 @@ pub fn pseudo_legal(board: &Board, rules: &Rules) -> Vec<Move> {
 /// we have a royal piece).
 pub fn legal_moves(board: &Board, rules: &Rules) -> Vec<Move> {
     let pseudo = pseudo_legal(board, rules);
-    if !has_royal(board, rules, board.turn) {
-        return pseudo;
-    }
-    let me = board.turn;
-    let mut legal = Vec::with_capacity(pseudo.len());
-    for mv in pseudo {
-        let mut next = board.clone();
-        next.apply(&mv);
-        if !in_check(&next, rules, me) {
-            legal.push(mv);
+    let mut legal: Vec<Move> = if !has_royal(board, rules, board.turn) {
+        pseudo
+    } else {
+        let me = board.turn;
+        let mut filtered = Vec::with_capacity(pseudo.len());
+        for mv in pseudo {
+            let mut next = board.clone();
+            next.apply(&mv);
+            if !in_check(&next, rules, me) {
+                filtered.push(mv);
+            }
         }
+        filtered
+    };
+
+    // forced_capture_condition: if any capturing move is available, the
+    // side to move MUST play a capture. Mirrors server/game-socket.js'
+    // forced-capture rejection. Without this, AI training plays a
+    // strictly different game than the live server, which skews opening
+    // book + model toward illegal-at-runtime lines and makes stalemate
+    // appear far more often than it should in variants like checkers.
+    if rules.game.forced_capture_condition && legal.iter().any(|m| m.capture.is_some()) {
+        legal.retain(|m| m.capture.is_some());
     }
+
     legal
 }

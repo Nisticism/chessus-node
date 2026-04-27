@@ -3054,6 +3054,14 @@ const runMigrations = async () => {
       { key: 'game_limit_live_anon', value: '4' },
       { key: 'game_limit_correspondence_anon', value: '12' },
       { key: 'game_limit_open_anon', value: '4' },
+      // About Us page (admin-editable). The mission text supports
+      // multi-paragraph plain text (\n\n separates paragraphs). The
+      // team is a JSON array of { username, profile_link, role,
+      // contribution, picture_url }, capped at 20 entries by the
+      // admin UI. Default to empty so a fresh deploy ships with no
+      // hard-coded names — admin populates them post-deploy.
+      { key: 'about_mission_text', value: '' },
+      { key: 'about_team_members', value: '[]' },
     ];
     for (const setting of defaultSettings) {
       const [rows] = await db_pool.query(

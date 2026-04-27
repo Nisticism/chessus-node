@@ -163,7 +163,8 @@ const GameList = () => {
     if (game.promotion_condition) conditions.push("Win on Promotion");
     if (game.lose_all_pieces_condition) conditions.push("Lose All Pieces");
     if (game.stalemate_win_condition) conditions.push("Stalemate Win");
-    if (game.forced_capture_condition) conditions.push("Forced Capture");
+    // forced_capture_condition is a movement mechanic, not a win condition —
+    // it is shown in the game detail page under Special Rules, not here.
     return conditions.length > 0 ? conditions.join(", ") : "Capture (default)";
   };
 
