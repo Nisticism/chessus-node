@@ -114,6 +114,40 @@ module.exports = {
   stopJob: (jobId) => request('POST', `/trainer/jobs/${jobId}/stop`).then((r) => !!r.stopped),
   resumeJob: (jobId) => request('POST', `/trainer/jobs/${jobId}/resume`).then((r) => r.job),
   tailLog: (jobId, maxLines) => request('GET', `/trainer/jobs/${jobId}/log?lines=${maxLines || 200}`).then((r) => r.events || []),
+  // Return the raw games.ndjson content (per-move transcript) for a job.
+  // The response body is plain text (ndjson), not JSON-wrapped.
+  getGameLog: (jobId) => {
+    if (!REMOTE_URL) return Promise.reject(new Error('REMOTE_TRAINER_URL not configured'));
+    const u = new URL(`/trainer/jobs/${jobId}/game-log`, REMOTE_URL);
+    const lib = u.protocol === 'https:' ? https : http;
+    const opts = {
+      method: 'GET',
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + (u.search || ''),
+      headers: { 'X-Trainer-Token': SHARED_SECRET },
+      timeout: 60_000,
+    };
+    return new Promise((resolve, reject) => {
+      const req = lib.request(opts, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          if (res.statusCode === 404) return resolve(null);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(Buffer.concat(chunks).toString('utf8'));
+          } else {
+            let msg = `Trainer service ${res.statusCode}`;
+            try { msg = JSON.parse(Buffer.concat(chunks).toString('utf8')).message || msg; } catch { /* ignore */ }
+            reject(new Error(msg));
+          }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => req.destroy(new Error('Trainer service timeout')));
+      req.end();
+    });
+  },
   fetchBook: (gameTypeId) => request('GET', `/trainer/book/${Number(gameTypeId)}`),
   fetchAnalysis: (gameTypeId, opts = {}) => {
     const qs = [];

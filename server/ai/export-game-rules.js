@@ -104,6 +104,7 @@ async function exportGameRules(gameTypeId) {
     p.castling_distance ?? '',
     p.placement_cannot_be_captured ? 1 : 0,
     p.placement_ghostwalk ? 1 : 0,
+    p.can_en_passant ? 1 : 0,
   ].join('|');
 
   const groupKeyToVirtualId = new Map();
@@ -143,6 +144,10 @@ async function exportGameRules(gameTypeId) {
       // default. Currently informational for the trainer (no special
       // logic in moves.rs yet) but exported so future ports can read it.
       die_on_capture: toBool(tpl.die_on_capture) || toBool(pos.placement_die_on_capture),
+      // En passant: placement-level flag (from game_type_pieces.can_en_passant).
+      // Pieces with this flag enabled can capture en passant and also create
+      // en passant targets when making a first-move multi-square advance.
+      can_en_passant: toBool(pos.can_en_passant),
     };
     pieces.push(merged);
   }
@@ -259,8 +264,8 @@ async function exportGameRules(gameTypeId) {
       repeating_capture: toBool(p.repeating_capture),
 
       ratio_movement_style: toBool(p.ratio_movement_style),
-      ratio_movement_1: intOr(p.ratio_movement_1, 0),
-      ratio_movement_2: intOr(p.ratio_movement_2, 0),
+      ratio_movement_1: intOr(p.ratio_one_movement, 0),
+      ratio_movement_2: intOr(p.ratio_two_movement, 0),
       repeating_ratio: toBool(p.repeating_ratio),
       max_ratio_iterations: intOr(p.max_ratio_iterations, 1),
 
@@ -295,6 +300,8 @@ async function exportGameRules(gameTypeId) {
       ends_game_on_capture: toBool(p.ends_game_on_capture),
       ends_game_on_checkmate: toBool(p.ends_game_on_checkmate),
       cannot_be_captured: toBool(p.cannot_be_captured),
+
+      can_en_passant: toBool(p.can_en_passant),
 
       special_scenario_moves: p.special_scenario_moves || null,
       special_scenario_captures: p.special_scenario_captures || null,

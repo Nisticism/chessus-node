@@ -235,6 +235,7 @@ function spawnTrainer({
   checkpointEvery,
   maxRssMb,
   seed,
+  noGameLog = false,
 }) {
   const args = [
     'train',
@@ -247,6 +248,7 @@ function spawnTrainer({
     '--seed', String(seed),
     '--start-index', String(startIndex),
   ];
+  if (noGameLog) args.push('--no-game-log');
 
   // Single-thread the trainer so it consumes at most one core.
   const env = {
@@ -354,13 +356,14 @@ async function startJob({
   checkpointEvery = 25,
   seed = 0,
   userId = null,
+  noGameLog = false,
 }) {
   if (REMOTE_MODE) {
     // The trainer service performs the rules dump + DB insert + spawn.
     // Both backend and trainer-service share the same MySQL, so the new
     // row is immediately visible to admin UI polling against the backend.
     return await trainerClient.startJob({
-      gameTypeId, games, mctsIters, maxRssMb, checkpointEvery, seed, userId,
+      gameTypeId, games, mctsIters, maxRssMb, checkpointEvery, seed, userId, noGameLog,
     });
   }
   if (_newJobsPaused) {
@@ -411,6 +414,7 @@ async function startJob({
     checkpointEvery,
     maxRssMb,
     seed,
+    noGameLog,
   });
 
   _invalidateModelMetaCache(gameTypeId);
@@ -716,6 +720,23 @@ async function getJobStatus(jobId) {
   };
 }
 
+/**
+ * Read the raw games.ndjson for a job.  Returns the file contents as a
+ * UTF-8 string (one JSON object per line), or null if the file doesn't exist.
+ * In REMOTE_MODE proxies the read to trainer-service.
+ */
+async function getGameLog(jobId) {
+  if (REMOTE_MODE) {
+    try { return await trainerClient.getGameLog(jobId); }
+    catch (e) { return null; }
+  }
+  const job = await getJob(jobId);
+  if (!job) return null;
+  const logPath = path.join(jobsDirFor(job.game_type_id, jobId), 'games.txt');
+  if (!fs.existsSync(logPath)) return null;
+  return fs.readFileSync(logPath, 'utf8');
+}
+
 module.exports = {
   RUST_BIN,
   REMOTE_MODE,
@@ -735,4 +756,5 @@ module.exports = {
   isNewJobsPaused,
   MAX_CONCURRENT_JOBS,
   _invalidateModelMetaCache,
+  getGameLog,
 };

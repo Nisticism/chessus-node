@@ -1164,84 +1164,94 @@ const GameTypeView = () => {
       const promotionTargetLinks = new Map(); // name -> id
 
       if (promotablePieces.length > 0) {
-        // Build per-placement rule descriptions (placements of the same piece type may
-        // have different per-placement promotion overrides). Dedupe identical rule sets.
-        const seen = new Set();
-        const ruleLines = [];
+        // Group promotable placements by player_id, iterate players in ascending order
+        const byPlayer = {};
         Object.values(piecePlacements).forEach(placement => {
           if (placement._occupied) return;
           const pid = placement.piece_id;
           if (!pid) return;
           const pd = pieceDataMap[pid] || placement;
           if (!pd.can_promote) return;
-          const pieceName = pd.piece_name || placement.piece_name || 'Unknown Piece';
+          const playerId = placement.player_id;
+          if (!byPlayer[playerId]) byPlayer[playerId] = [];
+          byPlayer[playerId].push(placement);
+        });
 
-          // Parse override
-          let overrideIds = null;
-          if (placement.promotion_pieces_override) {
-            try {
-              const parsed = typeof placement.promotion_pieces_override === 'string'
-                ? JSON.parse(placement.promotion_pieces_override)
-                : placement.promotion_pieces_override;
-              if (Array.isArray(parsed) && parsed.length > 0) overrideIds = parsed.map(Number);
-            } catch (e) { /* ignore */ }
-          }
+        const ruleLines = [];
+        Object.keys(byPlayer).map(Number).sort((a, b) => a - b).forEach(playerId => {
+          const seen = new Set();
+          byPlayer[playerId].forEach(placement => {
+            const pid = placement.piece_id;
+            const pd = pieceDataMap[pid] || placement;
+            const pieceName = pd.piece_name || placement.piece_name || 'Unknown Piece';
 
-          let promotesTo;
-          if (overrideIds) {
-            promotesTo = overrideIds.map(pid2 => {
-              const pd2 = pieceDataMap[pid2];
-              const name = pd2?.piece_name || `Piece #${pid2}`;
-              if (pd2?.piece_name) promotionTargetLinks.set(pd2.piece_name, pid2);
-              return `**${name}**`;
-            }).join(', ');
-          } else {
-            // Default promotion: list every eligible starting piece type for this
-            // player's side (excluding the piece itself, other promotable pieces,
-            // checkmate pieces, and lose-on-capture pieces).
-            const seenDefaultIds = new Set();
-            const defaultTargets = [];
-            Object.values(piecePlacements).forEach(p => {
-              if (p._occupied) return;
-              if (p.player_id !== placement.player_id) return;
-              const p2id = p.piece_id;
-              if (!p2id || seenDefaultIds.has(p2id)) return;
-              if (p2id === pid) return; // not itself
-              const pd2 = pieceDataMap[p2id];
-              if (!pd2) return;
-              if (pd2.can_promote) return;
-              if (p.ends_game_on_checkmate) return;
-              if (p.ends_game_on_capture) return;
-              seenDefaultIds.add(p2id);
-              const name = pd2.piece_name || `Piece #${p2id}`;
-              promotionTargetLinks.set(name, p2id);
-              defaultTargets.push(`**${name}**`);
-            });
-            promotesTo = defaultTargets.length > 0
-              ? defaultTargets.join(', ')
-              : 'any eligible starting piece on this player\'s side';
-          }
+            // Parse override
+            let overrideIds = null;
+            if (placement.promotion_pieces_override) {
+              try {
+                const parsed = typeof placement.promotion_pieces_override === 'string'
+                  ? JSON.parse(placement.promotion_pieces_override)
+                  : placement.promotion_pieces_override;
+                if (Array.isArray(parsed) && parsed.length > 0) overrideIds = parsed.map(Number);
+              } catch (e) { /* ignore */ }
+            }
 
-          const extras = [];
-          if (placement.can_promote_to_checkmate) {
-            const limitNote = placement.limit_promote_checkmate_to_original
-              ? ' (only while the player owns fewer checkmate pieces than they started with — once they reach the original count, the option is hidden)'
-              : '';
-            extras.push(`also allowed to promote into checkmate (game-ending) pieces${limitNote}`);
-          }
-          if (placement.can_promote_to_capture) {
-            const limitNote = placement.limit_promote_capture_to_original
-              ? ' (only while the player owns fewer lose-on-capture pieces than they started with — once they reach the original count, the option is hidden)'
-              : '';
-            extras.push(`also allowed to promote into lose-on-capture pieces${limitNote}`);
-          }
-          const extraStr = extras.length > 0 ? `\n   _${extras.join('; ')}._` : '';
+            let promotesTo;
+            if (overrideIds) {
+              promotesTo = overrideIds.map(pid2 => {
+                const pd2 = pieceDataMap[pid2];
+                const name = pd2?.piece_name || `Piece #${pid2}`;
+                if (pd2?.piece_name) promotionTargetLinks.set(pd2.piece_name, pid2);
+                return `**${name}**`;
+              }).join(', ');
+            } else {
+              // Default promotion: list every eligible starting piece type for this
+              // player's side (excluding the piece itself, other promotable pieces,
+              // checkmate pieces, and lose-on-capture pieces).
+              const seenDefaultIds = new Set();
+              const defaultTargets = [];
+              Object.values(piecePlacements).forEach(p => {
+                if (p._occupied) return;
+                if (p.player_id !== placement.player_id) return;
+                const p2id = p.piece_id;
+                if (!p2id || seenDefaultIds.has(p2id)) return;
+                if (p2id === pid) return; // not itself
+                const pd2 = pieceDataMap[p2id];
+                if (!pd2) return;
+                if (pd2.can_promote) return;
+                if (p.ends_game_on_checkmate) return;
+                if (p.ends_game_on_capture) return;
+                seenDefaultIds.add(p2id);
+                const name = pd2.piece_name || `Piece #${p2id}`;
+                promotionTargetLinks.set(name, p2id);
+                defaultTargets.push(`**${name}**`);
+              });
+              promotesTo = defaultTargets.length > 0
+                ? defaultTargets.join(', ')
+                : 'any eligible starting piece on this player\'s side';
+            }
 
-          const line = `• **${pieceName}** can promote to: ${promotesTo}${extraStr}`;
-          if (!seen.has(line)) {
-            seen.add(line);
-            ruleLines.push(line);
-          }
+            const extras = [];
+            if (placement.can_promote_to_checkmate) {
+              const limitNote = placement.limit_promote_checkmate_to_original
+                ? ' (only while the player owns fewer checkmate pieces than they started with — once they reach the original count, the option is hidden)'
+                : '';
+              extras.push(`also allowed to promote into checkmate (game-ending) pieces${limitNote}`);
+            }
+            if (placement.can_promote_to_capture) {
+              const limitNote = placement.limit_promote_capture_to_original
+                ? ' (only while the player owns fewer lose-on-capture pieces than they started with — once they reach the original count, the option is hidden)'
+                : '';
+              extras.push(`also allowed to promote into lose-on-capture pieces${limitNote}`);
+            }
+            const extraStr = extras.length > 0 ? `\n   _${extras.join('; ')}._` : '';
+
+            const line = `• Player ${playerId}'s **${pieceName}** can promote to: ${promotesTo}${extraStr}`;
+            if (!seen.has(line)) {
+              seen.add(line);
+              ruleLines.push(line);
+            }
+          });
         });
         if (ruleLines.length > 0) {
           promoContent += `\n\n${ruleLines.join('\n')}`;
@@ -1467,7 +1477,10 @@ const GameTypeView = () => {
     if (!game.stalemate_win_condition &&
         game.stalemate_draw_condition !== false &&
         game.stalemate_draw_condition !== 0) {
-      drawConditions.push(`• **Stalemate**: If a player is not in check but has no legal moves on their turn, the game is declared a draw.`);
+      const stalemateDesc = game.mate_condition
+        ? 'If a player is not in check but has no legal moves on their turn, the game is declared a draw.'
+        : 'If a player has no legal moves on their turn, the game is declared a draw.';
+      drawConditions.push(`• **Stalemate**: ${stalemateDesc}`);
     }
 
     // Insufficient material draw: only when both sides have at least one checkmatable piece
@@ -1541,13 +1554,15 @@ const GameTypeView = () => {
     }
 
     // Add the combined Special Rules section if any content exists.
-    // Note: pieceLinks is intentionally omitted here — promotion-target pieces are
+    // Note: pieceLinks (visual list) is intentionally omitted here — promotion-target pieces are
     // already linked inline in the promotion text, so a separate "Pieces used:"
     // list here would be a duplicate of the one on the Piece Settings section.
+    // inlinePieceLinks feeds only the pieceNameToId map so **Name** tokens render as links.
     if (specialRulesContent.length > 0) {
       rules.push({
         title: "Special Rules",
         content: specialRulesContent.join('\n\n---\n\n'),
+        inlinePieceLinks: Array.from(specialRulesPieceLinkMap.entries()).map(([name, id]) => ({ name, id })),
       });
     }
 
@@ -2212,11 +2227,16 @@ const GameTypeView = () => {
           {generateRules ? (
             <div className={styles["rules-container"]}>
               {(() => {
-                // Build global piece name → id map from all sections' pieceLinks
+                // Build global piece name → id map from all sections' pieceLinks and inlinePieceLinks
                 const pieceNameToId = {};
                 generateRules.forEach(section => {
                   if (section.pieceLinks) {
                     section.pieceLinks.forEach(p => {
+                      pieceNameToId[p.name] = p.id;
+                    });
+                  }
+                  if (section.inlinePieceLinks) {
+                    section.inlinePieceLinks.forEach(p => {
                       pieceNameToId[p.name] = p.id;
                     });
                   }

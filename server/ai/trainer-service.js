@@ -99,6 +99,20 @@ app.get('/trainer/jobs/:id/log', async (req, res) => {
   }
 });
 
+// Return the raw games.ndjson content for a job (per-move game transcript).
+app.get('/trainer/jobs/:id/game-log', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: 'Invalid job id' });
+    const content = await trainingManager.getGameLog(id);
+    if (content === null) return res.status(404).json({ message: 'No game log found for this job' });
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(content);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Return the merged opening book for a game type. Books from every job
 // directory for this game type are summed (W/L/D per position+move).
 // Fingerprint lets the caller avoid re-parsing unchanged data.

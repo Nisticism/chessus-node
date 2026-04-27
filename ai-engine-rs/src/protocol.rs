@@ -213,6 +213,11 @@ pub struct PieceTemplate {
     pub special_scenario_captures: Option<String>,
     pub custom_movement_squares: Option<String>,
     pub custom_attack_squares: Option<String>,
+
+    /// En passant: set per-placement (from game_type_pieces.can_en_passant).
+    /// When true the piece can capture en passant AND creates an en passant
+    /// target when it makes a multi-square first-move advance.
+    pub can_en_passant: bool,
 }
 
 impl Default for PieceTemplate {
@@ -277,6 +282,7 @@ impl Default for PieceTemplate {
             special_scenario_captures: None,
             custom_movement_squares: None,
             custom_attack_squares: None,
+            can_en_passant: false,
         }
     }
 }

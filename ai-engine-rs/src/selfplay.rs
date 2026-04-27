@@ -45,6 +45,10 @@ pub struct TrainArgs {
     /// Reproducibility seed.
     #[arg(long, default_value_t = 0)]
     pub seed: u64,
+    /// Skip writing the per-game move transcript (games.txt). Saves disk space
+    /// when a human-readable move log is not needed.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    pub no_game_log: bool,
     /// Resume offset: emit GameComplete events with `index = start_index + i + 1`.
     /// Used so that resuming a previously-stopped job appends contiguous
     /// indices to the existing log.ndjson rather than restarting at 1.
@@ -73,6 +77,19 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         .open(&log_path)
         .with_context(|| format!("opening log {}", log_path.display()))?;
     let mut log = BufWriter::new(log);
+    // Optional plain-text game transcript — one game section per game, written
+    // in human-readable chess notation. Disabled when --no-game-log is passed.
+    let mut games_log: Option<BufWriter<File>> = if args.no_game_log {
+        None
+    } else {
+        let games_path = args.out.join("games.txt");
+        let games_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&games_path)
+            .with_context(|| format!("opening game log {}", games_path.display()))?;
+        Some(BufWriter::new(games_file))
+    };
     let started = Instant::now();
     let seed = if args.seed == 0 {
         // Time-based seed if not specified
@@ -112,6 +129,9 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         let mut board = Board::from_rules(&rules);
         let mut moves_played = 0u32;
         let mut book_buffer: Vec<PendingBookRecord> = Vec::with_capacity(BOOK_PLY_LIMIT as usize);
+        // Human-readable move lines for this game — appended to games.txt after the game ends.
+        // Only populated when the game log is enabled.
+        let mut move_lines: Vec<String> = Vec::new();
         // Track position occurrences for n-fold repetition. Seeded with the
         // starting position so a cycle back to the opening counts.
         let mut position_history: HashMap<String, u32> = HashMap::new();
@@ -211,6 +231,54 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                     mv_str: move_string(&mv, &rules),
                     mover: board.turn,
                 });
+            }
+            // Build a human-readable move line for this game's transcript.
+            // Only runs when the game log is enabled (games_log is Some).
+            if games_log.is_some() {
+                let board_height = rules.board_height();
+                // Look up the moving piece by board-instance id → template id → name.
+                // (Move.piece_id is the board instance id, NOT the template id.)
+                let piece_name = board.pieces.iter()
+                    .find(|p| p.id == mv.piece_id)
+                    .and_then(|board_piece| rules.piece(board_piece.piece_id))
+                    .map(|template| template.piece_name.as_str())
+                    .unwrap_or("Piece");
+                // Captured piece — must be looked up BEFORE apply() removes it.
+                let captured_piece_name: Option<String> = mv.capture.and_then(|cap_instance_id| {
+                    board.pieces.iter()
+                        .find(|p| p.id == cap_instance_id)
+                        .and_then(|cap_piece| rules.piece(cap_piece.piece_id))
+                        .map(|template| template.piece_name.clone())
+                });
+                let promotes_to_name: Option<String> = if mv.is_promotion {
+                    mv.promote_to
+                        .and_then(|template_id| rules.piece(template_id))
+                        .map(|template| template.piece_name.clone())
+                } else {
+                    None
+                };
+                let from_square = coord_to_notation(mv.from.x, mv.from.y, board_height);
+                let to_square   = coord_to_notation(mv.to.x,   mv.to.y,   board_height);
+                let notation = if mv.is_castling {
+                    // Kingside (king moves right) vs queenside (king moves left).
+                    if mv.to.x > mv.from.x { "O-O".to_string() } else { "O-O-O".to_string() }
+                } else {
+                    let separator = if captured_piece_name.is_some() { "x" } else { "-" };
+                    let promo_suffix = promotes_to_name
+                        .as_deref()
+                        .map(|name| format!("={}", name))
+                        .unwrap_or_default();
+                    format!("{}{}{}{}", from_square, separator, to_square, promo_suffix)
+                };
+                let mut line = format!("  {:>4}. [P{}] {} {}",
+                    moves_played + 1, board.turn, piece_name, notation);
+                if let Some(ref cap_name) = captured_piece_name {
+                    line.push_str(&format!(" (captures {})", cap_name));
+                }
+                if mv.is_castling {
+                    line.push_str(" (castle)");
+                }
+                move_lines.push(line);
             }
             board.apply(&mv);
             moves_played += 1;
@@ -331,6 +399,25 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             },
         )?;
         log.flush().ok();
+        // Append this game's plain-text section to games.txt (if the log is enabled).
+        if let Some(ref mut glog) = games_log {
+            let outcome_str = match winner {
+                Some(player) => format!("Player {} wins", player),
+                None => "Draw".to_string(),
+            };
+            // Serialize end_reason to its snake_case JSON string, then make it readable.
+            let reason_str = serde_json::to_value(end_reason)
+                .map(|v| v.as_str().unwrap_or("unknown").replace('_', " "))
+                .unwrap_or_else(|_| "unknown".to_string());
+            writeln!(glog,
+                "\n=== Game #{} — {} ({}) — {} moves ===",
+                absolute_index, outcome_str, reason_str, moves_played
+            ).ok();
+            for line in &move_lines {
+                writeln!(glog, "{}", line).ok();
+            }
+            glog.flush().ok();
+        }
 
         if (game_idx + 1) % args.checkpoint_every == 0 {
             let path = args.out.join(format!("model-{:06}.bin", absolute_index));
@@ -399,6 +486,29 @@ pub fn run_inference(args: PlayArgs) -> Result<()> {
         out.flush().ok();
     }
     Ok(())
+}
+
+/// Convert a 0-based column index to a chess file letter.
+/// Matches the front-end `colToFile` helper: a–z for columns 0–25,
+/// then aa–az for 26–51, etc.
+fn col_to_file(x: i32) -> String {
+    if x < 0 { return "?".to_string(); }
+    if x < 26 {
+        return std::char::from_u32(b'a' as u32 + x as u32)
+            .unwrap_or('?')
+            .to_string();
+    }
+    // Two-letter file for boards wider than 26 columns.
+    let first  = std::char::from_u32(b'a' as u32 + (x / 26) as u32 - 1).unwrap_or('?');
+    let second = std::char::from_u32(b'a' as u32 + (x % 26) as u32).unwrap_or('?');
+    format!("{}{}", first, second)
+}
+
+/// Convert 0-based (x, y) board coordinates to standard chess notation.
+/// y=0 is the top rank; rank = board_height − y (1-indexed from the bottom),
+/// matching the front-end coordinate system.
+fn coord_to_notation(x: i32, y: i32, board_height: i32) -> String {
+    format!("{}{}", col_to_file(x), board_height - y)
 }
 
 fn write_event(w: &mut impl Write, ev: &ProgressEvent) -> Result<()> {

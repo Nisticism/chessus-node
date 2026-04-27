@@ -338,6 +338,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             is_castling: false,
             is_promotion: false,
             promote_to: None,
+            creates_en_passant: false,
         });
     };
 
@@ -420,7 +421,21 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
         if v == 0 { continue; }
         let (dx, dy) = dir_vec(d, is_player2);
         let exact = directional_movement_exact(&tpl, d);
-        check_dir(&mut out, dx, dy, v, Some(d), exact, rep_m && exact, false);
+        // Track en passant creation for first-N restricted multi-square directional moves.
+        let avail = directional_movement_available_for(&tpl, d);
+        if tpl.can_en_passant && move_count == 0 && avail > 0 && v.abs() > 1 {
+            let before = out.len();
+            check_dir(&mut out, dx, dy, v, Some(d), exact, rep_m && exact, false);
+            for mv in out[before..].iter_mut() {
+                let dist_y = (mv.to.y - mv.from.y).abs();
+                let dist_x = (mv.to.x - mv.from.x).abs();
+                if dist_y > 1 || dist_x > 1 {
+                    mv.creates_en_passant = true;
+                }
+            }
+        } else {
+            check_dir(&mut out, dx, dy, v, Some(d), exact, rep_m && exact, false);
+        }
     }
 
     // -------- additionalMovements from special_scenario_moves --------
@@ -444,7 +459,25 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                             if infinite { max_dist = 99; }
                             if exact { max_dist = -max_dist.abs(); }
                             if max_dist != 0 {
-                                check_dir(&mut out, dx, dy, max_dist, Some(dir), exact, false, false);
+                                // Mark creates_en_passant for first-move multi-square advances.
+                                let is_first_move_multi =
+                                    tpl.can_en_passant
+                                    && move_count == 0
+                                    && (avail > 0 || first_only)
+                                    && max_dist.abs() > 1;
+                                if is_first_move_multi {
+                                    let before = out.len();
+                                    check_dir(&mut out, dx, dy, max_dist, Some(dir), exact, false, false);
+                                    for mv in out[before..].iter_mut() {
+                                        let dist_y = (mv.to.y - mv.from.y).abs();
+                                        let dist_x = (mv.to.x - mv.from.x).abs();
+                                        if dist_y > 1 || dist_x > 1 {
+                                            mv.creates_en_passant = true;
+                                        }
+                                    }
+                                } else {
+                                    check_dir(&mut out, dx, dy, max_dist, Some(dir), exact, false, false);
+                                }
                             }
                         }
                     }
@@ -600,6 +633,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                     is_castling: true,
                     is_promotion: false,
                     promote_to: None,
+                    creates_en_passant: false,
                 });
             }
         }
@@ -777,6 +811,39 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
     //   if promotion_squares_string / asPromotion squares are configured,
     //   use those; otherwise fall back to the back-rank (row 0 for P1, row
     //   bh-1 for P2) so standard-chess-style games still work.
+    // NOTE: en passant captures are added BEFORE this block so they can also
+    // receive the is_promotion flag when they land on a promotion square.
+
+    // -------- en passant capture --------
+    // Mirrors the en passant validation in game-socket.js:
+    //   same row as victim, |dx|=1, same piece_id, enemy, diagonal attack valid.
+    if tpl.can_en_passant {
+        if let Some(ref ept) = board.en_passant_target {
+            if let Some(victim) = board.pieces.iter().find(|p| p.id == ept.victim_id) {
+                // The capturing piece must be on the same row as the victim,
+                // one file to either side, and the victim must be the enemy.
+                if victim.player != mover.player
+                    && victim.piece_id == mover.piece_id
+                    && mover.y == victim.y
+                    && (mover.x - victim.x).abs() == 1
+                    && in_bounds(ept.capture_square.x, ept.capture_square.y)
+                {
+                    out.push(Move {
+                        piece_id: mover.id,
+                        from: Coord { x: mover.x, y: mover.y },
+                        to: Coord { x: ept.capture_square.x, y: ept.capture_square.y },
+                        capture: Some(ept.victim_id),
+                        partner: None,
+                        is_castling: false,
+                        is_promotion: false,
+                        promote_to: None,
+                        creates_en_passant: false,
+                    });
+                }
+            }
+        }
+    }
+
     if tpl.can_promote {
         let promo_y = if is_player2 { bh - 1 } else { 0 };
         for mv in out.iter_mut() {

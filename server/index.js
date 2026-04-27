@@ -7065,6 +7065,7 @@ app.post('/api/admin/ai-training/jobs', authenticateAdmin, async (req, res) => {
       maxRssMb,
       checkpointEvery,
       seed,
+      noGameLog,
     } = req.body || {};
     const gid = parseInt(gameTypeId, 10);
     if (!Number.isFinite(gid) || gid <= 0) {
@@ -7084,6 +7085,7 @@ app.post('/api/admin/ai-training/jobs', authenticateAdmin, async (req, res) => {
       checkpointEvery: safeCkpt,
       seed: safeSeed,
       userId: req.user && req.user.id,
+      noGameLog: !!noGameLog,
     });
     res.status(201).json({ job });
   } catch (err) {
@@ -7124,6 +7126,27 @@ app.post('/api/admin/ai-training/jobs/:id/resume', authenticateAdmin, async (req
 // trainer runs locally (same host as the backend) — in REMOTE_MODE the
 // files live on a different machine, and the live-site admin portal
 // already accepts the uploads we'd be producing.
+// Download the plain-text game transcript written directly by the Rust trainer.
+// The file is already human-readable; just stream it as-is.
+app.get('/api/admin/ai-training/jobs/:id/game-log', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
+    const content = await trainingManager.getGameLog(id);
+    if (!content) {
+      return res.status(404).send({
+        message: 'No game log found for this job. Game logs are only available for jobs started after this feature was added, or the job was started with "Generate game log" disabled.',
+      });
+    }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="ai-job-${id}-games.txt"`);
+    res.send(content);
+  } catch (err) {
+    console.error('Game log download error:', err);
+    res.status(500).send({ message: err.message || 'Failed to fetch game log' });
+  }
+});
+
 app.get('/api/admin/ai-training/jobs/:id/download', authenticateAdmin, async (req, res) => {
   try {
     if (trainingManager.REMOTE_MODE) {
