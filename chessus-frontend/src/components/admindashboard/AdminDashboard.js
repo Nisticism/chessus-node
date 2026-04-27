@@ -1820,19 +1820,61 @@ const AdminDashboard = () => {
                 { label: 'DB Connections (active)', value: num(serverStats.dbPool?.active) },
                 { label: 'DB Connections (idle)', value: num(serverStats.dbPool?.free) },
                 { label: 'DB Queue Depth', value: num(serverStats.dbPool?.queued) },
-                { label: 'RSS Memory', value: mb(serverStats.memory?.rssMB) },
+                { label: 'RSS Memory (now)', value: mb(serverStats.memory?.rssMB) },
+                { label: 'Peak RSS (since restart)', value: mb(serverStats.memory?.peakRssMB), highlight: (serverStats.memory?.peakRssMB ?? 0) > 800 },
                 { label: 'Heap Used', value: mb(serverStats.memory?.heapUsedMB) },
                 { label: 'Heap Total', value: mb(serverStats.memory?.heapTotalMB) },
                 { label: 'External', value: mb(serverStats.memory?.externalMB) },
                 { label: 'Array Buffers', value: mb(serverStats.memory?.arrayBuffersMB) },
                 { label: 'Node Version', value: serverStats.nodeVersion || '—' },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '14px 16px', border: '1px solid var(--border-color, #333)' }}>
+              ].map(({ label, value, highlight }) => (
+                <div key={label} style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '14px 16px', border: `1px solid ${highlight ? 'var(--text-danger, #e55)' : 'var(--border-color, #333)'}` }}>
                   <div style={{ fontSize: '0.75em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>{label}</div>
-                  <div style={{ fontSize: '1.25em', fontWeight: 700, color: 'var(--text-primary, #fff)' }}>{value}</div>
+                  <div style={{ fontSize: '1.25em', fontWeight: 700, color: highlight ? 'var(--text-danger, #e55)' : 'var(--text-primary, #fff)' }}>{value}</div>
                 </div>
               ))}
             </div>
+            {serverStats.memoryHistory && serverStats.memoryHistory.length > 0 && (
+              <div style={{ marginTop: '24px' }}>
+                <div style={{ fontWeight: 600, marginBottom: '10px', fontSize: '0.9em' }}>
+                  Memory History (last {serverStats.memoryHistory.length} min)
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8em' }}>
+                    <thead>
+                      <tr style={{ color: 'var(--text-dim)', borderBottom: '1px solid var(--border-color, #333)' }}>
+                        <th style={{ textAlign: 'left', padding: '4px 8px' }}>Time</th>
+                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>RSS</th>
+                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>Heap Used</th>
+                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>External</th>
+                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>Active Games</th>
+                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>Online Users</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...serverStats.memoryHistory].reverse().map((snap, i) => {
+                        const highRss = snap.rss > 800;
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border-color, #222)', background: highRss ? 'rgba(220,60,60,0.08)' : 'transparent' }}>
+                            <td style={{ padding: '4px 8px', color: 'var(--text-dim)' }}>{new Date(snap.t).toLocaleTimeString()}</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right', color: highRss ? 'var(--text-danger, #e55)' : 'inherit', fontWeight: highRss ? 700 : 400 }}>{snap.rss} MB</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right' }}>{snap.heapUsed} MB</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right' }}>{snap.external} MB</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right' }}>{snap.activeGames}</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right' }}>{snap.onlineUsers}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {(!serverStats.memoryHistory || serverStats.memoryHistory.length === 0) && (
+              <p style={{ marginTop: '16px', color: 'var(--text-dim)', fontSize: '0.85em' }}>
+                Memory history not yet available — snapshots are recorded every 60 seconds. Check back in a minute.
+              </p>
+            )}
           </>
         );
       })()}

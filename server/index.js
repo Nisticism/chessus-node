@@ -9701,6 +9701,30 @@ server.listen(PORT, () => {
   console.log(`Socket.io ready for connections`);
 });
 
+// Rolling memory history — keeps last 120 snapshots (2 hours at 1/min).
+// Survives until process restart, giving post-crash forensics from the log.
+const MEMORY_HISTORY_MAX = 120;
+const memoryHistory = [];
+let peakRssMB = 0;
+
+setInterval(() => {
+  const m = process.memoryUsage();
+  const mb = v => Math.round(v / 1024 / 1024);
+  const snapshot = {
+    t: new Date().toISOString(),
+    rss: mb(m.rss),
+    heapUsed: mb(m.heapUsed),
+    heapTotal: mb(m.heapTotal),
+    external: mb(m.external),
+    activeGames: gsActiveGames ? gsActiveGames.size : 0,
+    onlineUsers: onlineUsers ? onlineUsers.size : 0,
+  };
+  if (snapshot.rss > peakRssMB) peakRssMB = snapshot.rss;
+  memoryHistory.push(snapshot);
+  if (memoryHistory.length > MEMORY_HISTORY_MAX) memoryHistory.shift();
+  console.log(`[memory] heapUsed=${snapshot.heapUsed}MB heapTotal=${snapshot.heapTotal}MB rss=${snapshot.rss}MB external=${snapshot.external}MB activeGames=${snapshot.activeGames} onlineUsers=${snapshot.onlineUsers}`);
+}, 60_000);
+
 // Graceful shutdown for nodemon restarts
 process.once('SIGUSR2', () => {
   server.close(() => {
@@ -9883,7 +9907,9 @@ app.get("/api/admin/memory-stats", authenticateAdmin, (req, res) => {
         heapTotalMB: +(mem.heapTotal / 1024 / 1024).toFixed(1),
         externalMB: +(mem.external / 1024 / 1024).toFixed(1),
         arrayBuffersMB: +((mem.arrayBuffers || 0) / 1024 / 1024).toFixed(1),
+        peakRssMB,
       },
+      memoryHistory: memoryHistory.slice(),
       nodeVersion: process.version,
     });
   } catch (err) {
