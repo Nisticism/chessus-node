@@ -29,6 +29,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
     maxRssMb: 2048,
     checkpointEvery: 25,
     seed: 0,
+    generateGameLog: true,
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
@@ -147,6 +148,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
           maxRssMb: parseInt(form.maxRssMb, 10),
           checkpointEvery: parseInt(form.checkpointEvery, 10),
           seed: parseInt(form.seed, 10) || 0,
+          noGameLog: !form.generateGameLog,
         },
         { headers: authHeader() },
       );
@@ -234,6 +236,32 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
     } catch (err) {
       // response might be a blob containing JSON error
       let msg = 'Failed to download job';
+      if (err?.response?.data instanceof Blob) {
+        try { msg = JSON.parse(await err.response.data.text()).message || msg; } catch (_) { /* ignore */ }
+      } else {
+        msg = err?.response?.data?.message || err.message || msg;
+      }
+      alert(msg);
+    }
+  };
+
+  const handleGameLog = async (jobId) => {
+    try {
+      const res = await axios.get(
+        `${API_URL}admin/ai-training/jobs/${jobId}/game-log`,
+        { headers: authHeader(), responseType: 'blob' },
+      );
+      const blob = new Blob([res.data], { type: 'text/plain' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ai-job-${jobId}-games.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      let msg = 'Failed to download game log';
       if (err?.response?.data instanceof Blob) {
         try { msg = JSON.parse(await err.response.data.text()).message || msg; } catch (_) { /* ignore */ }
       } else {
@@ -359,7 +387,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
               <>Training is accepting new jobs.</>
             )}
           </span>
-          <button type="button" onClick={togglePause}>
+          <button type="button" onClick={togglePause} className={styles.btnPauseToggle}>
             {pauseStatus.paused ? 'Resume Training' : 'Pause Training'}
           </button>
         </div>
@@ -450,6 +478,16 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
               value={form.seed}
               onChange={(e) => setForm({ ...form, seed: e.target.value })}
             />
+          </label>
+          <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+            title="When enabled, the trainer writes a plain-text game transcript (games.txt) to the job folder. Uncheck to save disk space if you don't need a move-by-move record.">
+            <input
+              type="checkbox"
+              checked={form.generateGameLog}
+              onChange={(e) => setForm({ ...form, generateGameLog: e.target.checked })}
+              style={{ width: 'auto', marginRight: 6 }}
+            />
+            Generate game log (games.txt)
           </label>
           <button
             type="submit"
@@ -600,6 +638,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                     {j.status === "running" && (
                       <button
                         type="button"
+                        className={`${styles.btn} ${styles.btnWarning}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleStop(j.id);
@@ -615,6 +654,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                       (j.games_played || 0) < (j.games_target || 0) && (
                         <button
                           type="button"
+                          className={`${styles.btn} ${styles.btnSuccess}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleResume(j.id);
@@ -627,7 +667,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                       <button
                         type="button"
                         title="Download this job's data as a ZIP. Upload the result on the live site's admin portal to merge it into production training data."
-                        style={{ marginLeft: 4 }}
+                        className={`${styles.btn} ${styles.btnNeutral}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDownload(j.id);
@@ -640,7 +680,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                       <button
                         type="button"
                         title="Delete on-disk training data (log + model files). Resets games_played to 0. Job record is kept."
-                        style={{ marginLeft: 4, color: '#c0392b' }}
+                        className={`${styles.btn} ${styles.btnDanger}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDeleteData(j.id);
@@ -649,11 +689,24 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                         🗑 Clear Data
                       </button>
                     )}
+                    {j.status !== "running" && (j.games_played || 0) > 0 && (
+                      <button
+                        type="button"
+                        title="Download a human-readable transcript of every move the AI played in this job (first 200 games), in chess notation. Useful for verifying that game rules are applied correctly during training."
+                        className={`${styles.btn} ${styles.btnNeutral}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleGameLog(j.id);
+                        }}
+                      >
+                        📋 Game Log
+                      </button>
+                    )}
                     {j.status !== "running" && j.status !== "queued" && (
                       <button
                         type="button"
                         title="Permanently delete this job from the list AND wipe its on-disk data. The job record is removed entirely."
-                        style={{ marginLeft: 4, color: '#fff', background: '#c0392b', border: 'none', padding: '2px 6px', borderRadius: 3, cursor: 'pointer' }}
+                        className={`${styles.btn} ${styles.btnDangerStrong}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDeleteJob(j.id);
@@ -717,7 +770,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
           <button
             type="button"
             disabled={wiping}
-            style={{ background: '#8b0000', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 4, cursor: wiping ? 'not-allowed' : 'pointer', fontWeight: 600 }}
+            className={`${styles.btn} ${styles.btnDangerStrong}`}
             onClick={handleWipe}
           >
             {wiping ? 'Wiping…' : wipeGameTypeId ? `⚠ Wipe game #${wipeGameTypeId}` : '⚠ Wipe ALL games'}

@@ -287,3 +287,102 @@
 
   &:hover { background: rgba(76, 175, 80, 0.4); }
 }
+
+/* ---- General action button base ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.82em;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease;
+
+  & + & {
+    margin-left: 4px;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btnNeutral {
+  background: rgba(33, 150, 243, 0.18);
+  border-color: rgba(33, 150, 243, 0.4);
+  color: #82cffe;
+
+  &:hover:not(:disabled) {
+    background: rgba(33, 150, 243, 0.3);
+    border-color: rgba(33, 150, 243, 0.65);
+  }
+}
+
+.btnSuccess {
+  background: rgba(76, 175, 80, 0.18);
+  border-color: rgba(76, 175, 80, 0.4);
+  color: #a0e8a3;
+
+  &:hover:not(:disabled) {
+    background: rgba(76, 175, 80, 0.3);
+    border-color: rgba(76, 175, 80, 0.65);
+  }
+}
+
+.btnWarning {
+  background: rgba(255, 152, 0, 0.18);
+  border-color: rgba(255, 152, 0, 0.4);
+  color: #ffc86b;
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 152, 0, 0.3);
+    border-color: rgba(255, 152, 0, 0.6);
+  }
+}
+
+.btnDanger {
+  background: rgba(229, 57, 53, 0.2);
+  border-color: rgba(229, 57, 53, 0.5);
+  color: #ff8a80;
+
+  &:hover:not(:disabled) {
+    background: rgba(229, 57, 53, 0.35);
+    border-color: rgba(229, 57, 53, 0.75);
+  }
+}
+
+.btnDangerStrong {
+  background: #7a1a1a;
+  border-color: #b02020;
+  color: #fff;
+  font-weight: 600;
+
+  &:hover:not(:disabled) {
+    background: #9a2020;
+    border-color: #c02020;
+  }
+}
+
+/* Pause/resume toggle in the status banner */
+.btnPauseToggle {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.88em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+}
