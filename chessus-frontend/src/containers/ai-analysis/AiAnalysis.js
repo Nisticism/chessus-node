@@ -67,7 +67,7 @@ const AiAnalysis = () => {
         <Stat label="Total games" value={s.totalGames} />
         <Stat label="Decisive" value={`${s.decisive} (${pct(s.decisive, s.totalGames)})`} />
         <Stat label="Draws" value={`${s.draws} (${pct(s.draws, s.totalGames)})`} />
-        <Stat label="Avg moves / game" value={s.avgMoves.toFixed(1)} />
+        <Stat label="Avg moves / game" value={(s.avgMoves ?? 0).toFixed(1)} />
       </div>
 
       <div className={styles.section}>
@@ -89,30 +89,32 @@ const AiAnalysis = () => {
           )}
           <div className={styles.sideBlock}>
             <h4>Drew</h4>
-            <div className={styles.bigNumber}>{(s.balance.drawShare * 100).toFixed(1)}%</div>
+            <div className={styles.bigNumber}>{((s.balance?.drawShare ?? 0) * 100).toFixed(1)}%</div>
             <div className={styles.sideSublabel}>{s.draws} games</div>
           </div>
         </div>
+        {s.balance && (
         <div className={`${styles.balanceCard} ${styles[`severity_${s.balance.severity}`] || ''}`}>
           <strong>Imbalance: {s.balance.severity}</strong> (
           {(s.balance.imbalance * 100).toFixed(1)}% gap between the two
           players across decisive games)
           {s.balance.note && <p>{s.balance.note}</p>}
         </div>
+        )}
       </div>
 
       <div className={styles.section}>
         <h3>How games ended</h3>
         <h4>Draws ({s.draws})</h4>
         <ul>
-          {Object.entries(s.drawBreakdown)
+          {Object.entries(s.drawBreakdown || {})
             .filter(([k, v]) => v > 0 && !(k === 'stalemate' && s.stalemate_draw_condition === false))
             .map(([k, v]) => <li key={k}>{prettyReason(k)}: {v} ({pct(v, s.draws)})</li>)}
           {s.draws === 0 && <li>None — every game produced a winner.</li>}
         </ul>
         <h4>Decisive ({s.decisive})</h4>
         <ul>
-          {Object.entries(s.decisiveBy)
+          {Object.entries(s.decisiveBy || {})
             .filter(([k, v]) => v > 0 && !(k === 'stalemate_win' && s.stalemate_win_condition === false))
             .map(([k, v]) => <li key={k}>{prettyReason(k)}: {v}</li>)}
           {s.decisive === 0 && <li>No decisive games yet.</li>}

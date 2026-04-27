@@ -126,4 +126,9 @@ module.exports = {
     if (userId) qs.set('userId', String(userId));
     return uploadBinary(`/trainer/upload?${qs.toString()}`, buffer);
   },
+  // Delete on-disk data for a specific job. Used when admin clears/deletes a job.
+  deleteJobData: (jobId) => request('DELETE', `/trainer/jobs/${jobId}/data`).catch(() => null),
+  // Wipe on-disk data (jobs dirs + rules.json) for one or more game types.
+  // Pass an array of game type IDs, or omit to wipe everything.
+  wipeGameTypes: (gameTypeIds) => request('DELETE', '/trainer/wipe', { gameTypeIds: gameTypeIds || [] }).catch(() => null),
 };

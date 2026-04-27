@@ -7174,11 +7174,18 @@ app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin, async (req
     const fs = require('fs');
     const path = require('path');
     const { trainingDirFor } = require('./ai/export-game-rules');
-    const jobDir = path.join(trainingDirFor(job.game_type_id), 'jobs', String(id));
     let deletedDir = false;
-    if (fs.existsSync(jobDir)) {
-      fs.rmSync(jobDir, { recursive: true, force: true });
-      deletedDir = true;
+    if (trainingManager.REMOTE_MODE) {
+      // Data lives on the trainer-service host — proxy the deletion there.
+      const trainerClient = require('./ai/trainer-client');
+      await trainerClient.deleteJobData(id);
+      deletedDir = true; // best-effort; don't let remote error block DB update
+    } else {
+      const jobDir = path.join(trainingDirFor(job.game_type_id), 'jobs', String(id));
+      if (fs.existsSync(jobDir)) {
+        fs.rmSync(jobDir, { recursive: true, force: true });
+        deletedDir = true;
+      }
     }
     // Mark the job as having its data cleared in the DB (reset games_played to 0).
     await db_pool.query(
@@ -7230,11 +7237,17 @@ app.delete('/api/admin/ai-training/jobs/:id', authenticateAdmin, async (req, res
     const fs = require('fs');
     const path = require('path');
     const { trainingDirFor } = require('./ai/export-game-rules');
-    const jobDir = path.join(trainingDirFor(job.game_type_id), 'jobs', String(id));
     let deletedDir = false;
-    if (fs.existsSync(jobDir)) {
-      fs.rmSync(jobDir, { recursive: true, force: true });
+    if (trainingManager.REMOTE_MODE) {
+      const trainerClient = require('./ai/trainer-client');
+      await trainerClient.deleteJobData(id);
       deletedDir = true;
+    } else {
+      const jobDir = path.join(trainingDirFor(job.game_type_id), 'jobs', String(id));
+      if (fs.existsSync(jobDir)) {
+        fs.rmSync(jobDir, { recursive: true, force: true });
+        deletedDir = true;
+      }
     }
     await db_pool.query('DELETE FROM ai_training_jobs WHERE id = ?', [id]);
     // Refresh cached analysis so the removed job's data isn't double-counted.
@@ -7350,16 +7363,11 @@ app.delete('/api/admin/ai-training/wipe', authenticateAdmin, async (req, res) =>
       });
     }
 
-    // Delete on-disk directories and DB rows.
+    // Collect affected game types and delete DB rows.
     let deletedJobs = 0;
     let deletedDirs = 0;
     const affectedGameTypes = new Set();
     for (const job of jobRows) {
-      const jobDir = path.join(trainingDirFor(job.game_type_id), 'jobs', String(job.id));
-      if (fs.existsSync(jobDir)) {
-        fs.rmSync(jobDir, { recursive: true, force: true });
-        deletedDirs++;
-      }
       affectedGameTypes.add(job.game_type_id);
       deletedJobs++;
     }
@@ -7367,6 +7375,32 @@ app.delete('/api/admin/ai-training/wipe', authenticateAdmin, async (req, res) =>
       const ids = jobRows.map((j) => j.id);
       const placeholders = ids.map(() => '?').join(',');
       await db_pool.query(`DELETE FROM ai_training_jobs WHERE id IN (${placeholders})`, ids);
+    }
+
+    // Delete on-disk training data. In REMOTE_MODE the files live on the
+    // trainer-service host, so proxy the deletion via the trainer client.
+    const gameTypeIdList = Array.from(affectedGameTypes);
+    if (trainingManager.REMOTE_MODE) {
+      try {
+        const trainerClient = require('./ai/trainer-client');
+        const result = await trainerClient.wipeGameTypes(gameTypeIdList);
+        deletedDirs = result?.deletedDirs ?? gameTypeIdList.length;
+      } catch (remoteErr) {
+        console.warn('Remote wipe disk cleanup failed (non-fatal):', remoteErr.message);
+      }
+    } else {
+      // Local mode: delete job dirs and rules.json directly.
+      for (const gtid of affectedGameTypes) {
+        const jobsDir = path.join(trainingDirFor(gtid), 'jobs');
+        if (fs.existsSync(jobsDir)) {
+          fs.rmSync(jobsDir, { recursive: true, force: true });
+          deletedDirs++;
+        }
+        // Also clear the cached rules.json so the next job re-exports fresh.
+        const { rulesPathFor } = require('./ai/export-game-rules');
+        const rp = rulesPathFor(gtid);
+        if (fs.existsSync(rp)) { try { fs.unlinkSync(rp); } catch (_) {} }
+      }
     }
 
     // Also delete analysis rows for each affected game type.

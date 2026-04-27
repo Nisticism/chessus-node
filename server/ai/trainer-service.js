@@ -119,7 +119,9 @@ app.get('/trainer/book/:gameTypeId', (req, res) => {
 // Aggregate every training job's log.ndjson for a game type into a
 // summary the backend persists in `ai_training_analyses`. The trainer
 // host has the files; the backend orchestrates storage + visibility.
-app.get('/trainer/analysis/:gameTypeId', (req, res) => {
+// NOTE: computeAnalysis is async — must await or the Promise is serialised
+// as {} causing the public analysis page to crash on missing fields.
+app.get('/trainer/analysis/:gameTypeId', async (req, res) => {
   try {
     const gameTypeId = parseInt(req.params.gameTypeId, 10);
     if (!Number.isFinite(gameTypeId)) {
@@ -127,7 +129,79 @@ app.get('/trainer/analysis/:gameTypeId', (req, res) => {
     }
     const filterLegacy = req.query.filterLegacy !== 'false';
     const { computeAnalysis } = require('./training-analysis');
-    res.json({ summary: computeAnalysis(gameTypeId, { filterLegacy }) });
+    const summary = await computeAnalysis(gameTypeId, { filterLegacy });
+    res.json({ summary });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Delete on-disk training data for a specific job. Called by the backend
+// when an admin clears or deletes a job. In REMOTE_MODE the data lives here,
+// not on the backend EC2, so the backend proxies the cleanup here.
+app.delete('/trainer/jobs/:id/data', (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(jobId)) return res.status(400).json({ message: 'Invalid job id' });
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingDirFor } = require('./export-game-rules');
+    // We don't know the game_type_id here, so scan all game type dirs.
+    const TRAINING_ROOT = path.resolve(__dirname, '../..', 'ai-training');
+    let deleted = false;
+    if (fs.existsSync(TRAINING_ROOT)) {
+      for (const entry of fs.readdirSync(TRAINING_ROOT)) {
+        const jobDir = path.join(TRAINING_ROOT, entry, 'jobs', String(jobId));
+        if (fs.existsSync(jobDir)) {
+          fs.rmSync(jobDir, { recursive: true, force: true });
+          deleted = true;
+        }
+      }
+    }
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Bulk wipe: delete on-disk job dirs and rules.json for the given game type
+// IDs. Accepts { gameTypeIds: number[] } in the body. If gameTypeIds is
+// omitted or empty, wipes ALL game type directories.
+app.delete('/trainer/wipe', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingDirFor, rulesPathFor } = require('./export-game-rules');
+    const TRAINING_ROOT = path.resolve(__dirname, '../..', 'ai-training');
+    const gameTypeIds = Array.isArray(req.body?.gameTypeIds) ? req.body.gameTypeIds : null;
+    let deletedDirs = 0;
+    let deletedRules = 0;
+    const wipeOneGameType = (gtid) => {
+      const jobsDir = path.join(trainingDirFor(gtid), 'jobs');
+      if (fs.existsSync(jobsDir)) {
+        fs.rmSync(jobsDir, { recursive: true, force: true });
+        deletedDirs++;
+      }
+      const rp = rulesPathFor(gtid);
+      if (fs.existsSync(rp)) {
+        try { fs.unlinkSync(rp); deletedRules++; } catch (_) {}
+      }
+    };
+    if (gameTypeIds && gameTypeIds.length > 0) {
+      for (const gtid of gameTypeIds) {
+        const id = parseInt(gtid, 10);
+        if (Number.isFinite(id)) wipeOneGameType(id);
+      }
+    } else {
+      // Wipe all — iterate every subdirectory of ai-training/
+      if (fs.existsSync(TRAINING_ROOT)) {
+        for (const entry of fs.readdirSync(TRAINING_ROOT)) {
+          const id = parseInt(entry, 10);
+          if (Number.isFinite(id)) wipeOneGameType(id);
+        }
+      }
+    }
+    res.json({ ok: true, deletedDirs, deletedRules });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
