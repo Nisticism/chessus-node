@@ -34,7 +34,7 @@ const PieceSelector = ({
   const [loading, setLoading] = useState(!preloadedPieces);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const PIECES_PER_PAGE = 25;
+  const PIECES_PER_PAGE = 50;
   
   // Initialize selectedPlayerId with last used value from localStorage, or currentPlacement, or default to 1
   const getInitialPlayerId = () => {

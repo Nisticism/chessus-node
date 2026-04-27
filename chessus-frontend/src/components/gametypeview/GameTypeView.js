@@ -1149,11 +1149,14 @@ const GameTypeView = () => {
         return pieceData.can_promote;
       });
 
-      // List promotion square locations
-      const promoSquareDescs = Object.keys(specialSquares.promotion).map(key => {
-        const [row, col] = key.split(',').map(Number);
-        return `${String.fromCharCode(97 + col)}${row + 1}`;
-      });
+      // List promotion square locations — sort alphabetically (a1, a2, b1, …)
+      // so order is consistent regardless of which order squares were selected.
+      const promoSquareDescs = Object.keys(specialSquares.promotion)
+        .map(key => {
+          const [row, col] = key.split(',').map(Number);
+          return `${String.fromCharCode(97 + col)}${row + 1}`;
+        })
+        .sort((a, b) => a.localeCompare(b));
 
       let promoContent = `**Promotion**\nCertain squares on the board are promotion squares. When a promotable piece lands on a promotion square, it can transform into a different, more powerful piece.\n\n**Promotion Squares:** ${promoSquareDescs.join(', ')}`;
 
@@ -1193,7 +1196,30 @@ const GameTypeView = () => {
               return `**${name}**`;
             }).join(', ');
           } else {
-            promotesTo = 'any starting piece on this player\'s side, except other promotable pieces, checkmate pieces, and lose-on-capture pieces';
+            // Default promotion: list every eligible starting piece type for this
+            // player's side (excluding the piece itself, other promotable pieces,
+            // checkmate pieces, and lose-on-capture pieces).
+            const seenDefaultIds = new Set();
+            const defaultTargets = [];
+            Object.values(piecePlacements).forEach(p => {
+              if (p._occupied) return;
+              if (p.player_id !== placement.player_id) return;
+              const p2id = p.piece_id;
+              if (!p2id || seenDefaultIds.has(p2id)) return;
+              if (p2id === pid) return; // not itself
+              const pd2 = pieceDataMap[p2id];
+              if (!pd2) return;
+              if (pd2.can_promote) return;
+              if (p.ends_game_on_checkmate) return;
+              if (p.ends_game_on_capture) return;
+              seenDefaultIds.add(p2id);
+              const name = pd2.piece_name || `Piece #${p2id}`;
+              promotionTargetLinks.set(name, p2id);
+              defaultTargets.push(`**${name}**`);
+            });
+            promotesTo = defaultTargets.length > 0
+              ? defaultTargets.join(', ')
+              : 'any eligible starting piece on this player\'s side';
           }
 
           const extras = [];
@@ -1436,7 +1462,11 @@ const GameTypeView = () => {
       drawConditions.push(`• **Equal Piece Count Draw**: If both players have the same number of pieces when the game ends by piece count, it is a draw.`);
     }
 
-    if (game.mate_condition) {
+    // Stalemate draws when the stalemate_draw_condition is enabled (default true).
+    // Don't show if stalemate_win_condition overrides it to a win instead.
+    if (!game.stalemate_win_condition &&
+        game.stalemate_draw_condition !== false &&
+        game.stalemate_draw_condition !== 0) {
       drawConditions.push(`• **Stalemate**: If a player is not in check but has no legal moves on their turn, the game is declared a draw.`);
     }
 
@@ -1510,13 +1540,14 @@ const GameTypeView = () => {
       specialRulesContent.push(`**Forced Capture**\nIf any of your pieces can make a capturing move on your turn, you MUST make a capture (any capture). Non-capturing moves are rejected whenever a capture is available. Combine with Lose All Pieces for classic anti-chess.`);
     }
 
-    // Add the combined Special Rules section if any content exists
+    // Add the combined Special Rules section if any content exists.
+    // Note: pieceLinks is intentionally omitted here — promotion-target pieces are
+    // already linked inline in the promotion text, so a separate "Pieces used:"
+    // list here would be a duplicate of the one on the Piece Settings section.
     if (specialRulesContent.length > 0) {
-      const specialRulesPieceLinks = Array.from(specialRulesPieceLinkMap.entries()).map(([name, id]) => ({ name, id }));
       rules.push({
         title: "Special Rules",
         content: specialRulesContent.join('\n\n---\n\n'),
-        pieceLinks: specialRulesPieceLinks.length > 0 ? specialRulesPieceLinks : undefined
       });
     }
 
