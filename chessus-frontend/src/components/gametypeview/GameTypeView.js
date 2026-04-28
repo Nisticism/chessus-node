@@ -1262,7 +1262,7 @@ const GameTypeView = () => {
 
       // Extra note for simul-turns + promotion games: explains how the
       // royal-cap rule plays out when a royal was captured this round.
-      if (gameData?.simultaneous_turns) {
+      if (game?.simultaneous_turns) {
         promoContent += `\n\n**Promotion in Simultaneous Turns**\n• When you submit a move that lands on a promotion square, the promotion modal opens immediately. Pick a piece, then your turn is locked in (or, in stage-mode, your move stays staged until you press Submit).\n• If a royal/checkmate piece is normally capped at its starting count and that royal was captured during the same round, the promotion option is re-allowed at apply time so you can promote to it and prevent the game from ending.\n• If you would promote to a royal that exceeds the starting cap and the cap rule is on, the promotion is rejected — your whole move is treated as a cancellation and you must submit a different move next round.\n• If your promoted piece delivers a checkmate that wins the game, you win immediately. If you promote to a royal that is then captured by your opponent's same-round move, the standard "ends game on capture" rule applies (so you can lose if the game type ends on a single royal capture).`;
       }
 
