@@ -211,6 +211,14 @@ pub struct PieceTemplate {
     pub has_lose_on_capture_rule: bool,
     pub ends_game_on_capture: bool,
     pub ends_game_on_checkmate: bool,
+    /// Whether this piece may promote into a piece with `ends_game_on_checkmate`.
+    /// Controlled per-placement in the game wizard. Default false.
+    #[serde(default)]
+    pub can_promote_to_checkmate: bool,
+    /// Whether this piece may promote into a piece with `ends_game_on_capture`.
+    /// Controlled per-placement in the game wizard. Default false.
+    #[serde(default)]
+    pub can_promote_to_capture: bool,
     pub cannot_be_captured: bool,
 
     // ---- Custom per-piece move/attack square offsets (JSON arrays) ----
@@ -283,6 +291,8 @@ impl Default for PieceTemplate {
             has_lose_on_capture_rule: false,
             ends_game_on_capture: false,
             ends_game_on_checkmate: false,
+            can_promote_to_checkmate: false,
+            can_promote_to_capture: false,
             cannot_be_captured: false,
             special_scenario_moves: None,
             special_scenario_captures: None,

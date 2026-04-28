@@ -863,60 +863,66 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             .collect();
 
         if !promo_indices.is_empty() {
-            // Pieces with ends_game_on_capture / ends_game_on_checkmate are poor
-            // promotion choices in most games — they become high-value capture
-            // targets for the opponent rather than offensive pieces.
-            // Allow them only when capture_condition_requires_all is set: in that
-            // setting the opponent must capture EVERY one of those pieces to win,
-            // so spawning an extra royal genuinely increases defensive bulk.
-            let royal_promo_allowed = rules.game.capture_condition_requires_all;
-
-            // Select the single best promotion target using a computed
-            // mobility-based power score (see promotion_power_score below).
-            // Using raw piece_value is unreliable — it is a user-supplied hint
-            // and can rank a King above a Queen.
-            //
-            // Priority:
-            //   1. If promotion_pieces_ids is configured, pick the best from
-            //      that filtered list.
-            //   2. Otherwise fall back to all non-self, non-promoting pieces in
-            //      the game, excluding royal pieces unless allowed.
-            let best_target: Option<i64> = if !tpl.promotion_pieces_ids.is_empty() {
-                tpl.promotion_pieces_ids.iter()
-                    .filter_map(|&id| {
-                        let t = rules.piece(id)?;
-                        if (t.ends_game_on_capture || t.ends_game_on_checkmate)
-                            && !royal_promo_allowed
-                        {
-                            return None;
-                        }
-                        Some((id, promotion_power_score(t)))
-                    })
-                    .max_by_key(|&(_, s)| s)
-                    .map(|(id, _)| id)
-            } else {
-                rules.pieces.values()
-                    .filter(|t| {
-                        t.id != tpl.id
-                            && !t.can_promote
-                            && (!(t.ends_game_on_capture || t.ends_game_on_checkmate)
-                                || royal_promo_allowed)
-                    })
-                    .max_by_key(|t| promotion_power_score(*t))
-                    .map(|t| t.id)
+            // Respect the per-placement wizard flags on the PROMOTING piece:
+            //   tpl.can_promote_to_checkmate — allow targets with ends_game_on_checkmate
+            //   tpl.can_promote_to_capture   — allow targets with ends_game_on_capture
+            // Both default to false, so royal/game-ending targets are excluded
+            // unless the game designer explicitly enabled them for this piece.
+            let target_allowed = |t: &PieceTemplate| -> bool {
+                if t.ends_game_on_checkmate && !tpl.can_promote_to_checkmate { return false; }
+                if t.ends_game_on_capture   && !tpl.can_promote_to_capture   { return false; }
+                true
             };
 
-            // Replace each promotable base move with a single version carrying
-            // best_target. If no target exists (promotion_condition win variant
-            // with no pieces to change into), promote_to stays None — selfplay.rs
-            // handles that as an instant win.
-            // Process in reverse index order so removals don't shift later indices.
+            // Configured path (promotion_pieces_ids set by the game designer):
+            //   Generate ONE Move per valid target so MCTS can evaluate each
+            //   option in context — e.g. "promote to Knight for instant checkmate"
+            //   vs "promote to Queen for positional advantage". UCT will naturally
+            //   favour the branch that leads to more wins.
+            //
+            // Fallback (no configured list):
+            //   Pick the SINGLE best target by mobility-based power score.
+            //   No curated intent here, so we keep the MCTS tree lean.
+            let targets: Vec<i64> = if !tpl.promotion_pieces_ids.is_empty() {
+                tpl.promotion_pieces_ids.iter()
+                    .filter(|&&id| {
+                        rules.piece(id)
+                            .map(|t| target_allowed(t))
+                            .unwrap_or(false)
+                    })
+                    .copied()
+                    .collect()
+            } else {
+                let best = rules.pieces.values()
+                    .filter(|t| t.id != tpl.id && !t.can_promote && target_allowed(t))
+                    .max_by_key(|t| promotion_power_score(*t));
+                match best {
+                    Some(t) => vec![t.id],
+                    None    => vec![],
+                }
+            };
+
+            // Replace each promotable base move.
+            // Empty targets with no configured list → promote_to = None
+            //   (selfplay.rs treats this as instant win under promotion_condition).
+            // Otherwise: one Move clone per target (configured) or one Move
+            //   with the single best id (fallback).
+            // Process in reverse so removals don't shift later indices.
             let mut extra: Vec<Move> = Vec::new();
             for &idx in promo_indices.iter().rev() {
-                let mut mv = out.remove(idx);
-                mv.is_promotion = true;
-                mv.promote_to = best_target;
-                extra.push(mv);
+                let base = out.remove(idx);
+                if targets.is_empty() {
+                    let mut mv = base;
+                    mv.is_promotion = true;
+                    extra.push(mv);
+                } else {
+                    for &target_id in &targets {
+                        let mut mv = base.clone();
+                        mv.is_promotion = true;
+                        mv.promote_to = Some(target_id);
+                        extra.push(mv);
+                    }
+                }
             }
             out.extend(extra);
         }
@@ -928,11 +934,11 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
 /// Compute a mobility-based power score for use when ranking promotion targets.
 /// Higher = better promotion choice. What matters is relative ordering:
 ///   Queen (8 sliding dirs): ~40  |  Rook/Bishop (4 sliding): ~20
-///   Knight (ratio):          ~6  |  King (capped):             ≤3
+///   Knight (ratio):          ~6
 ///
-/// Pieces with `ends_game_on_capture` or `ends_game_on_checkmate` are hard-capped
-/// at 3 regardless of their mobility — they are vulnerable targets in most game
-/// types and should only be chosen when no better option exists.
+/// Royal/game-ending pieces are filtered at the call site using the wizard
+/// flags (can_promote_to_checkmate / can_promote_to_capture), so no artificial
+/// score cap is applied here — a powerful custom royal deserves its full score.
 fn promotion_power_score(tpl: &PieceTemplate) -> i32 {
     let mut score: i32 = 0;
 
@@ -969,13 +975,6 @@ fn promotion_power_score(tpl: &PieceTemplate) -> i32 {
     if let Some(s) = &tpl.custom_movement_squares {
         let count = s.matches("\"col\"").count() as i32;
         score += count.clamp(0, 8);
-    }
-
-    // --- Royal / game-ending piece cap ---
-    // These pieces are high-value capture targets, not attacking pieces.
-    // Cap their score so they are only chosen as an absolute last resort.
-    if tpl.ends_game_on_capture || tpl.ends_game_on_checkmate {
-        score = score.min(3);
     }
 
     score.max(1)

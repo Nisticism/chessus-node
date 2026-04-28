@@ -4,6 +4,14 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 28, 2026",
+    title: "AI training: smarter promotion piece selection",
+    items: [
+      "AI Training: the self-play engine now selects promotion pieces much more intelligently. Previously the AI could incorrectly promote to a King (a poor choice in most games — it becomes a high-value capture target for the opponent). The engine now uses a mobility-based power score to rank candidates, so it prefers powerful pieces like Queens over limited ones. Royal/game-ending pieces (Kings) are excluded from promotion choices by default unless you have explicitly enabled 'Can promote to checkmate piece' or 'Can promote to capture-loss piece' for that piece in the game wizard — in which case they are included and scored fairly based on their actual movement abilities",
+      "AI Training: when a piece has a configured promotion target list (set in the game wizard), the AI now evaluates all valid targets as separate moves and lets MCTS pick the best one based on the resulting position. This means the AI can correctly choose a less powerful piece (e.g. a Knight) over a stronger one (e.g. a Queen) when promoting to that piece results in an immediate checkmate",
+    ],
+  },
+  {
     date: "April 27, 2026",
     title: "AI training: board replay viewer, generate-game-log off by default; en passant support, knight fix",
     items: [

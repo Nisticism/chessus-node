@@ -74,7 +74,9 @@ async function exportGameRules(gameTypeId) {
         gtp.can_en_passant,
         gtp.can_control_squares,
         gtp.hit_points,
-        gtp.attack_damage
+        gtp.attack_damage,
+        gtp.can_promote_to_checkmate,
+        gtp.can_promote_to_capture
      FROM game_type_pieces gtp
      WHERE gtp.game_type_id = ?`,
     [id],
@@ -105,6 +107,8 @@ async function exportGameRules(gameTypeId) {
     p.placement_cannot_be_captured ? 1 : 0,
     p.placement_ghostwalk ? 1 : 0,
     p.can_en_passant ? 1 : 0,
+    p.can_promote_to_checkmate ? 1 : 0,
+    p.can_promote_to_capture ? 1 : 0,
   ].join('|');
 
   const groupKeyToVirtualId = new Map();
@@ -148,6 +152,11 @@ async function exportGameRules(gameTypeId) {
       // Pieces with this flag enabled can capture en passant and also create
       // en passant targets when making a first-move multi-square advance.
       can_en_passant: toBool(pos.can_en_passant),
+      // Promotion gating: controls whether this piece may promote into a
+      // royal/game-ending piece. Default false — must be explicitly opted in
+      // via the game wizard (Step 4 → piece placement options).
+      can_promote_to_checkmate: !!pos.can_promote_to_checkmate,
+      can_promote_to_capture: !!pos.can_promote_to_capture,
     };
     pieces.push(merged);
   }
@@ -324,6 +333,8 @@ async function exportGameRules(gameTypeId) {
       has_lose_on_capture_rule: toBool(p.has_lose_on_capture_rule),
       ends_game_on_capture: toBool(p.ends_game_on_capture),
       ends_game_on_checkmate: toBool(p.ends_game_on_checkmate),
+      can_promote_to_checkmate: toBool(p.can_promote_to_checkmate),
+      can_promote_to_capture: toBool(p.can_promote_to_capture),
       cannot_be_captured: toBool(p.cannot_be_captured),
 
       can_en_passant: toBool(p.can_en_passant),
