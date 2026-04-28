@@ -81,6 +81,8 @@ const changelogData = [
       "AI training engine: fixed illegal castling — pieces between the king and the castling partner no longer get ignored when the partner is within the castling-distance range. The path is now fully scanned in all cases",
       "AI training engine: promotion now works correctly. Promoting pieces now change into their configured promotion target during self-play. Previously the piece stayed as its original type, blocking all further moves and causing premature stalemates",
       "Piece wizard — Step 2 (Movement) and Step 3 (Attack): custom square tooltips now note that custom squares always function as teleporting moves/attacks — the piece jumps directly to the target regardless of blocking pieces. Use directional or ratio/exact movement instead if you want blocking behaviour",
+      "Bug fix: 'Disable hopping for non-exact directional movement' now works correctly in computer (bot) games. Three issues were fixed: piece data was missing the flag when a game was resumed after a server restart; the flag was ignored for moves defined via the 'additional movements' section of the piece wizard; and exact additional movements were incorrectly treated as non-exact, preventing legitimate hopping on those moves",
+      "Bug fix: 'Disable hopping for non-exact directional movement' now correctly blocks sliding captures in human vs human games for pieces whose diagonal (or straight) movement was added via the piece wizard's 'additional movements' feature. Previously those captures bypassed the path check entirely, allowing pieces like an Archbishop to capture diagonally through a blocking piece",
     ],
   },
   {

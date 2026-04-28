@@ -6448,6 +6448,8 @@ function initializeSocket(server) {
                     step_movement_value: fullPieceData.step_by_step_movement_value,
                     can_hop_over_allies: fullPieceData.can_hop_over_allies,
                     can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
+                    exact_ratio_hop_only: fullPieceData.exact_ratio_hop_only,
+                    directional_hop_disabled: fullPieceData.directional_hop_disabled,
                     can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
                     can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
                     // Capture data
@@ -9697,109 +9699,6 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     }
   }
   
-  // Check additional captures first
-  const directionMap = {
-    up: [0, -1],
-    down: [0, 1],
-    left: [-1, 0],
-    right: [1, 0],
-    up_left: [-1, -1],
-    up_right: [1, -1],
-    down_left: [-1, 1],
-    down_right: [1, 1]
-  };
-  
-  for (const [direction, captureOptions] of Object.entries(additionalCaptures)) {
-    let [dirDx, dirDy] = directionMap[direction] || [0, 0];
-    if (dirDx === 0 && dirDy === 0) continue;
-    
-    // Flip vertical direction for Player 2 (same as standard directional captures)
-    if (isPlayer2) {
-      dirDy = -dirDy;
-    }
-    
-    // Check if this direction matches the target
-    const expectedDx = dirDx * absDx;
-    const expectedDy = dirDy * absDy;
-    
-    for (const captureOption of captureOptions) {
-      // Check if this capture has availableForMoves restriction
-      if (captureOption.availableForMoves && piece.moveCount >= captureOption.availableForMoves) continue;
-      // Legacy support for firstMoveOnly
-      if (captureOption.firstMoveOnly && piece.moveCount > 0) continue;
-      // Custom-square first-move blockers gate any first-N capture option entirely.
-      if (blockFirstMove && (captureOption.availableForMoves || captureOption.firstMoveOnly)) continue;
-      
-      // Calculate the capture value
-      let maxDist = captureOption.value || 0;
-      if (captureOption.infinite) maxDist = 99;
-      
-      // Check if direction and distance match (verify sign matches direction)
-      if (dirDx !== 0 && dirDy !== 0) {
-        // Diagonal - check axis alignment AND direction sign
-        if (absDx === absDy && Math.sign(dx) === Math.sign(dirDx) && Math.sign(dy) === Math.sign(dirDy)) {
-          const dist = absDx;
-          if (captureOption.exact) {
-            if (dist === maxDist) return true;
-          } else {
-            if (maxDist === 99 || dist <= maxDist) return true;
-          }
-        }
-      } else if (dirDx !== 0) {
-        // Horizontal - check axis AND direction sign
-        if (dy === 0 && Math.sign(dx) === Math.sign(dirDx)) {
-          if (captureOption.exact) {
-            if (absDx === maxDist) return true;
-          } else {
-            if (maxDist === 99 || absDx <= maxDist) return true;
-          }
-        }
-      } else if (dirDy !== 0) {
-        // Vertical - check axis AND direction sign
-        if (dx === 0 && Math.sign(dy) === Math.sign(dirDy)) {
-          if (captureOption.exact) {
-            if (absDy === maxDist) return true;
-          } else {
-            if (maxDist === 99 || absDy <= maxDist) return true;
-          }
-        }
-      }
-    }
-  }
-  
-  // Get piece movement/capture data
-  // First check capture-specific fields, then fall back to movement
-  const useMovementForCapture = piece.attacks_like_movement || piece.can_capture_enemy_on_move;
-  
-  // Check if this piece has any dedicated capture directions (separate from movement)
-  // If it does, only use capture values for attack checks — don't fall back to movement
-  const hasAnyCaptureDir = !!(piece.up_capture || piece.down_capture || piece.left_capture || piece.right_capture ||
-    piece.up_left_capture || piece.up_right_capture || piece.down_left_capture || piece.down_right_capture);
-  
-  // Check directional capture/movement
-  const checkDirectional = (captureValue, moveValue, exactFlag, repeating) => {
-    const value = captureValue !== undefined && captureValue !== null ? captureValue : 
-                  (useMovementForCapture && !hasAnyCaptureDir ? moveValue : null);
-    if (!value) return false;
-    if (value === 99) return true; // Infinite
-    if (value > 0) {
-      if (exactFlag) {
-        // Exact: distance must be exactly value (or multiple if repeating)
-        const dist = Math.max(absDx, absDy);
-        if (repeating) return dist > 0 && dist % value === 0;
-        return dist === value;
-      }
-      return true; // Sliding: up to value squares (caller checks distance)
-    }
-    if (value < 0) {
-      const exact = Math.abs(value);
-      const dist = Math.max(absDx, absDy);
-      if (repeating) return dist > 0 && dist % exact === 0;
-      return dist === exact;
-    }
-    return false;
-  };
-  
   // Check if path is blocked (for sliding pieces)
   // For multi-tile pieces, checks all sub-square parallel paths
   // Ghostwalk: piece can pass through any piece
@@ -9839,6 +9738,113 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     return true;
   };
 
+  // Check additional captures first
+  const directionMap = {
+    up: [0, -1],
+    down: [0, 1],
+    left: [-1, 0],
+    right: [1, 0],
+    up_left: [-1, -1],
+    up_right: [1, -1],
+    down_left: [-1, 1],
+    down_right: [1, 1]
+  };
+  
+  for (const [direction, captureOptions] of Object.entries(additionalCaptures)) {
+    let [dirDx, dirDy] = directionMap[direction] || [0, 0];
+    if (dirDx === 0 && dirDy === 0) continue;
+    
+    // Flip vertical direction for Player 2 (same as standard directional captures)
+    if (isPlayer2) {
+      dirDy = -dirDy;
+    }
+    
+    // Check if this direction matches the target
+    const expectedDx = dirDx * absDx;
+    const expectedDy = dirDy * absDy;
+    
+    for (const captureOption of captureOptions) {
+      // Check if this capture has availableForMoves restriction
+      if (captureOption.availableForMoves && piece.moveCount >= captureOption.availableForMoves) continue;
+      // Legacy support for firstMoveOnly
+      if (captureOption.firstMoveOnly && piece.moveCount > 0) continue;
+      // Custom-square first-move blockers gate any first-N capture option entirely.
+      if (blockFirstMove && (captureOption.availableForMoves || captureOption.firstMoveOnly)) continue;
+      
+      // Calculate the capture value
+      let maxDist = captureOption.value || 0;
+      if (captureOption.infinite) maxDist = 99;
+      
+      // Check if direction and distance match (verify sign matches direction)
+      // Respect directional_hop_disabled: exact additional captures can still hop; sliding cannot
+      const addlExact = !!(captureOption.exact);
+      const canHopDirAddl = (canHopAlliesAtk || canHopEnemiesAtk) && (!dirHopDisabledAtk || addlExact);
+
+      if (dirDx !== 0 && dirDy !== 0) {
+        // Diagonal - check axis alignment AND direction sign
+        if (absDx === absDy && Math.sign(dx) === Math.sign(dirDx) && Math.sign(dy) === Math.sign(dirDy)) {
+          const dist = absDx;
+          if (captureOption.exact) {
+            if (dist === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+          } else {
+            if ((maxDist === 99 || dist <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+          }
+        }
+      } else if (dirDx !== 0) {
+        // Horizontal - check axis AND direction sign
+        if (dy === 0 && Math.sign(dx) === Math.sign(dirDx)) {
+          if (captureOption.exact) {
+            if (absDx === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+          } else {
+            if ((maxDist === 99 || absDx <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+          }
+        }
+      } else if (dirDy !== 0) {
+        // Vertical - check axis AND direction sign
+        if (dx === 0 && Math.sign(dy) === Math.sign(dirDy)) {
+          if (captureOption.exact) {
+            if (absDy === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+          } else {
+            if ((maxDist === 99 || absDy <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+          }
+        }
+      }
+    }
+  }
+  
+  // Get piece movement/capture data
+  // First check capture-specific fields, then fall back to movement
+  const useMovementForCapture = piece.attacks_like_movement || piece.can_capture_enemy_on_move;
+  
+  // Check if this piece has any dedicated capture directions (separate from movement)
+  // If it does, only use capture values for attack checks — don't fall back to movement
+  const hasAnyCaptureDir = !!(piece.up_capture || piece.down_capture || piece.left_capture || piece.right_capture ||
+    piece.up_left_capture || piece.up_right_capture || piece.down_left_capture || piece.down_right_capture);
+  
+  // Check directional capture/movement
+  const checkDirectional = (captureValue, moveValue, exactFlag, repeating) => {
+    const value = captureValue !== undefined && captureValue !== null ? captureValue : 
+                  (useMovementForCapture && !hasAnyCaptureDir ? moveValue : null);
+    if (!value) return false;
+    if (value === 99) return true; // Infinite
+    if (value > 0) {
+      if (exactFlag) {
+        // Exact: distance must be exactly value (or multiple if repeating)
+        const dist = Math.max(absDx, absDy);
+        if (repeating) return dist > 0 && dist % value === 0;
+        return dist === value;
+      }
+      return true; // Sliding: up to value squares (caller checks distance)
+    }
+    if (value < 0) {
+      const exact = Math.abs(value);
+      const dist = Math.max(absDx, absDy);
+      if (repeating) return dist > 0 && dist % exact === 0;
+      return dist === exact;
+    }
+    return false;
+  };
+  
   // Straight line movements (rook-like)
   if (dx === 0 && dy !== 0) {
     // Vertical movement - use effectiveDy for direction checking
@@ -10598,8 +10604,14 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
                          (movementOption.exact && distance === value) ||
                          (!movementOption.exact && !movementOption.infinite && distance > 0 && distance <= value);
           
-          if (matches && isPathClear(piece.x, piece.y, targetX, targetY)) {
-            return true;
+          if (matches) {
+            // Apply directional_hop_disabled correctly: hopping is allowed for
+            // exact or infinite additional movements, disabled for non-exact ones.
+            const addlExact = !!(movementOption.exact || movementOption.infinite);
+            const canHopDir = hasGhostwalkMove || ((canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || addlExact));
+            if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
+              return true;
+            }
           }
         }
       }
@@ -11090,7 +11102,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       // gating (e.g. pawns moving forward but capturing diagonally) still applies
       // to the extended-distance moves from special_scenario_moves.
       if (maxDist !== 0) {
-        checkDirectionalMoves(dx, dy, maxDist, `${direction}_movement`, movementOption.availableForMoves || movementOption.firstMoveOnly || false);
+        const isExact = !!(movementOption.exact || movementOption.infinite);
+        checkDirectionalMoves(dx, dy, maxDist, `${direction}_movement`, movementOption.availableForMoves || movementOption.firstMoveOnly || false, isExact, false);
       }
     }
   }
