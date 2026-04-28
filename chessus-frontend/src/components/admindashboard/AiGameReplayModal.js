@@ -36,7 +36,12 @@ function applyMove(pieces, move) {
     );
     if (castlerIdx === -1) return board;
     const castler = board[castlerIdx];
-    const kingNewX = move.castleSide === "kingside" ? castler.x + 2 : castler.x - 2;
+
+    // Use the actual king destination from the log if available (new format).
+    // Fall back to the +2/-2 heuristic for old O-O / O-O-O notation.
+    const kingNewX = (move.toX !== null && move.toX !== undefined)
+      ? move.toX
+      : (move.castleSide === "kingside" ? castler.x + 2 : castler.x - 2);
     const rookSide = move.castleSide === "kingside" ? 1 : -1;
     // Find nearest same-player piece in the castling direction on the same row
     // (the castling partner, whatever it's named).
@@ -221,6 +226,8 @@ export default function AiGameReplayModal({ jobId, onClose }) {
 
   // Keep track of fetched gameNum so input doesn't reset on re-render
   const lastFetchedGame = useRef(null);
+  // Debounce timer for game-number input changes
+  const debounceRef = useRef(null);
 
   const fetchGame = useCallback(
     async (gameNum) => {
@@ -265,6 +272,8 @@ export default function AiGameReplayModal({ jobId, onClose }) {
 
   const handleGameNumKeyDown = (e) => {
     if (e.key === "Enter") {
+      // Enter triggers immediately — clear any pending debounce
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       const num = parseInt(gameNumInput, 10);
       if (Number.isFinite(num) && num >= 1) {
         fetchGame(num);
@@ -273,6 +282,8 @@ export default function AiGameReplayModal({ jobId, onClose }) {
   };
 
   const handleGameNumBlur = () => {
+    // Blur triggers immediately — clear any pending debounce
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     const num = parseInt(gameNumInput, 10);
     if (
       Number.isFinite(num) &&
@@ -282,6 +293,20 @@ export default function AiGameReplayModal({ jobId, onClose }) {
       fetchGame(num);
     }
   };
+
+  // Debounce: automatically load game 1 second after the user stops typing/clicking
+  useEffect(() => {
+    const num = parseInt(gameNumInput, 10);
+    if (!Number.isFinite(num) || num < 1) return;
+    if (num === lastFetchedGame.current) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchGame(num);
+    }, 1000);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [gameNumInput, fetchGame]);
 
   const stepTo = (idx) => {
     if (!gameData) return;
@@ -313,12 +338,13 @@ export default function AiGameReplayModal({ jobId, onClose }) {
           border: "1px solid #444",
           borderRadius: 8,
           padding: 20,
-          maxWidth: "min(98vw, 900px)",
+          width: "min(98vw, 700px)",
           maxHeight: "95vh",
           overflowY: "auto",
-          minWidth: 320,
           color: "#f0f0f0",
           boxSizing: "border-box",
+          wordBreak: "break-word",
+          overflowWrap: "break-word",
         }}
       >
         {/* Header */}
@@ -454,6 +480,8 @@ export default function AiGameReplayModal({ jobId, onClose }) {
               color: "#aaa",
               marginBottom: 8,
               fontFamily: "monospace",
+              whiteSpace: "normal",
+              wordBreak: "break-word",
             }}
           >
             {moveIndex === 0
