@@ -863,48 +863,122 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             .collect();
 
         if !promo_indices.is_empty() {
-            // Determine valid promotion targets (virtual piece template ids).
-            // Use the configured list; fall back to the best-value non-royal
-            // piece in the game if none are configured.
-            let targets: Vec<i64> = if !tpl.promotion_pieces_ids.is_empty() {
-                tpl.promotion_pieces_ids.clone()
+            // Pieces with ends_game_on_capture / ends_game_on_checkmate are poor
+            // promotion choices in most games — they become high-value capture
+            // targets for the opponent rather than offensive pieces.
+            // Allow them only when capture_condition_requires_all is set: in that
+            // setting the opponent must capture EVERY one of those pieces to win,
+            // so spawning an extra royal genuinely increases defensive bulk.
+            let royal_promo_allowed = rules.game.capture_condition_requires_all;
+
+            // Select the single best promotion target using a computed
+            // mobility-based power score (see promotion_power_score below).
+            // Using raw piece_value is unreliable — it is a user-supplied hint
+            // and can rank a King above a Queen.
+            //
+            // Priority:
+            //   1. If promotion_pieces_ids is configured, pick the best from
+            //      that filtered list.
+            //   2. Otherwise fall back to all non-self, non-promoting pieces in
+            //      the game, excluding royal pieces unless allowed.
+            let best_target: Option<i64> = if !tpl.promotion_pieces_ids.is_empty() {
+                tpl.promotion_pieces_ids.iter()
+                    .filter_map(|&id| {
+                        let t = rules.piece(id)?;
+                        if (t.ends_game_on_capture || t.ends_game_on_checkmate)
+                            && !royal_promo_allowed
+                        {
+                            return None;
+                        }
+                        Some((id, promotion_power_score(t)))
+                    })
+                    .max_by_key(|&(_, s)| s)
+                    .map(|(id, _)| id)
             } else {
-                // Fallback: best-value non-royal non-promoting piece in the rules.
-                let best = rules.pieces.values()
-                    .filter(|t| !t.is_royal && !t.can_promote && t.id != tpl.id)
-                    .max_by_key(|t| t.piece_value);
-                match best {
-                    Some(t) => vec![t.id],
-                    None => vec![],
-                }
+                rules.pieces.values()
+                    .filter(|t| {
+                        t.id != tpl.id
+                            && !t.can_promote
+                            && (!(t.ends_game_on_capture || t.ends_game_on_checkmate)
+                                || royal_promo_allowed)
+                    })
+                    .max_by_key(|t| promotion_power_score(*t))
+                    .map(|t| t.id)
             };
 
-            // For each promotable move: if we have targets, replace the
-            // original move with one copy per target (each with promote_to set).
-            // If no targets, mark is_promotion = true with promote_to = None
-            // (the piece stays unchanged — matches promotion_condition win logic).
+            // Replace each promotable base move with a single version carrying
+            // best_target. If no target exists (promotion_condition win variant
+            // with no pieces to change into), promote_to stays None — selfplay.rs
+            // handles that as an instant win.
             // Process in reverse index order so removals don't shift later indices.
             let mut extra: Vec<Move> = Vec::new();
             for &idx in promo_indices.iter().rev() {
-                let base = out.remove(idx);
-                if targets.is_empty() {
-                    let mut mv = base;
-                    mv.is_promotion = true;
-                    extra.push(mv);
-                } else {
-                    for &target_id in &targets {
-                        let mut mv = base.clone();
-                        mv.is_promotion = true;
-                        mv.promote_to = Some(target_id);
-                        extra.push(mv);
-                    }
-                }
+                let mut mv = out.remove(idx);
+                mv.is_promotion = true;
+                mv.promote_to = best_target;
+                extra.push(mv);
             }
             out.extend(extra);
         }
     }
 
     out
+}
+
+/// Compute a mobility-based power score for use when ranking promotion targets.
+/// Higher = better promotion choice. What matters is relative ordering:
+///   Queen (8 sliding dirs): ~40  |  Rook/Bishop (4 sliding): ~20
+///   Knight (ratio):          ~6  |  King (capped):             ≤3
+///
+/// Pieces with `ends_game_on_capture` or `ends_game_on_checkmate` are hard-capped
+/// at 3 regardless of their mobility — they are vulnerable targets in most game
+/// types and should only be chosen when no better option exists.
+fn promotion_power_score(tpl: &PieceTemplate) -> i32 {
+    let mut score: i32 = 0;
+
+    // --- Directional movement ---
+    // Repeating (sliding) in a direction: 5 pts (rook-style).
+    // Non-repeating: 1–4 pts scaled by max range.
+    let dir_ranges = [
+        tpl.up_movement, tpl.down_movement, tpl.left_movement, tpl.right_movement,
+        tpl.up_left_movement, tpl.up_right_movement,
+        tpl.down_left_movement, tpl.down_right_movement,
+    ];
+    for &d in &dir_ranges {
+        if d == 0 { continue; }
+        if tpl.repeating_movement {
+            score += 5;  // sliding: unlimited range in this direction
+        } else {
+            score += d.clamp(1, 4);  // fixed range: 1 sq = 1 pt, 4+ sq = 4 pts
+        }
+    }
+
+    // --- Ratio (knight-like) movement ---
+    if tpl.ratio_movement_1 != 0 && tpl.ratio_movement_2 != 0 {
+        score += 6;
+        if tpl.repeating_ratio { score += 4; }
+    }
+
+    // --- Step-by-step movement ---
+    let step = tpl.step_by_step_movement_value.abs();
+    if step > 0 {
+        score += step.clamp(1, 6);  // 1-step ≈ limited king; 6-step ≈ wide coverage
+    }
+
+    // --- Custom movement squares ---
+    if let Some(s) = &tpl.custom_movement_squares {
+        let count = s.matches("\"col\"").count() as i32;
+        score += count.clamp(0, 8);
+    }
+
+    // --- Royal / game-ending piece cap ---
+    // These pieces are high-value capture targets, not attacking pieces.
+    // Cap their score so they are only chosen as an absolute last resort.
+    if tpl.ends_game_on_capture || tpl.ends_game_on_checkmate {
+        score = score.min(3);
+    }
+
+    score.max(1)
 }
 
 fn ratio_path_ok(
