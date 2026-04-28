@@ -5,6 +5,7 @@ import styles from "./home.module.scss";
 import { getGames } from "../../actions/games";
 import { getPieces } from "../../actions/pieces";
 import { users } from "../../actions/users";
+import { fetchSiteSettings } from "../../actions/siteSettings";
 import PlayablePreviewBoard from "./PlayablePreviewBoard";
 import API_URL from "../../global/global";
 
@@ -48,6 +49,9 @@ const Home = () => {
     dispatch(getGames());
     dispatch(getPieces());
     dispatch(users());
+    // Re-fetch site settings on every home page visit so banner text/visibility
+    // reflects the latest admin portal changes without a full page refresh.
+    dispatch(fetchSiteSettings());
   }, [dispatch]);
 
   // Fetch and update user preferences if missing
