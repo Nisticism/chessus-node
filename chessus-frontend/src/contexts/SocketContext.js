@@ -429,6 +429,22 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, user]);
 
+  // Simul-turns: deliver a player's promotion target for a buffered move
+  // that landed on a promotion square. The submission stays "awaiting
+  // promotion" until this fires, then the round can resolve.
+  const simulPromotionChoice = useCallback((gameId, pieceId, promoteToPieceId) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+    socket.emit('simulPromotionChoice', {
+      gameId,
+      userId: user?.id || `anon_${socket.id}`,
+      pieceId,
+      promoteToPieceId,
+    });
+  }, [socket, connected, user]);
+
   // Resign from game
   const resign = useCallback((gameId) => {
     if (!socket || !connected) {
@@ -586,6 +602,7 @@ export const SocketProvider = ({ children }) => {
     getGameState,
     makeMove,
     simulReadyToStart,
+    simulPromotionChoice,
     resign,
     offerDraw,
     acceptDraw,

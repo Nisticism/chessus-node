@@ -152,6 +152,7 @@ const LiveGame = () => {
     joinGame,
     makeMove,
     simulReadyToStart,
+    simulPromotionChoice,
     resign,
     offerDraw,
     acceptDraw,
@@ -180,6 +181,10 @@ const LiveGame = () => {
   const [simulRoundNotice, setSimulRoundNotice] = useState(null);
   // Simul-turns ready-up: which player ids have pressed Ready in the lobby.
   const [simulReadyPlayerIds, setSimulReadyPlayerIds] = useState([]);
+  // Simul-turns staged move (only used when game's simul_turns_submit_mode === 'stage').
+  // Holds {moveData, requiresPromotion, promoteToPieceId} until the player
+  // explicitly clicks Submit. Replaced when the player picks a different move.
+  const [stagedSimulMove, setStagedSimulMove] = useState(null);
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [validMoves, setValidMoves] = useState([]);
   const [showGameOver, setShowGameOver] = useState(false);
@@ -212,6 +217,10 @@ const LiveGame = () => {
   const [premove, setPremove] = useState(null); // Store premove {from, to, pieceId}
   const [showPromotionModal, setShowPromotionModal] = useState(false);
   const [promotionData, setPromotionData] = useState(null); // {pieceId, options, promotingPiece}
+  // True when the active promotion modal belongs to a simul-turns submission
+  // (so handlePromotionSelect routes to simulPromotionChoice instead of the
+  // regular promotePiece handler).
+  const [promotionIsSimul, setPromotionIsSimul] = useState(false);
   const [specialSquares, setSpecialSquares] = useState({ range: {}, promotion: {}, control: {}, special: {} });
   const [pendingDrawOffer, setPendingDrawOffer] = useState(null); // {from, fromUsername} when opponent offers draw
   const [drawOfferSent, setDrawOfferSent] = useState(false); // Track if current user sent a draw offer
@@ -339,6 +348,23 @@ const LiveGame = () => {
 
   // Wrapper for makeMove that supports turn confirmation in correspondence games
   const submitMove = useCallback((gId, moveData) => {
+    // Simul-turns + stage mode: don't immediately submit. Stash as a staged
+    // move; the player must press the explicit Submit button to send.
+    if (gameState?.gameType?.simultaneous_turns
+        && gameState?.gameType?.simul_turns_submit_mode === 'stage'
+        && gameState?.status === 'active'
+        && !simulSubmittedThisRound) {
+      setStagedSimulMove({ gameId: gId, moveData });
+      // If the move is to a promotion square, pop the modal now so the
+      // player can pick before pressing Submit. We compute eligibility
+      // client-side using the same data the server uses (gameType +
+      // initialPieces). For simplicity, we let the server side compute
+      // when Submit is pressed (server emits simulPromotionRequired after
+      // we send the move). This means in stage mode the promotion modal
+      // appears AFTER pressing Submit. Document this in changelog.
+      return;
+    }
+
     const optimisticSnapshot = createOptimisticSnapshot({
       pieces: gameState?.pieces,
       currentTurn: gameState?.currentTurn
@@ -363,7 +389,18 @@ const LiveGame = () => {
       }
       makeMove(gId, moveData);
     }
-  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview]);
+  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.status, simulSubmittedThisRound, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview]);
+
+  // Submit / clear the staged simul move. Called from the explicit Submit
+  // button rendered in the turn-indicator area when stage-mode is active.
+  const submitStagedSimulMove = useCallback(() => {
+    if (!stagedSimulMove) return;
+    makeMove(stagedSimulMove.gameId, stagedSimulMove.moveData);
+    setStagedSimulMove(null);
+  }, [makeMove, stagedSimulMove]);
+  const clearStagedSimulMove = useCallback(() => {
+    setStagedSimulMove(null);
+  }, []);
 
   const confirmPendingMove = useCallback(() => {
     if (pendingMove) {
@@ -1048,6 +1085,54 @@ const LiveGame = () => {
       }
     });
 
+    // Simul-turns: server is asking us to pick a promotion target before
+    // our buffered submission resolves. Same modal, just routed differently
+    // on Select.
+    const unsubscribeSimulPromotionRequired = onGameEvent("simulPromotionRequired", ({ gameId: promoGameId, pieceId, pieceName, options }) => {
+      if (parseInt(promoGameId) !== parseInt(gameId)) return;
+      setGameState(prev => {
+        const promotingPiece = (prev?.pieces || []).find(p => String(p.id) === String(pieceId));
+        setPromotionData({ pieceId, pieceName, options, promotingPiece });
+        return prev;
+      });
+      setPromotionIsSimul(true);
+      setShowPromotionModal(true);
+      if (soundEnabledRef.current) soundManager.playMove();
+    });
+
+    // Auto-promotion fell back because the originally chosen target was no
+    // longer legal at apply time (e.g. royal cap exceeded). Surface a notice.
+    const unsubscribePromotionAutoChosen = onGameEvent("promotionAutoChosen", ({ gameId: promoGameId, message }) => {
+      if (parseInt(promoGameId) !== parseInt(gameId)) return;
+      setMoveError(message || 'Promotion choice was no longer legal — auto-promoted.');
+      setTimeout(() => setMoveError(null), 5000);
+    });
+
+    // Simul-turns: a player promoted with free_move_after_promotion AND
+    // the game's policy is 'allow' — that player gets to submit one more
+    // buffered move alone. The opponent's UI is locked until then.
+    const unsubscribeSimulFreeMove = onGameEvent("simulFreeMoveRequired", ({ gameId: gid, playerId, reason }) => {
+      if (parseInt(gid) !== parseInt(gameId)) return;
+      const isMe = currentUser?.id && Number(playerId) === Number(currentUser.id);
+      setSimulSubmittedThisRound(!isMe); // opponent waits with submit-state on
+      setSimulOpponentSubmitted(false);
+      setSimulRoundNotice(isMe
+        ? 'Free move after promotion — submit one more move.'
+        : 'Opponent has a free move after promotion — waiting...');
+      setTimeout(() => setSimulRoundNotice(null), 5000);
+    });
+
+    // Simul-turns: a free-move-after-promotion happened with policy =
+    // 'restage' — both players resubmit a fresh round.
+    const unsubscribeSimulRestage = onGameEvent("simulRestageRequired", ({ gameId: gid, reason }) => {
+      if (parseInt(gid) !== parseInt(gameId)) return;
+      setSimulSubmittedThisRound(false);
+      setSimulOpponentSubmitted(false);
+      setStagedSimulMove(null);
+      setSimulRoundNotice('Free move after promotion — both players submit again.');
+      setTimeout(() => setSimulRoundNotice(null), 5000);
+    });
+
     const unsubscribePiecePromoted = onGameEvent("piecePromoted", ({ gameId: promoGameId, pieceId, newPieceId, newPieceName, promotedPiece, gameState: newState }) => {
       if (parseInt(promoGameId) === parseInt(gameId)) {
         clearOptimisticMoveSnapshot();
@@ -1150,11 +1235,17 @@ const LiveGame = () => {
         setSimulOpponentSubmitted(false);
       }
     });
-    const unsubscribeSimulResolved = onGameEvent('simulRoundResolved', ({ gameId: simGid, moves, cancellations, cancellationCount, cancellationDrawThreshold, pieces, playerTimes }) => {
+    const unsubscribeSimulResolved = onGameEvent('simulRoundResolved', ({ gameId: simGid, moves, cancellations, cancellationCount, cancellationDrawThreshold, promotions, pieces, playerTimes }) => {
       if (parseInt(simGid) !== parseInt(gameId)) return;
       // Reset round-state locks
       setSimulSubmittedThisRound(false);
       setSimulOpponentSubmitted(false);
+      // If the modal somehow stayed open across a round (e.g. server applied
+      // an auto-pick), close it now.
+      setShowPromotionModal(false);
+      setPromotionData(null);
+      setPromotionIsSimul(false);
+      setStagedSimulMove(null);
       if (typeof cancellationCount === 'number') setSimulCancellationCount(cancellationCount);
       // Update pieces and clocks
       setGameState(prev => ({
@@ -1220,6 +1311,10 @@ const LiveGame = () => {
       unsubscribePremoveCleared();
       unsubscribePromotionRequired();
       unsubscribePromotionSkipped();
+      unsubscribeSimulPromotionRequired();
+      unsubscribePromotionAutoChosen();
+      unsubscribeSimulFreeMove();
+      unsubscribeSimulRestage();
       unsubscribePiecePromoted();
       unsubscribeDrawOffered();
       unsubscribeDrawDeclined();
@@ -3765,11 +3860,20 @@ const LiveGame = () => {
   // Handle promotion selection
   const handlePromotionSelect = useCallback((selectedPiece) => {
     if (!promotionData) return;
-    
+
+    if (promotionIsSimul) {
+      simulPromotionChoice(parseInt(gameId), promotionData.pieceId, selectedPiece.piece_id);
+      // Hide the modal immediately — server doesn't echo a per-player ack
+      // before the round resolves and we don't want to leave it visible.
+      setShowPromotionModal(false);
+      setPromotionData(null);
+      setPromotionIsSimul(false);
+      return;
+    }
+
     promotePiece(parseInt(gameId), promotionData.pieceId, selectedPiece.piece_id);
-    
     // Don't close modal yet - wait for piecePromoted event
-  }, [gameId, promotePiece, promotionData]);
+  }, [gameId, promotePiece, promotionData, promotionIsSimul, simulPromotionChoice]);
 
   // Handle promotion cancel (should not normally happen, but handle gracefully)
   const handlePromotionCancel = useCallback(() => {
@@ -4604,12 +4708,50 @@ const LiveGame = () => {
               <>
                 {!simulSubmittedThisRound ? (
                   <span className={styles["your-turn"]}>
-                    Pick your move{simulOpponentSubmitted ? ' — opponent has submitted!' : ''}
+                    {stagedSimulMove ? 'Move staged — review then Submit' : `Pick your move${simulOpponentSubmitted ? ' — opponent has submitted!' : ''}`}
                   </span>
                 ) : (
                   <span className={styles["waiting-turn"]}>
                     Submitted — waiting for opponent...
                   </span>
+                )}
+                {/* Stage-mode: explicit Submit / Clear buttons */}
+                {gameState.gameType?.simul_turns_submit_mode === 'stage' && stagedSimulMove && !simulSubmittedThisRound && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={submitStagedSimulMove}
+                      style={{
+                        marginLeft: 8,
+                        background: 'linear-gradient(180deg, #4caf50, #2e7d32)',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '6px 14px',
+                        borderRadius: 5,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      Submit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearStagedSimulMove}
+                      style={{
+                        marginLeft: 6,
+                        background: 'transparent',
+                        color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.45)',
+                        padding: '6px 12px',
+                        borderRadius: 5,
+                        cursor: 'pointer',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </>
                 )}
                 {gameState.gameType?.simul_turns_draw_after_cancellations > 0 && (
                   <span style={{ marginLeft: 8, fontSize: '0.85em', opacity: 0.85 }}>

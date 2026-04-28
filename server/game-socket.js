@@ -996,6 +996,7 @@ function initSimulTurnsState(gameState) {
   if (typeof gameState.simulCancellationCount !== 'number') gameState.simulCancellationCount = 0;
   if (typeof gameState._simulRoundIndex !== 'number') gameState._simulRoundIndex = 0;
   if (!gameState.simulReadyPlayers) gameState.simulReadyPlayers = new Set();
+  if (gameState.simulFreeMovePlayer === undefined) gameState.simulFreeMovePlayer = null;
 }
 
 function clearPendingSimulMoves(gameState) {
@@ -1012,6 +1013,47 @@ function getSimulOpponentId(gameState, playerId) {
  * Used for same-square cancellation detection.
  */
 function squareKey(x, y) { return `${x},${y}`; }
+
+/**
+ * Lightweight synchronous check: would the proposed simul move land on a
+ * promotion square (game's promotion_squares_string OR a custom square with
+ * asPromotion) AND the moving piece has can_promote? Used at proposal time
+ * to gate "needs promotion modal" before we run the (async) options query.
+ *
+ * Mirrors checkPromotionEligibility's square detection but without any
+ * async DB work and without filtering options.
+ */
+function simulMoveLandsOnPromotionSquare(gameType, piece, destX, destY) {
+  if (!piece || !piece.can_promote || !gameType) return false;
+  let promoSquares = {};
+  try {
+    if (gameType.promotion_squares_string) {
+      const parsed = typeof gameType.promotion_squares_string === 'string'
+        ? JSON.parse(gameType.promotion_squares_string)
+        : gameType.promotion_squares_string;
+      if (parsed && typeof parsed === 'object') promoSquares = { ...parsed };
+    }
+  } catch (_) {}
+  try {
+    if (gameType.special_squares_string) {
+      const cs = typeof gameType.special_squares_string === 'string'
+        ? JSON.parse(gameType.special_squares_string)
+        : gameType.special_squares_string;
+      if (cs && typeof cs === 'object') {
+        for (const [k, cfg] of Object.entries(cs)) {
+          if (cfg && cfg.asPromotion && !promoSquares[k]) promoSquares[k] = true;
+        }
+      }
+    }
+  } catch (_) {}
+  const key = `${destY},${destX}`;
+  if (!promoSquares[key]) return false;
+  // Exclude the piece's starting square — promotion squares only fire if the
+  // piece reaches a NEW promotion square.
+  const initialKey = `${piece.initial_y},${piece.initial_x}`;
+  if (initialKey === key) return false;
+  return true;
+}
 
 /**
  * Validate a single proposed simul move (without applying it). Returns
@@ -1063,6 +1105,9 @@ function validateSimulMoveProposal(gameState, playerId, move) {
     sourceY: piece.y,
     capturedPieceId,
     isPlace: false,
+    // Promotion is detected at proposal time so handleSimulMoveSubmission
+    // can pop the modal before the round resolves.
+    promotionRequired: kind === 'move' && simulMoveLandsOnPromotionSquare(gameState.gameType, piece, toX, toY),
   };
 }
 
@@ -1085,6 +1130,12 @@ async function handleSimulMoveSubmission(io, socket, gameState, gameId, userId, 
     return socket.emit('error', { message: 'Both players must press Ready before the game starts.' });
   }
 
+  // Free-move-after-promotion sub-round (policy = 'allow'): only the player
+  // who triggered the free move may submit. Everyone else is locked.
+  if (gameState.simulFreeMovePlayer != null && Number(gameState.simulFreeMovePlayer) !== Number(userId)) {
+    return socket.emit('error', { message: "Waiting on opponent's free move after promotion." });
+  }
+
   // Validate the proposal. Bad submissions are rejected so the player can
   // pick a different move; we deliberately do NOT lock them in.
   const proposal = validateSimulMoveProposal(gameState, userId, move);
@@ -1095,22 +1146,128 @@ async function handleSimulMoveSubmission(io, socket, gameState, gameId, userId, 
   // Buffer the proposal. If the player resubmits before the opponent submits,
   // overwrite (counts as "changing your mind" before locking; for `immediate`
   // submit-mode the frontend won't allow this, but the server is lenient).
-  gameState.pendingSimulMoves[userId] = { move, proposal, submittedAt: Date.now() };
+  // If the chosen move lands on a promotion square, the proposal is held in
+  // an `awaitingPromotion` state — the player must follow up with a
+  // `simulPromotionChoice` before the round can resolve.
+  const promoteToPieceId = (move && move.promoteToPieceId != null) ? Number(move.promoteToPieceId) : null;
+  const awaitingPromotion = !!proposal.promotionRequired && promoteToPieceId == null;
+  gameState.pendingSimulMoves[userId] = {
+    move,
+    proposal: { ...proposal, promoteToPieceId },
+    awaitingPromotion,
+    submittedAt: Date.now(),
+  };
 
   // Ack the submitter so the UI can lock.
-  socket.emit('simulMoveSubmitted', { gameId, playerId: userId });
+  socket.emit('simulMoveSubmitted', { gameId, playerId: userId, awaitingPromotion });
   // Tell the opponent the player has submitted (without revealing the move).
   const opponentId = getSimulOpponentId(gameState, userId);
   if (opponentId) {
     io.to(`game-${gameId}`).emit('simulOpponentSubmitted', { gameId, submittedPlayerId: userId, opponentId });
   }
 
-  // If both players have submitted, resolve the round.
-  const submittedPlayers = Object.keys(gameState.pendingSimulMoves);
-  const totalActive = (gameState.players || []).filter(p => p && p.id != null).length;
-  if (submittedPlayers.length >= totalActive && totalActive >= 2) {
-    await resolveSimulRound(io, gameId, gameState);
+  // If a promotion is required, compute legal options NOW (based on the
+  // current board state — captures from the same round haven't been applied
+  // yet, but the per-player royal-cap rule still holds: the modal options
+  // come from the player's own current vs initial counts).
+  if (awaitingPromotion) {
+    try {
+      const piece = (gameState.pieces || []).find(p => String(p.id) === String(proposal.sourcePieceId));
+      if (piece) {
+        const eligibility = await checkPromotionEligibility(piece, { x: proposal.destX, y: proposal.destY }, gameState);
+        if (eligibility && eligibility.eligible && eligibility.options && eligibility.options.length > 0) {
+          // If only one option, auto-pick it (matches non-simul flow).
+          if (eligibility.options.length === 1) {
+            gameState.pendingSimulMoves[userId].proposal.promoteToPieceId = Number(eligibility.options[0].piece_id);
+            gameState.pendingSimulMoves[userId].awaitingPromotion = false;
+          } else {
+            socket.emit('simulPromotionRequired', {
+              gameId,
+              pieceId: piece.id,
+              pieceName: piece.piece_name,
+              options: eligibility.options,
+              destination: { x: proposal.destX, y: proposal.destY },
+            });
+          }
+        } else {
+          // No legal options — promotion is skipped, treat the move as a
+          // normal move (no promotion required).
+          if (eligibility && eligibility.skipped) {
+            socket.emit('promotionSkipped', {
+              gameId, pieceId: piece.id, pieceName: piece.piece_name,
+              message: `Your ${piece.piece_name} reached a promotion square, but there are no valid pieces to promote to.`
+            });
+          }
+          gameState.pendingSimulMoves[userId].awaitingPromotion = false;
+        }
+      } else {
+        gameState.pendingSimulMoves[userId].awaitingPromotion = false;
+      }
+    } catch (e) {
+      console.error('simul: promotion eligibility check failed', e);
+      gameState.pendingSimulMoves[userId].awaitingPromotion = false;
+    }
   }
+
+  // If both players have submitted AND no one is still waiting on promotion,
+  // resolve the round.
+  await tryResolveSimulRoundIfReady(io, gameId, gameState);
+}
+
+/**
+ * Resolve the round only when every seated player has submitted AND no
+ * pending submission is awaiting a promotion choice.
+ */
+async function tryResolveSimulRoundIfReady(io, gameId, gameState) {
+  const submittedPlayers = Object.keys(gameState.pendingSimulMoves || {});
+  // In a free-move sub-round only one player needs to submit.
+  const isFreeMoveSubRound = gameState.simulFreeMovePlayer != null;
+  const totalActive = isFreeMoveSubRound
+    ? 1
+    : (gameState.players || []).filter(p => p && p.id != null).length;
+  if (submittedPlayers.length < totalActive || totalActive < 1) return;
+  const anyAwaitingPromo = submittedPlayers.some(pid => gameState.pendingSimulMoves[pid].awaitingPromotion);
+  if (anyAwaitingPromo) return;
+  // Clear the free-move flag now so resolveSimulRound runs in normal mode.
+  gameState.simulFreeMovePlayer = null;
+  await resolveSimulRound(io, gameId, gameState);
+}
+
+/**
+ * Apply a simul-turns player's promotion choice to a buffered proposal.
+ * Validates the chosen target is in the player's current legal options.
+ */
+async function handleSimulPromotionChoice(io, socket, gameState, gameId, userId, pieceId, promoteToPieceId) {
+  if (!isSimulTurns(gameState)) {
+    return socket.emit('error', { message: 'Promotion choice handler is only for simul-turns games.' });
+  }
+  initSimulTurnsState(gameState);
+  const pending = gameState.pendingSimulMoves[userId];
+  if (!pending) {
+    return socket.emit('error', { message: 'No pending move awaiting promotion.' });
+  }
+  if (!pending.awaitingPromotion) {
+    return socket.emit('error', { message: 'Your move is not awaiting a promotion choice.' });
+  }
+  if (String(pending.proposal.sourcePieceId) !== String(pieceId)) {
+    return socket.emit('error', { message: 'Promotion target piece mismatch.' });
+  }
+  const piece = (gameState.pieces || []).find(p => String(p.id) === String(pieceId));
+  if (!piece) return socket.emit('error', { message: 'Piece no longer exists.' });
+
+  // Re-derive eligibility now (in case the board changed between submit and
+  // pick — possible if the opponent's parallel move was already resolved
+  // somehow; in practice both submissions wait for both promotions).
+  const eligibility = await checkPromotionEligibility(piece, { x: pending.proposal.destX, y: pending.proposal.destY }, gameState);
+  const options = (eligibility && eligibility.options) || [];
+  const allowedIds = new Set(options.map(o => Number(o.piece_id)));
+  if (!allowedIds.has(Number(promoteToPieceId))) {
+    return socket.emit('error', { message: 'That promotion choice is no longer allowed (e.g. royal-cap reached).' });
+  }
+  pending.proposal.promoteToPieceId = Number(promoteToPieceId);
+  pending.awaitingPromotion = false;
+  socket.emit('simulPromotionAccepted', { gameId, pieceId, promoteToPieceId: Number(promoteToPieceId) });
+  await tryResolveSimulRoundIfReady(io, gameId, gameState);
 }
 
 /**
@@ -1388,6 +1545,71 @@ async function resolveSimulRound(io, gameId, gameState) {
     if (result.capturedPieces) allCapturedPieces.push(...result.capturedPieces);
   }
 
+  // ---- Phase B.5: apply promotions for survivors that landed on a
+  // promotion square. The board is already in its post-movement,
+  // post-ranged state, so the royal-cap rule (current >= original) is
+  // evaluated against the resolved board — meaning a player whose royal
+  // was captured this round CAN promote to a royal to replace it, while
+  // a player whose royal still lives cannot exceed the cap.
+  // ----
+  const promotionsThisRound = []; // {playerId, pieceId, promoteToPieceId, promotedPiece}
+  for (const sv of survivorMoves) {
+    if (!sv.promotionRequired) continue;
+    if (sv.kind === 'ranged' || sv.isPlace) continue;
+    // Find the moved piece — by id, since position has been updated.
+    const movedPiece = gameState.pieces.find(p => String(p.id) === String(sv.sourcePieceId));
+    if (!movedPiece) continue; // captured during the same round; no promotion
+    // Make sure it really is still on a promotion square (e.g. swap may
+    // have moved it elsewhere, although swap is only for two specific dest
+    // pieces — sanity check anyway).
+    if (movedPiece.x !== sv.destX || movedPiece.y !== sv.destY) continue;
+    try {
+      const eligibility = await checkPromotionEligibility(movedPiece, { x: sv.destX, y: sv.destY }, gameState);
+      if (!eligibility || !eligibility.eligible) {
+        // Skipped (no options) — emit notice to that player.
+        if (eligibility && eligibility.skipped) {
+          io.to(`game-${gameId}`).emit('promotionSkipped', {
+            gameId, pieceId: movedPiece.id, pieceName: movedPiece.piece_name,
+            message: `Your ${movedPiece.piece_name} reached a promotion square, but there are no valid pieces to promote to.`
+          });
+        }
+        continue;
+      }
+      const allowedIds = new Set(eligibility.options.map(o => Number(o.piece_id)));
+      const choice = sv.promoteToPieceId != null ? Number(sv.promoteToPieceId) : null;
+      let chosenId = choice && allowedIds.has(choice) ? choice : null;
+      if (!chosenId) {
+        // Choice was absent or no longer legal. Pick the highest-value
+        // option as a fallback (matches non-simul auto-promote behavior
+        // when only 1 option exists), and notify.
+        chosenId = Number(eligibility.options[0].piece_id);
+        io.to(`game-${gameId}`).emit('promotionAutoChosen', {
+          gameId, pieceId: movedPiece.id, fallbackPieceId: chosenId,
+          message: `Your earlier promotion choice was no longer legal — auto-promoted to ${eligibility.options[0].piece_name}.`,
+        });
+      }
+      const promotedPiece = await applyPromotionToPiece(gameState, movedPiece.id, chosenId);
+      if (promotedPiece) {
+        promotionsThisRound.push({
+          playerId: sv.playerId,
+          pieceId: movedPiece.id,
+          promoteToPieceId: chosenId,
+          promotedPiece,
+        });
+        moveRecords.push({
+          type: 'promotion',
+          playerId: sv.playerId,
+          pieceId: movedPiece.id,
+          promoteToPieceId: chosenId,
+          to: { x: sv.destX, y: sv.destY },
+          timestamp: Date.now(),
+        });
+      }
+    } catch (e) {
+      console.error('simul: promotion apply failed', e);
+    }
+  }
+
   // ---- Phase C: append cancellation notes to history ----
   for (const pid of cancelled) {
     moveRecords.push({
@@ -1503,6 +1725,12 @@ async function resolveSimulRound(io, gameId, gameState) {
     cancellations: Array.from(cancelled).map(pid => ({ playerId: Number(pid) || pid, reason: cancellationReasons[pid] })),
     cancellationCount: gameState.simulCancellationCount,
     cancellationDrawThreshold: drawThreshold,
+    promotions: promotionsThisRound.map(p => ({
+      playerId: p.playerId,
+      pieceId: p.pieceId,
+      promoteToPieceId: p.promoteToPieceId,
+      promotedPiece: p.promotedPiece,
+    })),
     pieces: gameState.pieces,
     playerTimes: gameState.playerTimes,
   });
@@ -1577,8 +1805,45 @@ async function resolveSimulRound(io, gameId, gameState) {
     return;
   }
 
+  // No game-over: handle free-move-after-promotion per the simul-turns
+  // policy. (Chain captures are blocked outright at submission time.)
+  // - 'disable' (default): nothing extra.
+  // - 'allow': the player whose piece just promoted with
+  //     free_move_after_promotion gets one more buffered submission;
+  //     opponent's UI is locked until that follow-up move resolves.
+  // - 'restage': both players resubmit a fresh round.
+  const freeMovePolicy = (gameState.gameType?.simul_turns_free_move_after_capture || 'disable');
+  if (freeMovePolicy !== 'disable' && promotionsThisRound.length > 0 && gameState.status === 'active') {
+    const triggers = promotionsThisRound.filter(p => {
+      const pp = p.promotedPiece || {};
+      return pp.free_move_after_promotion === 1 || pp.free_move_after_promotion === true;
+    });
+    if (triggers.length > 0) {
+      if (freeMovePolicy === 'allow') {
+        // Single-player free-move sub-round. If multiple players triggered,
+        // pick the first (rare; a draw-by-simul flag would have caught a
+        // mutual game-ending case earlier).
+        gameState.simulFreeMovePlayer = triggers[0].playerId;
+        io.to(`game-${gameId}`).emit('simulFreeMoveRequired', {
+          gameId,
+          playerId: gameState.simulFreeMovePlayer,
+          reason: 'free_move_after_promotion',
+        });
+      } else if (freeMovePolicy === 'restage') {
+        // Both players submit a fresh round. pendingSimulMoves is already
+        // cleared; just notify the room.
+        io.to(`game-${gameId}`).emit('simulRestageRequired', {
+          gameId,
+          reason: 'free_move_after_promotion',
+        });
+      }
+    }
+  }
+
   // No game-over: if a bot is in this simul-turns game, schedule its next
-  // submission so the next round can resolve once the human submits.
+  // submission so the next round can resolve once the human submits. (Or,
+  // if a free-move sub-round is pending and the bot is the free-mover,
+  // submit again now.)
   if (gameState.botPlayer && gameState.status === 'active') {
     submitBotSimulMove(io, gameId, gameState).catch(e => console.error('simul: bot next-round submission error', e));
   }
@@ -1714,7 +1979,33 @@ async function submitBotSimulMove(io, gameId, gameState) {
         console.warn('[Bot/Simul] proposed bot move was invalid:', proposal.reason, move);
         return;
       }
-      gameState.pendingSimulMoves[bot.id] = { move, proposal, submittedAt: Date.now() };
+
+      // If the bot's move would promote, pick a promotion target now using
+      // the AI's `chooseBestPromotion`. Skipped (no options) is fine — the
+      // promotion phase will just no-op.
+      let botPromoteToPieceId = null;
+      if (proposal.promotionRequired) {
+        try {
+          const piece = (gameState.pieces || []).find(p => String(p.id) === String(proposal.sourcePieceId));
+          if (piece) {
+            const eligibility = await checkPromotionEligibility(piece, { x: proposal.destX, y: proposal.destY }, gameState);
+            const opts = (eligibility && eligibility.options) || [];
+            if (opts.length > 0) {
+              const best = aiEngine.chooseBestPromotion(opts) || opts[0];
+              botPromoteToPieceId = Number(best.piece_id);
+            }
+          }
+        } catch (e) {
+          console.error('[Bot/Simul] promotion choice failed:', e);
+        }
+      }
+
+      gameState.pendingSimulMoves[bot.id] = {
+        move: { ...move, promoteToPieceId: botPromoteToPieceId },
+        proposal: { ...proposal, promoteToPieceId: botPromoteToPieceId },
+        awaitingPromotion: false,
+        submittedAt: Date.now(),
+      };
 
       // Tell the room that a player (the bot) submitted, so the human's UI
       // can flip to "opponent has submitted!".
@@ -1728,7 +2019,7 @@ async function submitBotSimulMove(io, gameId, gameState) {
       const submittedIds = Object.keys(gameState.pendingSimulMoves);
       const allSubmitted = seatedIds.every(id => submittedIds.map(s => String(s)).includes(String(id)));
       if (allSubmitted) {
-        await resolveSimulRound(io, gameId, gameState);
+        await tryResolveSimulRoundIfReady(io, gameId, gameState);
       }
     } catch (e) {
       console.error('[Bot/Simul] submitBotSimulMove failed:', e);
@@ -5500,6 +5791,22 @@ function initializeSocket(server) {
       } catch (err) {
         console.error("simulReadyToStart error:", err);
         socket.emit("error", { message: "Failed to ready up" });
+      }
+    });
+
+    // Simul-turns: deliver a player's promotion choice for a buffered move.
+    // The player's submission stays in the awaitingPromotion state until
+    // this fires; once both players' submissions are non-awaiting, the
+    // round resolves.
+    socket.on("simulPromotionChoice", async ({ gameId, userId, pieceId, promoteToPieceId }) => {
+      try {
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return socket.emit("error", { message: "Game not found" });
+        await handleSimulPromotionChoice(io, socket, gameState, gameId, userId, pieceId, promoteToPieceId);
+      } catch (err) {
+        console.error("simulPromotionChoice error:", err);
+        socket.emit("error", { message: "Failed to submit promotion choice" });
       }
     });
 
