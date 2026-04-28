@@ -260,8 +260,11 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                 let from_square = coord_to_notation(mv.from.x, mv.from.y, board_height);
                 let to_square   = coord_to_notation(mv.to.x,   mv.to.y,   board_height);
                 let notation = if mv.is_castling {
-                    // Kingside (king moves right) vs queenside (king moves left).
-                    if mv.to.x > mv.from.x { "O-O".to_string() } else { "O-O-O".to_string() }
+                    // Use the actual from/to squares so the replay UI can
+                    // reconstruct the exact king destination regardless of
+                    // custom castling_distance settings. The " (castle)"
+                    // suffix still signals castling to the parser.
+                    format!("{}-{}", from_square, to_square)
                 } else {
                     let separator = if captured_piece_name.is_some() { "x" } else { "-" };
                     let promo_suffix = promotes_to_name

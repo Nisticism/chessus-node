@@ -156,6 +156,17 @@ async function exportGameRules(gameTypeId) {
     pos._virtual_id = groupKeyToVirtualId.get(overrideTupleKey(pos));
   }
 
+  // Build a lookup: real piece DB id → first virtual id used in this export.
+  // Needed to translate promotion_pieces_ids (which store real DB piece ids)
+  // into the virtual template ids the Rust engine uses.
+  const realIdToFirstVirtualId = new Map();
+  for (const p of pieces) {
+    const realId = p.real_piece_id ?? p.id;
+    if (!realIdToFirstVirtualId.has(realId)) {
+      realIdToFirstVirtualId.set(realId, p.id);
+    }
+  }
+
   // Build the document. Field names match protocol.rs exactly.
   const doc = {
     game: {
@@ -293,6 +304,20 @@ async function exportGameRules(gameTypeId) {
       castling_distance: intOr(p.castling_distance, 2),
 
       can_promote: toBool(p.can_promote),
+      // Map promotion target real piece ids → virtual ids used in this export.
+      // promotion_pieces_ids is a JSON array of real piece DB ids in the DB.
+      promotion_pieces_ids: (() => {
+        let raw = p.promotion_pieces_ids;
+        if (!raw) return [];
+        if (typeof raw === 'string') {
+          try { raw = JSON.parse(raw); } catch (e) { return []; }
+        }
+        if (!Array.isArray(raw)) return [];
+        return raw.map((rid) => {
+          const vid = realIdToFirstVirtualId.get(rid);
+          return vid != null ? vid : null;
+        }).filter((v) => v != null);
+      })(),
       is_royal: toBool(p.is_royal),
       has_check_rule: toBool(p.has_check_rule),
       has_checkmate_rule: toBool(p.has_checkmate_rule),

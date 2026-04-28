@@ -7185,20 +7185,24 @@ function _replayNotationToXY(notation, boardHeight) {
  * The Rust trainer writes lines in the format:
  *   "     N. [P<player>] <PieceName> <notation>[ (captures <name>)][ (castle)]"
  *
+ * Castling notation is now written as the actual king from-to squares, e.g.
+ * "e1-g1 (castle)", so the same coordinate parser handles both castling and
+ * normal moves. The "(castle)" suffix flags the move as a castling move.
+ *
+ * Legacy O-O / O-O-O notation is still accepted for backwards compatibility
+ * with older games.txt files.
+ *
  * IMPORTANT:
  *  - PieceName may contain spaces (e.g. "Dragon Queen"). Using \S+ here drops
  *    every move made by multi-word piece names, causing board drift and apparent
  *    ally-captures. We capture it with (.+?) and anchor on the notation token.
- *  - Castling moves end with " (castle)" which is NOT a captures annotation.
- *    The old regex had no match for this suffix and silently dropped all castling
- *    moves, also causing board drift.
  *  - Promotion targets may also contain spaces (=Dragon Queen). Handled via
  *    [A-Za-z ]+ in the notation alternation.
  *  - O-O-O must appear before O-O in the alternation to avoid partial match.
  */
 function _replayParseMoveLine(line, boardHeight) {
   const m = line.match(
-    /^\s+(\d+)\.\s+\[P(\d+)\]\s+(.+?)\s+(O-O-O|O-O|[a-z]+\d+[x-][a-z]+\d+(?:=[A-Za-z][A-Za-z ]*)?)(?:\s+\(captures\s+([^)]+)\))?(?:\s+\(castle\))?\s*$/
+    /^\s+(\d+)\.\s+\[P(\d+)\]\s+(.+?)\s+(O-O-O|O-O|[a-z]+\d+[x-][a-z]+\d+(?:=[A-Za-z][A-Za-z ]*)?)(?:\s+\(captures\s+([^)]+)\))?(\s+\(castle\))?\s*$/
   );
   if (!m) return null;
 
@@ -7207,6 +7211,7 @@ function _replayParseMoveLine(line, boardHeight) {
   const pieceName    = m[3].trim();
   const notation     = m[4];
   const capturedName = m[5] ? m[5].trim() : null;
+  const castleSuffix = !!m[6];
 
   let fromX = null, fromY = null, toX = null, toY = null;
   let isCastling = false, castleSide = null, promotesTo = null, isCapture = false;
@@ -7216,7 +7221,7 @@ function _replayParseMoveLine(line, boardHeight) {
   } else if (notation === 'O-O-O') {
     isCastling = true; castleSide = 'queenside';
   } else {
-    // "e2-e4", "e2xe4", "e7-e8=Queen", "e7-e8=Fire Phoenix"
+    // "e2-e4", "e2xe4", "e7-e8=Queen", "e7-e8=Fire Phoenix", or "e1-g1 (castle)"
     const nm = notation.match(/^([a-z]+\d+)([x-])([a-z]+\d+)(?:=(.+))?$/);
     if (nm) {
       isCapture = nm[2] === 'x';
@@ -7224,6 +7229,13 @@ function _replayParseMoveLine(line, boardHeight) {
       const to   = _replayNotationToXY(nm[3], boardHeight);
       if (from && to) { fromX = from.x; fromY = from.y; toX = to.x; toY = to.y; }
       promotesTo = nm[4] ? nm[4].trim() : null;
+    }
+    if (castleSuffix) {
+      isCastling = true;
+      // Determine side from horizontal direction: king moves right = kingside
+      castleSide = (toX !== null && fromX !== null)
+        ? (toX > fromX ? 'kingside' : 'queenside')
+        : null;
     }
   }
 

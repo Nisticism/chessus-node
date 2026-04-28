@@ -595,16 +595,21 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             let close_range = dist_to_partner > 0 && dist_to_partner <= castle_dist;
 
             let mut path_clear = true;
-            if close_range {
-                if let Some(occ) = piece_at(board, target_x, mover.y) {
-                    if occ.id != partner.id { path_clear = false; }
-                }
-            } else {
+            {
+                // Scan every square from mover (exclusive) to the scan boundary
+                // (inclusive). For close_range (rook within castle_dist), scan up
+                // to target_x. For far rook, scan up to just before the rook.
+                // The partner/rook is exempt — it moves out of the way.
+                let scan_last = if close_range { target_x } else { partner.x - side };
                 let mut x = mover.x + side;
-                while x != partner.x {
-                    if piece_at_excluding(board, x, mover.y, mover.id).is_some() {
-                        path_clear = false; break;
+                loop {
+                    if let Some(occ) = piece_at(board, x, mover.y) {
+                        if occ.id != partner.id {
+                            path_clear = false;
+                            break;
+                        }
                     }
+                    if x == scan_last { break; }
                     x += side;
                 }
             }
@@ -846,13 +851,56 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
 
     if tpl.can_promote {
         let promo_y = if is_player2 { bh - 1 } else { 0 };
-        for mv in out.iter_mut() {
-            let on_back_rank = mv.to.y == promo_y;
-            let on_custom_square = !rules.promotion_squares.is_empty()
-                && rules.promotion_squares.iter().any(|&(px, py)| px == mv.to.x && py == mv.to.y);
-            if on_back_rank || on_custom_square {
-                mv.is_promotion = true;
+        // Collect indices of moves that land on a promotion square.
+        let promo_indices: Vec<usize> = out.iter().enumerate()
+            .filter(|(_, mv)| {
+                let on_back_rank = mv.to.y == promo_y;
+                let on_custom_square = !rules.promotion_squares.is_empty()
+                    && rules.promotion_squares.iter().any(|&(px, py)| px == mv.to.x && py == mv.to.y);
+                on_back_rank || on_custom_square
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        if !promo_indices.is_empty() {
+            // Determine valid promotion targets (virtual piece template ids).
+            // Use the configured list; fall back to the best-value non-royal
+            // piece in the game if none are configured.
+            let targets: Vec<i64> = if !tpl.promotion_pieces_ids.is_empty() {
+                tpl.promotion_pieces_ids.clone()
+            } else {
+                // Fallback: best-value non-royal non-promoting piece in the rules.
+                let best = rules.pieces.values()
+                    .filter(|t| !t.is_royal && !t.can_promote && t.id != tpl.id)
+                    .max_by_key(|t| t.piece_value);
+                match best {
+                    Some(t) => vec![t.id],
+                    None => vec![],
+                }
+            };
+
+            // For each promotable move: if we have targets, replace the
+            // original move with one copy per target (each with promote_to set).
+            // If no targets, mark is_promotion = true with promote_to = None
+            // (the piece stays unchanged — matches promotion_condition win logic).
+            // Process in reverse index order so removals don't shift later indices.
+            let mut extra: Vec<Move> = Vec::new();
+            for &idx in promo_indices.iter().rev() {
+                let base = out.remove(idx);
+                if targets.is_empty() {
+                    let mut mv = base;
+                    mv.is_promotion = true;
+                    extra.push(mv);
+                } else {
+                    for &target_id in &targets {
+                        let mut mv = base.clone();
+                        mv.is_promotion = true;
+                        mv.promote_to = Some(target_id);
+                        extra.push(mv);
+                    }
+                }
             }
+            out.extend(extra);
         }
     }
 

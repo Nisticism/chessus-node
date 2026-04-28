@@ -200,6 +200,11 @@ pub struct PieceTemplate {
 
     // ---- Promotion / royal flags ----
     pub can_promote: bool,
+    /// Virtual piece template IDs this piece can promote to (mapped from
+    /// `promotion_pieces_ids` DB column by export-game-rules.js).
+    /// Empty means no specific promotion targets configured.
+    #[serde(default)]
+    pub promotion_pieces_ids: Vec<i64>,
     pub is_royal: bool,
     pub has_check_rule: bool,
     pub has_checkmate_rule: bool,
@@ -271,6 +276,7 @@ impl Default for PieceTemplate {
             can_castle: false,
             castling_distance: 2,
             can_promote: false,
+            promotion_pieces_ids: vec![],
             is_royal: false,
             has_check_rule: false,
             has_checkmate_rule: false,
