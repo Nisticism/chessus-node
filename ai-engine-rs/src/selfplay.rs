@@ -141,7 +141,23 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         // consecutive skips means BOTH sides are stuck — break out as a
         // non-decisive draw to avoid an infinite loop.
         let mut consecutive_skips: u32 = 0;
-        let (result, end_reason) = loop {
+        let (result, end_reason) = if rules.game.simultaneous_turns {
+            // Simul-turns games run in their own loop. Opening-book and
+            // repetition tracking are owned by the simul module since
+            // moves arrive in pairs (one per side per round). The book
+            // is intentionally NOT populated for simul-turns games — the
+            // current book schema assumes single-move plies.
+            let outcome = crate::simul::play_simul_game(
+                &mut board,
+                &rules,
+                &mcts,
+                &mut rng,
+                games_log.is_some(),
+            );
+            moves_played = outcome.moves_played;
+            move_lines = outcome.move_lines;
+            (outcome.result, outcome.end_reason)
+        } else { loop {
             let moves = legal_moves(&board, &rules);
             if moves.is_empty() {
                 if rules.game.mate_condition && in_check(&board, &rules, board.turn) {
@@ -379,7 +395,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                     }
                 }
             }
-        };
+        }};
 
         let winner = match result {
             GameResult::Win(p) => Some(p),

@@ -830,6 +830,10 @@ const END_REASON_LABELS = {
   royal_capture: 'royal piece captured',
   repetition: 'draw (repetition)',
   insufficient_material: 'draw (insufficient material)',
+  promotion: 'win (promotion-as-win condition)',
+  simultaneous_capture_draw: 'draw (simultaneous capture of game-ending pieces)',
+  simultaneous_checkmate_draw: 'draw (simultaneous checkmate)',
+  cancellation_draw: 'draw (simul-turns cancellation threshold)',
 };
 
 function formatTrainingEvent(ev) {

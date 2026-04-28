@@ -169,6 +169,9 @@ const REASON_LABELS = {
   no_move: 'No legal move available',
   royal_capture: 'Royal piece captured',
   checkmate: 'Checkmate',
+  simultaneous_capture_draw: 'Draw — simultaneous capture of game-ending pieces',
+  simultaneous_checkmate_draw: 'Draw — simultaneous checkmate',
+  cancellation_draw: 'Draw — simul-turns cancellation threshold reached',
   unknown: 'Unrecorded reason (older training run)',
 };
 function prettyReason(k) { return REASON_LABELS[k] || k; }

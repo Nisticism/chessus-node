@@ -14,6 +14,7 @@ mod moves;
 mod protocol;
 mod rules;
 mod selfplay;
+mod simul;
 
 #[derive(Parser, Debug)]
 #[command(

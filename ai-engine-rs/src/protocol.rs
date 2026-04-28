@@ -80,6 +80,27 @@ pub struct GameType {
     #[serde(default = "_default_true")]
     pub stalemate_draw_condition: bool,
 
+    // ---- Simultaneous turns ----
+    /// When true the game runs in simul-turns mode: both players choose
+    /// their move secretly each round and the moves resolve together.
+    pub simultaneous_turns: bool,
+    /// If both players capture an opposing game-ending piece in the same
+    /// round, declare a draw rather than letting one side "win first".
+    /// Defaults to true (mirrors live-game default).
+    #[serde(default = "_default_true")]
+    pub simul_turns_simultaneous_capture_draw: bool,
+    /// If both players are checkmated by the same round's resolution,
+    /// declare a draw. Defaults to true (mirrors live-game default).
+    #[serde(default = "_default_true")]
+    pub simul_turns_simultaneous_checkmate_draw: bool,
+    /// After this many same-square cancellations in a row the game ends
+    /// in a draw. 0 disables.
+    pub simul_turns_draw_after_cancellations: i32,
+    /// 'cancel' (default) cancels both moves on a place-vs-move conflict;
+    /// 'allow' lets the place override the move. The trainer never
+    /// generates place actions today so this rarely matters.
+    pub simul_turns_place_conflict: Option<String>,
+
     // Special-square JSON blobs (parsed lazily in rules.rs)
     pub range_squares_string: Option<String>,
     pub promotion_squares_string: Option<String>,
@@ -348,6 +369,15 @@ pub enum EndReason {
     /// `promotion_condition`: a piece reached a promotion square (and
     /// has `can_promote`), instantly winning the game for its owner.
     Promotion,
+    /// Simul-turns: both players captured an opposing game-ending piece
+    /// in the same round.
+    SimultaneousCaptureDraw,
+    /// Simul-turns: both players were checkmated by the same round's
+    /// resolution.
+    SimultaneousCheckmateDraw,
+    /// Simul-turns: same-square cancellation count reached the configured
+    /// `simul_turns_draw_after_cancellations` threshold.
+    CancellationDraw,
 }
 
 /// One progress event written to `log.ndjson` (one per line).
