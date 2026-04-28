@@ -3338,6 +3338,20 @@ const runMigrations = async () => {
     console.error('Error creating ai_analysis_requests:', err.message);
   }
 
+  // Expand game_types.game_name from VARCHAR(50) to VARCHAR(100)
+  try {
+    const gameNameCol = await getColumnType('game_types', 'game_name');
+    if (gameNameCol && gameNameCol.CHARACTER_MAXIMUM_LENGTH < 100) {
+      await runMigration(
+        `ALTER TABLE game_types MODIFY COLUMN game_name VARCHAR(100) NOT NULL`,
+        "Expand game_types.game_name to VARCHAR(100)"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error expanding game_types.game_name:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

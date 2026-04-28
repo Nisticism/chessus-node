@@ -62,9 +62,12 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
           className={styles["form-input"]}
           value={gameData.game_name}
           onChange={(e) => handleChange("game_name", e.target.value)}
-          placeholder="Enter game name (3-50 characters)"
-          maxLength={50}
+          placeholder="Enter game name (3-100 characters)"
+          maxLength={100}
         />
+        <div className={styles["char-count"]}>
+          {gameData.game_name.length} / 100 characters
+        </div>
         {gameData.game_name && gameData.game_name.length < 3 && (
           <p className={styles["validation-error"]}>
             Game name must be at least 3 characters

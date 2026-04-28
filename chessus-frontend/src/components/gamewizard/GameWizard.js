@@ -310,7 +310,7 @@ const GameWizard = ({ editGameId }) => {
     }
 
     // Content moderation validation
-    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 50 });
+    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 100 });
     if (!nameCheck.isValid) {
       setSaveError(nameCheck.errors[0]);
       goToStep(1);

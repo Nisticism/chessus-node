@@ -2475,7 +2475,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     }
 
     // Content moderation: Check game name
-    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 50 });
+    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 100 });
     if (!nameCheck.isValid) {
       return res.status(400).send({ message: nameCheck.errors[0] });
     }
@@ -5483,7 +5483,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     }
 
     // Content moderation: Check game name
-    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 50 });
+    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 100 });
     if (!nameCheck.isValid) {
       return res.status(400).send({ message: nameCheck.errors[0] });
     }

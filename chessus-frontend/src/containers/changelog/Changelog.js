@@ -12,6 +12,15 @@ const changelogData = [
   },
   {
     date: "April 28, 2026",
+    title: "Game name max length increased to 100; hop-disabled bug fixes",
+    items: [
+      "Game wizard: game names can now be up to 100 characters (previously 50). A live character counter is shown below the name field in both create and edit modes",
+      "Bug fix: when a pawn (or any piece) promotes to a piece like an Archbishop, the promoted piece now correctly inherits all movement flags from the target piece — including 'Disable hopping for non-exact directional movement', all directional exact flags, repeating movement, and all capture exact flags. Previously these fields were missing from the in-memory promoted piece, causing the promoted Archbishop to behave as though hop-disabled was off. This was most visible in forced-capture games where the promoted piece could slide diagonally through a blocking piece to make a capture",
+      "Bug fix: sliding captures defined via the piece wizard's 'additional movements' feature now correctly enforce path-blocking in all games (human vs human and vs computer). Previously those captures bypassed the path check entirely, allowing pieces like an Archbishop to capture through a blocking piece",
+    ],
+  },
+  {
+    date: "April 28, 2026",
     title: "AI training: smarter promotion piece selection; admin AI analysis requests; notification fixes",
     items: [
       "AI Training: the self-play engine now selects promotion pieces much more intelligently. Previously the AI could incorrectly promote to a King (a poor choice in most games — it becomes a high-value capture target for the opponent). The engine now uses a mobility-based power score to rank candidates, so it prefers powerful pieces like Queens over limited ones. Royal/game-ending pieces (Kings) are excluded from promotion choices by default unless you have explicitly enabled 'Can promote to checkmate piece' or 'Can promote to capture-loss piece' for that piece in the game wizard — in which case they are included and scored fairly based on their actual movement abilities",
@@ -81,8 +90,8 @@ const changelogData = [
       "AI training engine: fixed illegal castling — pieces between the king and the castling partner no longer get ignored when the partner is within the castling-distance range. The path is now fully scanned in all cases",
       "AI training engine: promotion now works correctly. Promoting pieces now change into their configured promotion target during self-play. Previously the piece stayed as its original type, blocking all further moves and causing premature stalemates",
       "Piece wizard — Step 2 (Movement) and Step 3 (Attack): custom square tooltips now note that custom squares always function as teleporting moves/attacks — the piece jumps directly to the target regardless of blocking pieces. Use directional or ratio/exact movement instead if you want blocking behaviour",
-      "Bug fix: 'Disable hopping for non-exact directional movement' now works correctly in computer (bot) games. Three issues were fixed: piece data was missing the flag when a game was resumed after a server restart; the flag was ignored for moves defined via the 'additional movements' section of the piece wizard; and exact additional movements were incorrectly treated as non-exact, preventing legitimate hopping on those moves",
-      "Bug fix: 'Disable hopping for non-exact directional movement' now correctly blocks sliding captures in human vs human games for pieces whose diagonal (or straight) movement was added via the piece wizard's 'additional movements' feature. Previously those captures bypassed the path check entirely, allowing pieces like an Archbishop to capture diagonally through a blocking piece",
+      "Bug fix: when a pawn (or any piece) promotes to a piece like an Archbishop, the promoted piece now correctly inherits all movement flags from the target piece — including 'Disable hopping for non-exact directional movement', all directional exact flags, repeating movement, and all capture exact flags. Previously these fields were missing from the in-memory promoted piece, causing the promoted Archbishop to behave as though hop-disabled was off. This was most visible in forced-capture games where the promoted piece could slide diagonally through a blocking piece to make a capture",
+      "Bug fix: sliding captures defined via the piece wizard's 'additional movements' feature now correctly enforce path-blocking in all games (human vs human and vs computer). Previously those captures bypassed the path check entirely, allowing pieces like an Archbishop to capture through a blocking piece",
     ],
   },
   {
