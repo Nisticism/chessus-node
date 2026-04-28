@@ -3249,6 +3249,40 @@ const runMigrations = async () => {
     console.error('Error adding external_blog_label column to articles:', err.message);
   }
 
+  // ai_analysis_requests: persistent log of every analysis request a creator
+  // makes for one of their game types. The notifications table tracks unread
+  // pings to the owner; this table is the durable record admins can review,
+  // mark fulfilled, and delete on their own schedule.
+  try {
+    if (!(await tableExists('ai_analysis_requests'))) {
+      await runMigration(
+        `CREATE TABLE ai_analysis_requests (
+          id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          game_type_id INT UNSIGNED NOT NULL,
+          requester_user_id INT UNSIGNED,
+          requester_username VARCHAR(50),
+          status ENUM('pending','fulfilled','dismissed') NOT NULL DEFAULT 'pending',
+          notes TEXT NULL COMMENT 'Optional admin notes / context',
+          request_count INT UNSIGNED NOT NULL DEFAULT 1
+            COMMENT 'Incremented when the same user re-requests while still pending',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          fulfilled_at TIMESTAMP NULL,
+          fulfilled_by_user_id INT UNSIGNED NULL,
+          INDEX idx_aar_status_created (status, created_at),
+          INDEX idx_aar_game_type (game_type_id),
+          FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+          FOREIGN KEY (requester_user_id) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (fulfilled_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+        )`,
+        "Create ai_analysis_requests table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating ai_analysis_requests:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

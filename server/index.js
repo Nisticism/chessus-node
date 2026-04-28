@@ -3085,7 +3085,11 @@ app.post("/api/register", registerLimiter, async (req, res) => {
             type: 'system',
             title: `New user registered: ${username}`,
             content: `A new user "${username}" has joined the site.`,
-            action_url: `/profile/${username}`
+            // Store the user's id so the link still resolves if they later
+            // change their username. /profile/id/:userId looks up the
+            // current username server-side and redirects.
+            related_id: user.id,
+            action_url: `/profile/id/${user.id}`
           });
           // Push real-time notification if owner is online
           const gameSocket = require("./game-socket");
@@ -7895,6 +7899,40 @@ app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, 
     );
     if (!owner) return res.status(404).send({ message: 'No owner account found' });
 
+    // Persistent record in ai_analysis_requests so the admin dashboard can
+    // show the full request history independently of the notifications table
+    // (which expires read items after 30 days). If the same user already has
+    // a pending request for this game, increment its counter and bump the
+    // updated_at timestamp instead of creating a duplicate row.
+    try {
+      const [[existingReq]] = await db_pool.query(
+        `SELECT id FROM ai_analysis_requests
+           WHERE game_type_id = ? AND requester_user_id = ? AND status = 'pending'
+           ORDER BY id DESC LIMIT 1`,
+        [gameTypeId, requester.id]
+      );
+      if (existingReq) {
+        await db_pool.query(
+          `UPDATE ai_analysis_requests
+             SET request_count = request_count + 1,
+                 requester_username = ?
+           WHERE id = ?`,
+          [requester.username, existingReq.id]
+        );
+      } else {
+        await db_pool.query(
+          `INSERT INTO ai_analysis_requests
+             (game_type_id, requester_user_id, requester_username, status)
+           VALUES (?, ?, ?, 'pending')`,
+          [gameTypeId, requester.id, requester.username]
+        );
+      }
+    } catch (logErr) {
+      // Don't fail the request if the log write fails — the notification path
+      // below still gives the owner visibility.
+      console.error('ai_analysis_requests log write failed:', logErr.message);
+    }
+
     // Deduplicate: if an unread request for this game already exists, bump it
     const existing = await dbHelpers.findUnreadNotification(owner.id, 'ai_analysis_request', gameTypeId);
     if (existing) {
@@ -7913,7 +7951,7 @@ app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, 
       title: `AI analysis requested for "${gameType.game_name}"`,
       content: `${requester.username} requested AI analysis training for game #${gameTypeId} — "${gameType.game_name}".`,
       related_id: gameTypeId,
-      action_url: `/admin?tab=ai-training&gameTypeId=${gameTypeId}`,
+      action_url: `/admin?tab=ai-analysis-requests&gameTypeId=${gameTypeId}`,
     });
 
     // Real-time push if owner is online
@@ -7930,6 +7968,116 @@ app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, 
   } catch (err) {
     console.error('Request AI analysis error:', err);
     res.status(500).send({ message: 'Failed to send analysis request' });
+  }
+});
+
+// ----------------------- AI Analysis Requests (Admin) ------------------
+//
+// Persistent log of every AI analysis request a creator makes. Admins
+// review, mark fulfilled, or delete entries. Notifications expire after
+// 30/90 days; this table never auto-expires.
+//
+//   GET    /api/admin/ai-analysis-requests?status=&page=&limit=
+//   PATCH  /api/admin/ai-analysis-requests/:id   { status, notes }
+//   DELETE /api/admin/ai-analysis-requests/:id
+
+app.get('/api/admin/ai-analysis-requests', authenticateAdmin, async (req, res) => {
+  try {
+    const status = (req.query.status || '').toString();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
+    const offset = (page - 1) * limit;
+
+    const where = [];
+    const params = [];
+    if (['pending', 'fulfilled', 'dismissed'].includes(status)) {
+      where.push('aar.status = ?');
+      params.push(status);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [[countRow]] = await db_pool.query(
+      `SELECT COUNT(*) AS total FROM ai_analysis_requests aar ${whereSql}`,
+      params
+    );
+    const total = countRow?.total || 0;
+
+    const [rows] = await db_pool.query(
+      `SELECT aar.*,
+              gt.game_name,
+              gt.creator_id AS game_creator_id,
+              ru.username   AS requester_current_username,
+              ru.profile_picture AS requester_profile_picture,
+              fu.username   AS fulfilled_by_username
+         FROM ai_analysis_requests aar
+         LEFT JOIN game_types gt ON gt.id = aar.game_type_id
+         LEFT JOIN users ru      ON ru.id = aar.requester_user_id
+         LEFT JOIN users fu      ON fu.id = aar.fulfilled_by_user_id
+         ${whereSql}
+        ORDER BY
+          CASE aar.status WHEN 'pending' THEN 0 WHEN 'fulfilled' THEN 1 ELSE 2 END,
+          aar.created_at DESC
+        LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      data: rows,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (err) {
+    console.error('List ai_analysis_requests error:', err);
+    res.status(500).send({ message: 'Failed to load analysis requests' });
+  }
+});
+
+app.patch('/api/admin/ai-analysis-requests/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid id' });
+
+    const updates = [];
+    const params = [];
+    if (req.body?.status && ['pending', 'fulfilled', 'dismissed'].includes(req.body.status)) {
+      updates.push('status = ?');
+      params.push(req.body.status);
+      if (req.body.status === 'fulfilled') {
+        updates.push('fulfilled_at = NOW()');
+        updates.push('fulfilled_by_user_id = ?');
+        params.push(req.user?.id || null);
+      } else if (req.body.status === 'pending') {
+        updates.push('fulfilled_at = NULL');
+        updates.push('fulfilled_by_user_id = NULL');
+      }
+    }
+    if (typeof req.body?.notes === 'string') {
+      updates.push('notes = ?');
+      params.push(req.body.notes.slice(0, 2000));
+    }
+    if (updates.length === 0) {
+      return res.status(400).send({ message: 'No valid fields to update' });
+    }
+    params.push(id);
+    await db_pool.query(
+      `UPDATE ai_analysis_requests SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+    res.json({ message: 'Updated' });
+  } catch (err) {
+    console.error('Update ai_analysis_request error:', err);
+    res.status(500).send({ message: 'Failed to update analysis request' });
+  }
+});
+
+app.delete('/api/admin/ai-analysis-requests/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid id' });
+    await db_pool.query('DELETE FROM ai_analysis_requests WHERE id = ?', [id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    console.error('Delete ai_analysis_request error:', err);
+    res.status(500).send({ message: 'Failed to delete analysis request' });
   }
 });
 

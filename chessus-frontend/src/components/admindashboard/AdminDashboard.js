@@ -114,6 +114,12 @@ const AdminDashboard = () => {
   const [serverStatsLoading, setServerStatsLoading] = useState(false);
   const [serverStatsError, setServerStatsError] = useState(null);
 
+  // AI Analysis Requests state
+  const [aiAnalysisRequests, setAiAnalysisRequests] = useState([]);
+  const [aiAnalysisRequestsLoading, setAiAnalysisRequestsLoading] = useState(false);
+  const [aiAnalysisRequestsFilter, setAiAnalysisRequestsFilter] = useState('pending');
+  const [aiAnalysisRequestsPagination, setAiAnalysisRequestsPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 0 });
+
   // Auto-hide alert after 2 seconds
   useEffect(() => {
     let timer;
@@ -183,6 +189,9 @@ const AdminDashboard = () => {
     } else if (activeTab === 'initial-state') {
       setLoading(false);
       fetchInitialStateFlagged();
+    } else if (activeTab === 'ai-analysis-requests') {
+      setLoading(false);
+      fetchAiAnalysisRequests(1, aiAnalysisRequestsFilter);
     } else {
       fetchData(activeTab, 1);
     }
@@ -1715,6 +1724,60 @@ const AdminDashboard = () => {
     }
   };
 
+  // ----------------------- AI Analysis Requests ---------------------------
+  const fetchAiAnalysisRequests = useCallback(async (page = 1, statusFilter = aiAnalysisRequestsFilter) => {
+    setAiAnalysisRequestsLoading(true);
+    try {
+      const limit = aiAnalysisRequestsPagination?.limit || 25;
+      const statusQs = statusFilter && statusFilter !== 'all' ? `&status=${encodeURIComponent(statusFilter)}` : '';
+      const res = await axios.get(
+        `${API_URL}admin/ai-analysis-requests?page=${page}&limit=${limit}${statusQs}`,
+        { headers: authHeader() }
+      );
+      setAiAnalysisRequests(res.data?.data || []);
+      setAiAnalysisRequestsPagination(res.data?.pagination || { page, limit, total: 0, totalPages: 0 });
+    } catch (err) {
+      console.error('fetchAiAnalysisRequests failed', err);
+      setAlertMessage('Failed to load analysis requests: ' + (err?.response?.data?.message || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setAiAnalysisRequestsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiAnalysisRequestsFilter, aiAnalysisRequestsPagination?.limit]);
+
+  const setAiAnalysisRequestStatus = async (id, newStatus) => {
+    try {
+      await axios.patch(
+        `${API_URL}admin/ai-analysis-requests/${id}`,
+        { status: newStatus },
+        { headers: authHeader() }
+      );
+      await fetchAiAnalysisRequests(aiAnalysisRequestsPagination.page, aiAnalysisRequestsFilter);
+    } catch (err) {
+      console.error('setAiAnalysisRequestStatus failed', err);
+      setAlertMessage('Failed to update request: ' + (err?.response?.data?.message || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const deleteAiAnalysisRequest = async (id) => {
+    if (!window.confirm('Delete this analysis request? This cannot be undone.')) return;
+    try {
+      await axios.delete(`${API_URL}admin/ai-analysis-requests/${id}`, {
+        headers: authHeader(),
+      });
+      setAiAnalysisRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      console.error('deleteAiAnalysisRequest failed', err);
+      setAlertMessage('Failed to delete request: ' + (err?.response?.data?.message || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
   const renderInitialStateTab = () => (
     <div className={styles["table-container"]}>
       <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -1775,6 +1838,154 @@ const AdminDashboard = () => {
       )}
     </div>
   );
+
+  const renderAiAnalysisRequestsTab = () => {
+    const statusBadge = (status) => {
+      const colorMap = {
+        pending:    { bg: 'rgba(255, 200, 50, 0.15)',  border: 'rgba(255, 200, 50, 0.4)',  text: '#ffc832' },
+        fulfilled:  { bg: 'rgba(80, 200, 120, 0.15)',  border: 'rgba(80, 200, 120, 0.4)',  text: '#50c878' },
+        dismissed:  { bg: 'rgba(150, 150, 150, 0.15)', border: 'rgba(150, 150, 150, 0.4)', text: '#aaa' },
+      };
+      const c = colorMap[status] || colorMap.dismissed;
+      return (
+        <span style={{
+          display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
+          background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+          fontSize: '0.75em', fontWeight: 600, textTransform: 'uppercase',
+        }}>{status}</span>
+      );
+    };
+
+    return (
+      <div className={styles["table-container"]}>
+        <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>AI Analysis Requests</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginTop: '4px' }}>
+              Persistent log of every AI analysis request a creator has submitted. Mark fulfilled when training is complete or dismissed if rejected.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <label style={{ fontSize: '0.85em', color: 'var(--text-dim)' }}>Status:</label>
+            <select
+              value={aiAnalysisRequestsFilter}
+              onChange={(e) => {
+                setAiAnalysisRequestsFilter(e.target.value);
+                fetchAiAnalysisRequests(1, e.target.value);
+              }}
+              style={{ padding: '4px 8px' }}
+            >
+              <option value="pending">Pending</option>
+              <option value="fulfilled">Fulfilled</option>
+              <option value="dismissed">Dismissed</option>
+              <option value="all">All</option>
+            </select>
+            <StandardButton
+              onClick={() => fetchAiAnalysisRequests(aiAnalysisRequestsPagination.page, aiAnalysisRequestsFilter)}
+              buttonText="Refresh"
+              disabled={aiAnalysisRequestsLoading}
+            />
+          </div>
+        </div>
+        {aiAnalysisRequestsLoading ? (
+          <div className={styles["loading"]}>Loading…</div>
+        ) : aiAnalysisRequests.length === 0 ? (
+          <p style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '30px 0' }}>
+            No analysis requests in this view.
+          </p>
+        ) : (
+          <table className={styles["table"]}>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Game</th>
+                <th>Requester</th>
+                <th>Requested</th>
+                <th>Count</th>
+                <th>Fulfilled</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aiAnalysisRequests.map((r) => (
+                <tr key={r.id}>
+                  <td>{statusBadge(r.status)}</td>
+                  <td>
+                    {r.game_name ? (
+                      <a href={`/games/${r.game_type_id}`} target="_blank" rel="noreferrer">{r.game_name}</a>
+                    ) : (
+                      <span style={{ color: 'var(--text-dim)' }}>(deleted) #{r.game_type_id}</span>
+                    )}
+                  </td>
+                  <td>
+                    {r.requester_current_username ? (
+                      <Link to={`/profile/id/${r.requester_user_id}`}>{r.requester_current_username}</Link>
+                    ) : (
+                      <span style={{ color: 'var(--text-dim)' }}>{r.requester_username || '(deleted user)'}</span>
+                    )}
+                  </td>
+                  <td style={{ fontSize: '0.85em' }}>{r.created_at ? formatDateTime(parseServerDate(r.created_at)) : '—'}</td>
+                  <td style={{ textAlign: 'center' }}>{r.request_count || 1}</td>
+                  <td style={{ fontSize: '0.85em' }}>
+                    {r.fulfilled_at
+                      ? <>{formatDateTime(parseServerDate(r.fulfilled_at))}{r.fulfilled_by_username ? ` by ${r.fulfilled_by_username}` : ''}</>
+                      : '—'}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <StandardButton
+                        buttonText="Open in AI Training"
+                        onClick={() => navigate(`/admin?tab=ai-training&gameTypeId=${r.game_type_id}`)}
+                      />
+                      {r.status !== 'fulfilled' && (
+                        <StandardButton
+                          buttonText="Mark Fulfilled"
+                          onClick={() => setAiAnalysisRequestStatus(r.id, 'fulfilled')}
+                        />
+                      )}
+                      {r.status !== 'dismissed' && r.status !== 'fulfilled' && (
+                        <StandardButton
+                          buttonText="Dismiss"
+                          onClick={() => setAiAnalysisRequestStatus(r.id, 'dismissed')}
+                        />
+                      )}
+                      {r.status !== 'pending' && (
+                        <StandardButton
+                          buttonText="Reopen"
+                          onClick={() => setAiAnalysisRequestStatus(r.id, 'pending')}
+                        />
+                      )}
+                      <StandardButton
+                        buttonText="Delete"
+                        onClick={() => deleteAiAnalysisRequest(r.id)}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {aiAnalysisRequestsPagination.totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', padding: '15px 0' }}>
+            <StandardButton
+              buttonText="Previous"
+              onClick={() => fetchAiAnalysisRequests(aiAnalysisRequestsPagination.page - 1, aiAnalysisRequestsFilter)}
+              disabled={aiAnalysisRequestsPagination.page <= 1}
+            />
+            <span style={{ fontSize: '0.9em' }}>
+              Page {aiAnalysisRequestsPagination.page} of {aiAnalysisRequestsPagination.totalPages}
+            </span>
+            <StandardButton
+              buttonText="Next"
+              onClick={() => fetchAiAnalysisRequests(aiAnalysisRequestsPagination.page + 1, aiAnalysisRequestsFilter)}
+              disabled={aiAnalysisRequestsPagination.page >= aiAnalysisRequestsPagination.totalPages}
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderServerStatsTab = () => (
     <div className={styles["table-container"]}>
@@ -2647,6 +2858,12 @@ const AdminDashboard = () => {
           AI Training
         </button>
         <button
+          className={`${styles["tab"]} ${activeTab === "ai-analysis-requests" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("ai-analysis-requests")}
+        >
+          AI Analysis Requests
+        </button>
+        <button
           className={`${styles["tab"]} ${activeTab === "initial-state" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("initial-state")}
         >
@@ -2655,7 +2872,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -2675,6 +2892,7 @@ const AdminDashboard = () => {
             {activeTab === "name-reviews" && renderNameReviewTab()}
             {activeTab === "server-stats" && renderServerStatsTab()}
             {activeTab === "ai-training" && <AiTrainingPanel initialAnalysisGameTypeId={aiPanelInitialGameTypeId} />}
+            {activeTab === "ai-analysis-requests" && renderAiAnalysisRequestsTab()}
             {activeTab === "initial-state" && renderInitialStateTab()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>

@@ -18,6 +18,7 @@ const ResetPassword = lazy(() => import("./components/signin/ResetPassword"));
 const Register = lazy(() => import("./components/register/Register"));
 const LichessCallback = lazy(() => import("./components/signin/LichessCallback"));
 const PlayerPage = lazy(() => import("./components/playerpage/PlayerPage"));
+const ProfileById = lazy(() => import("./components/playerpage/ProfileById"));
 const Pieces = lazy(() => import("./components/pieces/Pieces"));
 const GameCreate = lazy(() => import("./containers/gamecreate/GameCreate"));
 const PieceCreate = lazy(() => import("./containers/piececreate/PieceCreate"));
@@ -202,6 +203,7 @@ function App() {
             <Route exact path="/chess-original" element={<ChessBoard />} />
             <Route exact path="/account-deleted" element={<DeletedAccount />} />
             <Route exact path="profile/edit" element={<EditAccount />}  />
+            <Route exact path="profile/id/:userId" element={<ProfileById />} />
             <Route exact path="profile/:username" element={<PlayerPage />} />
             <Route exact path="profile/:profileUsername/edit" element={<EditAccount />} />
             <Route exact path="/pieces" element={<Pieces />} />

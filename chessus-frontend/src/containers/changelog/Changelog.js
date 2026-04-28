@@ -5,10 +5,13 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 28, 2026",
-    title: "AI training: smarter promotion piece selection",
+    title: "AI training: smarter promotion piece selection; admin AI analysis requests; notification fixes",
     items: [
       "AI Training: the self-play engine now selects promotion pieces much more intelligently. Previously the AI could incorrectly promote to a King (a poor choice in most games — it becomes a high-value capture target for the opponent). The engine now uses a mobility-based power score to rank candidates, so it prefers powerful pieces like Queens over limited ones. Royal/game-ending pieces (Kings) are excluded from promotion choices by default unless you have explicitly enabled 'Can promote to checkmate piece' or 'Can promote to capture-loss piece' for that piece in the game wizard — in which case they are included and scored fairly based on their actual movement abilities",
       "AI Training: when a piece has a configured promotion target list (set in the game wizard), the AI now evaluates all valid targets as separate moves and lets MCTS pick the best one based on the resulting position. This means the AI can correctly choose a less powerful piece (e.g. a Knight) over a stronger one (e.g. a Queen) when promoting to that piece results in an immediate checkmate",
+      "Admin portal: new 'AI Analysis Requests' tab. Every time a creator requests AI analysis for one of their game types, a permanent record is now logged here. Admins can filter by status (pending / fulfilled / dismissed), mark requests fulfilled or dismissed, reopen them, jump straight to the AI Training tab for that game, or delete entries when no longer needed. Repeat requests from the same user increment a counter rather than creating duplicates",
+      "Notifications for new AI analysis requests now link directly to the new 'AI Analysis Requests' tab in the admin portal instead of the AI Training tab",
+      "Notifications for new player sign-ups now navigate by user ID instead of username. Previously, if the new user later changed their username, clicking the notification would land on a 'player not found' page. The link now resolves to whatever the user's current username is at click time",
     ],
   },
   {
