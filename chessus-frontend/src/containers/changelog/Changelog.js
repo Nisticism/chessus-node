@@ -40,6 +40,11 @@ const changelogData = [
       "Admin portal — AI Training: fixed the Game Log feature writing 'Unknown' for every piece name. The Rust engine was looking up pieces by board-instance ID instead of piece-template ID. Piece names now resolve correctly",
       "Admin portal — AI Training: Game Log now writes a plain-text file (games.txt) directly from the Rust engine instead of a raw JSON log requiring server-side conversion. File is immediately human-readable: coordinates use chess notation (a1, e4, etc.) with ranks 1-indexed from the bottom, matching the live game display",
       "Admin portal — AI Training: added a 'Generate game log' checkbox to the Start Job form. Checked by default. Uncheck to skip writing games.txt and save disk space on long training runs",
+      "Admin portal — AI Training: the Board Replay modal now has a fixed width so the dialog doesn't resize based on the current move label or outcome text. All text wraps instead of expanding the modal",
+      "Admin portal — AI Training: the Board Replay game number field now auto-loads the selected game 1 second after you stop typing or clicking the spinner, so you no longer need to press Enter or click away to switch games. Enter and blur still trigger an immediate load. A 1-second delay prevents spamming requests when rapidly incrementing",
+      "AI training engine: fixed illegal castling — pieces between the king and the castling partner no longer get ignored when the partner is within the castling-distance range. The path is now fully scanned in all cases",
+      "AI training engine: promotion now works correctly. Promoting pieces now change into their configured promotion target during self-play. Previously the piece stayed as its original type, blocking all further moves and causing premature stalemates",
+      "Piece wizard — Step 2 (Movement) and Step 3 (Attack): custom square tooltips now note that custom squares always function as teleporting moves/attacks — the piece jumps directly to the target regardless of blocking pieces. Use directional or ratio/exact movement instead if you want blocking behaviour",
     ],
   },
   {
