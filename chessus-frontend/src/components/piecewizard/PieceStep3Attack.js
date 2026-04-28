@@ -1484,7 +1484,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
 
       {/* Custom Square Attack */}
       <div className={styles["condition-section"]}>
-        <h3>Custom Square Attack <InfoTooltip text="Click squares on the grid to define specific squares this piece can capture on, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other capture configured above. Limited to 50 squares. If step-by-step capture or step-by-step ranged attack is set to 7 or higher, additional custom squares cannot be added because the step area already covers the entire grid." /></h3>
+        <h3>Custom Square Attack <InfoTooltip text="Click squares on the grid to define specific squares this piece can capture on, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other capture configured above. Limited to 50 squares. If step-by-step capture or step-by-step ranged attack is set to 7 or higher, additional custom squares cannot be added because the step area already covers the entire grid. Note: custom squares always function as teleporting attacks — the piece jumps directly to the target regardless of any pieces in between. If you want attacks to be blocked by other pieces, use directional or ratio/exact capture styles above instead." /></h3>
         <CustomSquareSelector
           squares={pieceData.custom_attack_squares}
           onChange={(val) => updatePieceData({ custom_attack_squares: val })}

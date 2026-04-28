@@ -889,7 +889,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
 
       {/* Custom Square Movement */}
       <div className={styles["condition-section"]}>
-        <h3>Custom Square Movement <InfoTooltip text="Click squares on the grid to define specific squares this piece can move to, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other movement configured above. Limited to 50 squares. If step-by-step movement is set to 7 or higher, additional custom squares cannot be added because the step area already covers the entire grid." /></h3>
+        <h3>Custom Square Movement <InfoTooltip text="Click squares on the grid to define specific squares this piece can move to, relative to its position. Click or drag to paint squares. The gold center square is the piece's position. This works in addition to any other movement configured above. Limited to 50 squares. If step-by-step movement is set to 7 or higher, additional custom squares cannot be added because the step area already covers the entire grid. Note: custom squares always function as teleporting moves — the piece jumps directly to the target regardless of any pieces in between. If you want movement to be blocked by other pieces, use directional or ratio/exact movement styles above instead." /></h3>
         <CustomSquareSelector
           squares={pieceData.custom_movement_squares}
           onChange={(val) => updatePieceData({ custom_movement_squares: val })}
