@@ -142,6 +142,11 @@ const LiveGame = () => {
   const [showSpectators, setShowSpectators] = useState(true);
   const [moveError, setMoveError] = useState(null);
   const [botThinking, setBotThinking] = useState(false);
+  // Simultaneous-turns state
+  const [simulSubmittedThisRound, setSimulSubmittedThisRound] = useState(false);
+  const [simulOpponentSubmitted, setSimulOpponentSubmitted] = useState(false);
+  const [simulCancellationCount, setSimulCancellationCount] = useState(0);
+  const [simulRoundNotice, setSimulRoundNotice] = useState(null);
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [validMoves, setValidMoves] = useState([]);
   const [showGameOver, setShowGameOver] = useState(false);
@@ -1090,6 +1095,63 @@ const LiveGame = () => {
       setTimeout(() => setRerollNotice(null), 6000);
     });
 
+    // ===== SIMULTANEOUS TURNS =====
+    const unsubscribeSimulSubmitted = onGameEvent('simulMoveSubmitted', ({ gameId: simGid }) => {
+      if (parseInt(simGid) !== parseInt(gameId)) return;
+      setSimulSubmittedThisRound(true);
+    });
+    const unsubscribeSimulOpponentSubmitted = onGameEvent('simulOpponentSubmitted', ({ gameId: simGid, submittedPlayerId }) => {
+      if (parseInt(simGid) !== parseInt(gameId)) return;
+      // Only flag if the *other* player is the one who submitted.
+      if (currentUser?.id && parseInt(submittedPlayerId) !== parseInt(currentUser.id)) {
+        setSimulOpponentSubmitted(true);
+      }
+    });
+    const unsubscribeSimulResolved = onGameEvent('simulRoundResolved', ({ gameId: simGid, moves, cancellations, cancellationCount, cancellationDrawThreshold, pieces, playerTimes }) => {
+      if (parseInt(simGid) !== parseInt(gameId)) return;
+      // Reset round-state locks
+      setSimulSubmittedThisRound(false);
+      setSimulOpponentSubmitted(false);
+      if (typeof cancellationCount === 'number') setSimulCancellationCount(cancellationCount);
+      // Update pieces and clocks
+      setGameState(prev => ({
+        ...prev,
+        pieces: pieces ? [...pieces] : prev?.pieces,
+        playerTimes: playerTimes || prev?.playerTimes,
+      }));
+      if (playerTimes) {
+        serverTimesRef.current = playerTimes;
+        lastServerTickRef.current = Date.now();
+      }
+      setSelectedPiece(null);
+      setValidMoves([]);
+      // Surface a notice describing what happened this round.
+      const cancelledMine = (cancellations || []).find(c => currentUser?.id && parseInt(c.playerId) === parseInt(currentUser.id));
+      const cancelledOpp = (cancellations || []).find(c => !currentUser?.id || parseInt(c.playerId) !== parseInt(currentUser.id));
+      let msg = null;
+      if (cancelledMine && cancelledOpp) {
+        msg = `Both moves cancelled (${cancelledMine.reason === 'same_square' ? 'same destination' : cancelledMine.reason}).`;
+        if (cancellationDrawThreshold > 0) {
+          msg += ` Cancellations: ${cancellationCount}/${cancellationDrawThreshold}.`;
+        }
+      } else if (cancelledMine) {
+        msg = `Your move was cancelled (${cancelledMine.reason}).`;
+      } else if (cancelledOpp) {
+        msg = `Opponent's move was cancelled (${cancelledOpp.reason}).`;
+      } else if (moves && moves.length > 0) {
+        // Quiet round — no notice needed.
+      }
+      if (msg) {
+        setSimulRoundNotice(msg);
+        setTimeout(() => setSimulRoundNotice(null), 4500);
+      }
+      // Play a sound so the round-resolution feels like a beat.
+      if (soundEnabledRef.current) {
+        const anyCapture = (moves || []).some(m => Array.isArray(m.capturedPieceIds) && m.capturedPieceIds.length > 0);
+        if (anyCapture) soundManager.playCapture(); else soundManager.playMove();
+      }
+    });
+
     return () => {
       unsubscribeBotThinking();
       unsubscribeMove();
@@ -1097,6 +1159,9 @@ const LiveGame = () => {
       unsubscribeGameOver();
       unsubscribeStalemateNotice();
       unsubscribeReroll();
+      unsubscribeSimulSubmitted();
+      unsubscribeSimulOpponentSubmitted();
+      unsubscribeSimulResolved();
       unsubscribePlayerJoined();
       unsubscribeGameState();
       unsubscribeError();
@@ -1137,8 +1202,14 @@ const LiveGame = () => {
   // Check if it's the current user's turn
   const isMyTurn = useMemo(() => {
     if (!currentPlayer || !gameState) return false;
+    // Simultaneous turns: a player is "on turn" any time they haven't yet
+    // submitted their move for the current round. The board locks once
+    // simulSubmittedThisRound is set, regardless of currentTurn.
+    if (gameState.gameType?.simultaneous_turns) {
+      return !simulSubmittedThisRound && (gameState.status === 'active' || gameState.status === 'ready');
+    }
     return currentPlayer.position === gameState.currentTurn;
-  }, [currentPlayer, gameState]);
+  }, [currentPlayer, gameState, simulSubmittedThisRound]);
 
   // Clear premove when it becomes your turn (premove didn't execute or was cancelled)
   // In bot games, don't clear — premove persists until bot moves and server executes it
@@ -4430,7 +4501,24 @@ const LiveGame = () => {
         
         {currentPlayer && (gameState.status === 'active' || gameState.status === 'ready') && (
           <div className={styles["header-turn-indicator"]}>
-            {isMyTurn ? (
+            {gameState.gameType?.simultaneous_turns ? (
+              <>
+                {!simulSubmittedThisRound ? (
+                  <span className={styles["your-turn"]}>
+                    Pick your move{simulOpponentSubmitted ? ' — opponent has submitted!' : ''}
+                  </span>
+                ) : (
+                  <span className={styles["waiting-turn"]}>
+                    Submitted — waiting for opponent...
+                  </span>
+                )}
+                {gameState.gameType?.simul_turns_draw_after_cancellations > 0 && (
+                  <span style={{ marginLeft: 8, fontSize: '0.85em', opacity: 0.85 }}>
+                    Cancellations: {simulCancellationCount}/{gameState.gameType.simul_turns_draw_after_cancellations}
+                  </span>
+                )}
+              </>
+            ) : isMyTurn ? (
               <>
                 <span className={styles["your-turn"]}>Your turn!</span>
                 {inCheck && currentPlayer.position === gameState.currentTurn && (
@@ -4469,6 +4557,17 @@ const LiveGame = () => {
                 <button
                   type="button"
                   onClick={() => setRerollNotice(null)}
+                  style={{ marginLeft: 8, background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 'bold' }}
+                  aria-label="Dismiss notice"
+                >×</button>
+              </span>
+            )}
+            {simulRoundNotice && (
+              <span className={styles["move-error"]} style={{ background: 'rgba(255, 152, 0, 0.18)', color: '#ffb74d' }}>
+                ⚡ {simulRoundNotice}
+                <button
+                  type="button"
+                  onClick={() => setSimulRoundNotice(null)}
                   style={{ marginLeft: 8, background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 'bold' }}
                   aria-label="Dismiss notice"
                 >×</button>

@@ -971,6 +971,532 @@ function randomizeShared(pieces) {
   return pieces;
 }
 
+// =====================================================================
+// SIMULTANEOUS TURNS — Phase 2 (server foundation, MVP)
+// ---------------------------------------------------------------------
+// When a game type has simultaneous_turns=1, both players submit moves
+// secretly each round. When both have submitted, a single resolution
+// runs that detects conflicts (same destination cancels both, place-vs-
+// move per setting) and applies the surviving moves in this order:
+//   1. Movement (capture-by-displacement)
+//   2. Ranged attacks based on POST-movement positions
+//   3. Win-condition checks (checkmate piece capture, capture target,
+//      no-pieces-left etc. — check itself is ignored).
+// Promotions, chain captures and free-move-after-capture variants
+// (`restage`, `allow`) are intentionally simplified for the MVP and
+// will be polished in Phase 3 alongside bot integration.
+// =====================================================================
+
+function isSimulTurns(gameState) {
+  return !!(gameState && gameState.gameType && gameState.gameType.simultaneous_turns);
+}
+
+function initSimulTurnsState(gameState) {
+  if (!gameState.pendingSimulMoves) gameState.pendingSimulMoves = {};
+  if (typeof gameState.simulCancellationCount !== 'number') gameState.simulCancellationCount = 0;
+  if (typeof gameState._simulRoundIndex !== 'number') gameState._simulRoundIndex = 0;
+}
+
+function clearPendingSimulMoves(gameState) {
+  gameState.pendingSimulMoves = {};
+}
+
+function getSimulOpponentId(gameState, playerId) {
+  const opp = (gameState.players || []).find(p => p && p.id !== playerId);
+  return opp ? opp.id : null;
+}
+
+/**
+ * Convert a piece's intended destination square into a normalized "x,y" key.
+ * Used for same-square cancellation detection.
+ */
+function squareKey(x, y) { return `${x},${y}`; }
+
+/**
+ * Validate a single proposed simul move (without applying it). Returns
+ * { ok, reason?, kind, destX, destY, sourcePieceId, isPlace, capturedPieceId? }.
+ * `kind` is one of 'place' | 'move' | 'ranged'.
+ */
+function validateSimulMoveProposal(gameState, playerId, move) {
+  if (!move || typeof move !== 'object') {
+    return { ok: false, reason: 'Empty move' };
+  }
+  const isPlace = move.type === 'place';
+  if (isPlace) {
+    const otherData = gameState.otherGameData || {};
+    if (!otherData.place_pieces_action) return { ok: false, reason: 'Placement not allowed in this game' };
+    const x = move.to?.x, y = move.to?.y;
+    if (x == null || y == null) return { ok: false, reason: 'Invalid placement target' };
+    const occupied = (gameState.pieces || []).find(p => p.x === x && p.y === y);
+    if (occupied) return { ok: false, reason: 'Square is occupied' };
+    return { ok: true, kind: 'place', destX: x, destY: y, isPlace: true, placePieceId: move.placePieceId };
+  }
+  const piece = (gameState.pieces || []).find(p => String(p.id) === String(move.pieceId));
+  if (!piece) return { ok: false, reason: 'Piece not found' };
+  const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
+  if (!playerPosition || (piece.team || piece.player_id) !== playerPosition) {
+    return { ok: false, reason: 'Not your piece' };
+  }
+  const toX = move.to?.x, toY = move.to?.y;
+  if (toX == null || toY == null) return { ok: false, reason: 'Invalid destination' };
+  // Verify the move is in the piece's legal move set (exact validation
+  // matches existing canPieceAttackSquare / canPieceMoveToSquare helpers).
+  const possible = getPossibleMovesForPiece(piece, gameState.pieces, gameState.gameType) || [];
+  const match = possible.find(m => m.x === toX && m.y === toY);
+  if (!match) return { ok: false, reason: 'Illegal move for this piece' };
+  const kind = move.isRangedAttack ? 'ranged' : 'move';
+  // For ranged attacks the source piece does not move. For normal moves the
+  // destination is a candidate displacement target.
+  let capturedPieceId = null;
+  const occupant = (gameState.pieces || []).find(p => p.x === toX && p.y === toY && String(p.id) !== String(piece.id));
+  if (occupant && (occupant.team || occupant.player_id) !== playerPosition) {
+    capturedPieceId = occupant.id;
+  }
+  return {
+    ok: true,
+    kind,
+    destX: toX,
+    destY: toY,
+    sourcePieceId: piece.id,
+    sourceX: piece.x,
+    sourceY: piece.y,
+    capturedPieceId,
+    isPlace: false,
+  };
+}
+
+/**
+ * Buffer a simul-turns move. If both players have now submitted, trigger
+ * resolveSimulRound. Always replies to the submitting socket so the
+ * client can lock the board.
+ */
+async function handleSimulMoveSubmission(io, socket, gameState, gameId, userId, move) {
+  initSimulTurnsState(gameState);
+
+  // Disallow simul-turns against bot games for the MVP — Phase 3 will wire
+  // the bot into the secret-submit flow.
+  if (gameState.botPlayer) {
+    return socket.emit('error', { message: 'Simultaneous-turns games against bots are coming soon. Try a human opponent for now.' });
+  }
+
+  // Reject premoves and chain-capture flows — incompatible with simul-turns.
+  if (gameState.chainCapturePieceId) {
+    return socket.emit('error', { message: 'Chain captures are not available in simultaneous-turns games.' });
+  }
+
+  // Begin the game on the first submission, mirroring the standard handler.
+  if (gameState.status === 'ready' && gameState.moveHistory.length === 0) {
+    gameState.status = 'active';
+    gameState.startTime = Date.now();
+    if (!gameState.initialPieces) {
+      gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
+    }
+    const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    try {
+      await db_pool.query(
+        "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
+        [startTimeStr, buildOtherData(gameState), gameId]
+      );
+      if (gameState.gameTypeId) {
+        await db_pool.query("UPDATE game_types SET last_played_at = ? WHERE id = ?", [startTimeStr, gameState.gameTypeId]);
+      }
+    } catch (e) { console.error('simul: failed to mark game active', e); }
+    initializeCastlingPartners(gameState);
+    io.emit('gameStarted', { gameId });
+    startGameTimer(io, gameId);
+  }
+
+  // Validate the proposal. Bad submissions are rejected so the player can
+  // pick a different move; we deliberately do NOT lock them in.
+  const proposal = validateSimulMoveProposal(gameState, userId, move);
+  if (!proposal.ok) {
+    return socket.emit('error', { message: proposal.reason || 'Invalid move' });
+  }
+
+  // Buffer the proposal. If the player resubmits before the opponent submits,
+  // overwrite (counts as "changing your mind" before locking; for `immediate`
+  // submit-mode the frontend won't allow this, but the server is lenient).
+  gameState.pendingSimulMoves[userId] = { move, proposal, submittedAt: Date.now() };
+
+  // Ack the submitter so the UI can lock.
+  socket.emit('simulMoveSubmitted', { gameId, playerId: userId });
+  // Tell the opponent the player has submitted (without revealing the move).
+  const opponentId = getSimulOpponentId(gameState, userId);
+  if (opponentId) {
+    io.to(`game-${gameId}`).emit('simulOpponentSubmitted', { gameId, submittedPlayerId: userId, opponentId });
+  }
+
+  // If both players have submitted, resolve the round.
+  const submittedPlayers = Object.keys(gameState.pendingSimulMoves);
+  const totalActive = (gameState.players || []).filter(p => p && p.id != null).length;
+  if (submittedPlayers.length >= totalActive && totalActive >= 2) {
+    await resolveSimulRound(io, gameId, gameState);
+  }
+}
+
+/**
+ * Apply a single survivor move to gameState.pieces. Returns
+ * { applied: bool, capturedPieceIds: [], moveRecord }.
+ * Movement happens first (Phase A); ranged attacks (Phase B) are applied
+ * separately by the caller after movement is complete.
+ */
+function applySimulMovement(gameState, proposal, playerId) {
+  if (proposal.isPlace) {
+    // Resolve placeable piece template
+    const otherData = gameState.otherGameData || {};
+    const placeable = (otherData.placeable_pieces || []).find(p => Number(p.id) === Number(proposal.placePieceId)) || (otherData.placeable_pieces || [])[0];
+    if (!placeable) return { applied: false };
+    const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
+    const newPiece = {
+      id: `placed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      piece_id: placeable.id,
+      name: placeable.name || 'Piece',
+      x: proposal.destX,
+      y: proposal.destY,
+      team: playerPosition,
+      player_id: playerPosition,
+      current_hp: placeable.hp || 1,
+      image_location: placeable.image_location || null,
+    };
+    gameState.pieces.push(newPiece);
+    return {
+      applied: true,
+      capturedPieceIds: [],
+      moveRecord: {
+        type: 'place',
+        playerId,
+        pieceId: newPiece.id,
+        to: { x: proposal.destX, y: proposal.destY },
+        timestamp: Date.now(),
+      },
+    };
+  }
+  if (proposal.kind === 'ranged') {
+    // Movement phase: ranged attacks don't move the piece. Resolve in Phase B.
+    return { applied: true, capturedPieceIds: [], moveRecord: null, deferredRanged: true };
+  }
+  const piece = gameState.pieces.find(p => String(p.id) === String(proposal.sourcePieceId));
+  if (!piece) return { applied: false };
+  const captured = [];
+  // Capture by displacement: any enemy piece on the destination square is removed.
+  const occupantIdx = gameState.pieces.findIndex(p =>
+    p.x === proposal.destX && p.y === proposal.destY && String(p.id) !== String(piece.id)
+  );
+  if (occupantIdx >= 0) {
+    const occupant = gameState.pieces[occupantIdx];
+    const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
+    if ((occupant.team || occupant.player_id) !== playerPosition) {
+      captured.push(occupant);
+      gameState.pieces.splice(occupantIdx, 1);
+    } else {
+      // Friendly fire shouldn't have passed validation; bail.
+      return { applied: false };
+    }
+  }
+  const fromX = piece.x, fromY = piece.y;
+  piece.x = proposal.destX;
+  piece.y = proposal.destY;
+  if (piece.has_moved !== undefined) piece.has_moved = true;
+  return {
+    applied: true,
+    capturedPieceIds: captured.map(c => c.id),
+    capturedPieces: captured,
+    moveRecord: {
+      type: 'move',
+      playerId,
+      pieceId: piece.id,
+      from: { x: fromX, y: fromY },
+      to: { x: proposal.destX, y: proposal.destY },
+      capturedPieceIds: captured.map(c => c.id),
+      timestamp: Date.now(),
+    },
+  };
+}
+
+/**
+ * Apply a deferred ranged attack proposal AFTER all movements have settled.
+ * If the target square is empty post-movement, the attack is a no-op and
+ * deals no damage (per simul-turns spec: "ranged at empty square = no move").
+ */
+function applySimulRangedAttack(gameState, proposal, playerId) {
+  const attacker = gameState.pieces.find(p => String(p.id) === String(proposal.sourcePieceId));
+  if (!attacker) return { applied: false };
+  const target = gameState.pieces.find(p => p.x === proposal.destX && p.y === proposal.destY);
+  if (!target) {
+    // No-op (target moved away); record but no damage.
+    return {
+      applied: true,
+      capturedPieceIds: [],
+      moveRecord: {
+        type: 'ranged_noop',
+        playerId,
+        pieceId: attacker.id,
+        from: { x: attacker.x, y: attacker.y },
+        to: { x: proposal.destX, y: proposal.destY },
+        timestamp: Date.now(),
+      },
+    };
+  }
+  const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
+  if ((target.team || target.player_id) === playerPosition) {
+    // Don't friendly-fire after movement; treat as no-op.
+    return {
+      applied: true,
+      capturedPieceIds: [],
+      moveRecord: {
+        type: 'ranged_noop',
+        playerId,
+        pieceId: attacker.id,
+        from: { x: attacker.x, y: attacker.y },
+        to: { x: proposal.destX, y: proposal.destY },
+        timestamp: Date.now(),
+      },
+    };
+  }
+  // Apply attacker's attack damage to target HP.
+  const ad = Number(attacker.attack_damage || attacker.ad || 1);
+  target.current_hp = (target.current_hp != null ? target.current_hp : 1) - ad;
+  const captured = [];
+  if (target.current_hp <= 0) {
+    captured.push(target);
+    const idx = gameState.pieces.indexOf(target);
+    if (idx >= 0) gameState.pieces.splice(idx, 1);
+  }
+  return {
+    applied: true,
+    capturedPieceIds: captured.map(c => c.id),
+    capturedPieces: captured,
+    moveRecord: {
+      type: 'ranged',
+      playerId,
+      pieceId: attacker.id,
+      from: { x: attacker.x, y: attacker.y },
+      to: { x: proposal.destX, y: proposal.destY },
+      capturedPieceIds: captured.map(c => c.id),
+      damage: ad,
+      timestamp: Date.now(),
+    },
+  };
+}
+
+/**
+ * Resolve one round of simultaneous-turns play. Reads
+ * gameState.pendingSimulMoves, applies conflict resolution + movement +
+ * ranged attacks, broadcasts a single `simulRoundResolved` event, and
+ * checks for game-end conditions.
+ */
+async function resolveSimulRound(io, gameId, gameState) {
+  initSimulTurnsState(gameState);
+  const pending = gameState.pendingSimulMoves || {};
+  const playerIds = Object.keys(pending);
+  if (playerIds.length < 2) return; // not yet ready
+
+  gameState._simulRoundIndex++;
+  const placeConflictPolicy = gameState.gameType?.simul_turns_place_conflict || 'cancel';
+  const drawThreshold = Number(gameState.gameType?.simul_turns_draw_after_cancellations) || 0;
+
+  // Snapshot proposals
+  const proposals = playerIds.map(pid => ({ playerId: pid, ...pending[pid].proposal, originalMove: pending[pid].move }));
+
+  // ---- Phase 0: conflict detection ----
+  const cancelled = new Set();
+  const cancellationReasons = {};
+  // Same destination → cancel both (movement collisions). Place vs move
+  // honors the configured policy.
+  for (let i = 0; i < proposals.length; i++) {
+    for (let j = i + 1; j < proposals.length; j++) {
+      const a = proposals[i], b = proposals[j];
+      if (squareKey(a.destX, a.destY) !== squareKey(b.destX, b.destY)) continue;
+      // Ranged-attack ↔ ranged-attack on same square is fine: both deal damage.
+      if (a.kind === 'ranged' && b.kind === 'ranged') continue;
+      // Place vs move conflict
+      const aIsPlace = a.isPlace, bIsPlace = b.isPlace;
+      if (aIsPlace && !bIsPlace) {
+        if (placeConflictPolicy === 'allow') {
+          cancelled.add(b.playerId); cancellationReasons[b.playerId] = 'place_overrides_move';
+        } else {
+          cancelled.add(a.playerId); cancelled.add(b.playerId);
+          cancellationReasons[a.playerId] = 'place_vs_move';
+          cancellationReasons[b.playerId] = 'place_vs_move';
+        }
+      } else if (!aIsPlace && bIsPlace) {
+        if (placeConflictPolicy === 'allow') {
+          cancelled.add(a.playerId); cancellationReasons[a.playerId] = 'place_overrides_move';
+        } else {
+          cancelled.add(a.playerId); cancelled.add(b.playerId);
+          cancellationReasons[a.playerId] = 'place_vs_move';
+          cancellationReasons[b.playerId] = 'place_vs_move';
+        }
+      } else {
+        // Both movement (or place-vs-place): cancel both.
+        cancelled.add(a.playerId); cancelled.add(b.playerId);
+        cancellationReasons[a.playerId] = 'same_square';
+        cancellationReasons[b.playerId] = 'same_square';
+      }
+    }
+  }
+
+  // Track if a *same-square* cancellation occurred (used for the draw
+  // counter — placement conflicts and self-cancellation don't count).
+  const hadSameSquareCancellation = Object.values(cancellationReasons).some(r => r === 'same_square');
+  if (hadSameSquareCancellation) gameState.simulCancellationCount++;
+
+  // ---- Phase A: apply movement (non-cancelled, non-ranged) ----
+  const survivorMoves = proposals.filter(p => !cancelled.has(p.playerId) && p.kind !== 'ranged');
+  // Detect a swap (A→Bsource and B→Asource for two non-ranged movements):
+  // apply both atomically to avoid the intermediate state where one piece
+  // captures the other.
+  let appliedSwap = false;
+  if (survivorMoves.length === 2) {
+    const [a, b] = survivorMoves;
+    if (!a.isPlace && !b.isPlace
+        && a.destX === b.sourceX && a.destY === b.sourceY
+        && b.destX === a.sourceX && b.destY === a.sourceY) {
+      const pieceA = gameState.pieces.find(p => String(p.id) === String(a.sourcePieceId));
+      const pieceB = gameState.pieces.find(p => String(p.id) === String(b.sourcePieceId));
+      if (pieceA && pieceB) {
+        const ax = pieceA.x, ay = pieceA.y;
+        pieceA.x = pieceB.x; pieceA.y = pieceB.y;
+        pieceB.x = ax; pieceB.y = ay;
+        if (pieceA.has_moved !== undefined) pieceA.has_moved = true;
+        if (pieceB.has_moved !== undefined) pieceB.has_moved = true;
+        appliedSwap = true;
+      }
+    }
+  }
+  const moveRecords = [];
+  const allCapturedPieces = [];
+  if (appliedSwap) {
+    for (const sv of survivorMoves) {
+      moveRecords.push({
+        type: 'move', playerId: sv.playerId, pieceId: sv.sourcePieceId,
+        from: { x: sv.sourceX, y: sv.sourceY },
+        to: { x: sv.destX, y: sv.destY },
+        swap: true, timestamp: Date.now(),
+      });
+    }
+  } else {
+    for (const sv of survivorMoves) {
+      const result = applySimulMovement(gameState, sv, sv.playerId);
+      if (result.applied && result.moveRecord) moveRecords.push(result.moveRecord);
+      if (result.capturedPieces) allCapturedPieces.push(...result.capturedPieces);
+    }
+  }
+
+  // ---- Phase B: apply ranged attacks (non-cancelled) ----
+  for (const sv of proposals) {
+    if (cancelled.has(sv.playerId)) continue;
+    if (sv.kind !== 'ranged') continue;
+    const result = applySimulRangedAttack(gameState, sv, sv.playerId);
+    if (result.applied && result.moveRecord) moveRecords.push(result.moveRecord);
+    if (result.capturedPieces) allCapturedPieces.push(...result.capturedPieces);
+  }
+
+  // ---- Phase C: append cancellation notes to history ----
+  for (const pid of cancelled) {
+    moveRecords.push({
+      type: 'cancelled',
+      playerId: pid,
+      reason: cancellationReasons[pid] || 'cancelled',
+      attempted: pending[pid]?.move || null,
+      timestamp: Date.now(),
+    });
+  }
+
+  if (!gameState.moveHistory) gameState.moveHistory = [];
+  gameState.moveHistory.push(...moveRecords);
+
+  // Increment movesWithoutCapture / position-history bookkeeping (best-effort)
+  if (allCapturedPieces.length === 0) {
+    gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
+  } else {
+    gameState.movesWithoutCapture = 0;
+  }
+
+  // ---- Phase D: win/draw checks ----
+  // Cancellation draw threshold
+  let endedByCancellationDraw = false;
+  if (drawThreshold > 0 && gameState.simulCancellationCount >= drawThreshold) {
+    endedByCancellationDraw = true;
+  }
+
+  // Standard win conditions: leverage existing checkWinCondition for capture
+  // / mate-piece / etc. Since simul-turns has no notion of "current player",
+  // we evaluate from each player's perspective.
+  let winnerInfo = null;
+  if (!endedByCancellationDraw) {
+    try {
+      const winRes = checkWinCondition(gameState, allCapturedPieces);
+      if (winRes && (winRes.gameOver || winRes.winner != null)) {
+        winnerInfo = winRes;
+      }
+    } catch (e) { console.error('simul: checkWinCondition failed', e); }
+  }
+
+  // ---- Phase E: clock + persistence ----
+  // Both players' clocks have been ticking concurrently during the round
+  // (handled in startGameTimer). On resolve we just persist the snapshot.
+  clearPendingSimulMoves(gameState);
+
+  try {
+    await db_pool.query(
+      "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+      [JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+    );
+  } catch (e) { console.error('simul: persist failed', e); }
+
+  // ---- Phase F: broadcast ----
+  io.to(`game-${gameId}`).emit('simulRoundResolved', {
+    gameId,
+    roundIndex: gameState._simulRoundIndex,
+    moves: moveRecords,
+    cancellations: Array.from(cancelled).map(pid => ({ playerId: Number(pid) || pid, reason: cancellationReasons[pid] })),
+    cancellationCount: gameState.simulCancellationCount,
+    cancellationDrawThreshold: drawThreshold,
+    pieces: gameState.pieces,
+    playerTimes: gameState.playerTimes,
+  });
+
+  // ---- Phase G: end the game if needed ----
+  if (endedByCancellationDraw) {
+    gameState.status = 'completed';
+    gameState.winner = null;
+    gameState.winReason = 'cancellation_draw';
+    const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    try {
+      await db_pool.query(
+        `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL, pieces = ?, other_data = ? WHERE id = ?`,
+        [endTime, JSON.stringify(gameState.pieces),
+          buildOtherData(gameState, { winner: null, reason: 'cancellation_draw' }), gameId]
+      );
+    } catch (e) { console.error('simul: end-by-draw persist failed', e); }
+    broadcastGameOver(io, gameId, gameState, {
+      gameId, winner: null, reason: 'cancellation_draw', finalState: gameState,
+    });
+    return;
+  }
+  if (winnerInfo && winnerInfo.gameOver) {
+    gameState.status = 'completed';
+    gameState.winner = winnerInfo.winner ?? null;
+    gameState.winReason = winnerInfo.reason || 'win';
+    const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    try {
+      await db_pool.query(
+        `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+        [endTime, sanitizeWinnerId(winnerInfo.winner), JSON.stringify(gameState.pieces),
+          buildOtherData(gameState, { winner: winnerInfo.winner, reason: winnerInfo.reason }), gameId]
+      );
+    } catch (e) { console.error('simul: end-by-win persist failed', e); }
+    broadcastGameOver(io, gameId, gameState, {
+      gameId, winner: winnerInfo.winner ?? null, reason: winnerInfo.reason || 'win', finalState: gameState,
+    });
+  }
+}
+
+// =====================================================================
+// END SIMULTANEOUS TURNS module
+// =====================================================================
+
 /**
  * Initialize Socket.io with the HTTP server
  */
@@ -2667,6 +3193,13 @@ function initializeSocket(server) {
 
         if (!gameState) {
           return socket.emit("error", { message: "Game not found" });
+        }
+
+        // SIMULTANEOUS TURNS — divert to the secret-submit/buffered resolver
+        // before any of the standard turn-order / chain-capture / promotion
+        // logic runs. The resolver handles its own validation and DB writes.
+        if (isSimulTurns(gameState)) {
+          return await handleSimulMoveSubmission(io, socket, gameState, gameId, userId, move);
         }
 
         // Verify it's this player's turn
@@ -6440,6 +6973,64 @@ function startGameTimer(io, gameId) {
     }
     
     const now = Date.now();
+
+    // ---- SIMULTANEOUS TURNS: tick BOTH players who haven't yet submitted ----
+    if (isSimulTurns(currentGameState)) {
+      if ((now - lastTickAt) > TICK_MS * 5) {
+        // Re-anchor after long event-loop blocks
+        lastTickAt = now;
+        return;
+      }
+      const elapsedSec = (now - lastTickAt) / 1000;
+      lastTickAt = now;
+      const pending = currentGameState.pendingSimulMoves || {};
+      const tickingPlayers = currentGameState.players.filter(p =>
+        p && p.id != null && !pending[p.id] && currentGameState.playerTimes[p.id] != null
+      );
+      for (const tp of tickingPlayers) {
+        const mult = getClockMultiplier(currentGameState, tp.id);
+        currentGameState.playerTimes[tp.id] -= elapsedSec * mult;
+        if (currentGameState.playerTimes[tp.id] <= 0) {
+          currentGameState.playerTimes[tp.id] = 0;
+          stopGameTimer(gameId);
+          const winner = currentGameState.players.find(p => p.id !== tp.id);
+          currentGameState.status = 'completed';
+          currentGameState.winner = winner?.id;
+          currentGameState.winReason = 'timeout';
+          let eloChanges = null;
+          if (currentGameState.rated !== false && winner?.id && tp.id) {
+            try { eloChanges = await updateEloRatings(winner.id, tp.id); } catch (e) {}
+          }
+          const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          await db_pool.query(
+            `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+             pieces = ?, other_data = ? WHERE id = ?`,
+            [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(currentGameState.pieces),
+             buildOtherData(currentGameState, { winner: winner?.id, reason: 'timeout', eloChanges }), gameId]
+          );
+          broadcastGameOver(io, gameId, currentGameState, {
+            gameId, winner: winner?.id, reason: 'timeout',
+            finalState: currentGameState, eloChanges,
+          });
+          return;
+        }
+      }
+      // Clock-display visibility setting: when simul_turns_clock_pause is on,
+      // suppress timeUpdate broadcasts mid-round so both clocks appear paused
+      // until simulRoundResolved fires (which carries authoritative times).
+      const hideTicking = !!currentGameState.gameType?.simul_turns_clock_pause;
+      if (!hideTicking && (now - lastBroadcastAt) >= 950) {
+        lastBroadcastAt = now;
+        io.to(`game-${gameId}`).emit('timeUpdate', {
+          gameId,
+          playerTimes: currentGameState.playerTimes,
+          currentTurn: currentGameState.currentTurn,
+          simulPending: Object.keys(currentGameState.pendingSimulMoves || {}).map(Number),
+        });
+      }
+      return;
+    }
+
     // If the active player changed since the last tick, OR the tick was
     // delayed dramatically (event loop blocked), skip this iteration's
     // deduction and re-anchor. This avoids charging the bot's thinking time

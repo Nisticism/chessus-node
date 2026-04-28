@@ -2193,6 +2193,51 @@ const GameTypeView = () => {
           {game.descript ? renderContent(game.descript) : <p>No description provided.</p>}
         </div>
 
+        {!!game.simultaneous_turns && (
+          <div className={styles["section"]}>
+            <h2>Simultaneous Turns</h2>
+            <p style={{ textAlign: 'left' }}>
+              Both players submit their moves secretly each round; the moves resolve at the same time.
+              {game.mate_condition ? ' Check is ignored, but checkmate still ends the game.' : ''}
+              {' '}If both players target the same square, both moves cancel.
+            </p>
+            <ul style={{ marginTop: '0.5rem', paddingLeft: '1.2rem', textAlign: 'left' }}>
+              <li style={{ textAlign: 'left' }}>
+                <strong>Submit mode:</strong>{' '}
+                {game.simul_turns_submit_mode === 'stage'
+                  ? 'Stage & submit (pick a move, then press Submit to confirm — change your mind any time before submitting).'
+                  : 'Immediate (clicking a destination locks your move instantly).'}
+              </li>
+              <li style={{ textAlign: 'left' }}>
+                <strong>Clock display:</strong>{' '}
+                {game.simul_turns_clock_pause
+                  ? 'Both clocks appear paused during the round and only update their displayed time after both players have submitted. (Time used per move is identical either way — this is a visibility setting.)'
+                  : 'Both clocks visibly tick from the start of the game. Each player\u2019s clock stops when they submit; the opponent\u2019s keeps ticking until they submit.'}
+              </li>
+              <li style={{ textAlign: 'left' }}>
+                <strong>Cancellation draw:</strong>{' '}
+                {Number(game.simul_turns_draw_after_cancellations) > 0
+                  ? `The game ends in a draw after ${Number(game.simul_turns_draw_after_cancellations)} same-square cancellations.`
+                  : 'Cancellations never end the game in a draw.'}
+              </li>
+              <li style={{ textAlign: 'left' }}>
+                <strong>Place vs move conflict:</strong>{' '}
+                {game.simul_turns_place_conflict === 'allow'
+                  ? 'If a placement and a move target the same square, the placement happens and the move is cancelled.'
+                  : 'If a placement and a move target the same square, both actions are cancelled.'}
+              </li>
+              <li style={{ textAlign: 'left' }}>
+                <strong>Free move after capture / promotion:</strong>{' '}
+                {game.simul_turns_free_move_after_capture === 'restage'
+                  ? 'When a free move is awarded, both players get a fresh secret-submit cycle for the bonus action.'
+                  : game.simul_turns_free_move_after_capture === 'allow'
+                    ? 'Free moves work normally (one player may get an extra unanswered action).'
+                    : 'Free moves after captures or promotions are disabled in simul-turns games.'}
+              </li>
+            </ul>
+          </div>
+        )}
+
         {/* Placeable Pieces Visual Section */}
         {(() => {
           let od = {};

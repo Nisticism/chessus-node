@@ -2716,6 +2716,47 @@ const runMigrations = async () => {
       console.error('Error adding simultaneous_turns column:', err.message);
     }
 
+    // Add simul-turns sub-setting columns to game_types
+    try {
+      if (!(await columnExists('game_types', 'simul_turns_clock_pause'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN simul_turns_clock_pause TINYINT(1) DEFAULT 0 COMMENT 'If true, clocks appear paused during a round and only update displayed time after both players submit (visibility-only)'",
+          "Add simul_turns_clock_pause column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'simul_turns_draw_after_cancellations'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN simul_turns_draw_after_cancellations SMALLINT DEFAULT 3 COMMENT 'Draw the game after this many same-square cancellations occur (0 = never)'",
+          "Add simul_turns_draw_after_cancellations column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'simul_turns_submit_mode'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN simul_turns_submit_mode ENUM('immediate','stage') DEFAULT 'immediate' COMMENT 'immediate = clicking a destination submits and locks; stage = pick a move then press Submit'",
+          "Add simul_turns_submit_mode column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'simul_turns_place_conflict'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN simul_turns_place_conflict ENUM('cancel','allow') DEFAULT 'cancel' COMMENT 'How to resolve a piece-placement conflicting with the opponent moving onto that square: cancel both, or allow the placement and cancel the move'",
+          "Add simul_turns_place_conflict column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'simul_turns_free_move_after_capture'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN simul_turns_free_move_after_capture ENUM('disable','restage','allow') DEFAULT 'disable' COMMENT 'How free-move-after-capture/promotion behaves under simul-turns: disable it, give both players a fresh stage cycle, or allow it normally'",
+          "Add simul_turns_free_move_after_capture column to game_types"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding simul-turns sub-setting columns:', err.message);
+    }
+
     // Add promotion_condition column to game_types (win when a promotable piece reaches a promotion square)
     try {
       const promotionConditionCol = await columnExists('game_types', 'promotion_condition');

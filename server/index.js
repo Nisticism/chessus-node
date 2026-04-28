@@ -2395,7 +2395,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         mate_condition = ?, mate_piece = ?, capture_condition = ?, capture_piece = ?, capture_condition_requires_all = ?, mate_condition_requires_all = ?,
         value_condition = ?, value_piece = ?, value_max = ?, value_title = ?,
         squares_condition = ?, squares_count = ?, hill_condition = ?, hill_x = ?, hill_y = ?, hill_turns = ?,
-        actions_per_turn = ?, simultaneous_turns = ?, board_width = ?, board_height = ?, player_count = ?,
+        actions_per_turn = ?, simultaneous_turns = ?,
+        simul_turns_clock_pause = ?, simul_turns_draw_after_cancellations = ?, simul_turns_submit_mode = ?, simul_turns_place_conflict = ?, simul_turns_free_move_after_capture = ?,
+        board_width = ?, board_height = ?, player_count = ?,
         starting_piece_count = ?, pieces_string = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
         randomized_starting_positions = ?, other_game_data = ?, optional_condition = ?, draw_move_limit = ?, repetition_draw_count = ?,
@@ -2430,6 +2432,11 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       gameData.hill_turns || null,
       gameData.actions_per_turn || 1,
       gameData.simultaneous_turns || false,
+      gameData.simul_turns_clock_pause ? 1 : 0,
+      Math.max(0, Math.min(99, Number(gameData.simul_turns_draw_after_cancellations) || 0)),
+      ['immediate', 'stage'].includes(gameData.simul_turns_submit_mode) ? gameData.simul_turns_submit_mode : 'immediate',
+      ['cancel', 'allow'].includes(gameData.simul_turns_place_conflict) ? gameData.simul_turns_place_conflict : 'cancel',
+      ['disable', 'restage', 'allow'].includes(gameData.simul_turns_free_move_after_capture) ? gameData.simul_turns_free_move_after_capture : 'disable',
       gameData.board_width || 8,
       gameData.board_height || 8,
       gameData.player_count || 2,
@@ -5426,14 +5433,16 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         mate_condition, mate_piece, capture_condition, capture_piece, capture_condition_requires_all, mate_condition_requires_all,
         value_condition, value_piece, value_max, value_title,
         squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
-        actions_per_turn, simultaneous_turns, board_width, board_height, player_count,
+        actions_per_turn, simultaneous_turns,
+        simul_turns_clock_pause, simul_turns_draw_after_cancellations, simul_turns_submit_mode, simul_turns_place_conflict, simul_turns_free_move_after_capture,
+        board_width, board_height, player_count,
         starting_piece_count, range_squares_string,
         promotion_squares_string, special_squares_string, control_squares_string,
         randomized_starting_positions, other_game_data, optional_condition, draw_move_limit, repetition_draw_count,
         no_moves_condition, piece_count_condition, promotion_condition,
         lose_all_pieces_condition, stalemate_win_condition, stalemate_draw_condition, forced_capture_condition,
         pieces_string, created_at, is_draft, draft_saved_step
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -5460,6 +5469,11 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       gameData.hill_turns || null,
       gameData.actions_per_turn || 1,
       gameData.simultaneous_turns || false,
+      gameData.simul_turns_clock_pause ? 1 : 0,
+      Math.max(0, Math.min(99, Number(gameData.simul_turns_draw_after_cancellations) || 0)),
+      ['immediate', 'stage'].includes(gameData.simul_turns_submit_mode) ? gameData.simul_turns_submit_mode : 'immediate',
+      ['cancel', 'allow'].includes(gameData.simul_turns_place_conflict) ? gameData.simul_turns_place_conflict : 'cancel',
+      ['disable', 'restage', 'allow'].includes(gameData.simul_turns_free_move_after_capture) ? gameData.simul_turns_free_move_after_capture : 'disable',
       gameData.board_width || 8,
       gameData.board_height || 8,
       gameData.player_count || 2,
