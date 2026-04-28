@@ -7147,6 +7147,181 @@ app.get('/api/admin/ai-training/jobs/:id/game-log', authenticateAdmin, async (re
   }
 });
 
+// ---------------------------------------------------------------------------
+// Board replay: parse the job's games.txt and return structured move data
+// for a specific game so the admin UI can step through the board state.
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a file-letter string (e.g. "e", "aa") to a 0-based column index.
+ * Matches the col_to_file() function in ai-engine-rs/src/selfplay.rs.
+ */
+function _replayFileToCol(fileStr) {
+  if (!fileStr || typeof fileStr !== 'string') return 0;
+  if (fileStr.length === 1) {
+    return fileStr.charCodeAt(0) - 97; // 'a' = 0
+  }
+  // Two-letter: "aa" = 26, "ab" = 27, ...
+  return (fileStr.charCodeAt(0) - 97 + 1) * 26 + (fileStr.charCodeAt(1) - 97);
+}
+
+/**
+ * Parse a square notation like "e4" or "aa12" to {x, y} (0-based from top-left).
+ * y = boardHeight - rank  (rank is 1-indexed from the bottom row)
+ */
+function _replayNotationToXY(notation, boardHeight) {
+  if (!notation) return null;
+  const match = notation.match(/^([a-z]+)(\d+)$/);
+  if (!match) return null;
+  const x = _replayFileToCol(match[1]);
+  const y = boardHeight - parseInt(match[2], 10);
+  return { x, y };
+}
+
+/**
+ * Parse a single move-line from games.txt.
+ * Returns null if the line isn't a move line.
+ *
+ * The Rust trainer writes lines in the format:
+ *   "     N. [P<player>] <PieceName> <notation>[ (captures <name>)][ (castle)]"
+ *
+ * IMPORTANT:
+ *  - PieceName may contain spaces (e.g. "Dragon Queen"). Using \S+ here drops
+ *    every move made by multi-word piece names, causing board drift and apparent
+ *    ally-captures. We capture it with (.+?) and anchor on the notation token.
+ *  - Castling moves end with " (castle)" which is NOT a captures annotation.
+ *    The old regex had no match for this suffix and silently dropped all castling
+ *    moves, also causing board drift.
+ *  - Promotion targets may also contain spaces (=Dragon Queen). Handled via
+ *    [A-Za-z ]+ in the notation alternation.
+ *  - O-O-O must appear before O-O in the alternation to avoid partial match.
+ */
+function _replayParseMoveLine(line, boardHeight) {
+  const m = line.match(
+    /^\s+(\d+)\.\s+\[P(\d+)\]\s+(.+?)\s+(O-O-O|O-O|[a-z]+\d+[x-][a-z]+\d+(?:=[A-Za-z][A-Za-z ]*)?)(?:\s+\(captures\s+([^)]+)\))?(?:\s+\(castle\))?\s*$/
+  );
+  if (!m) return null;
+
+  const moveNum      = parseInt(m[1], 10);
+  const player       = parseInt(m[2], 10);
+  const pieceName    = m[3].trim();
+  const notation     = m[4];
+  const capturedName = m[5] ? m[5].trim() : null;
+
+  let fromX = null, fromY = null, toX = null, toY = null;
+  let isCastling = false, castleSide = null, promotesTo = null, isCapture = false;
+
+  if (notation === 'O-O') {
+    isCastling = true; castleSide = 'kingside';
+  } else if (notation === 'O-O-O') {
+    isCastling = true; castleSide = 'queenside';
+  } else {
+    // "e2-e4", "e2xe4", "e7-e8=Queen", "e7-e8=Fire Phoenix"
+    const nm = notation.match(/^([a-z]+\d+)([x-])([a-z]+\d+)(?:=(.+))?$/);
+    if (nm) {
+      isCapture = nm[2] === 'x';
+      const from = _replayNotationToXY(nm[1], boardHeight);
+      const to   = _replayNotationToXY(nm[3], boardHeight);
+      if (from && to) { fromX = from.x; fromY = from.y; toX = to.x; toY = to.y; }
+      promotesTo = nm[4] ? nm[4].trim() : null;
+    }
+  }
+
+  return { moveNum, player, pieceName, fromX, fromY, toX, toY, isCapture, isCastling, castleSide, capturedName, promotesTo };
+}
+
+app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
+
+    const gameNum = Math.max(1, parseInt(req.query.game || '1', 10) || 1);
+
+    // Get job to find game_type_id
+    const jobStatus = await trainingManager.getJobStatus(id);
+    if (!jobStatus?.job) return res.status(404).send({ message: 'Job not found' });
+    const { job } = jobStatus;
+    const gameTypeId = job.game_type_id;
+
+    // Query DB for board dimensions, starting piece placements, and randomization config.
+    const [[gameTypeRow]] = await db_pool.query(
+      'SELECT board_width, board_height, randomized_starting_positions FROM game_types WHERE id = ? LIMIT 1',
+      [gameTypeId],
+    );
+    if (!gameTypeRow) return res.status(404).send({ message: 'Game type not found' });
+    const { board_width: boardWidth, board_height: boardHeight } = gameTypeRow;
+
+    // Detect whether starting positions are randomized per game. If so, the
+    // starting board shown in the replay will be the DB default layout, NOT the
+    // actual layout used in each game — warn the user in the UI.
+    let hasRandomizedPositions = false;
+    if (gameTypeRow.randomized_starting_positions) {
+      try {
+        const rsp = JSON.parse(gameTypeRow.randomized_starting_positions);
+        hasRandomizedPositions = !!(rsp && rsp.mode && rsp.mode !== 'none');
+      } catch { /* non-fatal */ }
+    }
+
+    const [posRows] = await db_pool.query(
+      `SELECT gtp.x, gtp.y, gtp.player_number, p.id AS piece_id, p.piece_name
+       FROM game_type_pieces gtp
+       JOIN pieces p ON gtp.piece_id = p.id
+       WHERE gtp.game_type_id = ?
+       ORDER BY gtp.id`,
+      [gameTypeId],
+    );
+
+    const startingPieces = posRows.map((row, i) => ({
+      instanceId: `sp_${i}`,
+      pieceName:  row.piece_name,
+      player:     row.player_number,
+      x:          row.x,
+      y:          row.y,
+    }));
+
+    // Get the game log
+    const content = await trainingManager.getGameLog(id);
+    if (!content) {
+      return res.status(404).send({
+        message: 'No game log for this job. Start a job with "Generate game log" enabled.',
+      });
+    }
+
+    // Count total games (each game starts with "=== Game #N ===")
+    const headers = content.match(/^=== Game #\d+/gm) || [];
+    const totalGames = headers.length;
+    if (totalGames === 0) return res.status(404).send({ message: 'No games found in log' });
+
+    const safeGameNum = Math.min(gameNum, totalGames);
+
+    // Split content into game blocks and find the requested game
+    // Add a sentinel newline so the split works for the very first block too
+    const blocks = ('\n' + content).split(/\n(?==== Game #)/);
+    const targetBlock = blocks.find((b) => {
+      const hm = b.match(/^=== Game #(\d+)/);
+      return hm && parseInt(hm[1], 10) === safeGameNum;
+    });
+
+    let outcome = 'Unknown';
+    const moves = [];
+
+    if (targetBlock) {
+      const headerLine = targetBlock.match(/^=== Game #\d+ — (.+?) — \d+ moves ===/);
+      if (headerLine) outcome = headerLine[1].trim();
+
+      for (const line of targetBlock.split('\n')) {
+        const parsed = _replayParseMoveLine(line, boardHeight);
+        if (parsed) moves.push(parsed);
+      }
+    }
+
+    res.json({ totalGames, gameNum: safeGameNum, boardWidth, boardHeight, outcome, totalMoves: moves.length, startingPieces, moves, hasRandomizedPositions });
+  } catch (err) {
+    console.error('Game replay error:', err);
+    res.status(500).send({ message: err.message || 'Failed to load game replay' });
+  }
+});
+
 app.get('/api/admin/ai-training/jobs/:id/download', authenticateAdmin, async (req, res) => {
   try {
     if (trainingManager.REMOTE_MODE) {

@@ -3,6 +3,7 @@ import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import styles from "./ai-training-panel.module.scss";
+import AiGameReplayModal from "./AiGameReplayModal";
 
 /**
  * Admin tab for AI self-play training.
@@ -29,8 +30,11 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
     maxRssMb: 2048,
     checkpointEvery: 25,
     seed: 0,
-    generateGameLog: true,
+    generateGameLog: false,
   });
+
+  // Board replay modal state
+  const [replayJobId, setReplayJobId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const pollRef = useRef(null);
@@ -702,6 +706,19 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                         📋 Game Log
                       </button>
                     )}
+                    {j.status !== "running" && (j.games_played || 0) > 0 && (
+                      <button
+                        type="button"
+                        title="Open an interactive board viewer to step through any game in this job's game log. Useful for verifying that pieces move correctly during training."
+                        className={`${styles.btn} ${styles.btnNeutral}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReplayJobId(j.id);
+                        }}
+                      >
+                        ♟ Board Replay
+                      </button>
+                    )}
                     {j.status !== "running" && j.status !== "queued" && (
                       <button
                         type="button"
@@ -787,6 +804,13 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
       </div>
 
       <AnalysisSection gameTypes={gameTypes} initialGameTypeId={initialAnalysisGameTypeId} />
+
+      {replayJobId !== null && (
+        <AiGameReplayModal
+          jobId={replayJobId}
+          onClose={() => setReplayJobId(null)}
+        />
+      )}
     </div>
   );
 };
