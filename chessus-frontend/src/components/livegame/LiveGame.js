@@ -105,6 +105,36 @@ const parsePieces = (pieces) => {
   return [];
 };
 
+// Short, single-line label for a game-over reason. Used in the live-game
+// header result line under "Game Over" once the modal has been dismissed.
+const formatGameOverReasonShort = (reason) => {
+  switch (reason) {
+    case 'checkmate': return 'by checkmate';
+    case 'capture': return 'by capture';
+    case 'stalemate': return 'by stalemate';
+    case 'stalemate_win': return 'by stalemate win';
+    case 'resignation': return 'by resignation';
+    case 'timeout': return 'by timeout';
+    case 'disconnect': return 'by disconnect';
+    case 'agreement': return 'by agreement';
+    case 'draw_move_limit': return 'by move limit';
+    case 'repetition': return 'by repetition';
+    case 'insufficient_material': return 'insufficient material';
+    case 'piece_count': return 'by piece count';
+    case 'equal_piece_count': return 'equal piece count — draw';
+    case 'promotion': return 'by promotion';
+    case 'lose_all_pieces': return 'by anti-chess';
+    case 'no_moves':
+    case 'no_legal_moves': return 'by no legal moves';
+    case 'elimination': return 'by elimination';
+    case 'initial_position': return 'initial position (no rating change)';
+    case 'cancellation_draw': return 'draw by simul-turns cancellations';
+    case 'simultaneous_capture_draw': return 'draw by simultaneous capture';
+    case 'simultaneous_checkmate_draw': return 'draw by simultaneous checkmate';
+    default: return reason || 'game complete';
+  }
+};
+
 const LiveGame = () => {
   const { gameId } = useParams();
   const navigate = useNavigate();
@@ -121,6 +151,7 @@ const LiveGame = () => {
     getGameState,
     joinGame,
     makeMove,
+    simulReadyToStart,
     resign,
     offerDraw,
     acceptDraw,
@@ -147,6 +178,8 @@ const LiveGame = () => {
   const [simulOpponentSubmitted, setSimulOpponentSubmitted] = useState(false);
   const [simulCancellationCount, setSimulCancellationCount] = useState(0);
   const [simulRoundNotice, setSimulRoundNotice] = useState(null);
+  // Simul-turns ready-up: which player ids have pressed Ready in the lobby.
+  const [simulReadyPlayerIds, setSimulReadyPlayerIds] = useState([]);
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [validMoves, setValidMoves] = useState([]);
   const [showGameOver, setShowGameOver] = useState(false);
@@ -1107,6 +1140,16 @@ const LiveGame = () => {
         setSimulOpponentSubmitted(true);
       }
     });
+    // Simul-turns ready-up: server tells us which players have pressed Ready.
+    const unsubscribeSimulReady = onGameEvent('simulReadyUpdate', ({ gameId: simGid, readyPlayerIds, allReady }) => {
+      if (parseInt(simGid) !== parseInt(gameId)) return;
+      setSimulReadyPlayerIds(Array.isArray(readyPlayerIds) ? readyPlayerIds : []);
+      if (allReady) {
+        // Game is about to flip to active — clear stale state.
+        setSimulSubmittedThisRound(false);
+        setSimulOpponentSubmitted(false);
+      }
+    });
     const unsubscribeSimulResolved = onGameEvent('simulRoundResolved', ({ gameId: simGid, moves, cancellations, cancellationCount, cancellationDrawThreshold, pieces, playerTimes }) => {
       if (parseInt(simGid) !== parseInt(gameId)) return;
       // Reset round-state locks
@@ -1162,6 +1205,7 @@ const LiveGame = () => {
       unsubscribeSimulSubmitted();
       unsubscribeSimulOpponentSubmitted();
       unsubscribeSimulResolved();
+      unsubscribeSimulReady();
       unsubscribePlayerJoined();
       unsubscribeGameState();
       unsubscribeError();
@@ -4494,14 +4538,69 @@ const LiveGame = () => {
           <div className={`${styles["game-status"]} ${styles[gameState.status]}`}>
             {gameState.status === 'active' ? 'In Progress' : 
              gameState.status === 'completed' ? 'Game Over' : 
-             gameState.status === 'ready' ? (gameState.botPlayer ? 'vs Computer' : 'In Progress') : 
+             gameState.status === 'ready' ? (
+               gameState.botPlayer ? 'vs Computer'
+                 : (gameState.gameType?.simultaneous_turns ? 'Waiting for Ready' : 'In Progress')
+             ) : 
              gameState.status === 'waiting' ? 'Waiting for Opponent' : gameState.status}
           </div>
+          {gameState.status === 'completed' && gameOverData && (
+            <div className={styles["game-result-line"]} style={{
+              marginTop: 4,
+              padding: '4px 10px',
+              borderRadius: 6,
+              background: 'rgba(0,0,0,0.35)',
+              fontSize: '0.95rem',
+              color: gameOverData.winner === currentUser?.id
+                ? '#7be38a'
+                : gameOverData.winner
+                  ? '#ff8a8a'
+                  : '#ffd278',
+              fontWeight: 600,
+            }}>
+              {(gameOverData.winner === currentUser?.id
+                ? 'You won'
+                : gameOverData.winner
+                  ? `${gameOverData.winnerUsername || 'Opponent'} won`
+                  : 'Draw')}
+              {gameOverData.reason ? ` — ${formatGameOverReasonShort(gameOverData.reason)}` : ''}
+            </div>
+          )}
         </div>
         
         {currentPlayer && (gameState.status === 'active' || gameState.status === 'ready') && (
           <div className={styles["header-turn-indicator"]}>
-            {gameState.gameType?.simultaneous_turns ? (
+            {gameState.gameType?.simultaneous_turns && gameState.status === 'ready' ? (
+              <>
+                {simulReadyPlayerIds.includes(currentUser?.id) ? (
+                  <span className={styles["waiting-turn"]}>
+                    Ready ✓ — waiting for opponent...
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => simulReadyToStart(gameState.gameId || gameState.id)}
+                    style={{
+                      background: 'linear-gradient(180deg, #4caf50, #2e7d32)',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '8px 18px',
+                      borderRadius: 6,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontSize: '0.95rem',
+                    }}
+                  >
+                    I'm Ready
+                  </button>
+                )}
+                {simulReadyPlayerIds.length > 0 && (
+                  <span style={{ marginLeft: 8, fontSize: '0.85em', opacity: 0.85 }}>
+                    Ready: {simulReadyPlayerIds.length}/{gameState.players?.length || 2}
+                  </span>
+                )}
+              </>
+            ) : gameState.gameType?.simultaneous_turns ? (
               <>
                 {!simulSubmittedThisRound ? (
                   <span className={styles["your-turn"]}>
@@ -5682,6 +5781,9 @@ const LiveGame = () => {
                gameOverData.reason === 'no_legal_moves' ? 'By No Legal Moves' :
                gameOverData.reason === 'elimination' ? 'By Elimination' :
                gameOverData.reason === 'initial_position' ? 'Initial Position — No Moves Played (No ELO Change)' :
+               gameOverData.reason === 'cancellation_draw' ? 'Draw — Cancellation Threshold Reached' :
+               gameOverData.reason === 'simultaneous_capture_draw' ? 'Draw — Simultaneous Capture' :
+               gameOverData.reason === 'simultaneous_checkmate_draw' ? 'Draw — Simultaneous Checkmate' :
                gameOverData.reason}
             </div>
             {(gameOverData.reason === 'piece_count' || gameOverData.reason === 'equal_piece_count') && 

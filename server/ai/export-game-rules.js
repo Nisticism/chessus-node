@@ -191,6 +191,8 @@ async function exportGameRules(gameTypeId) {
       simul_turns_submit_mode: g.simul_turns_submit_mode || 'immediate',
       simul_turns_place_conflict: g.simul_turns_place_conflict || 'cancel',
       simul_turns_free_move_after_capture: g.simul_turns_free_move_after_capture || 'disable',
+      simul_turns_simultaneous_capture_draw: g.simul_turns_simultaneous_capture_draw == null ? true : toBool(g.simul_turns_simultaneous_capture_draw),
+      simul_turns_simultaneous_checkmate_draw: g.simul_turns_simultaneous_checkmate_draw == null ? true : toBool(g.simul_turns_simultaneous_checkmate_draw),
       mate_condition: toBool(g.mate_condition),
       mate_piece: g.mate_piece == null ? null : intOr(g.mate_piece, null),
       capture_condition: toBool(g.capture_condition),

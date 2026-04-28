@@ -995,6 +995,7 @@ function initSimulTurnsState(gameState) {
   if (!gameState.pendingSimulMoves) gameState.pendingSimulMoves = {};
   if (typeof gameState.simulCancellationCount !== 'number') gameState.simulCancellationCount = 0;
   if (typeof gameState._simulRoundIndex !== 'number') gameState._simulRoundIndex = 0;
+  if (!gameState.simulReadyPlayers) gameState.simulReadyPlayers = new Set();
 }
 
 function clearPendingSimulMoves(gameState) {
@@ -1073,37 +1074,15 @@ function validateSimulMoveProposal(gameState, playerId, move) {
 async function handleSimulMoveSubmission(io, socket, gameState, gameId, userId, move) {
   initSimulTurnsState(gameState);
 
-  // Disallow simul-turns against bot games for the MVP — Phase 3 will wire
-  // the bot into the secret-submit flow.
-  if (gameState.botPlayer) {
-    return socket.emit('error', { message: 'Simultaneous-turns games against bots are coming soon. Try a human opponent for now.' });
-  }
-
-  // Reject premoves and chain-capture flows — incompatible with simul-turns.
+  // Disallow chain captures — incompatible with simul-turns.
   if (gameState.chainCapturePieceId) {
     return socket.emit('error', { message: 'Chain captures are not available in simultaneous-turns games.' });
   }
 
-  // Begin the game on the first submission, mirroring the standard handler.
-  if (gameState.status === 'ready' && gameState.moveHistory.length === 0) {
-    gameState.status = 'active';
-    gameState.startTime = Date.now();
-    if (!gameState.initialPieces) {
-      gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
-    }
-    const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    try {
-      await db_pool.query(
-        "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
-        [startTimeStr, buildOtherData(gameState), gameId]
-      );
-      if (gameState.gameTypeId) {
-        await db_pool.query("UPDATE game_types SET last_played_at = ? WHERE id = ?", [startTimeStr, gameState.gameTypeId]);
-      }
-    } catch (e) { console.error('simul: failed to mark game active', e); }
-    initializeCastlingPartners(gameState);
-    io.emit('gameStarted', { gameId });
-    startGameTimer(io, gameId);
+  // Simul-turns games require BOTH players to ready up via `simulReadyToStart`
+  // before the clocks begin. Until then, no move submissions are accepted.
+  if (gameState.status !== 'active') {
+    return socket.emit('error', { message: 'Both players must press Ready before the game starts.' });
   }
 
   // Validate the proposal. Bad submissions are rejected so the player can
@@ -1140,7 +1119,7 @@ async function handleSimulMoveSubmission(io, socket, gameState, gameId, userId, 
  * Movement happens first (Phase A); ranged attacks (Phase B) are applied
  * separately by the caller after movement is complete.
  */
-function applySimulMovement(gameState, proposal, playerId) {
+function applySimulMovement(gameState, proposal, playerId, safelyMovingPieceIds) {
   if (proposal.isPlace) {
     // Resolve placeable piece template
     const otherData = gameState.otherGameData || {};
@@ -1186,8 +1165,17 @@ function applySimulMovement(gameState, proposal, playerId) {
     const occupant = gameState.pieces[occupantIdx];
     const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
     if ((occupant.team || occupant.player_id) !== playerPosition) {
-      captured.push(occupant);
-      gameState.pieces.splice(occupantIdx, 1);
+      // BUGFIX: if the occupant is itself moving away this round AND its move
+      // is a non-capture (a pure escape), the attacker should NOT capture it
+      // — both pieces survive, with the attacker arriving at the square the
+      // defender just vacated. Mutual-capture (both proposals carry capture
+      // intent) is preserved — both captures still resolve.
+      if (safelyMovingPieceIds && safelyMovingPieceIds.has(String(occupant.id))) {
+        // skip capture; the attacker still moves below
+      } else {
+        captured.push(occupant);
+        gameState.pieces.splice(occupantIdx, 1);
+      }
     } else {
       // Friendly fire shouldn't have passed validation; bail.
       return { applied: false };
@@ -1366,6 +1354,14 @@ async function resolveSimulRound(io, gameId, gameState) {
   }
   const moveRecords = [];
   const allCapturedPieces = [];
+  // Build the set of piece ids that are "safely moving" (i.e. their proposal
+  // is a non-capture pure move). These pieces escape any incoming capture
+  // attempt this round — see the BUGFIX comment in applySimulMovement.
+  const safelyMovingPieceIds = new Set(
+    survivorMoves
+      .filter(p => !p.isPlace && p.kind !== 'ranged' && !p.capturedPieceId)
+      .map(p => String(p.sourcePieceId))
+  );
   if (appliedSwap) {
     for (const sv of survivorMoves) {
       moveRecords.push({
@@ -1377,7 +1373,7 @@ async function resolveSimulRound(io, gameId, gameState) {
     }
   } else {
     for (const sv of survivorMoves) {
-      const result = applySimulMovement(gameState, sv, sv.playerId);
+      const result = applySimulMovement(gameState, sv, sv.playerId, safelyMovingPieceIds);
       if (result.applied && result.moveRecord) moveRecords.push(result.moveRecord);
       if (result.capturedPieces) allCapturedPieces.push(...result.capturedPieces);
     }
@@ -1420,11 +1416,65 @@ async function resolveSimulRound(io, gameId, gameState) {
     endedByCancellationDraw = true;
   }
 
+  // Simultaneous-capture draw: if both players' moves captured an opposing
+  // piece flagged as game-ending (ends_game_on_capture or ends_game_on_checkmate),
+  // declare a draw rather than letting one side "win first" by resolution order.
+  let endedBySimulCaptureDraw = false;
+  const simulCaptureDrawEnabled =
+    !!gameState.gameType?.simultaneous_turns &&
+    (gameState.gameType?.simul_turns_simultaneous_capture_draw == null
+      ? true
+      : !!Number(gameState.gameType.simul_turns_simultaneous_capture_draw)) &&
+    (gameState.gameType?.capture_condition || gameState.gameType?.mate_condition);
+  if (!endedByCancellationDraw && simulCaptureDrawEnabled && allCapturedPieces.length >= 2) {
+    // For each player, did they capture a game-ending piece this round?
+    const capturesByPlayer = {};
+    for (const sv of proposals) {
+      if (cancelled.has(sv.playerId)) continue;
+      capturesByPlayer[sv.playerId] = capturesByPlayer[sv.playerId] || [];
+    }
+    for (const cap of allCapturedPieces) {
+      if (!cap || (!cap.ends_game_on_capture && !cap.ends_game_on_checkmate)) continue;
+      // The capturer is whichever player owns the OPPONENT of the captured piece's team.
+      const losingPos = cap.team || cap.player_id;
+      const capturer = (gameState.players || []).find(p => p && p.position && p.position !== losingPos);
+      if (capturer) {
+        capturesByPlayer[capturer.id] = capturesByPlayer[capturer.id] || [];
+        capturesByPlayer[capturer.id].push(cap);
+      }
+    }
+    const playersWithGameEndingCapture = Object.values(capturesByPlayer).filter(arr => arr && arr.length > 0).length;
+    if (playersWithGameEndingCapture >= 2) {
+      endedBySimulCaptureDraw = true;
+    }
+  }
+
+  // Simultaneous-checkmate draw: if BOTH players are now in checkmate,
+  // declare a draw instead of arbitrarily picking a winner.
+  let endedBySimulCheckmateDraw = false;
+  const simulCheckmateDrawEnabled =
+    !!gameState.gameType?.simultaneous_turns &&
+    (gameState.gameType?.simul_turns_simultaneous_checkmate_draw == null
+      ? true
+      : !!Number(gameState.gameType.simul_turns_simultaneous_checkmate_draw)) &&
+    !!gameState.gameType?.mate_condition;
+  if (!endedByCancellationDraw && !endedBySimulCaptureDraw && simulCheckmateDrawEnabled) {
+    try {
+      const positions = (gameState.players || []).map(p => p.position).filter(Boolean);
+      const inMate = positions.filter(pos => {
+        try { return isCheckmate(gameState, pos); } catch { return false; }
+      });
+      if (inMate.length >= 2) {
+        endedBySimulCheckmateDraw = true;
+      }
+    } catch (e) { console.error('simul: simultaneous-checkmate detection failed', e); }
+  }
+
   // Standard win conditions: leverage existing checkWinCondition for capture
   // / mate-piece / etc. Since simul-turns has no notion of "current player",
   // we evaluate from each player's perspective.
   let winnerInfo = null;
-  if (!endedByCancellationDraw) {
+  if (!endedByCancellationDraw && !endedBySimulCaptureDraw && !endedBySimulCheckmateDraw) {
     try {
       const winRes = checkWinCondition(gameState, allCapturedPieces);
       if (winRes && (winRes.gameOver || winRes.winner != null)) {
@@ -1475,6 +1525,40 @@ async function resolveSimulRound(io, gameId, gameState) {
     });
     return;
   }
+  if (endedBySimulCaptureDraw) {
+    gameState.status = 'completed';
+    gameState.winner = null;
+    gameState.winReason = 'simultaneous_capture_draw';
+    const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    try {
+      await db_pool.query(
+        `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL, pieces = ?, other_data = ? WHERE id = ?`,
+        [endTime, JSON.stringify(gameState.pieces),
+          buildOtherData(gameState, { winner: null, reason: 'simultaneous_capture_draw' }), gameId]
+      );
+    } catch (e) { console.error('simul: end-by-simul-capture-draw persist failed', e); }
+    broadcastGameOver(io, gameId, gameState, {
+      gameId, winner: null, reason: 'simultaneous_capture_draw', finalState: gameState,
+    });
+    return;
+  }
+  if (endedBySimulCheckmateDraw) {
+    gameState.status = 'completed';
+    gameState.winner = null;
+    gameState.winReason = 'simultaneous_checkmate_draw';
+    const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    try {
+      await db_pool.query(
+        `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL, pieces = ?, other_data = ? WHERE id = ?`,
+        [endTime, JSON.stringify(gameState.pieces),
+          buildOtherData(gameState, { winner: null, reason: 'simultaneous_checkmate_draw' }), gameId]
+      );
+    } catch (e) { console.error('simul: end-by-simul-mate-draw persist failed', e); }
+    broadcastGameOver(io, gameId, gameState, {
+      gameId, winner: null, reason: 'simultaneous_checkmate_draw', finalState: gameState,
+    });
+    return;
+  }
   if (winnerInfo && winnerInfo.gameOver) {
     gameState.status = 'completed';
     gameState.winner = winnerInfo.winner ?? null;
@@ -1490,7 +1574,166 @@ async function resolveSimulRound(io, gameId, gameState) {
     broadcastGameOver(io, gameId, gameState, {
       gameId, winner: winnerInfo.winner ?? null, reason: winnerInfo.reason || 'win', finalState: gameState,
     });
+    return;
   }
+
+  // No game-over: if a bot is in this simul-turns game, schedule its next
+  // submission so the next round can resolve once the human submits.
+  if (gameState.botPlayer && gameState.status === 'active') {
+    submitBotSimulMove(io, gameId, gameState).catch(e => console.error('simul: bot next-round submission error', e));
+  }
+}
+
+/**
+ * Mark a player as ready to start a simultaneous-turns game. Both players
+ * must call this from the lobby before the clocks begin ticking — this keeps
+ * the start fair (Player 2's clock no longer waits for Player 1's first
+ * move). Once all players are ready the game transitions to 'active' and
+ * the timer begins.
+ */
+async function handleSimulReadyToStart(io, socket, gameState, gameId, userId) {
+  if (!isSimulTurns(gameState)) {
+    return socket.emit('error', { message: 'Ready-up is only used for simultaneous-turns games.' });
+  }
+  if (gameState.status === 'active') {
+    // Idempotent re-broadcast in case the original event was missed.
+    return io.to(`game-${gameId}`).emit('simulReadyUpdate', {
+      gameId,
+      readyPlayerIds: (gameState.players || []).map(p => p.id),
+      allReady: true,
+    });
+  }
+  if (gameState.status !== 'ready') {
+    return socket.emit('error', { message: 'Game is not ready to start yet.' });
+  }
+  // Make sure userId is one of the seated players.
+  const player = (gameState.players || []).find(p => Number(p.id) === Number(userId));
+  if (!player) {
+    return socket.emit('error', { message: 'You are not a player in this game.' });
+  }
+  initSimulTurnsState(gameState);
+  gameState.simulReadyPlayers.add(userId);
+  // Bots auto-ready: a bot opponent doesn't click anything, so as soon as
+  // the human player flips their ready bit, the bot side is ready too.
+  if (gameState.botPlayer && gameState.botPlayer.id != null) {
+    gameState.simulReadyPlayers.add(gameState.botPlayer.id);
+  }
+
+  const seatedIds = (gameState.players || []).filter(p => p && p.id != null).map(p => p.id);
+  const allReady = seatedIds.length >= 2 && seatedIds.every(id => gameState.simulReadyPlayers.has(id));
+
+  io.to(`game-${gameId}`).emit('simulReadyUpdate', {
+    gameId,
+    readyPlayerIds: Array.from(gameState.simulReadyPlayers),
+    allReady,
+  });
+
+  if (allReady) {
+    gameState.status = 'active';
+    gameState.startTime = Date.now();
+    if (!gameState.initialPieces) {
+      gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
+    }
+    initializeCastlingPartners(gameState);
+    if (gameState.gameType?.repetition_draw_count) {
+      try {
+        const initialPositionHash = getPositionHash(gameState.pieces, 1);
+        gameState.positionHistory = { [initialPositionHash]: 1 };
+      } catch (_) {}
+    }
+    const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    try {
+      await db_pool.query(
+        "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
+        [startTimeStr, buildOtherData(gameState), gameId]
+      );
+      if (gameState.gameTypeId) {
+        await db_pool.query("UPDATE game_types SET last_played_at = ? WHERE id = ?", [startTimeStr, gameState.gameTypeId]);
+      }
+    } catch (e) { console.error('simul: failed to mark game active on ready-up', e); }
+    io.emit('gameStarted', { gameId });
+    startGameTimer(io, gameId);
+
+    // If a bot is in this game, kick off its first simul submission now.
+    if (gameState.botPlayer) {
+      submitBotSimulMove(io, gameId, gameState).catch(e => console.error('simul: bot first submission error', e));
+    }
+  }
+}
+
+/**
+ * Pick a move for the bot in a simultaneous-turns game and buffer it just like
+ * a human submission. Triggers `resolveSimulRound` if both sides have now
+ * submitted. Includes a thinking delay so the bot doesn't always resolve
+ * before the human can react.
+ */
+async function submitBotSimulMove(io, gameId, gameState) {
+  const bot = gameState.botPlayer;
+  if (!bot) return;
+  if (!isSimulTurns(gameState)) return;
+  if (gameState.status !== 'active') return;
+  initSimulTurnsState(gameState);
+  if (gameState.pendingSimulMoves[bot.id]) return; // already submitted this round
+
+  const aiEngine = require('./ai/ai-engine');
+  const settings = aiEngine.DIFFICULTY[bot.difficulty] || aiEngine.DIFFICULTY.medium;
+  const delay = (settings.thinkDelay || 800) + Math.floor(Math.random() * 400);
+
+  setTimeout(async () => {
+    try {
+      if (gameState.status !== 'active') return;
+      if (gameState.pendingSimulMoves[bot.id]) return;
+
+      // The AI's getBestMove evaluates from `botPosition` directly, so we
+      // don't need to fudge currentTurn. We do, however, suppress the
+      // engine's verbose logging spam during simul-turn play.
+      let bestMove;
+      try {
+        bestMove = aiEngine.getBestMove(gameState, bot.position, bot.difficulty);
+      } catch (e) {
+        console.error('[Bot/Simul] getBestMove failed:', e);
+        return;
+      }
+      if (!bestMove || !bestMove.to) {
+        console.warn('[Bot/Simul] No move returned for bot in game', gameId);
+        return;
+      }
+
+      const move = {
+        pieceId: bestMove.pieceId,
+        to: { x: bestMove.to.x, y: bestMove.to.y },
+      };
+      if (bestMove.isRangedAttack) move.isRangedAttack = true;
+      if (bestMove.type === 'place') {
+        move.type = 'place';
+        if (bestMove.placePieceId != null) move.placePieceId = bestMove.placePieceId;
+      }
+
+      const proposal = validateSimulMoveProposal(gameState, bot.id, move);
+      if (!proposal.ok) {
+        console.warn('[Bot/Simul] proposed bot move was invalid:', proposal.reason, move);
+        return;
+      }
+      gameState.pendingSimulMoves[bot.id] = { move, proposal, submittedAt: Date.now() };
+
+      // Tell the room that a player (the bot) submitted, so the human's UI
+      // can flip to "opponent has submitted!".
+      io.to(`game-${gameId}`).emit('simulOpponentSubmitted', {
+        gameId,
+        submittedPlayerId: bot.id,
+        opponentId: null,
+      });
+
+      const seatedIds = (gameState.players || []).filter(p => p && p.id != null).map(p => p.id);
+      const submittedIds = Object.keys(gameState.pendingSimulMoves);
+      const allSubmitted = seatedIds.every(id => submittedIds.map(s => String(s)).includes(String(id)));
+      if (allSubmitted) {
+        await resolveSimulRound(io, gameId, gameState);
+      }
+    } catch (e) {
+      console.error('[Bot/Simul] submitBotSimulMove failed:', e);
+    }
+  }, delay);
 }
 
 // =====================================================================
@@ -5243,6 +5486,20 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error making move:", error);
         socket.emit("error", { message: "Failed to make move" });
+      }
+    });
+
+    // Simul-turns: confirm a player is ready to start. Both players must
+    // signal ready before the game becomes active and clocks begin.
+    socket.on("simulReadyToStart", async ({ gameId, userId }) => {
+      try {
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return socket.emit("error", { message: "Game not found" });
+        await handleSimulReadyToStart(io, socket, gameState, gameId, userId);
+      } catch (err) {
+        console.error("simulReadyToStart error:", err);
+        socket.emit("error", { message: "Failed to ready up" });
       }
     });
 

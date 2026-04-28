@@ -242,6 +242,36 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
                 }
               />
             </div>
+
+            {(gameData.capture_condition || gameData.mate_condition) && (
+              <div className={styles["form-group"]} style={{ marginBottom: 0, display: 'flex', justifyContent: 'center' }}>
+                <ToggleSwitch
+                  checked={gameData.simul_turns_simultaneous_capture_draw !== false}
+                  onChange={(val) => handleChange("simul_turns_simultaneous_capture_draw", val)}
+                  label={
+                    <span style={{ fontSize: '0.9rem' }}>
+                      Draw on simultaneous capture of game-ending pieces{' '}
+                      <InfoTooltip text="If both players capture each other's required-to-win piece in the same simul-turns round, the game ends in a draw instead of being won by whichever side resolved first. Default ON for simul-turns games with a capture or checkmate rule." />
+                    </span>
+                  }
+                />
+              </div>
+            )}
+
+            {gameData.mate_condition && (
+              <div className={styles["form-group"]} style={{ marginBottom: 0, display: 'flex', justifyContent: 'center' }}>
+                <ToggleSwitch
+                  checked={gameData.simul_turns_simultaneous_checkmate_draw !== false}
+                  onChange={(val) => handleChange("simul_turns_simultaneous_checkmate_draw", val)}
+                  label={
+                    <span style={{ fontSize: '0.9rem' }}>
+                      Draw on simultaneous checkmate{' '}
+                      <InfoTooltip text="If both players' moves leave the OTHER side in checkmate at the same time, the game ends in a draw. Default ON for simul-turns games with a checkmate rule." />
+                    </span>
+                  }
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

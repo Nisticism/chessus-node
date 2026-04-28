@@ -2234,6 +2234,22 @@ const GameTypeView = () => {
                     ? 'Free moves work normally (one player may get an extra unanswered action).'
                     : 'Free moves after captures or promotions are disabled in simul-turns games.'}
               </li>
+              {(game.capture_condition || game.mate_condition) && game.simul_turns_simultaneous_capture_draw !== 0 && game.simul_turns_simultaneous_capture_draw !== false && (
+                <li style={{ textAlign: 'left' }}>
+                  <strong>Simultaneous capture draw:</strong>{' '}
+                  If both players capture each other's required-to-win piece in the same round, the game ends in a draw by simultaneous capture.
+                </li>
+              )}
+              {game.mate_condition && game.simul_turns_simultaneous_checkmate_draw !== 0 && game.simul_turns_simultaneous_checkmate_draw !== false && (
+                <li style={{ textAlign: 'left' }}>
+                  <strong>Simultaneous checkmate draw:</strong>{' '}
+                  If both players' moves leave the other side in checkmate at the same time, the game ends in a draw by simultaneous checkmate.
+                </li>
+              )}
+              <li style={{ textAlign: 'left', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                <strong>Game start:</strong>{' '}
+                Both players must press <em>Ready</em> after joining; the clocks only begin once both have confirmed.
+              </li>
             </ul>
           </div>
         )}

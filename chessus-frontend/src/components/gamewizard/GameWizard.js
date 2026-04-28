@@ -90,6 +90,8 @@ const GameWizard = ({ editGameId }) => {
     simul_turns_submit_mode: 'immediate',
     simul_turns_place_conflict: 'cancel',
     simul_turns_free_move_after_capture: 'disable',
+    simul_turns_simultaneous_capture_draw: true,
+    simul_turns_simultaneous_checkmate_draw: true,
     
     // Step 4: Advanced Settings
     starting_piece_count: 0,
@@ -205,6 +207,8 @@ const GameWizard = ({ editGameId }) => {
             simul_turns_submit_mode: existingGame.simul_turns_submit_mode || 'immediate',
             simul_turns_place_conflict: existingGame.simul_turns_place_conflict || 'cancel',
             simul_turns_free_move_after_capture: existingGame.simul_turns_free_move_after_capture || 'disable',
+            simul_turns_simultaneous_capture_draw: existingGame.simul_turns_simultaneous_capture_draw == null ? true : Boolean(Number(existingGame.simul_turns_simultaneous_capture_draw)),
+            simul_turns_simultaneous_checkmate_draw: existingGame.simul_turns_simultaneous_checkmate_draw == null ? true : Boolean(Number(existingGame.simul_turns_simultaneous_checkmate_draw)),
             starting_piece_count: existingGame.starting_piece_count || 0,
             pieces_string: existingGame.pieces_string || "[]",
             range_squares_string: existingGame.range_squares_string || "",

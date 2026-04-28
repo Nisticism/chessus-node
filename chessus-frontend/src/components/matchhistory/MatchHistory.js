@@ -100,6 +100,9 @@ const MatchHistory = ({ userId, username }) => {
       case 'lose_all_pieces': return 'by anti-chess';
       case 'stalemate_win': return 'by stalemate win';
       case 'initial_position': return 'by initial position (no rating change)';
+      case 'cancellation_draw': return 'draw by cancellations';
+      case 'simultaneous_capture_draw': return 'draw by simultaneous capture';
+      case 'simultaneous_checkmate_draw': return 'draw by simultaneous checkmate';
       default: return '';
     }
   };

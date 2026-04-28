@@ -415,6 +415,20 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, user]);
 
+  // Simul-turns: signal that this player is ready to start the game.
+  // Once both players have signaled, the server transitions to active and
+  // the clocks begin.
+  const simulReadyToStart = useCallback((gameId) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+    socket.emit('simulReadyToStart', {
+      gameId,
+      userId: user?.id || `anon_${socket.id}`,
+    });
+  }, [socket, connected, user]);
+
   // Resign from game
   const resign = useCallback((gameId) => {
     if (!socket || !connected) {
@@ -571,6 +585,7 @@ export const SocketProvider = ({ children }) => {
     joinByInviteCode,
     getGameState,
     makeMove,
+    simulReadyToStart,
     resign,
     offerDraw,
     acceptDraw,

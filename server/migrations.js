@@ -2753,6 +2753,20 @@ const runMigrations = async () => {
         );
         migrationsRun++;
       }
+      if (!(await columnExists('game_types', 'simul_turns_simultaneous_capture_draw'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN simul_turns_simultaneous_capture_draw TINYINT(1) DEFAULT 1 COMMENT 'If true, a simultaneous capture of game-ending pieces results in a draw (default ON for simul-turns games with a capture/checkmate rule)'",
+          "Add simul_turns_simultaneous_capture_draw column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'simul_turns_simultaneous_checkmate_draw'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN simul_turns_simultaneous_checkmate_draw TINYINT(1) DEFAULT 1 COMMENT 'If true, both players reaching checkmate in the same simul-turns round results in a draw (default ON for simul-turns games with a checkmate rule)'",
+          "Add simul_turns_simultaneous_checkmate_draw column to game_types"
+        );
+        migrationsRun++;
+      }
     } catch (err) {
       console.error('Error adding simul-turns sub-setting columns:', err.message);
     }

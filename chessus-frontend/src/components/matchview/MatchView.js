@@ -144,6 +144,9 @@ const MatchView = () => {
       case 'lose_all_pieces': return 'Anti-chess (lost all pieces)';
       case 'stalemate_win': return 'Stalemate win';
       case 'initial_position': return 'Initial position (no rating change)';
+      case 'cancellation_draw': return 'Cancellation threshold (draw)';
+      case 'simultaneous_capture_draw': return 'Simultaneous capture (draw)';
+      case 'simultaneous_checkmate_draw': return 'Simultaneous checkmate (draw)';
       default: return 'Game completed';
     }
   };

@@ -2397,6 +2397,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         squares_condition = ?, squares_count = ?, hill_condition = ?, hill_x = ?, hill_y = ?, hill_turns = ?,
         actions_per_turn = ?, simultaneous_turns = ?,
         simul_turns_clock_pause = ?, simul_turns_draw_after_cancellations = ?, simul_turns_submit_mode = ?, simul_turns_place_conflict = ?, simul_turns_free_move_after_capture = ?,
+        simul_turns_simultaneous_capture_draw = ?, simul_turns_simultaneous_checkmate_draw = ?,
         board_width = ?, board_height = ?, player_count = ?,
         starting_piece_count = ?, pieces_string = ?, range_squares_string = ?,
         promotion_squares_string = ?, special_squares_string = ?, control_squares_string = ?,
@@ -2437,6 +2438,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       ['immediate', 'stage'].includes(gameData.simul_turns_submit_mode) ? gameData.simul_turns_submit_mode : 'immediate',
       ['cancel', 'allow'].includes(gameData.simul_turns_place_conflict) ? gameData.simul_turns_place_conflict : 'cancel',
       ['disable', 'restage', 'allow'].includes(gameData.simul_turns_free_move_after_capture) ? gameData.simul_turns_free_move_after_capture : 'disable',
+      gameData.simul_turns_simultaneous_capture_draw === false || gameData.simul_turns_simultaneous_capture_draw === 0 ? 0 : 1,
+      gameData.simul_turns_simultaneous_checkmate_draw === false || gameData.simul_turns_simultaneous_checkmate_draw === 0 ? 0 : 1,
       gameData.board_width || 8,
       gameData.board_height || 8,
       gameData.player_count || 2,
@@ -5435,6 +5438,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
         actions_per_turn, simultaneous_turns,
         simul_turns_clock_pause, simul_turns_draw_after_cancellations, simul_turns_submit_mode, simul_turns_place_conflict, simul_turns_free_move_after_capture,
+        simul_turns_simultaneous_capture_draw, simul_turns_simultaneous_checkmate_draw,
         board_width, board_height, player_count,
         starting_piece_count, range_squares_string,
         promotion_squares_string, special_squares_string, control_squares_string,
@@ -5442,7 +5446,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         no_moves_condition, piece_count_condition, promotion_condition,
         lose_all_pieces_condition, stalemate_win_condition, stalemate_draw_condition, forced_capture_condition,
         pieces_string, created_at, is_draft, draft_saved_step
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -5474,6 +5478,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       ['immediate', 'stage'].includes(gameData.simul_turns_submit_mode) ? gameData.simul_turns_submit_mode : 'immediate',
       ['cancel', 'allow'].includes(gameData.simul_turns_place_conflict) ? gameData.simul_turns_place_conflict : 'cancel',
       ['disable', 'restage', 'allow'].includes(gameData.simul_turns_free_move_after_capture) ? gameData.simul_turns_free_move_after_capture : 'disable',
+      gameData.simul_turns_simultaneous_capture_draw === false || gameData.simul_turns_simultaneous_capture_draw === 0 ? 0 : 1,
+      gameData.simul_turns_simultaneous_checkmate_draw === false || gameData.simul_turns_simultaneous_checkmate_draw === 0 ? 0 : 1,
       gameData.board_width || 8,
       gameData.board_height || 8,
       gameData.player_count || 2,
