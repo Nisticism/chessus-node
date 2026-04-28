@@ -4,6 +4,13 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "April 29, 2026",
+    title: "Piece wizard: duplicate ruleset detection",
+    items: [
+      "Piece wizard: when saving a new or edited piece, the wizard now checks whether any existing piece already has the exact same ruleset (movement, capture, special rules). If a match is found, a warning lists all matching pieces by name with links, and asks whether you want to save anyway. If the name also matches an existing piece, an additional caution notes that redundant duplicates risk being removed. Piece name, images, description, and category are not compared — only functional gameplay rules.",
+    ],
+  },
+  {
     date: "April 28, 2026",
     title: "AI training: smarter promotion piece selection; admin AI analysis requests; notification fixes",
     items: [

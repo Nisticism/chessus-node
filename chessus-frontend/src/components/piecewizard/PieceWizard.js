@@ -4,7 +4,7 @@ import { useSelector } from "react-redux";
 import styles from "./piecewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import Divider from "../Divider/Divider";
-import { createPiece, updatePiece, getPieceById } from "../../actions/pieces";
+import { createPiece, updatePiece, getPieceById, checkPieceDuplicates } from "../../actions/pieces";
 import { trackPieceCreation, trackEvent } from "../../analytics/GoogleAnalytics";
 import { validateContent } from "../../utils/contentModeration";
 import PieceStep1BasicInfo from "./PieceStep1BasicInfo";
@@ -22,6 +22,7 @@ const PieceWizard = ({ editPieceId = null }) => {
   const [isEditMode, setIsEditMode] = useState(!!editPieceId);
   const [existingImages, setExistingImages] = useState([]);
   const [missingFields, setMissingFields] = useState(null);
+  const [duplicateWarning, setDuplicateWarning] = useState(null); // { matches, nameSame }
   
   // Track if user has manually interacted with attacks_like_movement checkbox
   const hasManuallySetAttackStyle = useRef(false);
@@ -583,7 +584,30 @@ const PieceWizard = ({ editPieceId = null }) => {
     }
   };
 
-  const handleSubmit = async () => {
+  // Build an object keyed by DB column names from form state, for duplicate checking.
+  const buildDuplicateCheckFields = () => {
+    const fieldMapping = {
+      special_scenario_capture: 'special_scenario_captures',
+      checkmate_on_attack: 'has_checkmate_rule',
+      check_on_attack: 'has_check_rule',
+      lose_game_on_capture: 'has_lose_on_capture_rule',
+      min_turns_until_movement: 'min_turns_per_move',
+    };
+    const skipKeys = new Set([
+      'piece_name', 'piece_description', 'piece_category',
+      'piece_images', 'piece_image_previews', 'piece_image_sources',
+      'is_anonymous_creator',
+    ]);
+    const fields = {};
+    Object.keys(pieceData).forEach(key => {
+      if (skipKeys.has(key)) return;
+      const dbKey = fieldMapping[key] || key;
+      fields[dbKey] = pieceData[key];
+    });
+    return fields;
+  };
+
+  const handleSubmit = async (bypassDuplicateCheck = false) => {
     // Collect all missing required fields
     const missing = [];
     
@@ -603,6 +627,22 @@ const PieceWizard = ({ editPieceId = null }) => {
     if (missing.length > 0) {
       setMissingFields(missing);
       return;
+    }
+
+    // Duplicate ruleset check — skip if user clicked "Save Anyway"
+    if (!bypassDuplicateCheck) {
+      const normalizedFields = buildDuplicateCheckFields();
+      const { matches } = await checkPieceDuplicates(
+        normalizedFields,
+        isEditMode ? editPieceId : null
+      );
+      if (matches && matches.length > 0) {
+        const nameSame = matches.some(
+          m => m.piece_name.trim().toLowerCase() === pieceData.piece_name.trim().toLowerCase()
+        );
+        setDuplicateWarning({ matches, nameSame });
+        return;
+      }
     }
 
     // Content moderation validation
@@ -812,6 +852,54 @@ const PieceWizard = ({ editPieceId = null }) => {
               <StandardButton 
                 buttonText="OK" 
                 onClick={() => setMissingFields(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {duplicateWarning && (
+        <div className={styles["warning-overlay"]}>
+          <div className={styles["warning-modal"]}>
+            <h3>⚠️ Duplicate Ruleset Detected</h3>
+            <p>
+              The following piece{duplicateWarning.matches.length > 1 ? 's' : ''} already
+              {duplicateWarning.matches.length > 1 ? ' have' : ' has'} the exact same
+              movement, capture, and special rules as this piece (name, images, description,
+              and category are not compared):
+            </p>
+            <ul className={styles["missing-fields-list"]}>
+              {duplicateWarning.matches.map(m => (
+                <li key={m.id}>
+                  <Link
+                    to={`/pieces/${m.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: 'var(--accent-primary)' }}
+                  >
+                    {m.piece_name}
+                  </Link>
+                  {' '}by {m.is_anonymous_creator ? 'Anonymous' : m.creator_username}
+                </li>
+              ))}
+            </ul>
+            {duplicateWarning.nameSame && (
+              <p style={{ color: '#f59e0b', fontWeight: 600 }}>
+                One or more of the matching pieces also shares the same name as this piece.
+                Pieces that are redundant duplicates of existing pieces risk being removed.
+              </p>
+            )}
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9em' }}>
+              You can still save this piece if it is intentional.
+            </p>
+            <div className={styles["warning-buttons"]}>
+              <StandardButton
+                buttonText="Go Back"
+                onClick={() => setDuplicateWarning(null)}
+              />
+              <StandardButton
+                buttonText="Save Anyway"
+                onClick={() => { setDuplicateWarning(null); handleSubmit(true); }}
               />
             </div>
           </div>

@@ -1962,6 +1962,165 @@ app.get("/api/pieces/full", async (req, res) => {
   }
 });
 
+// ---- Duplicate-ruleset check (used by the piece wizard before save) ----
+// Accepts { fields: <DB-column-named object>, excludeId: <number|null> }
+// Returns { matches: [{id, piece_name, creator_username, is_anonymous_creator}] }
+// Does NOT require authentication — the wizard must call this for anonymous
+// creators too. Read-only and returns only identity columns, no sensitive data.
+app.post("/api/pieces/duplicates", async (req, res) => {
+  try {
+    const { fields, excludeId } = req.body || {};
+    if (!fields || typeof fields !== 'object') {
+      return res.json({ matches: [] });
+    }
+
+    // These are ALL functional columns — everything that controls how a piece
+    // actually behaves, excluding identity (name, images, description, category,
+    // creator, timestamps). Comparison is field-by-field, short-circuits on
+    // the first difference so the inner loop is fast.
+    const BOOL_COLS = [
+      'directional_movement_style','repeating_movement','first_move_only','first_move_only_capture',
+      'up_left_movement_exact','up_movement_exact','up_right_movement_exact','right_movement_exact',
+      'down_right_movement_exact','down_movement_exact','down_left_movement_exact','left_movement_exact',
+      'up_left_capture_exact','up_capture_exact','up_right_capture_exact','right_capture_exact',
+      'down_right_capture_exact','down_capture_exact','down_left_capture_exact','left_capture_exact',
+      'up_left_attack_range_exact','up_attack_range_exact','up_right_attack_range_exact','right_attack_range_exact',
+      'down_right_attack_range_exact','down_attack_range_exact','down_left_attack_range_exact','left_attack_range_exact',
+      'ratio_movement_style','repeating_ratio','repeating_capture','repeating_ratio_capture',
+      'step_by_step_movement_style','step_by_step_attack_style',
+      'can_hop_over_allies','can_hop_over_enemies','exact_ratio_hop_only','directional_hop_disabled',
+      'can_hop_attack_over_allies','can_hop_attack_over_enemies',
+      'can_fire_over_allies','can_fire_over_enemies',
+      'can_capture_enemy_via_range','can_capture_enemy_on_move',
+      'can_capture_allies','cannot_be_captured',
+      'has_checkmate_rule','has_check_rule','has_lose_on_capture_rule',
+      'can_castle','can_promote','can_en_passant',
+      'capture_on_hop','chain_capture_enabled','free_move_after_promotion',
+      'chain_hop_allies','must_move_if_able','must_move_uses_action',
+    ];
+    // Integer columns — null-preserving (0 and null are semantically different
+    // for some of these; compare normalized integers so NULL==NULL and 0==0).
+    const INT_COLS = [
+      'piece_width','piece_height',
+      'up_left_movement','up_movement','up_right_movement','right_movement',
+      'down_right_movement','down_movement','down_left_movement','left_movement',
+      'up_left_movement_available_for','up_movement_available_for','up_right_movement_available_for','right_movement_available_for',
+      'down_right_movement_available_for','down_movement_available_for','down_left_movement_available_for','left_movement_available_for',
+      'ratio_one_movement','ratio_two_movement','max_ratio_iterations',
+      'step_by_step_movement_value',
+      'min_turns_per_move','max_turns_per_move','available_for_moves',
+      'up_left_capture','up_capture','up_right_capture','right_capture',
+      'down_right_capture','down_capture','down_left_capture','left_capture',
+      'up_left_capture_available_for','up_capture_available_for','up_right_capture_available_for','right_capture_available_for',
+      'down_right_capture_available_for','down_capture_available_for','down_left_capture_available_for','left_capture_available_for',
+      'ratio_one_capture','ratio_two_capture','max_ratio_capture_iterations','step_by_step_capture',
+      'up_left_attack_range','up_attack_range','up_right_attack_range','right_attack_range',
+      'down_right_attack_range','down_attack_range','down_left_attack_range','left_attack_range',
+      'up_left_attack_range_available_for','up_attack_range_available_for','up_right_attack_range_available_for','right_attack_range_available_for',
+      'down_right_attack_range_available_for','down_attack_range_available_for','down_left_attack_range_available_for','left_attack_range_available_for',
+      'ratio_one_attack_range','ratio_two_attack_range',
+      'step_by_step_attack_value',
+      'max_piece_captures_per_move','max_piece_captures_per_ranged_attack',
+      'max_chain_hops',
+    ];
+    // JSON / text columns — compare by canonical JSON (or trimmed string).
+    const JSON_COLS = [
+      'special_scenario_moves','special_scenario_captures',
+      'custom_movement_squares','custom_attack_squares',
+      'promotion_pieces_ids','available_for_captures',
+    ];
+
+    const normBool = (v) => (v === 1 || v === true || v === 'true' || v === '1') ? 1 : 0;
+    const normInt  = (v) => (v === null || v === undefined || v === '' || v === 'null') ? null : (parseInt(v, 10) || 0);
+    const normJson = (v) => {
+      if (v === null || v === undefined || v === '' || v === 'null') return null;
+      if (typeof v === 'string') {
+        try { return JSON.stringify(JSON.parse(v)); } catch { return v.trim() || null; }
+      }
+      try { return JSON.stringify(v); } catch { return null; }
+    };
+
+    // Check if two pieces are functionally identical. Short-circuits on first diff.
+    const isIdentical = (dbPiece) => {
+      for (const col of BOOL_COLS) {
+        if (normBool(dbPiece[col]) !== normBool(fields[col])) return false;
+      }
+      for (const col of INT_COLS) {
+        if (normInt(dbPiece[col]) !== normInt(fields[col])) return false;
+      }
+      for (const col of JSON_COLS) {
+        if (normJson(dbPiece[col]) !== normJson(fields[col])) return false;
+      }
+      return true;
+    };
+
+    const [pieces] = await db_pool.query(`
+      SELECT p.id, p.piece_name, p.is_anonymous_creator,
+        CASE WHEN p.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END AS creator_username,
+        p.piece_width, p.piece_height,
+        p.directional_movement_style, p.repeating_movement, p.first_move_only, p.first_move_only_capture,
+        p.up_left_movement, p.up_movement, p.up_right_movement, p.right_movement,
+        p.down_right_movement, p.down_movement, p.down_left_movement, p.left_movement,
+        p.up_left_movement_exact, p.up_movement_exact, p.up_right_movement_exact, p.right_movement_exact,
+        p.down_right_movement_exact, p.down_movement_exact, p.down_left_movement_exact, p.left_movement_exact,
+        p.up_left_movement_available_for, p.up_movement_available_for, p.up_right_movement_available_for, p.right_movement_available_for,
+        p.down_right_movement_available_for, p.down_movement_available_for, p.down_left_movement_available_for, p.left_movement_available_for,
+        p.ratio_movement_style, p.ratio_one_movement, p.ratio_two_movement, p.repeating_ratio, p.max_ratio_iterations,
+        p.step_by_step_movement_style, p.step_by_step_movement_value,
+        p.can_hop_over_allies, p.can_hop_over_enemies, p.exact_ratio_hop_only, p.directional_hop_disabled,
+        p.min_turns_per_move, p.max_turns_per_move, p.available_for_moves,
+        p.special_scenario_moves,
+        p.can_capture_enemy_via_range, p.can_capture_enemy_on_move,
+        p.first_move_only_capture, p.available_for_captures,
+        p.up_left_capture, p.up_capture, p.up_right_capture, p.right_capture,
+        p.down_right_capture, p.down_capture, p.down_left_capture, p.left_capture,
+        p.up_left_capture_exact, p.up_capture_exact, p.up_right_capture_exact, p.right_capture_exact,
+        p.down_right_capture_exact, p.down_capture_exact, p.down_left_capture_exact, p.left_capture_exact,
+        p.up_left_capture_available_for, p.up_capture_available_for, p.up_right_capture_available_for, p.right_capture_available_for,
+        p.down_right_capture_available_for, p.down_capture_available_for, p.down_left_capture_available_for, p.left_capture_available_for,
+        p.ratio_one_capture, p.ratio_two_capture, p.repeating_capture, p.repeating_ratio_capture, p.max_ratio_capture_iterations, p.step_by_step_capture,
+        p.up_left_attack_range, p.up_attack_range, p.up_right_attack_range, p.right_attack_range,
+        p.down_right_attack_range, p.down_attack_range, p.down_left_attack_range, p.left_attack_range,
+        p.up_left_attack_range_exact, p.up_attack_range_exact, p.up_right_attack_range_exact, p.right_attack_range_exact,
+        p.down_right_attack_range_exact, p.down_attack_range_exact, p.down_left_attack_range_exact, p.left_attack_range_exact,
+        p.up_left_attack_range_available_for, p.up_attack_range_available_for, p.up_right_attack_range_available_for, p.right_attack_range_available_for,
+        p.down_right_attack_range_available_for, p.down_attack_range_available_for, p.down_left_attack_range_available_for, p.left_attack_range_available_for,
+        p.ratio_one_attack_range, p.ratio_two_attack_range,
+        p.step_by_step_attack_style, p.step_by_step_attack_value,
+        p.max_piece_captures_per_move, p.max_piece_captures_per_ranged_attack,
+        p.special_scenario_captures,
+        p.can_fire_over_allies, p.can_fire_over_enemies, p.can_en_passant,
+        p.capture_on_hop, p.chain_capture_enabled, p.free_move_after_promotion, p.promotion_pieces_ids,
+        p.can_hop_attack_over_allies, p.can_hop_attack_over_enemies, p.chain_hop_allies,
+        p.can_capture_allies, p.cannot_be_captured, p.max_chain_hops,
+        p.custom_movement_squares, p.custom_attack_squares,
+        p.must_move_if_able, p.must_move_uses_action,
+        p.has_checkmate_rule, p.has_check_rule, p.has_lose_on_capture_rule,
+        p.can_castle, p.can_promote
+      FROM chessusnode.pieces p
+      LEFT JOIN chessusnode.users u ON p.creator_id = u.id
+    `);
+
+    const excludeNum = excludeId != null ? Number(excludeId) : null;
+    const matches = [];
+    for (const piece of pieces) {
+      if (excludeNum !== null && piece.id === excludeNum) continue;
+      if (isIdentical(piece)) {
+        matches.push({
+          id: piece.id,
+          piece_name: piece.piece_name,
+          creator_username: piece.creator_username || 'Anonymous',
+          is_anonymous_creator: piece.is_anonymous_creator,
+        });
+      }
+    }
+    res.json({ matches });
+  } catch (err) {
+    console.error("Error in /api/pieces/duplicates:", err);
+    res.json({ matches: [] }); // non-fatal — wizard can still save
+  }
+});
+
 // Get single piece by ID
 app.get("/api/pieces/:pieceId", async (req, res) => {
   try {

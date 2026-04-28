@@ -85,3 +85,13 @@ export const deletePiece = async (pieceId) => {
     return Promise.reject(message);
   }
 };
+
+export const checkPieceDuplicates = async (fields, excludeId = null) => {
+  try {
+    const response = await PiecesService.checkPieceDuplicates(fields, excludeId);
+    return response.data; // { matches: [{id, piece_name, creator_username, is_anonymous_creator}] }
+  } catch (error) {
+    console.error("Error checking piece duplicates:", error);
+    return { matches: [] }; // non-fatal
+  }
+};

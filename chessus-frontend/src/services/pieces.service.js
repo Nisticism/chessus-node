@@ -62,6 +62,13 @@ const getGamesByPieceId = async (pieceId) => {
   return response;
 };
 
+const checkPieceDuplicates = async (fields, excludeId = null) => {
+  const response = await axios.post(API_URL + "pieces/duplicates", { fields, excludeId }, {
+    headers: authHeader()
+  });
+  return response;
+};
+
 const PiecesService = {
   getPieces,
   getPieceById,
@@ -70,6 +77,7 @@ const PiecesService = {
   updatePiece,
   deletePiece,
   getGamesByPieceId,
+  checkPieceDuplicates,
 }
 
 export default PiecesService;
