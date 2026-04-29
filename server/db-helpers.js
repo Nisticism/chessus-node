@@ -967,15 +967,30 @@ const updateNotification = async (notificationId, { sender_id, title, content })
   );
 };
 
-const getNotificationsByUserId = async (userId, page = 1, limit = 20) => {
+const getNotificationsByUserId = async (userId, page = 1, limit = 20, cursor = null) => {
+  if (cursor) {
+    // Keyset pagination: fetch notifications older than cursor (an id value).
+    // O(1) regardless of depth — use this for "load more" infinite scroll.
+    const notifications = await query(
+      `SELECT n.*, u.username as sender_username, u.profile_picture as sender_profile_picture
+         FROM notifications n
+         LEFT JOIN users u ON n.sender_id = u.id
+        WHERE n.user_id = ? AND n.id < ?
+        ORDER BY n.id DESC
+        LIMIT ?`,
+      [userId, cursor, limit]
+    );
+    return notifications;
+  }
+  // Legacy OFFSET path — still used for page=1 (initial load) and admin views.
   const offset = (page - 1) * limit;
   const notifications = await query(
     `SELECT n.*, u.username as sender_username, u.profile_picture as sender_profile_picture
-     FROM notifications n
-     LEFT JOIN users u ON n.sender_id = u.id
-     WHERE n.user_id = ?
-     ORDER BY n.created_at DESC
-     LIMIT ? OFFSET ?`,
+       FROM notifications n
+       LEFT JOIN users u ON n.sender_id = u.id
+      WHERE n.user_id = ?
+      ORDER BY n.created_at DESC
+      LIMIT ? OFFSET ?`,
     [userId, limit, offset]
   );
   return notifications;
@@ -1133,16 +1148,33 @@ const getConversations = async (userId) => {
   return rows;
 };
 
-const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50) => {
+const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, beforeId = null) => {
+  if (beforeId) {
+    // Keyset pagination: load messages older than beforeId.
+    // Used by the frontend "load earlier messages" button to avoid OFFSET.
+    const messages = await query(
+      `SELECT dm.*, u.username as sender_username, u.profile_picture as sender_profile_picture
+         FROM direct_messages dm
+         JOIN users u ON dm.sender_id = u.id
+        WHERE ((dm.sender_id = ? AND dm.recipient_id = ?)
+            OR (dm.sender_id = ? AND dm.recipient_id = ?))
+          AND dm.id < ?
+        ORDER BY dm.id DESC
+        LIMIT ?`,
+      [userId, otherUserId, otherUserId, userId, beforeId, limit]
+    );
+    return messages.reverse(); // return chronological order
+  }
+  // Legacy OFFSET path — still used for initial load (page 1).
   const offset = (page - 1) * limit;
   const messages = await query(
     `SELECT dm.*, u.username as sender_username, u.profile_picture as sender_profile_picture
-     FROM direct_messages dm
-     JOIN users u ON dm.sender_id = u.id
-     WHERE (dm.sender_id = ? AND dm.recipient_id = ?) 
-        OR (dm.sender_id = ? AND dm.recipient_id = ?)
-     ORDER BY dm.created_at DESC
-     LIMIT ? OFFSET ?`,
+       FROM direct_messages dm
+       JOIN users u ON dm.sender_id = u.id
+      WHERE (dm.sender_id = ? AND dm.recipient_id = ?)
+         OR (dm.sender_id = ? AND dm.recipient_id = ?)
+      ORDER BY dm.created_at DESC
+      LIMIT ? OFFSET ?`,
     [userId, otherUserId, otherUserId, userId, limit, offset]
   );
   return messages.reverse();

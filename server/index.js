@@ -9595,10 +9595,15 @@ app.get("/api/users/:userId/notifications", authenticateToken, async (req, res) 
       return res.status(403).json({ error: "Unauthorized" });
     }
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const notifications = await dbHelpers.getNotificationsByUserId(userId, page, Math.min(limit, 50));
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    // cursor = last notification id from previous page; enables O(1) keyset pagination.
+    // When cursor is provided, the page param is ignored.
+    const cursor = req.query.cursor ? parseInt(req.query.cursor) : null;
+    const notifications = await dbHelpers.getNotificationsByUserId(userId, page, limit, cursor);
     const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
-    res.json({ notifications, unreadCount, page, limit });
+    // Return nextCursor so the client can load more without OFFSET penalty.
+    const nextCursor = notifications.length === limit ? notifications[notifications.length - 1].id : null;
+    res.json({ notifications, unreadCount, page, limit, nextCursor });
   } catch (err) {
     console.error("Error fetching notifications:", err);
     res.status(500).json({ error: "Failed to fetch notifications" });
@@ -9839,8 +9844,12 @@ app.get("/api/users/:userId/messages/:otherUserId", authenticateToken, async (re
       return res.status(400).json({ error: "Invalid user ID" });
     }
     const page = parseInt(req.query.page) || 1;
-    const messages = await dbHelpers.getDirectMessages(userId, otherUserId, page);
-    res.json({ messages });
+    // beforeId = oldest message id currently visible; fetch messages older than that.
+    const beforeId = req.query.beforeId ? parseInt(req.query.beforeId) : null;
+    const messages = await dbHelpers.getDirectMessages(userId, otherUserId, page, 50, beforeId);
+    const hasMore = messages.length === 50;
+    const oldestId = messages.length > 0 ? messages[0].id : null;
+    res.json({ messages, hasMore, oldestId });
   } catch (err) {
     console.error("Error fetching messages:", err);
     res.status(500).json({ error: "Failed to fetch messages" });

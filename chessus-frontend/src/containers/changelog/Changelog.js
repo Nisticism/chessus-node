@@ -5,6 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 29, 2026",
+    title: "Performance improvements",
+    items: [
+      "Database indexes added across all major tables — game lists, piece lists, forum threads, comments, notifications, and messages now load significantly faster, especially as data grows.",
+      "Notifications and direct messages now use cursor-based pagination (load-more) instead of page offsets, eliminating slowdowns when scrolling through large message histories.",
+      "Slow query logging enabled — queries taking over 300ms are now flagged in server logs for ongoing monitoring.",
+    ],
+  },
+  {
+    date: "April 29, 2026",
     title: "Profile mention notifications",
     items: [
       "You now receive a notification when another user links your profile in a forum post or comment. Any link containing /profile/your-username will trigger a mention notification with a direct link back to the post.",
