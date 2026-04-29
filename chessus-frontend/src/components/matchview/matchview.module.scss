@@ -52,6 +52,23 @@
   opacity: 0.9;
 }
 
+.banner-game-type-link {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: inherit;
+  opacity: 0.75;
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+  transition: opacity 0.15s;
+
+  &:hover {
+    opacity: 1;
+    text-decoration: none;
+  }
+}
+
 .result-banner.win {
   background: linear-gradient(135deg, rgba(74, 222, 128, 0.2) 0%, rgba(34, 197, 94, 0.2) 100%);
   border: 2px solid rgba(74, 222, 128, 0.4);
@@ -517,8 +534,26 @@
   }
 }
 
-.last-move {
-  background: rgba(255, 255, 100, 0.2) !important;
+.last-move-from-light {
+  outline: 2px dashed rgba(120, 100, 60, 0.7);
+  outline-offset: -4px;
+}
+
+.last-move-from-dark {
+  outline: 2px dashed rgba(200, 180, 120, 0.65);
+  outline-offset: -4px;
+}
+
+.last-move-to {
+  position: relative;
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--last-move-to);
+    pointer-events: none;
+    z-index: 0;
+  }
 }
 
 /* Chat History */

@@ -318,7 +318,14 @@
 
   // Last-move highlight (to square)
   &.last-move-to {
-    background: var(--last-move-to) !important;
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--last-move-to);
+      pointer-events: none;
+      z-index: 0;
+    }
   }
 
   // Hover move highlight (cyan dot)

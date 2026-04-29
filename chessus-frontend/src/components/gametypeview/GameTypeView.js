@@ -1425,6 +1425,16 @@ const GameTypeView = () => {
       winConditions.push(`• **Stalemate Win**: A stalemated player (no legal moves and not in check) WINS instead of the game being a draw.`);
     }
 
+    if (game.points_to_win != null) {
+      const p1Start = game.starting_points_p1 || 0;
+      const p2Start = game.starting_points_p2 || 0;
+      let ptLine = `• **Points Win**: The first player to reach **${game.points_to_win} points** wins. Points are earned by capturing pieces that have a Capture Points Gain value, and by occupying Custom squares with a Control Points value (dynamic — counted while the piece sits on the square). If both players cross the threshold on the same move, the game ends in a draw.`;
+      if (p1Start > 0 || p2Start > 0) {
+        ptLine += `\n   ◦ **Starting Points**: Player 1 starts with ${p1Start} pts, Player 2 starts with ${p2Start} pts.`;
+      }
+      winConditions.push(ptLine);
+    }
+
     if (winConditions.length > 0) {
       // Build piece links for win condition pieces
       const winPieceLinks = [];
@@ -1476,6 +1486,14 @@ const GameTypeView = () => {
 
     if (otherData.equal_piece_count_draw) {
       drawConditions.push(`• **Equal Piece Count Draw**: If both players have the same number of pieces when the game ends by piece count, it is a draw.`);
+    }
+
+    if (game.draw_equal_points_at_turn != null) {
+      drawConditions.push(`• **Equal Points at Turn ${game.draw_equal_points_at_turn} Draw**: If both players have equal scores when the game reaches turn ${game.draw_equal_points_at_turn}, the game is declared a draw.`);
+    }
+
+    if (game.draw_equal_points_consecutive != null) {
+      drawConditions.push(`• **Consecutive Equal-Score Draw**: If both players have equal scores for ${game.draw_equal_points_consecutive} consecutive half-moves in a row, the game is declared a draw.`);
     }
 
     // Stalemate draws when the stalemate_draw_condition is enabled (default true).

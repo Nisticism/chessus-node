@@ -739,7 +739,14 @@
   }
 
   &.last-move-to {
-    background: var(--last-move-to) !important;
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--last-move-to);
+      pointer-events: none;
+      z-index: 0;
+    }
   }
 
   // Ranged attack highlights (selected piece) - uses ::before overlay so it stacks with move/capture styles
