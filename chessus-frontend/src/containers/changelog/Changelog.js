@@ -5,6 +5,13 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 29, 2026",
+    title: "Profile mention notifications",
+    items: [
+      "You now receive a notification when another user links your profile in a forum post or comment. Any link containing /profile/your-username will trigger a mention notification with a direct link back to the post.",
+    ],
+  },
+  {
+    date: "April 29, 2026",
     title: "Bug fix: computer players now correctly inherit all movement flags on promotion",
     items: [
       "Bug fix: when the computer player (easy/medium/hard AI) promotes a piece, it now correctly inherits all movement flags from the target piece — including 'Disable hopping for non-exact directional movement', all directional exact flags, and repeating movement. Previously the bot's promoted Archbishop could slide diagonally through blocking pieces in forced-capture games, just like the human-side promotion bug fixed yesterday.",

@@ -246,6 +246,65 @@ const { checkUsername, validateContent, checkProfessionalName } = require("./con
 const imageModeration = require("./image-moderation");
 const initialStateValidator = require("./initial-state-validator");
 
+/**
+ * Extract all unique GridGrove usernames mentioned via profile links in a
+ * piece of text.  Matches both:
+ *   /profile/<username>
+ *   gridgrove.gg/profile/<username>
+ * Returns an array of lowercased username strings (deduplicated).
+ */
+function extractMentionedUsernames(text) {
+  if (!text) return [];
+  const re = /(?:(?:https?:\/\/)?(?:www\.)?gridgrove\.gg)?\/profile\/([A-Za-z0-9_-]{1,50})/gi;
+  const found = new Set();
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    found.add(m[1].toLowerCase());
+  }
+  return [...found];
+}
+
+/**
+ * Fire mention notifications for every GridGrove profile URL found in `text`.
+ * @param {string}  text       - Raw text that may contain /profile/<username> links
+ * @param {number}  senderId   - User ID of the author (won't notify themselves)
+ * @param {string}  senderName - Display name of the author
+ * @param {string}  contextTitle - Short description of where the mention came from
+ * @param {string}  actionUrl  - URL the notification links to
+ */
+async function notifyMentionedUsers(text, senderId, senderName, contextTitle, actionUrl) {
+  try {
+    const usernames = extractMentionedUsernames(text);
+    if (usernames.length === 0) return;
+    const io = app.get('io');
+    const { userSockets } = require('./game-socket');
+    for (const username of usernames) {
+      try {
+        const user = await dbHelpers.findUserByUsername(username);
+        if (!user || user.id === parseInt(senderId)) continue;
+        const notification = await dbHelpers.createNotification({
+          user_id: user.id,
+          sender_id: parseInt(senderId),
+          type: 'mention',
+          title: `${senderName} mentioned you`,
+          content: contextTitle,
+          action_url: actionUrl,
+        });
+        if (io) {
+          const socketId = userSockets?.get(user.id);
+          if (socketId) {
+            io.to(socketId).emit('newNotification', { ...notification, sender_username: senderName });
+          }
+        }
+      } catch (e) {
+        console.error('[mention] Failed to notify user:', username, e.message);
+      }
+    }
+  } catch (e) {
+    console.error('[mention] notifyMentionedUsers error:', e.message);
+  }
+}
+
 // NSFW model loads lazily on first image upload (avoids slow TensorFlow startup)
 // imageModeration.initialize();
 
@@ -4601,6 +4660,8 @@ app.post("/api/forums/new", async (req, res) => {
     }
     
     const forum = await dbHelpers.createForum({ author_id, title, content, created_at, game_type_id, category: finalCategory });
+    const forumId = forum.insertId || forum.id;
+    const forumUrl = `/forums/${forumId}`;
 
     // Notify game creator when a forum thread is created for their game
     if (game_type_id) {
@@ -4614,8 +4675,8 @@ app.post("/api/forums/new", async (req, res) => {
             type: 'game_thread',
             title: `New discussion thread about ${gameType.game_name}`,
             content: title,
-            related_id: forum.insertId || forum.id,
-            action_url: `/forums/${forum.insertId || forum.id}`
+            related_id: forumId,
+            action_url: forumUrl
           });
           const io = app.get('io');
           if (io) {
@@ -4630,6 +4691,11 @@ app.post("/api/forums/new", async (req, res) => {
         console.error('Error creating game thread notification:', notifErr.message);
       }
     }
+
+    // Notify any users whose profiles are linked in the title or body
+    const authorForMention = await dbHelpers.findUserById(parseInt(author_id));
+    const senderName = authorForMention?.username || 'Someone';
+    await notifyMentionedUsers(title + ' ' + (content || ''), author_id, senderName, `mentioned you in a forum post: "${title}"`, forumUrl);
 
     res.json({ result: forum });
   } catch (err) {
@@ -4972,7 +5038,10 @@ app.post("/api/comments/new", async (req, res) => {
     } catch (notifErr) {
       console.error('Error creating comment notification:', notifErr.message);
     }
-    
+
+    // Notify any users whose profiles are linked in the comment body
+    await notifyMentionedUsers(content, author_id, author_name, `mentioned you in a comment`, `/forums/${forum_id}`);
+
     res.json({ result: comment });
   } catch (err) {
     console.error("Error in /api/comments/new:", err);
