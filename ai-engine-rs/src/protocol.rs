@@ -106,6 +106,13 @@ pub struct GameType {
     pub promotion_squares_string: Option<String>,
     pub special_squares_string: Option<String>,
     pub control_squares_string: Option<String>,
+
+    // Points win condition
+    pub points_to_win: Option<i32>,
+    pub starting_points_p1: i32,
+    pub starting_points_p2: i32,
+    pub draw_equal_points_at_turn: Option<i32>,
+    pub draw_equal_points_consecutive: Option<i32>,
 }
 
 /// Piece template (one row of the `pieces` table).
@@ -240,6 +247,12 @@ pub struct PieceTemplate {
     /// Controlled per-placement in the game wizard. Default false.
     #[serde(default)]
     pub can_promote_to_capture: bool,
+    /// Points the capturing player gains when this piece is captured.
+    #[serde(default)]
+    pub capture_points_gain: i32,
+    /// Points deducted from the piece owner when this piece is captured.
+    #[serde(default)]
+    pub capture_points_loss: i32,
     pub cannot_be_captured: bool,
 
     // ---- Custom per-piece move/attack square offsets (JSON arrays) ----
@@ -314,6 +327,8 @@ impl Default for PieceTemplate {
             ends_game_on_checkmate: false,
             can_promote_to_checkmate: false,
             can_promote_to_capture: false,
+            capture_points_gain: 0,
+            capture_points_loss: 0,
             cannot_be_captured: false,
             special_scenario_moves: None,
             special_scenario_captures: None,

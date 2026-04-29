@@ -157,6 +157,8 @@ async function exportGameRules(gameTypeId) {
       // via the game wizard (Step 4 → piece placement options).
       can_promote_to_checkmate: !!pos.can_promote_to_checkmate,
       can_promote_to_capture: !!pos.can_promote_to_capture,
+      capture_points_gain: intOr(pos.capture_points_gain, 0),
+      capture_points_loss: intOr(pos.capture_points_loss, 0),
     };
     pieces.push(merged);
   }
@@ -227,6 +229,12 @@ async function exportGameRules(gameTypeId) {
       stalemate_draw_condition: g.stalemate_draw_condition === false || g.stalemate_draw_condition === 0
         ? false
         : true,
+      // Points win condition
+      points_to_win: g.points_to_win == null ? null : intOr(g.points_to_win, null),
+      starting_points_p1: intOr(g.starting_points_p1, 0),
+      starting_points_p2: intOr(g.starting_points_p2, 0),
+      draw_equal_points_at_turn: g.draw_equal_points_at_turn == null ? null : intOr(g.draw_equal_points_at_turn, null),
+      draw_equal_points_consecutive: g.draw_equal_points_consecutive == null ? null : intOr(g.draw_equal_points_consecutive, null),
       range_squares_string: g.range_squares_string || null,
       promotion_squares_string: g.promotion_squares_string || null,
       special_squares_string: g.special_squares_string || null,
