@@ -116,6 +116,11 @@ const PieceSelector = ({
   const [limitCheckmateOriginal, setLimitCheckmateOriginal] = useState(!!currentPlacement?.limit_promote_checkmate_to_original);
   const [canPromoteToCapture, setCanPromoteToCapture] = useState(!!currentPlacement?.can_promote_to_capture);
   const [limitCaptureOriginal, setLimitCaptureOriginal] = useState(!!currentPlacement?.limit_promote_capture_to_original);
+  const [capturePointsGain, setCapturePointsGain] = useState(Math.max(0, parseInt(currentPlacement?.capture_points_gain) || 0));
+  const [capturePointsLoss, setCapturePointsLoss] = useState(Math.max(0, parseInt(currentPlacement?.capture_points_loss) || 0));
+  const [pointsSectionOpen, setPointsSectionOpen] = useState(
+    (currentPlacement?.capture_points_gain || 0) > 0 || (currentPlacement?.capture_points_loss || 0) > 0
+  );
   const [promotionSearchTerm, setPromotionSearchTerm] = useState("");
   const [promotionPiecePage, setPromotionPiecePage] = useState(1);
   const PROMOTION_PIECES_PER_PAGE = 12;
@@ -319,7 +324,9 @@ const PieceSelector = ({
       can_promote_to_checkmate: !!canPromoteToCheckmate,
       limit_promote_checkmate_to_original: !!(canPromoteToCheckmate && limitCheckmateOriginal),
       can_promote_to_capture: !!canPromoteToCapture,
-      limit_promote_capture_to_original: !!(canPromoteToCapture && limitCaptureOriginal)
+      limit_promote_capture_to_original: !!(canPromoteToCapture && limitCaptureOriginal),
+      capture_points_gain: Math.max(0, parseInt(capturePointsGain) || 0),
+      capture_points_loss: Math.max(0, parseInt(capturePointsLoss) || 0),
     });
   };
 
@@ -1160,6 +1167,45 @@ const PieceSelector = ({
             )}
           </div>
         )}
+
+        {/* Points Win Condition — per-piece capture points */}
+        <div className={styles["hp-ad-section"]}>
+          <h3
+            onClick={() => setPointsSectionOpen(!pointsSectionOpen)}
+            style={{ cursor: 'pointer', userSelect: 'none' }}
+          >
+            <span style={{ display: 'inline-block', transition: 'transform 0.2s', transform: pointsSectionOpen ? 'rotate(90deg)' : 'rotate(0deg)', marginRight: '4px' }}>▶</span>
+            Points <InfoTooltip text="Configure how this piece affects scores when captured. Requires the Points Win Condition to be enabled in Step 2. 'Gain' is awarded to the player who captures this piece; 'Loss' is deducted from the owner when this piece is captured." />
+          </h3>
+          {pointsSectionOpen && (
+            <>
+              <div className={styles["hp-ad-row"]}>
+                <div className={styles["hp-ad-field"]}>
+                  <label>
+                    Capture Points Gain
+                    <InfoTooltip text="Points awarded to the player who captures this piece." />
+                  </label>
+                  <NumberInput
+                    value={capturePointsGain}
+                    onChange={(val) => setCapturePointsGain(Math.max(0, Math.min(9999, val || 0)))}
+                    options={{ min: 0, max: 9999, placeholder: "0" }}
+                  />
+                </div>
+                <div className={styles["hp-ad-field"]}>
+                  <label>
+                    Capture Points Loss
+                    <InfoTooltip text="Points deducted from the piece owner when this piece is captured. Score cannot go below 0." />
+                  </label>
+                  <NumberInput
+                    value={capturePointsLoss}
+                    onChange={(val) => setCapturePointsLoss(Math.max(0, Math.min(9999, val || 0)))}
+                    options={{ min: 0, max: 9999, placeholder: "0" }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Fill Row Toggle */}
         <div 

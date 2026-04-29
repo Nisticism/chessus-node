@@ -35,6 +35,7 @@ const SpecialSquareSelector = ({
     asControl: false,
     restrictFirstMoveToCustom: false,
     disableFirstMoveHere: false,
+    controlPoints: 0,
   });
 
   // Plain range square: how much the bonus increases piece range by.
@@ -71,6 +72,7 @@ const SpecialSquareSelector = ({
         asControl: !!currentConfig.asControl,
         restrictFirstMoveToCustom: !!currentConfig.restrictFirstMoveToCustom,
         disableFirstMoveHere: !!currentConfig.disableFirstMoveHere,
+        controlPoints: Math.max(0, Math.min(999, currentConfig.controlPoints || 0)),
       });
       if (currentConfig.asControl && currentConfig.controlConfig) {
         setControlConfig({
@@ -123,6 +125,7 @@ const SpecialSquareSelector = ({
         controlConfig: customCombo.asControl ? controlConfig : null,
         restrictFirstMoveToCustom: !!customCombo.restrictFirstMoveToCustom,
         disableFirstMoveHere: !!customCombo.disableFirstMoveHere,
+        controlPoints: Math.max(0, Math.min(999, customCombo.controlPoints || 0)),
       };
     }
     
@@ -388,7 +391,20 @@ const SpecialSquareSelector = ({
                 />
               </div>
 
-              {/* Control config sub-panel for the custom square */}
+              {/* Points win condition: control points */}
+              <div className={styles["control-config-row"]} style={{ alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <label className={styles["control-config-label"]} style={{ minWidth: 0 }}>
+                  Control Points (per move while occupied)
+                  <InfoTooltip text="While a player's piece occupies this square, that player gains this many points each half-move. Requires the Points Win Condition to be enabled in Step 2. Points stack across multiple occupied point-squares. If the piece leaves or is captured off the square, the points are no longer applied (they were never permanent for this square)." />
+                </label>
+                <NumberInput
+                  value={customCombo.controlPoints || 0}
+                  onChange={(val) => handleCustomComboChange('controlPoints', Math.max(0, Math.min(999, val || 0)))}
+                  options={{ min: 0, max: 999, placeholder: "0", className: styles["control-number-input"] }}
+                />
+              </div>
+
+
               {customCombo.asControl && (
                 <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                   {!squaresConditionEnabled && (

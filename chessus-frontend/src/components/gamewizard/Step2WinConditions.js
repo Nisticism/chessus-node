@@ -132,7 +132,42 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         onChange={(val) => handleChange("stalemate_win_condition", val)}
       />
 
-      <div className={styles["form-group"]}>
+      <ToggleRow
+        title="Points Win Condition"
+        tooltip="A player wins by accumulating a set number of points. Points are earned by capturing pieces with a 'Capture Points Gain' value (set per piece in Step 4), or by occupying custom squares that have a 'Control Points' value (set in the Custom Squares editor in Step 3). The win threshold is checked at the end of each player's half-move — if both players cross the threshold on the same move, the game ends in a draw. Optional: give each player starting points to create asymmetric or handicap games."
+        checked={gameData.points_to_win != null}
+        onChange={(val) => handleChange("points_to_win", val ? 10 : null)}
+      >
+        <div className={styles["sub-field"]}>
+          <label className={styles["form-label"]}>Points needed to win</label>
+          <NumberInput
+            value={gameData.points_to_win || 10}
+            onChange={(val) => handleChange("points_to_win", Math.max(1, Math.min(9999, val)))}
+            options={{ min: 1, max: 9999, placeholder: "10", className: styles["form-input-small"] }}
+          />
+          <p className={styles["field-hint"]}>
+            Win check happens at end of each player's half-move, after captures and control-square points are computed.
+          </p>
+        </div>
+        <div className={styles["sub-field"]}>
+          <label className={styles["form-label"]}>Player 1 starting points</label>
+          <NumberInput
+            value={gameData.starting_points_p1 || 0}
+            onChange={(val) => handleChange("starting_points_p1", Math.max(0, Math.min(9999, val)))}
+            options={{ min: 0, max: 9999, placeholder: "0", className: styles["form-input-small"] }}
+          />
+        </div>
+        <div className={styles["sub-field"]}>
+          <label className={styles["form-label"]}>Player 2 starting points</label>
+          <NumberInput
+            value={gameData.starting_points_p2 || 0}
+            onChange={(val) => handleChange("starting_points_p2", Math.max(0, Math.min(9999, val)))}
+            options={{ min: 0, max: 9999, placeholder: "0", className: styles["form-input-small"] }}
+          />
+        </div>
+      </ToggleRow>
+
+      <div className={styles["sub-field"]}>
         <label className={styles["form-label"]}>
           Optional Condition ID <InfoTooltip text="Reference to a custom win condition defined externally. Leave empty unless you have a custom condition system set up." />
         </label>
@@ -201,8 +236,45 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         onChange={(val) => setOtherDataField("equal_piece_count_draw", val)}
       />
 
-      <div className={styles["section-divider"]}></div>
-      <h2 style={{ marginTop: '32px' }}>Gameplay Mechanics</h2>
+      <ToggleRow
+        title="Equal Points at Turn N — Draw"
+        tooltip="If both players have equal scores when the game reaches a specific turn number, the game ends in a draw. Requires the Points Win Condition to be enabled. The turn count uses full turns (one turn = one move per player), so turn 20 = 40 half-moves."
+        checked={gameData.draw_equal_points_at_turn != null}
+        onChange={(val) => handleChange("draw_equal_points_at_turn", val ? 20 : null)}
+      >
+        <div className={styles["sub-field"]}>
+          <label className={styles["form-label"]}>Draw at turn number (full turns)</label>
+          <NumberInput
+            value={gameData.draw_equal_points_at_turn || 20}
+            onChange={(val) => handleChange("draw_equal_points_at_turn", Math.max(1, Math.min(9999, val)))}
+            options={{ min: 1, max: 9999, placeholder: "20", className: styles["form-input-small"] }}
+          />
+          <p className={styles["field-hint"]}>
+            E.g. 20 means the draw check fires at move 20 for each player (40 half-moves total).
+          </p>
+        </div>
+      </ToggleRow>
+
+      <ToggleRow
+        title="Consecutive Equal-Score Turns — Draw"
+        tooltip="If both players have equal scores for N consecutive half-moves (individual player moves), the game ends in a draw. Requires the Points Win Condition to be enabled. Useful for preventing indefinite stalling when scores are locked."
+        checked={gameData.draw_equal_points_consecutive != null}
+        onChange={(val) => handleChange("draw_equal_points_consecutive", val ? 10 : null)}
+      >
+        <div className={styles["sub-field"]}>
+          <label className={styles["form-label"]}>Consecutive equal-score half-moves before draw</label>
+          <NumberInput
+            value={gameData.draw_equal_points_consecutive || 10}
+            onChange={(val) => handleChange("draw_equal_points_consecutive", Math.max(1, Math.min(999, val)))}
+            options={{ min: 1, max: 999, placeholder: "10", className: styles["form-input-small"] }}
+          />
+          <p className={styles["field-hint"]}>
+            Each individual player move counts as one half-move.
+          </p>
+        </div>
+      </ToggleRow>
+
+
       <p className={styles["step-description"]}>
         Configure special gameplay rules and actions.
       </p>
