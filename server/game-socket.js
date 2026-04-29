@@ -12569,59 +12569,14 @@ async function processBotTurn(io, gameId, gameState) {
 
         const bestPromo = aiEngine.chooseBestPromotion(moveResult.promotionEligible.options);
         if (bestPromo && bestPromo.piece_id) {
-          const pieceIndex = gameState.pieces.findIndex(p => p.id === moveResult.promotionEligible.pieceId);
-          if (pieceIndex !== -1) {
-            try {
-              const [[fullPieceData]] = await db_pool.query('SELECT * FROM pieces WHERE id = ?', [bestPromo.piece_id]);
-              if (fullPieceData) {
-                const piece = gameState.pieces[pieceIndex];
-                const imageUrl = getImageUrlForPlayer(fullPieceData.image_location, piece.player_id || piece.team || 1);
-                const botPromotedPiece = {
-                  ...piece,
-                  piece_id: fullPieceData.id,
-                  piece_name: fullPieceData.piece_name,
-                  image_location: fullPieceData.image_location,
-                  image: imageUrl,
-                  image_url: imageUrl,
-                  directional_movement_style: fullPieceData.directional_movement_style,
-                  up_movement: fullPieceData.up_movement, down_movement: fullPieceData.down_movement,
-                  left_movement: fullPieceData.left_movement, right_movement: fullPieceData.right_movement,
-                  up_left_movement: fullPieceData.up_left_movement, up_right_movement: fullPieceData.up_right_movement,
-                  down_left_movement: fullPieceData.down_left_movement, down_right_movement: fullPieceData.down_right_movement,
-                  ratio_movement_style: fullPieceData.ratio_movement_style,
-                  ratio_movement_1: fullPieceData.ratio_one_movement, ratio_movement_2: fullPieceData.ratio_two_movement,
-                  step_movement_style: fullPieceData.step_by_step_movement_style,
-                  step_movement_value: fullPieceData.step_by_step_movement_value,
-                  can_hop_over_allies: fullPieceData.can_hop_over_allies, can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
-                  can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
-                  up_capture: fullPieceData.up_capture, down_capture: fullPieceData.down_capture,
-                  left_capture: fullPieceData.left_capture, right_capture: fullPieceData.right_capture,
-                  up_left_capture: fullPieceData.up_left_capture, up_right_capture: fullPieceData.up_right_capture,
-                  down_left_capture: fullPieceData.down_left_capture, down_right_capture: fullPieceData.down_right_capture,
-                  piece_value: fullPieceData.piece_value,
-                  is_royal: fullPieceData.is_royal,
-                  can_promote: fullPieceData.can_promote,
-                  can_castle: fullPieceData.can_castle,
-                  can_capture_enemy_via_range: fullPieceData.can_capture_enemy_via_range,
-                  can_en_passant: fullPieceData.can_en_passant,
-                  special_scenario_moves: fullPieceData.special_scenario_moves,
-                  special_scenario_captures: fullPieceData.special_scenario_captures,
-                  capture_on_hop: fullPieceData.capture_on_hop,
-                  chain_capture_enabled: fullPieceData.chain_capture_enabled,
-                  custom_movement_squares: fullPieceData.custom_movement_squares,
-                  custom_attack_squares: fullPieceData.custom_attack_squares,
-                  ends_game_on_checkmate: piece.ends_game_on_checkmate,
-                  ends_game_on_capture: piece.ends_game_on_capture,
-                  moveCount: 0,
-                  hasMoved: false
-                };
-                gameState.pieces[pieceIndex] = botPromotedPiece;
-                attachPromotionToLastMove(gameState, botPromotedPiece);
-                console.log(`[Bot] Auto-promoted to ${fullPieceData.piece_name} in game ${gameId}`);
-              }
-            } catch (promoError) {
-              console.error('[Bot] Promotion error:', promoError);
+          try {
+            const promoted = await applyPromotionToPiece(gameState, moveResult.promotionEligible.pieceId, bestPromo.piece_id);
+            if (promoted) {
+              attachPromotionToLastMove(gameState, promoted);
+              console.log(`[Bot] Auto-promoted to ${promoted.piece_name} in game ${gameId}`);
             }
+          } catch (promoError) {
+            console.error('[Bot] Promotion error:', promoError);
           }
         }
       }

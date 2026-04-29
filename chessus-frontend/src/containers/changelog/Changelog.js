@@ -5,6 +5,13 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 29, 2026",
+    title: "Bug fix: computer players now correctly inherit all movement flags on promotion",
+    items: [
+      "Bug fix: when the computer player (easy/medium/hard AI) promotes a piece, it now correctly inherits all movement flags from the target piece — including 'Disable hopping for non-exact directional movement', all directional exact flags, and repeating movement. Previously the bot's promoted Archbishop could slide diagonally through blocking pieces in forced-capture games, just like the human-side promotion bug fixed yesterday.",
+    ],
+  },
+  {
+    date: "April 29, 2026",
     title: "Piece wizard: duplicate ruleset detection",
     items: [
       "Piece wizard: when saving a new or edited piece, the wizard now checks whether any existing piece already has the exact same ruleset (movement, capture, special rules). If a match is found, a warning lists all matching pieces by name with links, and asks whether you want to save anyway. If the name also matches an existing piece, an additional caution notes that redundant duplicates risk being removed. Piece name, images, description, and category are not compared — only functional gameplay rules.",
