@@ -147,6 +147,10 @@ const MatchView = () => {
       case 'cancellation_draw': return 'Cancellation threshold (draw)';
       case 'simultaneous_capture_draw': return 'Simultaneous capture (draw)';
       case 'simultaneous_checkmate_draw': return 'Simultaneous checkmate (draw)';
+      case 'points_win': return 'Points';
+      case 'draw_points_tie': return 'Points tie (draw)';
+      case 'draw_equal_points_at_turn': return 'Equal points at turn limit (draw)';
+      case 'draw_equal_points_consecutive': return 'Equal points — consecutive turns (draw)';
       default: return 'Game completed';
     }
   };
@@ -204,7 +208,7 @@ const MatchView = () => {
         squares.push(
           <div
             key={`${x}-${y}`}
-            className={`${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}${isLastMoveFrom || isLastMoveTo ? ` ${styles["last-move"]}` : ''}`}
+            className={`${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}${isLastMoveFrom ? ` ${isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]}` : ''}${isLastMoveTo ? ` ${styles["last-move-to"]}` : ''}`}
             style={isAnchor && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : undefined}
           >
             {isAnchor && (() => {
@@ -433,6 +437,14 @@ const MatchView = () => {
             <h1>Game Complete</h1>
             <p>{winner ? `${winner.username} won by ${getReasonText(match.reason).toLowerCase()}` : 'The game ended in a draw'}</p>
           </>
+        )}
+        {match.gameTypeId && (
+          <Link
+            to={`/games/${match.gameTypeId}`}
+            className={styles["banner-game-type-link"]}
+          >
+            {match.gameTypeName || 'View Game Type'}
+          </Link>
         )}
       </div>
 

@@ -603,6 +603,7 @@ const Play = () => {
     if (gameType.promotion_condition) conditions.push("Win on Promotion");
     if (gameType.lose_all_pieces_condition) conditions.push("Lose All Pieces");
     if (gameType.stalemate_win_condition) conditions.push("Stalemate Win");
+    if (gameType.points_to_win != null) conditions.push("Points");
     return conditions.length > 0 ? conditions.join(" / ") : "Capture (default)";
   };
 

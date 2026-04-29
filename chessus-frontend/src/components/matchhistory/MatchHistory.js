@@ -103,6 +103,10 @@ const MatchHistory = ({ userId, username }) => {
       case 'cancellation_draw': return 'draw by cancellations';
       case 'simultaneous_capture_draw': return 'draw by simultaneous capture';
       case 'simultaneous_checkmate_draw': return 'draw by simultaneous checkmate';
+      case 'points_win': return 'by points';
+      case 'draw_points_tie': return 'draw by points tie';
+      case 'draw_equal_points_at_turn': return 'draw by equal points';
+      case 'draw_equal_points_consecutive': return 'draw by equal points';
       default: return '';
     }
   };

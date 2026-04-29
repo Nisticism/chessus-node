@@ -163,6 +163,7 @@ const GameList = () => {
     if (game.promotion_condition) conditions.push("Win on Promotion");
     if (game.lose_all_pieces_condition) conditions.push("Lose All Pieces");
     if (game.stalemate_win_condition) conditions.push("Stalemate Win");
+    if (game.points_to_win != null) conditions.push("Points");
     // forced_capture_condition is a movement mechanic, not a win condition —
     // it is shown in the game detail page under Special Rules, not here.
     return conditions.length > 0 ? conditions.join(", ") : "Capture (default)";
@@ -263,7 +264,7 @@ const GameList = () => {
                 </div>
               )}
               <div className={styles["meta-item"]}>
-                <span className={styles["meta-label"]}>Win:</span>
+                <span className={styles["meta-label"]}>Win Conditions:</span>
                 <span>{getWinCondition(game)}</span>
               </div>
             </div>

@@ -131,6 +131,10 @@ const formatGameOverReasonShort = (reason) => {
     case 'cancellation_draw': return 'draw by simul-turns cancellations';
     case 'simultaneous_capture_draw': return 'draw by simultaneous capture';
     case 'simultaneous_checkmate_draw': return 'draw by simultaneous checkmate';
+    case 'points_win': return 'by points';
+    case 'draw_points_tie': return 'draw — both reached threshold';
+    case 'draw_equal_points_at_turn': return 'draw — equal points at turn limit';
+    case 'draw_equal_points_consecutive': return 'draw — equal points stalemate';
     default: return reason || 'game complete';
   }
 };
@@ -189,6 +193,7 @@ const LiveGame = () => {
   const [validMoves, setValidMoves] = useState([]);
   const [showGameOver, setShowGameOver] = useState(false);
   const [gameOverData, setGameOverData] = useState(null);
+  const [playerScores, setPlayerScores] = useState(null); // { 1: N, 2: M } or null when points not active
   const [stalemateNotice, setStalemateNotice] = useState(null);
   // Transient notice shown when the server re-rolls a randomized starting
   // position because the original roll resulted in an already-decided game.
@@ -348,20 +353,25 @@ const LiveGame = () => {
 
   // Wrapper for makeMove that supports turn confirmation in correspondence games
   const submitMove = useCallback((gId, moveData) => {
-    // Simul-turns + stage mode: don't immediately submit. Stash as a staged
-    // move; the player must press the explicit Submit button to send.
-    if (gameState?.gameType?.simultaneous_turns
-        && gameState?.gameType?.simul_turns_submit_mode === 'stage'
-        && gameState?.status === 'active'
-        && !simulSubmittedThisRound) {
+    const isSimulStage = gameState?.gameType?.simultaneous_turns
+      && gameState?.gameType?.simul_turns_submit_mode === 'stage'
+      && gameState?.status === 'active'
+      && !simulSubmittedThisRound;
+    const isCorrespondenceConfirm = turnConfirmEnabled && gameState?.isCorrespondence && !gameState?.timeControl;
+
+    if (isSimulStage) {
+      // Simul-turns + stage mode: stash the move. Player presses Submit when ready.
+      // Apply optimistic visual preview so the board reflects the staged move.
+      if (moveData.type !== 'place') {
+        const snap = createOptimisticSnapshot({ pieces: gameState?.pieces, currentTurn: gameState?.currentTurn });
+        setPreConfirmState(snap);
+        optimisticMoveSnapshotRef.current = snap;
+        setGameState((prev) => applyOptimisticMovePreview(prev, moveData));
+      }
       setStagedSimulMove({ gameId: gId, moveData });
-      // If the move is to a promotion square, pop the modal now so the
-      // player can pick before pressing Submit. We compute eligibility
-      // client-side using the same data the server uses (gameType +
-      // initialPieces). For simplicity, we let the server side compute
-      // when Submit is pressed (server emits simulPromotionRequired after
-      // we send the move). This means in stage mode the promotion modal
-      // appears AFTER pressing Submit. Document this in changelog.
+
+      // If also in correspondence confirm-mode, skip the second confirm step
+      // (staging IS the confirmation step — the Submit button serves both roles).
       return;
     }
 
@@ -370,7 +380,7 @@ const LiveGame = () => {
       currentTurn: gameState?.currentTurn
     });
 
-    if (turnConfirmEnabled && gameState?.isCorrespondence && !gameState?.timeControl) {
+    if (isCorrespondenceConfirm) {
       // Save current state for revert on cancel
       setPreConfirmState(optimisticSnapshot);
       optimisticMoveSnapshotRef.current = optimisticSnapshot;
@@ -391,6 +401,7 @@ const LiveGame = () => {
     }
   }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.status, simulSubmittedThisRound, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview]);
 
+  /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // Submit / clear the staged simul move. Called from the explicit Submit
   // button rendered in the turn-indicator area when stage-mode is active.
   const submitStagedSimulMove = useCallback(() => {
@@ -399,8 +410,18 @@ const LiveGame = () => {
     setStagedSimulMove(null);
   }, [makeMove, stagedSimulMove]);
   const clearStagedSimulMove = useCallback(() => {
+    // Revert the optimistic board preview applied when the move was staged.
+    if (preConfirmState) {
+      setGameState(prev => ({
+        ...prev,
+        pieces: preConfirmState.pieces,
+        currentTurn: preConfirmState.currentTurn
+      }));
+      setPreConfirmState(null);
+    }
+    clearOptimisticMoveSnapshot();
     setStagedSimulMove(null);
-  }, []);
+  }, [preConfirmState, clearOptimisticMoveSnapshot]);
 
   const confirmPendingMove = useCallback(() => {
     if (pendingMove) {
@@ -517,6 +538,20 @@ const LiveGame = () => {
         clearOptimisticMoveSnapshot();
         setGameState(state);
 
+        // Restore simul-turns submission state from server-side pendingSimulMoves.
+        // If this player already submitted a move this round (e.g. after a refresh),
+        // mark them as submitted so the UI doesn't prompt them to stage again.
+        if (state.gameType?.simultaneous_turns && Array.isArray(state.players) && currentUser) {
+          const myId = String(currentUser.id);
+          const pending = state.pendingSimulMoves || {};
+          if (pending[myId]) {
+            setSimulSubmittedThisRound(true);
+          }
+          // Restore opponent-submitted flag too
+          const opponentSubmitted = Object.keys(pending).some(pid => pid !== myId);
+          if (opponentSubmitted) setSimulOpponentSubmitted(true);
+        }
+
         // If the game ended before this client mounted (or during a reload),
         // re-display the game-over modal so the user has a definitive
         // signal that the game is over (e.g. initial-position ends where
@@ -595,7 +630,6 @@ const LiveGame = () => {
     loadGame();
   }, [gameId, connected, getGameState, clearOptimisticMoveSnapshot]);
 
-  /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // When not a player, register as a spectator.
   // Also re-registers when game status changes to 'active' so that users who
   // were watching the lobby (before the game started) get added to the
@@ -705,6 +739,7 @@ const LiveGame = () => {
         setGhostMoveIndex(null); // Exit ghost review when a new move arrives
         setInCheck(newState.inCheck || false);
         setCheckedPieces(newState.checkedPieces || []);
+        if (newState.playerScores) setPlayerScores(newState.playerScores);
 
         // Show mid-turn checkmate message if detected
         if (midTurnCheckmate) {
@@ -811,10 +846,10 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges, player1Count, player2Count, move }) => {
+    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges, player1Count, player2Count, player1Score, player2Score, move }) => {
       if (parseInt(overGameId) === parseInt(gameId)) {
         clearOptimisticMoveSnapshot();
-        setGameOverData({ winner, winnerUsername, reason, eloChanges, player1Count, player2Count });
+        setGameOverData({ winner, winnerUsername, reason, eloChanges, player1Count, player2Count, player1Score, player2Score });
         setShowGameOver(true);
         setPendingDrawOffer(null); // Clear any pending draw offer
         setDrawOfferSent(false); // Clear any sent draw offer
@@ -4233,7 +4268,14 @@ const LiveGame = () => {
                   if (cfg.asRange) parts.push('R');
                   if (cfg.asPromotion) parts.push('P');
                   if (cfg.asControl) parts.push('C');
-                  return parts.length > 0 ? parts.join('') : 'X';
+                  const label = parts.length > 0 ? parts.join('') : 'X';
+                  const pts = cfg.controlPoints;
+                  return (
+                    <>
+                      {label}
+                      {pts > 0 && <span style={{ fontSize: '0.6em', display: 'block', lineHeight: 1 }}>{pts}pt</span>}
+                    </>
+                  );
                 })()}
               </div>
             )}
@@ -4670,6 +4712,22 @@ const LiveGame = () => {
               {gameOverData.reason ? ` — ${formatGameOverReasonShort(gameOverData.reason)}` : ''}
             </div>
           )}
+          {/* Live score display for points win condition */}
+          {(playerScores || (gameState.gameType?.points_to_win != null)) && (
+            <div style={{ marginTop: 6, display: 'flex', gap: '10px', fontSize: '0.85rem', color: '#ccc', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {gameState.players?.map(p => {
+                const pos = p.position;
+                const score = playerScores ? (playerScores[pos] ?? 0) : 0;
+                const threshold = gameState.gameType?.points_to_win;
+                const isMe = p.id === currentUser?.id;
+                return (
+                  <span key={pos} style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(0,0,0,0.35)', fontWeight: isMe ? 700 : 400, color: isMe ? '#ffd278' : '#bbb' }}>
+                    {p.username || `P${pos}`}: {score}{threshold != null ? `/${threshold}` : ''}pts
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
         
         {currentPlayer && (gameState.status === 'active' || gameState.status === 'ready') && (
@@ -4733,7 +4791,9 @@ const LiveGame = () => {
                         fontSize: '0.9rem',
                       }}
                     >
-                      Submit
+                      {turnConfirmEnabled && gameState.isCorrespondence && !gameState.timeControl
+                        ? 'Confirm & Submit'
+                        : 'Submit'}
                     </button>
                     <button
                       type="button"
@@ -5330,8 +5390,8 @@ const LiveGame = () => {
             )}
             </>)}
 
-            {/* Turn Confirmation */}
-            {pendingMove && (
+            {/* Turn Confirmation — hidden in simul-stage mode since the Submit button serves this role */}
+            {pendingMove && !(gameState?.gameType?.simultaneous_turns && gameState?.gameType?.simul_turns_submit_mode === 'stage') && (
               <div className={styles["move-confirm-section"]}>
                 <span className={styles["move-confirm-label"]}>Confirm your move?</span>
                 <div className={styles["move-confirm-buttons"]}>
@@ -5926,8 +5986,32 @@ const LiveGame = () => {
                gameOverData.reason === 'cancellation_draw' ? 'Draw — Cancellation Threshold Reached' :
                gameOverData.reason === 'simultaneous_capture_draw' ? 'Draw — Simultaneous Capture' :
                gameOverData.reason === 'simultaneous_checkmate_draw' ? 'Draw — Simultaneous Checkmate' :
+               gameOverData.reason === 'points_win' ? 'By Points' :
+               gameOverData.reason === 'draw_points_tie' ? 'Draw — Both Reached Point Threshold' :
+               gameOverData.reason === 'draw_equal_points_at_turn' ? 'Draw — Equal Points at Turn Limit' :
+               gameOverData.reason === 'draw_equal_points_consecutive' ? 'Draw — Equal Points Stalemate' :
                gameOverData.reason}
             </div>
+            {(gameOverData.player1Score != null || gameOverData.player2Score != null) && (
+              <div className={styles["piece-count-result"]}>
+                <div className={styles["piece-count-row"]}>
+                  <span className={styles["piece-count-label"]}>
+                    {(currentPlayer?.position === 1 ? player1 : player2)?.username || 'Player 1'} score
+                  </span>
+                  <span className={styles["piece-count-value"]}>
+                    {currentPlayer?.position === 1 ? (gameOverData.player1Score ?? 0) : (gameOverData.player2Score ?? 0)}
+                  </span>
+                </div>
+                <div className={styles["piece-count-row"]}>
+                  <span className={styles["piece-count-label"]}>
+                    {(currentPlayer?.position === 1 ? player2 : player1)?.username || 'Player 2'} score
+                  </span>
+                  <span className={styles["piece-count-value"]}>
+                    {currentPlayer?.position === 1 ? (gameOverData.player2Score ?? 0) : (gameOverData.player1Score ?? 0)}
+                  </span>
+                </div>
+              </div>
+            )}
             {(gameOverData.reason === 'piece_count' || gameOverData.reason === 'equal_piece_count') && 
              gameOverData.player1Count != null && gameOverData.player2Count != null && (
               <div className={styles["piece-count-result"]}>

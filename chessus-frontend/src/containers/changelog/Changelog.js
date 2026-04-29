@@ -5,47 +5,30 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 29, 2026",
-    title: "Performance improvements",
+    title: "Performance improvements, profile mention notifications, piece wizard updates, bug fixes",
     items: [
       "Database indexes added across all major tables — game lists, piece lists, forum threads, comments, notifications, and messages now load significantly faster, especially as data grows.",
       "Notifications and direct messages now use cursor-based pagination (load-more) instead of page offsets, eliminating slowdowns when scrolling through large message histories.",
       "Slow query logging enabled — queries taking over 300ms are now flagged in server logs for ongoing monitoring.",
-    ],
-  },
-  {
-    date: "April 29, 2026",
-    title: "Profile mention notifications",
-    items: [
       "You now receive a notification when another user links your profile in a forum post or comment. Any link containing /profile/your-username will trigger a mention notification with a direct link back to the post.",
-    ],
-  },
-  {
-    date: "April 29, 2026",
-    title: "Bug fix: computer players now correctly inherit all movement flags on promotion",
-    items: [
-      "Bug fix: when the computer player (easy/medium/hard AI) promotes a piece, it now correctly inherits all movement flags from the target piece — including 'Disable hopping for non-exact directional movement', all directional exact flags, and repeating movement. Previously the bot's promoted Archbishop could slide diagonally through blocking pieces in forced-capture games, just like the human-side promotion bug fixed yesterday.",
-    ],
-  },
-  {
-    date: "April 29, 2026",
-    title: "Piece wizard: duplicate ruleset detection",
-    items: [
       "Piece wizard: when saving a new or edited piece, the wizard now checks whether any existing piece already has the exact same ruleset (movement, capture, special rules). If a match is found, a warning lists all matching pieces by name with links, and asks whether you want to save anyway. If the name also matches an existing piece, an additional caution notes that redundant duplicates risk being removed. Piece name, images, description, and category are not compared — only functional gameplay rules.",
+      "Last-move highlighting now looks the same across all boards — match history replay, sandbox, and the home page preview now use the same dashed outline (from-square) and semi-transparent overlay (to-square) style as live games, instead of a solid background color.",
+      "New win condition: Points! Game creators can now set a points threshold — the first player to reach it wins. Pieces can have a 'Capture Points Gain' value (points awarded to the capturer) and a 'Capture Points Loss' value (points deducted from the owner when captured). Custom squares in the board editor can award 'Control Points' each half-move while a piece sits on them. Optional starting-points handicaps let creators balance asymmetric sides. Two new draw conditions are available: 'Equal Points at Turn N' (draw fires if scores are tied when the turn count is reached) and 'Consecutive Equal-Score Turns' (draw fires after N half-moves of tied scores). Live scores are shown in the game header and final scores appear in the game-over screen.",
+      "Bug fix: points-based win/draw conditions now work correctly in bot games. Previously a server error during move processing would prevent the game from continuing when a Points win condition was active.",
+      "Bug fix: per-piece 'Capture Points Gain' and 'Capture Points Loss' values set in the game wizard now persist when you re-open a placed piece to edit it, and are correctly carried over when using Fill Row or Mirror.",
+      "Game library cards now display 'Points' as a win condition when a game uses the points threshold rule, and the label has been renamed from 'Win' to 'Win Conditions'.",
+      "Live game: when 'Show all special squares' is enabled, custom squares that award control points now show a small points label (e.g. '2pt') inside the square indicator.",
+      "Match history and match detail pages now show 'by points' (or 'draw by points tie') as the result reason for games decided by the Points win condition.",
     ],
   },
   {
     date: "April 28, 2026",
-    title: "Game name max length increased to 100; hop-disabled bug fixes",
+    title: "AI training, simultaneous turns, game wizard, bug fixes",
     items: [
+      "Bug fix: when the computer player (easy/medium/hard AI) promotes a piece, it now correctly inherits all movement flags from the target piece — including 'Disable hopping for non-exact directional movement', all directional exact flags, and repeating movement. Previously the bot's promoted Archbishop could slide diagonally through blocking pieces in forced-capture games, just like the human-side promotion bug fixed in this same session.",
       "Game wizard: game names can now be up to 100 characters (previously 50). A live character counter is shown below the name field in both create and edit modes",
       "Bug fix: when a pawn (or any piece) promotes to a piece like an Archbishop, the promoted piece now correctly inherits all movement flags from the target piece — including 'Disable hopping for non-exact directional movement', all directional exact flags, repeating movement, and all capture exact flags. Previously these fields were missing from the in-memory promoted piece, causing the promoted Archbishop to behave as though hop-disabled was off. This was most visible in forced-capture games where the promoted piece could slide diagonally through a blocking piece to make a capture",
       "Bug fix: sliding captures defined via the piece wizard's 'additional movements' feature now correctly enforce path-blocking in all games (human vs human and vs computer). Previously those captures bypassed the path check entirely, allowing pieces like an Archbishop to capture through a blocking piece",
-    ],
-  },
-  {
-    date: "April 28, 2026",
-    title: "AI training: smarter promotion piece selection; admin AI analysis requests; notification fixes",
-    items: [
       "AI Training: the self-play engine now selects promotion pieces much more intelligently. Previously the AI could incorrectly promote to a King (a poor choice in most games — it becomes a high-value capture target for the opponent). The engine now uses a mobility-based power score to rank candidates, so it prefers powerful pieces like Queens over limited ones. Royal/game-ending pieces (Kings) are excluded from promotion choices by default unless you have explicitly enabled 'Can promote to checkmate piece' or 'Can promote to capture-loss piece' for that piece in the game wizard — in which case they are included and scored fairly based on their actual movement abilities",
       "AI Training: when a piece has a configured promotion target list (set in the game wizard), the AI now evaluates all valid targets as separate moves and lets MCTS pick the best one based on the resulting position. This means the AI can correctly choose a less powerful piece (e.g. a Knight) over a stronger one (e.g. a Queen) when promoting to that piece results in an immediate checkmate",
       "Admin portal: new 'AI Analysis Requests' tab. Every time a creator requests AI analysis for one of their game types, a permanent record is now logged here. Admins can filter by status (pending / fulfilled / dismissed), mark requests fulfilled or dismissed, reopen them, jump straight to the AI Training tab for that game, or delete entries when no longer needed. Repeat requests from the same user increment a counter rather than creating duplicates",
