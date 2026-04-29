@@ -2659,6 +2659,11 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       stalemate_win_condition:               gameData.stalemate_win_condition || false,
       stalemate_draw_condition:              gameData.stalemate_draw_condition !== undefined ? !!gameData.stalemate_draw_condition : true,
       forced_capture_condition:              gameData.forced_capture_condition || false,
+      points_to_win:                         (gameData.points_to_win != null && gameData.points_to_win > 0) ? Math.min(9999, Math.max(1, Number(gameData.points_to_win))) : null,
+      starting_points_p1:                    Math.max(0, Math.min(9999, Number(gameData.starting_points_p1) || 0)),
+      starting_points_p2:                    Math.max(0, Math.min(9999, Number(gameData.starting_points_p2) || 0)),
+      draw_equal_points_at_turn:             (gameData.draw_equal_points_at_turn != null && gameData.draw_equal_points_at_turn > 0) ? Math.min(9999, Math.max(1, Number(gameData.draw_equal_points_at_turn))) : null,
+      draw_equal_points_consecutive:         (gameData.draw_equal_points_consecutive != null && gameData.draw_equal_points_consecutive > 0) ? Math.min(999, Math.max(1, Number(gameData.draw_equal_points_consecutive))) : null,
       is_draft:                              isDraft,
       draft_saved_step:                      draftSavedStep,
       // Reset uniqueness on every save so the uniqueness job re-evaluates the updated game.
@@ -2734,7 +2739,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.can_promote_to_checkmate || false,
               piece.limit_promote_checkmate_to_original || false,
               piece.can_promote_to_capture || false,
-              piece.limit_promote_capture_to_original || false
+              piece.limit_promote_capture_to_original || false,
+              piece.capture_points_gain ?? 0,
+              piece.capture_points_loss ?? 0
             );
           }
         }
@@ -5695,6 +5702,11 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       stalemate_win_condition:               gameData.stalemate_win_condition || false,
       stalemate_draw_condition:              gameData.stalemate_draw_condition !== undefined ? !!gameData.stalemate_draw_condition : true,
       forced_capture_condition:              gameData.forced_capture_condition || false,
+      points_to_win:                         (gameData.points_to_win != null && gameData.points_to_win > 0) ? Math.min(9999, Math.max(1, Number(gameData.points_to_win))) : null,
+      starting_points_p1:                    Math.max(0, Math.min(9999, Number(gameData.starting_points_p1) || 0)),
+      starting_points_p2:                    Math.max(0, Math.min(9999, Number(gameData.starting_points_p2) || 0)),
+      draw_equal_points_at_turn:             (gameData.draw_equal_points_at_turn != null && gameData.draw_equal_points_at_turn > 0) ? Math.min(9999, Math.max(1, Number(gameData.draw_equal_points_at_turn))) : null,
+      draw_equal_points_consecutive:         (gameData.draw_equal_points_consecutive != null && gameData.draw_equal_points_consecutive > 0) ? Math.min(999, Math.max(1, Number(gameData.draw_equal_points_consecutive))) : null,
       pieces_string:                         gameData.pieces_string || '{}',
       created_at:                            new Date().toISOString().slice(0, 19).replace('T', ' '),
       is_draft:                              isDraft,
@@ -5767,7 +5779,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.can_promote_to_checkmate || false,
               piece.limit_promote_checkmate_to_original || false,
               piece.can_promote_to_capture || false,
-              piece.limit_promote_capture_to_original || false
+              piece.limit_promote_capture_to_original || false,
+              piece.capture_points_gain ?? 0,
+              piece.capture_points_loss ?? 0
             );
           }
         }

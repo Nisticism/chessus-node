@@ -155,9 +155,57 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.materialClockPenalty ? { materialClockPenalty: true } : {}),
     ...(gameState.materialClockHandicap ? { materialClockHandicap: true } : {}),
     ...(gameState.actionsThisTurn ? { actionsThisTurn: gameState.actionsThisTurn } : {}),
+    ...(gameState.captureScores ? { captureScores: gameState.captureScores } : {}),
+    ...(gameState.consecutiveEqualScoreTurns ? { consecutiveEqualScoreTurns: gameState.consecutiveEqualScoreTurns } : {}),
+    ...(gameState.totalHalfMoves ? { totalHalfMoves: gameState.totalHalfMoves } : {}),
     ...extraFields
   });
 }
+
+/**
+ * Compute control-square points from custom squares for both players.
+ * Returns { 1: X, 2: Y } — purely dynamic, not stored in captureScores.
+ * A custom square with cfg.customConfig.controlPoints > 0 grants that many points
+ * to whichever player currently has a piece sitting on that square.
+ */
+function computeCustomSquareControlPoints(gameState) {
+  const result = { 1: 0, 2: 0 };
+  const specialStr = gameState.gameType?.special_squares_string;
+  if (!specialStr) return result;
+  let specialSquares;
+  try {
+    specialSquares = typeof specialStr === 'string' ? JSON.parse(specialStr) : specialStr;
+  } catch {
+    return result;
+  }
+  for (const [key, cfg] of Object.entries(specialSquares)) {
+    const pts = cfg?.customConfig?.controlPoints || cfg?.controlPoints || 0;
+    if (!pts) continue;
+    // Parse the "row,col" key
+    const [r, c] = key.split(',').map(Number);
+    // Find any piece on this square
+    const occupant = gameState.pieces.find(p => p.y === r && p.x === c);
+    if (occupant) {
+      const pos = occupant.player_id ? occupant.player_id : occupant.player_number;
+      if (pos === 1 || pos === 2) {
+        result[pos] += pts;
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Get the total score for a player position (1 or 2), combining permanent
+ * capture-based points and current control-square points.
+ */
+function getPlayerScore(gameState, position) {
+  const capScore = (gameState.captureScores && gameState.captureScores[position]) || 0;
+  const ctrlPts = computeCustomSquareControlPoints(gameState);
+  return capScore + (ctrlPts[position] || 0);
+}
+
+
 
 /**
  * Helper function to parse image_location and get the correct image URL based on player
@@ -2611,6 +2659,9 @@ function initializeSocket(server) {
           movesWithoutCapture: 0, // Track for draw by move limit
           positionHistory: {}, // Track position occurrences for N-fold repetition
           controlSquareTracking: {}, // Track control square occupancy: { "row,col": { playerId, turnCount } }
+          captureScores: { 1: (gameType.starting_points_p1 || 0), 2: (gameType.starting_points_p2 || 0) }, // Permanent points from captures (and owner losses)
+          consecutiveEqualScoreTurns: 0, // Counter for equal-score draw condition
+          totalHalfMoves: 0, // Total half-move count for equal-points-at-turn draw
           startTime: null,
           playerTimes: {},
           allowSpectators,
@@ -4109,6 +4160,23 @@ function initializeSocket(server) {
           gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
         }
 
+        // Apply capture-based point changes (for Points win condition)
+        if (moveResult.captured && gameState.gameType?.points_to_win != null) {
+          const capturedPieces = moveResult.allCaptured || (moveResult.captured ? [moveResult.captured] : []);
+          for (const cap of capturedPieces) {
+            const gain = cap.capture_points_gain || 0;
+            const loss = cap.capture_points_loss || 0;
+            const capturerPos = gameState.currentTurn;
+            const ownerPos = cap.player_id || cap.player_number;
+            if (gain > 0 && (capturerPos === 1 || capturerPos === 2)) {
+              gameState.captureScores[capturerPos] = (gameState.captureScores[capturerPos] || 0) + gain;
+            }
+            if (loss > 0 && (ownerPos === 1 || ownerPos === 2)) {
+              gameState.captureScores[ownerPos] = Math.max(0, (gameState.captureScores[ownerPos] || 0) - loss);
+            }
+          }
+        }
+
         // Apply increment to current player's time
         if (gameState.increment && gameState.playerTimes[userId]) {
           gameState.playerTimes[userId] += gameState.increment;
@@ -4499,6 +4567,23 @@ function initializeSocket(server) {
               gameState.movesWithoutCapture = 0; // Reset on capture or pawn/promotable piece move
             } else {
               gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
+            }
+
+            // Apply capture-based point changes (for Points win condition)
+            if (premoveResult.captured && gameState.gameType?.points_to_win != null) {
+              const capturedPieces = premoveResult.allCaptured || (premoveResult.captured ? [premoveResult.captured] : []);
+              const premoveMoverPos = gameState.players.find(p => p.id === premove.move.playerId)?.position;
+              for (const cap of capturedPieces) {
+                const gain = cap.capture_points_gain || 0;
+                const loss = cap.capture_points_loss || 0;
+                const ownerPos = cap.player_id || cap.player_number;
+                if (gain > 0 && (premoveMoverPos === 1 || premoveMoverPos === 2)) {
+                  gameState.captureScores[premoveMoverPos] = (gameState.captureScores[premoveMoverPos] || 0) + gain;
+                }
+                if (loss > 0 && (ownerPos === 1 || ownerPos === 2)) {
+                  gameState.captureScores[ownerPos] = Math.max(0, (gameState.captureScores[ownerPos] || 0) - loss);
+                }
+              }
             }
 
             // Win on promotion: if enabled, reaching a promotion square instantly wins (even with no valid promotion pieces)
@@ -5645,7 +5730,118 @@ function initializeSocket(server) {
             return; // Exit early since game is over
           }
 
-          // Update game state in database
+          // ── Points win condition and equal-points draw checks ─────────────
+          if (gameState.gameType?.points_to_win != null || gameState.gameType?.draw_equal_points_at_turn != null || gameState.gameType?.draw_equal_points_consecutive != null) {
+            gameState.totalHalfMoves = (gameState.totalHalfMoves || 0) + 1;
+
+            const p1Score = getPlayerScore(gameState, 1);
+            const p2Score = getPlayerScore(gameState, 2);
+            const scoresEqual = p1Score === p2Score;
+
+            // Update consecutive-equal-score counter
+            if (scoresEqual) {
+              gameState.consecutiveEqualScoreTurns = (gameState.consecutiveEqualScoreTurns || 0) + 1;
+            } else {
+              gameState.consecutiveEqualScoreTurns = 0;
+            }
+
+            // Helper to fire a points-related draw
+            const firePointsDraw = async (reason) => {
+              stopGameTimer(gameId);
+              gameState.status = 'completed';
+              gameState.winner = null;
+              gameState.winReason = reason;
+              let eloChanges = null;
+              const _p1 = gameState.players[0];
+              const _p2 = gameState.players[1];
+              if (gameState.rated !== false && _p1?.id && _p2?.id) {
+                const _p1e = _p1.elo || 1000;
+                const _p2e = _p2.elo || 1000;
+                eloChanges = await updateEloRatings(_p1e >= _p2e ? _p1.id : _p2.id, _p1e >= _p2e ? _p2.id : _p1.id, true);
+              }
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              try {
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = NULL, pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, JSON.stringify(gameState.pieces),
+                   buildOtherData(gameState, { reason, player1Score: p1Score, player2Score: p2Score, eloChanges }), gameId]
+                );
+              } catch (dbErr) { console.error('Failed to update DB for points draw:', dbErr); }
+              broadcastGameOver(io, gameId, gameState, {
+                gameId, winner: null, reason, move: moveRecord, finalState: gameState, eloChanges,
+                player1Score: p1Score, player2Score: p2Score
+              });
+            };
+
+            // Check draw_equal_points_at_turn: fire exactly at turn N (check >= so we don't miss it)
+            if (gameState.gameType?.draw_equal_points_at_turn != null) {
+              const turnThreshold = gameState.gameType.draw_equal_points_at_turn * 2;
+              if (gameState.totalHalfMoves >= turnThreshold && scoresEqual) {
+                await firePointsDraw('draw_equal_points_at_turn');
+                return;
+              }
+            }
+
+            // Check draw_equal_points_consecutive: fire after N consecutive equal-score half-moves
+            if (gameState.gameType?.draw_equal_points_consecutive != null) {
+              if (gameState.consecutiveEqualScoreTurns >= gameState.gameType.draw_equal_points_consecutive) {
+                await firePointsDraw('draw_equal_points_consecutive');
+                return;
+              }
+            }
+
+            // Check points_to_win: if either player meets or exceeds threshold, they win
+            // (evaluated at end of the mover's half-move)
+            if (gameState.gameType?.points_to_win != null) {
+              const threshold = gameState.gameType.points_to_win;
+              const p1Wins = p1Score >= threshold;
+              const p2Wins = p2Score >= threshold;
+              if (p1Wins || p2Wins) {
+                stopGameTimer(gameId);
+                gameState.status = 'completed';
+                let winnerId = null;
+                let pointsReason = 'points_win';
+                if (p1Wins && p2Wins) {
+                  // Simultaneous threshold — draw
+                  pointsReason = 'draw_points_tie';
+                } else {
+                  const winPos = p1Wins ? 1 : 2;
+                  winnerId = gameState.players.find(p => p.position === winPos)?.id;
+                }
+                gameState.winner = winnerId;
+                gameState.winReason = pointsReason;
+                let eloChanges = null;
+                if (gameState.rated !== false && winnerId) {
+                  const loserId = gameState.players.find(p => p.id !== winnerId)?.id;
+                  if (loserId) eloChanges = await updateEloRatings(winnerId, loserId);
+                } else if (gameState.rated !== false && !winnerId) {
+                  const _p1 = gameState.players[0];
+                  const _p2 = gameState.players[1];
+                  if (_p1?.id && _p2?.id) {
+                    const _p1e = _p1.elo || 1000;
+                    const _p2e = _p2.elo || 1000;
+                    eloChanges = await updateEloRatings(_p1e >= _p2e ? _p1.id : _p2.id, _p1e >= _p2e ? _p2.id : _p1.id, true);
+                  }
+                }
+                const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                try {
+                  await db_pool.query(
+                    `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+                    [endTime, winnerId ? sanitizeWinnerId(winnerId) : null, JSON.stringify(gameState.pieces),
+                     buildOtherData(gameState, { winner: winnerId, reason: pointsReason, player1Score: p1Score, player2Score: p2Score, eloChanges }), gameId]
+                  );
+                } catch (dbErr) { console.error('Failed to update DB for points win:', dbErr); }
+                broadcastGameOver(io, gameId, gameState, {
+                  gameId, winner: winnerId, reason: pointsReason, move: moveRecord, finalState: gameState, eloChanges,
+                  player1Score: p1Score, player2Score: p2Score
+                });
+                return;
+              }
+            }
+          }
+          // ── End points checks ─────────────────────────────────────────────
+
+
           await db_pool.query(
             "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
             [gameState.currentTurn, JSON.stringify(gameState.pieces), 
@@ -5685,7 +5881,8 @@ function initializeSocket(server) {
               enPassantTarget: gameState.enPassantTarget,
               controlSquareTracking: gameState.controlSquareTracking,
               actionsThisTurn: gameState.actionsThisTurn || 0,
-              actionsPerTurn: gameState.gameType?.actions_per_turn || 1
+              actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+              ...(gameState.gameType?.points_to_win != null ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {})
             },
             ...(moveClockMultipliers && Object.keys(moveClockMultipliers).length > 0 ? { clockMultipliers: moveClockMultipliers } : { clockMultipliers: {} }),
             ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
@@ -6599,6 +6796,9 @@ function initializeSocket(server) {
             movesWithoutCapture: otherData?.movesWithoutCapture || 0, // Load counter from DB
             positionHistory: otherData?.positionHistory || {}, // Load position history for repetition
             controlSquareTracking: otherData?.controlSquareTracking || {}, // Track control square occupancy
+            captureScores: otherData?.captureScores || { 1: (gameType?.starting_points_p1 || 0), 2: (gameType?.starting_points_p2 || 0) }, // Permanent points
+            consecutiveEqualScoreTurns: otherData?.consecutiveEqualScoreTurns || 0,
+            totalHalfMoves: otherData?.totalHalfMoves || 0,
             startTime: game.start_time,
             playerTimes: playerTimes,
             allowSpectators: game.allow_spectators !== 0,
@@ -9119,6 +9319,8 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
       limit_promote_checkmate_to_original: j.limit_promote_checkmate_to_original ?? 0,
       can_promote_to_capture: j.can_promote_to_capture ?? promotedPiece.can_promote_to_capture ?? 0,
       limit_promote_capture_to_original: j.limit_promote_capture_to_original ?? 0,
+      capture_points_gain: j.capture_points_gain ?? 0,
+      capture_points_loss: j.capture_points_loss ?? 0,
     });
   }
 
@@ -12319,7 +12521,7 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
                               gameType.value_condition || gameType.squares_condition || 
                               gameType.hill_condition || gameType.no_moves_condition ||
                               gameType.promotion_condition || gameType.lose_all_pieces_condition ||
-                              gameType.stalemate_win_condition;
+                              gameType.stalemate_win_condition || (gameType.points_to_win != null);
   
   if (!hasAnyWinCondition) {
     for (const player of players) {
@@ -12755,6 +12957,54 @@ async function processBotTurn(io, gameId, gameState) {
         }, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
       }
 
+      // ── Points win condition and equal-points draw checks (bot path) ──────
+      if (gameState.gameType?.points_to_win != null || gameState.gameType?.draw_equal_points_at_turn != null || gameState.gameType?.draw_equal_points_consecutive != null) {
+        gameState.totalHalfMoves = (gameState.totalHalfMoves || 0) + 1;
+        const p1Score = getPlayerScore(gameState, 1);
+        const p2Score = getPlayerScore(gameState, 2);
+        const scoresEqual = p1Score === p2Score;
+        if (scoresEqual) {
+          gameState.consecutiveEqualScoreTurns = (gameState.consecutiveEqualScoreTurns || 0) + 1;
+        } else {
+          gameState.consecutiveEqualScoreTurns = 0;
+        }
+
+        if (gameState.gameType?.draw_equal_points_at_turn != null) {
+          const turnThreshold = gameState.gameType.draw_equal_points_at_turn * 2;
+          if (gameState.totalHalfMoves >= turnThreshold && scoresEqual) {
+            return await finishBotGame(io, gameId, gameState, {
+              gameOver: true, winner: null, reason: 'draw_equal_points_at_turn'
+            }, moveRecord, { burnPieces, burnKilledPieces, regenPieces, player1Score: p1Score, player2Score: p2Score });
+          }
+        }
+        if (gameState.gameType?.draw_equal_points_consecutive != null) {
+          if (gameState.consecutiveEqualScoreTurns >= gameState.gameType.draw_equal_points_consecutive) {
+            return await finishBotGame(io, gameId, gameState, {
+              gameOver: true, winner: null, reason: 'draw_equal_points_consecutive'
+            }, moveRecord, { burnPieces, burnKilledPieces, regenPieces, player1Score: p1Score, player2Score: p2Score });
+          }
+        }
+        if (gameState.gameType?.points_to_win != null) {
+          const threshold = gameState.gameType.points_to_win;
+          const p1Wins = p1Score >= threshold;
+          const p2Wins = p2Score >= threshold;
+          if (p1Wins || p2Wins) {
+            let winnerId = null;
+            let pointsReason = 'points_win';
+            if (p1Wins && p2Wins) {
+              pointsReason = 'draw_points_tie';
+            } else {
+              const winPos = p1Wins ? 1 : 2;
+              winnerId = gameState.players.find(p => p.position === winPos)?.id;
+            }
+            return await finishBotGame(io, gameId, gameState, {
+              gameOver: true, winner: winnerId, reason: pointsReason
+            }, moveRecord, { burnPieces, burnKilledPieces, regenPieces, player1Score: p1Score, player2Score: p2Score });
+          }
+        }
+      }
+      // ── End bot points checks ─────────────────────────────────────────────
+
       // 13. Update DB
       await db_pool.query(
         "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
@@ -12794,7 +13044,8 @@ async function processBotTurn(io, gameId, gameState) {
           enPassantTarget: gameState.enPassantTarget,
           controlSquareTracking: gameState.controlSquareTracking,
           actionsThisTurn: gameState.actionsThisTurn || 0,
-          actionsPerTurn: gameState.gameType?.actions_per_turn || 1
+          actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+          ...(gameState.gameType?.points_to_win != null ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {})
         },
         ...(botMoveClockMultipliers && Object.keys(botMoveClockMultipliers).length > 0 ? { clockMultipliers: botMoveClockMultipliers } : { clockMultipliers: {} }),
         ...(regenPieces.length > 0 ? { regenPieces } : {}),
@@ -13164,7 +13415,9 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
       `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
        pieces = ?, other_data = ? WHERE id = ?`,
       [endTime, dbWinnerId, JSON.stringify(gameState.pieces),
-       buildOtherData(gameState, { winner: winResult.winner, reason: winResult.reason, isBotGame: true }),
+       buildOtherData(gameState, { winner: winResult.winner, reason: winResult.reason, isBotGame: true,
+         ...(effects.player1Score != null ? { player1Score: effects.player1Score } : {}),
+         ...(effects.player2Score != null ? { player2Score: effects.player2Score } : {}) }),
        gameId]
     );
   } catch (dbError) {
@@ -13180,7 +13433,8 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
       pieces: gameState.pieces,
       currentTurn: gameState.currentTurn,
       playerTimes: gameState.playerTimes,
-      moveHistory: gameState.moveHistory
+      moveHistory: gameState.moveHistory,
+      ...(gameState.gameType?.points_to_win != null ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {})
     },
     ...(effects.regenPieces?.length > 0 ? { regenPieces: effects.regenPieces } : {}),
     ...(effects.burnPieces?.length > 0 ? { burnPieces: effects.burnPieces } : {}),
@@ -13193,7 +13447,9 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
     reason: winResult.reason,
     move: moveRecord,
     finalState: gameState,
-    eloChanges: null
+    eloChanges: null,
+    ...(effects.player1Score != null ? { player1Score: effects.player1Score } : {}),
+    ...(effects.player2Score != null ? { player2Score: effects.player2Score } : {})
   });
 
   console.log(`[Bot] Game ${gameId} ended: ${winResult.reason}, winner: ${winResult.winner || 'draw'}`);

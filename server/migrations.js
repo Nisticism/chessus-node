@@ -3352,6 +3352,96 @@ const runMigrations = async () => {
     console.error('Error expanding game_types.game_name:', err.message);
   }
 
+  // ── Points win condition ───────────────────────────────────────────────────
+  // points_to_win: the score a player must reach to win (NULL = disabled).
+  try {
+    if (!(await columnExists('game_types', 'points_to_win'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN points_to_win INT NULL DEFAULT NULL COMMENT 'If set, the first player to reach this many points wins'`,
+        "Add points_to_win column to game_types"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding points_to_win column:', err.message);
+  }
+
+  // starting_points_p1 / starting_points_p2: optional head-start for balancing.
+  try {
+    if (!(await columnExists('game_types', 'starting_points_p1'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN starting_points_p1 INT NOT NULL DEFAULT 0 COMMENT 'Initial score for Player 1 at game start'`,
+        "Add starting_points_p1 column to game_types"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding starting_points_p1 column:', err.message);
+  }
+  try {
+    if (!(await columnExists('game_types', 'starting_points_p2'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN starting_points_p2 INT NOT NULL DEFAULT 0 COMMENT 'Initial score for Player 2 at game start'`,
+        "Add starting_points_p2 column to game_types"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding starting_points_p2 column:', err.message);
+  }
+
+  // draw_equal_points_at_turn: draw fires at turn N if both players have equal scores.
+  try {
+    if (!(await columnExists('game_types', 'draw_equal_points_at_turn'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN draw_equal_points_at_turn INT NULL DEFAULT NULL COMMENT 'If set, the game is a draw when both players have equal points at exactly turn N'`,
+        "Add draw_equal_points_at_turn column to game_types"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding draw_equal_points_at_turn column:', err.message);
+  }
+
+  // draw_equal_points_consecutive: draw fires after N consecutive turns of tied scores.
+  try {
+    if (!(await columnExists('game_types', 'draw_equal_points_consecutive'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN draw_equal_points_consecutive INT NULL DEFAULT NULL COMMENT 'If set, the game is a draw after N consecutive half-moves where both players have equal scores'`,
+        "Add draw_equal_points_consecutive column to game_types"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding draw_equal_points_consecutive column:', err.message);
+  }
+
+  // capture_points_gain on game_type_pieces: points the CAPTURER gains when taking this piece.
+  try {
+    if (!(await columnExists('game_type_pieces', 'capture_points_gain'))) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN capture_points_gain INT NOT NULL DEFAULT 0 COMMENT 'Points awarded to the player who captures this piece'`,
+        "Add capture_points_gain column to game_type_pieces"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding capture_points_gain column:', err.message);
+  }
+
+  // capture_points_loss on game_type_pieces: points DEDUCTED from the piece owner when captured.
+  try {
+    if (!(await columnExists('game_type_pieces', 'capture_points_loss'))) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN capture_points_loss INT NOT NULL DEFAULT 0 COMMENT 'Points deducted from the piece owner when this piece is captured'`,
+        "Add capture_points_loss column to game_type_pieces"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding capture_points_loss column:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {
