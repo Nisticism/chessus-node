@@ -524,18 +524,6 @@ const LiveGame = () => {
     };
   }, []);
 
-  // When the game-over modal opens for a logged-in player (not spectating),
-  // check whether they have already upvoted this game type. If not, show the
-  // upvote prompt. Spectators and guests are excluded — only players see it.
-  useEffect(() => {
-    if (!showGameOver || !currentUser || isSpectator || !gameState?.gameTypeId) return;
-    let cancelled = false;
-    getUpvoteStatus(gameState.gameTypeId).then(data => {
-      if (!cancelled && !data.upvoted) setGameOverUpvoteState('prompt');
-    }).catch(() => {}); // non-critical; silently skip if request fails
-    return () => { cancelled = true; };
-  }, [showGameOver, currentUser, isSpectator, gameState?.gameTypeId]);
-
   // Load game state on mount
   useEffect(() => {
     const loadGame = async () => {
@@ -664,7 +652,22 @@ const LiveGame = () => {
     const storedId = getStoredAnonCorresId ? getStoredAnonCorresId(String(gameId))?.playerId : null;
     if (storedId && p.id === storedId) return true;
     return false;
-  })));  useEffect(() => {
+  }));
+
+  // When the game-over modal opens for a logged-in player (not spectating),
+  // check whether they have already upvoted this game type. If not, show the
+  // upvote prompt. Spectators and guests are excluded — only players see it.
+  // NOTE: this effect must live AFTER the isSpectator declaration to avoid TDZ.
+  useEffect(() => {
+    if (!showGameOver || !currentUser || isSpectator || !gameState?.gameTypeId) return;
+    let cancelled = false;
+    getUpvoteStatus(gameState.gameTypeId).then(data => {
+      if (!cancelled && !data.upvoted) setGameOverUpvoteState('prompt');
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [showGameOver, currentUser, isSpectator, gameState?.gameTypeId]);
+
+  useEffect(() => {
     if (isSpectator && connected && gameId && spectateGame) {
       spectateGame(parseInt(gameId), { anonymous: anonSpectate });
     }
