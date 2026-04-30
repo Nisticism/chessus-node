@@ -86,8 +86,9 @@ async function main() {
       anchor = Number(row.lastMoveTime);
       anchorSource = 'lastMoveTime';
     } else if (row.start_time) {
-      // start_time is a datetime string from MySQL (dateStrings: true in pool config)
-      anchor = new Date(row.start_time).getTime();
+      // MySQL datetime strings use space separator ('2026-04-20 10:30:00'), not the
+      // ISO 8601 'T' separator that new Date() requires — replace it before parsing.
+      anchor = new Date(row.start_time.replace(' ', 'T')).getTime();
       anchorSource = 'start_time';
     }
 
