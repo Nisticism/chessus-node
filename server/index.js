@@ -1356,6 +1356,7 @@ app.get("/api/users/:userId/ongoing-games", async (req, res) => {
         g.is_correspondence,
         g.correspondence_days,
         g.other_data,
+        g.player_turn,
         gt.game_name as game_type_name,
         gt.board_width,
         gt.board_height,
@@ -1407,6 +1408,7 @@ app.get("/api/users/:userId/ongoing-games", async (req, res) => {
         increment: game.increment,
         isCorrespondence: !!game.is_correspondence,
         correspondenceDays: game.correspondence_days,
+        playerTurn: game.player_turn ?? null,
         players: [p1, p2].filter(Boolean)
       };
     });

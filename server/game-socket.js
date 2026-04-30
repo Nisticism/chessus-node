@@ -7497,7 +7497,7 @@ async function getOngoingGames() {
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
               g.allow_spectators, g.show_piece_helpers,
-              g.is_correspondence, g.correspondence_days, g.other_data,
+              g.is_correspondence, g.correspondence_days, g.other_data, g.player_turn,
               CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
@@ -7554,7 +7554,7 @@ async function getMyBotGames(userId) {
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
               g.allow_spectators, g.show_piece_helpers,
-              g.is_correspondence, g.correspondence_days, g.other_data,
+              g.is_correspondence, g.correspondence_days, g.other_data, g.player_turn,
               CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,

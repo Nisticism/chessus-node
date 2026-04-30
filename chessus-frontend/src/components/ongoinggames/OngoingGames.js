@@ -121,7 +121,16 @@ const OngoingGames = ({ userId }) => {
                     className={styles["join-btn"]}
                     onClick={() => handleJoin(game.id)}
                   >
-                    {isParticipant ? (game.status === "waiting" ? "Return" : "Play") : "Watch"}
+                    {isParticipant
+                      ? game.status === "waiting"
+                        ? "Return"
+                        : (() => {
+                            const myPos = game.players.findIndex(p => p.id === parseInt(currentUserId)) + 1;
+                            return game.playerTurn && myPos > 0 && game.playerTurn === myPos
+                              ? 'Make Move'
+                              : "Opponent's Turn";
+                          })()
+                      : "Watch"}
                   </button>
                 </div>
               );
@@ -158,7 +167,16 @@ const OngoingGames = ({ userId }) => {
                     className={`${styles["join-btn"]} ${styles["join-btn-correspondence"]}`}
                     onClick={() => handleJoin(game.id)}
                   >
-                    {isParticipant ? (game.status === "waiting" ? "Return" : "Make Move") : "View"}
+                    {isParticipant
+                      ? game.status === "waiting"
+                        ? "Return"
+                        : (() => {
+                            const myPos = game.players.findIndex(p => p.id === parseInt(currentUserId)) + 1;
+                            return game.playerTurn && myPos > 0 && game.playerTurn === myPos
+                              ? 'Make Move'
+                              : "Opponent's Turn";
+                          })()
+                      : "View"}
                   </button>
                 </div>
               );

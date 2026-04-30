@@ -1480,7 +1480,13 @@ const Play = () => {
                           className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
                           onClick={() => navigate(`/play/${game.id}`)}
                         >
-                          {game.player_ids?.includes(currentUser?.id) ? 'Re-join' : 'Watch'}
+                          {!game.player_ids?.includes(currentUser?.id)
+                            ? 'Watch'
+                            : game.player_turn == null
+                              ? 'Re-join'
+                              : game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn
+                                ? 'Make Move'
+                                : "Opponent's Turn"}
                         </button>
                         {isAdmin && (
                           <button
@@ -1574,7 +1580,13 @@ const Play = () => {
                           className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
                           onClick={() => navigate(`/play/${game.id}`)}
                         >
-                          {game.player_ids?.includes(currentUser?.id) ? 'Re-join' : 'Watch'}
+                          {!game.player_ids?.includes(currentUser?.id)
+                            ? 'Watch'
+                            : game.player_turn == null
+                              ? 'Re-join'
+                              : game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn
+                                ? 'Make Move'
+                                : "Opponent's Turn"}
                         </button>
                         {isAdmin && (
                           <button
