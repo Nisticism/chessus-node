@@ -1316,7 +1316,15 @@ const AdminDashboard = () => {
                 <td>{started ? (game.start_time ? formatDateTime(game.start_time) : '—') : '—'}</td>
                 <td>{ended ? (game.end_time ? formatDateTime(game.end_time) : '—') : '—'}</td>
                 <td>
-                  {!ended && (
+                  {ended ? (
+                    <Link
+                      to={`/play/${game.id}?anonSpectate=1`}
+                      className={styles["edit-btn"]}
+                      style={{ textDecoration: 'none' }}
+                    >
+                      View
+                    </Link>
+                  ) : (
                     <Link
                       to={`/play/${game.id}?anonSpectate=1`}
                       className={styles["edit-btn"]}

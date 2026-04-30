@@ -4,9 +4,20 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
-    date: "April 29, 2026",
-    title: "Performance improvements, profile mention notifications, piece wizard updates, bug fixes",
+    date: "April 30, 2026",
+    title: "Ranged attack persistence fix, admin anonymous game viewer",
     items: [
+      "Bug fix: editing a piece that has ranged attack enabled no longer resets the 'Enable ranged attack' toggle to off when you reach Step 3 of the piece wizard. The toggle now correctly reflects the saved setting.",
+      "Admin portal — Anonymous Games: completed and abandoned games now have a 'View' button that opens the final board state, so admins can review how the game ended. Active games still show 'Spectate'.",
+    ],
+  },
+  {
+    date: "April 29, 2026",
+    title: "AI training board replay coordinates, Make Move turn indicator, replay capture fixes, performance, bug fixes",
+    items: [
+      "Admin portal — AI Training Board Replay: the board now displays standard chess coordinates — file letters (a, b, c…) along the bottom and rank numbers (1, 2, 3…) on the left, with rank 1 at the bottom-left. Boards wider than 26 columns use doubled letters (aa, ab…). Hovering a piece shows its exact square (e.g. 'Pawn (P1) @ e2'). The move label also now shows the move in chess notation (e.g. 'e2-e4') instead of raw coordinates.",
+      "Admin portal — AI Training Board Replay: fixed two ghost-piece bugs in the visual board replay. (1) Non-capture moves by ghostwalk or pass-through pieces no longer erase the piece they land on — previously any piece at the destination was removed even when no capture occurred. (2) En passant captures now correctly remove the captured pawn from its actual square rather than leaving it as a ghost.",
+      "Play page and match history: game cards for live and correspondence games now show 'Make Move' on the button when it is your turn to move, and 'Opponent's Turn' when it is not. Spectators still see 'Watch' / 'View'.",
       "Database indexes added across all major tables — game lists, piece lists, forum threads, comments, notifications, and messages now load significantly faster, especially as data grows.",
       "Notifications and direct messages now use cursor-based pagination (load-more) instead of page offsets, eliminating slowdowns when scrolling through large message histories.",
       "Slow query logging enabled — queries taking over 300ms are now flagged in server logs for ongoing monitoring.",
