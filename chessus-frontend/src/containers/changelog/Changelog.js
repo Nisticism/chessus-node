@@ -14,6 +14,8 @@ const changelogData = [
       "Admin portal — Anonymous Games: completed and abandoned games now have a 'View' button that opens the final board state, so admins can review how the game ended. Active games still show 'Spectate'.",
       "Anonymous guests can now create and join correspondence games without an account. Your progress is saved in your browser so you can return to the same game link and continue where you left off. If you clear your browser data, the game link is your fallback.",
       "After a game ends, logged-in players now see a one-tap upvote prompt in the game-over screen ('Enjoyed this game type? ▲ Upvote'). The prompt only appears if you haven't already upvoted the game type, so it never bothers you twice.",
+      "Bot games: the page now loads instantly when you refresh mid-bot-turn instead of stalling until the bot finishes thinking.",
+      "Clocks now switch to the opponent's side the instant you submit a move, rather than waiting for the server to confirm it.",
     ],
   },
   {
