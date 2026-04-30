@@ -24,6 +24,23 @@ const userSockets = new Map(); // Maps userId to socket.id
 const onlineUsers = new Set(); // Set of online user IDs
 const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grace period)
 
+// ── Lobby query cache ─────────────────────────────────────────────────────────
+// The /play page polls getOngoingGames + getOpenLiveGames every 5 s per client.
+// With N connected users that becomes N simultaneous heavy GROUP BY queries per
+// tick.  Cache the shared results server-side so all concurrent callers share
+// one in-flight DB query (promise coalescing) and reuse the result for the TTL.
+const LOBBY_CACHE_TTL_MS = 6000; // 6 s — matches the 5 s client poll interval
+const _lobbyCache = {
+  ongoingGames: { data: null, ts: 0, pending: null },
+  openGames:    { data: null, ts: 0, pending: null },
+};
+
+/** Invalidate the lobby caches (call after game state changes). */
+function invalidateLobbyCache() {
+  _lobbyCache.ongoingGames.ts = 0;
+  _lobbyCache.openGames.ts    = 0;
+}
+
 // Game-disconnect (forfeit) timers. Keyed by `${gameId}:${userId}`.
 // Value: { timeoutId, expiresAt, durationMs, paused, remainingMs, gameId, userId }
 
@@ -406,6 +423,8 @@ function broadcastGameOver(io, gameId, gameState, payload) {
   // Bound memory: drop the marker after 10 minutes (long enough for any
   // duplicate-call window to close, short enough to not leak forever).
   setTimeout(() => _gameOverBroadcasted.delete(key), 10 * 60 * 1000);
+  // Invalidate lobby cache so the ended game disappears promptly.
+  invalidateLobbyCache();
   try {
     io.to(`game-${gameId}`).emit('gameOver', payload);
   } catch (err) {
@@ -1974,6 +1993,7 @@ async function handleSimulReadyToStart(io, socket, gameState, gameId, userId) {
       }
     } catch (e) { console.error('simul: failed to mark game active on ready-up', e); }
     io.emit('gameStarted', { gameId });
+    invalidateLobbyCache();
     startGameTimer(io, gameId);
 
     // If a bot is in this game, kick off its first simul submission now.
@@ -2089,6 +2109,138 @@ async function submitBotSimulMove(io, gameId, gameState) {
 // =====================================================================
 
 /**
+ * On server startup, reload all active timed (non-correspondence) games into
+ * memory so their clocks keep ticking even when no player is connected.
+ *
+ * Uses a lightweight game state (pieces parsed straight from DB JSON, no
+ * piece-template join) tagged with `_timerOnly: true`.  The `getGameState`
+ * handler will skip this entry and do a full DB reload the first time a real
+ * player connects, at which point the timer is cleanly restarted with the
+ * fully-hydrated state.
+ */
+async function recoverActiveGames() {
+  try {
+    const [rows] = await db_pool.query(
+      `SELECT g.id, g.status, g.turn_length, g.increment, g.player_turn,
+              g.pieces, g.other_data, g.host_id, g.game_type_id,
+              g.start_time, g.allow_spectators, g.show_piece_helpers,
+              g.is_correspondence, g.correspondence_days,
+              gt.mate_condition, gt.starting_points_p1, gt.starting_points_p2
+       FROM games g
+       JOIN game_types gt ON g.game_type_id = gt.id
+       WHERE g.status = 'active'
+         AND g.turn_length IS NOT NULL
+         AND (g.is_correspondence = 0 OR g.is_correspondence IS NULL)`
+    );
+    let count = 0;
+    for (const game of rows) {
+      const gameIdStr = game.id.toString();
+      if (activeGames.has(gameIdStr)) continue; // already in memory
+      try {
+        let otherData = {};
+        try { otherData = JSON.parse(game.other_data || '{}'); } catch (_) {}
+        // Parse current board state (no template merging — sufficient for the timer)
+        let pieces = [];
+        try {
+          const parsed = JSON.parse(game.pieces || '[]');
+          pieces = Array.isArray(parsed) ? parsed : [];
+        } catch (_) {}
+        // Load players
+        const [playerRows] = await db_pool.query(
+          `SELECT p.user_id, p.player_position, p.time_remaining, u.username
+           FROM players p LEFT JOIN users u ON p.user_id = u.id
+           WHERE p.game_id = ?`,
+          [game.id]
+        );
+        const anonCorresPlayers = otherData?.anonCorresPlayers || null;
+        const players = playerRows.map(p => {
+          let id = p.user_id;
+          if (!id && anonCorresPlayers && p.player_position != null) {
+            id = anonCorresPlayers[p.player_position]?.playerId || null;
+          }
+          return { id, username: p.username || 'Guest', position: p.player_position, timeRemaining: p.time_remaining };
+        });
+        // Restore playerTimes with elapsed-time deduction from the last move's snapshot
+        const playerTimes = {};
+        players.forEach(p => {
+          playerTimes[p.id] = p.timeRemaining
+            ? p.timeRemaining * 60
+            : (game.turn_length ? game.turn_length * 60 : null);
+        });
+        if (otherData.playerTimes && typeof otherData.playerTimes === 'object') {
+          const maxSec = game.turn_length ? game.turn_length * 60 : Infinity;
+          for (const [pid, secs] of Object.entries(otherData.playerTimes)) {
+            if (secs != null) playerTimes[pid] = Math.min(maxSec, Math.max(0, Number(secs)));
+          }
+          if (otherData.clockPersistedAt) {
+            const elapsedSec = (Date.now() - otherData.clockPersistedAt) / 1000;
+            const cp = players.find(p => p.position === (game.player_turn || 1));
+            if (cp?.id != null && playerTimes[cp.id] != null) {
+              playerTimes[cp.id] = Math.max(0, playerTimes[cp.id] - elapsedSec);
+            }
+          }
+        }
+        // Build lightweight game state
+        const gameState = {
+          id: game.id,
+          gameTypeId: game.game_type_id,
+          gameType: {
+            id: game.game_type_id,
+            mate_condition: game.mate_condition,
+            starting_points_p1: game.starting_points_p1,
+            starting_points_p2: game.starting_points_p2,
+          },
+          otherGameData: {},
+          timeControl: game.turn_length,
+          increment: game.increment || 0,
+          status: game.status,
+          hostId: game.host_id,
+          players,
+          pieces,
+          currentTurn: game.player_turn || 1,
+          moveHistory: otherData.moves || [],
+          captureScores: otherData.captureScores || {
+            1: (game.starting_points_p1 || 0),
+            2: (game.starting_points_p2 || 0),
+          },
+          consecutiveEqualScoreTurns: otherData.consecutiveEqualScoreTurns || 0,
+          totalHalfMoves: otherData.totalHalfMoves || 0,
+          playerTimes,
+          rated: otherData.rated !== false,
+          materialClockPenalty: !!otherData.materialClockPenalty,
+          materialClockHandicap: !!otherData.materialClockHandicap,
+          isCorrespondence: false,
+          allowSpectators: game.allow_spectators !== 0,
+          showPieceHelpers: game.show_piece_helpers === 1,
+          _timerOnly: true, // getGameState will bypass this and do a full reload
+        };
+        // Restore bot player reference so timeout DB writes have correct rated/winner data
+        if (otherData?.isBotGame && otherData?.botDifficulty) {
+          const botInfo = BOT_PLAYERS[otherData.botDifficulty] || BOT_PLAYERS.medium;
+          const restoredBotPosition = otherData.botPosition || 2;
+          gameState.botPlayer = { ...botInfo, position: restoredBotPosition };
+          gameState.rated = false;
+          if (!gameState.players.find(p => p.id === botInfo.id)) {
+            gameState.players.push({
+              id: botInfo.id, username: botInfo.username,
+              position: restoredBotPosition, isBot: true,
+            });
+          }
+        }
+        activeGames.set(gameIdStr, gameState);
+        startGameTimer(ioInstance, game.id);
+        count++;
+      } catch (e) {
+        console.error(`[startup] recoverActiveGames: failed for game ${game.id}:`, e.message);
+      }
+    }
+    if (count > 0) console.log(`[startup] Restored timers for ${count} active timed game(s)`);
+  } catch (e) {
+    console.error('[startup] recoverActiveGames error:', e);
+  }
+}
+
+/**
  * Initialize Socket.io with the HTTP server
  */
 function initializeSocket(server) {
@@ -2138,6 +2290,10 @@ function initializeSocket(server) {
   // Runs at startup (to catch games that expired while the server was down) then hourly.
   cancelExpiredCorrespondenceGames();
   setInterval(cancelExpiredCorrespondenceGames, 60 * 60 * 1000);
+
+  // Restore in-memory clocks for all active timed games so they keep ticking
+  // even when no player is currently connected (e.g. after a server restart).
+  recoverActiveGames();
   
   // Global error handler for socket.io engine
   io.engine.on("connection_error", (err) => {
@@ -2770,6 +2926,7 @@ function initializeSocket(server) {
           );
 
           socket.emit("gameCreated", { gameId, gameState });
+          invalidateLobbyCache();
           socket.emit("botGameReady", {
             gameId,
             gameState,
@@ -2819,6 +2976,7 @@ function initializeSocket(server) {
 
         // Emit game created event
         socket.emit("gameCreated", { gameId, gameState });
+        invalidateLobbyCache();
 
         // Notify owner of new game (non-blocking)
         notifyOwnerOfGameCreation(io, gameId, hostId, hostUsername, gameState);
@@ -4105,6 +4263,7 @@ function initializeSocket(server) {
           
           // Notify everyone that a new game has started (for ongoing games list)
           io.emit("gameStarted", { gameId });
+          invalidateLobbyCache();
           
           // Start the game timer
           startGameTimer(io, gameId);
@@ -6833,6 +6992,9 @@ function initializeSocket(server) {
     socket.on("getGameState", async (data) => {
       const { gameId, userId } = data;
       let gameState = activeGames.get(gameId.toString());
+      // Skip timer-only startup recovery state — a real player connection
+      // triggers a full DB reload so the client receives complete game data.
+      if (gameState?._timerOnly) gameState = null;
 
       // Cancel any in-flight disconnect-forfeit timer for this user — they're
       // back on the game page (e.g. after navigating away and returning).
@@ -7830,22 +7992,32 @@ function initializeSocket(server) {
  * Get list of games waiting for players (excludes challenge games)
  */
 async function getOpenLiveGames() {
-  try {
-    const [games] = await db_pool.query(
-      `SELECT g.*, gt.game_name, gt.board_width, gt.board_height,
-              COALESCE(u.username, JSON_UNQUOTE(JSON_EXTRACT(g.other_data, '$.guestName')), 'Guest') as host_username,
-              CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated
-       FROM games g
-       JOIN game_types gt ON g.game_type_id = gt.id
-       LEFT JOIN users u ON g.host_id = u.id
-       WHERE g.status = 'waiting' AND (g.is_challenge = 0 OR g.is_challenge IS NULL)
-       ORDER BY g.created_at DESC`
-    );
-    return games;
-  } catch (error) {
-    console.error("Error getting open games:", error);
-    return [];
-  }
+  const cache = _lobbyCache.openGames;
+  if (cache.data && Date.now() - cache.ts < LOBBY_CACHE_TTL_MS) return cache.data;
+  if (cache.pending) return cache.pending;
+  cache.pending = (async () => {
+    try {
+      const [games] = await db_pool.query(
+        `SELECT g.*, gt.game_name, gt.board_width, gt.board_height,
+                COALESCE(u.username, JSON_UNQUOTE(JSON_EXTRACT(g.other_data, '$.guestName')), 'Guest') as host_username,
+                CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated
+         FROM games g
+         JOIN game_types gt ON g.game_type_id = gt.id
+         LEFT JOIN users u ON g.host_id = u.id
+         WHERE g.status = 'waiting' AND (g.is_challenge = 0 OR g.is_challenge IS NULL)
+         ORDER BY g.created_at DESC`
+      );
+      cache.data = games;
+      cache.ts = Date.now();
+      return games;
+    } catch (error) {
+      console.error("Error getting open games:", error);
+      return cache.data || [];
+    } finally {
+      cache.pending = null;
+    }
+  })();
+  return cache.pending;
 }
 
 /**
@@ -7878,57 +8050,63 @@ async function getPrivateGames(userId) {
  * Get list of ongoing games (active games that allow spectators)
  */
 async function getOngoingGames() {
-  try {
-    const [games] = await db_pool.query(
-      `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
-              g.allow_spectators, g.show_piece_helpers,
-              g.is_correspondence, g.correspondence_days, g.other_data, g.player_turn,
-              CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
-              gt.game_name, gt.board_width, gt.board_height,
-              GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
-              GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
-              COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) as move_count,
-              MAX(u.show_computer_games_publicly) as host_show_bot_public
-       FROM games g
-       JOIN game_types gt ON g.game_type_id = gt.id
-       JOIN players p ON g.id = p.game_id
-       JOIN users u ON p.user_id = u.id
-       WHERE g.status IN ('active', 'ready') AND (g.allow_spectators = 1 OR g.allow_spectators IS NULL) AND (g.is_anonymous = 0 OR g.is_anonymous IS NULL)
-             AND (
-               g.other_data IS NULL
-               OR JSON_EXTRACT(g.other_data, '$.isBotGame') IS NULL
-               OR JSON_EXTRACT(g.other_data, '$.isBotGame') = false
-               OR EXISTS (
-                 SELECT 1 FROM players p2
-                 JOIN users u2 ON p2.user_id = u2.id
-                 WHERE p2.game_id = g.id AND u2.show_computer_games_publicly = 1
-               )
-             )
-       GROUP BY g.id
-       ORDER BY g.start_time DESC, g.created_at DESC`
-    );
-    // Convert player_ids from comma-separated string to array of numbers
-    // For bot games, append bot username to player_names
-    return games.map(g => {
-      let otherData = {};
-      try { otherData = JSON.parse(g.other_data || '{}'); } catch (e) {}
-      let playerNames = g.player_names;
-      if (otherData.isBotGame && otherData.botDifficulty) {
-        const botUsername = `Computer (${otherData.botDifficulty.charAt(0).toUpperCase() + otherData.botDifficulty.slice(1)})`;
-        playerNames = otherData.botPosition === 1
-          ? `${botUsername} vs ${g.player_names}`
-          : `${g.player_names} vs ${botUsername}`;
-      }
-      return {
-        ...g,
-        player_names: playerNames,
-        player_ids: g.player_ids ? g.player_ids.split(',').map(id => parseInt(id)) : []
-      };
-    });
-  } catch (error) {
-    console.error("Error getting ongoing games:", error);
-    return [];
-  }
+  const cache = _lobbyCache.ongoingGames;
+  if (cache.data && Date.now() - cache.ts < LOBBY_CACHE_TTL_MS) return cache.data;
+  if (cache.pending) return cache.pending;
+  cache.pending = (async () => {
+    try {
+      const [games] = await db_pool.query(
+        `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
+                g.allow_spectators, g.show_piece_helpers,
+                g.is_correspondence, g.correspondence_days, g.other_data, g.player_turn,
+                CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
+                gt.game_name, gt.board_width, gt.board_height,
+                GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
+                GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
+                COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) as move_count,
+                MAX(u.show_computer_games_publicly) as host_show_bot_public
+         FROM games g
+         JOIN game_types gt ON g.game_type_id = gt.id
+         JOIN players p ON g.id = p.game_id
+         JOIN users u ON p.user_id = u.id
+         WHERE g.status IN ('active', 'ready')
+           AND COALESCE(g.allow_spectators, 1) = 1
+           AND COALESCE(g.is_anonymous, 0) = 0
+         GROUP BY g.id
+         HAVING (
+           JSON_EXTRACT(g.other_data, '$.isBotGame') IS NULL
+           OR JSON_EXTRACT(g.other_data, '$.isBotGame') = false
+           OR MAX(u.show_computer_games_publicly) = 1
+         )
+         ORDER BY g.start_time DESC, g.created_at DESC`
+      );
+      const result = games.map(g => {
+        let otherData = {};
+        try { otherData = JSON.parse(g.other_data || '{}'); } catch (e) {}
+        let playerNames = g.player_names;
+        if (otherData.isBotGame && otherData.botDifficulty) {
+          const botUsername = `Computer (${otherData.botDifficulty.charAt(0).toUpperCase() + otherData.botDifficulty.slice(1)})`;
+          playerNames = otherData.botPosition === 1
+            ? `${botUsername} vs ${g.player_names}`
+            : `${g.player_names} vs ${botUsername}`;
+        }
+        return {
+          ...g,
+          player_names: playerNames,
+          player_ids: g.player_ids ? g.player_ids.split(',').map(id => parseInt(id)) : []
+        };
+      });
+      cache.data = result;
+      cache.ts = Date.now();
+      return result;
+    } catch (error) {
+      console.error("Error getting ongoing games:", error);
+      return cache.data || [];
+    } finally {
+      cache.pending = null;
+    }
+  })();
+  return cache.pending;
 }
 
 /**

@@ -20,6 +20,7 @@ const changelogData = [
       "Clocks now switch to the opponent's side the instant you submit a move, rather than waiting for the server to confirm it.",
       "Bug fix: the 'Must Move If Able' and 'Forced Move Uses an Action' options in the piece wizard now correctly save and take effect in live games. Previously the flags were stored in the database but not loaded into the active game state, so the forced-move enforcement never triggered.",
       "Bug fix: 'Must Move If Able' and 'Forced Move Uses an Action' now display correctly when re-opening an existing piece in the piece wizard. The piece detail query was not selecting these columns, so the checkboxes always appeared unchecked on edit.",
+      "Performance: the public game lobby (Open Matches and Ongoing Games lists) now uses a server-side cache. Previously every connected user's 5-second polling timer triggered a separate heavy database query. Now all users share one query result per refresh cycle, dramatically reducing database load when multiple players are browsing the lobby.",
     ],
   },
   {
