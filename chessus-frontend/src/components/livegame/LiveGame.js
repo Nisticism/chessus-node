@@ -652,7 +652,7 @@ const LiveGame = () => {
     const storedId = getStoredAnonCorresId ? getStoredAnonCorresId(String(gameId))?.playerId : null;
     if (storedId && p.id === storedId) return true;
     return false;
-  }));
+  })));
 
   // When the game-over modal opens for a logged-in player (not spectating),
   // check whether they have already upvoted this game type. If not, show the
