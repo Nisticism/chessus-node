@@ -3447,6 +3447,22 @@ const runMigrations = async () => {
   } else {
     console.log(`\n✓ Applied ${migrationsRun} migration(s)\n`);
   }
+
+  // Add composite index on games(status, start_time) for the ongoing-games query
+  // (WHERE status IN ('active','ready') ORDER BY start_time DESC)
+  try {
+    const [idxRows] = await db_pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'games' AND INDEX_NAME = 'idx_games_status_start_time'
+       LIMIT 1`
+    );
+    if (idxRows.length === 0) {
+      await db_pool.query('CREATE INDEX idx_games_status_start_time ON games (status, start_time DESC)');
+      console.log('✓ Created index idx_games_status_start_time on games');
+    }
+  } catch (err) {
+    console.error('Error creating idx_games_status_start_time:', err.message);
+  }
 };
 
 module.exports = { runMigrations };

@@ -13947,11 +13947,11 @@ async function cancelExpiredCorrespondenceGames() {
       try {
         // Determine players from DB
         const [playerRows] = await db_pool.query(
-          'SELECT user_id, position FROM players WHERE game_id = ?', [gameId]
+          'SELECT user_id, player_position FROM players WHERE game_id = ?', [gameId]
         );
         const currentTurn = row.player_turn;
-        const currentPlayer = playerRows.find(p => p.position === currentTurn);
-        const winnerRow = playerRows.find(p => p.position !== currentTurn);
+        const currentPlayer = playerRows.find(p => p.player_position === currentTurn);
+        const winnerRow = playerRows.find(p => p.player_position !== currentTurn);
         const winnerId = winnerRow?.user_id || null;
         const loserId = currentPlayer?.user_id || null;
 
