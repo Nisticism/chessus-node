@@ -73,12 +73,32 @@ function applyMove(pieces, move) {
   if (movingIdx === -1) return board;
   const movingPiece = board[movingIdx];
 
-  // Remove captured piece at destination (must be opponent)
-  board = board.filter(
-    (p) =>
-      p.instanceId === movingPiece.instanceId ||
-      !(p.x === move.toX && p.y === move.toY),
-  );
+  // Remove captured piece at destination — but ONLY when the move is an
+  // actual capture (separator 'x' in the log, move.isCapture === true).
+  // Non-capture moves that land on occupied squares happen with ghostwalk /
+  // pass-through pieces; blindly filtering would erase those pieces from the
+  // visual board even though the Rust engine leaves them alive.
+  if (move.isCapture) {
+    const hadPieceAtDest = board.some(
+      (p) => p.instanceId !== movingPiece.instanceId && p.x === move.toX && p.y === move.toY,
+    );
+    board = board.filter(
+      (p) =>
+        p.instanceId === movingPiece.instanceId ||
+        !(p.x === move.toX && p.y === move.toY),
+    );
+    // En-passant: the captured pawn is NOT at the destination square —
+    // it sits on the same rank as the mover (fromY) and the same file as
+    // the destination (toX).  If nothing was at the destination but the log
+    // says a piece was captured, check the en-passant square.
+    if (!hadPieceAtDest && move.capturedName) {
+      board = board.filter(
+        (p) =>
+          p.instanceId === movingPiece.instanceId ||
+          !(p.x === move.toX && p.y === move.fromY),
+      );
+    }
+  }
 
   // Recalculate index after filter
   const newIdx = board.findIndex((p) => p.instanceId === movingPiece.instanceId);
@@ -125,6 +145,25 @@ function getPlayerStyle(player) {
   return PLAYER_COLORS[player] || { bg: "#aaa", text: "#000" };
 }
 
+/**
+ * Convert a 0-based column index to a chess file letter.
+ * Columns 0–25 → a–z; 26–51 → aa–az; 52–77 → ba–bz; etc.
+ * Mirrors the Rust engine's col_to_file() in selfplay.rs.
+ */
+function colToFile(col) {
+  if (col < 26) return String.fromCharCode(97 + col);
+  const first  = String.fromCharCode(97 + Math.floor(col / 26) - 1);
+  const second = String.fromCharCode(97 + (col % 26));
+  return first + second;
+}
+
+/** Convert internal (x, y) coords to chess notation, e.g. (4, 6) on 8×8 → "e2". */
+function toChessNotation(x, y, boardHeight) {
+  return `${colToFile(x)}${boardHeight - y}`;
+}
+
+const RANK_LABEL_W = 20; // px reserved for rank-number labels on the left
+
 function BoardRenderer({ boardWidth, boardHeight, pieces }) {
   const lightSq = "#d9c98a";
   const darkSq  = "#8b6c32";
@@ -139,9 +178,12 @@ function BoardRenderer({ boardWidth, boardHeight, pieces }) {
   const maxH = Math.min(boardHeight, 48);
   const cellSize = boardWidth > 16 || boardHeight > 16 ? 32 : CELL_SIZE;
   const fontSize = cellSize < 38 ? "0.65em" : "0.78em";
+  const labelFontSize = cellSize < 38 ? "0.58em" : "0.68em";
 
   const rows = [];
   for (let row = 0; row < maxH; row++) {
+    // Rank 1 is at the bottom (y = boardHeight-1 internally)
+    const rank = boardHeight - row;
     const cells = [];
     for (let col = 0; col < maxW; col++) {
       const isLight = (row + col) % 2 === 0;
@@ -165,7 +207,7 @@ function BoardRenderer({ boardWidth, boardHeight, pieces }) {
         >
           {piece && (
             <div
-              title={`${piece.pieceName} (P${piece.player})`}
+              title={`${piece.pieceName} (P${piece.player}) @ ${toChessNotation(col, row, boardHeight)}`}
               style={{
                 background: playerStyle.bg,
                 color: playerStyle.text,
@@ -190,8 +232,55 @@ function BoardRenderer({ boardWidth, boardHeight, pieces }) {
       );
     }
     rows.push(
-      <div key={row} style={{ display: "flex" }}>
+      <div key={row} style={{ display: "flex", alignItems: "stretch" }}>
+        {/* Rank label on the left */}
+        <div
+          style={{
+            width: RANK_LABEL_W,
+            height: cellSize,
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            paddingRight: 3,
+            fontSize: labelFontSize,
+            color: "#bbb",
+            fontFamily: "monospace",
+            lineHeight: 1,
+            userSelect: "none",
+          }}
+        >
+          {rank}
+        </div>
         {cells}
+      </div>,
+    );
+  }
+
+  // File labels row at the bottom
+  const fileLabels = [
+    // Spacer matching the rank-label column width
+    <div key="spacer" style={{ width: RANK_LABEL_W, flexShrink: 0 }} />,
+  ];
+  for (let col = 0; col < maxW; col++) {
+    fileLabels.push(
+      <div
+        key={col}
+        style={{
+          width: cellSize,
+          height: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: labelFontSize,
+          color: "#bbb",
+          fontFamily: "monospace",
+          lineHeight: 1,
+          flexShrink: 0,
+          userSelect: "none",
+        }}
+      >
+        {colToFile(col)}
       </div>,
     );
   }
@@ -207,6 +296,7 @@ function BoardRenderer({ boardWidth, boardHeight, pieces }) {
       }}
     >
       {rows}
+      <div style={{ display: "flex" }}>{fileLabels}</div>
     </div>
   );
 }
@@ -493,7 +583,7 @@ export default function AiGameReplayModal({ jobId, onClose }) {
                       ? "O-O"
                       : "O-O-O"
                     : currentMove.fromX !== null
-                    ? `(${currentMove.fromX},${currentMove.fromY}) → (${currentMove.toX},${currentMove.toY})`
+                    ? `${toChessNotation(currentMove.fromX, currentMove.fromY, gameData.boardHeight)}-${toChessNotation(currentMove.toX, currentMove.toY, gameData.boardHeight)}`
                     : ""
                 }${currentMove.capturedName ? ` captures ${currentMove.capturedName}` : ""}${currentMove.promotesTo ? ` =${currentMove.promotesTo}` : ""}`
               : ""}
