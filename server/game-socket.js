@@ -161,6 +161,12 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.captureScores ? { captureScores: gameState.captureScores } : {}),
     ...(gameState.consecutiveEqualScoreTurns ? { consecutiveEqualScoreTurns: gameState.consecutiveEqualScoreTurns } : {}),
     ...(gameState.totalHalfMoves ? { totalHalfMoves: gameState.totalHalfMoves } : {}),
+    // Persist live clock values on every move so they survive a server restart.
+    // clockPersistedAt is the wall-clock ms when this write happened; the restore
+    // path subtracts elapsed time since then from the current player's clock.
+    ...(gameState.playerTimes && Object.keys(gameState.playerTimes).length
+      ? { playerTimes: gameState.playerTimes, clockPersistedAt: Date.now() }
+      : {}),
     ...extraFields
   });
 }
@@ -7096,11 +7102,34 @@ function initializeSocket(server) {
             moveHistory = [];
           }
 
-          // Build player times
+          // Build player times — baseline from the players table (original time control).
           const playerTimes = {};
           players.forEach(p => {
             playerTimes[p.id] = p.timeRemaining ? p.timeRemaining * 60 : (game.turn_length ? game.turn_length * 60 : null);
           });
+
+          // Override with the exact clock values persisted in other_data on every move.
+          // clockPersistedAt tells us when the write happened; if the game was still
+          // active when the server went down, we deduct the elapsed wall-clock time
+          // from the current player's remaining time so their clock doesn't jump back.
+          if (otherData.playerTimes && typeof otherData.playerTimes === 'object') {
+            const maxSec = game.turn_length ? game.turn_length * 60 : Infinity;
+            for (const [pid, secs] of Object.entries(otherData.playerTimes)) {
+              if (secs != null) {
+                // Clamp between 0 and the starting time control (can't exceed original)
+                playerTimes[pid] = Math.min(maxSec, Math.max(0, Number(secs)));
+              }
+            }
+            // Deduct time elapsed since the last move was persisted (current player's turn)
+            if (game.status === 'active' && otherData.clockPersistedAt) {
+              const elapsedSec = (Date.now() - otherData.clockPersistedAt) / 1000;
+              const currentTurn = game.player_turn || 1;
+              const currentPlayer = players.find(p => p.position === currentTurn);
+              if (currentPlayer?.id != null && playerTimes[currentPlayer.id] != null) {
+                playerTimes[currentPlayer.id] = Math.max(0, playerTimes[currentPlayer.id] - elapsedSec);
+              }
+            }
+          }
 
           // Parse other_game_data from game type for placement/flanking settings
           let otherGameData = {};

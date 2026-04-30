@@ -10285,6 +10285,7 @@ server.listen(PORT, () => {
 const MEMORY_HISTORY_MAX = 120;
 const memoryHistory = [];
 let peakRssMB = 0;
+let _memLogCount = 0; // throttle console output to every 5th sample (5 min)
 
 setInterval(() => {
   const m = process.memoryUsage();
@@ -10301,7 +10302,11 @@ setInterval(() => {
   if (snapshot.rss > peakRssMB) peakRssMB = snapshot.rss;
   memoryHistory.push(snapshot);
   if (memoryHistory.length > MEMORY_HISTORY_MAX) memoryHistory.shift();
-  console.log(`[memory] heapUsed=${snapshot.heapUsed}MB heapTotal=${snapshot.heapTotal}MB rss=${snapshot.rss}MB external=${snapshot.external}MB activeGames=${snapshot.activeGames} onlineUsers=${snapshot.onlineUsers}`);
+  // Log every 5 minutes rather than every minute to reduce console noise.
+  // The in-memory chart still samples at 1-minute resolution.
+  if (++_memLogCount % 5 === 0) {
+    console.log(`[memory] heapUsed=${snapshot.heapUsed}MB heapTotal=${snapshot.heapTotal}MB rss=${snapshot.rss}MB external=${snapshot.external}MB activeGames=${snapshot.activeGames} onlineUsers=${snapshot.onlineUsers}`);
+  }
 }, 60_000);
 
 // Graceful shutdown for nodemon restarts
