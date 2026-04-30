@@ -5,6 +5,8 @@
 
 const db_pool = require("../configs/db");
 const crypto = require('crypto');
+const path = require('path');
+const { Worker } = require('worker_threads');
 
 // Verbose per-move debug logging is gated behind an env var so PM2 isn't
 // hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
@@ -12925,6 +12927,36 @@ function isBotPlayer(player) {
 }
 
 /**
+ * Run getBestMove in a Worker thread so the main event loop stays free during
+ * synchronous minimax computation.  Returns a Promise that resolves with the
+ * chosen move object.
+ */
+function runBotInWorker(gameState, botPosition, difficulty) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      path.join(__dirname, 'ai', 'bot-worker.js'),
+      {
+        workerData: {
+          // JSON round-trip strips any non-serializable values before the
+          // structured-clone that Worker applies to workerData.
+          gameState: JSON.parse(JSON.stringify(gameState)),
+          botPosition,
+          difficulty,
+        },
+      }
+    );
+    worker.once('message', ({ move, error }) => {
+      if (error) reject(new Error(error));
+      else resolve(move);
+    });
+    worker.once('error', reject);
+    worker.once('exit', (code) => {
+      if (code !== 0) reject(new Error(`Bot worker exited with code ${code}`));
+    });
+  });
+}
+
+/**
  * Process a full bot turn: compute AI move, apply it, handle all post-move logic, broadcast.
  * This mirrors the makeMove handler but is streamlined for bot play (no premoves,
  * no socket error handling, auto-promotion, auto-chain-capture).
@@ -12972,9 +13004,6 @@ async function processBotTurn(io, gameId, gameState) {
       // 1. Compute AI move
       let bestMove;
       const aiStartTime = Date.now();
-      // Save bot's clock before AI computation (getBestMove is synchronous and
-      // blocks the event loop, so the setInterval timer ticks will be starved).
-      const botTimeBeforeAI = gameState.playerTimes?.[botPlayer.id];
 
       // Debug: log pawn 2-square move availability (suppress inner logs)
       const botPieces = gameState.pieces.filter(p => (p.team || p.player_id) === botPlayer.position);
@@ -12999,22 +13028,15 @@ async function processBotTurn(io, gameId, gameState) {
       }
 
       try {
-        bestMove = await aiEngine.getBestMove(gameState, botPlayer.position, botPlayer.difficulty);
+        // Run minimax in a Worker thread so the main event loop stays free
+        // during computation.  This means getGameState (and other socket events)
+        // from a refreshing player are handled immediately instead of stalling.
+        // Because the event loop is no longer blocked, the game-timer setInterval
+        // ticks normally and drains the bot's clock automatically — no manual
+        // correction is needed here.
+        bestMove = await runBotInWorker(gameState, botPlayer.position, botPlayer.difficulty);
         const aiElapsedMs = Date.now() - aiStartTime;
         console.log(`[Bot] AI computed in ${aiElapsedMs}ms for game ${gameId}`);
-        // Correct the bot's clock using wall-clock time, since the setInterval
-        // couldn't fire while the event loop was blocked by minimax.
-        if (gameState.playerTimes && botTimeBeforeAI != null && gameState.timeControl) {
-          const aiElapsedSec = aiElapsedMs / 1000;
-          // Apply clock multiplier during AI thinking time (penalty = faster drain, handicap = slower)
-          const botMultiplier = getClockMultiplier(gameState, botPlayer.id);
-          // Use exact (sub-second) elapsed time so the bot's clock doesn't appear to round up
-          const adjustedElapsed = aiElapsedSec * botMultiplier;
-          gameState.playerTimes[botPlayer.id] = Math.max(0, botTimeBeforeAI - adjustedElapsed);
-          // The corrected playerTimes will be carried on the bot's upcoming
-          // moveMade event below — no separate timeUpdate is needed (and
-          // emitting one here causes client-side clock jitter).
-        }
       } catch (aiError) {
         console.error(`[Bot] AI engine error in game ${gameId}:`, aiError);
         // Fallback: try a random legal move
