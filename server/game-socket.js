@@ -4,6 +4,7 @@
  */
 
 const db_pool = require("../configs/db");
+const crypto = require('crypto');
 
 // Verbose per-move debug logging is gated behind an env var so PM2 isn't
 // hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
@@ -2124,6 +2125,11 @@ function initializeSocket(server) {
   // already stale before the server restarted, then every 15 minutes.
   cancelStaleLiveGames();
   setInterval(cancelStaleLiveGames, 15 * 60 * 1000);
+
+  // Periodically expire correspondence games whose per-turn deadline has passed.
+  // Runs at startup (to catch games that expired while the server was down) then hourly.
+  cancelExpiredCorrespondenceGames();
+  setInterval(cancelExpiredCorrespondenceGames, 60 * 60 * 1000);
   
   // Global error handler for socket.io engine
   io.engine.on("connection_error", (err) => {
@@ -2870,7 +2876,7 @@ function initializeSocket(server) {
     // Create an anonymous game (no account required)
     socket.on("createAnonymousGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, guestName, allowSpectators = false, showPieceHelpers = false, allowPremoves = true, startingMode = 'none' } = data;
+        const { gameTypeId, timeControl, increment, guestName, allowSpectators = false, showPieceHelpers = false, allowPremoves = true, startingMode = 'none', isCorrespondence = false, correspondenceDays = null } = data;
 
         // Generate a unique 6-character invite code
         const generateInviteCode = () => {
@@ -3086,10 +3092,25 @@ function initializeSocket(server) {
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
         const piecesData = JSON.stringify(piecesArray);
 
+        // For anonymous correspondence games, generate a stable per-player ID and
+        // access token so the host can rejoin after their browser/tab closes.
+        let hostPlayerId = null;
+        let hostToken = null;
+        if (isCorrespondence) {
+          hostPlayerId = `anon_corres_${crypto.randomBytes(10).toString('hex')}`;
+          hostToken = crypto.randomBytes(20).toString('hex');
+        }
+
+        const anonCorresPlayers = hostPlayerId
+          ? { 1: { playerId: hostPlayerId, token: hostToken } }
+          : null;
+
         const [result] = await db_pool.query(
-          `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_anonymous, invite_code)
-           VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', NULL, ?, ?, 1, ?)`,
-          [currentTime, timeControl || null, increment || 0, piecesData, JSON.stringify({ moves: [], rated: false, allowPremoves, startingMode, guestName: displayName }), gameTypeId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, inviteCode]
+          `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_anonymous, invite_code, is_correspondence, correspondence_days)
+           VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', NULL, ?, ?, 1, ?, ?, ?)`,
+          [currentTime, isCorrespondence ? null : (timeControl || null), isCorrespondence ? 0 : (increment || 0), piecesData,
+           JSON.stringify({ moves: [], rated: false, allowPremoves, startingMode, guestName: displayName, ...(anonCorresPlayers ? { anonCorresPlayers } : {}) }),
+           gameTypeId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, inviteCode, isCorrespondence ? 1 : 0, correspondenceDays || null]
         );
 
         const gameId = result.insertId;
@@ -3098,18 +3119,19 @@ function initializeSocket(server) {
         await db_pool.query(
           `INSERT INTO players (created_at, player_position, time_remaining, game_id, user_id, game_type_id)
            VALUES (?, ?, ?, ?, NULL, ?)`,
-          [currentTime, null, timeControl || null, gameId, gameTypeId]
+          [currentTime, null, isCorrespondence ? null : (timeControl || null), gameId, gameTypeId]
         );
 
-        // Use a temporary ID for the anonymous host
-        const tempHostId = `anon_${socket.id}`;
+        // For correspondence, use the stable credential-backed ID; for regular
+        // anonymous games, use the socket-scoped temp ID.
+        const tempHostId = hostPlayerId || `anon_${socket.id}`;
 
         const gameState = {
           id: gameId,
           gameTypeId,
           gameType: gameType,
-          timeControl: timeControl || null,
-          increment: increment || 0,
+          timeControl: isCorrespondence ? null : (timeControl || null),
+          increment: isCorrespondence ? 0 : (increment || 0),
           status: 'waiting',
           hostId: tempHostId,
           hostUsername: displayName,
@@ -3129,6 +3151,8 @@ function initializeSocket(server) {
           startingMode,
           premove: null,
           isAnonymous: true,
+          isCorrespondence: !!isCorrespondence,
+          correspondenceDays: correspondenceDays || null,
           inviteCode
         };
 
@@ -3138,7 +3162,12 @@ function initializeSocket(server) {
         // Map this socket to the temp ID for game communications
         userSockets.set(tempHostId, socket.id);
 
-        socket.emit("gameCreated", { gameId, gameState, inviteCode });
+        // Return stable credentials to the client for correspondence games so they
+        // can re-authenticate after closing the tab and returning later.
+        socket.emit("gameCreated", {
+          gameId, gameState, inviteCode,
+          ...(hostPlayerId ? { playerId: hostPlayerId, token: hostToken } : {})
+        });
 
         // Broadcast to the open matches lobby so all connected clients see this game
         io.emit("newOpenGame", {
@@ -3213,8 +3242,17 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Game is already full" });
         }
 
-        // Determine player ID
-        const playerId = userId || `anon_${socket.id}`;
+        // Determine player ID.
+        // For anonymous correspondence games, generate a stable credential-backed
+        // ID so the player can return to the game after closing the tab.
+        let playerId;
+        let joinerToken = null;
+        if (!userId && gameState.isAnonymous && gameState.isCorrespondence) {
+          playerId = `anon_corres_${crypto.randomBytes(10).toString('hex')}`;
+          joinerToken = crypto.randomBytes(20).toString('hex');
+        } else {
+          playerId = userId || `anon_${socket.id}`;
+        }
         const playerUsername = displayName;
 
         // Check not joining own game
@@ -3376,6 +3414,29 @@ function initializeSocket(server) {
 
         console.log(`${playerUsername} joined anonymous game ${gameId} via invite code ${code}`);
 
+        // For anonymous correspondence games, persist the joiner's stable credentials
+        // so they can re-authenticate from a new socket session later.
+        if (joinerToken) {
+          try {
+            const [[gameRow]] = await db_pool.query('SELECT other_data FROM games WHERE id = ?', [gameId]);
+            const od = gameRow?.other_data
+              ? (typeof gameRow.other_data === 'string' ? JSON.parse(gameRow.other_data) : gameRow.other_data)
+              : {};
+            od.anonCorresPlayers = od.anonCorresPlayers || {};
+            od.anonCorresPlayers[newPlayer.position] = { playerId, token: joinerToken };
+            await db_pool.query('UPDATE games SET other_data = ? WHERE id = ?', [JSON.stringify(od), gameId]);
+            // Send credentials directly to the joiner's socket
+            socket.emit('anonCorresCredentials', {
+              gameId,
+              playerId,
+              token: joinerToken,
+              position: newPlayer.position
+            });
+          } catch (credErr) {
+            console.error('Failed to store anon corres joiner credentials:', credErr);
+          }
+        }
+
         // Initial-position safety net: if the position is decided before any
         // move, end the game with reason 'initial_position' (no ELO change).
         await endIfInitialPositionDecided(io, gameId, gameState);
@@ -3503,6 +3564,64 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error in joinOpenGameAsGuest:", error);
         socket.emit("error", { message: "Failed to join game" });
+      }
+    });
+
+    // Authenticate an anonymous correspondence player returning to a game after
+    // their socket disconnected (e.g. closed the tab). The client supplies the
+    // token that was returned when the game was created or joined. On success the
+    // server registers the new socket so events can be routed back, and sends
+    // anonCorresAuthSuccess with the stable playerId.
+    socket.on("authenticateAnonCorresPlayer", async ({ gameId, token }) => {
+      try {
+        if (!gameId || !token) {
+          return socket.emit("error", { message: "gameId and token are required" });
+        }
+        const [[gameRow]] = await db_pool.query(
+          'SELECT other_data, status FROM games WHERE id = ?',
+          [gameId]
+        );
+        if (!gameRow) {
+          return socket.emit("error", { message: "Game not found" });
+        }
+        const od = gameRow.other_data
+          ? (typeof gameRow.other_data === 'string' ? JSON.parse(gameRow.other_data) : gameRow.other_data)
+          : {};
+        const anonCorresPlayers = od?.anonCorresPlayers;
+        if (!anonCorresPlayers) {
+          return socket.emit("error", { message: "This game does not support anonymous correspondence play" });
+        }
+        // Find the matching entry by token (constant-time comparison)
+        let foundPlayerId = null;
+        let foundPosition = null;
+        for (const [posStr, entry] of Object.entries(anonCorresPlayers)) {
+          if (entry && typeof entry.token === 'string') {
+            // Use timingSafeEqual to prevent timing attacks
+            const a = Buffer.from(entry.token, 'hex');
+            const b = Buffer.from(token.length === entry.token.length ? token : '', 'hex');
+            try {
+              if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+                foundPlayerId = entry.playerId;
+                foundPosition = parseInt(posStr, 10);
+                break;
+              }
+            } catch (_) { /* length mismatch — not equal */ }
+          }
+        }
+        if (!foundPlayerId) {
+          return socket.emit("error", { message: "Invalid or expired token" });
+        }
+        // Re-register the socket under the stable playerId
+        userSockets.set(foundPlayerId, socket.id);
+        socket.emit("anonCorresAuthSuccess", {
+          gameId,
+          playerId: foundPlayerId,
+          position: foundPosition
+        });
+        console.log(`[anon-corres] Authenticated ${foundPlayerId} (position ${foundPosition}) for game ${gameId}`);
+      } catch (err) {
+        console.error('authenticateAnonCorresPlayer error:', err);
+        socket.emit("error", { message: "Authentication failed" });
       }
     });
 
@@ -6729,20 +6848,40 @@ function initializeSocket(server) {
             [game.game_type_id]
           );
 
-          // Get players with their usernames
+          // Get players with their usernames.
+          // LEFT JOIN so anonymous players (user_id = NULL) are also included.
           const [playerRows] = await db_pool.query(
             `SELECT p.*, u.username FROM players p
-             JOIN users u ON p.user_id = u.id
+             LEFT JOIN users u ON p.user_id = u.id
              WHERE p.game_id = ?`,
             [gameId]
           );
 
-          const players = playerRows.map(p => ({
-            id: p.user_id,
-            username: p.username,
-            position: p.player_position,
-            timeRemaining: p.time_remaining
-          }));
+          // Parse other_data early so we can reconstruct anon-corres player IDs.
+          let otherDataParsed = {};
+          try {
+            otherDataParsed = game.other_data
+              ? (typeof game.other_data === 'string' ? JSON.parse(game.other_data) : game.other_data)
+              : {};
+          } catch (_) {}
+          const anonCorresPlayers = otherDataParsed?.anonCorresPlayers || null;
+
+          const players = playerRows.map(p => {
+            let id = p.user_id;
+            // For anonymous correspondence players, restore the stable playerId
+            if (!id && anonCorresPlayers && p.player_position != null) {
+              id = anonCorresPlayers[p.player_position]?.playerId || null;
+            }
+            const username = p.username
+              || otherDataParsed?.guestName
+              || `Guest`;
+            return {
+              id,
+              username,
+              position: p.player_position,
+              timeRemaining: p.time_remaining
+            };
+          });
 
           // Parse pieces from game first, then fall back to game type
           let pieces = [];
@@ -7059,7 +7198,19 @@ function initializeSocket(server) {
           }
 
           // Check for correspondence timeout
-          if (gameState.status === 'active' && gameState.isCorrespondence && gameState.correspondenceDays && gameState.lastMoveTime) {
+          if (gameState.status === 'active' && gameState.isCorrespondence && gameState.correspondenceDays) {
+            // If lastMoveTime is missing (e.g. server crashed between the two persists on
+            // the first move, or this is a legacy game record), anchor to now so the
+            // clock starts ticking from this reconnect rather than being permanently broken.
+            if (!gameState.lastMoveTime) {
+              gameState.lastMoveTime = Date.now();
+              try {
+                await db_pool.query(
+                  'UPDATE games SET other_data = ? WHERE id = ?',
+                  [buildOtherData(gameState), gameId]
+                );
+              } catch (_) {}
+            }
             const elapsed = Date.now() - gameState.lastMoveTime;
             const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
             if (elapsed > allowedMs) {
@@ -13653,6 +13804,84 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
  * Cancel live games that have been in "waiting" status for more than 24 hours
  * without a move being made. Neither player's ELO is affected (game never started).
  */
+/**
+ * Periodically end correspondence games whose per-turn clock has expired.
+ * Because `startGameTimer` is a no-op for correspondence games (no timeControl),
+ * there is no live interval driving expirations — we must poll the DB.
+ * Runs at startup and every hour.
+ */
+async function cancelExpiredCorrespondenceGames() {
+  try {
+    // MySQL: UNIX_TIMESTAMP() returns seconds; lastMoveTime is stored as ms.
+    const [expiredGames] = await db_pool.query(`
+      SELECT id, player_turn, other_data, correspondence_days
+      FROM games
+      WHERE is_correspondence = 1
+        AND status = 'active'
+        AND correspondence_days IS NOT NULL
+        AND JSON_EXTRACT(other_data, '$.lastMoveTime') IS NOT NULL
+        AND (UNIX_TIMESTAMP(NOW()) * 1000) - JSON_EXTRACT(other_data, '$.lastMoveTime')
+            > (correspondence_days * 86400 * 1000)
+    `);
+
+    if (expiredGames.length === 0) return;
+
+    for (const row of expiredGames) {
+      const gameId = row.id;
+      const gameIdStr = gameId.toString();
+      try {
+        // Determine players from DB
+        const [playerRows] = await db_pool.query(
+          'SELECT user_id, position FROM players WHERE game_id = ?', [gameId]
+        );
+        const currentTurn = row.player_turn;
+        const currentPlayer = playerRows.find(p => p.position === currentTurn);
+        const winnerRow = playerRows.find(p => p.position !== currentTurn);
+        const winnerId = winnerRow?.user_id || null;
+        const loserId = currentPlayer?.user_id || null;
+
+        let eloChanges = null;
+        // Only update ELO for rated games between two real users
+        const otherData = row.other_data ? (typeof row.other_data === 'string' ? JSON.parse(row.other_data) : row.other_data) : {};
+        if (otherData?.rated !== false && winnerId && loserId) {
+          try { eloChanges = await updateEloRatings(winnerId, loserId); } catch (_) {}
+        }
+
+        const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const finalOtherData = JSON.stringify({ ...otherData, winner: winnerId, reason: 'timeout', eloChanges });
+        await db_pool.query(
+          `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, other_data = ? WHERE id = ?`,
+          [endTime, winnerId, finalOtherData, gameId]
+        );
+
+        // Remove from activeGames if loaded
+        const inMemory = activeGames.get(gameIdStr);
+        if (inMemory) {
+          inMemory.status = 'completed';
+          inMemory.winner = winnerId;
+          inMemory.winReason = 'timeout';
+        }
+
+        // Notify any connected players
+        if (ioInstance) {
+          ioInstance.to(`game-${gameId}`).emit('gameOver', {
+            gameId,
+            winner: winnerId,
+            reason: 'timeout',
+            eloChanges,
+          });
+        }
+
+        console.log(`[correspondence] Game ${gameId} expired by timeout — player_turn=${currentTurn} ran out of time.`);
+      } catch (innerErr) {
+        console.error(`[correspondence] Failed to expire game ${gameId}:`, innerErr);
+      }
+    }
+  } catch (err) {
+    console.error('[correspondence] Error checking correspondence timeouts:', err);
+  }
+}
+
 async function cancelStaleLiveGames() {
   try {
     const [staleGames] = await db_pool.query(`

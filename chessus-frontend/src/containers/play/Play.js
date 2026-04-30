@@ -122,6 +122,8 @@ const Play = () => {
   const [anonTimeControl, setAnonTimeControl] = useState("10");
   const [anonIncrement, setAnonIncrement] = useState("0");
   const [anonWarning, setAnonWarning] = useState(null);
+  const [anonIsCorrespondence, setAnonIsCorrespondence] = useState(false);
+  const [anonCorrDays, setAnonCorrDays] = useState("3");
 
   // Join anonymous open match state
   const [showJoinAnonModal, setShowJoinAnonModal] = useState(false);
@@ -839,11 +841,13 @@ const Play = () => {
     try {
       const result = await createAnonymousGame({
         gameTypeId: selectedGameType.id,
-        timeControl: anonTimeControl === "0" ? null : parseInt(anonTimeControl),
-        increment: parseInt(anonIncrement) || 0,
+        timeControl: anonIsCorrespondence ? null : (anonTimeControl === "0" ? null : parseInt(anonTimeControl)),
+        increment: anonIsCorrespondence ? 0 : (parseInt(anonIncrement) || 0),
         guestName: guestName || 'Guest',
         allowPremoves: true,
-        startingMode: 'none'
+        startingMode: 'none',
+        isCorrespondence: anonIsCorrespondence,
+        correspondenceDays: anonIsCorrespondence ? parseInt(anonCorrDays) : null,
       });
 
       setShowAnonCreateModal(false);
@@ -1005,7 +1009,7 @@ const Play = () => {
         <div className={styles["anonymous-play-section"]}>
           <div className={styles["anonymous-play-info"]}>
             <h3>Play Without an Account</h3>
-            <p>You can play anonymously! To host a game, first select a game type from the Game Library in the sidebar, then click "Create Anonymous Game" to get an invite code you can share. To join a friend's game, enter their invite code below. Anonymous games are unrated, won't appear in open games, and won't be saved to any profile.</p>
+            <p>You can play anonymously! To host a game against a specific person, first select a game type from the Game Library in the sidebar, then click "Create Anonymous Game" to get an invite code you can share. To join a friend's game by invite code, enter it below. You can also browse <strong>Open Matches</strong> further down this page — any unrated game listed there can be joined without an account, just click "Join Game" and enter a display name. Anonymous games are unrated and won't be saved to any profile.</p>
             <p className={styles["account-benefits"]}>Create a free account to unlock more features: customizable time controls, rated games, spectator settings, piece move helpers, premoves, correspondence play, and more.</p>
           </div>
           {anonWarning && (
@@ -2280,28 +2284,55 @@ const Play = () => {
               />
             </div>
             <div className={styles["form-group"]}>
-              <label>Time Control (minutes per side):</label>
-              <select value={anonTimeControl} onChange={(e) => setAnonTimeControl(e.target.value)}>
-                <option value="0">No limit</option>
-                <option value="1">1 min</option>
-                <option value="3">3 min</option>
-                <option value="5">5 min</option>
-                <option value="10">10 min</option>
-                <option value="15">15 min</option>
-                <option value="30">30 min</option>
-              </select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={anonIsCorrespondence}
+                  onChange={(e) => setAnonIsCorrespondence(e.target.checked)}
+                />
+                Correspondence game (take turns over days — no clock)
+              </label>
             </div>
-            <div className={styles["form-group"]}>
-              <label>Increment (seconds per move):</label>
-              <select value={anonIncrement} onChange={(e) => setAnonIncrement(e.target.value)}>
-                <option value="0">None</option>
-                <option value="1">1s</option>
-                <option value="2">2s</option>
-                <option value="3">3s</option>
-                <option value="5">5s</option>
-                <option value="10">10s</option>
-              </select>
-            </div>
+            {anonIsCorrespondence ? (
+              <div className={styles["form-group"]}>
+                <label>Days per turn:</label>
+                <select value={anonCorrDays} onChange={(e) => setAnonCorrDays(e.target.value)}>
+                  <option value="1">1 day</option>
+                  <option value="3">3 days</option>
+                  <option value="7">7 days</option>
+                  <option value="14">14 days</option>
+                </select>
+                <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '4px' }}>
+                  Your progress is saved in this browser. Bookmark the game link as a fallback.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className={styles["form-group"]}>
+                  <label>Time Control (minutes per side):</label>
+                  <select value={anonTimeControl} onChange={(e) => setAnonTimeControl(e.target.value)}>
+                    <option value="0">No limit</option>
+                    <option value="1">1 min</option>
+                    <option value="3">3 min</option>
+                    <option value="5">5 min</option>
+                    <option value="10">10 min</option>
+                    <option value="15">15 min</option>
+                    <option value="30">30 min</option>
+                  </select>
+                </div>
+                <div className={styles["form-group"]}>
+                  <label>Increment (seconds per move):</label>
+                  <select value={anonIncrement} onChange={(e) => setAnonIncrement(e.target.value)}>
+                    <option value="0">None</option>
+                    <option value="1">1s</option>
+                    <option value="2">2s</option>
+                    <option value="3">3s</option>
+                    <option value="5">5s</option>
+                    <option value="10">10s</option>
+                  </select>
+                </div>
+              </>
+            )}
             <div className={styles["modal-actions"]}>
               <button
                 className={`${styles.btn} ${styles["btn-secondary"]}`}

@@ -269,6 +269,67 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, user]);
 
+  // ─── Anonymous Correspondence Helpers ────────────────────────────────────
+  // Persist stable {playerId, token} pairs keyed by gameId in localStorage so
+  // a guest can return to a correspondence game after closing the tab.
+
+  const getStoredAnonCorresId = useCallback((gameId) => {
+    try {
+      const raw = localStorage.getItem('anonCorresIds');
+      if (!raw) return null;
+      return JSON.parse(raw)[gameId] || null;
+    } catch (_) { return null; }
+  }, []);
+
+  const saveAnonCorresId = useCallback((gameId, playerId, token) => {
+    try {
+      const raw = localStorage.getItem('anonCorresIds');
+      const ids = raw ? JSON.parse(raw) : {};
+      ids[String(gameId)] = { playerId, token };
+      localStorage.setItem('anonCorresIds', JSON.stringify(ids));
+    } catch (_) {}
+  }, []);
+
+  // Returns the stable anonymous playerId for a correspondence game, or falls
+  // back to the socket-scoped id for regular (live) anonymous games.
+  const getAnonPlayerId = useCallback((gameId) => {
+    if (user) return user.id;
+    if (gameId != null) {
+      const stored = getStoredAnonCorresId(String(gameId));
+      if (stored?.playerId) return stored.playerId;
+    }
+    return socket ? `anon_${socket.id}` : null;
+  }, [user, socket, getStoredAnonCorresId]);
+
+  // Send the stored token to the server so it can map our new socket.id to the
+  // stable playerId. Call this before getGameState when reopening a game page.
+  const authenticateAnonCorresPlayer = useCallback((gameId) => {
+    return new Promise((resolve, reject) => {
+      if (!socket || !connected) { reject(new Error('Not connected')); return; }
+      const stored = getStoredAnonCorresId(String(gameId));
+      if (!stored?.token) { resolve(null); return; } // no credentials — not an anon-corres player
+
+      let timeoutId;
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        socket.off('anonCorresAuthSuccess', handleSuccess);
+        socket.off('error', handleError);
+      };
+      const handleSuccess = (data) => {
+        if (data.gameId !== gameId && String(data.gameId) !== String(gameId)) return;
+        cleanup();
+        resolve(data);
+      };
+      const handleError = (err) => { cleanup(); reject(new Error(err.message)); };
+
+      socket.on('anonCorresAuthSuccess', handleSuccess);
+      socket.on('error', handleError);
+      socket.emit('authenticateAnonCorresPlayer', { gameId, token: stored.token });
+      timeoutId = setTimeout(() => { cleanup(); resolve(null); }, 8000); // soft-fail on timeout
+    });
+  }, [socket, connected, getStoredAnonCorresId]);
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Create an anonymous game (no account required)
   const createAnonymousGame = useCallback((gameData) => {
     return new Promise((resolve, reject) => {
@@ -285,9 +346,11 @@ export const SocketProvider = ({ children }) => {
         socket.off('error', handleError);
       };
 
-      const handleGameCreated = ({ gameId, gameState, inviteCode }) => {
+      const handleGameCreated = ({ gameId, gameState, inviteCode, playerId, token }) => {
         cleanup();
         setCurrentGame(gameState);
+        // If the server returned stable credentials (correspondence game), persist them.
+        if (playerId && token) saveAnonCorresId(gameId, playerId, token);
         resolve({ gameId, gameState, inviteCode });
       };
 
@@ -311,7 +374,7 @@ export const SocketProvider = ({ children }) => {
         reject(new Error('Game creation timed out'));
       }, 10000);
     });
-  }, [socket, connected]);
+  }, [socket, connected, saveAnonCorresId]);
 
   // Join a game by invite code (no account required)
   const joinByInviteCode = useCallback((inviteCode, guestName) => {
@@ -326,6 +389,7 @@ export const SocketProvider = ({ children }) => {
       const cleanup = () => {
         clearTimeout(timeoutId);
         socket.off('playerJoined', handlePlayerJoined);
+        socket.off('anonCorresCredentials', handleAnonCorresCredentials);
         socket.off('error', handleError);
       };
 
@@ -333,6 +397,12 @@ export const SocketProvider = ({ children }) => {
         cleanup();
         setCurrentGame(gameState);
         resolve({ gameId, gameState, newPlayer });
+      };
+
+      // For anonymous correspondence joins, the server sends credentials on a
+      // separate event so only the joining socket receives them.
+      const handleAnonCorresCredentials = ({ gameId: gid, playerId, token }) => {
+        if (playerId && token) saveAnonCorresId(gid, playerId, token);
       };
 
       const handleError = (errorData) => {
@@ -346,6 +416,7 @@ export const SocketProvider = ({ children }) => {
       };
 
       socket.on('playerJoined', handlePlayerJoined);
+      socket.on('anonCorresCredentials', handleAnonCorresCredentials);
       socket.on('error', handleError);
 
       socket.emit('joinByInviteCode', {
@@ -360,7 +431,7 @@ export const SocketProvider = ({ children }) => {
         reject(new Error('Join game timed out'));
       }, 10000);
     });
-  }, [socket, connected, user]);
+  }, [socket, connected, user, saveAnonCorresId]);
 
   // Join an open (non-anonymous) game as a guest (unrated games only)
   const joinOpenGameAsGuest = useCallback((gameId, guestName) => {
@@ -459,10 +530,10 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('makeMove', {
       gameId,
-      userId: user?.id || `anon_${socket.id}`,
+      userId: getAnonPlayerId(gameId),
       move
     });
-  }, [socket, connected, user]);
+  }, [socket, connected, getAnonPlayerId]);
 
   // Simul-turns: signal that this player is ready to start the game.
   // Once both players have signaled, the server transitions to active and
@@ -474,9 +545,9 @@ export const SocketProvider = ({ children }) => {
     }
     socket.emit('simulReadyToStart', {
       gameId,
-      userId: user?.id || `anon_${socket.id}`,
+      userId: getAnonPlayerId(gameId),
     });
-  }, [socket, connected, user]);
+  }, [socket, connected, getAnonPlayerId]);
 
   // Simul-turns: deliver a player's promotion target for a buffered move
   // that landed on a promotion square. The submission stays "awaiting
@@ -488,11 +559,11 @@ export const SocketProvider = ({ children }) => {
     }
     socket.emit('simulPromotionChoice', {
       gameId,
-      userId: user?.id || `anon_${socket.id}`,
+      userId: getAnonPlayerId(gameId),
       pieceId,
       promoteToPieceId,
     });
-  }, [socket, connected, user]);
+  }, [socket, connected, getAnonPlayerId]);
 
   // Resign from game
   const resign = useCallback((gameId) => {
@@ -503,9 +574,9 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('resign', {
       gameId,
-      userId: user?.id || `anon_${socket.id}`
+      userId: getAnonPlayerId(gameId)
     });
-  }, [socket, connected, user]);
+  }, [socket, connected, getAnonPlayerId]);
 
   // Offer a draw
   const offerDraw = useCallback((gameId) => {
@@ -564,10 +635,10 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('cancelGame', {
       gameId,
-      userId: user?.id || `anon_${socket.id}`
+      userId: getAnonPlayerId(gameId)
     });
     setCurrentGame(null);
-  }, [socket, connected, user]);
+  }, [socket, connected, getAnonPlayerId]);
 
   // Spectate a game
   const spectateGame = useCallback((gameId, options = {}) => {
@@ -594,10 +665,10 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('setPremove', {
       gameId,
-      userId: user?.id || `anon_${socket.id}`,
+      userId: getAnonPlayerId(gameId),
       move
     });
-  }, [socket, connected, user]);
+  }, [socket, connected, getAnonPlayerId]);
 
   // Clear a premove
   const clearPremove = useCallback((gameId) => {
@@ -608,9 +679,9 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('clearPremove', {
       gameId,
-      userId: user?.id || `anon_${socket.id}`
+      userId: getAnonPlayerId(gameId)
     });
-  }, [socket, connected, user]);
+  }, [socket, connected, getAnonPlayerId]);
 
   // Promote a piece
   const promotePiece = useCallback((gameId, pieceId, promoteToPieceId) => {
@@ -621,11 +692,11 @@ export const SocketProvider = ({ children }) => {
 
     socket.emit('promotePiece', {
       gameId,
-      userId: user?.id || `anon_${socket.id}`,
+      userId: getAnonPlayerId(gameId),
       pieceId,
       promoteToPieceId
     });
-  }, [socket, connected, user]);
+  }, [socket, connected, getAnonPlayerId]);
 
   // Subscribe to game events
   const onGameEvent = useCallback((event, callback) => {
@@ -664,7 +735,11 @@ export const SocketProvider = ({ children }) => {
     promotePiece,
     onGameEvent,
     pauseDisconnectTimer,
-    resumeDisconnectTimer
+    resumeDisconnectTimer,
+    authenticateAnonCorresPlayer,
+    getAnonPlayerId,
+    saveAnonCorresId,
+    getStoredAnonCorresId,
   };
 
   return (
