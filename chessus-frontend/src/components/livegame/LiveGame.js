@@ -403,8 +403,19 @@ const LiveGame = () => {
         setGameState((prev) => applyOptimisticMovePreview(prev, moveData));
       }
       makeMove(gId, moveData);
+      // Optimistically switch the active clock to the opponent immediately so
+      // their clock starts ticking on the client without waiting for the
+      // server's moveMade round-trip.  moveMade will re-anchor with the
+      // authoritative server times when it arrives.
+      if (gameState?.timeControl && Array.isArray(gameState?.players) && gameState?.currentTurn != null) {
+        const opponent = gameState.players.find(p => p.position !== gameState.currentTurn);
+        if (opponent?.id != null) {
+          activeClockPlayerRef.current = opponent.id;
+          lastServerTickRef.current = Date.now();
+        }
+      }
     }
-  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.status, simulSubmittedThisRound, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview]);
+  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.players, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.status, simulSubmittedThisRound, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview]);
 
   /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // Submit / clear the staged simul move. Called from the explicit Submit
