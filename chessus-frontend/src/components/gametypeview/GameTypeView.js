@@ -869,6 +869,14 @@ const GameTypeView = () => {
         description += `• **Ally Capture**: Can capture friendly pieces.\n`;
       }
 
+      // Must move if able
+      if (pieceData.must_move_if_able) {
+        const actionNote = pieceData.must_move_uses_action
+          ? 'Counts as one of the player\'s actions per turn.'
+          : 'Does NOT consume an action — it is a free mandatory move.';
+        description += `• **Must Move If Able**: On its owner's turn, this piece is forced to move if it has any legal move. ${actionNote}\n`;
+      }
+
       // Piece Stats line - show if any stat is non-default or show flags are enabled
       let showGlobalStats = false;
       try { showGlobalStats = JSON.parse(game.other_game_data || '{}').show_all_hp_ad || false; } catch {}

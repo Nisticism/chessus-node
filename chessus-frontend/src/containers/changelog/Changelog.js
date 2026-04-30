@@ -5,8 +5,11 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 30, 2026",
-    title: "Ranged attack persistence fix, admin anonymous game viewer",
+    title: "Anonymous open matches, guest joining unrated games, must-move enforcement, ranged attack fix, admin anonymous game viewer",
     items: [
+      "Non-logged-in users can now create open matches that appear in the public Open Matches lobby. Select a game type, click 'Host Game', enter a display name and time control, and your game will be visible to everyone. Other anonymous users (and logged-in players) can join from the lobby without signing in. These games are always unrated. You'll still receive an invite code to share directly as well.",
+      "Guest users can now join any unrated open match in the lobby — not just anonymous ones. A 'Join as Guest' prompt asks for a display name. Rated games still require a signed-in account.",
+      "Piece ability — Must Move If Able: pieces flagged with this ability are now actually enforced in-game. On their owner's turn, the piece must be moved if it has any legal move. If 'Forced Move Uses an Action' is off, the piece gets a free mandatory move after the player's normal actions; the turn doesn't end until the piece has moved. If 'Forced Move Uses an Action' is on, the player must spend one of their regular actions on the piece — trying to end the turn with other moves will be blocked with an error. The 'Must Move If Able' ability now also appears in the piece descriptions on the game detail page.",
       "Bug fix: editing a piece that has ranged attack enabled no longer resets the 'Enable ranged attack' toggle to off when you reach Step 3 of the piece wizard. The toggle now correctly reflects the saved setting.",
       "Admin portal — Anonymous Games: completed and abandoned games now have a 'View' button that opens the final board state, so admins can review how the game ended. Active games still show 'Spectate'.",
     ],
