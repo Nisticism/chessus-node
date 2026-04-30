@@ -4933,9 +4933,11 @@ function initializeSocket(server) {
           }
         }
 
-        // Track last move time for correspondence games
-        if (gameState.isCorrespondence) {
-          gameState.lastMoveTime = Date.now();
+        // Track move deadline for correspondence games (absolute timestamp = now + allowedMs)
+        if (gameState.isCorrespondence && gameState.correspondenceDays) {
+          const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
+          gameState.moveDeadline = Date.now() + allowedMs;
+          gameState.lastMoveTime = Date.now(); // keep for backward compat
         }
 
         // HP/AD system: Apply burn/DOT damage at the start of the new player's turn (BEFORE regen)
@@ -6336,7 +6338,8 @@ function initializeSocket(server) {
                positionHistory: gameState.positionHistory,
                controlSquareTracking: gameState.controlSquareTracking,
                enPassantTarget: gameState.enPassantTarget,
-               lastMoveTime: gameState.isCorrespondence ? Date.now() : undefined
+               lastMoveTime: gameState.isCorrespondence ? (gameState.lastMoveTime || Date.now()) : undefined,
+               moveDeadline: gameState.isCorrespondence ? gameState.moveDeadline : undefined
              }), gameId]
           );
 
@@ -7343,6 +7346,7 @@ function initializeSocket(server) {
             premove: null,
             isCorrespondence: !!game.is_correspondence,
             correspondenceDays: game.correspondence_days || null,
+            moveDeadline: otherData?.moveDeadline || null,
             lastMoveTime: otherData?.lastMoveTime || null,
             materialClockPenalty: !!otherData?.materialClockPenalty,
             materialClockHandicap: !!otherData?.materialClockHandicap,
@@ -7401,10 +7405,22 @@ function initializeSocket(server) {
 
           // Check for correspondence timeout
           if (gameState.status === 'active' && gameState.isCorrespondence && gameState.correspondenceDays) {
-            // If lastMoveTime is missing (e.g. server crashed between the two persists on
-            // the first move, or this is a legacy game record), anchor to now so the
-            // clock starts ticking from this reconnect rather than being permanently broken.
-            if (!gameState.lastMoveTime) {
+            // Migrate legacy records that have lastMoveTime but no moveDeadline.
+            if (!gameState.moveDeadline && gameState.lastMoveTime) {
+              const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
+              gameState.moveDeadline = gameState.lastMoveTime + allowedMs;
+              try {
+                await db_pool.query(
+                  "UPDATE games SET other_data = JSON_SET(other_data, '$.moveDeadline', ?) WHERE id = ?",
+                  [gameState.moveDeadline, gameId]
+                );
+              } catch (_) {}
+            }
+            // If still missing (brand-new game, first move not yet made), anchor to
+            // now + full window so the clock starts ticking from this point.
+            if (!gameState.moveDeadline) {
+              const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
+              gameState.moveDeadline = Date.now() + allowedMs;
               gameState.lastMoveTime = Date.now();
               try {
                 await db_pool.query(
@@ -7413,9 +7429,7 @@ function initializeSocket(server) {
                 );
               } catch (_) {}
             }
-            const elapsed = Date.now() - gameState.lastMoveTime;
-            const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
-            if (elapsed > allowedMs) {
+            if (Date.now() > gameState.moveDeadline) {
               // Current player ran out of time
               const currentPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
               const winner = gameState.players.find(p => p.position !== gameState.currentTurn);
@@ -14105,70 +14119,168 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
  */
 async function cancelExpiredCorrespondenceGames() {
   try {
-    // MySQL: UNIX_TIMESTAMP() returns seconds; lastMoveTime is stored as ms.
+    // Primary query: games with moveDeadline (new architecture)
+    // Fallback query: games with only lastMoveTime (legacy, pre-backfill)
     const [expiredGames] = await db_pool.query(`
       SELECT id, player_turn, other_data, correspondence_days
       FROM games
       WHERE is_correspondence = 1
         AND status = 'active'
         AND correspondence_days IS NOT NULL
-        AND JSON_EXTRACT(other_data, '$.lastMoveTime') IS NOT NULL
-        AND (UNIX_TIMESTAMP(NOW()) * 1000) - JSON_EXTRACT(other_data, '$.lastMoveTime')
-            > (correspondence_days * 86400 * 1000)
+        AND (
+          -- New: absolute deadline stored
+          (JSON_EXTRACT(other_data, '$.moveDeadline') IS NOT NULL
+           AND JSON_EXTRACT(other_data, '$.moveDeadline') < (UNIX_TIMESTAMP(NOW()) * 1000))
+          OR
+          -- Legacy fallback: compute from lastMoveTime
+          (JSON_EXTRACT(other_data, '$.moveDeadline') IS NULL
+           AND JSON_EXTRACT(other_data, '$.lastMoveTime') IS NOT NULL
+           AND (UNIX_TIMESTAMP(NOW()) * 1000) - JSON_EXTRACT(other_data, '$.lastMoveTime')
+               > (correspondence_days * 86400 * 1000))
+        )
     `);
 
-    if (expiredGames.length === 0) return;
+    if (expiredGames.length > 0) {
+      for (const row of expiredGames) {
+        const gameId = row.id;
+        const gameIdStr = gameId.toString();
+        try {
+          const [playerRows] = await db_pool.query(
+            'SELECT user_id, player_position FROM players WHERE game_id = ?', [gameId]
+          );
+          const currentTurn = row.player_turn;
+          const currentPlayer = playerRows.find(p => p.player_position === currentTurn);
+          const winnerRow = playerRows.find(p => p.player_position !== currentTurn);
+          const winnerId = winnerRow?.user_id || null;
+          const loserId = currentPlayer?.user_id || null;
 
-    for (const row of expiredGames) {
-      const gameId = row.id;
-      const gameIdStr = gameId.toString();
-      try {
-        // Determine players from DB
-        const [playerRows] = await db_pool.query(
-          'SELECT user_id, player_position FROM players WHERE game_id = ?', [gameId]
-        );
-        const currentTurn = row.player_turn;
-        const currentPlayer = playerRows.find(p => p.player_position === currentTurn);
-        const winnerRow = playerRows.find(p => p.player_position !== currentTurn);
-        const winnerId = winnerRow?.user_id || null;
-        const loserId = currentPlayer?.user_id || null;
+          let eloChanges = null;
+          const otherData = row.other_data ? (typeof row.other_data === 'string' ? JSON.parse(row.other_data) : row.other_data) : {};
+          if (otherData?.rated !== false && winnerId && loserId) {
+            try { eloChanges = await updateEloRatings(winnerId, loserId); } catch (_) {}
+          }
 
-        let eloChanges = null;
-        // Only update ELO for rated games between two real users
-        const otherData = row.other_data ? (typeof row.other_data === 'string' ? JSON.parse(row.other_data) : row.other_data) : {};
-        if (otherData?.rated !== false && winnerId && loserId) {
-          try { eloChanges = await updateEloRatings(winnerId, loserId); } catch (_) {}
+          const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          const finalOtherData = JSON.stringify({ ...otherData, winner: winnerId, reason: 'timeout', eloChanges });
+          await db_pool.query(
+            `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, other_data = ? WHERE id = ?`,
+            [endTime, winnerId, finalOtherData, gameId]
+          );
+
+          const inMemory = activeGames.get(gameIdStr);
+          if (inMemory) {
+            inMemory.status = 'completed';
+            inMemory.winner = winnerId;
+            inMemory.winReason = 'timeout';
+          }
+
+          if (ioInstance) {
+            ioInstance.to(`game-${gameId}`).emit('gameOver', {
+              gameId, winner: winnerId, reason: 'timeout', eloChanges,
+            });
+          }
+          console.log(`[correspondence] Game ${gameId} expired — player_turn=${currentTurn} ran out of time.`);
+        } catch (innerErr) {
+          console.error(`[correspondence] Failed to expire game ${gameId}:`, innerErr);
         }
-
-        const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
-        const finalOtherData = JSON.stringify({ ...otherData, winner: winnerId, reason: 'timeout', eloChanges });
-        await db_pool.query(
-          `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, other_data = ? WHERE id = ?`,
-          [endTime, winnerId, finalOtherData, gameId]
-        );
-
-        // Remove from activeGames if loaded
-        const inMemory = activeGames.get(gameIdStr);
-        if (inMemory) {
-          inMemory.status = 'completed';
-          inMemory.winner = winnerId;
-          inMemory.winReason = 'timeout';
-        }
-
-        // Notify any connected players
-        if (ioInstance) {
-          ioInstance.to(`game-${gameId}`).emit('gameOver', {
-            gameId,
-            winner: winnerId,
-            reason: 'timeout',
-            eloChanges,
-          });
-        }
-
-        console.log(`[correspondence] Game ${gameId} expired by timeout — player_turn=${currentTurn} ran out of time.`);
-      } catch (innerErr) {
-        console.error(`[correspondence] Failed to expire game ${gameId}:`, innerErr);
       }
+    }
+
+    // ── Low-time warning (< 6 hours remaining) ────────────────────────────────
+    const LOW_TIME_MS = 6 * 60 * 60 * 1000;
+    try {
+      const [lowTimeGames] = await db_pool.query(`
+        SELECT g.id, g.player_turn, g.other_data, g.correspondence_days
+        FROM games g
+        WHERE g.is_correspondence = 1
+          AND g.status = 'active'
+          AND g.correspondence_days IS NOT NULL
+          AND (
+            -- New: use absolute moveDeadline
+            (JSON_EXTRACT(g.other_data, '$.moveDeadline') IS NOT NULL
+             AND JSON_EXTRACT(g.other_data, '$.moveDeadline') - (UNIX_TIMESTAMP(NOW()) * 1000) < ?
+             AND JSON_EXTRACT(g.other_data, '$.moveDeadline') > (UNIX_TIMESTAMP(NOW()) * 1000))
+            OR
+            -- Legacy fallback: compute from lastMoveTime
+            (JSON_EXTRACT(g.other_data, '$.moveDeadline') IS NULL
+             AND JSON_EXTRACT(g.other_data, '$.lastMoveTime') IS NOT NULL
+             AND (g.correspondence_days * 86400 * 1000)
+                 - ((UNIX_TIMESTAMP(NOW()) * 1000) - JSON_EXTRACT(g.other_data, '$.lastMoveTime')) < ?
+             AND (UNIX_TIMESTAMP(NOW()) * 1000) - JSON_EXTRACT(g.other_data, '$.lastMoveTime')
+                 < (g.correspondence_days * 86400 * 1000))
+          )
+          AND (JSON_EXTRACT(g.other_data, '$.lowTimeNotifiedForTurn') IS NULL
+               OR JSON_EXTRACT(g.other_data, '$.lowTimeNotifiedForTurn') !=
+                  JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')))
+      `, [LOW_TIME_MS, LOW_TIME_MS]);
+
+      const dbHelpers = require('./db-helpers');
+      for (const row of lowTimeGames) {
+        try {
+          const otherData = row.other_data
+            ? (typeof row.other_data === 'string' ? JSON.parse(row.other_data) : row.other_data)
+            : {};
+          const moveCount = (otherData.moves || []).length;
+          if (otherData.lowTimeNotifiedForTurn === moveCount) continue;
+
+          // Compute remainingMs — prefer moveDeadline, fall back to lastMoveTime arithmetic
+          let remainingMs;
+          if (otherData.moveDeadline) {
+            remainingMs = otherData.moveDeadline - Date.now();
+          } else {
+            const allowedMs = row.correspondence_days * 24 * 60 * 60 * 1000;
+            remainingMs = allowedMs - (Date.now() - (otherData.lastMoveTime || 0));
+          }
+          if (remainingMs <= 0 || remainingMs >= LOW_TIME_MS) continue;
+
+          const hoursLeft = Math.max(1, Math.ceil(remainingMs / (60 * 60 * 1000)));
+
+          // Mark BEFORE sending to prevent double-fire on concurrent runs
+          await db_pool.query(
+            `UPDATE games SET other_data = JSON_SET(other_data, '$.lowTimeNotifiedForTurn', ?) WHERE id = ?`,
+            [moveCount, row.id]
+          );
+
+          const [playerRows] = await db_pool.query(
+            `SELECT p.user_id, p.player_position, u.username
+             FROM players p LEFT JOIN users u ON p.user_id = u.id
+             WHERE p.game_id = ?`, [row.id]
+          );
+          const currentTurn = row.player_turn;
+          const currentPlayer = playerRows.find(p => p.player_position === currentTurn);
+          const opponent = playerRows.find(p => p.player_position !== currentTurn);
+          if (!currentPlayer?.user_id) continue;
+
+          const title = `⏰ Less than ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'} left to move`;
+          const content = `Your correspondence game against ${opponent?.username || 'your opponent'} expires in under ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'}. Make your move soon!`;
+          const actionUrl = `/play/${row.id}`;
+
+          await dbHelpers.createNotification({
+            user_id: currentPlayer.user_id,
+            sender_id: null,
+            type: 'corres_low_time',
+            title,
+            content,
+            related_id: parseInt(row.id),
+            action_url: actionUrl
+          });
+
+          if (ioInstance) {
+            const socketId = userSockets.get(currentPlayer.user_id.toString());
+            if (socketId) {
+              ioInstance.to(socketId).emit('newNotification', {
+                type: 'corres_low_time', title, content,
+                action_url: actionUrl, related_id: parseInt(row.id), is_read: 0
+              });
+            }
+          }
+          console.log(`[correspondence] Low-time warning sent for game ${row.id} to user ${currentPlayer.user_id} (${hoursLeft}h left)`);
+        } catch (innerErr) {
+          console.error(`[correspondence] Low-time notification failed for game ${row.id}:`, innerErr);
+        }
+      }
+    } catch (ltErr) {
+      console.error('[correspondence] Low-time warning check error:', ltErr);
     }
   } catch (err) {
     console.error('[correspondence] Error checking correspondence timeouts:', err);

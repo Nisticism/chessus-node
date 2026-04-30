@@ -371,6 +371,32 @@ const tableMigrations = [
       FOREIGN KEY (job_id) REFERENCES ai_training_jobs(id) ON DELETE SET NULL
     )`,
     description: "Create ai_models table tracking trained AI model checkpoints"
+  },
+  {
+    sql: `CREATE TABLE IF NOT EXISTS polls (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      question VARCHAR(500) NOT NULL,
+      options JSON NOT NULL COMMENT 'Array of option strings',
+      is_visible TINYINT(1) NOT NULL DEFAULT 0,
+      expires_at DATETIME NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`,
+    description: "Create polls table for admin-controlled site polls"
+  },
+  {
+    sql: `CREATE TABLE IF NOT EXISTS poll_votes (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      poll_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      option_index SMALLINT UNSIGNED NOT NULL,
+      voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_poll_user (poll_id, user_id),
+      INDEX idx_poll_votes_poll (poll_id),
+      FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    description: "Create poll_votes table for user poll responses"
   }
 ];
 

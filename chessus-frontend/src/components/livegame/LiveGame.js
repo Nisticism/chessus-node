@@ -1497,11 +1497,16 @@ const LiveGame = () => {
   const formatCorrespondenceTime = (isCurrentTurnPlayer) => {
     if (!gameState?.isCorrespondence || !gameState?.correspondenceDays) return null;
     if (!isCurrentTurnPlayer) return `${gameState.correspondenceDays}d`;
-    const lastMoveTime = gameState.lastMoveTime;
-    if (!lastMoveTime) return `${gameState.correspondenceDays}d`;
-    const elapsed = Date.now() - lastMoveTime;
-    const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
-    const remainingMs = Math.max(0, allowedMs - elapsed);
+    // Prefer absolute moveDeadline; fall back to lastMoveTime + correspondenceDays arithmetic
+    let remainingMs;
+    if (gameState.moveDeadline) {
+      remainingMs = Math.max(0, gameState.moveDeadline - Date.now());
+    } else if (gameState.lastMoveTime) {
+      const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
+      remainingMs = Math.max(0, allowedMs - (Date.now() - gameState.lastMoveTime));
+    } else {
+      return `${gameState.correspondenceDays}d`;
+    }
     const totalHours = remainingMs / (60 * 60 * 1000);
     const days = Math.floor(totalHours / 24);
     const hours = Math.floor(totalHours % 24);

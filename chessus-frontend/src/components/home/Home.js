@@ -8,6 +8,8 @@ import { users } from "../../actions/users";
 import { fetchSiteSettings } from "../../actions/siteSettings";
 import PlayablePreviewBoard from "./PlayablePreviewBoard";
 import API_URL from "../../global/global";
+import axios from "../../services/axios-interceptor";
+import authHeader from "../../services/auth-header";
 
 // Import piece images for the static board fallback
 import { 
@@ -44,6 +46,27 @@ const Home = () => {
   // Get user's board color preferences from user object, localStorage, or use defaults
   const lightSquareColor = currentUser?.light_square_color || localStorage.getItem('boardLightColor') || '#cad5e8';
   const darkSquareColor = currentUser?.dark_square_color || localStorage.getItem('boardDarkColor') || '#08234d';
+
+  // Poll widget state
+  const [activePoll, setActivePoll] = useState(null);
+  const [pollVoteSubmitting, setPollVoteSubmitting] = useState(false);
+  const [pollSelectedOption, setPollSelectedOption] = useState(null);
+
+  useEffect(() => {
+    const fetchPoll = async () => {
+      try {
+        const res = await axios.get(`${API_URL}poll/active`, { headers: authHeader() });
+        const data = res.data;
+        if (data.poll) {
+          setActivePoll(data.poll);
+          if (data.poll.myVote !== null && data.poll.myVote !== undefined) {
+            setPollSelectedOption(data.poll.myVote);
+          }
+        }
+      } catch (_) {}
+    };
+    fetchPoll();
+  }, [currentUser]);
 
   useEffect(() => {
     dispatch(getGames());
@@ -369,6 +392,77 @@ const Home = () => {
           <Link to="/forums" className={styles["forum-invite-link"]}>
             💬 Visit the Forums
           </Link>
+        </section>
+      )}
+
+      {/* Community Poll */}
+      {activePoll && (
+        <section style={{ maxWidth: '560px', margin: '0 auto 32px', padding: '0 16px' }}>
+          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '20px 22px' }}>
+            <div style={{ fontWeight: 700, fontSize: '1.05em', marginBottom: '14px' }}>📊 {activePoll.question}</div>
+            {activePoll.options.map((opt, i) => {
+              const pct = activePoll.totalVotes > 0 ? Math.round((activePoll.counts[i] / activePoll.totalVotes) * 100) : 0;
+              const voted = activePoll.myVote !== null && activePoll.myVote !== undefined;
+              return (
+                <div key={i} style={{ marginBottom: '8px' }}>
+                  {voted ? (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9em', marginBottom: '3px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {activePoll.myVote === i && <span>✓</span>}{opt}
+                        </span>
+                        <span style={{ color: 'var(--text-dim)' }}>{pct}%</span>
+                      </div>
+                      <div style={{ height: '5px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: activePoll.myVote === i ? 'var(--accent, #7289da)' : 'rgba(255,255,255,0.25)', borderRadius: '3px', transition: 'width 0.4s' }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.95em', padding: '6px 0' }}>
+                      <input
+                        type="radio"
+                        name="poll"
+                        value={i}
+                        checked={pollSelectedOption === i}
+                        onChange={() => setPollSelectedOption(i)}
+                        style={{ accentColor: 'var(--accent, #7289da)' }}
+                      />
+                      {opt}
+                    </label>
+                  )}
+                </div>
+              );
+            })}
+            {activePoll.myVote === null || activePoll.myVote === undefined ? (
+              <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  onClick={async () => {
+                    if (pollSelectedOption === null) return;
+                    if (!currentUser) { window.location.href = '/login'; return; }
+                    setPollVoteSubmitting(true);
+                    try {
+                      const res = await axios.post(
+                        `${API_URL}poll/${activePoll.id}/vote`,
+                        { optionIndex: pollSelectedOption },
+                        { headers: authHeader() }
+                      );
+                      setActivePoll(prev => ({ ...prev, myVote: res.data.myVote, counts: res.data.counts, totalVotes: res.data.totalVotes }));
+                    } catch (_) {} finally { setPollVoteSubmitting(false); }
+                  }}
+                  disabled={pollSelectedOption === null || pollVoteSubmitting}
+                  style={{ background: 'var(--accent, #7289da)', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 18px', cursor: pollSelectedOption === null ? 'not-allowed' : 'pointer', opacity: pollSelectedOption === null ? 0.5 : 1, fontWeight: 600 }}
+                >
+                  {pollVoteSubmitting ? 'Submitting…' : 'Vote'}
+                </button>
+                <span style={{ fontSize: '0.82em', color: 'var(--text-dim)' }}>{activePoll.totalVotes} vote{activePoll.totalVotes !== 1 ? 's' : ''}</span>
+              </div>
+            ) : (
+              <div style={{ marginTop: '10px', fontSize: '0.82em', color: 'var(--text-dim)' }}>
+                {activePoll.totalVotes} vote{activePoll.totalVotes !== 1 ? 's' : ''}
+                {activePoll.expires_at && <span> · Closes {new Date(activePoll.expires_at).toLocaleDateString()}</span>}
+              </div>
+            )}
+          </div>
         </section>
       )}
 

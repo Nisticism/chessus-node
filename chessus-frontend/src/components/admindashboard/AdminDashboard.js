@@ -125,6 +125,15 @@ const AdminDashboard = () => {
   const [aiAnalysisRequestsFilter, setAiAnalysisRequestsFilter] = useState('pending');
   const [aiAnalysisRequestsPagination, setAiAnalysisRequestsPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 0 });
 
+  // Poll admin state
+  const [polls, setPolls] = useState([]);
+  const [pollsLoading, setPollsLoading] = useState(false);
+  const [pollResults, setPollResults] = useState(null); // { poll, results, totalVotes }
+  const [pollResultsLoading, setPollResultsLoading] = useState(false);
+  const [pollForm, setPollForm] = useState({ question: '', options: ['', ''], is_visible: false, expires_at: '' });
+  const [pollSaving, setPollSaving] = useState(false);
+  const [editingPollId, setEditingPollId] = useState(null);
+
   // Auto-hide alert after 2 seconds
   useEffect(() => {
     let timer;
@@ -576,6 +585,7 @@ const AdminDashboard = () => {
       'anonymous-games', 'private-games', 'deleted-users',
     ]);
     if (loadingTabs.has(tab)) setLoading(true);
+    if (tab === 'poll') fetchPolls();
   };
 
   const handlePageChange = (newPage) => {
@@ -1795,6 +1805,224 @@ const AdminDashboard = () => {
     }
   };
 
+  // ── Poll admin helpers ────────────────────────────────────────────────────
+
+  const fetchPolls = async () => {
+    setPollsLoading(true);
+    try {
+      const res = await axios.get(`${API_URL}admin/poll`, { headers: authHeader() });
+      setPolls(res.data || []);
+    } catch (err) {
+      console.error('fetchPolls failed', err);
+    } finally {
+      setPollsLoading(false);
+    }
+  };
+
+  const fetchPollResults = async (pollId) => {
+    setPollResultsLoading(true);
+    try {
+      const res = await axios.get(`${API_URL}admin/poll/${pollId}/results`, { headers: authHeader() });
+      setPollResults(res.data);
+    } catch (err) {
+      console.error('fetchPollResults failed', err);
+    } finally {
+      setPollResultsLoading(false);
+    }
+  };
+
+  const savePoll = async () => {
+    if (!pollForm.question.trim()) return;
+    const cleanOpts = pollForm.options.map(o => o.trim()).filter(Boolean);
+    if (cleanOpts.length < 2) { alert('Need at least 2 non-empty options'); return; }
+    setPollSaving(true);
+    try {
+      const payload = {
+        question: pollForm.question.trim(),
+        options: cleanOpts,
+        is_visible: pollForm.is_visible,
+        expires_at: pollForm.expires_at || null,
+      };
+      if (editingPollId) {
+        await axios.put(`${API_URL}admin/poll/${editingPollId}`, payload, { headers: authHeader() });
+      } else {
+        await axios.post(`${API_URL}admin/poll`, payload, { headers: authHeader() });
+      }
+      setPollForm({ question: '', options: ['', ''], is_visible: false, expires_at: '' });
+      setEditingPollId(null);
+      await fetchPolls();
+    } catch (err) {
+      console.error('savePoll failed', err);
+      alert('Failed to save poll: ' + (err?.response?.data?.message || err.message));
+    } finally {
+      setPollSaving(false);
+    }
+  };
+
+  const deletePoll = async (id) => {
+    if (!window.confirm('Delete this poll and all its votes?')) return;
+    try {
+      await axios.delete(`${API_URL}admin/poll/${id}`, { headers: authHeader() });
+      setPolls(prev => prev.filter(p => p.id !== id));
+      if (pollResults?.poll?.id === id) setPollResults(null);
+    } catch (err) {
+      console.error('deletePoll failed', err);
+    }
+  };
+
+  const startEditPoll = (poll) => {
+    setEditingPollId(poll.id);
+    const expiresAtLocal = poll.expires_at
+      ? new Date(poll.expires_at).toISOString().slice(0, 16)
+      : '';
+    setPollForm({
+      question: poll.question,
+      options: poll.options.length ? [...poll.options] : ['', ''],
+      is_visible: !!poll.is_visible,
+      expires_at: expiresAtLocal,
+    });
+    setPollResults(null);
+  };
+
+  const renderPollTab = () => (
+    <div className={styles["table-container"]}>
+      {/* ── Form ── */}
+      <div style={{ marginBottom: '20px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '16px' }}>
+        <div style={{ fontWeight: 600, marginBottom: '12px' }}>
+          {editingPollId ? `Editing Poll #${editingPollId}` : 'New Poll'}
+        </div>
+        <div style={{ marginBottom: '10px' }}>
+          <label style={{ display: 'block', fontSize: '0.85em', color: 'var(--text-dim)', marginBottom: '4px' }}>Question</label>
+          <input
+            type="text"
+            value={pollForm.question}
+            onChange={e => setPollForm(f => ({ ...f, question: e.target.value }))}
+            placeholder="Enter poll question…"
+            style={{ width: '100%', background: 'var(--input-bg, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '8px 10px', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div style={{ marginBottom: '10px' }}>
+          <label style={{ display: 'block', fontSize: '0.85em', color: 'var(--text-dim)', marginBottom: '4px' }}>Options</label>
+          {pollForm.options.map((opt, i) => (
+            <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+              <input
+                type="text"
+                value={opt}
+                onChange={e => setPollForm(f => { const opts = [...f.options]; opts[i] = e.target.value; return { ...f, options: opts }; })}
+                placeholder={`Option ${i + 1}`}
+                style={{ flex: 1, background: 'var(--input-bg, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '7px 10px' }}
+              />
+              {pollForm.options.length > 2 && (
+                <StandardButton buttonText="✕" onClick={() => setPollForm(f => { const opts = f.options.filter((_, idx) => idx !== i); return { ...f, options: opts }; })} />
+              )}
+            </div>
+          ))}
+          <StandardButton buttonText="+ Add Option" onClick={() => setPollForm(f => ({ ...f, options: [...f.options, ''] }))} />
+        </div>
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '10px', alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9em', cursor: 'pointer' }}>
+            <input type="checkbox" checked={pollForm.is_visible} onChange={e => setPollForm(f => ({ ...f, is_visible: e.target.checked }))} />
+            Visible on home page
+          </label>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85em', color: 'var(--text-dim)', marginBottom: '2px' }}>Expires at (optional)</label>
+            <input
+              type="datetime-local"
+              value={pollForm.expires_at}
+              onChange={e => setPollForm(f => ({ ...f, expires_at: e.target.value }))}
+              style={{ background: 'var(--input-bg, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '6px 8px' }}
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <StandardButton buttonText={pollSaving ? 'Saving…' : (editingPollId ? 'Save Changes' : 'Create Poll')} onClick={savePoll} disabled={pollSaving} />
+          {editingPollId && (
+            <StandardButton buttonText="Cancel" onClick={() => { setEditingPollId(null); setPollForm({ question: '', options: ['', ''], is_visible: false, expires_at: '' }); }} />
+          )}
+        </div>
+      </div>
+
+      {/* ── Existing polls ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <div style={{ fontWeight: 600 }}>All Polls</div>
+        <StandardButton buttonText="Refresh" onClick={fetchPolls} disabled={pollsLoading} />
+      </div>
+      {pollsLoading ? (
+        <div className={styles["loading"]}>Loading…</div>
+      ) : polls.length === 0 ? (
+        <p style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px 0' }}>No polls yet.</p>
+      ) : (
+        <table className={styles["table"]}>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Question</th>
+              <th>Options</th>
+              <th>Visible</th>
+              <th>Expires</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {polls.map(p => (
+              <tr key={p.id}>
+                <td>{p.id}</td>
+                <td>{p.question}</td>
+                <td style={{ fontSize: '0.8em', color: 'var(--text-dim)' }}>{(p.options || []).join(', ')}</td>
+                <td>{p.is_visible ? '✅' : '—'}</td>
+                <td style={{ fontSize: '0.8em' }}>{p.expires_at ? new Date(p.expires_at).toLocaleString() : '—'}</td>
+                <td style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <StandardButton buttonText="Results" onClick={() => fetchPollResults(p.id)} />
+                  <StandardButton buttonText="Edit" onClick={() => startEditPoll(p)} />
+                  <StandardButton buttonText="Delete" onClick={() => deletePoll(p.id)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {/* ── Results panel ── */}
+      {pollResults && (
+        <div style={{ marginTop: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ fontWeight: 600 }}>Results: "{pollResults.poll.question}"</div>
+            <div style={{ fontSize: '0.85em', color: 'var(--text-dim)' }}>{pollResults.totalVotes} total votes</div>
+          </div>
+          {pollResultsLoading ? (
+            <div className={styles["loading"]}>Loading…</div>
+          ) : (
+            pollResults.results.map((r) => {
+              const pct = pollResults.totalVotes > 0 ? Math.round((r.voters.length / pollResults.totalVotes) * 100) : 0;
+              return (
+                <div key={r.optionIndex} style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 500 }}>{r.option}</span>
+                    <span style={{ color: 'var(--text-dim)', fontSize: '0.85em' }}>{r.voters.length} votes ({pct}%)</span>
+                  </div>
+                  <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden', marginBottom: '4px' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent, #7289da)', borderRadius: '3px' }} />
+                  </div>
+                  {r.voters.length > 0 && (
+                    <div style={{ fontSize: '0.78em', color: 'var(--text-dim)', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {r.voters.map(v => (
+                        <a key={v.user_id} href={`/profile/${v.username}`} target="_blank" rel="noreferrer"
+                           style={{ color: 'var(--link-color, #aac4ff)', textDecoration: 'none' }}>
+                          {v.username}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+          <StandardButton buttonText="Close" onClick={() => setPollResults(null)} />
+        </div>
+      )}
+    </div>
+  );
+
   const renderInitialStateTab = () => (
     <div className={styles["table-container"]}>
       <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -2886,10 +3114,16 @@ const AdminDashboard = () => {
         >
           Initial Position Scan
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "poll" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("poll")}
+        >
+          Poll
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -2911,6 +3145,7 @@ const AdminDashboard = () => {
             {activeTab === "ai-training" && <AiTrainingPanel initialAnalysisGameTypeId={aiPanelInitialGameTypeId} />}
             {activeTab === "ai-analysis-requests" && renderAiAnalysisRequestsTab()}
             {activeTab === "initial-state" && renderInitialStateTab()}
+            {activeTab === "poll" && renderPollTab()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>

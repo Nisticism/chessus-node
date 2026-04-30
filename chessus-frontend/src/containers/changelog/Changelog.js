@@ -4,6 +4,16 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 1, 2026",
+    title: "Community polls, clock persistence on restart, low-time correspondence notifications, correspondence deadline architecture",
+    items: [
+      "Community polls: a poll widget now appears on the home page when an admin has published an active poll. Log in and vote on the current question, then see live vote counts across all options. Admins can create, edit, schedule expiry, and delete polls from the Admin Dashboard's new Poll tab.",
+      "Game clocks now continue ticking immediately after a server restart — no more frozen clocks until a player reconnects.",
+      "Correspondence games now send a notification when you have less than 6 hours left to make your move.",
+      "Correspondence game clocks now use an absolute deadline timestamp instead of computing elapsed time on every check — more reliable across server restarts and easier to reason about.",
+    ],
+  },
+  {
     date: "April 30, 2026",
     title: "Anonymous open matches, guest joining unrated games, must-move enforcement, ranged attack fix, admin anonymous game viewer",
     items: [

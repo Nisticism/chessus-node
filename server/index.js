@@ -10268,6 +10268,258 @@ app.post(
 // real route definitions, so it doesn't accidentally swallow routes that are
 // declared lower in the file.)
 
+// ────────────────────────────────────────────────────────────────────────────
+// POLL API
+// ────────────────────────────────────────────────────────────────────────────
+
+// GET /api/poll/active  — public: returns the currently visible, non-expired
+// poll with aggregated vote counts plus the calling user's vote (if any).
+app.get("/api/poll/active", async (req, res) => {
+  try {
+    const [[poll]] = await db_pool.query(
+      `SELECT id, question, options, expires_at
+       FROM polls
+       WHERE is_visible = 1
+         AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY created_at DESC
+       LIMIT 1`
+    );
+    if (!poll) return res.json({ poll: null });
+
+    const options = typeof poll.options === 'string' ? JSON.parse(poll.options) : poll.options;
+
+    // Aggregate vote counts per option
+    const [voteCounts] = await db_pool.query(
+      `SELECT option_index, COUNT(*) AS cnt FROM poll_votes WHERE poll_id = ? GROUP BY option_index`,
+      [poll.id]
+    );
+    const counts = options.map((_, i) => {
+      const row = voteCounts.find(r => r.option_index === i);
+      return row ? Number(row.cnt) : 0;
+    });
+
+    // Current user's vote (if authenticated)
+    let myVote = null;
+    const authHeader = req.headers['authorization'];
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(authHeader.slice(7), process.env.ACCESS_TOKEN_SECRET);
+        const [[voteRow]] = await db_pool.query(
+          `SELECT option_index FROM poll_votes WHERE poll_id = ? AND user_id = ?`,
+          [poll.id, decoded.id]
+        );
+        if (voteRow) myVote = voteRow.option_index;
+      } catch (_) { /* unauthenticated or expired token — ignore */ }
+    }
+
+    res.json({
+      poll: {
+        id: poll.id,
+        question: poll.question,
+        options,
+        expires_at: poll.expires_at,
+        counts,
+        myVote,
+        totalVotes: counts.reduce((s, c) => s + c, 0),
+      }
+    });
+  } catch (err) {
+    console.error("Error fetching active poll:", err);
+    res.status(500).send({ message: "Failed to fetch poll" });
+  }
+});
+
+// POST /api/poll/:id/vote  — authenticated: cast or change vote
+app.post("/api/poll/:id/vote", authenticateToken, async (req, res) => {
+  try {
+    const pollId = parseInt(req.params.id);
+    const { optionIndex } = req.body;
+    if (!Number.isInteger(optionIndex) || optionIndex < 0) {
+      return res.status(400).send({ message: "Invalid option" });
+    }
+    const userId = req.user.id;
+
+    const [[poll]] = await db_pool.query(
+      `SELECT id, options FROM polls WHERE id = ? AND is_visible = 1 AND (expires_at IS NULL OR expires_at > NOW())`,
+      [pollId]
+    );
+    if (!poll) return res.status(404).send({ message: "Poll not found or closed" });
+
+    const options = typeof poll.options === 'string' ? JSON.parse(poll.options) : poll.options;
+    if (optionIndex >= options.length) return res.status(400).send({ message: "Invalid option index" });
+
+    // Upsert — allows changing vote, never allows deleting
+    await db_pool.query(
+      `INSERT INTO poll_votes (poll_id, user_id, option_index)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE option_index = VALUES(option_index), voted_at = CURRENT_TIMESTAMP`,
+      [pollId, userId, optionIndex]
+    );
+
+    // Return updated counts
+    const [voteCounts] = await db_pool.query(
+      `SELECT option_index, COUNT(*) AS cnt FROM poll_votes WHERE poll_id = ? GROUP BY option_index`,
+      [pollId]
+    );
+    const counts = options.map((_, i) => {
+      const row = voteCounts.find(r => r.option_index === i);
+      return row ? Number(row.cnt) : 0;
+    });
+
+    res.json({ success: true, myVote: optionIndex, counts, totalVotes: counts.reduce((s, c) => s + c, 0) });
+  } catch (err) {
+    console.error("Error recording vote:", err);
+    res.status(500).send({ message: "Failed to record vote" });
+  }
+});
+
+// ── Admin poll endpoints ──────────────────────────────────────────────────────
+
+// GET /api/admin/poll  — return all polls (most recent first)
+app.get("/api/admin/poll", authenticateAdmin, async (req, res) => {
+  try {
+    const [polls] = await db_pool.query(
+      `SELECT id, question, options, is_visible, expires_at, created_at, updated_at
+       FROM polls ORDER BY created_at DESC`
+    );
+    res.json(polls.map(p => ({
+      ...p,
+      options: typeof p.options === 'string' ? JSON.parse(p.options) : p.options,
+    })));
+  } catch (err) {
+    console.error("Error fetching polls:", err);
+    res.status(500).send({ message: "Failed to fetch polls" });
+  }
+});
+
+// GET /api/admin/poll/:id/results  — per-option voter list
+app.get("/api/admin/poll/:id/results", authenticateAdmin, async (req, res) => {
+  try {
+    const pollId = parseInt(req.params.id);
+    const [[poll]] = await db_pool.query(`SELECT * FROM polls WHERE id = ?`, [pollId]);
+    if (!poll) return res.status(404).send({ message: "Poll not found" });
+
+    const options = typeof poll.options === 'string' ? JSON.parse(poll.options) : poll.options;
+    const [votes] = await db_pool.query(
+      `SELECT pv.option_index, pv.voted_at, u.id AS user_id, u.username, u.profile_picture
+       FROM poll_votes pv
+       JOIN users u ON pv.user_id = u.id
+       WHERE pv.poll_id = ?
+       ORDER BY pv.option_index, pv.voted_at ASC`,
+      [pollId]
+    );
+
+    const results = options.map((opt, i) => ({
+      optionIndex: i,
+      option: opt,
+      voters: votes.filter(v => v.option_index === i).map(v => ({
+        user_id: v.user_id,
+        username: v.username,
+        profile_picture: v.profile_picture,
+        voted_at: v.voted_at,
+      })),
+    }));
+
+    res.json({
+      poll: { ...poll, options },
+      results,
+      totalVotes: votes.length,
+    });
+  } catch (err) {
+    console.error("Error fetching poll results:", err);
+    res.status(500).send({ message: "Failed to fetch results" });
+  }
+});
+
+// POST /api/admin/poll  — create a new poll
+app.post("/api/admin/poll", authenticateAdmin, async (req, res) => {
+  try {
+    let { question, options, is_visible, expires_at } = req.body;
+    question = (question || '').trim();
+    if (!question) return res.status(400).send({ message: "Question is required" });
+    if (!Array.isArray(options) || options.length < 2) {
+      return res.status(400).send({ message: "At least 2 options are required" });
+    }
+    const cleanOptions = options.map(o => String(o).trim()).filter(Boolean);
+    if (cleanOptions.length < 2) return res.status(400).send({ message: "At least 2 non-empty options required" });
+
+    const expiresAt = expires_at ? new Date(expires_at) : null;
+    if (expiresAt && isNaN(expiresAt.getTime())) {
+      return res.status(400).send({ message: "Invalid expires_at date" });
+    }
+
+    const [result] = await db_pool.query(
+      `INSERT INTO polls (question, options, is_visible, expires_at) VALUES (?, ?, ?, ?)`,
+      [question, JSON.stringify(cleanOptions), is_visible ? 1 : 0, expiresAt]
+    );
+    const [[created]] = await db_pool.query(`SELECT * FROM polls WHERE id = ?`, [result.insertId]);
+    res.status(201).json({ ...created, options: cleanOptions });
+  } catch (err) {
+    console.error("Error creating poll:", err);
+    res.status(500).send({ message: "Failed to create poll" });
+  }
+});
+
+// PUT /api/admin/poll/:id  — update poll settings
+app.put("/api/admin/poll/:id", authenticateAdmin, async (req, res) => {
+  try {
+    const pollId = parseInt(req.params.id);
+    const [[existing]] = await db_pool.query(`SELECT * FROM polls WHERE id = ?`, [pollId]);
+    if (!existing) return res.status(404).send({ message: "Poll not found" });
+
+    let { question, options, is_visible, expires_at } = req.body;
+    question = (question ?? existing.question).trim();
+    if (!question) return res.status(400).send({ message: "Question is required" });
+
+    let cleanOptions;
+    if (options !== undefined) {
+      if (!Array.isArray(options) || options.length < 2) {
+        return res.status(400).send({ message: "At least 2 options are required" });
+      }
+      cleanOptions = options.map(o => String(o).trim()).filter(Boolean);
+      if (cleanOptions.length < 2) return res.status(400).send({ message: "At least 2 non-empty options required" });
+    } else {
+      cleanOptions = typeof existing.options === 'string' ? JSON.parse(existing.options) : existing.options;
+    }
+
+    const visibleVal = is_visible !== undefined ? (is_visible ? 1 : 0) : existing.is_visible;
+    let expiresAt;
+    if (expires_at === null || expires_at === '') {
+      expiresAt = null;
+    } else if (expires_at !== undefined) {
+      expiresAt = new Date(expires_at);
+      if (isNaN(expiresAt.getTime())) return res.status(400).send({ message: "Invalid expires_at date" });
+    } else {
+      expiresAt = existing.expires_at;
+    }
+
+    await db_pool.query(
+      `UPDATE polls SET question = ?, options = ?, is_visible = ?, expires_at = ? WHERE id = ?`,
+      [question, JSON.stringify(cleanOptions), visibleVal, expiresAt, pollId]
+    );
+    const [[updated]] = await db_pool.query(`SELECT * FROM polls WHERE id = ?`, [pollId]);
+    res.json({ ...updated, options: cleanOptions });
+  } catch (err) {
+    console.error("Error updating poll:", err);
+    res.status(500).send({ message: "Failed to update poll" });
+  }
+});
+
+// DELETE /api/admin/poll/:id  — delete poll and all its votes
+app.delete("/api/admin/poll/:id", authenticateAdmin, async (req, res) => {
+  try {
+    const pollId = parseInt(req.params.id);
+    const [[existing]] = await db_pool.query(`SELECT id FROM polls WHERE id = ?`, [pollId]);
+    if (!existing) return res.status(404).send({ message: "Poll not found" });
+    await db_pool.query(`DELETE FROM polls WHERE id = ?`, [pollId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error deleting poll:", err);
+    res.status(500).send({ message: "Failed to delete poll" });
+  }
+});
+
 // Create HTTP server and initialize Socket.io
 const server = http.createServer(app);
 const io = initializeSocket(server);
