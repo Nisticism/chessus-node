@@ -17,6 +17,7 @@ const changelogData = [
       "Bot games: the page now loads instantly when you refresh mid-bot-turn instead of stalling until the bot finishes thinking.",
       "Clocks now switch to the opponent's side the instant you submit a move, rather than waiting for the server to confirm it.",
       "Bug fix: the 'Must Move If Able' and 'Forced Move Uses an Action' options in the piece wizard now correctly save and take effect in live games. Previously the flags were stored in the database but not loaded into the active game state, so the forced-move enforcement never triggered.",
+      "Bug fix: 'Must Move If Able' and 'Forced Move Uses an Action' now display correctly when re-opening an existing piece in the piece wizard. The piece detail query was not selecting these columns, so the checkboxes always appeared unchecked on edit.",
     ],
   },
   {

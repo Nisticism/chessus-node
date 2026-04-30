@@ -502,6 +502,8 @@ const getPieceById = async (pieceId) => {
       p.cannot_be_captured,
       p.custom_movement_squares,
       p.custom_attack_squares,
+      p.must_move_if_able,
+      p.must_move_uses_action,
       p.moderation_status,
       p.created_at
     FROM chessusnode.pieces p
