@@ -1910,6 +1910,46 @@
     justify-content: center;
     gap: 16px;
   }
+
+  .upvote-prompt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .upvote-prompt-text {
+    color: #aaa;
+    font-size: 0.9rem;
+  }
+
+  .upvote-prompt-btn {
+    background: rgba(var(--accent-rgb), 0.15);
+    border: 1px solid rgba(var(--accent-rgb), 0.4);
+    color: var(--accent-primary-text, #7eb8f7);
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(var(--accent-rgb), 0.28);
+      border-color: rgba(var(--accent-rgb), 0.7);
+    }
+  }
+
+  .upvote-thanks {
+    color: #7be38a;
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+    text-align: center;
+  }
 }
 
 .modal-close-btn {

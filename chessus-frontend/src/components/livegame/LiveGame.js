@@ -27,6 +27,7 @@ import {
 } from "../../helpers/pieceMovementUtils";
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
+import { toggleUpvote, getUpvoteStatus } from "../../actions/games";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -168,7 +169,9 @@ const LiveGame = () => {
     onGameEvent,
     spectateGame,
     pauseDisconnectTimer,
-    resumeDisconnectTimer
+    resumeDisconnectTimer,
+    authenticateAnonCorresPlayer,
+    getStoredAnonCorresId,
   } = useSocket();
 
   const [gameState, setGameState] = useState(null);
@@ -193,6 +196,8 @@ const LiveGame = () => {
   const [validMoves, setValidMoves] = useState([]);
   const [showGameOver, setShowGameOver] = useState(false);
   const [gameOverData, setGameOverData] = useState(null);
+  // null = not yet checked, 'prompt' = show upvote CTA, 'just_upvoted' = show thanks
+  const [gameOverUpvoteState, setGameOverUpvoteState] = useState(null);
   const [playerScores, setPlayerScores] = useState(null); // { 1: N, 2: M } or null when points not active
   const [stalemateNotice, setStalemateNotice] = useState(null);
   // Transient notice shown when the server re-rolls a randomized starting
@@ -519,6 +524,18 @@ const LiveGame = () => {
     };
   }, []);
 
+  // When the game-over modal opens for a logged-in player (not spectating),
+  // check whether they have already upvoted this game type. If not, show the
+  // upvote prompt. Spectators and guests are excluded — only players see it.
+  useEffect(() => {
+    if (!showGameOver || !currentUser || isSpectator || !gameState?.gameTypeId) return;
+    let cancelled = false;
+    getUpvoteStatus(gameState.gameTypeId).then(data => {
+      if (!cancelled && !data.upvoted) setGameOverUpvoteState('prompt');
+    }).catch(() => {}); // non-critical; silently skip if request fails
+    return () => { cancelled = true; };
+  }, [showGameOver, currentUser, isSpectator, gameState?.gameTypeId]);
+
   // Load game state on mount
   useEffect(() => {
     const loadGame = async () => {
@@ -526,6 +543,12 @@ const LiveGame = () => {
       
       setLoading(true);
       try {
+        // For anonymous correspondence players returning to the game, authenticate
+        // with the stored token first so the server can route events to this socket.
+        if (!currentUser && authenticateAnonCorresPlayer) {
+          await authenticateAnonCorresPlayer(parseInt(gameId)).catch(() => {});
+        }
+
         const state = await getGameState(parseInt(gameId));
         // Ensure allowPremoves is set (default to true if not specified)
         if (state.allowPremoves === undefined) {
@@ -628,14 +651,20 @@ const LiveGame = () => {
     };
 
     loadGame();
-  }, [gameId, connected, getGameState, clearOptimisticMoveSnapshot]);
+  }, [gameId, connected, getGameState, clearOptimisticMoveSnapshot, currentUser, authenticateAnonCorresPlayer]);
 
   // When not a player, register as a spectator.
   // Also re-registers when game status changes to 'active' so that users who
   // were watching the lobby (before the game started) get added to the
   // spectators list as soon as the match begins.
-  const isSpectator = !!(gameState && (anonSpectate || !gameState.players?.some(p => p.id === currentUser?.id || (socket?.id && p.id === `anon_${socket.id}`))));
-  useEffect(() => {
+  const isSpectator = !!(gameState && (anonSpectate || !gameState.players?.some(p => {
+    if (currentUser && p.id === currentUser.id) return true;
+    if (socket?.id && p.id === `anon_${socket.id}`) return true;
+    // Stable anonymous correspondence player ID stored in localStorage
+    const storedId = getStoredAnonCorresId ? getStoredAnonCorresId(String(gameId))?.playerId : null;
+    if (storedId && p.id === storedId) return true;
+    return false;
+  })));  useEffect(() => {
     if (isSpectator && connected && gameId && spectateGame) {
       spectateGame(parseInt(gameId), { anonymous: anonSpectate });
     }
@@ -3946,6 +3975,17 @@ const LiveGame = () => {
     navigate("/play");
   };
 
+  // Upvote the game type from the game-over modal
+  const handleGameOverUpvote = async () => {
+    if (!gameState?.gameTypeId) return;
+    try {
+      await toggleUpvote(gameState.gameTypeId);
+      setGameOverUpvoteState('just_upvoted');
+    } catch {
+      // Non-critical — silently fail
+    }
+  };
+
   // Check if user can join this game
   const canJoin = useMemo(() => {
     if (!gameState || !currentUser) return false;
@@ -6048,6 +6088,22 @@ const LiveGame = () => {
                     }
                   </span>
                 </div>
+              </div>
+            )}
+            {gameOverUpvoteState === 'prompt' && (
+              <div className={styles["upvote-prompt"]}>
+                <span className={styles["upvote-prompt-text"]}>Enjoyed this game type?</span>
+                <button
+                  className={styles["upvote-prompt-btn"]}
+                  onClick={handleGameOverUpvote}
+                >
+                  ▲ Upvote
+                </button>
+              </div>
+            )}
+            {gameOverUpvoteState === 'just_upvoted' && (
+              <div className={styles["upvote-thanks"]}>
+                ✓ Thanks for the upvote!
               </div>
             )}
             <div className={styles["game-over-actions"]}>

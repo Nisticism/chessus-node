@@ -12,6 +12,8 @@ const changelogData = [
       "Piece ability — Must Move If Able: pieces flagged with this ability are now actually enforced in-game. On their owner's turn, the piece must be moved if it has any legal move. If 'Forced Move Uses an Action' is off, the piece gets a free mandatory move after the player's normal actions; the turn doesn't end until the piece has moved. If 'Forced Move Uses an Action' is on, the player must spend one of their regular actions on the piece — trying to end the turn with other moves will be blocked with an error. The 'Must Move If Able' ability now also appears in the piece descriptions on the game detail page.",
       "Bug fix: editing a piece that has ranged attack enabled no longer resets the 'Enable ranged attack' toggle to off when you reach Step 3 of the piece wizard. The toggle now correctly reflects the saved setting.",
       "Admin portal — Anonymous Games: completed and abandoned games now have a 'View' button that opens the final board state, so admins can review how the game ended. Active games still show 'Spectate'.",
+      "Anonymous guests can now create and join correspondence games without an account. Your progress is saved in your browser so you can return to the same game link and continue where you left off. If you clear your browser data, the game link is your fallback.",
+      "After a game ends, logged-in players now see a one-tap upvote prompt in the game-over screen ('Enjoyed this game type? ▲ Upvote'). The prompt only appears if you haven't already upvoted the game type, so it never bothers you twice.",
     ],
   },
   {
