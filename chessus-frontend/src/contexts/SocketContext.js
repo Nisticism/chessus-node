@@ -362,6 +362,55 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, user]);
 
+  // Join an open (non-anonymous) game as a guest (unrated games only)
+  const joinOpenGameAsGuest = useCallback((gameId, guestName) => {
+    return new Promise((resolve, reject) => {
+      if (!socket || !connected) {
+        reject(new Error('Not connected'));
+        return;
+      }
+
+      let timeoutId;
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        socket.off('playerJoined', handlePlayerJoined);
+        socket.off('error', handleError);
+      };
+
+      const handlePlayerJoined = ({ gameId: joinedGameId, gameState, newPlayer }) => {
+        if (joinedGameId === gameId) {
+          cleanup();
+          setCurrentGame(gameState);
+          resolve({ gameState, newPlayer });
+        }
+      };
+
+      const handleError = (errorData) => {
+        cleanup();
+        const err = new Error(errorData.message);
+        if (errorData.code) err.code = errorData.code;
+        if (errorData.limitType) err.limitType = errorData.limitType;
+        if (errorData.limitCount !== undefined) err.limitCount = errorData.limitCount;
+        if (errorData.limitMax !== undefined) err.limitMax = errorData.limitMax;
+        reject(err);
+      };
+
+      socket.on('playerJoined', handlePlayerJoined);
+      socket.on('error', handleError);
+
+      socket.emit('joinOpenGameAsGuest', {
+        gameId,
+        guestName: guestName || 'Guest'
+      });
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error('Join game timed out'));
+      }, 10000);
+    });
+  }, [socket, connected]);
+
   // Get game state (for reconnection or spectating)
   const getGameState = useCallback((gameId) => {
     return new Promise((resolve, reject) => {
@@ -599,6 +648,7 @@ export const SocketProvider = ({ children }) => {
     createAnonymousGame,
     joinGame,
     joinByInviteCode,
+    joinOpenGameAsGuest,
     getGameState,
     makeMove,
     simulReadyToStart,

@@ -3089,7 +3089,7 @@ function initializeSocket(server) {
         const [result] = await db_pool.query(
           `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_anonymous, invite_code)
            VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', NULL, ?, ?, 1, ?)`,
-          [currentTime, timeControl || null, increment || 0, piecesData, JSON.stringify({ moves: [], rated: false, allowPremoves, startingMode }), gameTypeId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, inviteCode]
+          [currentTime, timeControl || null, increment || 0, piecesData, JSON.stringify({ moves: [], rated: false, allowPremoves, startingMode, guestName: displayName }), gameTypeId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, inviteCode]
         );
 
         const gameId = result.insertId;
@@ -3139,6 +3139,22 @@ function initializeSocket(server) {
         userSockets.set(tempHostId, socket.id);
 
         socket.emit("gameCreated", { gameId, gameState, inviteCode });
+
+        // Broadcast to the open matches lobby so all connected clients see this game
+        io.emit("newOpenGame", {
+          id: gameId,
+          game_type_id: gameTypeId,
+          game_name: gameType.game_name,
+          board_width: gameType.board_width,
+          board_height: gameType.board_height,
+          host_username: displayName,
+          host_id: null,
+          rated: false,
+          turn_length: timeControl || null,
+          increment: increment || 0,
+          is_anonymous: true,
+          invite_code: inviteCode
+        });
 
         console.log(`Anonymous game ${gameId} created by ${displayName} with invite code ${inviteCode}`);
       } catch (error) {
@@ -3365,6 +3381,127 @@ function initializeSocket(server) {
         await endIfInitialPositionDecided(io, gameId, gameState);
       } catch (error) {
         console.error("Error joining by invite code:", error);
+        socket.emit("error", { message: "Failed to join game" });
+      }
+    });
+
+    // Join an open (non-anonymous) game as an anonymous/guest user.
+    // Only allowed for unrated, non-challenge, non-correspondence games.
+    socket.on("joinOpenGameAsGuest", async (data) => {
+      try {
+        const { gameId, guestName } = data;
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+
+        if (!gameState || gameState.status !== 'waiting') {
+          return socket.emit("error", { message: "Game not found or already started" });
+        }
+
+        if (gameState.rated !== false) {
+          return socket.emit("error", { message: "Rated games require an account. Please sign in to join." });
+        }
+
+        if (gameState.isChallenge) {
+          return socket.emit("error", { message: "This is a private challenge. Only the challenged player can join." });
+        }
+
+        if (gameState.isCorrespondence) {
+          return socket.emit("error", { message: "Correspondence games require an account." });
+        }
+
+        if (gameState.players.length >= 2) {
+          return socket.emit("error", { message: "Game is full" });
+        }
+
+        const playerId = `anon_${socket.id}`;
+        const playerUsername = (guestName || 'Guest').substring(0, 20);
+
+        if (gameState.players.some(p => p.id === playerId)) {
+          return socket.emit("error", { message: "You are already in this game" });
+        }
+
+        // Anonymous session limit
+        const anonLiveLimit = await getSiteSettingInt('game_limit_live_anon', 4);
+        const anonCount = countAnonActiveGames(playerId);
+        if (anonCount >= anonLiveLimit) {
+          return socket.emit("error", {
+            code: 'LIMIT_EXCEEDED',
+            limitType: 'live_anon',
+            limitCount: anonCount,
+            limitMax: anonLiveLimit,
+            message: `You've reached the anonymous game limit (${anonLiveLimit} at a time). Please finish your current games before joining a new one, or create a free account to unlock higher limits.`
+          });
+        }
+
+        // Insert joiner row (no user_id for anonymous)
+        const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        await db_pool.query(
+          `INSERT INTO players (created_at, player_position, time_remaining, game_id, user_id, game_type_id)
+           VALUES (?, ?, ?, ?, NULL, ?)`,
+          [currentTime, null, gameState.timeControl, gameId, gameState.gameTypeId]
+        );
+
+        // Assign positions randomly
+        const positions = [1, 2].sort(() => Math.random() - 0.5);
+        gameState.players[0].position = positions[0];
+        const newPlayer = { id: playerId, username: playerUsername, position: positions[1] };
+        gameState.players.push(newPlayer);
+
+        // Update host's player position in DB (host is a registered user)
+        const hostPlayer = gameState.players.find(p => p.id !== playerId && typeof p.id === 'number');
+        if (hostPlayer) {
+          await db_pool.query(
+            "UPDATE players SET player_position = ? WHERE game_id = ? AND user_id = ?",
+            [hostPlayer.position, gameId, hostPlayer.id]
+          );
+        }
+
+        // Map socket for anonymous joiner
+        userSockets.set(playerId, socket.id);
+
+        // Initialize timers
+        if (gameState.timeControl) {
+          gameState.playerTimes = {};
+          gameState.players.forEach(p => {
+            gameState.playerTimes[p.id] = gameState.timeControl * 60;
+          });
+        }
+
+        // Apply randomized starting positions if configured
+        if (gameState.startingMode && gameState.startingMode !== 'none') {
+          const rerollInfo = applyRandomizationWithRerollGuard(gameState, gameState.startingMode);
+          if (rerollInfo.rerollCount > 0) {
+            io.to(`game-${gameId}`).emit('gameRerolling', {
+              gameId,
+              attempts: rerollInfo.rerollCount,
+              reason: 'The randomized starting position would have decided the game immediately. Re-rolling…',
+            });
+          }
+        }
+
+        gameState.status = 'ready';
+
+        await db_pool.query(
+          `UPDATE games SET status = 'ready', pieces = ? WHERE id = ?`,
+          [JSON.stringify(gameState.pieces), gameId]
+        );
+
+        socket.join(`game-${gameId}`);
+
+        io.to(`game-${gameId}`).emit("playerJoined", {
+          gameId,
+          gameState,
+          newPlayer
+        });
+
+        notifyHostOfPlayerJoin(io, gameId, gameState, newPlayer);
+        io.emit("gameRemoved", { gameId });
+
+        console.log(`Guest "${playerUsername}" joined open game ${gameId} as ${playerId}`);
+
+        await endIfInitialPositionDecided(io, gameId, gameState);
+      } catch (error) {
+        console.error("Error in joinOpenGameAsGuest:", error);
         socket.emit("error", { message: "Failed to join game" });
       }
     });
@@ -4119,6 +4256,31 @@ function initializeSocket(server) {
           return; // Placement handled, exit early
         }
 
+        // must_move_if_able (action-costing): if this would be the last action and a
+        // must_move_uses_action piece hasn't been moved yet, block the move.
+        {
+          const actionsPerTurnPreCheck = gameState.gameType?.actions_per_turn || 1;
+          const nextActionCount = (gameState.actionsThisTurn || 0) + 1;
+          const isLastAction = nextActionCount >= actionsPerTurnPreCheck;
+          if (isLastAction) {
+            const moverPos = gameState.currentTurn;
+            const blockedByMustMove = gameState.pieces.filter(p => {
+              if (!p.must_move_if_able || !p.must_move_uses_action) return false;
+              if ((p.player_id || p.team) !== moverPos) return false;
+              if (p.id === move.pieceId) return false; // this IS the required piece
+              if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
+              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+            });
+            if (blockedByMustMove.length > 0) {
+              return socket.emit("error", {
+                message: `You must move ${blockedByMustMove.map(p => p.piece_name || 'piece').join(', ')} before ending your turn.`,
+                code: 'MUST_MOVE_REQUIRED',
+                pieceIds: blockedByMustMove.map(p => p.id)
+              });
+            }
+          }
+        }
+
         // Validate move (basic validation - full validation handled by game rules)
         const moveResult = await validateAndApplyMove(gameState, move);
         
@@ -4417,13 +4579,44 @@ function initializeSocket(server) {
         gameState.chainCapturePlayerId = null;
         gameState.chainCaptureHopCount = 0;
 
-        // Actions per turn: increment counter and switch only if limit reached
+        // Track must_move_if_able pieces that were moved this turn
+        if (moveResult.movingPiece?.must_move_if_able) {
+          if (!(gameState.mustMovedThisTurn instanceof Set)) gameState.mustMovedThisTurn = new Set();
+          gameState.mustMovedThisTurn.add(moveResult.movingPiece.id);
+        }
+
+        // Actions per turn: free must-move pieces don't consume an action
+        const moverPosition = gameState.currentTurn;
         const actionsPerTurnMove = gameState.gameType?.actions_per_turn || 1;
-        gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
-        const moveTurnSwitched = gameState.actionsThisTurn >= actionsPerTurnMove;
+        const movingPieceIsMustMoveFree = !!(moveResult.movingPiece?.must_move_if_able && !moveResult.movingPiece.must_move_uses_action);
+        if (!movingPieceIsMustMoveFree) {
+          gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+        }
+        const actionsExhausted = gameState.actionsThisTurn >= actionsPerTurnMove;
+
+        // Check for pending free-must-move pieces before switching turns
+        let pendingFreeMustMoves = [];
+        if (actionsExhausted) {
+          pendingFreeMustMoves = gameState.pieces.filter(p => {
+            if (!p.must_move_if_able || p.must_move_uses_action) return false;
+            if ((p.player_id || p.team) !== moverPosition) return false;
+            if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
+            return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+          });
+        }
+
+        const moveTurnSwitched = actionsExhausted && pendingFreeMustMoves.length === 0;
         if (moveTurnSwitched) {
-          gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+          gameState.currentTurn = moverPosition === 1 ? 2 : 1;
           gameState.actionsThisTurn = 0;
+          gameState.mustMovedThisTurn = new Set(); // reset tracking for new turn
+        } else if (actionsExhausted && pendingFreeMustMoves.length > 0) {
+          // Notify client: all actions are done but a free-must-move piece still needs to move
+          socket.emit('mustMoveRequired', {
+            gameId,
+            pieceIds: pendingFreeMustMoves.map(p => p.id),
+            pieceNames: pendingFreeMustMoves.map(p => p.piece_name || 'piece'),
+          });
         }
 
         // Mid-turn checkmate detection for multi-action games
@@ -7448,12 +7641,13 @@ function initializeSocket(server) {
 async function getOpenLiveGames() {
   try {
     const [games] = await db_pool.query(
-      `SELECT g.*, gt.game_name, gt.board_width, gt.board_height, u.username as host_username,
+      `SELECT g.*, gt.game_name, gt.board_width, gt.board_height,
+              COALESCE(u.username, JSON_UNQUOTE(JSON_EXTRACT(g.other_data, '$.guestName')), 'Guest') as host_username,
               CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
-       JOIN users u ON g.host_id = u.id
-       WHERE g.status = 'waiting' AND (g.is_challenge = 0 OR g.is_challenge IS NULL) AND (g.is_anonymous = 0 OR g.is_anonymous IS NULL)
+       LEFT JOIN users u ON g.host_id = u.id
+       WHERE g.status = 'waiting' AND (g.is_challenge = 0 OR g.is_challenge IS NULL)
        ORDER BY g.created_at DESC`
     );
     return games;

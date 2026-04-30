@@ -31,6 +31,7 @@ const Play = () => {
     createAnonymousGame,
     joinGame,
     joinByInviteCode,
+    joinOpenGameAsGuest,
     onGameEvent 
   } = useSocket();
 
@@ -121,6 +122,12 @@ const Play = () => {
   const [anonTimeControl, setAnonTimeControl] = useState("10");
   const [anonIncrement, setAnonIncrement] = useState("0");
   const [anonWarning, setAnonWarning] = useState(null);
+
+  // Join anonymous open match state
+  const [showJoinAnonModal, setShowJoinAnonModal] = useState(false);
+  const [joiningAnonGame, setJoiningAnonGame] = useState(null);
+  const [joinAnonGuestName, setJoinAnonGuestName] = useState("");
+  const [isJoiningAnon, setIsJoiningAnon] = useState(false);
 
   const normalizedSearchTerm = searchTerm.trim();
   const requestedGameTypeId = useMemo(() => {
@@ -876,6 +883,96 @@ const Play = () => {
     }
   };
 
+  // Handle joining an open (non-anonymous) game as a guest
+  const handleJoinOpenGameAsGuest = (game) => {
+    setJoiningAnonGame(game);
+    setJoinAnonGuestName("");
+    setShowJoinAnonModal(true);
+  };
+
+  const handleConfirmJoinGuestOpenGame = async () => {
+    const game = joiningAnonGame;
+    if (!game) return;
+    setIsJoiningAnon(true);
+    setError(null);
+    try {
+      await joinOpenGameAsGuest(game.id || game.gameId, joinAnonGuestName || 'Guest');
+      setShowJoinAnonModal(false);
+      navigate(`/play/${game.id || game.gameId}`);
+    } catch (err) {
+      if (err.code === 'LIMIT_EXCEEDED') {
+        setShowJoinAnonModal(false);
+        setLimitError({ limitType: err.limitType, limitCount: err.limitCount, limitMax: err.limitMax, message: err.message });
+      } else {
+        setError(err.message || "Failed to join game");
+      }
+    } finally {
+      setIsJoiningAnon(false);
+    }
+  };
+
+  // Handle joining an anonymous open match from the lobby
+  const handleJoinAnonOpenGame = (game) => {
+    if (!currentUser) {
+      // Non-logged-in: show guest name prompt
+      setJoiningAnonGame(game);
+      setJoinAnonGuestName("");
+      setShowJoinAnonModal(true);
+    } else {
+      // Logged-in user: join directly via invite code (no guest name needed)
+      handleConfirmJoinAnonGame(game, null);
+    }
+  };
+
+  const handleConfirmJoinAnonGame = async (gameArg, guestNameArg) => {
+    const game = gameArg || joiningAnonGame;
+    if (!game) return;
+    setIsJoiningAnon(true);
+    setError(null);
+    try {
+      const result = await joinByInviteCode(game.invite_code, guestNameArg !== undefined ? guestNameArg : (joinAnonGuestName || 'Guest'));
+      setShowJoinAnonModal(false);
+      navigate(`/play/${result.gameId}`);
+    } catch (err) {
+      if (err.code === 'LIMIT_EXCEEDED') {
+        setShowJoinAnonModal(false);
+        setLimitError({ limitType: err.limitType, limitCount: err.limitCount, limitMax: err.limitMax, message: err.message });
+      } else {
+        setError(err.message || "Failed to join game");
+      }
+    } finally {
+      setIsJoiningAnon(false);
+    }
+  };
+
+  // Handle joining an open (non-anonymous, unrated) game as a guest
+  const handleJoinOpenGameAsGuest = (game) => {
+    setJoiningAnonGame(game);
+    setJoinAnonGuestName("");
+    setShowJoinAnonModal(true);
+  };
+
+  const handleConfirmJoinGuestOpenGame = async () => {
+    const game = joiningAnonGame;
+    if (!game) return;
+    setIsJoiningAnon(true);
+    setError(null);
+    try {
+      await joinOpenGameAsGuest(game.id || game.gameId, joinAnonGuestName || 'Guest');
+      setShowJoinAnonModal(false);
+      navigate(`/play/${game.id || game.gameId}`);
+    } catch (err) {
+      if (err.code === 'LIMIT_EXCEEDED') {
+        setShowJoinAnonModal(false);
+        setLimitError({ limitType: err.limitType, limitCount: err.limitCount, limitMax: err.limitMax, message: err.message });
+      } else {
+        setError(err.message || "Failed to join game");
+      }
+    } finally {
+      setIsJoiningAnon(false);
+    }
+  };
+
   // Handle admin deleting a bugged game
   const handleDeleteGame = async (gameId) => {
     if (!window.confirm("Are you sure you want to delete this game? This action cannot be undone. Player ELO will not be affected.")) {
@@ -1163,7 +1260,7 @@ const Play = () => {
                   className={`${styles.btn} ${styles["btn-primary"]}`}
                   onClick={() => {
                     if (!currentUser) {
-                      redirectToLogin("Please log in to host a game.");
+                      setShowAnonCreateModal(true);
                       return;
                     }
                     setShowCreateModal(true);
@@ -1342,6 +1439,8 @@ const Play = () => {
                   {paginatedOpenGames.map((game) => {
                     const isOwnGame = currentUser ? game.host_id === currentUser.id : false;
                     const isRated = game.rated !== 0 && game.rated !== false && game.rated !== null;
+                    const isAnonGame = game.is_anonymous === 1 || game.is_anonymous === true;
+                    const hostDisplay = game.host_username || game.hostUsername;
                     return (
                       <div 
                         key={game.id || game.gameId} 
@@ -1363,8 +1462,10 @@ const Play = () => {
                         <div className={styles["match-host"]}>
                           {isOwnGame ? (
                             <span className={styles["your-game"]}>Your Game</span>
+                          ) : isAnonGame ? (
+                            <>Hosted by <span className={styles["username-link"]}>Guest: {hostDisplay}</span></>
                           ) : (
-                            <>Hosted by <Link to={`/profile/${game.host_username || game.hostUsername}`} className={styles["username-link"]}>{game.host_username || game.hostUsername}</Link></>
+                            <>Hosted by <Link to={`/profile/${hostDisplay}`} className={styles["username-link"]}>{hostDisplay}</Link></>
                           )}
                         </div>
                         <div className={styles["match-actions"]}>
@@ -1378,10 +1479,20 @@ const Play = () => {
                           ) : (
                             <button
                               className={`${styles.btn} ${styles["btn-success"]} ${styles["btn-small"]}`}
-                              onClick={() => handleJoinGame(game.id || game.gameId)}
-                              disabled={isJoining}
+                              onClick={() => {
+                                if (currentUser) {
+                                  handleJoinGame(game.id || game.gameId);
+                                } else if (isAnonGame) {
+                                  handleJoinAnonOpenGame(game);
+                                } else if (!isRated) {
+                                  handleJoinOpenGameAsGuest(game);
+                                } else {
+                                  redirectToLogin("Rated games require an account to track your rating.");
+                                }
+                              }}
+                              disabled={isJoining || isJoiningAnon}
                             >
-                              {isJoining ? "Joining..." : currentUser ? "Join Game" : "Sign in to Join"}
+                              {(isJoining || isJoiningAnon) ? "Joining..." : (!currentUser && isRated) ? "Sign in to Join" : "Join Game"}
                             </button>
                           )}
                           {isAdmin && (
@@ -2184,8 +2295,18 @@ const Play = () => {
           <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
             <h2>Create Anonymous Game: {selectedGameType?.game_name}</h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '16px' }}>
-              This game will be unrated and only accessible via invite code.
+              This game is unrated and will appear in the Open Matches section. You'll also get an invite code to share directly.
             </p>
+            <div className={styles["form-group"]}>
+              <label>Your display name:</label>
+              <input
+                type="text"
+                maxLength={20}
+                placeholder="Guest"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+              />
+            </div>
             <div className={styles["form-group"]}>
               <label>Time Control (minutes per side):</label>
               <select value={anonTimeControl} onChange={(e) => setAnonTimeControl(e.target.value)}>
@@ -2221,7 +2342,54 @@ const Play = () => {
                 onClick={handleCreateAnonymousGame}
                 disabled={isCreatingAnonymous}
               >
-                {isCreatingAnonymous ? "Creating..." : "Create & Get Invite Code"}
+                {isCreatingAnonymous ? "Creating..." : "Create Open Match"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Join as Guest Modal — used for both anonymous games (via invite code) and unrated open games */}
+      {showJoinAnonModal && joiningAnonGame && (
+        <div className={styles["modal-overlay"]} onClick={() => setShowJoinAnonModal(false)}>
+          <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
+            <h2>Join Game: {joiningAnonGame.game_name || joiningAnonGame.gameTypeName}</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '16px' }}>
+              Playing as a guest. This game is unrated.
+            </p>
+            <div className={styles["form-group"]}>
+              <label>Your display name:</label>
+              <input
+                type="text"
+                maxLength={20}
+                placeholder="Guest"
+                value={joinAnonGuestName}
+                onChange={(e) => setJoinAnonGuestName(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const isAnonGame = joiningAnonGame.is_anonymous === 1 || joiningAnonGame.is_anonymous === true;
+                    if (isAnonGame) handleConfirmJoinAnonGame(); else handleConfirmJoinGuestOpenGame();
+                  }
+                }}
+              />
+            </div>
+            <div className={styles["modal-actions"]}>
+              <button
+                className={`${styles.btn} ${styles["btn-secondary"]}`}
+                onClick={() => setShowJoinAnonModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className={`${styles.btn} ${styles["btn-primary"]}`}
+                onClick={() => {
+                  const isAnonGame = joiningAnonGame.is_anonymous === 1 || joiningAnonGame.is_anonymous === true;
+                  if (isAnonGame) handleConfirmJoinAnonGame(); else handleConfirmJoinGuestOpenGame();
+                }}
+                disabled={isJoiningAnon}
+              >
+                {isJoiningAnon ? "Joining..." : "Join as Guest"}
               </button>
             </div>
           </div>
