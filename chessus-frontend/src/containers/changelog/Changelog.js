@@ -16,6 +16,7 @@ const changelogData = [
       "After a game ends, logged-in players now see a one-tap upvote prompt in the game-over screen ('Enjoyed this game type? ▲ Upvote'). The prompt only appears if you haven't already upvoted the game type, so it never bothers you twice.",
       "Bot games: the page now loads instantly when you refresh mid-bot-turn instead of stalling until the bot finishes thinking.",
       "Clocks now switch to the opponent's side the instant you submit a move, rather than waiting for the server to confirm it.",
+      "Bug fix: the 'Must Move If Able' and 'Forced Move Uses an Action' options in the piece wizard now correctly save and take effect in live games. Previously the flags were stored in the database but not loaded into the active game state, so the forced-move enforcement never triggered.",
     ],
   },
   {

@@ -2588,7 +2588,10 @@ function initializeSocket(server) {
               die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
               attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
               custom_movement_squares: fullPieceData.custom_movement_squares,
-              custom_attack_squares: fullPieceData.custom_attack_squares
+              custom_attack_squares: fullPieceData.custom_attack_squares,
+              // Must-move-if-able (e.g., Duck Chess)
+              must_move_if_able: !!fullPieceData.must_move_if_able,
+              must_move_uses_action: !!fullPieceData.must_move_uses_action,
             };
           }
           return piece;
@@ -3092,6 +3095,9 @@ function initializeSocket(server) {
               attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
               custom_movement_squares: fullPieceData.custom_movement_squares,
               custom_attack_squares: fullPieceData.custom_attack_squares,
+              // Must-move-if-able (e.g., Duck Chess)
+              must_move_if_able: !!fullPieceData.must_move_if_able,
+              must_move_uses_action: !!fullPieceData.must_move_uses_action,
             };
           }
           return piece;
@@ -7063,7 +7069,10 @@ function initializeSocket(server) {
                     die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
                     attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
                     custom_movement_squares: fullPieceData.custom_movement_squares,
-                    custom_attack_squares: fullPieceData.custom_attack_squares
+                    custom_attack_squares: fullPieceData.custom_attack_squares,
+                    // Must-move-if-able (e.g., Duck Chess)
+                    must_move_if_able: !!fullPieceData.must_move_if_able,
+                    must_move_uses_action: !!fullPieceData.must_move_uses_action,
                   };
                 }
                 return piece;
