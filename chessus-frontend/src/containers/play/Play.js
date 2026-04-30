@@ -945,34 +945,6 @@ const Play = () => {
     }
   };
 
-  // Handle joining an open (non-anonymous, unrated) game as a guest
-  const handleJoinOpenGameAsGuest = (game) => {
-    setJoiningAnonGame(game);
-    setJoinAnonGuestName("");
-    setShowJoinAnonModal(true);
-  };
-
-  const handleConfirmJoinGuestOpenGame = async () => {
-    const game = joiningAnonGame;
-    if (!game) return;
-    setIsJoiningAnon(true);
-    setError(null);
-    try {
-      await joinOpenGameAsGuest(game.id || game.gameId, joinAnonGuestName || 'Guest');
-      setShowJoinAnonModal(false);
-      navigate(`/play/${game.id || game.gameId}`);
-    } catch (err) {
-      if (err.code === 'LIMIT_EXCEEDED') {
-        setShowJoinAnonModal(false);
-        setLimitError({ limitType: err.limitType, limitCount: err.limitCount, limitMax: err.limitMax, message: err.message });
-      } else {
-        setError(err.message || "Failed to join game");
-      }
-    } finally {
-      setIsJoiningAnon(false);
-    }
-  };
-
   // Handle admin deleting a bugged game
   const handleDeleteGame = async (gameId) => {
     if (!window.confirm("Are you sure you want to delete this game? This action cannot be undone. Player ELO will not be affected.")) {
