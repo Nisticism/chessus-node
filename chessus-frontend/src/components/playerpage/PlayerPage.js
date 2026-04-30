@@ -18,6 +18,7 @@ import FriendsList from "../friendslist/FriendsList";
 import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests } from "../../actions/friends";
 import { useSocket } from "../../contexts/SocketContext";
 import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
+import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
 // import NotFound from "../notfound/NotFound";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
@@ -51,6 +52,7 @@ const PlayerPage = (props) => {
   const [createdPieces, setCreatedPieces] = useState([]);
   const [gamesCollapsed, setGamesCollapsed] = useState(true);
   const [piecesCollapsed, setPiecesCollapsed] = useState(true);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
   const playerPageUser = useSelector((state) => state.authReducer.playerPage);
   
@@ -209,22 +211,17 @@ const PlayerPage = (props) => {
     dispatch(getUser(username)).finally(() => setLoading(false));
   }
 
-  const handleDelete = async(e) => {
+  const handleDelete = (e) => {
     e.preventDefault();
     if (!currentUser) return;
-    
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteConfirmed = async () => {
+    setShowDeleteConfirm(false);
+    if (!currentUser) return;
+
     const isAdminOrOwner = ['admin', 'owner'].includes(currentUser.role?.toLowerCase());
-    
-    // Show confirmation dialog
-    const confirmDelete = window.confirm(
-      isAdminOrOwner && currentUser.username !== username
-        ? `Are you sure you want to delete the account for ${username}? This action cannot be undone.`
-        : "Are you sure you want to delete your account? This action cannot be undone."
-    );
-    
-    if (!confirmDelete) {
-      return; // User cancelled
-    }
 
     if (!isAdminOrOwner || currentUser.username === username) {
       // Regular user deleting their own account
@@ -233,8 +230,6 @@ const PlayerPage = (props) => {
         setAlertMessage("Your account has been successfully deleted");
         setAlertType("success");
         setShowAlert(true);
-        
-        // Wait 2 seconds to show message, then redirect to signup
         setTimeout(() => {
           navigate('/register');
         }, 2000);
@@ -250,8 +245,6 @@ const PlayerPage = (props) => {
         setAlertMessage(`Account for ${username} has been successfully deleted`);
         setAlertType("success");
         setShowAlert(true);
-        
-        // Wait 2 seconds to show message, then redirect to admin dashboard
         setTimeout(() => {
           navigate('/admin/dashboard');
         }, 2000);
@@ -1066,6 +1059,17 @@ const PlayerPage = (props) => {
             </div>
           </div>
         </div>
+      )}
+      {showDeleteConfirm && (
+        <ConfirmDeleteModal
+          message={
+            currentUser && username !== currentUser.username
+              ? `Are you sure you want to delete the account for ${username}? This action cannot be undone.`
+              : "Are you sure you want to delete your account? This action cannot be undone."
+          }
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
       )}
     </div>
   );

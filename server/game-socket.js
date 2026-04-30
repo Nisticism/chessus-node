@@ -13041,6 +13041,41 @@ async function processBotTurn(io, gameId, gameState) {
 
       // 1. Compute AI move
       let bestMove;
+
+      // Force the bot to move must_move_if_able pieces when required:
+      // — free must-move: actions already exhausted but piece hasn't moved this turn
+      // — action-costing must-move: this is the last action and the piece must go first
+      {
+        const mmActionsPerTurn = gameState.gameType?.actions_per_turn || 1;
+        const mmActionsNow = gameState.actionsThisTurn || 0;
+        const freeMustMovePending = mmActionsNow >= mmActionsPerTurn
+          ? gameState.pieces.filter(p => {
+              if (!p.must_move_if_able || p.must_move_uses_action) return false;
+              if ((p.player_id || p.team) !== botPlayer.position) return false;
+              if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
+              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+            })
+          : [];
+        const actionMustMovePending = (mmActionsNow < mmActionsPerTurn && mmActionsNow + 1 >= mmActionsPerTurn)
+          ? gameState.pieces.filter(p => {
+              if (!p.must_move_if_able || !p.must_move_uses_action) return false;
+              if ((p.player_id || p.team) !== botPlayer.position) return false;
+              if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
+              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+            })
+          : [];
+        const forcedPieces = freeMustMovePending.length > 0 ? freeMustMovePending : actionMustMovePending;
+        if (forcedPieces.length > 0) {
+          const forcePiece = forcedPieces[0];
+          const forceMoves = getPossibleMovesForPiece(forcePiece, gameState.pieces, gameState.gameType);
+          if (forceMoves.length > 0) {
+            const chosen = forceMoves[Math.floor(Math.random() * forceMoves.length)];
+            bestMove = { pieceId: forcePiece.id, from: { x: forcePiece.x, y: forcePiece.y }, to: chosen };
+            console.log(`[Bot] Forced must-move for piece "${forcePiece.piece_name}" (id=${forcePiece.id}) to (${chosen.x},${chosen.y}) in game ${gameId}`);
+          }
+        }
+      }
+
       const aiStartTime = Date.now();
 
       // Debug: log pawn 2-square move availability (suppress inner logs)
@@ -13072,9 +13107,11 @@ async function processBotTurn(io, gameId, gameState) {
         // Because the event loop is no longer blocked, the game-timer setInterval
         // ticks normally and drains the bot's clock automatically — no manual
         // correction is needed here.
-        bestMove = await runBotInWorker(gameState, botPlayer.position, botPlayer.difficulty);
-        const aiElapsedMs = Date.now() - aiStartTime;
-        console.log(`[Bot] AI computed in ${aiElapsedMs}ms for game ${gameId}`);
+        if (!bestMove) {
+          bestMove = await runBotInWorker(gameState, botPlayer.position, botPlayer.difficulty);
+          const aiElapsedMs = Date.now() - aiStartTime;
+          console.log(`[Bot] AI computed in ${aiElapsedMs}ms for game ${gameId}`);
+        }
       } catch (aiError) {
         console.error(`[Bot] AI engine error in game ${gameId}:`, aiError);
         // Fallback: try a random legal move
@@ -13199,11 +13236,29 @@ async function processBotTurn(io, gameId, gameState) {
 
       // 6. Actions per turn: increment counter and switch only if limit reached
       const botActionsPerTurn = gameState.gameType?.actions_per_turn || 1;
-      gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
-      const botTurnSwitched = gameState.actionsThisTurn >= botActionsPerTurn;
+      // Track must_move_if_able pieces moved this turn (mirrors human path)
+      if (moveResult.movingPiece?.must_move_if_able) {
+        if (!(gameState.mustMovedThisTurn instanceof Set)) gameState.mustMovedThisTurn = new Set();
+        gameState.mustMovedThisTurn.add(moveResult.movingPiece.id);
+      }
+      // Free must-move pieces don't consume an action
+      const botMovingPieceIsMustMoveFree = !!(moveResult.movingPiece?.must_move_if_able && !moveResult.movingPiece.must_move_uses_action);
+      if (!botMovingPieceIsMustMoveFree) {
+        gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+      }
+      const botActionsExhausted = gameState.actionsThisTurn >= botActionsPerTurn;
+      // Check for pending free-must-move pieces before switching turns
+      const botPendingFreeMustMoves = botActionsExhausted ? gameState.pieces.filter(p => {
+        if (!p.must_move_if_able || p.must_move_uses_action) return false;
+        if ((p.player_id || p.team) !== botPlayer.position) return false;
+        if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
+        return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+      }) : [];
+      const botTurnSwitched = botActionsExhausted && botPendingFreeMustMoves.length === 0;
       if (botTurnSwitched) {
         gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
         gameState.actionsThisTurn = 0;
+        gameState.mustMovedThisTurn = new Set(); // reset tracking for new turn
       }
 
       // Mid-turn checkmate detection for multi-action bot games

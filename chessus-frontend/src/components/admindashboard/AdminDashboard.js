@@ -8,6 +8,7 @@ import styles from "./admin-dashboard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import { formatDateTime, parseServerDate } from "../../helpers/date-formatter";
 import AiTrainingPanel from "./AiTrainingPanel";
+import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
 
 const AdminDashboard = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -44,6 +45,10 @@ const AdminDashboard = () => {
   const [donorUser, setDonorUser] = useState(null);
   const [donorAmount, setDonorAmount] = useState('');
   const donorOverlayMouseDown = useRef(false);
+
+  // Delete account confirm modal
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState(null);
   
   // Featured games states
   const [featuredGames, setFeaturedGames] = useState([null, null, null]); // 3 slots
@@ -874,18 +879,22 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleDeleteUser = async (user) => {
-    if (!window.confirm(`Are you sure you want to permanently delete the account for "${user.username}"? This cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteUser = (user) => {
+    setPendingDeleteUser(user);
+    setShowDeleteConfirm(true);
+  };
 
+  const handleDeleteUserConfirmed = async () => {
+    const user = pendingDeleteUser;
+    setShowDeleteConfirm(false);
+    setPendingDeleteUser(null);
+    if (!user) return;
     try {
       await axios.post(
         `${API_URL}delete`,
         { username: user.username, admin_id: currentUser.id },
         { headers: authHeader() }
       );
-
       setAlertType("success");
       setAlertMessage(`User "${user.username}" has been permanently deleted`);
       setShowAlert(true);
@@ -3254,6 +3263,13 @@ const AdminDashboard = () => {
       {renderDonorModal()}
       {renderStreamModal()}
       {renderDraftDetailModal()}
+      {showDeleteConfirm && pendingDeleteUser && (
+        <ConfirmDeleteModal
+          message={`Are you sure you want to permanently delete the account for "${pendingDeleteUser.username}"? This cannot be undone.`}
+          onConfirm={handleDeleteUserConfirmed}
+          onCancel={() => { setShowDeleteConfirm(false); setPendingDeleteUser(null); }}
+        />
+      )}
     </div>
   );
 };

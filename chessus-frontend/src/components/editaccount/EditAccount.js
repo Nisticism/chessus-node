@@ -10,6 +10,7 @@ import StandardButton from "../standardbutton/StandardButton";
 import BioSection from "../biosection/BioSection";
 import AuthService from "../../services/auth.service";
 import ValidationWarningModal from "../common/ValidationWarningModal";
+import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
 
 const USERNAME_MAX = 20;
 const EMAIL_MAX = 50;
@@ -47,6 +48,7 @@ const EditAccount = (props) => {
   const [showBanner, setShowBanner] = useState(false);
   const [bannerMessage, setBannerMessage] = useState("");
   const [bannerType, setBannerType] = useState("success"); // "success" or "error"
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { message } = useSelector((state) => state.message);
   const { editSuccess } = useSelector((state) => state.authReducer);
   const { username: usernameNav } = useSelector((state) => state.authReducer.user);
@@ -229,17 +231,14 @@ const EditAccount = (props) => {
     }
   }
 
-  const handleDeleteAccount = async () => {
+  const handleDeleteAccount = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteAccountConfirmed = async () => {
+    setShowDeleteConfirm(false);
     const targetUsername = profileUsername || currentUser.username;
     const isAdminDeletingOther = ['admin', 'owner'].includes(currentUser.role?.toLowerCase()) && targetUsername !== currentUser.username;
-
-    const confirmed = window.confirm(
-      isAdminDeletingOther
-        ? `Are you sure you want to delete the account for ${targetUsername}? This action cannot be undone.`
-        : "Are you sure you want to delete your account? This action cannot be undone."
-    );
-    if (!confirmed) return;
-
     try {
       if (isAdminDeletingOther) {
         await dispatch(deleteUser(targetUsername, currentUser.id));
@@ -692,6 +691,17 @@ const EditAccount = (props) => {
       </div>
       : <NotFound/> }
       <ValidationWarningModal warnings={validationWarnings} onClose={() => setValidationWarnings(null)} />
+      {showDeleteConfirm && (
+        <ConfirmDeleteModal
+          message={
+            (profileUsername && profileUsername !== currentUser.username)
+              ? `Are you sure you want to delete the account for ${profileUsername}? This action cannot be undone.`
+              : "Are you sure you want to delete your account? This action cannot be undone."
+          }
+          onConfirm={handleDeleteAccountConfirmed}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </>
   );
 };

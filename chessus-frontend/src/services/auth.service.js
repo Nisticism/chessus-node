@@ -129,13 +129,13 @@ const logout = async () => {
 };
 
 const deleteUser = async (username, admin_id) => {
-  if (!admin_id) {
-    localStorage.removeItem("user");
-  }
   const response = await axios.post(API_URL + "delete", {
     username,
     admin_id,
   });
+  if (!admin_id) {
+    localStorage.removeItem("user");
+  }
   return response.data;
 }
 
