@@ -77,8 +77,10 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
         // Copy custom movement squares to custom attack squares
         custom_attack_squares: pieceData.custom_movement_squares,
-        // Disable ranged by default when capturing on move
-        can_capture_enemy_via_range: false
+        // Preserve existing ranged attack state (do not reset it just because
+        // attacks_like_movement is also enabled — a piece can both capture on
+        // move AND have a ranged attack).
+        can_capture_enemy_via_range: pieceData.can_capture_enemy_via_range,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
