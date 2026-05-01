@@ -9062,7 +9062,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     if (!isEnPassantCapture) {
       // Validate this is a legal non-capture move
       // Use canPieceMoveToSquare which checks movement rules only (not capture rules)
-      const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces, gameType);
+      const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces, gameState.gameType);
       if (!canMove) {
         return { valid: false, reason: "Piece cannot move to that square" };
       }
