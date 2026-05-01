@@ -26,6 +26,7 @@ use crate::board::{Board, Coord, Move, PieceOnBoard};
 use crate::rules::{PieceTemplate, Rules};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// Cardinal directions, in JS order: up, down, left, right,
 /// up_left, up_right, down_left, down_right.
@@ -156,6 +157,25 @@ fn should_block_first_move_abilities(p: &PieceOnBoard, rules: &Rules) -> bool {
         }
     }
     restrict_exists && !on_allowed_square
+}
+
+/// Collect all (x, y) squares that are part of the Restriction Zone
+/// (custom squares with asRestrictionZone == true in special_squares_string).
+/// Returns None when no restriction zone squares exist.
+fn collect_restriction_zone_squares(rules: &Rules) -> Option<HashSet<(i32, i32)>> {
+    let map = parse_squares_map(&rules.game.special_squares_string)?;
+    let mut zones = HashSet::new();
+    for (key, cfg) in &map {
+        if cfg.get("asRestrictionZone").and_then(|v| v.as_bool()).unwrap_or(false) {
+            let parts: Vec<&str> = key.split(',').collect();
+            if parts.len() == 2 {
+                if let (Ok(y), Ok(x)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
+                    zones.insert((x, y));
+                }
+            }
+        }
+    }
+    if zones.is_empty() { None } else { Some(zones) }
 }
 
 /// Combine `range_squares_string` with `special_squares_string` entries
@@ -925,6 +945,17 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                 }
             }
             out.extend(extra);
+        }
+    }
+
+    // Restriction zone filter: once a piece with cannot_move_outside_zone is
+    // standing on a zone square it may only move to other zone squares (locked in).
+    // A piece that starts outside the zone moves freely until it steps onto one.
+    if tpl.cannot_move_outside_zone {
+        if let Some(zones) = collect_restriction_zone_squares(rules) {
+            if zones.contains(&(mover.x, mover.y)) {
+                out.retain(|mv| zones.contains(&(mv.to.x, mv.to.y)));
+            }
         }
     }
 

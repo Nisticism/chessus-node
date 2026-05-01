@@ -2743,7 +2743,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.can_promote_to_capture || false,
               piece.limit_promote_capture_to_original || false,
               piece.capture_points_gain ?? 0,
-              piece.capture_points_loss ?? 0
+              piece.capture_points_loss ?? 0,
+              piece.cannot_move_outside_zone || false
             );
           }
         }
@@ -2983,7 +2984,8 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'castling_distance', 'can_control_squares',
       'hit_points', 'attack_damage', 'hp_regen',
       'cannot_be_captured', 'burn_damage', 'burn_duration',
-      'trample', 'trample_radius', 'ghostwalk', 'die_on_capture', 'attack_radius'
+      'trample', 'trample_radius', 'ghostwalk', 'die_on_capture', 'attack_radius',
+      'cannot_move_outside_zone'
     ];
 
     // Build a fingerprint for a piece that captures all gameplay-relevant settings
@@ -5783,7 +5785,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.can_promote_to_capture || false,
               piece.limit_promote_capture_to_original || false,
               piece.capture_points_gain ?? 0,
-              piece.capture_points_loss ?? 0
+              piece.capture_points_loss ?? 0,
+              piece.cannot_move_outside_zone || false
             );
           }
         }
@@ -8906,6 +8909,47 @@ app.post("/api/admin/initial-state/:gameTypeId/clear", authenticateAdmin, async 
   } catch (err) {
     console.error("Error clearing initial-state warning:", err);
     res.status(500).send({ message: "Failed to clear warning", err: err.message });
+  }
+});
+
+// User growth stats: returns signup counts grouped by week or month, with cumulative totals.
+// GET /api/admin/user-growth?view=weekly|monthly
+app.get("/api/admin/user-growth", authenticateAdmin, async (req, res) => {
+  try {
+    const view = req.query.view === 'monthly' ? 'monthly' : 'weekly';
+    let rows;
+    // Use COALESCE so that legacy users without created_at fall back to last_active_at.
+    if (view === 'monthly') {
+      [rows] = await db_pool.query(
+        `SELECT DATE_FORMAT(COALESCE(created_at, last_active_at), '%Y-%m') AS period,
+                DATE_FORMAT(MIN(COALESCE(created_at, last_active_at)), '%b %Y') AS label,
+                COUNT(*) AS signups
+         FROM users
+         WHERE COALESCE(created_at, last_active_at) IS NOT NULL
+         GROUP BY period
+         ORDER BY period ASC`
+      );
+    } else {
+      [rows] = await db_pool.query(
+        `SELECT YEARWEEK(COALESCE(created_at, last_active_at), 1) AS yw,
+                DATE_FORMAT(MIN(COALESCE(created_at, last_active_at)), '%b %d') AS label,
+                COUNT(*) AS signups
+         FROM users
+         WHERE COALESCE(created_at, last_active_at) IS NOT NULL
+         GROUP BY yw
+         ORDER BY yw ASC`
+      );
+    }
+    // Compute running total
+    let running = 0;
+    const data = rows.map(r => {
+      running += Number(r.signups);
+      return { period: r.period || r.yw, label: r.label, signups: Number(r.signups), total: running };
+    });
+    res.json({ view, data });
+  } catch (err) {
+    console.error("Error in /api/admin/user-growth:", err);
+    res.status(500).send({ message: "Failed to fetch user growth data", err: err.message });
   }
 });
 

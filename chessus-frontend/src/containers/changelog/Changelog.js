@@ -4,9 +4,21 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
-    date: "May 1, 2026",
-    title: "Community polls, clock persistence on restart, low-time correspondence notifications, correspondence deadline architecture",
+    date: "April 30, 2026",
+    title: "Castling zone-of-control rules, restriction zone live-game highlight, poll styling, user growth admin chart",
     items: [
+      "Castling rules tightened: when the mate condition is active, a piece can no longer castle through squares controlled by the enemy (zone of control), and can no longer castle as a way of escaping check. The partner's square is correctly excluded from the zone-of-control scan.",
+      "Restriction zone squares are now highlighted in yellow by default in live games — no need to enable 'Show all special squares'. A new 'Hide restriction zones' toggle in the Options panel lets you turn the highlight off if you prefer a cleaner board.",
+      "Home page community poll: removed the chart icon from the poll title and gave the poll widget a gold warning border, matching the forum invite banner style.",
+      "Admin dashboard: new 'User Growth' tab shows a cumulative account growth chart with weekly/monthly view toggle, hover tooltips, and summary stats. New accounts are now timestamped on creation.",
+    ],
+  },
+  {
+    date: "May 1, 2026",
+    title: "Restriction zones, community polls, clock persistence on restart, low-time correspondence notifications, correspondence deadline architecture",
+    items: [
+      "Restriction zones: custom squares in the game wizard can now be marked as a Restriction Zone. Pieces with the new 'Cannot Move Outside Zone' setting enabled in the piece options are confined to those squares — any move that would take them off a Restriction Zone square is blocked. Works for all player types (human, AI bots, correspondence).",
+      "Additional piece settings in the game wizard now use toggle switches for a cleaner look.",
       "Community polls: a poll widget now appears on the home page when an admin has published an active poll. Log in and vote on the current question, then see live vote counts across all options. Admins can create, edit, schedule expiry, and delete polls from the Admin Dashboard's new Poll tab.",
       "Game clocks now continue ticking immediately after a server restart — no more frozen clocks until a player reconnects.",
       "Correspondence games now send a notification when you have less than 6 hours left to make your move.",

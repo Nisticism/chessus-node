@@ -1326,6 +1326,7 @@ const GameTypeView = () => {
         if (cfg?.asRange) parts.push(`Range Boost (+${cfg.rangeBonus || 1})`);
         if (cfg?.asPromotion) parts.push('Promotion');
         if (cfg?.asControl) parts.push('Control');
+        if (cfg?.asRestrictionZone) parts.push('Restriction Zone');
         if (cfg?.restrictFirstMoveToCustom) parts.push('First-move abilities allowed only on these squares');
         if (cfg?.disableFirstMoveHere) parts.push('First-move abilities disabled while standing here');
         return parts.length > 0 ? parts.join(' + ') : 'no combined behavior yet (visual placeholder)';
@@ -1344,6 +1345,7 @@ const GameTypeView = () => {
           rangeBonus: cfg?.asRange ? (cfg?.rangeBonus || 1) : 0,
           asPromotion: !!cfg?.asPromotion,
           asControl: !!cfg?.asControl,
+          asRestrictionZone: !!cfg?.asRestrictionZone,
           restrictFirstMoveToCustom: !!cfg?.restrictFirstMoveToCustom,
           disableFirstMoveHere: !!cfg?.disableFirstMoveHere,
         });
@@ -1357,7 +1359,7 @@ const GameTypeView = () => {
         return `• ${coordList} — ${labelFor(cfg)}`;
       });
       specialRulesContent.push(
-        `**Custom Squares**\nCustom squares can combine any of the other special-square behaviors (Range Boost, Promotion, Control) on a single square, and can also gate piece **first-move abilities** — either restricting "first move only" / "available for first N moves" abilities so they only work while standing on these squares, or disabling them while a piece is standing here. Squares with the same configuration are grouped together below.\n\n${lines.join('\n')}\n\nSquares listed with no combined behavior are visual placeholders only.`
+        `**Custom Squares**\nCustom squares can combine any of the other special-square behaviors (Range Boost, Promotion, Control) on a single square, and can also act as a **Restriction Zone** (pieces with "Cannot Move Outside Zone" enabled are bound to these squares), and can gate piece **first-move abilities** — either restricting "first move only" / "available for first N moves" abilities so they only work while standing on these squares, or disabling them while a piece is standing here. Squares with the same configuration are grouped together below.\n\n${lines.join('\n')}\n\nSquares listed with no combined behavior are visual placeholders only.`
       );
     }
 
@@ -1787,6 +1789,7 @@ const GameTypeView = () => {
                   if (cfg.asRange) parts.push('R');
                   if (cfg.asPromotion) parts.push('P');
                   if (cfg.asControl) parts.push('C');
+                  if (cfg.asRestrictionZone) parts.push('Z');
                   return parts.length > 0 ? parts.join('') : 'X';
                 })()}
               </div>

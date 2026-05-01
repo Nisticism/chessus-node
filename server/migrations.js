@@ -3468,6 +3468,32 @@ const runMigrations = async () => {
     console.error('Error adding capture_points_loss column:', err.message);
   }
 
+  // cannot_move_outside_zone on game_type_pieces: restricts piece to restriction-zone custom squares.
+  try {
+    if (!(await columnExists('game_type_pieces', 'cannot_move_outside_zone'))) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN cannot_move_outside_zone TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'If true, this piece may only move to squares marked as restriction zones'`,
+        "Add cannot_move_outside_zone column to game_type_pieces"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding cannot_move_outside_zone column:', err.message);
+  }
+
+  // created_at on users: tracks account registration date for user-growth admin stats.
+  try {
+    if (!(await columnExists('users', 'created_at'))) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN created_at DATETIME DEFAULT NULL COMMENT 'Account registration timestamp'`,
+        "Add created_at column to users"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding created_at column to users:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

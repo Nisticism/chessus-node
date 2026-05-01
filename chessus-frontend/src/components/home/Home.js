@@ -398,8 +398,8 @@ const Home = () => {
       {/* Community Poll */}
       {activePoll && (
         <section style={{ maxWidth: '560px', margin: '0 auto 32px', padding: '0 16px' }}>
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '20px 22px' }}>
-            <div style={{ fontWeight: 700, fontSize: '1.05em', marginBottom: '14px' }}>📊 {activePoll.question}</div>
+          <div style={{ background: 'rgba(212,175,55,0.07)', border: '2px solid #d4af37', borderRadius: '10px', padding: '20px 22px', boxShadow: '0 0 0 1px rgba(212,175,55,0.2), 0 4px 14px rgba(0,0,0,0.22)' }}>
+            <div style={{ fontWeight: 700, fontSize: '1.05em', marginBottom: '14px' }}>{activePoll.question}</div>
             {activePoll.options.map((opt, i) => {
               const pct = activePoll.totalVotes > 0 ? Math.round((activePoll.counts[i] / activePoll.totalVotes) * 100) : 0;
               const voted = activePoll.myVote !== null && activePoll.myVote !== undefined;

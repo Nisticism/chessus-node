@@ -254,6 +254,9 @@ pub struct PieceTemplate {
     #[serde(default)]
     pub capture_points_loss: i32,
     pub cannot_be_captured: bool,
+    /// If true, this piece may only move to squares marked as a Restriction Zone (asRestrictionZone custom square).
+    #[serde(default)]
+    pub cannot_move_outside_zone: bool,
 
     // ---- Custom per-piece move/attack square offsets (JSON arrays) ----
     pub special_scenario_moves: Option<String>,
@@ -330,6 +333,7 @@ impl Default for PieceTemplate {
             capture_points_gain: 0,
             capture_points_loss: 0,
             cannot_be_captured: false,
+            cannot_move_outside_zone: false,
             special_scenario_moves: None,
             special_scenario_captures: None,
             custom_movement_squares: None,

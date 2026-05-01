@@ -134,6 +134,13 @@ const AdminDashboard = () => {
   const [pollSaving, setPollSaving] = useState(false);
   const [editingPollId, setEditingPollId] = useState(null);
 
+  // User growth state
+  const [userGrowthData, setUserGrowthData] = useState(null);
+  const [userGrowthView, setUserGrowthView] = useState('weekly');
+  const [userGrowthLoading, setUserGrowthLoading] = useState(false);
+  const [userGrowthError, setUserGrowthError] = useState(null);
+  const [userGrowthHover, setUserGrowthHover] = useState(null);
+
   // Auto-hide alert after 2 seconds
   useEffect(() => {
     let timer;
@@ -206,6 +213,9 @@ const AdminDashboard = () => {
     } else if (activeTab === 'ai-analysis-requests') {
       setLoading(false);
       fetchAiAnalysisRequests(1, aiAnalysisRequestsFilter);
+    } else if (activeTab === 'user-growth') {
+      setLoading(false);
+      fetchUserGrowth(userGrowthView);
     } else {
       fetchData(activeTab, 1);
     }
@@ -2232,6 +2242,173 @@ const AdminDashboard = () => {
     );
   };
 
+  const fetchUserGrowth = async (view) => {
+    setUserGrowthLoading(true);
+    setUserGrowthError(null);
+    try {
+      const resp = await axios.get(`${API_URL}admin/user-growth?view=${view}`, { headers: authHeader() });
+      setUserGrowthData(resp.data);
+    } catch (err) {
+      setUserGrowthError(err?.response?.data?.message || err.message || 'Failed to load user growth data');
+    } finally {
+      setUserGrowthLoading(false);
+    }
+  };
+
+  const renderUserGrowthTab = () => {
+    const switchView = (v) => {
+      if (v === userGrowthView) return;
+      setUserGrowthView(v);
+      fetchUserGrowth(v);
+    };
+    const pts = userGrowthData?.data || [];
+    // Chart dimensions
+    const W = 700, H = 220, PL = 52, PR = 20, PT = 16, PB = 36;
+    const cW = W - PL - PR;
+    const cH = H - PT - PB;
+    const minTotal = pts.length > 0 ? Math.min(...pts.map(p => p.total)) : 0;
+    const maxTotal = pts.length > 0 ? Math.max(...pts.map(p => p.total)) : 1;
+    const dataRange = maxTotal - minTotal || 1;
+    // Add 10% padding so the line isn't flush against the edges
+    const yMin = Math.max(0, minTotal - Math.ceil(dataRange * 0.1));
+    const yMax = maxTotal + Math.ceil(dataRange * 0.1);
+    const yRange = yMax - yMin || 1;
+    const toX = (i) => PL + (pts.length > 1 ? (i / (pts.length - 1)) * cW : cW / 2);
+    const toY = (v) => PT + cH - ((v - yMin) / yRange) * cH;
+    // Build SVG path
+    const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(p.total).toFixed(1)}`).join(' ');
+    const areaPath = pts.length > 0
+      ? `${linePath} L${toX(pts.length - 1).toFixed(1)},${(PT + cH).toFixed(1)} L${toX(0).toFixed(1)},${(PT + cH).toFixed(1)} Z`
+      : '';
+    // Y-axis tick labels (4–5 ticks)
+    const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => yMin + Math.round(f * yRange));
+    // X-axis label spacing — show at most ~8 labels
+    const xStep = Math.max(1, Math.ceil(pts.length / 8));
+    const hoveredPt = userGrowthHover !== null ? pts[userGrowthHover] : null;
+    return (
+      <div className={styles["table-container"]}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: '1.1em' }}>User Account Growth</span>
+            <span style={{ marginLeft: '10px', color: 'var(--text-dim)', fontSize: '0.85em' }}>Total registered accounts over time</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {userGrowthLoading && <span style={{ color: 'var(--text-dim)', fontSize: '0.85em' }}>Loading…</span>}
+            {(['weekly', 'monthly']).map(v => (
+              <button
+                key={v}
+                onClick={() => switchView(v)}
+                style={{ padding: '6px 16px', borderRadius: '4px', border: '1px solid var(--border-color, #444)', background: userGrowthView === v ? 'var(--accent-primary, #6c63ff)' : 'transparent', color: userGrowthView === v ? '#fff' : 'var(--text)', cursor: 'pointer', fontSize: '0.85em', fontWeight: userGrowthView === v ? 600 : 400 }}
+              >{v.charAt(0).toUpperCase() + v.slice(1)}</button>
+            ))}
+            <StandardButton onClick={() => fetchUserGrowth(userGrowthView)} buttonText="Refresh" disabled={userGrowthLoading} />
+          </div>
+        </div>
+        {userGrowthError && <p style={{ color: 'var(--text-danger, #e55)', marginBottom: '12px' }}>{userGrowthError}</p>}
+        {pts.length === 0 && !userGrowthLoading && !userGrowthError && (
+          <p style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '40px 0' }}>No user data found.</p>
+        )}
+        {pts.length > 0 && (
+          <>
+            <div style={{ overflowX: 'auto' }}>
+              <svg
+                viewBox={`0 0 ${W} ${H}`}
+                style={{ width: '100%', maxWidth: `${W}px`, height: 'auto', display: 'block', fontFamily: 'inherit', userSelect: 'none' }}
+                onMouseLeave={() => setUserGrowthHover(null)}
+              >
+                <defs>
+                  <linearGradient id="ugAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6c63ff" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor="#6c63ff" stopOpacity="0.03" />
+                  </linearGradient>
+                </defs>
+                {/* Y-axis grid + labels */}
+                {yTicks.map((v, i) => (
+                  <g key={i}>
+                    <line x1={PL} y1={toY(v)} x2={PL + cW} y2={toY(v)} stroke="rgba(255,255,255,0.07)" strokeDasharray="3,3" />
+                    <text x={PL - 6} y={toY(v) + 4} textAnchor="end" fontSize="10" fill="rgba(255,255,255,0.45)">{v}</text>
+                  </g>
+                ))}
+                {/* Area fill */}
+                {areaPath && <path d={areaPath} fill="url(#ugAreaGrad)" />}
+                {/* Line */}
+                {linePath && <path d={linePath} fill="none" stroke="#6c63ff" strokeWidth="2" strokeLinejoin="round" />}
+                {/* X-axis labels */}
+                {pts.map((p, i) => (
+                  i % xStep === 0 && (
+                    <text key={i} x={toX(i)} y={PT + cH + 16} textAnchor="middle" fontSize="9" fill="rgba(255,255,255,0.45)">
+                      {p.label}
+                    </text>
+                  )
+                ))}
+                {/* Hover hit zones */}
+                {pts.map((p, i) => (
+                  <rect
+                    key={i}
+                    x={toX(i) - (cW / (pts.length * 2))}
+                    y={PT}
+                    width={cW / pts.length}
+                    height={cH}
+                    fill="transparent"
+                    style={{ cursor: 'crosshair' }}
+                    onMouseEnter={() => setUserGrowthHover(i)}
+                  />
+                ))}
+                {/* Hover indicator */}
+                {hoveredPt !== null && userGrowthHover !== null && (
+                  <g>
+                    <line
+                      x1={toX(userGrowthHover)} y1={PT}
+                      x2={toX(userGrowthHover)} y2={PT + cH}
+                      stroke="rgba(255,255,255,0.25)" strokeDasharray="3,3"
+                    />
+                    <circle cx={toX(userGrowthHover)} cy={toY(hoveredPt.total)} r={4} fill="#6c63ff" stroke="#fff" strokeWidth="1.5" />
+                    <rect
+                      x={Math.min(toX(userGrowthHover) + 8, W - 110)}
+                      y={Math.max(PT, toY(hoveredPt.total) - 28)}
+                      width={100} height={40} rx={4}
+                      fill="var(--bg-card, #1a1a2e)" stroke="rgba(255,255,255,0.15)" strokeWidth={1}
+                    />
+                    <text
+                      x={Math.min(toX(userGrowthHover) + 58, W - 60)}
+                      y={Math.max(PT, toY(hoveredPt.total) - 28) + 14}
+                      textAnchor="middle" fontSize="9.5" fill="rgba(255,255,255,0.65)"
+                    >{hoveredPt.label}</text>
+                    <text
+                      x={Math.min(toX(userGrowthHover) + 58, W - 60)}
+                      y={Math.max(PT, toY(hoveredPt.total) - 28) + 29}
+                      textAnchor="middle" fontSize="11" fontWeight="600" fill="#fff"
+                    >{hoveredPt.total.toLocaleString()} users (+{hoveredPt.signups})</text>
+                  </g>
+                )}
+              </svg>
+            </div>
+            <div style={{ marginTop: '16px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+              <div style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '12px 18px', border: '1px solid var(--border-color, #333)' }}>
+                <div style={{ fontSize: '0.75em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Total Accounts</div>
+                <div style={{ fontSize: '1.4em', fontWeight: 700 }}>{(pts[pts.length - 1]?.total || 0).toLocaleString()}</div>
+              </div>
+              <div style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '12px 18px', border: '1px solid var(--border-color, #333)' }}>
+                <div style={{ fontSize: '0.75em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Periods Tracked</div>
+                <div style={{ fontSize: '1.4em', fontWeight: 700 }}>{pts.length}</div>
+              </div>
+              <div style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '12px 18px', border: '1px solid var(--border-color, #333)' }}>
+                <div style={{ fontSize: '0.75em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Peak {userGrowthView === 'weekly' ? 'Week' : 'Month'}</div>
+                <div style={{ fontSize: '1.4em', fontWeight: 700 }}>
+                  {pts.reduce((best, p) => p.signups > best.signups ? p : best, pts[0])?.label || '—'}
+                  {' '}
+                  <span style={{ fontSize: '0.65em', color: 'var(--text-dim)' }}>
+                    ({Math.max(...pts.map(p => p.signups))} signups)
+                  </span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   const renderServerStatsTab = () => (
     <div className={styles["table-container"]}>
       <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3120,10 +3297,16 @@ const AdminDashboard = () => {
         >
           Poll
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "user-growth" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("user-growth")}
+        >
+          User Growth
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -3146,6 +3329,7 @@ const AdminDashboard = () => {
             {activeTab === "ai-analysis-requests" && renderAiAnalysisRequestsTab()}
             {activeTab === "initial-state" && renderInitialStateTab()}
             {activeTab === "poll" && renderPollTab()}
+            {activeTab === "user-growth" && renderUserGrowthTab()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>
@@ -3487,7 +3671,7 @@ const AdminDashboard = () => {
                 </div>
               </div>
             )}
-            {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && activeTab !== "server-stats" && activeTab !== "moderation" && renderPagination()}
+            {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && activeTab !== "server-stats" && activeTab !== "moderation" && activeTab !== "user-growth" && renderPagination()}
             {activeTab === "streams" && renderPagination()}
           </>
         )}

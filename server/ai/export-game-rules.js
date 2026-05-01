@@ -71,6 +71,7 @@ async function exportGameRules(gameTypeId) {
         gtp.cannot_be_captured AS placement_cannot_be_captured,
         gtp.ghostwalk          AS placement_ghostwalk,
         gtp.die_on_capture     AS placement_die_on_capture,
+        gtp.cannot_move_outside_zone AS placement_cannot_move_outside_zone,
         gtp.can_en_passant,
         gtp.can_control_squares,
         gtp.hit_points,
@@ -106,6 +107,7 @@ async function exportGameRules(gameTypeId) {
     p.castling_distance ?? '',
     p.placement_cannot_be_captured ? 1 : 0,
     p.placement_ghostwalk ? 1 : 0,
+    p.placement_cannot_move_outside_zone ? 1 : 0,
     p.can_en_passant ? 1 : 0,
     p.can_promote_to_checkmate ? 1 : 0,
     p.can_promote_to_capture ? 1 : 0,
@@ -148,6 +150,8 @@ async function exportGameRules(gameTypeId) {
       // default. Currently informational for the trainer (no special
       // logic in moves.rs yet) but exported so future ports can read it.
       die_on_capture: toBool(tpl.die_on_capture) || toBool(pos.placement_die_on_capture),
+      // Per-placement restriction zone: this piece can only move to squares marked asRestrictionZone.
+      cannot_move_outside_zone: toBool(pos.placement_cannot_move_outside_zone),
       // En passant: placement-level flag (from game_type_pieces.can_en_passant).
       // Pieces with this flag enabled can capture en passant and also create
       // en passant targets when making a first-move multi-square advance.

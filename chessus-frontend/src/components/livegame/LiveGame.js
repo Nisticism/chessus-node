@@ -215,6 +215,7 @@ const LiveGame = () => {
   const [burnAnimations, setBurnAnimations] = useState([]); // DOT: floating burn damage numbers [{id, pieceId, damage, x, y}]
   const [showMovableIndicators, setShowMovableIndicators] = useState(false);
   const [showAllSpecialSquares, setShowAllSpecialSquares] = useState(false);
+  const [hideRestrictionZones, setHideRestrictionZones] = useState(false);
   const [showCastlingInfo, setShowCastlingInfo] = useState(false);
   const [showBoardNotation, setShowBoardNotation] = useState(true);
   const [showBadges, setShowBadges] = useState(true);
@@ -3985,6 +3986,11 @@ const LiveGame = () => {
            Object.keys(specialSquares.special).length > 0;
   }, [specialSquares]);
 
+  // True when this game has any custom squares flagged as restriction zones.
+  const hasRestrictionZones = useMemo(() => {
+    return Object.values(specialSquares.special).some(cfg => cfg.asRestrictionZone);
+  }, [specialSquares]);
+
   // Handle rematch / new game
   const handlePlayAgain = () => {
     // Save the last played game type to localStorage
@@ -4245,6 +4251,10 @@ const LiveGame = () => {
 
         // Check for special square type
         const specialSquareType = getSpecialSquareType(gameY, gameX);
+        // Restriction zone highlight is shown by default (independent of showAllSpecialSquares)
+        // unless the player has toggled it off.
+        const sqCfg = specialSquares.special[`${gameY},${gameX}`];
+        const isRestrictionZone = !!(sqCfg?.asRestrictionZone);
 
         // Ranged attack highlights
         const isRangedMove = !!rangedMove;
@@ -4298,6 +4308,7 @@ const LiveGame = () => {
               ${specialSquareType === 'range' ? styles["range-square"] : ''}
               ${specialSquareType === 'control' ? styles["control-square"] : ''}
               ${specialSquareType === 'special' ? styles["special-square"] : ''}
+              ${isRestrictionZone && !hideRestrictionZones && specialSquareType !== 'special' ? styles["restriction-zone-square"] : ''}
             `}
             onClick={() => handleSquareClick(gameX, gameY)}
             onDragOver={handleDragOver}
@@ -5353,6 +5364,19 @@ const LiveGame = () => {
                 </div>
               </label>
             )}
+            {hasRestrictionZones && (
+              <label className={styles["option-toggle"]}>
+                <span>Hide restriction zones</span>
+                <div className={styles["toggle-switch"]}>
+                  <input
+                    type="checkbox"
+                    checked={hideRestrictionZones}
+                    onChange={(e) => setHideRestrictionZones(e.target.checked)}
+                  />
+                  <span className={styles["toggle-slider"]} />
+                </div>
+              </label>
+            )}
             <label className={styles["option-toggle"]}>
               <span>Show board notation</span>
               <div className={styles["toggle-switch"]}>
@@ -5856,6 +5880,19 @@ const LiveGame = () => {
                   type="checkbox"
                   checked={showAllSpecialSquares}
                   onChange={(e) => setShowAllSpecialSquares(e.target.checked)}
+                />
+                <span className={styles["toggle-slider"]} />
+              </div>
+            </label>
+          )}
+          {hasRestrictionZones && (
+            <label className={styles["option-toggle"]}>
+              <span>Hide restriction zones</span>
+              <div className={styles["toggle-switch"]}>
+                <input
+                  type="checkbox"
+                  checked={hideRestrictionZones}
+                  onChange={(e) => setHideRestrictionZones(e.target.checked)}
                 />
                 <span className={styles["toggle-slider"]} />
               </div>

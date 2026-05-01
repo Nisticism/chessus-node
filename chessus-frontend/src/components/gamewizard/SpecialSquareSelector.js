@@ -13,7 +13,8 @@ const SpecialSquareSelector = ({
   currentConfig,
   squarePosition,
   boardWidth = 8,  // For fill row functionality
-  squaresConditionEnabled = false
+  squaresConditionEnabled = false,
+  pointsWinConditionEnabled = false
 }) => {
   const [fillRow, setFillRow] = useState(false);
   const [selectedType, setSelectedType] = useState(currentType || null);
@@ -33,6 +34,7 @@ const SpecialSquareSelector = ({
     rangeBonus: 1,
     asPromotion: false,
     asControl: false,
+    asRestrictionZone: false,
     restrictFirstMoveToCustom: false,
     disableFirstMoveHere: false,
     controlPoints: 0,
@@ -70,6 +72,7 @@ const SpecialSquareSelector = ({
         rangeBonus: Math.min(8, Math.max(1, currentConfig.rangeBonus || 1)),
         asPromotion: !!currentConfig.asPromotion,
         asControl: !!currentConfig.asControl,
+        asRestrictionZone: !!currentConfig.asRestrictionZone,
         restrictFirstMoveToCustom: !!currentConfig.restrictFirstMoveToCustom,
         disableFirstMoveHere: !!currentConfig.disableFirstMoveHere,
         controlPoints: Math.max(0, Math.min(999, currentConfig.controlPoints || 0)),
@@ -123,6 +126,7 @@ const SpecialSquareSelector = ({
         asPromotion: !!customCombo.asPromotion,
         asControl: !!customCombo.asControl,
         controlConfig: customCombo.asControl ? controlConfig : null,
+        asRestrictionZone: !!customCombo.asRestrictionZone,
         restrictFirstMoveToCustom: !!customCombo.restrictFirstMoveToCustom,
         disableFirstMoveHere: !!customCombo.disableFirstMoveHere,
         controlPoints: Math.max(0, Math.min(999, customCombo.controlPoints || 0)),
@@ -370,7 +374,17 @@ const SpecialSquareSelector = ({
                 />
               </div>
 
-              {/* First-Move Ability Restrictions \u2014 mutually exclusive */}
+              {/* As Restriction Zone */}
+              <div className={styles["control-config-row"]}>
+                <ToggleSwitch
+                  checked={!!customCombo.asRestrictionZone}
+                  onChange={(v) => handleCustomComboChange('asRestrictionZone', v)}
+                  label={<span style={{ color: 'var(--sq-custom, #ffd700)' }}>Acts as Restriction Zone</span>}
+                  tooltip={<InfoTooltip text="Marks this square as part of the Restriction Zone. Pieces with 'Cannot Move Outside Zone' enabled in Step 4 may only move to squares that are part of a Restriction Zone. Useful for limiting a piece to a specific region of the board." />}
+                />
+              </div>
+
+              {/* First-Move Ability Restrictions — mutually exclusive */}
               <div className={styles["control-config-row"]}>
                 <ToggleSwitch
                   checked={!!customCombo.restrictFirstMoveToCustom}
@@ -396,12 +410,15 @@ const SpecialSquareSelector = ({
                 <label className={styles["control-config-label"]} style={{ minWidth: 0 }}>
                   Control Points (per move while occupied)
                   <InfoTooltip text="While a player's piece occupies this square, that player gains this many points each half-move. Requires the Points Win Condition to be enabled in Step 2. Points stack across multiple occupied point-squares. If the piece leaves or is captured off the square, the points are no longer applied (they were never permanent for this square)." />
+                  {!pointsWinConditionEnabled && <span style={{ marginLeft: '6px', fontSize: '0.78em', color: 'var(--text-muted, #888)' }}>(enable Points Win Condition in Step 2)</span>}
                 </label>
-                <NumberInput
-                  value={customCombo.controlPoints || 0}
-                  onChange={(val) => handleCustomComboChange('controlPoints', Math.max(0, Math.min(999, val || 0)))}
-                  options={{ min: 0, max: 999, placeholder: "0", className: styles["control-number-input"] }}
-                />
+                <span style={{ display: 'inline-block', opacity: pointsWinConditionEnabled ? 1 : 0.45, pointerEvents: pointsWinConditionEnabled ? 'auto' : 'none' }}>
+                  <NumberInput
+                    value={customCombo.controlPoints || 0}
+                    onChange={(val) => handleCustomComboChange('controlPoints', Math.max(0, Math.min(999, val || 0)))}
+                    options={{ min: 0, max: 999, placeholder: "0", className: styles["control-number-input"] }}
+                  />
+                </span>
               </div>
 
 

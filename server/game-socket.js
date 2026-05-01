@@ -8824,6 +8824,16 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     } catch (e) { /* fall through to existing checks if move generation fails */ }
   }
 
+  // Restriction zone validation: once a piece with cannot_move_outside_zone is
+  // standing on a zone square it may not move to a non-zone square.
+  // Pieces outside the zone are unrestricted until they first enter it.
+  if (piece.cannot_move_outside_zone && gameState.gameType) {
+    const zones = collectRestrictionZoneSquares(gameState.gameType);
+    if (zones && zones.has(`${piece.y},${piece.x}`) && !zones.has(`${to.y},${to.x}`)) {
+      return { valid: false, reason: "This piece cannot move outside its restricted zone" };
+    }
+  }
+
   // Multi-tile board fit check
   const pw = piece.piece_width || 1;
   const ph = piece.piece_height || 1;
@@ -9052,7 +9062,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     if (!isEnPassantCapture) {
       // Validate this is a legal non-capture move
       // Use canPieceMoveToSquare which checks movement rules only (not capture rules)
-      const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces);
+      const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces, gameType);
       if (!canMove) {
         return { valid: false, reason: "Piece cannot move to that square" };
       }
@@ -11077,7 +11087,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
  * Check if a piece can move to a specific square (non-capture)
  * This validates ONLY the movement rules, not capture rules
  */
-function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
+function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = null) {
   const dx = targetX - piece.x;
   const dy = targetY - piece.y;
   const absDx = Math.abs(dx);
@@ -11440,18 +11450,40 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces) {
         // Check if this is close-range castling (partner within castling distance)
         const isCloseRange = distanceToPartner > 0 && distanceToPartner <= (piece.castling_distance || 2);
         
+        let physicallyAllowed = false;
         if (isCloseRange) {
           // Close-range castling: king hops over pieces
           // Target is valid if: empty, OR occupied by the partner itself (who will move)
           const occupant = findPieceAtSquare(allPieces, targetX, targetY);
-          const targetOccupiedByOther = occupant && occupant.id !== partnerId;
-          if (!targetOccupiedByOther) {
-            return true;
-          }
+          physicallyAllowed = !occupant || occupant.id === partnerId;
         } else {
           // Standard long-range castling: path must be clear
-          const pathIsClear = isPathClear(piece.x, piece.y, targetX, targetY);
-          if (pathIsClear) {
+          physicallyAllowed = isPathClear(piece.x, piece.y, targetX, targetY);
+        }
+
+        if (physicallyAllowed) {
+          // Zone-of-control check: when mate_condition is active the castling piece
+          // may not pass through or land on any square that an enemy piece attacks.
+          // Also blocks castling out of check (piece.x itself is included in the scan).
+          // The partner's current square is skipped since it will have moved.
+          if (gameType && gameType.mate_condition) {
+            const castlerOwner = piece.team || piece.player_id;
+            const enemyPieces = allPieces.filter(p => (p.team || p.player_id) !== castlerOwner);
+            const step = dx > 0 ? 1 : -1;
+            let blockedByZOC = false;
+            // Start from piece.x so that being in check also blocks castling
+            for (let sq = piece.x; sq !== targetX + step; sq += step) {
+              if (sq === partner.x) continue; // partner vacates this square
+              for (const enemy of enemyPieces) {
+                if (canPieceAttackSquare(enemy, sq, piece.y, allPieces, gameType)) {
+                  blockedByZOC = true;
+                  break;
+                }
+              }
+              if (blockedByZOC) break;
+            }
+            if (!blockedByZOC) return true;
+          } else {
             return true;
           }
         }
@@ -11565,11 +11597,31 @@ function shouldBlockFirstMoveAbilities(piece, gameType) {
 }
 
 /**
+ * Collect all squares that form the Restriction Zone from the game type's
+ * special_squares_string (custom squares with asRestrictionZone === true).
+ * Returns a Set of "row,col" keys, or null when no restriction zone squares exist.
+ */
+function collectRestrictionZoneSquares(gameType) {
+  if (!gameType || !gameType.special_squares_string) return null;
+  let customSquares;
+  try {
+    customSquares = typeof gameType.special_squares_string === 'string'
+      ? JSON.parse(gameType.special_squares_string)
+      : gameType.special_squares_string;
+  } catch (e) { return null; }
+  if (!customSquares || typeof customSquares !== 'object') return null;
+  const zones = new Set();
+  for (const [key, cfg] of Object.entries(customSquares)) {
+    if (cfg && cfg.asRestrictionZone) zones.add(key);
+  }
+  return zones.size > 0 ? zones : null;
+}
+
+/**
  * Apply range square bonus: +1 to all non-infinite, non-zero, non-custom movement/capture/attack values.
  * Returns a shallow copy of the piece with boosted stats if on a range square, or the original piece if not.
  */
-function applyRangeSquareBonus(piece, gameType) {
-  if (!gameType) return piece;
+function applyRangeSquareBonus(piece, gameType) {  if (!gameType) return piece;
   // Combine actual range squares with any "custom" squares that are flagged
   // to act as range squares (asRange === true).
   let rangeSquares = {};
@@ -12195,26 +12247,21 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
           }
         }
         
-        // If piece has check rule, also check if any square along the castling path is controlled by enemy
-        if (pathClear && hasCheckRule) {
+        // ZOC check: block castling if any square the piece traverses (including its own
+        // starting square, to catch being in check) is attacked by an enemy.
+        // The partner's own square is excluded since it will have vacated.
+        if (pathClear && (hasCheckRule || (gameType && gameType.mate_condition))) {
+          const enemyPieces = allPieces.filter(ep => (ep.team || ep.player_id) !== pieceOwner);
           for (let x = piece.x; x >= piece.x - castleDist; x--) {
-            // Check if this square is under attack
-            const underAttack = allPieces.some(enemyPiece => {
-              const enemyOwner = enemyPiece.team || enemyPiece.player_id;
-              if (enemyOwner !== pieceOwner) {
-                const enemyMoves = getPossibleMovesForPiece(enemyPiece, allPieces, gameType);
-                return enemyMoves.some(move => move.x === x && move.y === piece.y);
-              }
-              return false;
-            });
-            
+            if (x === rookPiece.x) continue; // partner vacates this square
+            const underAttack = enemyPieces.some(ep => canPieceAttackSquare(ep, x, piece.y, allPieces, gameType));
             if (underAttack) {
               pathClear = false;
               break;
             }
           }
         }
-        
+
         if (pathClear) {
           moves.push({ x: leftTarget.x, y: leftTarget.y, isCastling: true, castlingWith: rookPiece.id, castlingDirection: 'left' });
         }
@@ -12248,26 +12295,21 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
           }
         }
         
-        // If piece has check rule, also check if any square along the castling path is controlled by enemy
-        if (pathClear && hasCheckRule) {
+        // ZOC check: block castling if any square the piece traverses (including its own
+        // starting square, to catch being in check) is attacked by an enemy.
+        // The partner's own square is excluded since it will have vacated.
+        if (pathClear && (hasCheckRule || (gameType && gameType.mate_condition))) {
+          const enemyPieces = allPieces.filter(ep => (ep.team || ep.player_id) !== pieceOwner);
           for (let x = piece.x; x <= piece.x + castleDist; x++) {
-            // Check if this square is under attack
-            const underAttack = allPieces.some(enemyPiece => {
-              const enemyOwner = enemyPiece.team || enemyPiece.player_id;
-              if (enemyOwner !== pieceOwner) {
-                const enemyMoves = getPossibleMovesForPiece(enemyPiece, allPieces, gameType);
-                return enemyMoves.some(move => move.x === x && move.y === piece.y);
-              }
-              return false;
-            });
-            
+            if (x === rookPiece.x) continue; // partner vacates this square
+            const underAttack = enemyPieces.some(ep => canPieceAttackSquare(ep, x, piece.y, allPieces, gameType));
             if (underAttack) {
               pathClear = false;
               break;
             }
           }
         }
-        
+
         if (pathClear) {
           moves.push({ x: rightTarget.x, y: rightTarget.y, isCastling: true, castlingWith: rookPiece.id, castlingDirection: 'right' });
         }
@@ -12338,13 +12380,32 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
   const pw = piece.piece_width || 1;
   const ph = piece.piece_height || 1;
   if (pw > 1 || ph > 1) {
-    return moves.filter(move => {
+    const multiMoves = moves.filter(move => {
       if (!doesPieceFitOnBoard(move.x, move.y, pw, ph, boardWidth, boardHeight)) return false;
       if (!isDestinationClearServer(piece, move.x, move.y, allPieces, null)) return false;
       return true;
     });
+    // Restriction zone filter for multi-tile moves:
+    // Only restrict if the piece is currently standing on a zone square.
+    if (piece.cannot_move_outside_zone) {
+      const zones = collectRestrictionZoneSquares(gameType);
+      if (zones && zones.has(`${piece.y},${piece.x}`)) {
+        return multiMoves.filter(m => zones.has(`${m.y},${m.x}`));
+      }
+    }
+    return multiMoves;
   }
-  
+
+  // Restriction zone filter: once a piece with cannot_move_outside_zone is
+  // standing on a zone square it may only move to other zone squares (locked in).
+  // A piece starting outside the zone moves freely until it steps onto one.
+  if (piece.cannot_move_outside_zone) {
+    const zones = collectRestrictionZoneSquares(gameType);
+    if (zones && zones.has(`${piece.y},${piece.x}`)) {
+      return moves.filter(m => zones.has(`${m.y},${m.x}`));
+    }
+  }
+
   return moves;
 }
 

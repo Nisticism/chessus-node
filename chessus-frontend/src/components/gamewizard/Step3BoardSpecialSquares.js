@@ -870,6 +870,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           squarePosition={selectedSquare}
           boardWidth={gameData.board_width}
           squaresConditionEnabled={gameData.squares_condition === true}
+          pointsWinConditionEnabled={gameData.points_to_win != null}
         />
       )}
     </div>

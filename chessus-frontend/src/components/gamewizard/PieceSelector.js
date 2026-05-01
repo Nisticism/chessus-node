@@ -4,6 +4,7 @@ import StandardButton from "../standardbutton/StandardButton";
 import PiecesService from "../../services/pieces.service";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import NumberInput from "../common/NumberInput";
+import ToggleSwitch from "../common/ToggleSwitch";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -27,7 +28,8 @@ const PieceSelector = ({
   piecePlacements = {},  // All piece placements on the board
   boardWidth = 8,        // Board width for finding pieces on same row
   embedded = false,  // New prop: if true, don't render modal wrapper
-  preloadedPieces = null  // Optional: pre-loaded piece list to skip the fetch
+  preloadedPieces = null,  // Optional: pre-loaded piece list to skip the fetch
+  hasRestrictionZones = false  // Whether any custom square has asRestrictionZone enabled
 }) => {
   const [pieces, setPieces] = useState(preloadedPieces || []);
   const [searchTerm, setSearchTerm] = useState("");
@@ -72,6 +74,7 @@ const PieceSelector = ({
   const [ghostwalk, setGhostwalk] = useState(currentPlacement?.ghostwalk || false);
   const [dieOnCapture, setDieOnCapture] = useState(currentPlacement?.die_on_capture || false);
   const [attackRadius, setAttackRadius] = useState(currentPlacement?.attack_radius ?? 0);
+  const [cannotMoveOutsideZone, setCannotMoveOutsideZone] = useState(currentPlacement?.cannot_move_outside_zone || false);
   
   // Burn/DOT system state
   const [burnDamage, setBurnDamage] = useState(currentPlacement?.burn_damage ?? 0);
@@ -92,7 +95,7 @@ const PieceSelector = ({
     (currentPlacement?.hit_points ?? 1) > 1 || (currentPlacement?.attack_damage ?? 1) > 1 || (currentPlacement?.hp_regen ?? 0) > 0 || (currentPlacement?.burn_damage ?? 0) > 0
   );
   const [additionalSettingsOpen, setAdditionalSettingsOpen] = useState(
-    currentPlacement?.cannot_be_captured || currentPlacement?.trample || currentPlacement?.ghostwalk || currentPlacement?.die_on_capture || (currentPlacement?.attack_radius > 0) || false
+    currentPlacement?.cannot_be_captured || currentPlacement?.trample || currentPlacement?.ghostwalk || currentPlacement?.die_on_capture || (currentPlacement?.attack_radius > 0) || currentPlacement?.cannot_move_outside_zone || false
   );
 
   // Promotion options state (per-placement override)
@@ -319,6 +322,8 @@ const PieceSelector = ({
       // Die on capture & Attack radius
       die_on_capture: dieOnCapture,
       attack_radius: attackRadius,
+      // Restriction zone
+      cannot_move_outside_zone: cannotMoveOutsideZone,
       // Promotion options (per-placement override)
       promotion_pieces_override: customizePromotion && promotionPieceIds.length > 0 ? JSON.stringify(promotionPieceIds) : null,
       can_promote_to_checkmate: !!canPromoteToCheckmate,
@@ -775,25 +780,23 @@ const PieceSelector = ({
             </h3>
             {additionalSettingsOpen && (
               <>
-            <div className={styles["checkbox-group"]}>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={cannotBeCaptured}
-                  onChange={(e) => setCannotBeCaptured(e.target.checked)}
-                />
-                <span>Cannot be captured or damaged <InfoTooltip text="This piece is completely immune to all damage and capture. Attacks against it are blocked. Useful for obstacle or terrain pieces." /></span>
-              </label>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={trample}
-                  onChange={(e) => setTrample(e.target.checked)}
-                />
-                <span>Trample <InfoTooltip text="This piece damages all pieces in its straight-line path during movement. Trample can cause check if the piece has hop abilities. Trample radius controls how wide the area of effect is." /></span>
-              </label>
+            <div className={styles["control-config-row"]}>
+              <ToggleSwitch
+                checked={cannotBeCaptured}
+                onChange={(v) => setCannotBeCaptured(v)}
+                label="Cannot be captured or damaged"
+                tooltip={<InfoTooltip text="This piece is completely immune to all damage and capture. Attacks against it are blocked. Useful for obstacle or terrain pieces." />}
+              />
+            </div>
+            <div className={styles["control-config-row"]}>
+              <ToggleSwitch
+                checked={trample}
+                onChange={(v) => setTrample(v)}
+                label="Trample"
+                tooltip={<InfoTooltip text="This piece damages all pieces in its straight-line path during movement. Trample can cause check if the piece has hop abilities. Trample radius controls how wide the area of effect is." />}
+              />
               {trample && (
-                <div style={{ marginLeft: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ marginTop: '6px', marginLeft: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <label style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Trample Radius:</label>
                   <NumberInput
                     value={trampleRadius}
@@ -803,34 +806,44 @@ const PieceSelector = ({
                   <InfoTooltip text="0 = only pieces directly in path. 1+ = also affects surrounding squares at each step along the path. Checkmateable pieces (e.g. kings) are immune to trample radius splash damage. Cannot be combined with attack radius." />
                 </div>
               )}
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={ghostwalk}
-                  onChange={(e) => setGhostwalk(e.target.checked)}
-                />
-                <span>Ghostwalk <InfoTooltip text="This piece can pass through any piece (ally or enemy) during movement." /></span>
-              </label>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={dieOnCapture}
-                  onChange={(e) => setDieOnCapture(e.target.checked)}
-                />
-                <span>Die on Capture <InfoTooltip text="This piece is also removed from the board when it captures another piece. Useful for explosive or kamikaze-style pieces." /></span>
-              </label>
-              <div style={{ marginTop: '8px' }}>
-                <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  Attack Radius:
-                  <NumberInput
-                    value={attackRadius}
-                    onChange={(val) => { setAttackRadius(val); if (val > 0) { setTrampleRadius(0); } }}
-                    options={{ min: 0, max: 4 }}
-                  />
-                  <InfoTooltip text="When this piece captures, it also damages all enemy pieces within this radius of the landing square. Unlike trample radius, attack radius does not require trample and only fires at the destination. Checkmateable pieces (e.g. kings) are immune to splash damage. Cannot be combined with trample radius." />
-                </label>
-              </div>
             </div>
+            <div className={styles["control-config-row"]}>
+              <ToggleSwitch
+                checked={ghostwalk}
+                onChange={(v) => setGhostwalk(v)}
+                label="Ghostwalk"
+                tooltip={<InfoTooltip text="This piece can pass through any piece (ally or enemy) during movement." />}
+              />
+            </div>
+            <div className={styles["control-config-row"]}>
+              <ToggleSwitch
+                checked={dieOnCapture}
+                onChange={(v) => setDieOnCapture(v)}
+                label="Die on Capture"
+                tooltip={<InfoTooltip text="This piece is also removed from the board when it captures another piece. Useful for explosive or kamikaze-style pieces." />}
+              />
+            </div>
+            <div style={{ marginTop: '8px' }}>
+              <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Attack Radius:
+                <NumberInput
+                  value={attackRadius}
+                  onChange={(val) => { setAttackRadius(val); if (val > 0) { setTrampleRadius(0); } }}
+                  options={{ min: 0, max: 4 }}
+                />
+                <InfoTooltip text="When this piece captures, it also damages all enemy pieces within this radius of the landing square. Unlike trample radius, attack radius does not require trample and only fires at the destination. Checkmateable pieces (e.g. kings) are immune to splash damage. Cannot be combined with trample radius." />
+              </label>
+            </div>
+            {hasRestrictionZones && (
+              <div className={styles["control-config-row"]} style={{ marginTop: '8px' }}>
+                <ToggleSwitch
+                  checked={cannotMoveOutsideZone}
+                  onChange={(v) => setCannotMoveOutsideZone(v)}
+                  label="Cannot Move Outside Restricted Zone"
+                  tooltip={<InfoTooltip text="This piece is bound to the Restriction Zone — any move or attack that would place it on a square not marked as a Restriction Zone is illegal and will not execute. Restriction Zone squares are custom squares with the 'Acts as Restriction Zone' ability enabled (configured in Step 3)." />}
+                />
+              </div>
+            )}
               </>
             )}
           </div>

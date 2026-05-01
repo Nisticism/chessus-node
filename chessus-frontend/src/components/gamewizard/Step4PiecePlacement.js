@@ -190,6 +190,11 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
            Object.keys(specialSquaresData.control).length > 0 ||
            Object.keys(specialSquaresData.custom).length > 0;
   }, [specialSquaresData]);
+
+  // Check if any custom square has the restriction zone ability enabled
+  const hasRestrictionZones = useMemo(() => {
+    return Object.values(specialSquaresData.custom).some(cfg => cfg && cfg.asRestrictionZone);
+  }, [specialSquaresData.custom]);
   
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -374,6 +379,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
               ghostwalk: pieceData.ghostwalk || false,
               die_on_capture: pieceData.die_on_capture || false,
               attack_radius: pieceData.attack_radius ?? 0,
+              cannot_move_outside_zone: pieceData.cannot_move_outside_zone || false,
               // Castling override data
               manual_castling_partners: pieceData.manual_castling_partners || false,
               castling_partner_left_key: pieceData.castling_partner_left_key || null,
@@ -449,6 +455,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
             ghostwalk: pieceData.ghostwalk || false,
             die_on_capture: pieceData.die_on_capture || false,
             attack_radius: pieceData.attack_radius ?? 0,
+            cannot_move_outside_zone: pieceData.cannot_move_outside_zone || false,
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
             castling_partner_right_key: pieceData.castling_partner_right_key || null,
@@ -509,6 +516,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         ghostwalk: pieceData.ghostwalk || false,
         die_on_capture: pieceData.die_on_capture || false,
         attack_radius: pieceData.attack_radius ?? 0,
+        cannot_move_outside_zone: pieceData.cannot_move_outside_zone || false,
         manual_castling_partners: pieceData.manual_castling_partners || false,
         castling_partner_left_key: pieceData.castling_partner_left_key || null,
         castling_partner_right_key: pieceData.castling_partner_right_key || null,
@@ -1377,6 +1385,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         ghostwalk: sourcePiece.ghostwalk ?? false,
         die_on_capture: sourcePiece.die_on_capture ?? false,
         attack_radius: sourcePiece.attack_radius ?? 0,
+        cannot_move_outside_zone: sourcePiece.cannot_move_outside_zone ?? false,
         piece_width: pw,
         piece_height: ph,
         player_id: targetPlayerId,
@@ -1907,6 +1916,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           piecePlacements={piecePlacements}
           boardWidth={gameData.board_width}
           preloadedPieces={Object.values(pieceDataMap)}
+          hasRestrictionZones={hasRestrictionZones}
         />
       )}
     </div>
