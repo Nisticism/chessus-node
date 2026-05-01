@@ -383,9 +383,11 @@ const MatchView = () => {
         <div className={styles["player-info"]}>
           {player?.id === 'bot' ? (
             <span className={styles["player-name"]}>{player?.username || "Computer"}</span>
+          ) : player?.id == null ? (
+            <span className={styles["player-name"]}>{player?.username || "Guest"}</span>
           ) : (
             <Link to={`/profile/${player?.username}`} className={styles["player-name"]}>
-              {player?.username || "Player"}
+              {player?.username || "Guest"}
             </Link>
           )}
           {player?.id !== 'bot' && player?.elo && (

@@ -119,13 +119,11 @@ const MatchHistory = ({ userId, username }) => {
       return { username: `Computer (${diffLabel})`, elo: null, isBot: true };
     }
     const opponent = game.players.find(p => p.id !== parseInt(userId));
-    if (!opponent) return { username: "Unknown", elo: "?" };
-    // Defense-in-depth: if the opponent record itself is the bot sentinel
-    // (id === 'bot' or non-numeric id), mark it as a bot so we never render
-    // a profile link for a computer player.
-    if (opponent.id === 'bot' || typeof opponent.id !== 'number') {
-      return { ...opponent, isBot: true };
-    }
+    if (!opponent) return { username: "Guest", elo: null };
+    // Bot sentinel: mark as bot so we never render a profile link
+    if (opponent.id === 'bot') return { ...opponent, isBot: true };
+    // Anonymous player (null id): show their name but no profile link, no ELO
+    if (opponent.id == null) return { ...opponent, username: opponent.username || 'Guest', isGuest: true };
     return opponent;
   };
 
@@ -221,14 +219,14 @@ const MatchHistory = ({ userId, username }) => {
                   {/* Player 1 */}
                   {player1 && (
                     <>
-                      {player1.id !== 'bot' && !game.isBotGame && typeof player1.id === 'number' ? (
+                      {player1.id != null && player1.id !== 'bot' && !game.isBotGame ? (
                         <Link to={`/profile/${player1.username}`} className={styles["opponent-name-link"]} onClick={(e) => e.stopPropagation()}>
                           {player1.username}
                         </Link>
                       ) : (
-                        <span className={styles["opponent-name"]}>{player1.username}</span>
+                        <span className={styles["opponent-name"]}>{player1.username || (player1.isBot ? player1.username : 'Guest')}</span>
                       )}
-                      {!player1.isBot && (
+                      {!player1.isBot && !player1.isGuest && (
                         <span className={styles["opponent-elo"]}>({player1.elo || "?"})</span>
                       )}
                       <span className={`${styles["color-icon"]} ${styles["white-piece"]}`} title="Player 1 (White)">♔</span>
@@ -240,14 +238,14 @@ const MatchHistory = ({ userId, username }) => {
                   {/* Player 2 */}
                   {player2 && (
                     <>
-                      {player2.id !== 'bot' && !game.isBotGame && typeof player2.id === 'number' ? (
+                      {player2.id != null && player2.id !== 'bot' && !game.isBotGame ? (
                         <Link to={`/profile/${player2.username}`} className={styles["opponent-name-link"]} onClick={(e) => e.stopPropagation()}>
                           {player2.username}
                         </Link>
                       ) : (
-                        <span className={styles["opponent-name"]}>{player2.username}</span>
+                        <span className={styles["opponent-name"]}>{player2.username || (player2.isBot ? player2.username : 'Guest')}</span>
                       )}
-                      {!player2.isBot && (
+                      {!player2.isBot && !player2.isGuest && (
                         <span className={styles["opponent-elo"]}>({player2.elo || "?"})</span>
                       )}
                       {game.isBotGame && (

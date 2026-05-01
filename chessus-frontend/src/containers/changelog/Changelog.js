@@ -5,12 +5,14 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "April 30, 2026",
-    title: "Castling zone-of-control rules, restriction zone live-game highlight, poll styling, user growth admin chart",
+    title: "Guest name in match history, anonymous game join fixes, castling ZOC rules",
     items: [
+      "Match history and match detail pages now show the display name a guest entered when they created an anonymous game instead of a blank or generic label.",
+      "Bug fix: joining a game created by a non-logged-in player no longer crashes with a database error. The host player lookup now uses a LEFT JOIN so anonymous (guest) hosts are handled correctly.",
+      "Bug fix: position assignments for anonymous players during game join no longer fail with a SQL type error — the update now uses IS NULL matching for guest player rows instead of passing a non-numeric ID to the database.",
       "Castling rules tightened: when the mate condition is active, a piece can no longer castle through squares controlled by the enemy (zone of control), and can no longer castle as a way of escaping check. The partner's square is correctly excluded from the zone-of-control scan.",
-      "Restriction zone squares are now highlighted in yellow by default in live games — no need to enable 'Show all special squares'. A new 'Hide restriction zones' toggle in the Options panel lets you turn the highlight off if you prefer a cleaner board.",
-      "Home page community poll: removed the chart icon from the poll title and gave the poll widget a gold warning border, matching the forum invite banner style.",
-      "Admin dashboard: new 'User Growth' tab shows a cumulative account growth chart with weekly/monthly view toggle, hover tooltips, and summary stats. New accounts are now timestamped on creation.",
+      "Restriction zone squares are now highlighted in yellow by default in live games. A new 'Hide restriction zones' toggle in the Options panel lets you turn the highlight off.",
+      "Admin dashboard: new User Growth tab with weekly/monthly chart, hover tooltips, and summary stats.",
     ],
   },
   {

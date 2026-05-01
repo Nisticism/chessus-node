@@ -1310,16 +1310,21 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
             ? `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`
             : null;
           const botPosition = otherData.botPosition || 2;
+          const anonName = otherData.guestName || 'Guest';
           const p1 = game.player1_id
             ? { id: game.player1_id, username: game.player1_username, elo: game.player1_elo, position: game.player1_position }
             : (otherData.isBotGame && botPosition === 1
               ? { id: 'bot', username: botUsername, elo: null, position: 1 }
-              : null);
+              : (game.player1_position != null
+                ? { id: null, username: anonName, elo: null, position: game.player1_position }
+                : null));
           const p2 = game.player2_id
             ? { id: game.player2_id, username: game.player2_username, elo: game.player2_elo, position: game.player2_position }
             : (otherData.isBotGame && botPosition === 2
               ? { id: 'bot', username: botUsername, elo: null, position: 2 }
-              : null);
+              : (game.player2_position != null
+                ? { id: null, username: anonName, elo: null, position: game.player2_position }
+                : null));
           return [p1, p2].filter(Boolean);
         })()
       };
@@ -1904,9 +1909,10 @@ app.get("/api/match/:gameId", async (req, res) => {
         correspondenceDays: game.correspondence_days || null
       },
       players: (() => {
+        const anonName = otherData.guestName || 'Guest';
         const mapped = players.map(p => ({
           id: p.user_id,
-          username: p.username,
+          username: p.username || (p.user_id == null ? anonName : null),
           elo: p.elo,
           position: p.player_position,
           profilePicture: p.profile_picture
