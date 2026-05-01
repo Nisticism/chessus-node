@@ -4095,10 +4095,20 @@ function initializeSocket(server) {
 
         // Update database with positions
         for (const player of gameState.players) {
-          await db_pool.query(
-            "UPDATE players SET player_position = ? WHERE game_id = ? AND user_id = ?",
-            [player.position, gameId, player.id]
-          );
+          const numericId = parseInt(player.id, 10);
+          if (Number.isFinite(numericId) && numericId > 0) {
+            // Logged-in user — match by user_id
+            await db_pool.query(
+              "UPDATE players SET player_position = ? WHERE game_id = ? AND user_id = ?",
+              [player.position, gameId, numericId]
+            );
+          } else {
+            // Anonymous player — their DB row has user_id = NULL, match by exclusion
+            await db_pool.query(
+              "UPDATE players SET player_position = ? WHERE game_id = ? AND user_id IS NULL",
+              [player.position, gameId]
+            );
+          }
         }
 
         // Initialize player times
