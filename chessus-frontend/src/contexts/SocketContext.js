@@ -349,8 +349,10 @@ export const SocketProvider = ({ children }) => {
       const handleGameCreated = ({ gameId, gameState, inviteCode, playerId, token }) => {
         cleanup();
         setCurrentGame(gameState);
-        // If the server returned stable credentials (correspondence game), persist them.
-        if (playerId && token) saveAnonCorresId(gameId, playerId, token);
+        // Persist stable credentials for correspondence games so the player
+        // can return after closing the tab. For live games (no token), save
+        // the gameId with nulls so isMyAnonGame() still recognises the game.
+        saveAnonCorresId(gameId, playerId || null, token || null);
         resolve({ gameId, gameState, inviteCode });
       };
 

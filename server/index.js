@@ -1310,20 +1310,26 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
             ? `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`
             : null;
           const botPosition = otherData.botPosition || 2;
-          const anonName = otherData.guestName || 'Guest';
+          const anonLivePlayers = otherData.anonLivePlayers || null;
+          const anonNameForPosition = (position) => {
+            const perPos = anonLivePlayers?.[position]?.username;
+            const fallback = otherData.guestName || null;
+            const name = perPos || fallback;
+            return name ? `Guest: ${name}` : 'Guest';
+          };
           const p1 = game.player1_id
             ? { id: game.player1_id, username: game.player1_username, elo: game.player1_elo, position: game.player1_position }
             : (otherData.isBotGame && botPosition === 1
               ? { id: 'bot', username: botUsername, elo: null, position: 1 }
               : (game.player1_position != null
-                ? { id: null, username: anonName, elo: null, position: game.player1_position }
+                ? { id: null, username: anonNameForPosition(1), elo: null, position: game.player1_position }
                 : null));
           const p2 = game.player2_id
             ? { id: game.player2_id, username: game.player2_username, elo: game.player2_elo, position: game.player2_position }
             : (otherData.isBotGame && botPosition === 2
               ? { id: 'bot', username: botUsername, elo: null, position: 2 }
               : (game.player2_position != null
-                ? { id: null, username: anonName, elo: null, position: game.player2_position }
+                ? { id: null, username: anonNameForPosition(2), elo: null, position: game.player2_position }
                 : null));
           return [p1, p2].filter(Boolean);
         })()
@@ -1365,6 +1371,7 @@ app.get("/api/users/:userId/ongoing-games", async (req, res) => {
         gt.game_name as game_type_name,
         gt.board_width,
         gt.board_height,
+        gt.simultaneous_turns,
         p1.user_id as player1_id,
         u1.username as player1_username,
         u1.elo as player1_elo,
@@ -1413,7 +1420,9 @@ app.get("/api/users/:userId/ongoing-games", async (req, res) => {
         increment: game.increment,
         isCorrespondence: !!game.is_correspondence,
         correspondenceDays: game.correspondence_days,
+        simultaneousTurns: !!game.simultaneous_turns,
         playerTurn: game.player_turn ?? null,
+        simulSubmittedPlayerIds: otherData.simulSubmittedPlayerIds || [],
         players: [p1, p2].filter(Boolean)
       };
     });
@@ -1909,10 +1918,19 @@ app.get("/api/match/:gameId", async (req, res) => {
         correspondenceDays: game.correspondence_days || null
       },
       players: (() => {
-        const anonName = otherData.guestName || 'Guest';
+        const anonLivePlayers = otherData.anonLivePlayers || null;
+        const anonCorresPlayers = otherData.anonCorresPlayers || null;
+        const anonNameForPosition = (position) => {
+          const perPos = anonLivePlayers?.[position]?.username
+            || anonCorresPlayers?.[position]?.username
+            || null;
+          const fallback = otherData.guestName || null;
+          const name = perPos || fallback;
+          return name ? `Guest: ${name}` : 'Guest';
+        };
         const mapped = players.map(p => ({
           id: p.user_id,
-          username: p.username || (p.user_id == null ? anonName : null),
+          username: p.username || (p.user_id == null ? anonNameForPosition(p.player_position) : null),
           elo: p.elo,
           position: p.player_position,
           profilePicture: p.profile_picture

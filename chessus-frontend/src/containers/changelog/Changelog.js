@@ -4,18 +4,6 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
-    date: "April 30, 2026",
-    title: "Guest name in match history, anonymous game join fixes, castling ZOC rules",
-    items: [
-      "Match history and match detail pages now show the display name a guest entered when they created an anonymous game instead of a blank or generic label.",
-      "Bug fix: joining a game created by a non-logged-in player no longer crashes with a database error. The host player lookup now uses a LEFT JOIN so anonymous (guest) hosts are handled correctly.",
-      "Bug fix: position assignments for anonymous players during game join no longer fail with a SQL type error — the update now uses IS NULL matching for guest player rows instead of passing a non-numeric ID to the database.",
-      "Castling rules tightened: when the mate condition is active, a piece can no longer castle through squares controlled by the enemy (zone of control), and can no longer castle as a way of escaping check. The partner's square is correctly excluded from the zone-of-control scan.",
-      "Restriction zone squares are now highlighted in yellow by default in live games. A new 'Hide restriction zones' toggle in the Options panel lets you turn the highlight off.",
-      "Admin dashboard: new User Growth tab with weekly/monthly chart, hover tooltips, and summary stats.",
-    ],
-  },
-  {
     date: "May 1, 2026",
     title: "Restriction zones, community polls, clock persistence on restart, low-time correspondence notifications, correspondence deadline architecture",
     items: [
@@ -25,6 +13,18 @@ const changelogData = [
       "Game clocks now continue ticking immediately after a server restart — no more frozen clocks until a player reconnects.",
       "Correspondence games now send a notification when you have less than 6 hours left to make your move.",
       "Correspondence game clocks now use an absolute deadline timestamp instead of computing elapsed time on every check — more reliable across server restarts and easier to reason about.",
+      "Bug fix: correspondence game clocks now correctly reset after each move — the updated deadline is now sent to both players immediately when a move is made, so the displayed timer reflects the full per-move allowance rather than sticking at the old value.",
+      "Bug fix: deleting a game as an admin on the /play page no longer causes the deleted card to briefly flash and reappear. A local filter guards against in-flight polling fetches (started just before the delete) from restoring the card.",
+      "Bug fix: non-logged-in users who created an open anonymous game can now see a 'Return to Game' button on that game's lobby card after navigating away, instead of a 'Join Game' button that would fail.",
+      "Bug fix: simultaneous-turn games now correctly transition from the 'Ready Up' phase to the move-submission phase as soon as all players click Ready — previously you had to refresh the page before the move controls appeared.",
+      "Bug fix: joined anonymous games now appear in the Live Games or Correspondence Games section of the lobby once both players have joined, so the host can find and return to their game without needing the original invite link. Guest player names in the ongoing game list are shown without broken profile links.",
+      "Style: the 'Correspondence game' option in the anonymous game creation modal is now a toggle switch for a more consistent look.",
+      "Bug fix: simultaneous-turns games now show 'Move Submitted' on the lobby card (both on /play and your profile's ongoing games) when you have already submitted your move for the current round. The button returns to 'Make Move' once both moves are executed and the next round begins.",
+      "Simultaneous-turns correspondence (and no-clock) games now send a notification to each player when both moves have been resolved and the next round is ready to submit — similar to how regular correspondence games notify you when your opponent moves. The notification is suppressed if you are already viewing the game.",
+      "Bug fix: anonymous players in correspondence games can now make moves without being redirected to the login page.",
+      "Bug fix: guest player names are now shown correctly in the correspondence games section of the /play lobby — games now display 'Guest: [name]' instead of a plain 'Guest' label.",
+      "Bug fix: the Game Details section on the match detail page now shows the correct correspondence time control (e.g. '3 days/move') for correspondence games instead of 'Unlimited'.",
+      "Bug fix: when an anonymous player hosts a waiting game, the top slot now shows 'Waiting for opponent\u2026' instead of incorrectly displaying '(You)' on the empty opponent slot.",
     ],
   },
   {
@@ -45,6 +45,12 @@ const changelogData = [
       "Bug fix: the 'Must Move If Able' and 'Forced Move Uses an Action' options in the piece wizard now correctly save and take effect in live games. Previously the flags were stored in the database but not loaded into the active game state, so the forced-move enforcement never triggered.",
       "Bug fix: 'Must Move If Able' and 'Forced Move Uses an Action' now display correctly when re-opening an existing piece in the piece wizard. The piece detail query was not selecting these columns, so the checkboxes always appeared unchecked on edit.",
       "Performance: the public game lobby (Open Matches and Ongoing Games lists) now uses a server-side cache. Previously every connected user's 5-second polling timer triggered a separate heavy database query. Now all users share one query result per refresh cycle, dramatically reducing database load when multiple players are browsing the lobby.",
+      "Match history and match detail pages now show the display name a guest entered when they created an anonymous game instead of a blank or generic label.",
+      "Bug fix: joining a game created by a non-logged-in player no longer crashes with a database error. The host player lookup now uses a LEFT JOIN so anonymous (guest) hosts are handled correctly.",
+      "Bug fix: position assignments for anonymous players during game join no longer fail with a SQL type error — the update now uses IS NULL matching for guest player rows instead of passing a non-numeric ID to the database.",
+      "Castling rules tightened: when the mate condition is active, a piece can no longer castle through squares controlled by the enemy (zone of control), and can no longer castle as a way of escaping check. The partner's square is correctly excluded from the zone-of-control scan.",
+      "Restriction zone squares are now highlighted in yellow by default in live games. A new 'Hide restriction zones' toggle in the Options panel lets you turn the highlight off.",
+      "Admin dashboard: new User Growth tab with weekly/monthly chart, hover tooltips, and summary stats.",
     ],
   },
   {

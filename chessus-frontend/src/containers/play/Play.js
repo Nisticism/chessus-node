@@ -9,6 +9,7 @@ import axios from "../../services/axios-interceptor";
 import styles from "./play.module.scss";
 import FriendsList from "../../components/friendslist/FriendsList";
 import InfoTooltip from "../../components/piecewizard/InfoTooltip";
+import ToggleSwitch from "../../components/common/ToggleSwitch";
 
 const Play = () => {
   const navigate = useNavigate();
@@ -18,7 +19,14 @@ const Play = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const { gamesList, pagination: gamesPagination } = useSelector((state) => state.games);
   const { onlineFriends } = useSelector((state) => state.friends);
-  const { openGames, ongoingGames, privateGames, myBotGames } = useSelector((state) => state.lobbyGames);
+  const { openGames: _openGames, ongoingGames: _ongoingGames, privateGames: _privateGames, myBotGames: _myBotGames } = useSelector((state) => state.lobbyGames);
+  // Track game IDs deleted by admin so in-flight polling fetches can't
+  // restore them before the next clean fetch completes.
+  const [deletedGameIds, setDeletedGameIds] = useState(new Set());
+  const openGames = useMemo(() => _openGames.filter(g => !deletedGameIds.has(g.id) && !deletedGameIds.has(g.gameId)), [_openGames, deletedGameIds]);
+  const ongoingGames = useMemo(() => _ongoingGames.filter(g => !deletedGameIds.has(g.id) && !deletedGameIds.has(g.gameId)), [_ongoingGames, deletedGameIds]);
+  const privateGames = useMemo(() => _privateGames.filter(g => !deletedGameIds.has(g.id) && !deletedGameIds.has(g.gameId)), [_privateGames, deletedGameIds]);
+  const myBotGames = useMemo(() => _myBotGames.filter(g => !deletedGameIds.has(g.id) && !deletedGameIds.has(g.gameId)), [_myBotGames, deletedGameIds]);
   
   const { 
     connected, 
@@ -32,7 +40,8 @@ const Play = () => {
     joinGame,
     joinByInviteCode,
     joinOpenGameAsGuest,
-    onGameEvent 
+    onGameEvent,
+    getStoredAnonCorresId
   } = useSocket();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -703,9 +712,10 @@ const Play = () => {
     if (parts.length === 0) {
       return <div className={styles["player-stack"]} />;
     }
+    const isAnonGame = game.is_anonymous === 1 || game.is_anonymous === true;
     const isComputer = (name) => /^Computer\s*\(/i.test(name);
     const renderName = (name, key) => (
-      isComputer(name)
+      isComputer(name) || isAnonGame
         ? <span key={key} className={styles["player-name-plain"]}>{name}</span>
         : <Link key={key} to={`/profile/${encodeURIComponent(name)}`} className={styles["player-name"]}>{name}</Link>
     );
@@ -964,9 +974,10 @@ const Play = () => {
         headers: authHeader()
       });
 
-      // Optimistic UI: strip the deleted game from every lobby list
-      // immediately so the card disappears without waiting for the socket
-      // round-trip. The follow-up fetches below reconcile state if needed.
+      // Immediately filter the game from all rendered lists. Using a local
+      // Set guards against in-flight polling fetches (started before the
+      // delete) resolving after the dispatch and restoring the card.
+      setDeletedGameIds(prev => { const s = new Set(prev); s.add(gameId); return s; });
       dispatch({ type: 'REMOVE_LOBBY_GAME', payload: gameId });
 
       // Refresh game lists (including computer games — without this the
@@ -1413,7 +1424,10 @@ const Play = () => {
               <>
                 <div className={styles["open-matches-list"]}>
                   {paginatedOpenGames.map((game) => {
-                    const isOwnGame = currentUser ? game.host_id === currentUser.id : false;
+                    const gameId = game.id || game.gameId;
+                    const isOwnGame = currentUser
+                      ? game.host_id === currentUser.id
+                      : !!getStoredAnonCorresId(String(gameId));
                     const isRated = game.rated !== 0 && game.rated !== false && game.rated !== null;
                     const isAnonGame = game.is_anonymous === 1 || game.is_anonymous === true;
                     const hostDisplay = game.host_username || game.hostUsername;
@@ -1567,13 +1581,19 @@ const Play = () => {
                           className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
                           onClick={() => navigate(`/play/${game.id}`)}
                         >
-                          {!game.player_ids?.includes(currentUser?.id)
-                            ? 'Watch'
-                            : game.player_turn == null
-                              ? 'Re-join'
-                              : game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn
-                                ? 'Make Move'
-                                : "Opponent's Turn"}
+                          {!currentUser && game.is_anonymous && getStoredAnonCorresId(String(game.id))
+                            ? 'Return to Game'
+                            : !game.player_ids?.includes(currentUser?.id)
+                              ? 'Watch'
+                              : game.player_turn == null
+                                ? 'Re-join'
+                                : game.simultaneous_turns && game.simulSubmittedPlayerIds?.includes(currentUser.id)
+                                  ? 'Move Submitted'
+                                  : game.simultaneous_turns
+                                    ? 'Make Move'
+                                    : game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn
+                                      ? 'Make Move'
+                                      : "Opponent's Turn"}
                         </button>
                         {isAdmin && (
                           <button
@@ -1667,13 +1687,19 @@ const Play = () => {
                           className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
                           onClick={() => navigate(`/play/${game.id}`)}
                         >
-                          {!game.player_ids?.includes(currentUser?.id)
-                            ? 'Watch'
-                            : game.player_turn == null
-                              ? 'Re-join'
-                              : game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn
-                                ? 'Make Move'
-                                : "Opponent's Turn"}
+                          {!currentUser && game.is_anonymous && getStoredAnonCorresId(String(game.id))
+                            ? 'Return to Game'
+                            : !game.player_ids?.includes(currentUser?.id)
+                              ? 'Watch'
+                              : game.player_turn == null
+                                ? 'Re-join'
+                                : game.simultaneous_turns && game.simulSubmittedPlayerIds?.includes(currentUser.id)
+                                  ? 'Move Submitted'
+                                  : game.simultaneous_turns
+                                    ? 'Make Move'
+                                    : game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn
+                                      ? 'Make Move'
+                                      : "Opponent's Turn"}
                         </button>
                         {isAdmin && (
                           <button
@@ -2284,14 +2310,12 @@ const Play = () => {
               />
             </div>
             <div className={styles["form-group"]}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={anonIsCorrespondence}
-                  onChange={(e) => setAnonIsCorrespondence(e.target.checked)}
-                />
-                Correspondence game (take turns over days — no clock)
-              </label>
+              <ToggleSwitch
+                checked={anonIsCorrespondence}
+                onChange={setAnonIsCorrespondence}
+                label="Correspondence game (take turns over days — no clock)"
+                labelPlacement="left"
+              />
             </div>
             {anonIsCorrespondence ? (
               <div className={styles["form-group"]}>

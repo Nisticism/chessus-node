@@ -1309,7 +1309,9 @@ const LiveGame = () => {
       if (parseInt(simGid) !== parseInt(gameId)) return;
       setSimulReadyPlayerIds(Array.isArray(readyPlayerIds) ? readyPlayerIds : []);
       if (allReady) {
-        // Game is about to flip to active — clear stale state.
+        // Server has flipped game to active — mirror that locally so the
+        // move-submission UI shows instead of the "I'm Ready" button.
+        setGameState(prev => prev ? { ...prev, status: 'active' } : prev);
         setSimulSubmittedThisRound(false);
         setSimulOpponentSubmitted(false);
       }
@@ -1409,12 +1411,18 @@ const LiveGame = () => {
     if (currentUser) {
       return gameState.players.find(p => p.id === currentUser.id);
     }
-    // Anonymous player: match by anon_ + socket id
+    // Anonymous live player: match by anon_ + socket id
     if (socket?.id) {
-      return gameState.players.find(p => p.id === `anon_${socket.id}`);
+      const liveMatch = gameState.players.find(p => p.id === `anon_${socket.id}`);
+      if (liveMatch) return liveMatch;
+    }
+    // Anonymous correspondence player: match by stored token-based ID
+    const storedCorresId = getStoredAnonCorresId ? getStoredAnonCorresId(String(gameId))?.playerId : null;
+    if (storedCorresId) {
+      return gameState.players.find(p => p.id === storedCorresId) || null;
     }
     return null;
-  }, [gameState?.players, currentUser, socket?.id]);
+  }, [gameState?.players, currentUser, socket?.id, gameId, getStoredAnonCorresId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Check if it's the current user's turn
@@ -4692,7 +4700,12 @@ const LiveGame = () => {
 
   // Check if user can join this game (for join button in waiting banner)
   const isHost = gameState.hostId === currentUser?.id || (socket?.id && gameState.hostId === `anon_${socket.id}`);
-  const isPlayer = !!gameState.players?.some((player) => player.id === currentUser?.id || (socket?.id && player.id === `anon_${socket.id}`));
+  const storedCorresIdForIsPlayer = getStoredAnonCorresId ? getStoredAnonCorresId(String(gameId))?.playerId : null;
+  const isPlayer = !!gameState.players?.some((player) =>
+    player.id === currentUser?.id ||
+    (socket?.id && player.id === `anon_${socket.id}`) ||
+    (storedCorresIdForIsPlayer && player.id === storedCorresIdForIsPlayer)
+  );
   const isAdminOrOwner = ['admin', 'owner'].includes(currentUser?.role?.toLowerCase());
   const canSpectate = gameState.allowSpectators !== false || isPlayer || gameState.status === 'waiting' || gameState.status === 'ready' || isAdminOrOwner;
   const gameUrl = `${window.location.origin}/play/${gameId}`;
@@ -5020,14 +5033,16 @@ const LiveGame = () => {
             <div className={styles["player-info"]}>
               <div className={styles["player-header"]}>
                 <span className={styles["player-name"]}>
-                  {topPlayer?.id === 'bot' ? (
+                  {!topPlayer && gameState.status === 'waiting' ? (
+                    <span className={styles["waiting-for-opponent"]}>Waiting for opponent…</span>
+                  ) : topPlayer?.id === 'bot' ? (
                     topPlayer?.username
                   ) : (
                     <Link to={`/profile/${topPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
                       {topPlayer?.username}
                     </Link>
                   )}
-                  {topPlayer?.id === currentUser?.id && ' (You)'}
+                  {topPlayer && topPlayer.id === currentPlayer?.id && ' (You)'}
                 </span>
                 <span className={`${styles["player-indicator"]} ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
               </div>
@@ -5035,7 +5050,7 @@ const LiveGame = () => {
                 <div className={styles["player-time"]}>
                   <div className={`${styles["time-value"]} ${(getDisplayTime(topPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
                     {formatTime(getDisplayTime(topPlayer?.id))}
-                    {(() => { const m = gameState.clockMultipliers?.[topPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
+                    {(() => { const m = gameState.clockMultipliers?.[topPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()} 
                   </div>
                 </div>
               )}
@@ -5065,14 +5080,16 @@ const LiveGame = () => {
               <div className={styles["player-info"]}>
                 <div className={styles["player-header"]}>
                   <span className={styles["player-name"]}>
-                    {topPlayer?.id === 'bot' ? (
+                    {!topPlayer && gameState.status === 'waiting' ? (
+                      <span className={styles["waiting-for-opponent"]}>Waiting for opponent…</span>
+                    ) : topPlayer?.id === 'bot' ? (
                       topPlayer?.username
                     ) : (
                       <Link to={`/profile/${topPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
                         {topPlayer?.username}
                       </Link>
                     )}
-                    {topPlayer?.id === currentUser?.id && ' (You)'}
+                    {topPlayer && topPlayer.id === currentPlayer?.id && ' (You)'}
                   </span>
                   <span className={`${styles["player-indicator"]} ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
                 </div>
@@ -5150,7 +5167,7 @@ const LiveGame = () => {
                         {bottomPlayer?.username}
                       </Link>
                     )}
-                    {currentPlayer && bottomPlayer?.id === currentUser?.id && ' (You)'}
+                    {currentPlayer && bottomPlayer?.id === currentPlayer?.id && ' (You)'}
                   </span>
                   <span className={`${styles["player-indicator"]} ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
                 </div>
@@ -5634,7 +5651,7 @@ const LiveGame = () => {
                     {bottomPlayer?.username}
                   </Link>
                 )}
-                {currentPlayer && bottomPlayer?.id === currentUser?.id && ' (You)'}
+                {currentPlayer && bottomPlayer?.id === currentPlayer?.id && ' (You)'}
               </span>
               <span className={`${styles["player-indicator"]} ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
             </div>

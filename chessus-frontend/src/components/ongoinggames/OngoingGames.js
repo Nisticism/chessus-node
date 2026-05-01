@@ -125,6 +125,12 @@ const OngoingGames = ({ userId }) => {
                       ? game.status === "waiting"
                         ? "Return"
                         : (() => {
+                            if (game.simultaneousTurns) {
+                              const myIdNum = parseInt(currentUserId);
+                              const submitted = Array.isArray(game.simulSubmittedPlayerIds) &&
+                                game.simulSubmittedPlayerIds.some(id => Number(id) === myIdNum);
+                              return submitted ? 'Move Submitted' : 'Make Move';
+                            }
                             const myPos = game.players.findIndex(p => p.id === parseInt(currentUserId)) + 1;
                             return game.playerTurn && myPos > 0 && game.playerTurn === myPos
                               ? 'Make Move'
@@ -171,6 +177,12 @@ const OngoingGames = ({ userId }) => {
                       ? game.status === "waiting"
                         ? "Return"
                         : (() => {
+                            if (game.simultaneousTurns) {
+                              const myIdNum = parseInt(currentUserId);
+                              const submitted = Array.isArray(game.simulSubmittedPlayerIds) &&
+                                game.simulSubmittedPlayerIds.some(id => Number(id) === myIdNum);
+                              return submitted ? 'Move Submitted' : 'Make Move';
+                            }
                             const myPos = game.players.findIndex(p => p.id === parseInt(currentUserId)) + 1;
                             return game.playerTurn && myPos > 0 && game.playerTurn === myPos
                               ? 'Make Move'

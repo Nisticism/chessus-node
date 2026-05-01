@@ -165,10 +165,22 @@ function sanitizeWinnerId(id) {
  * Build the other_data JSON object for DB writes, always including initialPieces for replay.
  */
 function buildOtherData(gameState, extraFields = {}) {
+  const simulSubmittedKeys = Object.keys(gameState.pendingSimulMoves || {});
+  // Snapshot the stable anon player IDs so DB-reload can restore them after
+  // a server restart (avoids null player IDs breaking clock / move routing).
+  const anonLivePlayers = (() => {
+    const live = (gameState.players || []).filter(
+      p => typeof p.id === 'string' && p.id.startsWith('anon_') && p.position != null
+    );
+    return live.length > 0
+      ? Object.fromEntries(live.map(p => [p.position, { playerId: p.id, username: p.username || null }]))
+      : null;
+  })();
   return JSON.stringify({
     moves: gameState.moveHistory,
     rated: gameState.rated,
     allowPremoves: gameState.allowPremoves,
+    ...(anonLivePlayers ? { anonLivePlayers } : {}),
     ...(gameState.premoveTimeCost ? { premoveTimeCost: gameState.premoveTimeCost } : {}),
     ...(gameState.initialPieces ? { initialPieces: gameState.initialPieces } : {}),
     ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium', botPosition: gameState.botPlayer.position } : {}),
@@ -183,6 +195,12 @@ function buildOtherData(gameState, extraFields = {}) {
     // path subtracts elapsed time since then from the current player's clock.
     ...(gameState.playerTimes && Object.keys(gameState.playerTimes).length
       ? { playerTimes: gameState.playerTimes, clockPersistedAt: Date.now() }
+      : {}),
+    // Track which players have submitted their simul-turns move this round so
+    // lobby cards can show "Move Submitted" instead of "Make Move".
+    // Cleared automatically when the round resolves (pendingSimulMoves is empty).
+    ...(simulSubmittedKeys.length
+      ? { simulSubmittedPlayerIds: simulSubmittedKeys.map(k => isNaN(k) ? k : Number(k)) }
       : {}),
     ...extraFields
   });
@@ -1242,6 +1260,13 @@ async function handleSimulMoveSubmission(io, socket, gameState, gameId, userId, 
     io.to(`game-${gameId}`).emit('simulOpponentSubmitted', { gameId, submittedPlayerId: userId, opponentId });
   }
 
+  // Flush submitted-player IDs to DB so the lobby card shows "Move Submitted"
+  // while the opponent is still thinking. Fire-and-forget (non-blocking).
+  db_pool.query(
+    "UPDATE games SET other_data = ? WHERE id = ?",
+    [buildOtherData(gameState), gameId]
+  ).catch(e => console.error('simul: failed to flush submitted state:', e));
+
   // If a promotion is required, compute legal options NOW (based on the
   // current board state — captures from the same round haven't been applied
   // yet, but the per-player royal-cap rule still holds: the modal options
@@ -1923,6 +1948,49 @@ async function resolveSimulRound(io, gameId, gameState) {
   if (gameState.botPlayer && gameState.status === 'active') {
     submitBotSimulMove(io, gameId, gameState).catch(e => console.error('simul: bot next-round submission error', e));
   }
+
+  // Correspondence (or no-time-limit) simul games: notify each human player
+  // that both moves have resolved and they can submit again. Suppress the
+  // notification if the player is currently viewing the game room.
+  if (gameState.isCorrespondence || !gameState.timeControl) {
+    try {
+      const dbHelpers = require("./db-helpers");
+      for (const player of (gameState.players || [])) {
+        const pId = player.id;
+        if (!pId || (gameState.botPlayer && pId === gameState.botPlayer.id)) continue;
+        const playerSocketId = userSockets.get(pId.toString());
+        const playerInGame = playerSocketId && io.sockets.sockets.get(playerSocketId)?.rooms?.has(`game-${gameId}`);
+        if (playerInGame) continue;
+        const opponent = (gameState.players || []).find(p => p.id !== pId);
+        const roundNum = (gameState.moveHistory || []).length;
+        const title = `Both moves resolved — your turn to submit again`;
+        const content = `Round ${roundNum} resolved in your ${gameState.isCorrespondence ? 'correspondence ' : ''}simultaneous-turns game${opponent ? ` against ${opponent.username}` : ''}.`;
+        const actionUrl = `/play/${gameId}`;
+        const existing = await dbHelpers.findUnreadNotification(pId, 'game_move', parseInt(gameId));
+        if (existing) {
+          await dbHelpers.updateNotification(existing.id, { sender_id: opponent?.id || null, title, content });
+          if (playerSocketId) {
+            io.to(playerSocketId).emit('newNotification', { ...existing, sender_id: opponent?.id || null, title, content, sender_username: opponent?.username });
+          }
+        } else {
+          const notification = await dbHelpers.createNotification({
+            user_id: pId,
+            sender_id: opponent?.id || null,
+            type: 'game_move',
+            title,
+            content,
+            related_id: parseInt(gameId),
+            action_url: actionUrl
+          });
+          if (playerSocketId) {
+            io.to(playerSocketId).emit('newNotification', { ...notification, sender_username: opponent?.username });
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.error('simul: error sending round-resolved correspondence notification:', notifErr);
+    }
+  }
 }
 
 /**
@@ -2153,10 +2221,14 @@ async function recoverActiveGames() {
           [game.id]
         );
         const anonCorresPlayers = otherData?.anonCorresPlayers || null;
+        const anonLivePlayers = otherData?.anonLivePlayers || null;
         const players = playerRows.map(p => {
           let id = p.user_id;
           if (!id && anonCorresPlayers && p.player_position != null) {
             id = anonCorresPlayers[p.player_position]?.playerId || null;
+          }
+          if (!id && anonLivePlayers && p.player_position != null) {
+            id = anonLivePlayers[p.player_position]?.playerId || null;
           }
           return { id, username: p.username || 'Guest', position: p.player_position, timeRemaining: p.time_remaining };
         });
@@ -3274,7 +3346,7 @@ function initializeSocket(server) {
         }
 
         const anonCorresPlayers = hostPlayerId
-          ? { 1: { playerId: hostPlayerId, token: hostToken } }
+          ? { 1: { playerId: hostPlayerId, token: hostToken, username: displayName } }
           : null;
 
         const [result] = await db_pool.query(
@@ -3282,7 +3354,7 @@ function initializeSocket(server) {
            VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', NULL, ?, ?, 1, ?, ?, ?)`,
           [currentTime, isCorrespondence ? null : (timeControl || null), isCorrespondence ? 0 : (increment || 0), piecesData,
            JSON.stringify({ moves: [], rated: false, allowPremoves, startingMode, guestName: displayName, ...(anonCorresPlayers ? { anonCorresPlayers } : {}) }),
-           gameTypeId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, inviteCode, isCorrespondence ? 1 : 0, correspondenceDays || null]
+           gameTypeId, allowSpectators !== false ? 1 : 0, showPieceHelpers ? 1 : 0, inviteCode, isCorrespondence ? 1 : 0, correspondenceDays || null]
         );
 
         const gameId = result.insertId;
@@ -3470,17 +3542,40 @@ function initializeSocket(server) {
 
         // Add player to game
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
-        await db_pool.query(
+        const [joinInsertResult] = await db_pool.query(
           `INSERT INTO players (created_at, player_position, time_remaining, game_id, user_id, game_type_id)
            VALUES (?, ?, ?, ?, ?, ?)`,
           [currentTime, null, gameState.timeControl, gameId, userId || null, gameState.gameTypeId]
         );
+        const joinerRowId = joinInsertResult.insertId;
 
         // Assign positions randomly
         const positions = [1, 2].sort(() => Math.random() - 0.5);
         gameState.players[0].position = positions[0];
         const newPlayer = { id: playerId, username: playerUsername, position: positions[1] };
         gameState.players.push(newPlayer);
+
+        // Persist player positions to DB so they survive a server restart.
+        // Joiner: update by primary-key (works for both registered and anon joiners).
+        await db_pool.query(
+          'UPDATE players SET player_position = ? WHERE id = ?',
+          [newPlayer.position, joinerRowId]
+        );
+        // Host: update by user_id if registered, or by exclusion if anonymous.
+        const hostEntry = gameState.players.find(p => p.id !== playerId);
+        if (hostEntry) {
+          if (typeof hostEntry.id === 'number') {
+            await db_pool.query(
+              'UPDATE players SET player_position = ? WHERE game_id = ? AND user_id = ?',
+              [hostEntry.position, gameId, hostEntry.id]
+            );
+          } else {
+            await db_pool.query(
+              'UPDATE players SET player_position = ? WHERE game_id = ? AND user_id IS NULL AND id != ?',
+              [hostEntry.position, gameId, joinerRowId]
+            );
+          }
+        }
 
         // Map socket
         userSockets.set(playerId, socket.id);
@@ -3570,8 +3665,8 @@ function initializeSocket(server) {
 
         // Update DB
         await db_pool.query(
-          `UPDATE games SET status = 'ready', pieces = ? WHERE id = ?`,
-          [JSON.stringify(gameState.pieces), gameId]
+          `UPDATE games SET status = 'ready', pieces = ?, other_data = ? WHERE id = ?`,
+          [JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
         );
 
         socket.join(`game-${gameId}`);
@@ -3587,6 +3682,7 @@ function initializeSocket(server) {
 
         // Remove from open games (anonymous games aren't listed, but just in case)
         io.emit("gameRemoved", { gameId });
+        invalidateLobbyCache();
 
         console.log(`${playerUsername} joined anonymous game ${gameId} via invite code ${code}`);
 
@@ -3599,7 +3695,7 @@ function initializeSocket(server) {
               ? (typeof gameRow.other_data === 'string' ? JSON.parse(gameRow.other_data) : gameRow.other_data)
               : {};
             od.anonCorresPlayers = od.anonCorresPlayers || {};
-            od.anonCorresPlayers[newPlayer.position] = { playerId, token: joinerToken };
+            od.anonCorresPlayers[newPlayer.position] = { playerId, token: joinerToken, username: displayName };
             await db_pool.query('UPDATE games SET other_data = ? WHERE id = ?', [JSON.stringify(od), gameId]);
             // Send credentials directly to the joiner's socket
             socket.emit('anonCorresCredentials', {
@@ -3672,11 +3768,12 @@ function initializeSocket(server) {
 
         // Insert joiner row (no user_id for anonymous)
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
-        await db_pool.query(
+        const [openJoinInsertResult] = await db_pool.query(
           `INSERT INTO players (created_at, player_position, time_remaining, game_id, user_id, game_type_id)
            VALUES (?, ?, ?, ?, NULL, ?)`,
           [currentTime, null, gameState.timeControl, gameId, gameState.gameTypeId]
         );
+        const openJoinerRowId = openJoinInsertResult.insertId;
 
         // Assign positions randomly
         const positions = [1, 2].sort(() => Math.random() - 0.5);
@@ -3684,13 +3781,24 @@ function initializeSocket(server) {
         const newPlayer = { id: playerId, username: playerUsername, position: positions[1] };
         gameState.players.push(newPlayer);
 
-        // Update host's player position in DB (host is a registered user)
-        const hostPlayer = gameState.players.find(p => p.id !== playerId && typeof p.id === 'number');
-        if (hostPlayer) {
-          await db_pool.query(
-            "UPDATE players SET player_position = ? WHERE game_id = ? AND user_id = ?",
-            [hostPlayer.position, gameId, hostPlayer.id]
-          );
+        // Persist player positions to DB so they survive a server restart.
+        await db_pool.query(
+          'UPDATE players SET player_position = ? WHERE id = ?',
+          [newPlayer.position, openJoinerRowId]
+        );
+        const hostPlayerEntry = gameState.players.find(p => p.id !== playerId);
+        if (hostPlayerEntry) {
+          if (typeof hostPlayerEntry.id === 'number') {
+            await db_pool.query(
+              'UPDATE players SET player_position = ? WHERE game_id = ? AND user_id = ?',
+              [hostPlayerEntry.position, gameId, hostPlayerEntry.id]
+            );
+          } else {
+            await db_pool.query(
+              'UPDATE players SET player_position = ? WHERE game_id = ? AND user_id IS NULL AND id != ?',
+              [hostPlayerEntry.position, gameId, openJoinerRowId]
+            );
+          }
         }
 
         // Map socket for anonymous joiner
@@ -3719,8 +3827,8 @@ function initializeSocket(server) {
         gameState.status = 'ready';
 
         await db_pool.query(
-          `UPDATE games SET status = 'ready', pieces = ? WHERE id = ?`,
-          [JSON.stringify(gameState.pieces), gameId]
+          `UPDATE games SET status = 'ready', pieces = ?, other_data = ? WHERE id = ?`,
+          [JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
         );
 
         socket.join(`game-${gameId}`);
@@ -3733,6 +3841,7 @@ function initializeSocket(server) {
 
         notifyHostOfPlayerJoin(io, gameId, gameState, newPlayer);
         io.emit("gameRemoved", { gameId });
+        invalidateLobbyCache();
 
         console.log(`Guest "${playerUsername}" joined open game ${gameId} as ${playerId}`);
 
@@ -6389,6 +6498,7 @@ function initializeSocket(server) {
               controlSquareTracking: gameState.controlSquareTracking,
               actionsThisTurn: gameState.actionsThisTurn || 0,
               actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+              ...(gameState.isCorrespondence ? { moveDeadline: gameState.moveDeadline } : {}),
               ...(gameState.gameType?.points_to_win != null ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {})
             },
             ...(moveClockMultipliers && Object.keys(moveClockMultipliers).length > 0 ? { clockMultipliers: moveClockMultipliers } : { clockMultipliers: {} }),
@@ -6936,6 +7046,15 @@ function initializeSocket(server) {
             ) {
               const durationMs = getDisconnectGraceMs(gameState.timeControl);
               startDisconnectForfeitTimer(io, gameIdStr, userId, durationMs);
+            } else if (!userId && !socket.userId && gameState.status === 'active' && !gameState.botPlayer) {
+              // Anonymous player leaving — find their slot by socket mapping
+              const anonPlayer = gameState.players?.find(
+                p => typeof p.id === 'string' && p.id.startsWith('anon_') && userSockets.get(p.id) === socket.id
+              );
+              if (anonPlayer) {
+                const durationMs = getDisconnectGraceMs(gameState.timeControl);
+                startDisconnectForfeitTimer(io, gameIdStr, anonPlayer.id, durationMs);
+              }
             }
           } catch (err) {
             console.error('leaveGame: failed to arm disconnect timer:', err.message);
@@ -7028,8 +7147,9 @@ function initializeSocket(server) {
       if (gameState) {
         socket.join(`game-${gameId}`);
         // Remap stale anonymous slot so reconnecting anon host/player can reclaim it.
-        // Only for waiting/ready games; active games cannot swap player identity.
-        if (!userId && !socket.userId && gameState.status !== 'completed' && gameState.status !== 'active') {
+        // Works for waiting, ready, and active games — the dead-socket check prevents
+        // any live socket from being displaced.
+        if (!userId && !socket.userId && gameState.status !== 'completed') {
           const newAnonId = `anon_${socket.id}`;
           const anonIdx = gameState.players?.findIndex(p =>
             p.id !== newAnonId && (
@@ -7045,6 +7165,15 @@ function initializeSocket(server) {
               userSockets.set(newAnonId, socket.id);
               gameState.players[anonIdx].id = newAnonId;
               if (!gameState.hostId || gameState.hostId === oldAnonId) gameState.hostId = newAnonId;
+              // Remap playerTimes key so the clock survives reconnect
+              if (oldAnonId != null && gameState.playerTimes && Object.prototype.hasOwnProperty.call(gameState.playerTimes, oldAnonId)) {
+                gameState.playerTimes[newAnonId] = gameState.playerTimes[oldAnonId];
+                delete gameState.playerTimes[oldAnonId];
+              }
+              // Cancel any pending disconnect-forfeit timer for the old ID
+              if (oldAnonId) {
+                clearDisconnectForfeitTimer(String(gameId), oldAnonId, { broadcast: true, io, reason: 'reconnected' });
+              }
               console.log(`[getGameState] Remapped anon slot ${oldAnonId} -> ${newAnonId} in game ${gameId}`);
             }
           }
@@ -7085,12 +7214,17 @@ function initializeSocket(server) {
               : {};
           } catch (_) {}
           const anonCorresPlayers = otherDataParsed?.anonCorresPlayers || null;
+          const anonLivePlayers = otherDataParsed?.anonLivePlayers || null;
 
           const players = playerRows.map(p => {
             let id = p.user_id;
             // For anonymous correspondence players, restore the stable playerId
             if (!id && anonCorresPlayers && p.player_position != null) {
               id = anonCorresPlayers[p.player_position]?.playerId || null;
+            }
+            // For anonymous live players, restore the stable playerId
+            if (!id && anonLivePlayers && p.player_position != null) {
+              id = anonLivePlayers[p.player_position]?.playerId || null;
             }
             const username = p.username
               || otherDataParsed?.guestName
@@ -7497,7 +7631,7 @@ function initializeSocket(server) {
           
           socket.join(`game-${gameId}`);
           // Remap stale anonymous slot (same logic as in-memory path above)
-          if (!userId && !socket.userId && gameState.status !== 'completed' && gameState.status !== 'active') {
+          if (!userId && !socket.userId && gameState.status !== 'completed') {
             const newAnonId = `anon_${socket.id}`;
             const anonIdx = gameState.players?.findIndex(p =>
               p.id !== newAnonId && (
@@ -7513,6 +7647,15 @@ function initializeSocket(server) {
                 userSockets.set(newAnonId, socket.id);
                 gameState.players[anonIdx].id = newAnonId;
                 if (!gameState.hostId || gameState.hostId === oldAnonId) gameState.hostId = newAnonId;
+                // Remap playerTimes key so the clock survives reconnect
+                if (oldAnonId != null && gameState.playerTimes && Object.prototype.hasOwnProperty.call(gameState.playerTimes, oldAnonId)) {
+                  gameState.playerTimes[newAnonId] = gameState.playerTimes[oldAnonId];
+                  delete gameState.playerTimes[oldAnonId];
+                }
+                // Cancel any pending disconnect-forfeit timer for the old ID
+                if (oldAnonId) {
+                  clearDisconnectForfeitTimer(gameIdStr, oldAnonId, { broadcast: true, io, reason: 'reconnected' });
+                }
                 console.log(`[getGameState] Remapped anon slot ${oldAnonId} -> ${newAnonId} in game ${gameId}`);
               }
             }
@@ -8056,6 +8199,32 @@ function initializeSocket(server) {
         console.log(`Started disconnect grace period for user ${username} (ID: ${userId})`);
       }
 
+      // Handle anonymous player disconnect: start disconnect-forfeit timer
+      // for any active game they were a participant in.
+      if (!userData) {
+        try {
+          let anonId = null;
+          for (const [pid, sid] of userSockets) {
+            if (sid === socket.id && typeof pid === 'string' && pid.startsWith('anon_')) {
+              anonId = pid;
+              break;
+            }
+          }
+          if (anonId) {
+            userSockets.delete(anonId);
+            for (const [gameIdStr, gameState] of activeGames) {
+              if (!gameState || gameState.status !== 'active') continue;
+              if (gameState.botPlayer) continue;
+              if (!gameState.players?.some(p => p.id === anonId)) continue;
+              const durationMs = getDisconnectGraceMs(gameState.timeControl);
+              startDisconnectForfeitTimer(io, gameIdStr, anonId, durationMs);
+            }
+          }
+        } catch (err) {
+          console.error('Error handling anonymous player disconnect:', err.message);
+        }
+      }
+
       // Note: We don't automatically forfeit games on disconnect
       // The player can reconnect within a reasonable time
     });
@@ -8133,26 +8302,25 @@ async function getOngoingGames() {
     try {
       const [games] = await db_pool.query(
         `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
-                g.allow_spectators, g.show_piece_helpers,
+                g.allow_spectators, g.show_piece_helpers, g.is_anonymous,
                 g.is_correspondence, g.correspondence_days, g.other_data, g.player_turn,
                 CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
-                gt.game_name, gt.board_width, gt.board_height,
-                GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
+                gt.game_name, gt.board_width, gt.board_height, gt.simultaneous_turns,
+                GROUP_CONCAT(COALESCE(u.username, 'Guest') ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
                 GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
                 COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) as move_count,
-                MAX(u.show_computer_games_publicly) as host_show_bot_public
+                MAX(COALESCE(u.show_computer_games_publicly, 0)) as host_show_bot_public
          FROM games g
          JOIN game_types gt ON g.game_type_id = gt.id
          JOIN players p ON g.id = p.game_id
-         JOIN users u ON p.user_id = u.id
+         LEFT JOIN users u ON p.user_id = u.id
          WHERE g.status IN ('active', 'ready')
-           AND COALESCE(g.allow_spectators, 1) = 1
-           AND COALESCE(g.is_anonymous, 0) = 0
+           AND (COALESCE(g.allow_spectators, 1) = 1 OR COALESCE(g.is_anonymous, 0) = 1)
          GROUP BY g.id
          HAVING (
            JSON_EXTRACT(g.other_data, '$.isBotGame') IS NULL
            OR JSON_EXTRACT(g.other_data, '$.isBotGame') = false
-           OR MAX(u.show_computer_games_publicly) = 1
+           OR MAX(COALESCE(u.show_computer_games_publicly, 0)) = 1
          )
          ORDER BY g.start_time DESC, g.created_at DESC`
       );
@@ -8166,10 +8334,24 @@ async function getOngoingGames() {
             ? `${botUsername} vs ${g.player_names}`
             : `${g.player_names} vs ${botUsername}`;
         }
+        // For anonymous games, substitute actual guest names stored in other_data
+        if (g.is_anonymous && (otherData.anonLivePlayers || otherData.anonCorresPlayers || otherData.guestName)) {
+          const anonLive = otherData.anonLivePlayers;
+          const anonCorres = otherData.anonCorresPlayers;
+          const parts = (playerNames || '').split(' vs ').map(s => s.trim());
+          const newParts = parts.map((name, idx) => {
+            const pos = idx + 1; // player_position is 1-indexed
+            const realName = anonLive?.[pos]?.username || anonCorres?.[pos]?.username || (pos === 1 ? otherData.guestName : null);
+            if (realName && name === 'Guest') return `Guest: ${realName}`;
+            return name;
+          });
+          playerNames = newParts.join(' vs ');
+        }
         return {
           ...g,
           player_names: playerNames,
-          player_ids: g.player_ids ? g.player_ids.split(',').map(id => parseInt(id)) : []
+          player_ids: g.player_ids ? g.player_ids.split(',').map(id => parseInt(id)) : [],
+          simulSubmittedPlayerIds: otherData.simulSubmittedPlayerIds || []
         };
       });
       cache.data = result;

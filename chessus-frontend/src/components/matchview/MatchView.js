@@ -501,7 +501,11 @@ const MatchView = () => {
             </div>
             <div className={styles["detail-item"]}>
               <span className={styles["detail-label"]}>Time Control</span>
-              <span className={styles["detail-value"]}>{formatTimeControl(match.timeControl, match.increment)}</span>
+              <span className={styles["detail-value"]}>
+                {match.settings?.isCorrespondence
+                  ? `${match.settings.correspondenceDays || 1} day${(match.settings.correspondenceDays || 1) !== 1 ? 's' : ''}/move`
+                  : formatTimeControl(match.timeControl, match.increment)}
+              </span>
             </div>
             <div className={styles["detail-item"]}>
               <span className={styles["detail-label"]}>Result</span>
