@@ -3314,6 +3314,10 @@ function initializeSocket(server) {
           movesWithoutCapture: 0,
           positionHistory: {},
           controlSquareTracking: {},
+          captureScores: { 1: (gameType.starting_points_p1 || 0), 2: (gameType.starting_points_p2 || 0) },
+          consecutiveEqualScoreTurns: 0,
+          totalHalfMoves: 0,
+          actionsThisTurn: 0,
           startTime: null,
           playerTimes: {},
           allowSpectators,
@@ -3828,13 +3832,18 @@ function initializeSocket(server) {
             [game.game_type_id]
           );
 
-          // Get host info
+          // Get host info - LEFT JOIN so anonymous hosts (user_id = NULL) are included
           const [[hostPlayer]] = await db_pool.query(
             `SELECT p.*, u.username FROM players p
-             JOIN users u ON p.user_id = u.id
+             LEFT JOIN users u ON p.user_id = u.id
              WHERE p.game_id = ? LIMIT 1`,
             [gameId]
           );
+
+          // Parse game's other_data once for host display name, scores, etc.
+          let joinGameOtherData = {};
+          try { joinGameOtherData = JSON.parse(game.other_data || '{}'); } catch (_) {}
+          const hostDisplayName = hostPlayer?.username || joinGameOtherData.guestName || 'Guest';
 
           // Parse and enrich pieces with movement and capture data
           let pieces = JSON.parse(game.pieces || "[]");
@@ -3985,36 +3994,36 @@ function initializeSocket(server) {
             increment: game.increment || 0,
             status: game.status,
             hostId: game.host_id,
-            hostUsername: hostPlayer?.username || 'Unknown',
-            players: [{ id: hostPlayer.user_id, username: hostPlayer.username, position: null }],
+            hostUsername: hostDisplayName,
+            players: [{ id: hostPlayer?.user_id || null, username: hostDisplayName, position: null }],
             pieces: pieces,
             initialPieces: null,
             currentTurn: 1,
             moveHistory: [],
-            controlSquareTracking: {}, // Track control square occupancy
+            controlSquareTracking: {},
+            captureScores: joinGameOtherData.captureScores || { 1: (gameType?.starting_points_p1 || 0), 2: (gameType?.starting_points_p2 || 0) },
+            movesWithoutCapture: 0,
+            positionHistory: {},
+            consecutiveEqualScoreTurns: 0,
+            totalHalfMoves: 0,
+            actionsThisTurn: 0,
             startTime: null,
             playerTimes: {},
             allowSpectators: game.allow_spectators !== 0,
             showPieceHelpers: game.show_piece_helpers === 1,
-            allowPremoves: game.allow_premoves !== 0,
-            rated: (() => { try { const od = JSON.parse(game.other_data || '{}'); return od.rated !== false; } catch { return true; } })(),
-            startingMode: (() => {
-              try {
-                const otherData = JSON.parse(game.other_data || '{}');
-                return otherData.startingMode || 'none';
-              } catch { return 'none'; }
-            })(),
-            enPassantTarget: (() => {
-              try {
-                const otherData = JSON.parse(game.other_data || '{}');
-                return otherData.enPassantTarget || null;
-              } catch { return null; }
-            })(),
+            allowPremoves: joinGameOtherData.allowPremoves !== false,
+            rated: joinGameOtherData.rated !== false,
+            startingMode: joinGameOtherData.startingMode || 'none',
+            enPassantTarget: joinGameOtherData.enPassantTarget || null,
             premove: null,
             isChallenge: !!game.is_challenge,
             challengedUserId: game.challenged_user_id,
             isCorrespondence: !!game.is_correspondence,
             correspondenceDays: game.correspondence_days || null,
+            isAnonymous: !!(game.is_anonymous),
+            inviteCode: game.invite_code || null,
+            materialClockPenalty: !!joinGameOtherData.materialClockPenalty,
+            materialClockHandicap: !!joinGameOtherData.materialClockHandicap,
           };
 
           activeGames.set(gameIdStr, gameState);
@@ -7008,6 +7017,28 @@ function initializeSocket(server) {
 
       if (gameState) {
         socket.join(`game-${gameId}`);
+        // Remap stale anonymous slot so reconnecting anon host/player can reclaim it.
+        // Only for waiting/ready games; active games cannot swap player identity.
+        if (!userId && !socket.userId && gameState.status !== 'completed' && gameState.status !== 'active') {
+          const newAnonId = `anon_${socket.id}`;
+          const anonIdx = gameState.players?.findIndex(p =>
+            p.id !== newAnonId && (
+              (typeof p.id === 'string' && p.id.startsWith('anon_')) || p.id === null
+            )
+          );
+          if (anonIdx >= 0) {
+            const oldAnonId = gameState.players[anonIdx].id;
+            const oldSocketId = oldAnonId ? userSockets.get(oldAnonId) : null;
+            const isOldSocketAlive = !!(oldSocketId && io.sockets.sockets.has(oldSocketId));
+            if (!isOldSocketAlive) {
+              if (oldAnonId) userSockets.delete(oldAnonId);
+              userSockets.set(newAnonId, socket.id);
+              gameState.players[anonIdx].id = newAnonId;
+              if (!gameState.hostId || gameState.hostId === oldAnonId) gameState.hostId = newAnonId;
+              console.log(`[getGameState] Remapped anon slot ${oldAnonId} -> ${newAnonId} in game ${gameId}`);
+            }
+          }
+        }
         socket.emit("gameState", gameState);
       } else {
         // Try to load from database
@@ -7455,6 +7486,27 @@ function initializeSocket(server) {
           }
           
           socket.join(`game-${gameId}`);
+          // Remap stale anonymous slot (same logic as in-memory path above)
+          if (!userId && !socket.userId && gameState.status !== 'completed' && gameState.status !== 'active') {
+            const newAnonId = `anon_${socket.id}`;
+            const anonIdx = gameState.players?.findIndex(p =>
+              p.id !== newAnonId && (
+                (typeof p.id === 'string' && p.id.startsWith('anon_')) || p.id === null
+              )
+            );
+            if (anonIdx >= 0) {
+              const oldAnonId = gameState.players[anonIdx].id;
+              const oldSocketId = oldAnonId ? userSockets.get(oldAnonId) : null;
+              const isOldSocketAlive = !!(oldSocketId && io.sockets.sockets.has(oldSocketId));
+              if (!isOldSocketAlive) {
+                if (oldAnonId) userSockets.delete(oldAnonId);
+                userSockets.set(newAnonId, socket.id);
+                gameState.players[anonIdx].id = newAnonId;
+                if (!gameState.hostId || gameState.hostId === oldAnonId) gameState.hostId = newAnonId;
+                console.log(`[getGameState] Remapped anon slot ${oldAnonId} -> ${newAnonId} in game ${gameId}`);
+              }
+            }
+          }
           socket.emit("gameState", gameState);
         } catch (error) {
           console.error("Error loading game state:", error);
