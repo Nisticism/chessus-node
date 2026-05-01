@@ -181,6 +181,9 @@ function buildOtherData(gameState, extraFields = {}) {
     rated: gameState.rated,
     allowPremoves: gameState.allowPremoves,
     ...(anonLivePlayers ? { anonLivePlayers } : {}),
+    ...(gameState.anonCorresPlayers ? { anonCorresPlayers: gameState.anonCorresPlayers } : {}),
+    ...(gameState.guestName ? { guestName: gameState.guestName } : {}),
+    ...(gameState.startingMode ? { startingMode: gameState.startingMode } : {}),
     ...(gameState.premoveTimeCost ? { premoveTimeCost: gameState.premoveTimeCost } : {}),
     ...(gameState.initialPieces ? { initialPieces: gameState.initialPieces } : {}),
     ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium', botPosition: gameState.botPlayer.position } : {}),
@@ -3401,7 +3404,8 @@ function initializeSocket(server) {
           isAnonymous: true,
           isCorrespondence: !!isCorrespondence,
           correspondenceDays: correspondenceDays || null,
-          inviteCode
+          inviteCode,
+          anonCorresPlayers: anonCorresPlayers || null,
         };
 
         activeGames.set(gameId.toString(), gameState);
@@ -3697,6 +3701,8 @@ function initializeSocket(server) {
             od.anonCorresPlayers = od.anonCorresPlayers || {};
             od.anonCorresPlayers[newPlayer.position] = { playerId, token: joinerToken, username: displayName };
             await db_pool.query('UPDATE games SET other_data = ? WHERE id = ?', [JSON.stringify(od), gameId]);
+            // Mirror into in-memory gameState so buildOtherData carries it forward
+            gameState.anonCorresPlayers = od.anonCorresPlayers;
             // Send credentials directly to the joiner's socket
             socket.emit('anonCorresCredentials', {
               gameId,
@@ -4133,6 +4139,8 @@ function initializeSocket(server) {
             inviteCode: game.invite_code || null,
             materialClockPenalty: !!joinGameOtherData.materialClockPenalty,
             materialClockHandicap: !!joinGameOtherData.materialClockHandicap,
+            anonCorresPlayers: joinGameOtherData.anonCorresPlayers || null,
+            guestName: joinGameOtherData.guestName || null,
           };
 
           activeGames.set(gameIdStr, gameState);
@@ -7533,6 +7541,8 @@ function initializeSocket(server) {
             winReason: otherData?.reason || null,
             eloChanges: otherData?.eloChanges || null,
             initialPositionEval: otherData?.initialPositionEval || null,
+            anonCorresPlayers: otherData?.anonCorresPlayers || null,
+            guestName: otherData?.guestName || null,
           };
 
           // Check if current player is in check (if game is active)
