@@ -50,10 +50,12 @@ const ForgotPassword = () => {
                 <input
                   type="email"
                   className={styles["form-control"]}
+                  id="email"
                   name="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your email"
+                  autoComplete="email"
                   style={{ width: '200px' }}
                 />
               </div>

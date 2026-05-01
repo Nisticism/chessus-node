@@ -165,10 +165,12 @@ const ResetPassword = () => {
             <input
               type="password"
               className={styles["form-control"]}
+              id="password"
               name="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter new password"
+              autoComplete="new-password"
               style={{ width: '180px' }}
             />
           </div>
@@ -178,10 +180,12 @@ const ResetPassword = () => {
             <input
               type="password"
               className={styles["form-control"]}
+              id="confirmPassword"
               name="confirmPassword"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Confirm new password"
+              autoComplete="new-password"
               style={{ width: '180px' }}
             />
           </div>

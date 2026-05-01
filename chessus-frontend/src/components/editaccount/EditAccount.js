@@ -602,11 +602,12 @@ const EditAccount = (props) => {
                         <div className={styles["password-input-wrapper"]}>
                           <input
                             type={showOldPassword ? "text" : "password"}
+                            id="oldPassword"
                             name="oldPassword"
                             value={oldPassword}
                             onChange={onChangeOldPassword}
                             placeholder="Enter current password"
-                            autoComplete="off"
+                            autoComplete="current-password"
                           />
                           <button
                             type="button"
@@ -623,6 +624,7 @@ const EditAccount = (props) => {
                         <div className={styles["password-input-wrapper"]}>
                           <input
                             type={showNewPassword ? "text" : "password"}
+                            id="password"
                             name="password"
                             value={password}
                             onChange={onChangePassword}
