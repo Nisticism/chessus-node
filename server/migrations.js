@@ -3494,6 +3494,19 @@ const runMigrations = async () => {
     console.error('Error adding created_at column to users:', err.message);
   }
 
+  // admin_level: distinguishes Admin 1 (full) from Admin 2 (restricted). NULL = not admin / owner.
+  try {
+    if (!(await columnExists('users', 'admin_level'))) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN admin_level TINYINT NULL DEFAULT NULL COMMENT '1 = Admin 1 (full), 2 = Admin 2 (restricted). NULL for non-admins and owner.'`,
+        "Add admin_level column to users"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding admin_level column to users:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('✓ All migrations up to date\n');
   } else {

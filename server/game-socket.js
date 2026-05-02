@@ -3480,6 +3480,7 @@ function initializeSocket(server) {
         });
 
         // Broadcast to the open matches lobby so all connected clients see this game
+        invalidateLobbyCache();
         io.emit("newOpenGame", {
           id: gameId,
           game_type_id: gameTypeId,

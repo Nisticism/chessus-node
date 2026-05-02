@@ -2865,6 +2865,10 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
     if (existingGame.creator_id !== userId) {
       const creator = await dbHelpers.findUserById(existingGame.creator_id);
       const creatorRole = creator?.role || 'user';
+      // Admin 2 cannot delete game types
+      if (req.user.role === 'admin' && req.user.admin_level === 2) {
+        return res.status(403).send({ message: "Admin 2 does not have permission to delete game types" });
+      }
       if (!canModerate(req.user.role, creatorRole)) {
         return res.status(403).send({ message: "You can only delete your own games" });
       }
@@ -3738,7 +3742,7 @@ app.post("/api/login", async (req, res) => {
     loginAttempts.delete(lockoutKey);
 
     // Generate tokens
-    const userPayload = { id: user.id, username: user.username, role: user.role };
+    const userPayload = { id: user.id, username: user.username, role: user.role, admin_level: user.admin_level ?? null };
     const accessToken = generateAccessToken(userPayload);
     const refreshToken = generateRefreshToken(userPayload);
     
@@ -3892,7 +3896,7 @@ app.post("/api/auth/google", async (req, res) => {
     }
 
     // Generate tokens
-    const userPayload = { id: user.id, username: user.username, role: user.role };
+    const userPayload = { id: user.id, username: user.username, role: user.role, admin_level: user.admin_level ?? null };
     const accessToken = generateAccessToken(userPayload);
     const refreshToken = generateRefreshToken(userPayload);
 
@@ -4083,7 +4087,7 @@ app.post("/api/auth/lichess", async (req, res) => {
     }
 
     // Generate tokens
-    const userPayload = { id: user.id, username: user.username, role: user.role };
+    const userPayload = { id: user.id, username: user.username, role: user.role, admin_level: user.admin_level ?? null };
     const accessToken = generateAccessToken(userPayload);
     const refreshToken = generateRefreshToken(userPayload);
 
@@ -4246,6 +4250,10 @@ app.post("/api/delete", authenticateToken, async (req, res) => {
       const [[targetUser]] = await db_pool.query("SELECT role FROM users WHERE username = ?", [username]);
       if (!targetUser) {
         return res.status(404).send({ message: "User not found" });
+      }
+      // Admin 2 cannot delete user accounts
+      if (requestingUser.role === 'admin' && requestingUser.admin_level === 2) {
+        return res.status(403).send({ message: "Admin 2 does not have permission to delete user accounts" });
       }
       if (!canModerate(requestingUser.role, targetUser.role)) {
         return res.status(403).send({ message: "Not authorized to delete this account" });
@@ -4410,6 +4418,11 @@ app.delete("/api/admin/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(403).send({ message: "Access denied. Admin or owner role required." });
     }
 
+    // Admin 2 cannot delete game types
+    if (requesterRole === 'admin' && req.user.admin_level === 2) {
+      return res.status(403).send({ message: "Admin 2 does not have permission to delete game types" });
+    }
+
     // Notify all players in the game before deleting
     const io = getIO();
     if (io) {
@@ -4461,12 +4474,16 @@ app.post("/api/admin/users/:userId/promote", authenticateToken, async (req, res)
       return res.status(400).send({ message: "User is already an admin" });
     }
 
+    // admin_level: 1 = full, 2 = restricted. Default to 1 if not provided or invalid.
+    const rawLevel = parseInt(req.body.admin_level, 10);
+    const adminLevel = rawLevel === 2 ? 2 : 1;
+
     await db_pool.query(
-      "UPDATE users SET role = 'admin' WHERE id = ?",
-      [userId]
+      "UPDATE users SET role = 'admin', admin_level = ? WHERE id = ?",
+      [adminLevel, userId]
     );
 
-    res.json({ message: "User promoted to admin successfully" });
+    res.json({ message: `User promoted to Admin ${adminLevel} successfully` });
   } catch (err) {
     console.error("Error promoting user:", err);
     res.status(500).send({ message: "Failed to promote user", err: err.message });
@@ -4542,7 +4559,7 @@ app.post("/api/admin/users/:userId/demote", authenticateToken, async (req, res) 
     }
 
     await db_pool.query(
-      "UPDATE users SET role = 'user' WHERE id = ?",
+      "UPDATE users SET role = 'user', admin_level = NULL WHERE id = ?",
       [userId]
     );
 
@@ -4966,6 +4983,10 @@ app.post("/api/forums/delete", authenticateToken, async (req, res) => {
 
     // Verify ownership or moderation rights
     if (forum.author_id !== userId) {
+      // Admin 2 cannot delete forum posts
+      if (userRole === 'admin' && req.user.admin_level === 2) {
+        return res.status(403).send({ message: "Admin 2 does not have permission to delete forum posts" });
+      }
       if (!canModerate(userRole, forum.author_role)) {
         return res.status(403).send({ message: "You don't have permission to delete this forum" });
       }
@@ -5351,6 +5372,11 @@ app.delete("/api/news/:newsId", authenticateToken, async (req, res) => {
       return res.status(403).send({ message: "Access denied. Admin or owner role required." });
     }
 
+    // Admin 2 cannot delete news articles
+    if (userRole === 'admin' && req.user.admin_level === 2) {
+      return res.status(403).send({ message: "Admin 2 does not have permission to delete news articles" });
+    }
+
     // Check if news article exists
     const [[article]] = await db_pool.query(
       "SELECT id FROM articles WHERE id = ? AND is_news = 1", 
@@ -5549,7 +5575,7 @@ app.post('/api/token', async (req, res) => {
 
       // Check if user exists and is not banned (but allow multiple devices - don't require exact token match)
       const [users] = await db_pool.query(
-        "SELECT id, username, role, banned, ban_expires_at FROM users WHERE id = ?",
+        "SELECT id, username, role, admin_level, banned, ban_expires_at FROM users WHERE id = ?",
         [user.id]
       );
 
@@ -5574,7 +5600,7 @@ app.post('/api/token', async (req, res) => {
       }
 
       // Generate new access token
-      const userPayload = { id: dbUser.id, username: dbUser.username, role: dbUser.role };
+      const userPayload = { id: dbUser.id, username: dbUser.username, role: dbUser.role, admin_level: dbUser.admin_level ?? null };
       const accessToken = generateAccessToken(userPayload);
 
       // Update last_active_at on token refresh (runs ~every 15 min for active users)
@@ -6942,6 +6968,10 @@ app.delete("/api/pieces/:pieceId", authenticateToken, async (req, res) => {
     if (existingPiece.creator_id !== parseInt(userId)) {
       const creator = await dbHelpers.findUserById(existingPiece.creator_id);
       const creatorRole = creator?.role || 'user';
+      // Admin 2 cannot delete pieces
+      if (userRole === 'admin' && req.user.admin_level === 2) {
+        return res.status(403).send({ message: "Admin 2 does not have permission to delete pieces" });
+      }
       if (!canModerate(userRole, creatorRole)) {
         return res.status(403).send({ message: "You don't have permission to delete this piece" });
       }
@@ -7300,7 +7330,7 @@ app.post("/api/admin/pieces/:pieceId/approve-moderation", authenticateAdmin, asy
 
 const trainingManager = require('./ai/training-manager');
 
-app.get('/api/admin/ai-training/status', authenticateAdmin, async (req, res) => {
+app.get('/api/admin/ai-training/status', authenticateAdmin1, async (req, res) => {
   try {
     const built = trainingManager.REMOTE_MODE
       ? await trainingManager.isRustBuiltRemote()
@@ -7321,7 +7351,7 @@ app.get('/api/admin/ai-training/status', authenticateAdmin, async (req, res) => 
   }
 });
 
-app.get('/api/admin/ai-training/jobs', authenticateAdmin, async (req, res) => {
+app.get('/api/admin/ai-training/jobs', authenticateAdmin1, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     const jobs = await trainingManager.listJobs(limit);
@@ -7332,7 +7362,7 @@ app.get('/api/admin/ai-training/jobs', authenticateAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/admin/ai-training/jobs/:id', authenticateAdmin, async (req, res) => {
+app.get('/api/admin/ai-training/jobs/:id', authenticateAdmin1, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
@@ -7345,7 +7375,7 @@ app.get('/api/admin/ai-training/jobs/:id', authenticateAdmin, async (req, res) =
   }
 });
 
-app.post('/api/admin/ai-training/jobs', authenticateAdmin, async (req, res) => {
+app.post('/api/admin/ai-training/jobs', authenticateAdmin1, async (req, res) => {
   try {
     const {
       gameTypeId,
@@ -7383,7 +7413,7 @@ app.post('/api/admin/ai-training/jobs', authenticateAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/ai-training/jobs/:id/stop', authenticateAdmin, async (req, res) => {
+app.post('/api/admin/ai-training/jobs/:id/stop', authenticateAdmin1, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
@@ -7398,7 +7428,7 @@ app.post('/api/admin/ai-training/jobs/:id/stop', authenticateAdmin, async (req, 
   }
 });
 
-app.post('/api/admin/ai-training/jobs/:id/resume', authenticateAdmin, async (req, res) => {
+app.post('/api/admin/ai-training/jobs/:id/resume', authenticateAdmin1, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
@@ -7417,7 +7447,7 @@ app.post('/api/admin/ai-training/jobs/:id/resume', authenticateAdmin, async (req
 // already accepts the uploads we'd be producing.
 // Download the plain-text game transcript written directly by the Rust trainer.
 // The file is already human-readable; just stream it as-is.
-app.get('/api/admin/ai-training/jobs/:id/game-log', authenticateAdmin, async (req, res) => {
+app.get('/api/admin/ai-training/jobs/:id/game-log', authenticateAdmin1, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
@@ -7531,7 +7561,7 @@ function _replayParseMoveLine(line, boardHeight) {
   return { moveNum, player, pieceName, fromX, fromY, toX, toY, isCapture, isCastling, castleSide, capturedName, promotesTo };
 }
 
-app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin, async (req, res) => {
+app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin1, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
@@ -7623,7 +7653,7 @@ app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin, async 
   }
 });
 
-app.get('/api/admin/ai-training/jobs/:id/download', authenticateAdmin, async (req, res) => {
+app.get('/api/admin/ai-training/jobs/:id/download', authenticateAdmin1, async (req, res) => {
   try {
     if (trainingManager.REMOTE_MODE) {
       return res.status(400).send({
@@ -7660,7 +7690,7 @@ app.get('/api/admin/ai-training/jobs/:id/download', authenticateAdmin, async (re
 // for a specific job. The DB row is preserved so job history remains
 // visible. In remote mode the trainer and backend share the same MySQL
 // instance and filesystem path conventions, so we delete directly.
-app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin, async (req, res) => {
+app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin1, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
@@ -7721,7 +7751,7 @@ app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin, async (req
 // the DB row from `ai_training_jobs`. Refuses to delete a running job;
 // admin must stop it first. Use this when a job is no longer wanted in
 // history at all (vs. /data which keeps the row for audit).
-app.delete('/api/admin/ai-training/jobs/:id', authenticateAdmin, async (req, res) => {
+app.delete('/api/admin/ai-training/jobs/:id', authenticateAdmin1, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
@@ -7802,16 +7832,16 @@ app.get('/api/ai-models/:gameTypeId/availability', async (req, res) => {
 // not affected. Status is in-memory only — a server restart resets to
 // "not paused" (intentional: we don't want a forgotten pause to silently
 // block training forever).
-app.get('/api/admin/ai-training/pause-status', authenticateAdmin, (req, res) => {
+app.get('/api/admin/ai-training/pause-status', authenticateAdmin1, (req, res) => {
   res.json(trainingManager.isNewJobsPaused());
 });
 
-app.post('/api/admin/ai-training/pause', authenticateAdmin, (req, res) => {
+app.post('/api/admin/ai-training/pause', authenticateAdmin1, (req, res) => {
   trainingManager.pauseNewJobs(req.body?.reason || 'paused by admin');
   res.json(trainingManager.isNewJobsPaused());
 });
 
-app.post('/api/admin/ai-training/resume', authenticateAdmin, (req, res) => {
+app.post('/api/admin/ai-training/resume', authenticateAdmin1, (req, res) => {
   trainingManager.resumeNewJobs();
   res.json(trainingManager.isNewJobsPaused());
 });
@@ -7822,7 +7852,7 @@ app.post('/api/admin/ai-training/resume', authenticateAdmin, (req, res) => {
 //
 // This is a destructive nuclear option — admin must pass `confirm: true`
 // in the request body to prevent accidental invocations.
-app.delete('/api/admin/ai-training/wipe', authenticateAdmin, async (req, res) => {
+app.delete('/api/admin/ai-training/wipe', authenticateAdmin1, async (req, res) => {
   try {
     const { gameTypeId, confirm: confirmed } = req.body || {};
     if (!confirmed) {
@@ -8022,7 +8052,7 @@ const trainingAnalysis = require('./ai/training-analysis');
 
 // Return the set of game_type_ids that have at least one completed/uploaded training job.
 // Used by the admin UI to filter the analysis dropdown to only games with actual data.
-app.get('/api/admin/ai-training/trained-game-types', authenticateAdmin, async (req, res) => {
+app.get('/api/admin/ai-training/trained-game-types', authenticateAdmin1, async (req, res) => {
   try {
     const [rows] = await db_pool.query(
       `SELECT DISTINCT game_type_id FROM ai_training_jobs
@@ -8590,6 +8620,17 @@ function authenticateAdmin(req, res, next) {
   authenticateToken(req, res, () => {
     if (req.user.role !== 'admin' && req.user.role !== 'owner') {
       return res.status(403).send({ message: "Admin access required" });
+    }
+    next();
+  });
+}
+
+// Requires Admin 1 (full admin) or owner — Admin 2 is blocked.
+function authenticateAdmin1(req, res, next) {
+  authenticateToken(req, res, () => {
+    const role = req.user.role;
+    if (role !== 'owner' && (role !== 'admin' || req.user.admin_level === 2)) {
+      return res.status(403).send({ message: "Admin level 1 or owner access required" });
     }
     next();
   });
@@ -10304,7 +10345,7 @@ app.get("/api/site-settings", async (req, res) => {
 });
 
 // Admin: Get all site settings
-app.get("/api/admin/site-settings", authenticateAdmin, async (req, res) => {
+app.get("/api/admin/site-settings", authenticateAdmin1, async (req, res) => {
   try {
     const [rows] = await db_pool.query("SELECT * FROM site_settings ORDER BY setting_key");
     res.json({ settings: rows });
@@ -10315,7 +10356,7 @@ app.get("/api/admin/site-settings", authenticateAdmin, async (req, res) => {
 });
 
 // Admin: Update a site setting
-app.put("/api/admin/site-settings/:key", authenticateAdmin, async (req, res) => {
+app.put("/api/admin/site-settings/:key", authenticateAdmin1, async (req, res) => {
   try {
     const { key } = req.params;
     const { value } = req.body;
@@ -10337,7 +10378,7 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin, async (req, res) => 
 // Admins are trusted to upload appropriate images.
 app.post(
   "/api/admin/about/upload-picture",
-  authenticateAdmin,
+  authenticateAdmin1,
   profilePictureUpload.single('picture'),
   async (req, res) => {
     try {
@@ -10468,7 +10509,7 @@ app.post("/api/poll/:id/vote", authenticateToken, async (req, res) => {
 // ── Admin poll endpoints ──────────────────────────────────────────────────────
 
 // GET /api/admin/poll  — return all polls (most recent first)
-app.get("/api/admin/poll", authenticateAdmin, async (req, res) => {
+app.get("/api/admin/poll", authenticateAdmin1, async (req, res) => {
   try {
     const [polls] = await db_pool.query(
       `SELECT id, question, options, is_visible, expires_at, created_at, updated_at
@@ -10485,7 +10526,7 @@ app.get("/api/admin/poll", authenticateAdmin, async (req, res) => {
 });
 
 // GET /api/admin/poll/:id/results  — per-option voter list
-app.get("/api/admin/poll/:id/results", authenticateAdmin, async (req, res) => {
+app.get("/api/admin/poll/:id/results", authenticateAdmin1, async (req, res) => {
   try {
     const pollId = parseInt(req.params.id);
     const [[poll]] = await db_pool.query(`SELECT * FROM polls WHERE id = ?`, [pollId]);
@@ -10524,7 +10565,7 @@ app.get("/api/admin/poll/:id/results", authenticateAdmin, async (req, res) => {
 });
 
 // POST /api/admin/poll  — create a new poll
-app.post("/api/admin/poll", authenticateAdmin, async (req, res) => {
+app.post("/api/admin/poll", authenticateAdmin1, async (req, res) => {
   try {
     let { question, options, is_visible, expires_at } = req.body;
     question = (question || '').trim();
@@ -10553,7 +10594,7 @@ app.post("/api/admin/poll", authenticateAdmin, async (req, res) => {
 });
 
 // PUT /api/admin/poll/:id  — update poll settings
-app.put("/api/admin/poll/:id", authenticateAdmin, async (req, res) => {
+app.put("/api/admin/poll/:id", authenticateAdmin1, async (req, res) => {
   try {
     const pollId = parseInt(req.params.id);
     const [[existing]] = await db_pool.query(`SELECT * FROM polls WHERE id = ?`, [pollId]);
@@ -10598,7 +10639,7 @@ app.put("/api/admin/poll/:id", authenticateAdmin, async (req, res) => {
 });
 
 // DELETE /api/admin/poll/:id  — delete poll and all its votes
-app.delete("/api/admin/poll/:id", authenticateAdmin, async (req, res) => {
+app.delete("/api/admin/poll/:id", authenticateAdmin1, async (req, res) => {
   try {
     const pollId = parseInt(req.params.id);
     const [[existing]] = await db_pool.query(`SELECT id FROM polls WHERE id = ?`, [pollId]);
