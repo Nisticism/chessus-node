@@ -2511,26 +2511,50 @@
   }
 
   &.impassable-square {
+    // Solid border frame — slightly lighter gray, 80% opacity, same color on
+    // all square colors. Thickness scales up at larger viewports.
     &::before {
       content: '';
       position: absolute;
       inset: 0;
-      border: 6px solid rgba(60, 60, 60, 0.75);
+      border: 9px solid rgba(100, 100, 100, 0.8);
       box-sizing: border-box;
       pointer-events: none;
       z-index: 1;
 
       @media (min-width: 768px) {
-        border-width: 8px;
+        border-width: 12px;
       }
 
       @media (min-width: 1200px) {
-        border-width: 10px;
+        border-width: 15px;
       }
     }
 
-    &.dark::before {
-      border-color: rgba(255, 255, 255, 0.8);
+    // Perpendicular tick-mark grid overlaid on the border strips.
+    // Lines are 2px wide every 15px — creates a brick-scored look.
+    // They are subtle in the open center since that area is transparent.
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        repeating-linear-gradient(
+          90deg,
+          transparent 0,
+          transparent 13px,
+          rgba(45, 45, 45, 0.55) 13px,
+          rgba(45, 45, 45, 0.55) 15px
+        ),
+        repeating-linear-gradient(
+          0deg,
+          transparent 0,
+          transparent 13px,
+          rgba(45, 45, 45, 0.55) 13px,
+          rgba(45, 45, 45, 0.55) 15px
+        );
+      pointer-events: none;
+      z-index: 2;
     }
   }
 }
