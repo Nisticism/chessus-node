@@ -114,6 +114,11 @@ const Register = () => {
   };
 
   const handleGoogleSuccess = (credentialResponse) => {
+    if (!agreedToTerms) {
+      setMessageDisplay(true);
+      dispatch({ type: "SET_MESSAGE", payload: "You must agree to the Terms and Conditions to create an account." });
+      return;
+    }
     dispatch(googleLogin(credentialResponse.credential))
       .then((data) => {
         trackRegistration('google');
@@ -129,6 +134,11 @@ const Register = () => {
   };
 
   const handleLichessSignup = () => {
+    if (!agreedToTerms) {
+      setMessageDisplay(true);
+      dispatch({ type: "SET_MESSAGE", payload: "You must agree to the Terms and Conditions to create an account." });
+      return;
+    }
     try {
       startLichessOAuth();
     } catch (err) {
@@ -215,15 +225,17 @@ const Register = () => {
               </div>
 
               <div className={styles["social-row"]}>
-                <div className={styles["google-wrapper"]}>
-                  <GoogleLogin
-                    onSuccess={handleGoogleSuccess}
-                    onError={handleGoogleError}
-                    theme="filled_black"
-                    size="large"
-                    text="signup_with"
-                    width="320"
-                  />
+                <div style={!agreedToTerms ? { opacity: 0.45, pointerEvents: 'none' } : {}}>
+                  <div className={styles["google-wrapper"]}>
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={handleGoogleError}
+                      theme="filled_black"
+                      size="large"
+                      text="signup_with"
+                      width="320"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -233,6 +245,7 @@ const Register = () => {
                     type="button"
                     onClick={handleLichessSignup}
                     className={styles["lichess-button"]}
+                    disabled={!agreedToTerms}
                   >
                     <img src="https://lichess.org/assets/logo/lichess-favicon-32.png" alt="Lichess" className={styles["lichess-icon"]} />
                     Sign up with Lichess

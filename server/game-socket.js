@@ -2521,6 +2521,19 @@ function initializeSocket(server) {
       }
     });
 
+    // Report real user activity (click/keydown/scroll) - updates last_active_at
+    socket.on("reportActivity", () => {
+      try {
+        const userId = socket.userId;
+        if (userId) {
+          db_pool.query("UPDATE users SET last_active_at = NOW() WHERE id = ?", [userId])
+            .catch(err => console.error("Error updating last_active_at on activity:", err.message));
+        }
+      } catch (err) {
+        console.error("Error in reportActivity handler:", err);
+      }
+    });
+
     // Get list of open games waiting for players
     socket.on("getOpenGames", async () => {
       try {

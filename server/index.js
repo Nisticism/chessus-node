@@ -5603,10 +5603,6 @@ app.post('/api/token', async (req, res) => {
       const userPayload = { id: dbUser.id, username: dbUser.username, role: dbUser.role, admin_level: dbUser.admin_level ?? null };
       const accessToken = generateAccessToken(userPayload);
 
-      // Update last_active_at on token refresh (runs ~every 15 min for active users)
-      db_pool.query("UPDATE users SET last_active_at = NOW() WHERE id = ?", [dbUser.id])
-        .catch(err => console.error("Error updating last_active_at:", err.message));
-
       res.json({ accessToken });
     });
   } catch (err) {

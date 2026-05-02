@@ -140,6 +140,39 @@ export const SocketProvider = ({ children }) => {
     }
   }, [user, socket, connected]);
 
+  // Activity tracking: update last_active_at only when the user actually interacts
+  // with the page (click, keydown, scroll). Idle users won't be kept active by
+  // silent JWT refreshes alone. Threshold: 10 minutes of inactivity = idle.
+  useEffect(() => {
+    if (!socket || !connected || !user) return;
+
+    const IDLE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+    const PING_INTERVAL_MS  = 60 * 1000;       // emit at most once per minute
+
+    let lastInteractionAt = Date.now();
+
+    const handleInteraction = () => {
+      lastInteractionAt = Date.now();
+    };
+
+    window.addEventListener('click',   handleInteraction);
+    window.addEventListener('keydown', handleInteraction);
+    window.addEventListener('scroll',  handleInteraction, { passive: true });
+
+    const intervalId = setInterval(() => {
+      if (Date.now() - lastInteractionAt < IDLE_THRESHOLD_MS) {
+        socket.emit('reportActivity');
+      }
+    }, PING_INTERVAL_MS);
+
+    return () => {
+      window.removeEventListener('click',   handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+      window.removeEventListener('scroll',  handleInteraction);
+      clearInterval(intervalId);
+    };
+  }, [socket, connected, user]);
+
   // Fetch open games
   const fetchOpenGames = useCallback(() => {
     if (socket && connected) {
