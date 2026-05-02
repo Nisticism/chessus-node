@@ -4,21 +4,26 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
-    date: "May 3, 2026",
-    title: "Impassable squares block piece placement in game wizard; PM2 logs now show CST time",
+    date: "May 2, 2026",
+    title: "Simul turns improvements, disconnect timer fixes, admin split, impassable squares, UI consistency",
     items: [
+      "In simultaneous turn games, you can now capture your own pieces. Any piece that can attack enemies may also move to a square occupied by one of your own pieces, sacrificing it. If your opponent moves to that same square at the same time, their piece is captured too — use this as a trap to predict and punish your opponent's moves. This mechanic is described in the simultaneous turns tooltip in the game wizard.",
+      "Bug fix: in simultaneous turn games, a piece that moves away from a square can no longer be captured at the square it left — even if it also captures something on its new square.",
+      "Captured pieces now display correctly during simultaneous-turns games without requiring a page reload.",
+      "Self-captured pieces (when you capture your own piece) appear in your captured section, but the material advantage is correctly awarded to your opponent.",
+      "Disconnect timer pause/resume: the timer now resumes from where it was paused instead of restarting at the full duration. The remaining time is also shown while the timer is paused.",
+      "Bug fix: the pause/resume disconnect timer buttons now work correctly for guest (non-logged-in) players.",
+      "Bug fix: the game over screen now correctly shows 'You Won' / 'You Lost' for guest players.",
+      "Bug fix: the disconnect countdown banner no longer stays visible after the game over screen appears.",
+      "Bug fix: reconnecting as a guest no longer causes the disconnect countdown to keep running for the other player.",
+      "The admin role is now split into Admin 1 and Admin 2. Both display the same admin badge. Admin 1 has full access. Admin 2 has restricted access: they cannot delete users, game types, news, forums, or pieces, and they do not have access to the Poll, Site Settings, or AI Training sections of the admin dashboard.",
+      "When the owner promotes a user to admin, a dialog now asks whether to grant Admin 1 or Admin 2 — with a highlighted note that Admin 1 has more power.",
       "Custom squares in the game wizard can now be marked as Impassable. Pieces cannot land on or move through an impassable square. Pieces with Ghostwalk can still pass through, hopping pieces can hop over but cannot land, and ranged attacks cannot fire through impassable squares. Impassable squares are always shown with a thick faint gray border during live and correspondence games.",
       "Step 4 of the game wizard (Piece Placement) now prevents placing pieces on impassable squares — the square shows a gray overlay and all placement interactions are blocked. Attempting to publish a game with pieces on impassable squares shows a warning modal listing the conflicts; draft saves are not affected.",
-      "Fixed inconsistent spacing between toggle switches on Step 4 of the piece wizard (Can Promote and Can Castle no longer have extra margin between them).",
-      "Fixed toggle switches inside sub-fields on piece wizard steps occasionally rendering the label out of alignment with the switch.",
-    ],
-  },
-  {
-    date: "May 2, 2026",
-    title: "UI consistency pass — toggle switches and number inputs",
-    items: [
       "All boolean settings across the site now use consistent toggle switches instead of checkboxes — including the piece wizard, game wizard, live game options, sandbox rules, preferences, AI training panel, admin dashboard, and the donate page.",
       "Small-range numeric inputs in the sandbox (actions per turn, draw move limit, repetition draw) and the tournament wizard (min/max players) now use the standard incrementor control for easier adjustment.",
+      "Fixed inconsistent spacing between toggle switches on Step 4 of the piece wizard (Can Promote and Can Castle no longer have extra margin between them).",
+      "Fixed toggle switches inside sub-fields on piece wizard steps occasionally rendering the label out of alignment with the switch.",
     ],
   },
   {

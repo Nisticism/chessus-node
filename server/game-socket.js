@@ -553,8 +553,10 @@ function getDisconnectGraceMs(timeControlMinutes) {
 
 /**
  * Start a disconnect-forfeit timer for a player who left an active game.
- * If the player doesn't reconnect (or the opponent doesn't pause) before
- * the timer fires, the opponent wins by disconnect.
+ * Includes a 5-second silent grace period: if the player reconnects within
+ * those 5 seconds the UI is never notified and no forfeit is queued.
+ * After the grace period, the opponent sees the disconnect banner and the
+ * real forfeit countdown starts.
  */
 function startDisconnectForfeitTimer(io, gameId, userId, durationMs) {
   const gameIdStr = String(gameId);
@@ -563,46 +565,61 @@ function startDisconnectForfeitTimer(io, gameId, userId, durationMs) {
   if (gameDisconnectTimers.has(key)) return;
 
   const gameState = activeGames.get(gameIdStr);
-  if (!gameState || gameState.status !== 'active') return;
+  // Allow simul games in 'ready' state — they are functionally in-progress.
+  const isInProgress = gameState?.status === 'active' ||
+    (gameState?.status === 'ready' && isSimulTurns(gameState));
+  if (!gameState || !isInProgress) return;
   // Skip bot games — there's no human opponent to award a win to on the bot side,
   // and the human's own disconnect can be resumed by reload anyway.
   if (gameState.botPlayer) return;
   // Skip unlimited time control games — there is no clock pressure so there
   // is no reason to forfeit on disconnect.
   if (!gameState.timeControl) return;
-  // Skip until every human player has made at least one move — prevents a
-  // forfeit when one player hasn't loaded yet and the other navigates away
-  // before the game is properly underway.
-  const humanPlayers = (gameState.players || []).filter(p => !p.isBot);
-  const playersWhoMoved = new Set((gameState.moveHistory || []).map(m => m.player));
-  if (humanPlayers.length > 0 && !humanPlayers.every(p => playersWhoMoved.has(p.id))) return;
 
-  const expiresAt = Date.now() + durationMs;
-  const timeoutId = setTimeout(() => {
-    endGameByDisconnect(io, gameIdStr, userId).catch(err =>
-      console.error(`endGameByDisconnect error for game ${gameIdStr}:`, err)
-    );
-  }, durationMs);
+  const GRACE_MS = 5000;
 
-  gameDisconnectTimers.set(key, {
-    timeoutId,
-    expiresAt,
+  // Preliminary entry — visible to clearDisconnectForfeitTimer but not yet
+  // announced to the client (gracePending = true).
+  const entry = {
+    timeoutId: null,
+    graceTimeoutId: null,
+    expiresAt: Date.now() + GRACE_MS + durationMs,
     durationMs,
     paused: false,
     remainingMs: durationMs,
     gameId: gameIdStr,
     userId,
-  });
+    gracePending: true,
+  };
+  gameDisconnectTimers.set(key, entry);
 
-  const player = gameState.players?.find(p => p.id === userId);
-  io.to(`game-${gameIdStr}`).emit('opponentDisconnected', {
-    gameId: gameIdStr,
-    userId,
-    username: player?.username || null,
-    durationMs,
-    expiresAt,
-    paused: false,
-  });
+  entry.graceTimeoutId = setTimeout(() => {
+    const currentEntry = gameDisconnectTimers.get(key);
+    if (!currentEntry) return; // was cancelled during grace (silent reconnect)
+
+    // Grace period expired — player is still gone; announce and start real timer.
+    currentEntry.gracePending = false;
+    const realExpiresAt = Date.now() + durationMs;
+    currentEntry.expiresAt = realExpiresAt;
+
+    const gs = activeGames.get(gameIdStr);
+    const player = gs?.players?.find(p => p.id === userId);
+    io.to(`game-${gameIdStr}`).emit('opponentDisconnected', {
+      gameId: gameIdStr,
+      userId,
+      username: player?.username || null,
+      durationMs,
+      expiresAt: realExpiresAt,
+      paused: false,
+    });
+
+    const timeoutId = setTimeout(() => {
+      endGameByDisconnect(io, gameIdStr, userId).catch(err =>
+        console.error(`endGameByDisconnect error for game ${gameIdStr}:`, err)
+      );
+    }, durationMs);
+    currentEntry.timeoutId = timeoutId;
+  }, GRACE_MS);
 }
 
 /**
@@ -614,9 +631,13 @@ function clearDisconnectForfeitTimer(gameId, userId, { broadcast = false, io = n
   const key = gdtKey(gameIdStr, userId);
   const entry = gameDisconnectTimers.get(key);
   if (!entry) return false;
+  if (entry.graceTimeoutId) clearTimeout(entry.graceTimeoutId);
   if (entry.timeoutId) clearTimeout(entry.timeoutId);
   gameDisconnectTimers.delete(key);
-  if (broadcast && io) {
+  // Only broadcast opponentReconnected if the grace period already elapsed and
+  // the disconnect banner was actually shown.  If we're still in grace, clear
+  // silently — the opponent never saw the disconnect, so no "reconnected" event.
+  if (broadcast && io && !entry.gracePending) {
     io.to(`game-${gameIdStr}`).emit('opponentReconnected', {
       gameId: gameIdStr,
       userId,
@@ -1188,9 +1209,11 @@ function validateSimulMoveProposal(gameState, playerId, move) {
   // For ranged attacks the source piece does not move. For normal moves the
   // destination is a candidate displacement target.
   let capturedPieceId = null;
+  let isAllyCapture = false;
   const occupant = (gameState.pieces || []).find(p => p.x === toX && p.y === toY && String(p.id) !== String(piece.id));
-  if (occupant && (occupant.team || occupant.player_id) !== playerPosition) {
+  if (occupant) {
     capturedPieceId = occupant.id;
+    isAllyCapture = (occupant.team || occupant.player_id) === playerPosition;
   }
   return {
     ok: true,
@@ -1201,6 +1224,7 @@ function validateSimulMoveProposal(gameState, playerId, move) {
     sourceX: piece.x,
     sourceY: piece.y,
     capturedPieceId,
+    isAllyCapture,
     isPlace: false,
     // Promotion is detected at proposal time so handleSimulMoveSubmission
     // can pop the modal before the round resolves.
@@ -1417,6 +1441,7 @@ function applySimulMovement(gameState, proposal, playerId, safelyMovingPieceIds)
   }
   const piece = gameState.pieces.find(p => String(p.id) === String(proposal.sourcePieceId));
   if (!piece) return { applied: false };
+  const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
   const captured = [];
   // Capture by displacement: any enemy piece on the destination square is removed.
   const occupantIdx = gameState.pieces.findIndex(p =>
@@ -1424,28 +1449,31 @@ function applySimulMovement(gameState, proposal, playerId, safelyMovingPieceIds)
   );
   if (occupantIdx >= 0) {
     const occupant = gameState.pieces[occupantIdx];
-    const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
     if ((occupant.team || occupant.player_id) !== playerPosition) {
-      // BUGFIX: if the occupant is itself moving away this round AND its move
-      // is a non-capture (a pure escape), the attacker should NOT capture it
-      // — both pieces survive, with the attacker arriving at the square the
-      // defender just vacated. Mutual-capture (both proposals carry capture
-      // intent) is preserved — both captures still resolve.
+      // A piece that is moving away from its current square this round
+      // cannot be captured at that square — it has already left. This
+      // applies even if the escaping piece is itself capturing something
+      // at its destination. Mutual swaps (both going to each other's source)
+      // are handled atomically before this code runs and never reach here.
       if (safelyMovingPieceIds && safelyMovingPieceIds.has(String(occupant.id))) {
-        // skip capture; the attacker still moves below
+        // occupant vacated this square; attacker still moves but captures nothing
       } else {
         captured.push(occupant);
         gameState.pieces.splice(occupantIdx, 1);
       }
     } else {
-      // Friendly fire shouldn't have passed validation; bail.
-      return { applied: false };
+      // Ally capture (simul-turns self-sacrifice trap): remove the ally.
+      captured.push(occupant);
+      gameState.pieces.splice(occupantIdx, 1);
     }
   }
   const fromX = piece.x, fromY = piece.y;
   piece.x = proposal.destX;
   piece.y = proposal.destY;
   if (piece.has_moved !== undefined) piece.has_moved = true;
+  const allyCaptureIds = captured
+    .filter(c => (c.team || c.player_id) === playerPosition)
+    .map(c => String(c.id));
   return {
     applied: true,
     capturedPieceIds: captured.map(c => c.id),
@@ -1453,10 +1481,14 @@ function applySimulMovement(gameState, proposal, playerId, safelyMovingPieceIds)
     moveRecord: {
       type: 'move',
       playerId,
+      position: playerPosition,
       pieceId: piece.id,
       from: { x: fromX, y: fromY },
       to: { x: proposal.destX, y: proposal.destY },
+      captured: captured.length === 1 ? captured[0] : (captured.length > 1 ? captured[0] : undefined),
+      allCaptured: captured.length > 1 ? captured : undefined,
       capturedPieceIds: captured.map(c => c.id),
+      ...(allyCaptureIds.length > 0 ? { capturedAllyPieceIds: allyCaptureIds } : {}),
       timestamp: Date.now(),
     },
   };
@@ -1487,8 +1519,8 @@ function applySimulRangedAttack(gameState, proposal, playerId) {
     };
   }
   const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
-  if ((target.team || target.player_id) === playerPosition) {
-    // Don't friendly-fire after movement; treat as no-op.
+  if ((target.team || target.player_id) === playerPosition && !gameState.gameType?.simultaneous_turns) {
+    // Don't friendly-fire in non-simul games; treat as no-op.
     return {
       applied: true,
       capturedPieceIds: [],
@@ -1511,6 +1543,10 @@ function applySimulRangedAttack(gameState, proposal, playerId) {
     const idx = gameState.pieces.indexOf(target);
     if (idx >= 0) gameState.pieces.splice(idx, 1);
   }
+  const rangedPlayerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
+  const rangedAllyCaptureIds = captured
+    .filter(c => (c.team || c.player_id) === rangedPlayerPosition)
+    .map(c => String(c.id));
   return {
     applied: true,
     capturedPieceIds: captured.map(c => c.id),
@@ -1518,10 +1554,14 @@ function applySimulRangedAttack(gameState, proposal, playerId) {
     moveRecord: {
       type: 'ranged',
       playerId,
+      position: rangedPlayerPosition,
       pieceId: attacker.id,
       from: { x: attacker.x, y: attacker.y },
       to: { x: proposal.destX, y: proposal.destY },
+      captured: captured.length > 0 ? captured[0] : undefined,
+      allCaptured: captured.length > 1 ? captured : undefined,
       capturedPieceIds: captured.map(c => c.id),
+      ...(rangedAllyCaptureIds.length > 0 ? { capturedAllyPieceIds: rangedAllyCaptureIds } : {}),
       damage: ad,
       timestamp: Date.now(),
     },
@@ -1577,10 +1617,18 @@ async function resolveSimulRound(io, gameId, gameState) {
           cancellationReasons[b.playerId] = 'place_vs_move';
         }
       } else {
-        // Both movement (or place-vs-place): cancel both.
-        cancelled.add(a.playerId); cancelled.add(b.playerId);
-        cancellationReasons[a.playerId] = 'same_square';
-        cancellationReasons[b.playerId] = 'same_square';
+        // Both movement (or place-vs-place).
+        // Exception: if one player is intentionally capturing their own ally at
+        // the destination (simul trap mechanic), let both proceed — Phase A handles it.
+        const aIsAllyCapture = !a.isPlace && a.kind !== 'ranged' && !!a.isAllyCapture;
+        const bIsAllyCapture = !b.isPlace && b.kind !== 'ranged' && !!b.isAllyCapture;
+        if (aIsAllyCapture !== bIsAllyCapture) {
+          // One player is trapping via self-sacrifice; don't cancel either.
+        } else {
+          cancelled.add(a.playerId); cancelled.add(b.playerId);
+          cancellationReasons[a.playerId] = 'same_square';
+          cancellationReasons[b.playerId] = 'same_square';
+        }
       }
     }
   }
@@ -1592,6 +1640,9 @@ async function resolveSimulRound(io, gameId, gameState) {
 
   // ---- Phase A: apply movement (non-cancelled, non-ranged) ----
   const survivorMoves = proposals.filter(p => !cancelled.has(p.playerId) && p.kind !== 'ranged');
+  // In simul-trap scenarios, non-ally-capture moves execute first so the opponent's
+  // piece arrives at the "trap" square before the ally-capturer arrives and claims it.
+  survivorMoves.sort((a, b) => (a.isAllyCapture ? 1 : 0) - (b.isAllyCapture ? 1 : 0));
   // Detect a swap (A→Bsource and B→Asource for two non-ranged movements):
   // apply both atomically to avoid the intermediate state where one piece
   // captures the other.
@@ -1615,12 +1666,18 @@ async function resolveSimulRound(io, gameId, gameState) {
   }
   const moveRecords = [];
   const allCapturedPieces = [];
-  // Build the set of piece ids that are "safely moving" (i.e. their proposal
-  // is a non-capture pure move). These pieces escape any incoming capture
-  // attempt this round — see the BUGFIX comment in applySimulMovement.
+  // Build the set of piece ids that are "safely moving away" from their
+  // current square. Any piece that is moving this round — whether it is
+  // escaping or also capturing at its destination — cannot be captured at
+  // the square it is leaving. This set is consulted inside applySimulMovement
+  // when the attacker's destination contains one of these pieces: if the
+  // occupant is in this set it means the occupant has already vacated that
+  // square and the attacker misses.
+  // NOTE: mutual direct-swap captures (A→Bsrc, B→Asrc) are detected and
+  // applied atomically above (appliedSwap), so they never reach this path.
   const safelyMovingPieceIds = new Set(
     survivorMoves
-      .filter(p => !p.isPlace && p.kind !== 'ranged' && !p.capturedPieceId)
+      .filter(p => !p.isPlace && p.kind !== 'ranged')
       .map(p => String(p.sourcePieceId))
   );
   if (appliedSwap) {
@@ -2019,7 +2076,8 @@ async function handleSimulReadyToStart(io, socket, gameState, gameId, userId) {
     return socket.emit('error', { message: 'Game is not ready to start yet.' });
   }
   // Make sure userId is one of the seated players.
-  const player = (gameState.players || []).find(p => Number(p.id) === Number(userId));
+  // Use String comparison so anon IDs like "anon_<socketId>" are matched correctly.
+  const player = (gameState.players || []).find(p => String(p.id) === String(userId));
   if (!player) {
     return socket.emit('error', { message: 'You are not a player in this game.' });
   }
@@ -7046,15 +7104,20 @@ function initializeSocket(server) {
           // forced to wait indefinitely. Reopening the game cancels it.
           try {
             const userId = socket.userId;
+            // Treat simul games in 'ready' state as in-progress for disconnect purposes.
+            // Until both players press Ready, the game is functionally started and the
+            // opponent shouldn't wait indefinitely if someone navigates away.
+            const isInProgress = gameState.status === 'active' ||
+              (gameState.status === 'ready' && isSimulTurns(gameState));
             if (
               userId &&
-              gameState.status === 'active' &&
+              isInProgress &&
               !gameState.botPlayer &&
               gameState.players?.some(p => p.id === userId)
             ) {
               const durationMs = getDisconnectGraceMs(gameState.timeControl);
               startDisconnectForfeitTimer(io, gameIdStr, userId, durationMs);
-            } else if (!userId && !socket.userId && gameState.status === 'active' && !gameState.botPlayer) {
+            } else if (!userId && !socket.userId && isInProgress && !gameState.botPlayer) {
               // Anonymous player leaving — find their slot by socket mapping
               const anonPlayer = gameState.players?.find(
                 p => typeof p.id === 'string' && p.id.startsWith('anon_') && userSockets.get(p.id) === socket.id
@@ -7079,13 +7142,18 @@ function initializeSocket(server) {
         const gameIdStr = String(gameId);
         const gameState = activeGames.get(gameIdStr);
         if (!gameState) return;
-        const requesterId = socket.userId;
+        // Resolve requesterId for both registered and anonymous (guest) players.
+        const requesterId = socket.userId ||
+          [...userSockets.entries()].find(([pid, sid]) => sid === socket.id)?.[0];
         if (!requesterId) return;
         // Find any disconnect timer for this game whose target is NOT the requester
         for (const [key, entry] of gameDisconnectTimers) {
           if (entry.gameId !== gameIdStr) continue;
           if (entry.userId === requesterId) continue;
           if (entry.paused) return;
+          // Don't pause while still in the silent grace period — the banner
+          // hasn't been shown yet, so the pause control isn't visible anyway.
+          if (entry.gracePending) return;
           if (entry.timeoutId) clearTimeout(entry.timeoutId);
           entry.timeoutId = null;
           entry.paused = true;
@@ -7109,25 +7177,27 @@ function initializeSocket(server) {
         const gameIdStr = String(gameId);
         const gameState = activeGames.get(gameIdStr);
         if (!gameState) return;
-        const requesterId = socket.userId;
+        // Resolve requesterId for both registered and anonymous (guest) players.
+        const requesterId = socket.userId ||
+          [...userSockets.entries()].find(([pid, sid]) => sid === socket.id)?.[0];
         if (!requesterId) return;
         for (const [key, entry] of gameDisconnectTimers) {
           if (entry.gameId !== gameIdStr) continue;
           if (entry.userId === requesterId) continue;
           if (!entry.paused) return;
-          const durationMs = entry.durationMs;
-          entry.expiresAt = Date.now() + durationMs;
-          entry.remainingMs = durationMs;
+          // Resume from where it was paused, not from the full original duration.
+          const resumeMs = entry.remainingMs;
+          entry.expiresAt = Date.now() + resumeMs;
           entry.paused = false;
           entry.timeoutId = setTimeout(() => {
             endGameByDisconnect(io, gameIdStr, entry.userId).catch(err =>
               console.error(`endGameByDisconnect error for game ${gameIdStr}:`, err)
             );
-          }, durationMs);
+          }, resumeMs);
           io.to(`game-${gameIdStr}`).emit('disconnectTimerResumed', {
             gameId: gameIdStr,
             userId: entry.userId,
-            durationMs,
+            durationMs: resumeMs,
             expiresAt: entry.expiresAt,
           });
           return;
@@ -7178,12 +7248,36 @@ function initializeSocket(server) {
                 gameState.playerTimes[newAnonId] = gameState.playerTimes[oldAnonId];
                 delete gameState.playerTimes[oldAnonId];
               }
+              // Remap pendingSimulMoves key so the buffered submission isn't orphaned
+              // and a second submit after reconnect doesn't create a phantom second player.
+              if (oldAnonId != null && gameState.pendingSimulMoves && Object.prototype.hasOwnProperty.call(gameState.pendingSimulMoves, oldAnonId)) {
+                gameState.pendingSimulMoves[newAnonId] = gameState.pendingSimulMoves[oldAnonId];
+                delete gameState.pendingSimulMoves[oldAnonId];
+              }
               // Cancel any pending disconnect-forfeit timer for the old ID
               if (oldAnonId) {
                 clearDisconnectForfeitTimer(String(gameId), oldAnonId, { broadcast: true, io, reason: 'reconnected' });
               }
               console.log(`[getGameState] Remapped anon slot ${oldAnonId} -> ${newAnonId} in game ${gameId}`);
+              // Notify everyone else in the room so their gameState.players and
+              // playerTimes stay consistent with the new anon ID.  Without this,
+              // the opponent's clock lookup uses the stale ID and shows infinity.
+              io.to(`game-${gameId}`).emit('playerListUpdated', {
+                gameId,
+                players: gameState.players,
+                playerTimes: gameState.playerTimes,
+              });
             }
+          }
+          // Cancel any disconnect timer for an anon player still mapped to THIS
+          // socket — covers same-socket re-entry (leaveGame then navigate back)
+          // where isOldSocketAlive was true and the remap block was skipped.
+          const sameSocketAnonId = gameState.players?.find(
+            p => typeof p.id === 'string' && p.id.startsWith('anon_') &&
+              userSockets.get(p.id) === socket.id
+          )?.id;
+          if (sameSocketAnonId) {
+            clearDisconnectForfeitTimer(String(gameId), sameSocketAnonId, { broadcast: true, io, reason: 'reconnected' });
           }
         }
         socket.emit("gameState", gameState);
@@ -8179,9 +8273,12 @@ function initializeSocket(server) {
 
         // Start a disconnect-forfeit timer for every active human-vs-human game
         // this user is participating in. Skip bot games. Reconnecting (auth) cancels it.
+        // Also covers simul games in 'ready' state — functionally in-progress.
         try {
           for (const [gameIdStr, gameState] of activeGames) {
-            if (!gameState || gameState.status !== 'active') continue;
+            const isInProgress = gameState.status === 'active' ||
+              (gameState.status === 'ready' && isSimulTurns(gameState));
+            if (!gameState || !isInProgress) continue;
             if (gameState.botPlayer) continue;
             const isPlayer = gameState.players?.some(p => p.id === userId);
             if (!isPlayer) continue;
@@ -8223,7 +8320,9 @@ function initializeSocket(server) {
           if (anonId) {
             userSockets.delete(anonId);
             for (const [gameIdStr, gameState] of activeGames) {
-              if (!gameState || gameState.status !== 'active') continue;
+              const isInProgress = gameState.status === 'active' ||
+                (gameState.status === 'ready' && isSimulTurns(gameState));
+              if (!gameState || !isInProgress) continue;
               if (gameState.botPlayer) continue;
               if (!gameState.players?.some(p => p.id === anonId)) continue;
               const durationMs = getDisconnectGraceMs(gameState.timeControl);
@@ -12188,7 +12287,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         if (isLandingSquare && !targetPiece.cannot_be_captured) {
           if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && canCaptureInDir && !hasGlobalFirstMoveOnlyCaptureRestriction) {
             moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
-          } else if (targetOwner === pieceOwner && piece.can_capture_allies) {
+          } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
             moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
           }
         }
@@ -12474,7 +12573,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         if (!targetPiece.cannot_be_captured) {
           if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
             moves.push({ x: targetX, y: targetY });
-          } else if (targetOwner === pieceOwner && piece.can_capture_allies) {
+          } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
             moves.push({ x: targetX, y: targetY });
           }
         }
@@ -12513,7 +12612,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
             if (!targetPiece.cannot_be_captured) {
               if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
                 moves.push({ x: targetX, y: targetY });
-              } else if (targetOwner === pieceOwner && piece.can_capture_allies) {
+              } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
                 moves.push({ x: targetX, y: targetY });
               }
             }
@@ -12650,7 +12749,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
             if (!targetPiece.cannot_be_captured) {
               if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
                 moves.push({ x: targetX, y: targetY });
-              } else if (targetOwner === pieceOwner && piece.can_capture_allies) {
+              } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
                 moves.push({ x: targetX, y: targetY });
               }
             }

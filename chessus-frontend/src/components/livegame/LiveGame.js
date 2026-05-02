@@ -565,14 +565,24 @@ const LiveGame = () => {
         // Restore simul-turns submission state from server-side pendingSimulMoves.
         // If this player already submitted a move this round (e.g. after a refresh),
         // mark them as submitted so the UI doesn't prompt them to stage again.
-        if (state.gameType?.simultaneous_turns && Array.isArray(state.players) && currentUser) {
-          const myId = String(currentUser.id);
+        // Also visually move the piece to its submitted destination so the board
+        // reflects the pending move until the round resolves or is cancelled.
+        if (state.gameType?.simultaneous_turns && Array.isArray(state.players)) {
+          // Determine this client's player ID — logged-in users use numeric id,
+          // guests use anon_<socketId> (the server remaps it during getGameState).
+          const myId = currentUser ? String(currentUser.id) : (socket?.id ? `anon_${socket.id}` : null);
           const pending = state.pendingSimulMoves || {};
-          if (pending[myId]) {
+          if (myId && pending[myId]) {
             setSimulSubmittedThisRound(true);
+            // Apply visual preview of our submitted-but-not-yet-resolved move.
+            // Only non-ranged, non-placement moves shift a piece visually.
+            const pendingMove = pending[myId].move;
+            if (pendingMove && pendingMove.pieceId != null && pendingMove.to && !pendingMove.isRangedAttack && pendingMove.type !== 'place') {
+              setGameState(prev => applyOptimisticMovePreview(prev, pendingMove));
+            }
           }
           // Restore opponent-submitted flag too
-          const opponentSubmitted = Object.keys(pending).some(pid => pid !== myId);
+          const opponentSubmitted = myId && Object.keys(pending).some(pid => pid !== myId);
           if (opponentSubmitted) setSimulOpponentSubmitted(true);
         }
 
@@ -954,8 +964,11 @@ const LiveGame = () => {
 
     const unsubscribeOpponentDisconnected = onGameEvent('opponentDisconnected', ({ gameId: gid, userId: uid, username, durationMs, expiresAt, paused }) => {
       if (parseInt(gid) !== parseInt(gameId)) return;
-      // Only show banner if the disconnected user is NOT the current viewer.
-      if (currentUser && parseInt(uid) === parseInt(currentUser.id)) return;
+      // Only show the banner if the disconnected user is NOT the current viewer.
+      // For logged-in users compare numeric IDs; for guests compare the anon_ string ID
+      // via currentPlayer (which already resolves the guest's slot by socket.id).
+      const myPlayerId = currentUser ? currentUser.id : currentPlayer?.id;
+      if (myPlayerId != null && String(uid) === String(myPlayerId)) return;
       setDisconnectInfo({ userId: uid, username: username || 'Opponent', durationMs, expiresAt, paused: !!paused, remainingMs: durationMs });
     });
 
@@ -973,6 +986,24 @@ const LiveGame = () => {
       if (parseInt(gid) !== parseInt(gameId)) return;
       setDisconnectInfo(prev => (prev && prev.userId === uid ? { ...prev, paused: false, durationMs, expiresAt, remainingMs: durationMs } : prev));
     });
+    // When an anon player reconnects with a new socket ID the server remaps their
+    // slot and broadcasts the updated players/playerTimes to the whole room so
+    // the opponent's clock lookup doesn't fall through to undefined (∞).
+    const unsubscribePlayerListUpdated = onGameEvent('playerListUpdated', ({ gameId: gid, players, playerTimes }) => {
+      if (parseInt(gid) !== parseInt(gameId)) return;
+      setGameState(prev => prev ? {
+        ...prev,
+        ...(players ? { players } : {}),
+        ...(playerTimes ? { playerTimes } : {}),
+      } : prev);
+      // Re-anchor the local interpolation so the clock doesn't stall after
+      // the ID remap replaces the playerTimes keys.
+      if (playerTimes) {
+        serverTimesRef.current = { ...playerTimes };
+        lastServerTickRef.current = Date.now();
+      }
+    });
+
     const unsubscribePlayerJoined = onGameEvent("playerJoined", ({ gameId: joinedGameId, gameState: newState }) => {
       if (parseInt(joinedGameId) === parseInt(gameId)) {
         clearOptimisticMoveSnapshot();
@@ -1329,11 +1360,16 @@ const LiveGame = () => {
       setPromotionIsSimul(false);
       setStagedSimulMove(null);
       if (typeof cancellationCount === 'number') setSimulCancellationCount(cancellationCount);
-      // Update pieces and clocks
+      // Update pieces, clocks, and move history
       setGameState(prev => ({
         ...prev,
         pieces: pieces ? [...pieces] : prev?.pieces,
         playerTimes: playerTimes || prev?.playerTimes,
+        // Append this round's move records so capturedPieces stays up to date
+        // without requiring a page reload.
+        moveHistory: prev?.moveHistory
+          ? [...prev.moveHistory, ...(moves || [])]
+          : (moves || []),
       }));
       if (playerTimes) {
         serverTimesRef.current = playerTimes;
@@ -1379,6 +1415,7 @@ const LiveGame = () => {
       unsubscribeSimulOpponentSubmitted();
       unsubscribeSimulResolved();
       unsubscribeSimulReady();
+      unsubscribePlayerListUpdated();
       unsubscribePlayerJoined();
       unsubscribeGameState();
       unsubscribeError();
@@ -2505,7 +2542,8 @@ const LiveGame = () => {
             if (occupyingPiece.ends_game_on_checkmate && !forPremove) continue;
           }
           // Handle friendly pieces at target
-          if (isFriendlyTarget && !piece.can_capture_allies) {
+          const simulAllyCapture = !!(gameState?.gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range));
+          if (isFriendlyTarget && !piece.can_capture_allies && !simulAllyCapture) {
             if (forPremove) {
               // Allow premove targeting friendly pieces (enemy might capture them first)
               // Exception: never premove-target own checkmate piece (e.g. your king)
@@ -2910,8 +2948,9 @@ const LiveGame = () => {
           if (toX === piece.x && toY === piece.y) continue;
           const targetPiece = findPieceAtSquare(pieces, toX, toY);
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
-          // Skip friendly pieces - show all other squares within range
-          if (targetPiece && targetTeam === pieceTeam) continue;
+          // Skip friendly pieces - in simul-turns games, self-sacrifice is allowed
+          const isSimulGame = !!(gameState?.gameType?.simultaneous_turns);
+          if (targetPiece && targetTeam === pieceTeam && !isSimulGame) continue;
           // Skip pieces that cannot be captured or are checkmate pieces
           if (targetPiece && (targetPiece.cannot_be_captured || targetPiece.ends_game_on_checkmate)) continue;
           // Already in moves as a regular capture? skip
@@ -3422,29 +3461,44 @@ const LiveGame = () => {
     const result = { player1: [], player2: [] };
     
     gameState.moveHistory.forEach(move => {
-      if (move.captured) {
-        // Use allCaptured array for multi-captures, otherwise single captured piece
-        const captures = move.allCaptured && move.allCaptured.length > 1
-          ? move.allCaptured
-          : [move.captured];
-        // The capturing player is indicated by move.position (1 or 2)
-        // The captured pieces belong to the opponent
-        if (move.position === 1) {
-          result.player1.push(...captures);
-        } else {
-          result.player2.push(...captures);
-        }
+      if (!move.captured && !move.allCaptured) return;
+      // Use allCaptured for multi-captures, otherwise single captured piece
+      const captures = move.allCaptured && move.allCaptured.length > 1
+        ? move.allCaptured
+        : [move.captured];
+      if (!captures.length || !captures[0]) return;
+
+      // Tag pieces that were ally self-captures so material advantage can be
+      // credited to the opponent (even though they display under the capturer).
+      const allyCaptureIdSet = new Set(move.capturedAllyPieceIds || []);
+      const taggedCaptures = captures.map(p =>
+        allyCaptureIdSet.has(String(p.id)) ? { ...p, _isAllyCapture: true } : p
+      );
+
+      // move.position is 1 or 2 (the capturing player's position)
+      if (move.position === 1) {
+        result.player1.push(...taggedCaptures);
+      } else if (move.position === 2) {
+        result.player2.push(...taggedCaptures);
       }
     });
     
     return result;
   }, [gameState?.moveHistory]);
 
-  // Compute approximate total value of captured pieces for each player
+  // Compute approximate total value of captured pieces for each player.
+  // Self-captured (ally) pieces count toward the OPPONENT's material advantage
+  // since the capturing player lost their own material.
   const capturedValues = useMemo(() => {
     const bs = Math.max(gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8);
-    const p1Val = totalMaterialValue(capturedPieces.player1, bs);
-    const p2Val = totalMaterialValue(capturedPieces.player2, bs);
+    const p1Normal = capturedPieces.player1.filter(p => !p._isAllyCapture);
+    const p2Normal = capturedPieces.player2.filter(p => !p._isAllyCapture);
+    const p1SelfCaptures = capturedPieces.player1.filter(p => p._isAllyCapture);
+    const p2SelfCaptures = capturedPieces.player2.filter(p => p._isAllyCapture);
+    // Player 1's material = enemy pieces they took + Player 2's self-sacrifices
+    const p1Val = totalMaterialValue(p1Normal, bs) + totalMaterialValue(p2SelfCaptures, bs);
+    // Player 2's material = enemy pieces they took + Player 1's self-sacrifices
+    const p2Val = totalMaterialValue(p2Normal, bs) + totalMaterialValue(p1SelfCaptures, bs);
     return {
       player1: Math.round(p1Val * 10) / 10,
       player2: Math.round(p2Val * 10) / 10
@@ -4784,14 +4838,14 @@ const LiveGame = () => {
               borderRadius: 6,
               background: 'rgba(0,0,0,0.35)',
               fontSize: '0.95rem',
-              color: gameOverData.winner === currentUser?.id
+              color: gameOverData.winner != null && gameOverData.winner === (currentUser ? currentUser.id : currentPlayer?.id)
                 ? '#7be38a'
                 : gameOverData.winner
                   ? '#ff8a8a'
                   : '#ffd278',
               fontWeight: 600,
             }}>
-              {(gameOverData.winner === currentUser?.id
+              {(gameOverData.winner != null && gameOverData.winner === (currentUser ? currentUser.id : currentPlayer?.id)
                 ? 'You won'
                 : gameOverData.winner
                   ? `${gameOverData.winnerUsername || 'Opponent'} won`
@@ -4972,7 +5026,7 @@ const LiveGame = () => {
       </div>
 
       {/* Disconnect-forfeit banner — placed at the top so it's always visible */}
-      {disconnectInfo && (() => {
+      {disconnectInfo && !showGameOver && (() => {
         const remainingMs = disconnectInfo.paused
           ? disconnectInfo.remainingMs
           : Math.max(0, disconnectInfo.expiresAt - disconnectNow);
@@ -4996,7 +5050,7 @@ const LiveGame = () => {
             <span>
               {disconnectInfo.username} disconnected.{' '}
               {disconnectInfo.paused
-                ? <>Timer paused.</>
+                ? <>Timer paused &mdash; <strong>{remainingSecs}s</strong> remaining.</>
                 : <>You win in <strong>{remainingSecs}s</strong>.</>
               }
             </span>
@@ -5696,7 +5750,7 @@ const LiveGame = () => {
                           const rawPath = piece.image || piece.image_url;
                           imgSrc = rawPath.startsWith('http') ? rawPath : `${ASSET_URL}${rawPath}`;
                         } else if (piece.image_location) {
-                          imgSrc = getPlayerImageUrl(piece.image_location, 2);
+                          imgSrc = getPlayerImageUrl(piece.image_location, piece.player_id || piece.team || 2);
                         }
                         return (
                           <div key={`p1-${index}`} className={styles["captured-piece"]} title={piece.piece_name}>
@@ -5737,7 +5791,7 @@ const LiveGame = () => {
                           const rawPath = piece.image || piece.image_url;
                           imgSrc = rawPath.startsWith('http') ? rawPath : `${ASSET_URL}${rawPath}`;
                         } else if (piece.image_location) {
-                          imgSrc = getPlayerImageUrl(piece.image_location, 1);
+                          imgSrc = getPlayerImageUrl(piece.image_location, piece.player_id || piece.team || 1);
                         }
                         return (
                           <div key={`p2-${index}`} className={styles["captured-piece"]} title={piece.piece_name}>
@@ -5981,10 +6035,10 @@ const LiveGame = () => {
             <h2>Game Over</h2>
             <div className={`
               ${styles.result}
-              ${gameOverData.winner === currentUser?.id ? styles.win : 
+              ${gameOverData.winner != null && gameOverData.winner === (currentUser ? currentUser.id : currentPlayer?.id) ? styles.win : 
                 gameOverData.winner ? styles.loss : styles.draw}
             `}>
-              {gameOverData.winner === currentUser?.id ? 'You Won!' : 
+              {gameOverData.winner != null && gameOverData.winner === (currentUser ? currentUser.id : currentPlayer?.id) ? 'You Won!' : 
                gameOverData.winner ? `${gameOverData.winnerUsername || 'Opponent'} Wins!` : 'Draw!'}
             </div>
             <div className={styles.reason}>
