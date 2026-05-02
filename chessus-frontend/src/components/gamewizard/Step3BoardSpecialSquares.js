@@ -458,6 +458,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         controlConfig: null,
         restrictFirstMoveToCustom: false,
         disableFirstMoveHere: false,
+        impassable: false,
       };
       setCustomSquares(prev => {
         const newSquares = { ...prev };

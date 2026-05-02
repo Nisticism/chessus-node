@@ -6,7 +6,8 @@ import PieceSelector from "../../components/gamewizard/PieceSelector";
 import { canRangedAttackTo, isRangedPathClear, isDestinationClear, doesPieceOccupySquare, getSquareHighlightStyle, canHopCaptureToUtil, canPieceMoveTo as canPieceMoveToUtil, canCaptureOnMoveTo as canCaptureOnMoveToUtil } from "../../helpers/pieceMovementUtils";
 import styles from "./sandbox.module.scss";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
-
+import ToggleSwitch from "../../components/common/ToggleSwitch";
+import NumberInput from "../../components/common/NumberInput";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import SquareHighlightOverlay from "../../components/common/SquareHighlightOverlay";
 import { handlePieceImageError } from "../../utils/pieceFallback";
@@ -2719,14 +2720,11 @@ const Sandbox = () => {
         <div className={styles["board-header"]}>
           <h2>{activeSandbox.name}</h2>
           <div className={styles["header-controls"]}>
-            <label className={styles["highlight-toggle"]}>
-              <input
-                type="checkbox"
-                checked={showHighlights}
-                onChange={(e) => setShowHighlights(e.target.checked)}
-              />
-              <span>Show move highlights</span>
-            </label>
+            <ToggleSwitch
+              checked={showHighlights}
+              onChange={(v) => setShowHighlights(v)}
+              label="Show move highlights"
+            />
           </div>
         </div>
         <div className={styles["turn-banner"]}>
@@ -3129,45 +3127,24 @@ const Sandbox = () => {
           </div>
           <div className={styles["game-rules"]}>
             <div className={styles["rules-notice"]}>🚧 Under Construction — more settings coming soon</div>
-            <label className={styles["rule-toggle"]}>
-              <span>Checkmate</span>
-              <input type="checkbox" checked={sandboxRules.mate_condition} onChange={(e) => setSandboxRules(r => ({ ...r, mate_condition: e.target.checked }))} />
-            </label>
-            <label className={styles["rule-toggle"]}>
-              <span>Capture to win</span>
-              <input type="checkbox" checked={sandboxRules.capture_condition} onChange={(e) => setSandboxRules(r => ({ ...r, capture_condition: e.target.checked }))} />
-            </label>
-            <label className={styles["rule-toggle"]}>
-              <span>Control squares</span>
-              <input type="checkbox" checked={sandboxRules.squares_condition} onChange={(e) => setSandboxRules(r => ({ ...r, squares_condition: e.target.checked }))} />
-            </label>
-            <label className={styles["rule-toggle"]}>
-              <span>Piece count wins</span>
-              <input type="checkbox" checked={sandboxRules.piece_count_condition} onChange={(e) => setSandboxRules(r => ({ ...r, piece_count_condition: e.target.checked }))} />
-            </label>
-            <label className={styles["rule-toggle"]}>
-              <span>Flanking captures</span>
-              <input type="checkbox" checked={sandboxRules.flanking_captures} onChange={(e) => setSandboxRules(r => ({ ...r, flanking_captures: e.target.checked }))} />
-            </label>
-            <label className={styles["rule-toggle"]}>
-              <span>Place pieces</span>
-              <input type="checkbox" checked={sandboxRules.place_pieces_action} onChange={(e) => setSandboxRules(r => ({ ...r, place_pieces_action: e.target.checked }))} />
-            </label>
-            <label className={styles["rule-toggle"]}>
-              <span>Simultaneous turns</span>
-              <input type="checkbox" checked={sandboxRules.simultaneous_turns} onChange={(e) => setSandboxRules(r => ({ ...r, simultaneous_turns: e.target.checked }))} />
-            </label>
+            <ToggleSwitch checked={sandboxRules.mate_condition} onChange={(v) => setSandboxRules(r => ({ ...r, mate_condition: v }))} label="Checkmate" />
+            <ToggleSwitch checked={sandboxRules.capture_condition} onChange={(v) => setSandboxRules(r => ({ ...r, capture_condition: v }))} label="Capture to win" />
+            <ToggleSwitch checked={sandboxRules.squares_condition} onChange={(v) => setSandboxRules(r => ({ ...r, squares_condition: v }))} label="Control squares" />
+            <ToggleSwitch checked={sandboxRules.piece_count_condition} onChange={(v) => setSandboxRules(r => ({ ...r, piece_count_condition: v }))} label="Piece count wins" />
+            <ToggleSwitch checked={sandboxRules.flanking_captures} onChange={(v) => setSandboxRules(r => ({ ...r, flanking_captures: v }))} label="Flanking captures" />
+            <ToggleSwitch checked={sandboxRules.place_pieces_action} onChange={(v) => setSandboxRules(r => ({ ...r, place_pieces_action: v }))} label="Place pieces" />
+            <ToggleSwitch checked={sandboxRules.simultaneous_turns} onChange={(v) => setSandboxRules(r => ({ ...r, simultaneous_turns: v }))} label="Simultaneous turns" />
             <label className={styles["rule-input"]}>
               <span>Actions per turn</span>
-              <input type="number" min="1" max="8" value={sandboxRules.actions_per_turn} onChange={(e) => setSandboxRules(r => ({ ...r, actions_per_turn: Math.max(1, Math.min(8, parseInt(e.target.value) || 1)) }))} />
+              <NumberInput value={sandboxRules.actions_per_turn} onChange={(val) => setSandboxRules(r => ({ ...r, actions_per_turn: Math.max(1, Math.min(8, val || 1)) }))} options={{ min: 1, max: 8 }} />
             </label>
             <label className={styles["rule-input"]}>
               <span>Draw move limit</span>
-              <input type="number" min="1" max="500" value={sandboxRules.draw_move_limit || ''} placeholder="Off" onChange={(e) => setSandboxRules(r => ({ ...r, draw_move_limit: e.target.value ? Math.max(1, Math.min(500, parseInt(e.target.value) || null)) : null }))} />
+              <NumberInput value={sandboxRules.draw_move_limit || ''} onChange={(val) => setSandboxRules(r => ({ ...r, draw_move_limit: val ? Math.max(1, Math.min(500, val)) : null }))} options={{ min: 1, max: 500, placeholder: 'Off' }} />
             </label>
             <label className={styles["rule-input"]}>
               <span>Repetition draw</span>
-              <input type="number" min="2" max="9" value={sandboxRules.repetition_draw_count || ''} placeholder="Off" onChange={(e) => setSandboxRules(r => ({ ...r, repetition_draw_count: e.target.value ? Math.max(2, Math.min(9, parseInt(e.target.value) || null)) : null }))} />
+              <NumberInput value={sandboxRules.repetition_draw_count || ''} onChange={(val) => setSandboxRules(r => ({ ...r, repetition_draw_count: val ? Math.max(2, Math.min(9, val)) : null }))} options={{ min: 2, max: 9, placeholder: 'Off' }} />
             </label>
           </div>
         </div>

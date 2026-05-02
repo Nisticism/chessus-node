@@ -9219,7 +9219,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     }
     
     // Check if path is clear for ranged attack (unless piece can fire over)
-    const pathClear = isRangedPathClear(piece.x, piece.y, to.x, to.y, piece, pieces, pieceOwnerPosition);
+    const pathClear = isRangedPathClear(piece.x, piece.y, to.x, to.y, piece, pieces, pieceOwnerPosition, gameState.gameType);
     if (!pathClear) {
       return { valid: false, reason: "Ranged attack is blocked by another piece" };
     }
@@ -10621,12 +10621,9 @@ function checkRangedMovement(value, distance, isExact) {
  * Check if the ranged attack path is blocked by other pieces
  * Returns true if the path is clear, false if blocked
  */
-function isRangedPathClear(fromX, fromY, toX, toY, piece, allPieces, pieceOwnerPosition) {
+function isRangedPathClear(fromX, fromY, toX, toY, piece, allPieces, pieceOwnerPosition, gameType) {
   const canFireOverAllies = piece.can_fire_over_allies === 1 || piece.can_fire_over_allies === true;
   const canFireOverEnemies = piece.can_fire_over_enemies === 1 || piece.can_fire_over_enemies === true;
-  
-  // If can fire over both, path is always clear
-  if (canFireOverAllies && canFireOverEnemies) return true;
   
   const dx = toX - fromX;
   const dy = toY - fromY;
@@ -10639,6 +10636,10 @@ function isRangedPathClear(fromX, fromY, toX, toY, piece, allPieces, pieceOwnerP
     // L-shaped attack - no path blocking (similar to knight movement)
     return true;
   }
+
+  // If can fire over both pieces AND no impassable squares to worry about, path is always clear
+  const impassableSquares = gameType ? collectImpassableSquares(gameType) : null;
+  if (canFireOverAllies && canFireOverEnemies && !impassableSquares) return true;
   
   // Calculate step direction
   const stepX = dx === 0 ? 0 : dx / absDx;
@@ -10649,6 +10650,11 @@ function isRangedPathClear(fromX, fromY, toX, toY, piece, allPieces, pieceOwnerP
   let checkY = fromY + stepY;
   
   while (checkX !== toX || checkY !== toY) {
+    // Impassable squares always block ranged fire
+    if (impassableSquares && impassableSquares.has(`${checkY},${checkX}`)) {
+      return false;
+    }
+
     // Check if there's a piece at this position
     const blockingPiece = findPieceAtSquare(allPieces, checkX, checkY);
     if (blockingPiece && blockingPiece.id !== piece.id) {
@@ -10734,6 +10740,14 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   // Apply range square bonus
   if (gameType) piece = applyRangeSquareBonus(piece, gameType);
 
+  const hasGhostwalk = piece.ghostwalk === 1 || piece.ghostwalk === true;
+
+  // Impassable squares cannot be attacked (unless ghostwalk)
+  if (!hasGhostwalk && gameType) {
+    const impSet = collectImpassableSquares(gameType);
+    if (impSet && impSet.has(`${targetY},${targetX}`)) return false;
+  }
+
   const dx = targetX - piece.x;
   const dy = targetY - piece.y;
   const absDx = Math.abs(dx);
@@ -10771,7 +10785,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   // For multi-tile pieces, checks all sub-square parallel paths
   // Ghostwalk: piece can pass through any piece
   // Hopping: piece can pass through allies/enemies depending on flags
-  const hasGhostwalk = piece.ghostwalk === 1 || piece.ghostwalk === true;
+  // hasGhostwalk already declared above
   const canHopAlliesAtk = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true ||
                           piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true ||
                           piece.chain_hop_allies === 1 || piece.chain_hop_allies === true;
@@ -11348,7 +11362,15 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
   const absDy = Math.abs(dy);
   
   if (dx === 0 && dy === 0) return false;
-  
+
+  const hasGhostwalkMove = piece.ghostwalk === 1 || piece.ghostwalk === true;
+
+  // Block movement to impassable squares (unless ghostwalk)
+  if (!hasGhostwalkMove && gameType) {
+    const impSet = collectImpassableSquares(gameType);
+    if (impSet && impSet.has(`${targetY},${targetX}`)) return false;
+  }
+
   // Check if piece needs direction flipping
   const pieceOwner = piece.team || piece.player_id;
   const isPlayer2 = pieceOwner === 2;
@@ -11362,7 +11384,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
   const canHopAlliesBase = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
   const canHopEnemiesBase = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
   const dirHopDisabled = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
-  const hasGhostwalkMove = piece.ghostwalk === 1 || piece.ghostwalk === true;
+  // hasGhostwalkMove already declared above
 
   const canHopOverPiece = (blocker) => {
     if (hasGhostwalkMove) return true; // Ghostwalk ignores all blocking
@@ -11872,6 +11894,26 @@ function collectRestrictionZoneSquares(gameType) {
 }
 
 /**
+ * Collect all squares marked as impassable from the game type's special_squares_string.
+ * Returns a Set of "row,col" keys, or null when no impassable squares exist.
+ */
+function collectImpassableSquares(gameType) {
+  if (!gameType || !gameType.special_squares_string) return null;
+  let customSquares;
+  try {
+    customSquares = typeof gameType.special_squares_string === 'string'
+      ? JSON.parse(gameType.special_squares_string)
+      : gameType.special_squares_string;
+  } catch (e) { return null; }
+  if (!customSquares || typeof customSquares !== 'object') return null;
+  const impassable = new Set();
+  for (const [key, cfg] of Object.entries(customSquares)) {
+    if (cfg && cfg.impassable) impassable.add(key);
+  }
+  return impassable.size > 0 ? impassable : null;
+}
+
+/**
  * Apply range square bonus: +1 to all non-infinite, non-zero, non-custom movement/capture/attack values.
  * Returns a shallow copy of the piece with boosted stats if on a range square, or the original piece if not.
  */
@@ -12052,6 +12094,10 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
     return canHopEnemiesGen;
   };
 
+  // Collect impassable squares — pieces cannot land on or pass through them
+  // (unless they have ghostwalk; hopping pieces can pass through but not land)
+  const impassableSet = collectImpassableSquares(gameType);
+
   // Helper to check if path is clear
   // For multi-tile pieces, checks all sub-square parallel paths
   // allowHop: when true, pieces in path that can be hopped are skipped
@@ -12067,6 +12113,10 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
         let x = fromX + sdx + stepX;
         let y = fromY + sdy + stepY;
         while (x !== toX + sdx || y !== toY + sdy) {
+          // Impassable squares block movement — ghostwalk ignores, hopping can pass through
+          if (impassableSet && impassableSet.has(`${y},${x}`) && !hasGhostwalkGen && !allowHop) {
+            return false;
+          }
           const blocking = findPieceAtSquare(allPieces, x, y);
           if (blocking && blocking.id !== piece.id) {
             if (!allowHop || !canHopOverPieceGen(blocking)) {
@@ -12115,6 +12165,14 @@ function getPossibleMovesForPiece(piece, allPieces, gameType) {
       
       if (!isValidSquare(targetX, targetY)) break;
       
+      // Impassable squares: pieces cannot land here (unless ghostwalk)
+      if (impassableSet && impassableSet.has(`${targetY},${targetX}`) && !hasGhostwalkGen) {
+        // Hopping pieces can pass through but not land; non-hopping stop here
+        if (!canHopDir) break;
+        // Hopping: skip this square as a landing target but continue
+        continue;
+      }
+
       // Check if path is clear up to this point (with hopping support)
       if (!isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) break;
       
@@ -12849,8 +12907,7 @@ function findAvailableCaptureForPlayer(gameState, playerPosition) {
         if (owner === playerPosition) continue;
         if (target.cannot_be_captured) continue;
         if (!canRangedAttackTo(piece.y, piece.x, target.y, target.x, piece, playerPosition, gameType)) continue;
-        if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition)) continue;
-        // Ranged attacks don't change the attacker's square so they cannot expose own king
+        if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition, gameType)) continue;
         // unless mate_condition + the attacker itself is the king and would still be in check;
         // since the attacker doesn't move, an existing check would have been rejected upstream.
         // We still respect mate_condition by leaving check filtering to validateAndApplyMove.
@@ -12951,7 +13008,7 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
         if (targetOwner === playerPosition) continue;
         if (target.cannot_be_captured) continue;
         if (!canRangedAttackTo(piece.y, piece.x, target.y, target.x, piece, playerPosition, gameType)) continue;
-        if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition)) continue;
+        if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition, gameType)) continue;
 
         const rangedMove = {
           pieceId: piece.id,

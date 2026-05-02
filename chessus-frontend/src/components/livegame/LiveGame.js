@@ -11,6 +11,7 @@ import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
 import GameChat from "./GameChat";
+import ToggleSwitch from "../common/ToggleSwitch";
 import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
@@ -4263,6 +4264,7 @@ const LiveGame = () => {
         // unless the player has toggled it off.
         const sqCfg = specialSquares.special[`${gameY},${gameX}`];
         const isRestrictionZone = !!(sqCfg?.asRestrictionZone);
+        const isImpassable = !!(sqCfg?.impassable);
 
         // Ranged attack highlights
         const isRangedMove = !!rangedMove;
@@ -4317,6 +4319,7 @@ const LiveGame = () => {
               ${specialSquareType === 'control' ? styles["control-square"] : ''}
               ${specialSquareType === 'special' ? styles["special-square"] : ''}
               ${isRestrictionZone && !hideRestrictionZones && specialSquareType !== 'special' ? styles["restriction-zone-square"] : ''}
+              ${isImpassable ? styles["impassable-square"] : ''}
             `}
             onClick={() => handleSquareClick(gameX, gameY)}
             onDragOver={handleDragOver}
@@ -4346,6 +4349,7 @@ const LiveGame = () => {
                   if (cfg.asRange) parts.push('R');
                   if (cfg.asPromotion) parts.push('P');
                   if (cfg.asControl) parts.push('C');
+                  if (cfg.impassable) parts.push('I');
                   const label = parts.length > 0 ? parts.join('') : 'X';
                   const pts = cfg.controlPoints;
                   return (
@@ -5357,94 +5361,50 @@ const LiveGame = () => {
                 </div>
               </div>
             {!optionsCollapsed && (<>
-            <label className={styles["option-toggle"]}>
-              <span>Show movable pieces</span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={showMovableIndicators}
-                  onChange={(e) => setShowMovableIndicators(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={showMovableIndicators}
+              onChange={(v) => setShowMovableIndicators(v)}
+              label="Show movable pieces"
+            />
             {hasSpecialSquares && (
-              <label className={styles["option-toggle"]}>
-                <span>Show all special squares</span>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={showAllSpecialSquares}
-                    onChange={(e) => setShowAllSpecialSquares(e.target.checked)}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={showAllSpecialSquares}
+                onChange={(v) => setShowAllSpecialSquares(v)}
+                label="Show all special squares"
+              />
             )}
             {hasRestrictionZones && (
-              <label className={styles["option-toggle"]}>
-                <span>Hide restriction zones</span>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={hideRestrictionZones}
-                    onChange={(e) => setHideRestrictionZones(e.target.checked)}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={hideRestrictionZones}
+                onChange={(v) => setHideRestrictionZones(v)}
+                label="Hide restriction zones"
+              />
             )}
-            <label className={styles["option-toggle"]}>
-              <span>Show board notation</span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={showBoardNotation}
-                  onChange={(e) => setShowBoardNotation(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={showBoardNotation}
+              onChange={(v) => setShowBoardNotation(v)}
+              label="Show board notation"
+            />
             {gameState.pieces?.some(p => p.show_hp_ad || p.hit_points > 1 || (p.show_regen && p.hp_regen > 0) || (p.show_burn && p.burn_damage > 0)) && (
-              <label className={styles["option-toggle"]}>
-                <span>Show piece badges</span>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={showBadges}
-                    onChange={(e) => setShowBadges(e.target.checked)}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={showBadges}
+                onChange={(v) => setShowBadges(v)}
+                label="Show piece badges"
+              />
             )}
             {currentUser && (
-              <label className={styles["option-toggle"]}>
-                <span>Disable chat</span>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={currentUser.disable_game_chat === 1 || currentUser.disable_game_chat === true}
-                    onChange={(e) => {
-                      updateUserPreference('disable_game_chat', e.target.checked);
-                    }}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={currentUser.disable_game_chat === 1 || currentUser.disable_game_chat === true}
+                onChange={(v) => updateUserPreference('disable_game_chat', v)}
+                label="Disable chat"
+              />
             )}
             {castlingInfo.length > 0 && (
-              <label className={styles["option-toggle"]}>
-                <span>Show castling info</span>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={showCastlingInfo}
-                    onChange={(e) => setShowCastlingInfo(e.target.checked)}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={showCastlingInfo}
+                onChange={(v) => setShowCastlingInfo(v)}
+                label="Show castling info"
+              />
             )}
             
             {showCastlingInfo && castlingInfo.length > 0 && (
@@ -5472,21 +5432,15 @@ const LiveGame = () => {
               </div>
             )}
             {gameState?.isCorrespondence && !gameState?.timeControl && (
-              <label className={styles["option-toggle"]}>
-                <span>Confirm moves</span>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={turnConfirmEnabled}
-                    onChange={(e) => {
-                      setTurnConfirmEnabled(e.target.checked);
-                      localStorage.setItem('turnConfirmEnabled', e.target.checked);
-                      if (!e.target.checked) setPendingMove(null);
-                    }}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={turnConfirmEnabled}
+                onChange={(v) => {
+                  setTurnConfirmEnabled(v);
+                  localStorage.setItem('turnConfirmEnabled', v);
+                  if (!v) setPendingMove(null);
+                }}
+                label="Confirm moves"
+              />
             )}
             </>)}
 
@@ -5878,94 +5832,50 @@ const LiveGame = () => {
               {soundEnabled ? '🔊' : '🔇'}
             </button>
           </div>
-          <label className={styles["option-toggle"]}>
-            <span>Show movable pieces</span>
-            <div className={styles["toggle-switch"]}>
-              <input
-                type="checkbox"
-                checked={showMovableIndicators}
-                onChange={(e) => setShowMovableIndicators(e.target.checked)}
-              />
-              <span className={styles["toggle-slider"]} />
-            </div>
-          </label>
+          <ToggleSwitch
+            checked={showMovableIndicators}
+            onChange={(v) => setShowMovableIndicators(v)}
+            label="Show movable pieces"
+          />
           {hasSpecialSquares && (
-            <label className={styles["option-toggle"]}>
-              <span>Show all special squares</span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={showAllSpecialSquares}
-                  onChange={(e) => setShowAllSpecialSquares(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={showAllSpecialSquares}
+              onChange={(v) => setShowAllSpecialSquares(v)}
+              label="Show all special squares"
+            />
           )}
           {hasRestrictionZones && (
-            <label className={styles["option-toggle"]}>
-              <span>Hide restriction zones</span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={hideRestrictionZones}
-                  onChange={(e) => setHideRestrictionZones(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={hideRestrictionZones}
+              onChange={(v) => setHideRestrictionZones(v)}
+              label="Hide restriction zones"
+            />
           )}
-          <label className={styles["option-toggle"]}>
-            <span>Show board notation</span>
-            <div className={styles["toggle-switch"]}>
-              <input
-                type="checkbox"
-                checked={showBoardNotation}
-                onChange={(e) => setShowBoardNotation(e.target.checked)}
-              />
-              <span className={styles["toggle-slider"]} />
-            </div>
-          </label>
+          <ToggleSwitch
+            checked={showBoardNotation}
+            onChange={(v) => setShowBoardNotation(v)}
+            label="Show board notation"
+          />
           {gameState.pieces?.some(p => p.show_hp_ad || p.hit_points > 1 || (p.show_regen && p.hp_regen > 0) || (p.show_burn && p.burn_damage > 0)) && (
-            <label className={styles["option-toggle"]}>
-              <span>Show piece badges</span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={showBadges}
-                  onChange={(e) => setShowBadges(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={showBadges}
+              onChange={(v) => setShowBadges(v)}
+              label="Show piece badges"
+            />
           )}
           {currentUser && (
-            <label className={styles["option-toggle"]}>
-              <span>Disable chat</span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={currentUser.disable_game_chat === 1 || currentUser.disable_game_chat === true}
-                  onChange={(e) => {
-                    updateUserPreference('disable_game_chat', e.target.checked);
-                  }}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={currentUser.disable_game_chat === 1 || currentUser.disable_game_chat === true}
+              onChange={(v) => updateUserPreference('disable_game_chat', v)}
+              label="Disable chat"
+            />
           )}
           {castlingInfo.length > 0 && (
-            <label className={styles["option-toggle"]}>
-              <span>Show castling info</span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={showCastlingInfo}
-                  onChange={(e) => setShowCastlingInfo(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={showCastlingInfo}
+              onChange={(v) => setShowCastlingInfo(v)}
+              label="Show castling info"
+            />
           )}
           
           {showCastlingInfo && castlingInfo.length > 0 && (

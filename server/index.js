@@ -49,6 +49,29 @@ async function countUserActiveGames(identifier) {
 //   }
 require("dotenv").config();
 
+// Patch console methods in production to prepend a CST timestamp.
+// Uses a single cached Intl.DateTimeFormat instance — overhead is negligible
+// (< 1ms per call) even under high log volume.
+if (process.env.NODE_ENV === 'production') {
+  const _cstFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  const _cstStamp = () => `[${_cstFmt.format(new Date())}]`;
+  const _origLog  = console.log.bind(console);
+  const _origWarn = console.warn.bind(console);
+  const _origErr  = console.error.bind(console);
+  const _origInfo = console.info.bind(console);
+  console.log   = (...a) => _origLog(_cstStamp(),  ...a);
+  console.warn  = (...a) => _origWarn(_cstStamp(), ...a);
+  console.error = (...a) => _origErr(_cstStamp(),  ...a);
+  console.info  = (...a) => _origInfo(_cstStamp(), ...a);
+}
+
 //  Constants
 
 const express = require("express");

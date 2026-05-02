@@ -57,6 +57,7 @@ const Footer = () => {
       <div className={styles.footerLegal}>
         <Link to="/careers">Careers</Link>
         <Link to="/privacy">Privacy Policy</Link>
+        <Link to="/terms">Terms &amp; Conditions</Link>
         {showChangelog && <Link to="/changelog">Changelog</Link>}
       </div>
 

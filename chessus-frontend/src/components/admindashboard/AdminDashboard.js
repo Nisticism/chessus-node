@@ -9,6 +9,8 @@ import StandardButton from "../standardbutton/StandardButton";
 import { formatDateTime, parseServerDate } from "../../helpers/date-formatter";
 import AiTrainingPanel from "./AiTrainingPanel";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
+import ToggleSwitch from "../common/ToggleSwitch";
+import NumberInput from "../common/NumberInput";
 
 const AdminDashboard = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -1930,10 +1932,7 @@ const AdminDashboard = () => {
           <StandardButton buttonText="+ Add Option" onClick={() => setPollForm(f => ({ ...f, options: [...f.options, ''] }))} />
         </div>
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '10px', alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9em', cursor: 'pointer' }}>
-            <input type="checkbox" checked={pollForm.is_visible} onChange={e => setPollForm(f => ({ ...f, is_visible: e.target.checked }))} />
-            Visible on home page
-          </label>
+          <ToggleSwitch checked={pollForm.is_visible} onChange={v => setPollForm(f => ({ ...f, is_visible: v }))} label="Visible on home page" />
           <div>
             <label style={{ display: 'block', fontSize: '0.85em', color: 'var(--text-dim)', marginBottom: '2px' }}>Expires at (optional)</label>
             <input
@@ -2899,22 +2898,8 @@ const AdminDashboard = () => {
           </div>
 
           <div style={{ display: 'flex', gap: '20px', marginTop: '10px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={streamFormData.is_live}
-                onChange={(e) => handleStreamFormChange('is_live', e.target.checked)}
-              />
-              Start as Live
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={streamFormData.is_featured}
-                onChange={(e) => handleStreamFormChange('is_featured', e.target.checked)}
-              />
-              Featured
-            </label>
+            <ToggleSwitch checked={streamFormData.is_live} onChange={(v) => handleStreamFormChange('is_live', v)} label="Start as Live" />
+            <ToggleSwitch checked={streamFormData.is_featured} onChange={(v) => handleStreamFormChange('is_featured', v)} label="Featured" />
           </div>
 
           <div className={styles["modal-footer"]}>
@@ -3064,14 +3049,7 @@ const AdminDashboard = () => {
           </div>
 
           <div className={styles["form-group"]}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <input
-                type="checkbox"
-                checked={isPermanentBan}
-                onChange={(e) => setIsPermanentBan(e.target.checked)}
-              />
-              Permanent Ban
-            </label>
+            <ToggleSwitch checked={isPermanentBan} onChange={(v) => setIsPermanentBan(v)} label="Permanent Ban" />
           </div>
 
           {!isPermanentBan && (
@@ -3338,28 +3316,22 @@ const AdminDashboard = () => {
                     <span className={styles["setting-label"]}>Show Changelog</span>
                     <span className={styles["setting-desc"]}>Show or hide the changelog link in navigation and footer</span>
                   </div>
-                  <label className={styles["setting-toggle"]}>
-                    <input
-                      type="checkbox"
-                      checked={siteSettings.changelog_enabled !== "false"}
-                      onChange={(e) => updateSiteSetting("changelog_enabled", e.target.checked)}
-                    />
-                    <span className={styles["toggle-slider"]} />
-                  </label>
+                  <ToggleSwitch
+                    checked={siteSettings.changelog_enabled !== "false"}
+                    onChange={(v) => updateSiteSetting("changelog_enabled", v)}
+                    label=""
+                  />
                 </div>
                 <div className={styles["setting-row"]}>
                   <div className={styles["setting-info"]}>
                     <span className={styles["setting-label"]}>Show Forum Invite Banner</span>
                     <span className={styles["setting-desc"]}>Display the gold banner above "Explore the Grove" inviting players to the forums</span>
                   </div>
-                  <label className={styles["setting-toggle"]}>
-                    <input
-                      type="checkbox"
-                      checked={siteSettings.forum_invite_enabled !== "false"}
-                      onChange={(e) => updateSiteSetting("forum_invite_enabled", e.target.checked)}
-                    />
-                    <span className={styles["toggle-slider"]} />
-                  </label>
+                  <ToggleSwitch
+                    checked={siteSettings.forum_invite_enabled !== "false"}
+                    onChange={(v) => updateSiteSetting("forum_invite_enabled", v)}
+                    label=""
+                  />
                 </div>
                 <div className={styles["setting-textarea-row"]}>
                   <div className={styles["setting-info"]}>
@@ -3405,19 +3377,10 @@ const AdminDashboard = () => {
                       <span className={styles["setting-label"]}>{label}</span>
                       <span className={styles["setting-desc"]}>{desc}</span>
                     </div>
-                    <input
-                      type="number"
-                      min="1"
-                      max="200"
-                      className={styles["setting-number-input"]}
-                      value={siteSettings[key] ?? String(defaultVal)}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        if (Number.isFinite(v) && v >= 1) {
-                          updateSiteSetting(key, v);
-                        }
-                      }}
-                      style={{ width: '80px', textAlign: 'center' }}
+                    <NumberInput
+                      value={Number(siteSettings[key] ?? defaultVal)}
+                      onChange={(val) => updateSiteSetting(key, val)}
+                      options={{ min: 1, max: 200 }}
                     />
                   </div>
                 ))}

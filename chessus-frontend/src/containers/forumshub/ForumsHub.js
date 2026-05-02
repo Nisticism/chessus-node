@@ -6,6 +6,9 @@ import StandardButton from "../../components/standardbutton/StandardButton";
 import { forums, firstForumsRender } from "../../actions/forums";
 import { formatDateLegacy } from "../../helpers/date-formatter";
 import { categoryLabel } from "../../helpers/forum-categories";
+import Pagination from "../../components/pagination/Pagination";
+
+const SECTION_PAGE_SIZE = 10;
 
 const ForumsHub = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -15,6 +18,8 @@ const ForumsHub = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [generalOpen, setGeneralOpen] = useState(true);
   const [gameOpen, setGameOpen] = useState(true);
+  const [generalPage, setGeneralPage] = useState(1);
+  const [gamePage, setGamePage] = useState(1);
   const dispatch = useDispatch();
 
   useEffect(() => {
@@ -56,6 +61,24 @@ const ForumsHub = () => {
 
   const filteredGeneral = filterBySearch(generalForums);
   const filteredGame = filterBySearch(gameForums);
+
+  const generalTotalPages = Math.ceil(filteredGeneral.length / SECTION_PAGE_SIZE);
+  const gameTotalPages = Math.ceil(filteredGame.length / SECTION_PAGE_SIZE);
+
+  const pagedGeneral = filteredGeneral.slice(
+    (generalPage - 1) * SECTION_PAGE_SIZE,
+    generalPage * SECTION_PAGE_SIZE
+  );
+  const pagedGame = filteredGame.slice(
+    (gamePage - 1) * SECTION_PAGE_SIZE,
+    gamePage * SECTION_PAGE_SIZE
+  );
+
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    setGeneralPage(1);
+    setGamePage(1);
+  };
 
   const renderForumRow = (forum, showGame, showCategory) => (
     <tr
@@ -151,7 +174,7 @@ const ForumsHub = () => {
           type="text"
           placeholder="Search all forums..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={handleSearchChange}
           className={styles["search-input"]}
         />
       </div>
@@ -175,22 +198,31 @@ const ForumsHub = () => {
         {generalOpen && (
           <div className={styles["section-content"]}>
             {filteredGeneral.length > 0 ? (
-              <table className={styles["forums-table"]}>
-                <thead>
-                  <tr>
-                    <th>Subject</th>
-                    <th>Category</th>
-                    <th>Written By</th>
-                    <th>Replies</th>
-                    <th>Likes</th>
-                    <th>Content</th>
-                    <th>Last Comment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredGeneral.map(forum => renderForumRow(forum, false, true))}
-                </tbody>
-              </table>
+              <>
+                <table className={styles["forums-table"]}>
+                  <thead>
+                    <tr>
+                      <th>Subject</th>
+                      <th>Category</th>
+                      <th>Written By</th>
+                      <th>Replies</th>
+                      <th>Likes</th>
+                      <th>Content</th>
+                      <th>Last Comment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedGeneral.map(forum => renderForumRow(forum, false, true))}
+                  </tbody>
+                </table>
+                <div className={styles["section-pagination"]}>
+                  <Pagination
+                    currentPage={generalPage}
+                    totalPages={generalTotalPages}
+                    onPageChange={(p) => { setGeneralPage(p); }}
+                  />
+                </div>
+              </>
             ) : (
               <div className={styles["empty-section"]}>
                 {searchTerm ? "No general forums matching your search" : "No general forum posts yet"}
@@ -219,22 +251,31 @@ const ForumsHub = () => {
         {gameOpen && (
           <div className={styles["section-content"]}>
             {filteredGame.length > 0 ? (
-              <table className={styles["forums-table"]}>
-                <thead>
-                  <tr>
-                    <th>Subject</th>
-                    <th>Game</th>
-                    <th>Written By</th>
-                    <th>Replies</th>
-                    <th>Likes</th>
-                    <th>Content</th>
-                    <th>Last Comment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredGame.map(forum => renderForumRow(forum, true, false))}
-                </tbody>
-              </table>
+              <>
+                <table className={styles["forums-table"]}>
+                  <thead>
+                    <tr>
+                      <th>Subject</th>
+                      <th>Game</th>
+                      <th>Written By</th>
+                      <th>Replies</th>
+                      <th>Likes</th>
+                      <th>Content</th>
+                      <th>Last Comment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedGame.map(forum => renderForumRow(forum, true, false))}
+                  </tbody>
+                </table>
+                <div className={styles["section-pagination"]}>
+                  <Pagination
+                    currentPage={gamePage}
+                    totalPages={gameTotalPages}
+                    onPageChange={(p) => { setGamePage(p); }}
+                  />
+                </div>
+              </>
             ) : (
               <div className={styles["empty-section"]}>
                 {searchTerm ? "No game forums matching your search" : "No game forum posts yet"}

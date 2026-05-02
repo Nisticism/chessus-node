@@ -11,6 +11,7 @@ import {
 } from "../../services/tournament-service";
 import styles from "./tournaments.module.scss";
 import { parseServerDate } from "../../helpers/date-formatter";
+import NumberInput from "../../components/common/NumberInput";
 
 const FORMATS = [
   {
@@ -379,20 +380,18 @@ const Tournaments = () => {
               <div className={styles["field-row"]}>
                 <div>
                   <label className={styles["field-label"]}>Minimum Players</label>
-                  <input
-                    type="number"
-                    min="2"
-                    value={wizardData.minPlayers}
-                    onChange={(event) => updateWizardData({ minPlayers: event.target.value })}
+                  <NumberInput
+                    value={Number(wizardData.minPlayers)}
+                    onChange={(val) => updateWizardData({ minPlayers: String(val) })}
+                    options={{ min: 2 }}
                   />
                 </div>
                 <div>
                   <label className={styles["field-label"]}>Maximum Players</label>
-                  <input
-                    type="number"
-                    min="2"
-                    value={wizardData.maxPlayers}
-                    onChange={(event) => updateWizardData({ maxPlayers: event.target.value })}
+                  <NumberInput
+                    value={Number(wizardData.maxPlayers)}
+                    onChange={(val) => updateWizardData({ maxPlayers: String(val) })}
+                    options={{ min: 2 }}
                   />
                 </div>
               </div>

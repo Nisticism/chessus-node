@@ -4,6 +4,7 @@ import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import styles from "./ai-training-panel.module.scss";
 import AiGameReplayModal from "./AiGameReplayModal";
+import ToggleSwitch from "../common/ToggleSwitch";
 
 /**
  * Admin tab for AI self-play training.
@@ -483,16 +484,14 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
               onChange={(e) => setForm({ ...form, seed: e.target.value })}
             />
           </label>
-          <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-            title="When enabled, the trainer writes a plain-text game transcript (games.txt) to the job folder. Uncheck to save disk space if you don't need a move-by-move record.">
-            <input
-              type="checkbox"
+          <div style={{ gridColumn: '1 / -1' }}>
+            <ToggleSwitch
               checked={form.generateGameLog}
-              onChange={(e) => setForm({ ...form, generateGameLog: e.target.checked })}
-              style={{ width: 'auto', marginRight: 6 }}
+              onChange={(v) => setForm({ ...form, generateGameLog: v })}
+              label="Generate game log (games.txt)"
+              tooltip={<span>When enabled, the trainer writes a plain-text game transcript (games.txt) to the job folder. Disable to save disk space if you don't need a move-by-move record.</span>}
             />
-            Generate game log (games.txt)
-          </label>
+          </div>
           <button
             type="submit"
             disabled={submitting || !form.gameTypeId || (status && !status.engineAvailable)}
@@ -979,18 +978,13 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
             ))}
           </select>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
-          <input
-            type="checkbox"
-            checked={filterTrained}
-            onChange={(e) => setFilterTrained(e.target.checked)}
-          />
-          <span style={{ fontSize: '0.88rem', color: 'var(--text-dim)' }}>
-            {trainedGameTypeIds
-              ? `Show trained games only (${trainedGameTypeIds.size} of ${gameTypes.length})`
-              : 'Show trained games only'}
-          </span>
-        </label>
+        <ToggleSwitch
+          checked={filterTrained}
+          onChange={(v) => setFilterTrained(v)}
+          label={trainedGameTypeIds
+            ? `Show trained games only (${trainedGameTypeIds.size} of ${gameTypes.length})`
+            : 'Show trained games only'}
+        />
         <button
           type="button"
           onClick={regenerate}
@@ -998,14 +992,11 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
         >
           {analysis ? 'Regenerate analysis' : 'Generate analysis'}
         </button>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
-          <input
-            type="checkbox"
-            checked={filterLegacy}
-            onChange={(e) => setFilterLegacy(e.target.checked)}
-          />
-          <span>Exclude pre-tracking games (recommended — omits games from before draw/end-reason tracking, which all report as unknown draws)</span>
-        </label>
+        <ToggleSwitch
+          checked={filterLegacy}
+          onChange={(v) => setFilterLegacy(v)}
+          label="Exclude pre-tracking games (recommended — omits games from before draw/end-reason tracking, which all report as unknown draws)"
+        />
         {err && <div className={styles.error}>{err}</div>}
       </div>
 

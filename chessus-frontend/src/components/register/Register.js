@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { isEmail } from "validator";
 import { register, login, googleLogin } from "../../actions/auth";
 import { GoogleLogin } from "@react-oauth/google";
@@ -57,6 +57,7 @@ const Register = () => {
   const [password, setPassword] = useState("");
   const [successful, setSuccessful] = useState(false);
   const [messageDisplay, setMessageDisplay] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const { message } = useSelector(state => state.message);
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -85,6 +86,12 @@ const Register = () => {
     if (!usernameContentCheck.isClean) {
       setMessageDisplay(true);
       dispatch({ type: "SET_MESSAGE", payload: "This username contains inappropriate language. Please choose a different username." });
+      return;
+    }
+
+    if (!agreedToTerms) {
+      setMessageDisplay(true);
+      dispatch({ type: "SET_MESSAGE", payload: "You must agree to the Terms and Conditions to create an account." });
       return;
     }
 
@@ -132,63 +139,83 @@ const Register = () => {
   return (
     <div className={styles["container"]}>
       <div className={styles["wrapper"]}>
-        {/* <img
-          src="//ssl.gstatic.com/accounts/ui/avatar_2x.png"
-          alt="profile-img"
-          className="profile-img-card"
-        /> */}
-        <form onSubmit={handleRegister} ref={form}>
+        <div className={styles["card-header"]}>
+          <h1 className={styles["page-title"]}>Create Account</h1>
+          <p className={styles["page-subtitle"]}>Join the GridGrove community</p>
+        </div>
+
+        <form onSubmit={handleRegister} ref={form} className={styles["form"]}>
           {!successful && (
             <div>
-              <div className="form-group">
+              <div className={styles["field-group"]}>
                 <label htmlFor="username" className={styles["field-label"]}>Username</label>
                 <input
                   type="text"
-                  className="form-control"
+                  className={styles["field-input"]}
                   id="username"
                   name="username"
                   value={username}
                   onChange={onChangeUsername}
                   autoComplete="username"
+                  placeholder="3–20 characters"
                   validations={[required, vusername]}
                 />
               </div>
-              <div className="form-group">
+              <div className={styles["field-group"]}>
                 <label htmlFor="email" className={styles["field-label"]}>Email</label>
                 <input
                   type="email"
-                  className="form-control"
+                  className={styles["field-input"]}
                   id="email"
                   name="email"
                   value={email}
                   onChange={onChangeEmail}
                   autoComplete="email"
+                  placeholder="you@example.com"
                   validations={[required, validEmail]}
                 />
               </div>
-              <div className="form-group">
+              <div className={styles["field-group"]}>
                 <label htmlFor="password" className={styles["field-label"]}>Password</label>
                 <input
                   type="password"
-                  className="form-control"
+                  className={styles["field-input"]}
                   id="password"
                   name="password"
                   value={password}
                   onChange={onChangePassword}
                   autoComplete="new-password"
+                  placeholder="6–40 characters"
                   validations={[required, vpassword]}
                 />
               </div>
-              <div className="form-group">
-                <button className={styles["signup-button"]}>Sign Up</button>
+
+              <div className={styles["terms-group"]}>
+                <input
+                  type="checkbox"
+                  id="agreeTerms"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  className={styles["terms-checkbox"]}
+                />
+                <label htmlFor="agreeTerms" className={styles["terms-label"]}>
+                  I have read and agree to the{" "}
+                  <Link to="/terms" target="_blank" rel="noopener noreferrer" className={styles["terms-link"]}>
+                    Terms and Conditions
+                  </Link>
+                </label>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', margin: '10px 0' }}>
-                <hr style={{ flex: 1 }} />
-                <span style={{ padding: '0 10px', color: 'var(--text-muted)', fontSize: '14px' }}>or</span>
-                <hr style={{ flex: 1 }} />
+
+              <button className={styles["signup-button"]} disabled={!agreedToTerms}>
+                Create Account
+              </button>
+
+              <div className={styles["divider"]}>
+                <span>or</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
-                <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '4px', overflow: 'hidden', display: 'inline-block' }}>
+
+              <div className={styles["social-row"]}>
+                <div className={styles["google-wrapper"]}>
                   <GoogleLogin
                     onSuccess={handleGoogleSuccess}
                     onError={handleGoogleError}
@@ -199,43 +226,37 @@ const Register = () => {
                   />
                 </div>
               </div>
+
               {process.env.REACT_APP_LICHESS_CLIENT_ID && (
-                <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+                <div className={styles["social-row"]}>
                   <button
                     type="button"
                     onClick={handleLichessSignup}
-                    style={{
-                      width: '320px',
-                      padding: '10px 16px',
-                      backgroundColor: '#fff',
-                      color: '#333',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: '4px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '10px',
-                    }}
+                    className={styles["lichess-button"]}
                   >
-                    <img src="https://lichess.org/assets/logo/lichess-favicon-32.png" alt="Lichess" style={{ width: '20px', height: '20px' }} />
+                    <img src="https://lichess.org/assets/logo/lichess-favicon-32.png" alt="Lichess" className={styles["lichess-icon"]} />
                     Sign up with Lichess
                   </button>
                 </div>
               )}
             </div>
           )}
+
           {message && messageDisplay && (
-            <div className="form-group">
+            <div className={styles["message-row"]}>
               <div className={ successful ? "alert alert-success" : "alert alert-danger" } role="alert">
                 {message}
               </div>
             </div>
           )}
+
           <button style={{ display: "none" }} ref={checkBtn} />
         </form>
+
+        <div className={styles["signin-link"]}>
+          Already have an account?{" "}
+          <Link to="/login" className={styles["signin-anchor"]}>Sign in</Link>
+        </div>
       </div>
     </div>
   );

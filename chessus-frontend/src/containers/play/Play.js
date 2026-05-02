@@ -1899,17 +1899,11 @@ const Play = () => {
             {/* Play vs Computer Option */}
             {!challengedUserId && (
               <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
-                <label className={styles["toggle-label-row"]}>
-                  <span>Play vs Computer</span>
-                  <div className={styles["toggle-switch"]}>
-                    <input
-                      type="checkbox"
-                      checked={vsComputer}
-                      onChange={(e) => setVsComputer(e.target.checked)}
-                    />
-                    <span className={styles["toggle-slider"]} />
-                  </div>
-                </label>
+                <ToggleSwitch
+                  checked={vsComputer}
+                  onChange={(v) => setVsComputer(v)}
+                  label="Play vs Computer"
+                />
                 {vsComputer && (
                   <div className={styles["difficulty-selector"]}>
                     <label>AI Difficulty</label>
@@ -2092,18 +2086,12 @@ const Play = () => {
             )}
 
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
-              <label className={`${styles["toggle-label-row"]}${vsComputer ? ` ${styles["disabled"]}` : ''}`}>
-                <span>Rated Game</span>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={rated && !vsComputer}
-                    onChange={(e) => setRated(e.target.checked)}
-                    disabled={vsComputer}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={rated && !vsComputer}
+                onChange={(v) => setRated(v)}
+                label="Rated Game"
+                disabled={vsComputer}
+              />
             </div>
 
             <div className={styles["additional-options-section"]} ref={additionalOptionsRef}>
@@ -2118,103 +2106,61 @@ const Play = () => {
               {showAdditionalOptions && (
                 <div className={styles["additional-options-content"]}>
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
-              <label className={styles["toggle-label-row"]}>
-                <div className={styles["toggle-label-text"]}>
-                  <span>Allow Premoves <InfoTooltip text="Queue your next move while waiting for your opponent to play" /></span>
-                </div>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={allowPremoves}
-                    onChange={(e) => { setAllowPremoves(e.target.checked); if (!e.target.checked) setPremoveTimeCost(false); }}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={allowPremoves}
+                onChange={(v) => { setAllowPremoves(v); if (!v) setPremoveTimeCost(false); }}
+                label="Allow Premoves"
+                tooltip={<InfoTooltip text="Queue your next move while waiting for your opponent to play" />}
+              />
             </div>
 
             {allowPremoves && timeControl !== "0" && gameMode !== "correspondence" && (
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]} ${styles["sub-option"]}`}>
-              <label className={styles["toggle-label-row"]}>
-                <div className={styles["toggle-label-text"]}>
-                  <span>Premove Clock Cost <InfoTooltip text="Deducts 0.1 seconds from the clock per premove instead of being free" /></span>
-                </div>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={premoveTimeCost}
-                    onChange={(e) => setPremoveTimeCost(e.target.checked)}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={premoveTimeCost}
+                onChange={(v) => setPremoveTimeCost(v)}
+                label="Premove Clock Cost"
+                tooltip={<InfoTooltip text="Deducts 0.1 seconds from the clock per premove instead of being free" />}
+              />
             </div>
             )}
 
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
-              <label className={styles["toggle-label-row"]}>
-                <div className={styles["toggle-label-text"]}>
-                  <span>Show Movement Helpers <InfoTooltip text="Display movement and capture indicators when hovering over pieces" /></span>
-                </div>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={showPieceHelpers}
-                    onChange={(e) => setShowPieceHelpers(e.target.checked)}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={showPieceHelpers}
+                onChange={(v) => setShowPieceHelpers(v)}
+                label="Show Movement Helpers"
+                tooltip={<InfoTooltip text="Display movement and capture indicators when hovering over pieces" />}
+              />
             </div>
 
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
-              <label className={styles["toggle-label-row"]}>
-                <div className={styles["toggle-label-text"]}>
-                  <span>Allow Spectators <InfoTooltip text="Let other players watch the game in progress" /></span>
-                </div>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={allowSpectators}
-                    onChange={(e) => setAllowSpectators(e.target.checked)}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={allowSpectators}
+                onChange={(v) => setAllowSpectators(v)}
+                label="Allow Spectators"
+                tooltip={<InfoTooltip text="Let other players watch the game in progress" />}
+              />
             </div>
 
             {timeControl !== "0" && gameMode !== "correspondence" && (
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
-              <label className={styles["toggle-label-row"]}>
-                <div className={styles["toggle-label-text"]}>
-                  <span>Material Clock Penalty <InfoTooltip text="Lose time for each piece captured — the more material you lose, the less time you have" /></span>
-                </div>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={materialClockPenalty}
-                    onChange={(e) => { setMaterialClockPenalty(e.target.checked); if (e.target.checked) setMaterialClockHandicap(false); }}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={materialClockPenalty}
+                onChange={(v) => { setMaterialClockPenalty(v); if (v) setMaterialClockHandicap(false); }}
+                label="Material Clock Penalty"
+                tooltip={<InfoTooltip text="Lose time for each piece captured — the more material you lose, the less time you have" />}
+              />
             </div>
             )}
             {timeControl !== "0" && gameMode !== "correspondence" && (
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
-              <label className={styles["toggle-label-row"]}>
-                <div className={styles["toggle-label-text"]}>
-                  <span>Material Clock Handicap <InfoTooltip text="The player with more material gets less time, balancing the advantage" /></span>
-                </div>
-                <div className={styles["toggle-switch"]}>
-                  <input
-                    type="checkbox"
-                    checked={materialClockHandicap}
-                    onChange={(e) => { setMaterialClockHandicap(e.target.checked); if (e.target.checked) setMaterialClockPenalty(false); }}
-                  />
-                  <span className={styles["toggle-slider"]} />
-                </div>
-              </label>
+              <ToggleSwitch
+                checked={materialClockHandicap}
+                onChange={(v) => { setMaterialClockHandicap(v); if (v) setMaterialClockPenalty(false); }}
+                label="Material Clock Handicap"
+                tooltip={<InfoTooltip text="The player with more material gets less time, balancing the advantage" />}
+              />
             </div>
             )}
                 </div>

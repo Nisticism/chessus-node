@@ -57,6 +57,7 @@ const Unsubscribe = lazy(() => import("./components/unsubscribe/Unsubscribe"));
 const Donate = lazy(() => import("./components/donate/Donate"));
 const Contact = lazy(() => import("./components/contact/Contact"));
 const PrivacyPolicy = lazy(() => import("./components/privacypolicy/PrivacyPolicy"));
+const TermsAndConditions = lazy(() => import("./components/termsandconditions/TermsAndConditions"));
 const AdminDashboard = lazy(() => import("./components/admindashboard/AdminDashboard"));
 const NotificationsPage = lazy(() => import("./components/notifications/NotificationsPage"));
 const Inbox = lazy(() => import("./components/inbox/Inbox"));
@@ -227,6 +228,7 @@ function App() {
             <Route exact path="/donate" element={<Donate />} />
             <Route exact path="/contact" element={<Contact />} />
             <Route exact path="/privacy" element={<PrivacyPolicy />} />
+            <Route exact path="/terms" element={<TermsAndConditions />} />
             <Route exact path="/notifications" element={<NotificationsPage />} />
             <Route exact path="/inbox" element={<Inbox />} />
             <Route exact path="/admin/dashboard" element={<AdminDashboard />} />

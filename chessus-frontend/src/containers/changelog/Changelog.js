@@ -4,9 +4,30 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
-    date: "May 1, 2026",
-    title: "Restriction zones, community polls, clock persistence on restart, low-time correspondence notifications, correspondence deadline architecture",
+    date: "May 3, 2026",
+    title: "Impassable squares block piece placement in game wizard; PM2 logs now show CST time",
     items: [
+      "Custom squares in the game wizard can now be marked as Impassable. Pieces cannot land on or move through an impassable square. Pieces with Ghostwalk can still pass through, hopping pieces can hop over but cannot land, and ranged attacks cannot fire through impassable squares. Impassable squares are always shown with a thick faint gray border during live and correspondence games.",
+      "Step 4 of the game wizard (Piece Placement) now prevents placing pieces on impassable squares — the square shows a gray overlay and all placement interactions are blocked. Attempting to publish a game with pieces on impassable squares shows a warning modal listing the conflicts; draft saves are not affected.",
+      "Fixed inconsistent spacing between toggle switches on Step 4 of the piece wizard (Can Promote and Can Castle no longer have extra margin between them).",
+      "Fixed toggle switches inside sub-fields on piece wizard steps occasionally rendering the label out of alignment with the switch.",
+    ],
+  },
+  {
+    date: "May 2, 2026",
+    title: "UI consistency pass — toggle switches and number inputs",
+    items: [
+      "All boolean settings across the site now use consistent toggle switches instead of checkboxes — including the piece wizard, game wizard, live game options, sandbox rules, preferences, AI training panel, admin dashboard, and the donate page.",
+      "Small-range numeric inputs in the sandbox (actions per turn, draw move limit, repetition draw) and the tournament wizard (min/max players) now use the standard incrementor control for easier adjustment.",
+    ],
+  },
+  {
+    date: "May 1, 2026",
+    title: "Forum section pagination, Terms and Conditions, restriction zones, community polls, clock persistence on restart, low-time correspondence notifications, correspondence deadline architecture",
+    items: [
+      "The /forums hub now paginates each section (General and Game Forums) independently — 10 posts per page, with page controls at the bottom of each section.",
+      "Added a Terms and Conditions page (/terms) covering fair play, credit for other users' creations, no hate speech, competitive conduct, chat and messaging rules, and account responsibility.",
+      "The sign-up form now requires agreeing to the Terms and Conditions before creating an account. A checkbox with a link to the T&C page appears above the Sign Up button.",
       "Restriction zones: custom squares in the game wizard can now be marked as a Restriction Zone. Pieces with the new 'Cannot Move Outside Zone' setting enabled in the piece options are confined to those squares — any move that would take them off a Restriction Zone square is blocked. Works for all player types (human, AI bots, correspondence).",
       "Additional piece settings in the game wizard now use toggle switches for a cleaner look.",
       "Community polls: a poll widget now appears on the home page when an admin has published an active poll. Log in and vote on the current question, then see live vote counts across all options. Admins can create, edit, schedule expiry, and delete polls from the Admin Dashboard's new Poll tab.",

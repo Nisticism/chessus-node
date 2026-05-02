@@ -57,7 +57,6 @@ module.exports = {
       merge_logs: true,
       out_file: "./logs/pm2-out.log",
       error_file: "./logs/pm2-error.log",
-      log_date_format: "YYYY-MM-DD HH:mm:ss",
       env: {
         NODE_ENV: "production",
         // Gate the chattiest debug console.log lines (game-socket.js).

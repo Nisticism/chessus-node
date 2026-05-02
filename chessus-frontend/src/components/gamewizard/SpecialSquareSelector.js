@@ -37,6 +37,7 @@ const SpecialSquareSelector = ({
     asRestrictionZone: false,
     restrictFirstMoveToCustom: false,
     disableFirstMoveHere: false,
+    impassable: false,
     controlPoints: 0,
   });
 
@@ -75,6 +76,7 @@ const SpecialSquareSelector = ({
         asRestrictionZone: !!currentConfig.asRestrictionZone,
         restrictFirstMoveToCustom: !!currentConfig.restrictFirstMoveToCustom,
         disableFirstMoveHere: !!currentConfig.disableFirstMoveHere,
+        impassable: !!currentConfig.impassable,
         controlPoints: Math.max(0, Math.min(999, currentConfig.controlPoints || 0)),
       });
       if (currentConfig.asControl && currentConfig.controlConfig) {
@@ -129,6 +131,7 @@ const SpecialSquareSelector = ({
         asRestrictionZone: !!customCombo.asRestrictionZone,
         restrictFirstMoveToCustom: !!customCombo.restrictFirstMoveToCustom,
         disableFirstMoveHere: !!customCombo.disableFirstMoveHere,
+        impassable: !!customCombo.impassable,
         controlPoints: Math.max(0, Math.min(999, customCombo.controlPoints || 0)),
       };
     }
@@ -402,6 +405,16 @@ const SpecialSquareSelector = ({
                   disabled={!!customCombo.restrictFirstMoveToCustom}
                   label="Disable First-Move Abilities On This Square"
                   tooltip={<InfoTooltip text="While a piece is standing on this square, all 'first move only' / 'available for first N moves' abilities are unavailable for that piece. Mutually exclusive with the previous setting." />}
+                />
+              </div>
+
+              {/* Impassable */}
+              <div className={styles["control-config-row"]}>
+                <ToggleSwitch
+                  checked={!!customCombo.impassable}
+                  onChange={(v) => handleCustomComboChange('impassable', v)}
+                  label="Impassable"
+                  tooltip={<InfoTooltip text="Pieces cannot land on or move through this square. Pieces with Ghostwalk can still pass through. Pieces with hopping ability can hop over it but cannot land on it. Ranged attacks cannot fire through impassable squares." />}
                 />
               </div>
 

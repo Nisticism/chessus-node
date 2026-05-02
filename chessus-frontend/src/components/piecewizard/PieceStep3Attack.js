@@ -4,6 +4,7 @@ import PieceBoardPreview from "./PieceBoardPreview";
 import CustomSquareSelector from "./CustomSquareSelector";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
+import ToggleSwitch from "../common/ToggleSwitch";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyle }) => {
@@ -237,41 +238,26 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                 />
               </div>
               <div className={styles["additional-movement-line"]}>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={capture.exact}
-                    onChange={(e) => updateAdditionalCapture(direction, index, 'exact', e.target.checked)}
-                    disabled={capture.infinite}
-                  />
-                  <span>Exact</span>
-                </label>
+                <ToggleSwitch inline size="small"
+                  checked={capture.exact}
+                  onChange={(v) => updateAdditionalCapture(direction, index, 'exact', v)}
+                  disabled={capture.infinite}
+                  label="Exact"
+                />
               </div>
               <div className={styles["additional-movement-line"]}>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={capture.infinite}
-                    onChange={(e) => updateAdditionalCapture(direction, index, 'infinite', e.target.checked)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                <ToggleSwitch inline size="small"
+                  checked={capture.infinite}
+                  onChange={(v) => updateAdditionalCapture(direction, index, 'infinite', v)}
+                  label="Infinite"
+                />
               </div>
               <div className={styles["additional-movement-line"]}>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={!!capture.availableForMoves}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        updateAdditionalCapture(direction, index, 'availableForMoves', 1);
-                      } else {
-                        updateAdditionalCapture(direction, index, 'availableForMoves', null);
-                      }
-                    }}
-                  />
-                  <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                </label>
+                <ToggleSwitch inline size="small"
+                  checked={!!capture.availableForMoves}
+                  onChange={(v) => updateAdditionalCapture(direction, index, 'availableForMoves', v ? 1 : null)}
+                  label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                />
                 {capture.availableForMoves && (
                   <>
                     <NumberInput
@@ -402,41 +388,22 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
 
       {/* Attack Like Movement Checkbox */}
       <div className={styles["form-group"]}>
-        <label className={styles["checkbox-label"]}>
-          <input
-            type="checkbox"
-            checked={pieceData.attacks_like_movement || false}
-            onChange={(e) => handleAttackLikeMovement(e.target.checked)}
-          />
-          <span>Can attack how it moves <InfoTooltip text="Automatically copies all your movement settings (Step 2) to the capture settings below. The piece will be able to capture enemies on any square it can move to. Toggle this off to configure capture patterns separately from movement." /></span>
-        </label>
+        <ToggleSwitch
+          checked={pieceData.attacks_like_movement || false}
+          onChange={(v) => handleAttackLikeMovement(v)}
+          label="Can attack how it moves"
+          tooltip={<InfoTooltip text="Automatically copies all your movement settings (Step 2) to the capture settings below. The piece will be able to capture enemies on any square it can move to. Toggle this off to configure capture patterns separately from movement." />}
+        />
       </div>
 
       {/* Capture on Move */}
       <div className={styles["condition-section"]}>
         <h3>Capture on Move <InfoTooltip text="'Capture on Move' means the piece moves to the enemy's square to capture it (like most chess pieces). This is different from 'Can attack how it moves' above — that checkbox auto-imports your movement settings. This section lets you manually configure capture-specific directions, distances, and patterns independently of how the piece moves." /></h3>
-        <div className={styles["radio-group"]}>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="can_capture_enemy_on_move"
-              value="true"
-              checked={pieceData.can_capture_enemy_on_move === true || pieceData.can_capture_enemy_on_move === 1}
-              onChange={(e) => handleBooleanChange("can_capture_enemy_on_move", e.target.value)}
-            />
-            <span>Can capture by moving to enemy square</span>
-          </label>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="can_capture_enemy_on_move"
-              value="false"
-              checked={pieceData.can_capture_enemy_on_move === false || pieceData.can_capture_enemy_on_move === 0}
-              onChange={(e) => handleBooleanChange("can_capture_enemy_on_move", e.target.value)}
-            />
-            <span>Cannot capture on move</span>
-          </label>
-        </div>
+        <ToggleSwitch
+          checked={pieceData.can_capture_enemy_on_move === true || pieceData.can_capture_enemy_on_move === 1}
+          onChange={(v) => handleBooleanChange("can_capture_enemy_on_move", v ? "true" : "false")}
+          label="Can capture by moving to enemy square"
+        />
 
         {pieceData.can_capture_enemy_on_move && (
           <>
@@ -447,14 +414,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                 onChange={(val) => handleChange("max_captures_per_move", val)}
                 options={{ min: 1, disabled: pieceData.max_captures_per_move === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
-              <label className={styles["checkbox-label-inline"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.max_captures_per_move === -1}
-                  onChange={(e) => handleChange("max_captures_per_move", e.target.checked ? -1 : 1)}
-                />
-                <span>Unlimited</span>
-              </label>
+              <ToggleSwitch inline size="small"
+                checked={pieceData.max_captures_per_move === -1}
+                onChange={(v) => handleChange("max_captures_per_move", v ? -1 : 1)}
+                label="Unlimited"
+              />
             </div>
 
             {/* Directional Capture Movement */}
@@ -477,37 +441,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                           options={{ disabled: pieceData.up_left_capture === 99 }}
                         />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.up_left_capture_exact}
-                            onChange={(e) => handleChange("up_left_capture_exact", e.target.checked)}
-                            disabled={pieceData.up_left_capture === 99}
-                          />
-                          <span>Exact</span>
-                        </label>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={pieceData.up_left_capture === 99}
-                            onChange={(e) => handleChange("up_left_capture", e.target.checked ? 99 : 0)}
-                          />
-                          <span>Infinite</span>
-                        </label>
-                      </div>
+                      <ToggleSwitch inline size="small"
+                        checked={!!pieceData.up_left_capture_exact}
+                        onChange={(v) => handleChange("up_left_capture_exact", v)}
+                        label="Exact"
+                        disabled={pieceData.up_left_capture === 99}
+                      />
+                      <ToggleSwitch inline size="small"
+                        checked={pieceData.up_left_capture === 99}
+                        onChange={(v) => handleChange("up_left_capture", v ? 99 : 0)}
+                        label="Infinite"
+                      />
                       <div className={styles["available-for-moves-group"]}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.up_left_capture_available_for}
-                            onChange={(e) => handleChange("up_left_capture_available_for", e.target.checked ? 1 : null)}
-                            disabled={pieceData.up_left_capture === 99}
-                          />
-                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                        </label>
+                        <ToggleSwitch inline size="small"
+                          checked={!!pieceData.up_left_capture_available_for}
+                          onChange={(v) => handleChange("up_left_capture_available_for", v ? 1 : null)}
+                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                        />
                         {pieceData.up_left_capture_available_for && (
                           <>
                             <NumberInput
@@ -532,37 +482,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                           options={{ disabled: pieceData.up_capture === 99 }}
                         />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.up_capture_exact}
-                            onChange={(e) => handleChange("up_capture_exact", e.target.checked)}
-                            disabled={pieceData.up_capture === 99}
-                          />
-                          <span>Exact</span>
-                        </label>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={pieceData.up_capture === 99}
-                            onChange={(e) => handleChange("up_capture", e.target.checked ? 99 : 0)}
-                          />
-                          <span>Infinite</span>
-                        </label>
-                      </div>
+                      <ToggleSwitch inline size="small"
+                        checked={!!pieceData.up_capture_exact}
+                        onChange={(v) => handleChange("up_capture_exact", v)}
+                        label="Exact"
+                        disabled={pieceData.up_capture === 99}
+                      />
+                      <ToggleSwitch inline size="small"
+                        checked={pieceData.up_capture === 99}
+                        onChange={(v) => handleChange("up_capture", v ? 99 : 0)}
+                        label="Infinite"
+                      />
                       <div className={styles["available-for-moves-group"]}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.up_capture_available_for}
-                            onChange={(e) => handleChange("up_capture_available_for", e.target.checked ? 1 : null)}
-                            disabled={pieceData.up_capture === 99}
-                          />
-                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                        </label>
+                        <ToggleSwitch inline size="small"
+                          checked={!!pieceData.up_capture_available_for}
+                          onChange={(v) => handleChange("up_capture_available_for", v ? 1 : null)}
+                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                        />
                         {pieceData.up_capture_available_for && (
                           <>
                             <NumberInput
@@ -587,37 +523,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                           options={{ disabled: pieceData.up_right_capture === 99 }}
                         />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.up_right_capture_exact}
-                            onChange={(e) => handleChange("up_right_capture_exact", e.target.checked)}
-                            disabled={pieceData.up_right_capture === 99}
-                          />
-                          <span>Exact</span>
-                        </label>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={pieceData.up_right_capture === 99}
-                            onChange={(e) => handleChange("up_right_capture", e.target.checked ? 99 : 0)}
-                          />
-                          <span>Infinite</span>
-                        </label>
-                      </div>
+                      <ToggleSwitch inline size="small"
+                        checked={!!pieceData.up_right_capture_exact}
+                        onChange={(v) => handleChange("up_right_capture_exact", v)}
+                        label="Exact"
+                        disabled={pieceData.up_right_capture === 99}
+                      />
+                      <ToggleSwitch inline size="small"
+                        checked={pieceData.up_right_capture === 99}
+                        onChange={(v) => handleChange("up_right_capture", v ? 99 : 0)}
+                        label="Infinite"
+                      />
                       <div className={styles["available-for-moves-group"]}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.up_right_capture_available_for}
-                            onChange={(e) => handleChange("up_right_capture_available_for", e.target.checked ? 1 : null)}
-                            disabled={pieceData.up_right_capture === 99}
-                          />
-                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                        </label>
+                        <ToggleSwitch inline size="small"
+                          checked={!!pieceData.up_right_capture_available_for}
+                          onChange={(v) => handleChange("up_right_capture_available_for", v ? 1 : null)}
+                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                        />
                         {pieceData.up_right_capture_available_for && (
                           <>
                             <NumberInput
@@ -644,37 +566,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                           options={{ disabled: pieceData.left_capture === 99 }}
                         />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.left_capture_exact}
-                            onChange={(e) => handleChange("left_capture_exact", e.target.checked)}
-                            disabled={pieceData.left_capture === 99}
-                          />
-                          <span>Exact</span>
-                        </label>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={pieceData.left_capture === 99}
-                            onChange={(e) => handleChange("left_capture", e.target.checked ? 99 : 0)}
-                          />
-                          <span>Infinite</span>
-                        </label>
-                      </div>
+                      <ToggleSwitch inline size="small"
+                        checked={!!pieceData.left_capture_exact}
+                        onChange={(v) => handleChange("left_capture_exact", v)}
+                        label="Exact"
+                        disabled={pieceData.left_capture === 99}
+                      />
+                      <ToggleSwitch inline size="small"
+                        checked={pieceData.left_capture === 99}
+                        onChange={(v) => handleChange("left_capture", v ? 99 : 0)}
+                        label="Infinite"
+                      />
                       <div className={styles["available-for-moves-group"]}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.left_capture_available_for}
-                            onChange={(e) => handleChange("left_capture_available_for", e.target.checked ? 1 : null)}
-                            disabled={pieceData.left_capture === 99}
-                          />
-                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                        </label>
+                        <ToggleSwitch inline size="small"
+                          checked={!!pieceData.left_capture_available_for}
+                          onChange={(v) => handleChange("left_capture_available_for", v ? 1 : null)}
+                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                        />
                         {pieceData.left_capture_available_for && (
                           <>
                             <NumberInput
@@ -710,37 +618,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                           options={{ disabled: pieceData.right_capture === 99 }}
                         />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.right_capture_exact}
-                            onChange={(e) => handleChange("right_capture_exact", e.target.checked)}
-                            disabled={pieceData.right_capture === 99}
-                          />
-                          <span>Exact</span>
-                        </label>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={pieceData.right_capture === 99}
-                            onChange={(e) => handleChange("right_capture", e.target.checked ? 99 : 0)}
-                          />
-                          <span>Infinite</span>
-                        </label>
-                      </div>
+                      <ToggleSwitch inline size="small"
+                        checked={!!pieceData.right_capture_exact}
+                        onChange={(v) => handleChange("right_capture_exact", v)}
+                        label="Exact"
+                        disabled={pieceData.right_capture === 99}
+                      />
+                      <ToggleSwitch inline size="small"
+                        checked={pieceData.right_capture === 99}
+                        onChange={(v) => handleChange("right_capture", v ? 99 : 0)}
+                        label="Infinite"
+                      />
                       <div className={styles["available-for-moves-group"]}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.right_capture_available_for}
-                            onChange={(e) => handleChange("right_capture_available_for", e.target.checked ? 1 : null)}
-                            disabled={pieceData.right_capture === 99}
-                          />
-                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                        </label>
+                        <ToggleSwitch inline size="small"
+                          checked={!!pieceData.right_capture_available_for}
+                          onChange={(v) => handleChange("right_capture_available_for", v ? 1 : null)}
+                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                        />
                         {pieceData.right_capture_available_for && (
                           <>
                             <NumberInput
@@ -767,37 +661,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                           options={{ disabled: pieceData.down_left_capture === 99 }}
                         />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.down_left_capture_exact}
-                            onChange={(e) => handleChange("down_left_capture_exact", e.target.checked)}
-                            disabled={pieceData.down_left_capture === 99}
-                          />
-                          <span>Exact</span>
-                        </label>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={pieceData.down_left_capture === 99}
-                            onChange={(e) => handleChange("down_left_capture", e.target.checked ? 99 : 0)}
-                          />
-                          <span>Infinite</span>
-                        </label>
-                      </div>
+                      <ToggleSwitch inline size="small"
+                        checked={!!pieceData.down_left_capture_exact}
+                        onChange={(v) => handleChange("down_left_capture_exact", v)}
+                        label="Exact"
+                        disabled={pieceData.down_left_capture === 99}
+                      />
+                      <ToggleSwitch inline size="small"
+                        checked={pieceData.down_left_capture === 99}
+                        onChange={(v) => handleChange("down_left_capture", v ? 99 : 0)}
+                        label="Infinite"
+                      />
                       <div className={styles["available-for-moves-group"]}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.down_left_capture_available_for}
-                            onChange={(e) => handleChange("down_left_capture_available_for", e.target.checked ? 1 : null)}
-                            disabled={pieceData.down_left_capture === 99}
-                          />
-                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                        </label>
+                        <ToggleSwitch inline size="small"
+                          checked={!!pieceData.down_left_capture_available_for}
+                          onChange={(v) => handleChange("down_left_capture_available_for", v ? 1 : null)}
+                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                        />
                         {pieceData.down_left_capture_available_for && (
                           <>
                             <NumberInput
@@ -822,37 +702,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                           options={{ disabled: pieceData.down_capture === 99 }}
                         />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.down_capture_exact}
-                            onChange={(e) => handleChange("down_capture_exact", e.target.checked)}
-                            disabled={pieceData.down_capture === 99}
-                          />
-                          <span>Exact</span>
-                        </label>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={pieceData.down_capture === 99}
-                            onChange={(e) => handleChange("down_capture", e.target.checked ? 99 : 0)}
-                          />
-                          <span>Infinite</span>
-                        </label>
-                      </div>
+                      <ToggleSwitch inline size="small"
+                        checked={!!pieceData.down_capture_exact}
+                        onChange={(v) => handleChange("down_capture_exact", v)}
+                        label="Exact"
+                        disabled={pieceData.down_capture === 99}
+                      />
+                      <ToggleSwitch inline size="small"
+                        checked={pieceData.down_capture === 99}
+                        onChange={(v) => handleChange("down_capture", v ? 99 : 0)}
+                        label="Infinite"
+                      />
                       <div className={styles["available-for-moves-group"]}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.down_capture_available_for}
-                            onChange={(e) => handleChange("down_capture_available_for", e.target.checked ? 1 : null)}
-                            disabled={pieceData.down_capture === 99}
-                          />
-                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                        </label>
+                        <ToggleSwitch inline size="small"
+                          checked={!!pieceData.down_capture_available_for}
+                          onChange={(v) => handleChange("down_capture_available_for", v ? 1 : null)}
+                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                        />
                         {pieceData.down_capture_available_for && (
                           <>
                             <NumberInput
@@ -877,37 +743,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                           options={{ disabled: pieceData.down_right_capture === 99 }}
                         />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.down_right_capture_exact}
-                            onChange={(e) => handleChange("down_right_capture_exact", e.target.checked)}
-                            disabled={pieceData.down_right_capture === 99}
-                          />
-                          <span>Exact</span>
-                        </label>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={pieceData.down_right_capture === 99}
-                            onChange={(e) => handleChange("down_right_capture", e.target.checked ? 99 : 0)}
-                          />
-                          <span>Infinite</span>
-                        </label>
-                      </div>
+                      <ToggleSwitch inline size="small"
+                        checked={!!pieceData.down_right_capture_exact}
+                        onChange={(v) => handleChange("down_right_capture_exact", v)}
+                        label="Exact"
+                        disabled={pieceData.down_right_capture === 99}
+                      />
+                      <ToggleSwitch inline size="small"
+                        checked={pieceData.down_right_capture === 99}
+                        onChange={(v) => handleChange("down_right_capture", v ? 99 : 0)}
+                        label="Infinite"
+                      />
                       <div className={styles["available-for-moves-group"]}>
-                        <label className={styles["checkbox-label-inline"]}>
-                          <input
-                            type="checkbox"
-                            checked={!!pieceData.down_right_capture_available_for}
-                            onChange={(e) => handleChange("down_right_capture_available_for", e.target.checked ? 1 : null)}
-                            disabled={pieceData.down_right_capture === 99}
-                          />
-                          <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                        </label>
+                        <ToggleSwitch inline size="small"
+                          checked={!!pieceData.down_right_capture_available_for}
+                          onChange={(v) => handleChange("down_right_capture_available_for", v ? 1 : null)}
+                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                        />
                         {pieceData.down_right_capture_available_for && (
                           <>
                             <NumberInput
@@ -929,14 +781,12 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
             {/* Repeating Exact Capture */}
             {!pieceData.attacks_like_movement && (
               <div className={styles["sub-field"]}>
-                <label className={styles["checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.repeating_capture || false}
-                    onChange={(e) => handleChange("repeating_capture", e.target.checked)}
-                  />
-                  <span>Repeating exact capture <InfoTooltip text="When enabled with exact captures, the piece can repeat its exact capture distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 capture could capture on squares 2, 4, 6, 8, etc." /></span>
-                </label>
+                <ToggleSwitch
+                  checked={pieceData.repeating_capture || false}
+                  onChange={(v) => handleChange("repeating_capture", v)}
+                  label="Repeating exact capture"
+                  tooltip={<InfoTooltip text="When enabled with exact captures, the piece can repeat its exact capture distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 capture could capture on squares 2, 4, 6, 8, etc." />}
+                />
               </div>
             )}
 
@@ -944,34 +794,19 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
             {!pieceData.attacks_like_movement && (
               <div className={styles["sub-field"]}>
                 <h4>Ratio Capture Movement (L-shape) <InfoTooltip text="L-shaped capture like a knight. The piece jumps one distance in one direction, then a different distance perpendicularly to land on and capture an enemy. Leave both empty to disable. Example: 2 and 1 for standard knight capture." /></h4>
-                <div className={styles["radio-group"]}>
-                  <label className={styles["radio-label"]}>
-                    <input
-                      type="radio"
-                      name="ratio_capture_enabled"
-                      value="true"
-                      checked={!!(pieceData.ratio_one_capture || pieceData.ratio_two_capture)}
-                      onChange={() => {
-                        if (!pieceData.ratio_one_capture && !pieceData.ratio_two_capture) {
-                          updatePieceData({ ratio_one_capture: 2, ratio_two_capture: 1 });
-                        }
-                      }}
-                    />
-                    <span>Enable ratio capture</span>
-                  </label>
-                  <label className={styles["radio-label"]}>
-                    <input
-                      type="radio"
-                      name="ratio_capture_enabled"
-                      value="false"
-                      checked={!pieceData.ratio_one_capture && !pieceData.ratio_two_capture}
-                      onChange={() => {
-                        updatePieceData({ ratio_one_capture: null, ratio_two_capture: null, repeating_ratio_capture: false, max_ratio_capture_iterations: null });
-                      }}
-                    />
-                    <span>Disable ratio capture</span>
-                  </label>
-                </div>
+                <ToggleSwitch
+                  checked={!!(pieceData.ratio_one_capture || pieceData.ratio_two_capture)}
+                  onChange={(v) => {
+                    if (v) {
+                      if (!pieceData.ratio_one_capture && !pieceData.ratio_two_capture) {
+                        updatePieceData({ ratio_one_capture: 2, ratio_two_capture: 1 });
+                      }
+                    } else {
+                      updatePieceData({ ratio_one_capture: null, ratio_two_capture: null, repeating_ratio_capture: false, max_ratio_capture_iterations: null });
+                    }
+                  }}
+                  label="Enable ratio capture"
+                />
                 {(pieceData.ratio_one_capture || pieceData.ratio_two_capture) ? (
                   <>
                     <div className={styles["form-row"]}>
@@ -992,24 +827,20 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                         />
                       </div>
                     </div>
-                    <label className={styles["checkbox-label"]}>
-                      <input
-                        type="checkbox"
-                        checked={pieceData.repeating_ratio_capture || false}
-                        onChange={(e) => handleChange("repeating_ratio_capture", e.target.checked)}
-                      />
-                      <span>Repeating ratio capture <InfoTooltip text="When enabled, the piece can repeat its L-shaped capture multiple times in the same direction in a single move." /></span>
-                    </label>
+                    <ToggleSwitch
+                      checked={pieceData.repeating_ratio_capture || false}
+                      onChange={(v) => handleChange("repeating_ratio_capture", v)}
+                      label="Repeating ratio capture"
+                      tooltip={<InfoTooltip text="When enabled, the piece can repeat its L-shaped capture multiple times in the same direction in a single move." />}
+                    />
                     {pieceData.repeating_ratio_capture && (
                       <div className={styles["sub-option"]} style={{ marginLeft: '24px', marginTop: '8px' }}>
-                        <label className={styles["checkbox-label"]}>
-                          <input
-                            type="checkbox"
-                            checked={pieceData.max_ratio_capture_iterations === -1}
-                            onChange={(e) => handleChange("max_ratio_capture_iterations", e.target.checked ? -1 : 2)}
-                          />
-                          <span>Infinite <InfoTooltip text="Allow unlimited ratio capture iterations in a single move." /></span>
-                        </label>
+                        <ToggleSwitch
+                          checked={pieceData.max_ratio_capture_iterations === -1}
+                          onChange={(v) => handleChange("max_ratio_capture_iterations", v ? -1 : 2)}
+                          label="Infinite"
+                          tooltip={<InfoTooltip text="Allow unlimited ratio capture iterations in a single move." />}
+                        />
                         {pieceData.max_ratio_capture_iterations !== -1 && (
                           <div style={{ marginTop: '8px' }}>
                             <label>Max Iterations</label>
@@ -1042,18 +873,15 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                   }}
                   options={{ min: 1, max: MAX_STEP_BY_STEP, placeholder: `Leave empty to disable (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
                 />
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.step_by_step_capture < 0}
-                    onChange={(e) => {
-                      const val = Math.abs(pieceData.step_by_step_capture || 0);
-                      handleChange("step_by_step_capture", e.target.checked ? -val : val);
-                    }}
-                    disabled={!pieceData.step_by_step_capture}
-                  />
-                  <span>Exclude diagonal movement</span>
-                </label>
+                <ToggleSwitch inline size="small"
+                  checked={pieceData.step_by_step_capture < 0}
+                  onChange={(v) => {
+                    const val = Math.abs(pieceData.step_by_step_capture || 0);
+                    handleChange("step_by_step_capture", v ? -val : val);
+                  }}
+                  disabled={!pieceData.step_by_step_capture}
+                  label="Exclude diagonal movement"
+                />
               </div>
             )}
           </>
@@ -1066,38 +894,32 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
 
         {/* Capture on Hop - disabled when can_hop_over_enemies not enabled in Step 2 */}
         <div style={{ marginBottom: '15px' }}>
-          <label className={styles["checkbox-label"]} style={pieceData.can_hop_over_enemies ? {} : { opacity: 0.5 }}>
-            <input
-              type="checkbox"
-              checked={pieceData.capture_on_hop || false}
-              onChange={(e) => handleChange("capture_on_hop", e.target.checked)}
-              disabled={!pieceData.can_hop_over_enemies}
-            />
-            <span>Capture on Hop <InfoTooltip text="When this piece hops over enemy pieces, it deals damage equal to its Attack Damage. If the target's HP reaches 0, it is captured. If the target survives, it stays on the board with reduced HP but the hop still completes. Requires 'Can hop over enemy pieces' in Movement Hopping (Step 2)." /></span>
-          </label>
+          <ToggleSwitch
+            checked={pieceData.capture_on_hop || false}
+            onChange={(v) => handleChange("capture_on_hop", v)}
+            label="Capture on Hop"
+            tooltip={<InfoTooltip text="When this piece hops over enemy pieces, it deals damage equal to its Attack Damage. If the target's HP reaches 0, it is captured. If the target survives, it stays on the board with reduced HP but the hop still completes. Requires 'Can hop over enemy pieces' in Movement Hopping (Step 2)." />}
+            disabled={!pieceData.can_hop_over_enemies}
+          />
         </div>
 
         <div style={{ marginBottom: '15px' }}>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.chain_capture_enabled || false}
-              onChange={(e) => handleChange("chain_capture_enabled", e.target.checked)}
-            />
-            <span>Chain Capture (Multi-Jump) <InfoTooltip text="If this piece captures an enemy, it can make additional captures in the same turn (only this piece can move). Enables multi-jump sequences like in checkers." /></span>
-          </label>
+          <ToggleSwitch
+            checked={pieceData.chain_capture_enabled || false}
+            onChange={(v) => handleChange("chain_capture_enabled", v)}
+            label="Chain Capture (Multi-Jump)"
+            tooltip={<InfoTooltip text="If this piece captures an enemy, it can make additional captures in the same turn (only this piece can move). Enables multi-jump sequences like in checkers." />}
+          />
           
           {/* Chain Hop Over Allies - only show when chain capture is enabled */}
           {pieceData.chain_capture_enabled && (
             <div style={{ marginLeft: '20px', marginTop: '10px' }}>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.chain_hop_allies || false}
-                  onChange={(e) => handleChange("chain_hop_allies", e.target.checked)}
-                />
-                <span>Chain Hop Over Allies <InfoTooltip text="During chain capture sequences, this piece can also hop over allied pieces (not capturing them). Useful for variants where jumping over your own pieces is allowed during multi-jump moves." /></span>
-              </label>
+              <ToggleSwitch
+                checked={pieceData.chain_hop_allies || false}
+                onChange={(v) => handleChange("chain_hop_allies", v)}
+                label="Chain Hop Over Allies"
+                tooltip={<InfoTooltip text="During chain capture sequences, this piece can also hop over allied pieces (not capturing them). Useful for variants where jumping over your own pieces is allowed during multi-jump moves." />}
+              />
               <div style={{ marginTop: '10px' }}>
                 <label className={styles["field-label"]}>
                   Max Chain Hops <InfoTooltip text="Maximum number of consecutive capture hops allowed in a single chain. Leave empty for unlimited. Useful to prevent infinite hop-back-and-forth exploits." />
@@ -1116,28 +938,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
       {/* Ranged Attack */}
       <div className={styles["condition-section"]}>
         <h3>Ranged Attack <InfoTooltip text="Ranged attacks let the piece attack without moving — it stays in place but can capture distant enemies. Unlike 'Capture on Move,' the piece does not move to the target square. Configure the attack range, line of sight rules (whether it can fire over other pieces), and directional/ratio attack patterns." /></h3>
-        <div className={styles["radio-group"]}>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="can_capture_enemy_via_range"
-              value="true"
-              checked={pieceData.can_capture_enemy_via_range === true}
-              onChange={(e) => handleBooleanChange("can_capture_enemy_via_range", e.target.value)}
-            />
-            <span>Enable ranged attack</span>
-          </label>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="can_capture_enemy_via_range"
-              value="false"
-              checked={pieceData.can_capture_enemy_via_range === false}
-              onChange={(e) => handleBooleanChange("can_capture_enemy_via_range", e.target.value)}
-            />
-            <span>Disable</span>
-          </label>
-        </div>
+        <ToggleSwitch
+          checked={pieceData.can_capture_enemy_via_range === true}
+          onChange={(v) => handleBooleanChange("can_capture_enemy_via_range", v ? "true" : "false")}
+          label="Enable ranged attack"
+        />
 
         {pieceData.can_capture_enemy_via_range && (
           <>
@@ -1148,38 +953,26 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                 onChange={(val) => handleChange("max_captures_via_ranged_attack", val)}
                 options={{ min: 1, disabled: pieceData.max_captures_via_ranged_attack === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
-              <label className={styles["checkbox-label-inline"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.max_captures_via_ranged_attack === -1}
-                  onChange={(e) => handleChange("max_captures_via_ranged_attack", e.target.checked ? -1 : 1)}
-                />
-                <span>Unlimited</span>
-              </label>
+              <ToggleSwitch inline size="small"
+                checked={pieceData.max_captures_via_ranged_attack === -1}
+                onChange={(v) => handleChange("max_captures_via_ranged_attack", v ? -1 : 1)}
+                label="Unlimited"
+              />
             </div>
 
             {/* Firing Over Pieces */}
             <div className={styles["sub-field"]}>
-              <h4>Line of Sight</h4>
-              <p className={styles["field-hint"]}>
-                By default, ranged attacks are blocked by other pieces. Enable these to allow firing over allies or enemies.
-              </p>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.can_fire_over_allies}
-                  onChange={(e) => handleChange("can_fire_over_allies", e.target.checked)}
-                />
-                <span>Can fire over allied pieces</span>
-              </label>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.can_fire_over_enemies}
-                  onChange={(e) => handleChange("can_fire_over_enemies", e.target.checked)}
-                />
-                <span>Can fire over enemy pieces</span>
-              </label>
+              <h4>Line of Sight <InfoTooltip text="By default, ranged attacks are blocked by other pieces. Enable these to allow firing over allies or enemies." /></h4>
+              <ToggleSwitch
+                checked={pieceData.can_fire_over_allies || false}
+                onChange={(v) => handleChange("can_fire_over_allies", v)}
+                label="Can fire over allied pieces"
+              />
+              <ToggleSwitch
+                checked={pieceData.can_fire_over_enemies || false}
+                onChange={(v) => handleChange("can_fire_over_enemies", v)}
+                label="Can fire over enemy pieces"
+              />
             </div>
 
             {/* Directional Ranged Attack */}
@@ -1199,23 +992,17 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                       onChange={(val) => handleChange("up_left_attack_range", val)}
                       options={{ disabled: pieceData.up_left_attack_range === 99 }}
                     />
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={!!pieceData.up_left_attack_range_exact}
-                        onChange={(e) => handleChange("up_left_attack_range_exact", e.target.checked)}
-                        disabled={pieceData.up_left_attack_range === 99}
-                      />
-                      <span>Exact</span>
-                    </label>
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={pieceData.up_left_attack_range === 99}
-                        onChange={(e) => handleChange("up_left_attack_range", e.target.checked ? 99 : 0)}
-                      />
-                      <span>Infinite</span>
-                    </label>
+                    <ToggleSwitch inline size="small"
+                      checked={!!pieceData.up_left_attack_range_exact}
+                      onChange={(v) => handleChange("up_left_attack_range_exact", v)}
+                      label="Exact"
+                      disabled={pieceData.up_left_attack_range === 99}
+                    />
+                    <ToggleSwitch inline size="small"
+                      checked={pieceData.up_left_attack_range === 99}
+                      onChange={(v) => handleChange("up_left_attack_range", v ? 99 : 0)}
+                      label="Infinite"
+                    />
                   </div>
                   
                   {/* Up */}
@@ -1226,23 +1013,17 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                       onChange={(val) => handleChange("up_attack_range", val)}
                       options={{ disabled: pieceData.up_attack_range === 99 }}
                     />
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={!!pieceData.up_attack_range_exact}
-                        onChange={(e) => handleChange("up_attack_range_exact", e.target.checked)}
-                        disabled={pieceData.up_attack_range === 99}
-                      />
-                      <span>Exact</span>
-                    </label>
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={pieceData.up_attack_range === 99}
-                        onChange={(e) => handleChange("up_attack_range", e.target.checked ? 99 : 0)}
-                      />
-                      <span>Infinite</span>
-                    </label>
+                    <ToggleSwitch inline size="small"
+                      checked={!!pieceData.up_attack_range_exact}
+                      onChange={(v) => handleChange("up_attack_range_exact", v)}
+                      label="Exact"
+                      disabled={pieceData.up_attack_range === 99}
+                    />
+                    <ToggleSwitch inline size="small"
+                      checked={pieceData.up_attack_range === 99}
+                      onChange={(v) => handleChange("up_attack_range", v ? 99 : 0)}
+                      label="Infinite"
+                    />
                   </div>
                   
                   {/* Up-Right */}
@@ -1253,23 +1034,17 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                       onChange={(val) => handleChange("up_right_attack_range", val)}
                       options={{ disabled: pieceData.up_right_attack_range === 99 }}
                     />
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={!!pieceData.up_right_attack_range_exact}
-                        onChange={(e) => handleChange("up_right_attack_range_exact", e.target.checked)}
-                        disabled={pieceData.up_right_attack_range === 99}
-                      />
-                      <span>Exact</span>
-                    </label>
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={pieceData.up_right_attack_range === 99}
-                        onChange={(e) => handleChange("up_right_attack_range", e.target.checked ? 99 : 0)}
-                      />
-                      <span>Infinite</span>
-                    </label>
+                    <ToggleSwitch inline size="small"
+                      checked={!!pieceData.up_right_attack_range_exact}
+                      onChange={(v) => handleChange("up_right_attack_range_exact", v)}
+                      label="Exact"
+                      disabled={pieceData.up_right_attack_range === 99}
+                    />
+                    <ToggleSwitch inline size="small"
+                      checked={pieceData.up_right_attack_range === 99}
+                      onChange={(v) => handleChange("up_right_attack_range", v ? 99 : 0)}
+                      label="Infinite"
+                    />
                   </div>
                 </div>
                 
@@ -1282,23 +1057,17 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                       onChange={(val) => handleChange("left_attack_range", val)}
                       options={{ disabled: pieceData.left_attack_range === 99 }}
                     />
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={!!pieceData.left_attack_range_exact}
-                        onChange={(e) => handleChange("left_attack_range_exact", e.target.checked)}
-                        disabled={pieceData.left_attack_range === 99}
-                      />
-                      <span>Exact</span>
-                    </label>
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={pieceData.left_attack_range === 99}
-                        onChange={(e) => handleChange("left_attack_range", e.target.checked ? 99 : 0)}
-                      />
-                      <span>Infinite</span>
-                    </label>
+                    <ToggleSwitch inline size="small"
+                      checked={!!pieceData.left_attack_range_exact}
+                      onChange={(v) => handleChange("left_attack_range_exact", v)}
+                      label="Exact"
+                      disabled={pieceData.left_attack_range === 99}
+                    />
+                    <ToggleSwitch inline size="small"
+                      checked={pieceData.left_attack_range === 99}
+                      onChange={(v) => handleChange("left_attack_range", v ? 99 : 0)}
+                      label="Infinite"
+                    />
                   </div>
                   
                   {/* Center piece */}
@@ -1320,23 +1089,17 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                       onChange={(val) => handleChange("right_attack_range", val)}
                       options={{ disabled: pieceData.right_attack_range === 99 }}
                     />
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={!!pieceData.right_attack_range_exact}
-                        onChange={(e) => handleChange("right_attack_range_exact", e.target.checked)}
-                        disabled={pieceData.right_attack_range === 99}
-                      />
-                      <span>Exact</span>
-                    </label>
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={pieceData.right_attack_range === 99}
-                        onChange={(e) => handleChange("right_attack_range", e.target.checked ? 99 : 0)}
-                      />
-                      <span>Infinite</span>
-                    </label>
+                    <ToggleSwitch inline size="small"
+                      checked={!!pieceData.right_attack_range_exact}
+                      onChange={(v) => handleChange("right_attack_range_exact", v)}
+                      label="Exact"
+                      disabled={pieceData.right_attack_range === 99}
+                    />
+                    <ToggleSwitch inline size="small"
+                      checked={pieceData.right_attack_range === 99}
+                      onChange={(v) => handleChange("right_attack_range", v ? 99 : 0)}
+                      label="Infinite"
+                    />
                   </div>
                 </div>
                 
@@ -1349,23 +1112,17 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                       onChange={(val) => handleChange("down_left_attack_range", val)}
                       options={{ disabled: pieceData.down_left_attack_range === 99 }}
                     />
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={!!pieceData.down_left_attack_range_exact}
-                        onChange={(e) => handleChange("down_left_attack_range_exact", e.target.checked)}
-                        disabled={pieceData.down_left_attack_range === 99}
-                      />
-                      <span>Exact</span>
-                    </label>
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={pieceData.down_left_attack_range === 99}
-                        onChange={(e) => handleChange("down_left_attack_range", e.target.checked ? 99 : 0)}
-                      />
-                      <span>Infinite</span>
-                    </label>
+                    <ToggleSwitch inline size="small"
+                      checked={!!pieceData.down_left_attack_range_exact}
+                      onChange={(v) => handleChange("down_left_attack_range_exact", v)}
+                      label="Exact"
+                      disabled={pieceData.down_left_attack_range === 99}
+                    />
+                    <ToggleSwitch inline size="small"
+                      checked={pieceData.down_left_attack_range === 99}
+                      onChange={(v) => handleChange("down_left_attack_range", v ? 99 : 0)}
+                      label="Infinite"
+                    />
                   </div>
                   
                   {/* Down */}
@@ -1376,23 +1133,17 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                       onChange={(val) => handleChange("down_attack_range", val)}
                       options={{ disabled: pieceData.down_attack_range === 99 }}
                     />
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={!!pieceData.down_attack_range_exact}
-                        onChange={(e) => handleChange("down_attack_range_exact", e.target.checked)}
-                        disabled={pieceData.down_attack_range === 99}
-                      />
-                      <span>Exact</span>
-                    </label>
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={pieceData.down_attack_range === 99}
-                        onChange={(e) => handleChange("down_attack_range", e.target.checked ? 99 : 0)}
-                      />
-                      <span>Infinite</span>
-                    </label>
+                    <ToggleSwitch inline size="small"
+                      checked={!!pieceData.down_attack_range_exact}
+                      onChange={(v) => handleChange("down_attack_range_exact", v)}
+                      label="Exact"
+                      disabled={pieceData.down_attack_range === 99}
+                    />
+                    <ToggleSwitch inline size="small"
+                      checked={pieceData.down_attack_range === 99}
+                      onChange={(v) => handleChange("down_attack_range", v ? 99 : 0)}
+                      label="Infinite"
+                    />
                   </div>
                   
                   {/* Down-Right */}
@@ -1403,23 +1154,17 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                       onChange={(val) => handleChange("down_right_attack_range", val)}
                       options={{ disabled: pieceData.down_right_attack_range === 99 }}
                     />
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={!!pieceData.down_right_attack_range_exact}
-                        onChange={(e) => handleChange("down_right_attack_range_exact", e.target.checked)}
-                        disabled={pieceData.down_right_attack_range === 99}
-                      />
-                      <span>Exact</span>
-                    </label>
-                    <label className={styles["checkbox-label-inline"]}>
-                      <input
-                        type="checkbox"
-                        checked={pieceData.down_right_attack_range === 99}
-                        onChange={(e) => handleChange("down_right_attack_range", e.target.checked ? 99 : 0)}
-                      />
-                      <span>Infinite</span>
-                    </label>
+                    <ToggleSwitch inline size="small"
+                      checked={!!pieceData.down_right_attack_range_exact}
+                      onChange={(v) => handleChange("down_right_attack_range_exact", v)}
+                      label="Exact"
+                      disabled={pieceData.down_right_attack_range === 99}
+                    />
+                    <ToggleSwitch inline size="small"
+                      checked={pieceData.down_right_attack_range === 99}
+                      onChange={(v) => handleChange("down_right_attack_range", v ? 99 : 0)}
+                      label="Infinite"
+                    />
                   </div>
                 </div>
               </div>
@@ -1464,18 +1209,15 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                 }}
                 options={{ min: 1, max: MAX_STEP_BY_STEP, placeholder: `Leave empty to disable (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
               />
-              <label className={styles["checkbox-label-inline"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.step_by_step_attack_range < 0}
-                  onChange={(e) => {
-                    const val = Math.abs(pieceData.step_by_step_attack_range || 0);
-                    handleChange("step_by_step_attack_range", e.target.checked ? -val : val);
-                  }}
-                  disabled={!pieceData.step_by_step_attack_range}
-                />
-                <span>Exclude diagonal movement</span>
-              </label>
+              <ToggleSwitch inline size="small"
+                checked={pieceData.step_by_step_attack_range < 0}
+                onChange={(v) => {
+                  const val = Math.abs(pieceData.step_by_step_attack_range || 0);
+                  handleChange("step_by_step_attack_range", v ? -val : val);
+                }}
+                disabled={!pieceData.step_by_step_attack_range}
+                label="Exclude diagonal movement"
+              />
               <p className={styles["field-hint"]}>
                 Total squares piece can attack from range in any combination of directions (checked = orthogonal only)
               </p>

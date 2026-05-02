@@ -603,34 +603,25 @@ const PieceSelector = ({
             </p>
             <div className={styles["checkbox-group"]}>
               {mateCondition && (
-                <label key="checkmate" className={styles["checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={endsGameOnCheckmate}
-                    onChange={(e) => setEndsGameOnCheckmate(e.target.checked)}
-                  />
-                  <span>Ends game on checkmate (this piece must be checkmated to win)</span>
-                </label>
+                <ToggleSwitch
+                  checked={endsGameOnCheckmate}
+                  onChange={(v) => setEndsGameOnCheckmate(v)}
+                  label="Ends game on checkmate (this piece must be checkmated to win)"
+                />
               )}
               {captureCondition && (
-                <label key="capture" className={styles["checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={endsGameOnCapture}
-                    onChange={(e) => setEndsGameOnCapture(e.target.checked)}
-                  />
-                  <span>End game if this piece is captured</span>
-                </label>
+                <ToggleSwitch
+                  checked={endsGameOnCapture}
+                  onChange={(v) => setEndsGameOnCapture(v)}
+                  label="End game if this piece is captured"
+                />
               )}
               {squaresCondition && requireSpecificPieceControl && (
-                <label key="control" className={styles["checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={canControlSquares}
-                    onChange={(e) => setCanControlSquares(e.target.checked)}
-                  />
-                  <span>Can control restricted control squares (only for squares marked "require specific piece")</span>
-                </label>
+                <ToggleSwitch
+                  checked={canControlSquares}
+                  onChange={(v) => setCanControlSquares(v)}
+                  label="Can control restricted control squares (only for squares marked &quot;require specific piece&quot;)"
+                />
               )}
             </div>
           </div>
@@ -734,30 +725,24 @@ const PieceSelector = ({
               </div>
             </div>
             <div className={styles["checkbox-group"]}>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={showHpAd}
-                  onChange={(e) => setShowHpAd(e.target.checked)}
-                />
-                <span>Show HP/AD badge <InfoTooltip text="Display an HP bar and AD badge on this piece during gameplay. Can also be toggled globally in game settings." /></span>
-              </label>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={showRegen}
-                  onChange={(e) => setShowRegen(e.target.checked)}
-                />
-                <span>Show Regen badge <InfoTooltip text="Display the HP regeneration badge on this piece. Regen still functions even if hidden." /></span>
-              </label>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={showBurn}
-                  onChange={(e) => setShowBurn(e.target.checked)}
-                />
-                <span>Show Burn badge <InfoTooltip text="Display the burn damage badge on this piece. The badge shows damage/duration — e.g. 🔥2/3 means this piece deals 2 burn damage per turn for 3 turns when it attacks. Burn still functions even if hidden." /></span>
-              </label>
+              <ToggleSwitch
+                checked={showHpAd}
+                onChange={(v) => setShowHpAd(v)}
+                label="Show HP/AD badge"
+                tooltip={<InfoTooltip text="Display an HP bar and AD badge on this piece during gameplay. Can also be toggled globally in game settings." />}
+              />
+              <ToggleSwitch
+                checked={showRegen}
+                onChange={(v) => setShowRegen(v)}
+                label="Show Regen badge"
+                tooltip={<InfoTooltip text="Display the HP regeneration badge on this piece. Regen still functions even if hidden." />}
+              />
+              <ToggleSwitch
+                checked={showBurn}
+                onChange={(v) => setShowBurn(v)}
+                label="Show Burn badge"
+                tooltip={<InfoTooltip text="Display the burn damage badge on this piece. The badge shows damage/duration — e.g. 🔥2/3 means this piece deals 2 burn damage per turn for 3 turns when it attacks. Burn still functions even if hidden." />}
+              />
             </div>
             <p style={{ marginTop: '10px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
               HP/AD system inspired by ideas from Vasilije. Check out his project at{' '}
@@ -863,21 +848,15 @@ const PieceSelector = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {/* Customize promotion targets */}
                 <div>
-                  <label className={styles["checkbox-label"]}>
-                    <input
-                      type="checkbox"
-                      checked={customizePromotion}
-                      onChange={(e) => {
-                        setCustomizePromotion(e.target.checked);
-                        if (!e.target.checked) setPromotionPieceIds([]);
-                      }}
-                    />
-                    <span>
-                      Customize promotion options
-                      {' '}
-                      <InfoTooltip text={`Override which pieces this piece can promote into. Up to ${promotionTargetCap} pieces (the number of unique piece types on the board, plus 8) may be selected. If left unchecked, default behavior applies.`} />
-                    </span>
-                  </label>
+                <ToggleSwitch
+                  checked={customizePromotion}
+                  onChange={(v) => {
+                    setCustomizePromotion(v);
+                    if (!v) setPromotionPieceIds([]);
+                  }}
+                  label="Customize promotion options"
+                  tooltip={<InfoTooltip text={`Override which pieces this piece can promote into. Up to ${promotionTargetCap} pieces (the number of unique piece types on the board, plus 8) may be selected. If left unchecked, default behavior applies.`} />}
+                />
 
                   {customizePromotion && (
                     <div style={{ marginLeft: '20px', borderLeft: '3px solid var(--button-border)', paddingLeft: '12px', marginTop: '8px' }}>
@@ -1013,35 +992,23 @@ const PieceSelector = ({
                 {/* Can promote to checkmate pieces (only when checkmate win condition is active) */}
                 {mateCondition && (
                   <div>
-                    <label className={styles["checkbox-label"]}>
-                      <input
-                        type="checkbox"
-                        checked={canPromoteToCheckmate}
-                        onChange={(e) => {
-                          setCanPromoteToCheckmate(e.target.checked);
-                          if (!e.target.checked) setLimitCheckmateOriginal(false);
-                        }}
-                      />
-                      <span>
-                        Can promote to checkmate pieces
-                        {' '}
-                        <InfoTooltip text="Allow this piece to promote into pieces that end the game when checkmated (e.g. kings)." />
-                      </span>
-                    </label>
+                    <ToggleSwitch
+                      checked={canPromoteToCheckmate}
+                      onChange={(v) => {
+                        setCanPromoteToCheckmate(v);
+                        if (!v) setLimitCheckmateOriginal(false);
+                      }}
+                      label="Can promote to checkmate pieces"
+                      tooltip={<InfoTooltip text="Allow this piece to promote into pieces that end the game when checkmated (e.g. kings)." />}
+                    />
                     {canPromoteToCheckmate && (
                       <div style={{ marginLeft: 24, marginTop: 4 }}>
-                        <label className={styles["checkbox-label"]}>
-                          <input
-                            type="checkbox"
-                            checked={limitCheckmateOriginal}
-                            onChange={(e) => setLimitCheckmateOriginal(e.target.checked)}
-                          />
-                          <span>
-                            Cannot exceed the original number of checkmateable pieces this player started with
-                            {' '}
-                            <InfoTooltip text="When active, the checkmate piece will be hidden from the promotion modal once you already control as many checkmate pieces as you started the game with." />
-                          </span>
-                        </label>
+                        <ToggleSwitch
+                          checked={limitCheckmateOriginal}
+                          onChange={(v) => setLimitCheckmateOriginal(v)}
+                          label="Cannot exceed the original number of checkmateable pieces this player started with"
+                          tooltip={<InfoTooltip text="When active, the checkmate piece will be hidden from the promotion modal once you already control as many checkmate pieces as you started the game with." />}
+                        />
                       </div>
                     )}
                   </div>
@@ -1049,35 +1016,23 @@ const PieceSelector = ({
 
                 {/* Can promote to win-on-capture pieces */}
                 <div>
-                  <label className={styles["checkbox-label"]}>
-                    <input
-                      type="checkbox"
-                      checked={canPromoteToCapture}
-                      onChange={(e) => {
-                        setCanPromoteToCapture(e.target.checked);
-                        if (!e.target.checked) setLimitCaptureOriginal(false);
-                      }}
-                    />
-                    <span>
-                      Can promote to win-on-capture pieces
-                      {' '}
-                      <InfoTooltip text="Allow this piece to promote into pieces that end the game when captured." />
-                    </span>
-                  </label>
+                  <ToggleSwitch
+                    checked={canPromoteToCapture}
+                    onChange={(v) => {
+                      setCanPromoteToCapture(v);
+                      if (!v) setLimitCaptureOriginal(false);
+                    }}
+                    label="Can promote to win-on-capture pieces"
+                    tooltip={<InfoTooltip text="Allow this piece to promote into pieces that end the game when captured." />}
+                  />
                   {canPromoteToCapture && (
                     <div style={{ marginLeft: 24, marginTop: 4 }}>
-                      <label className={styles["checkbox-label"]}>
-                        <input
-                          type="checkbox"
-                          checked={limitCaptureOriginal}
-                          onChange={(e) => setLimitCaptureOriginal(e.target.checked)}
-                        />
-                        <span>
-                          Cannot exceed the original number of win-on-capture pieces this player started with
-                          {' '}
-                          <InfoTooltip text="When active, the win-on-capture piece will be hidden from the promotion modal once you already control as many such pieces as you started the game with." />
-                        </span>
-                      </label>
+                      <ToggleSwitch
+                        checked={limitCaptureOriginal}
+                        onChange={(v) => setLimitCaptureOriginal(v)}
+                        label="Cannot exceed the original number of win-on-capture pieces this player started with"
+                        tooltip={<InfoTooltip text="When active, the win-on-capture piece will be hidden from the promotion modal once you already control as many such pieces as you started the game with." />}
+                      />
                     </div>
                   )}
                 </div>
@@ -1094,20 +1049,17 @@ const PieceSelector = ({
               By default, this piece will castle with the furthest allied piece on each side.
               Check below to manually specify castling partners.
             </p>
-            <label className={styles["checkbox-label"]}>
-              <input
-                type="checkbox"
-                checked={manualCastlingPartners}
-                onChange={(e) => {
-                  setManualCastlingPartners(e.target.checked);
-                  if (!e.target.checked) {
-                    setLeftCastlingPartnerKey(null);
-                    setRightCastlingPartnerKey(null);
-                  }
-                }}
-              />
-              <span>Manually set castling partners</span>
-            </label>
+            <ToggleSwitch
+              checked={manualCastlingPartners}
+              onChange={(v) => {
+                setManualCastlingPartners(v);
+                if (!v) {
+                  setLeftCastlingPartnerKey(null);
+                  setRightCastlingPartnerKey(null);
+                }
+              }}
+              label="Manually set castling partners"
+            />
 
             <div className={styles["castling-distance-section"]}>
               <label>Castling Distance (squares):</label>

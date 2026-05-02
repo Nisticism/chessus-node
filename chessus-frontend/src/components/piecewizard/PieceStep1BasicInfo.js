@@ -3,6 +3,7 @@ import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
 import InfoTooltip from "./InfoTooltip";
 import NumberInput from "../common/NumberInput";
+import ToggleSwitch from "../common/ToggleSwitch";
 import { pieceImageLibrary } from "../../assets/piece-images";
 import { checkForLinks, checkOffensiveContent, checkProfessionalName } from "../../utils/contentModeration";
 import LinkInsertButton from "../common/LinkInsertButton";
@@ -390,20 +391,13 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
       </div>
 
       <div className={styles["form-group"]}>
-        <label className={styles["checkbox-label"]}>
-          <input
-            type="checkbox"
-            checked={!currentUser || pieceData.is_anonymous_creator}
-            onChange={(e) => handleChange("is_anonymous_creator", e.target.checked)}
-            disabled={!currentUser}
-          />
-          <span>Create anonymously</span>
-        </label>
-        <p className={styles["field-hint"]}>
-          {!currentUser
-            ? "You are not logged in — your piece will be created anonymously."
-            : "When checked, your username will not be shown publicly as the creator of this piece."}
-        </p>
+        <ToggleSwitch
+          checked={!currentUser || pieceData.is_anonymous_creator}
+          onChange={(v) => handleChange("is_anonymous_creator", v)}
+          label="Create anonymously"
+          disabled={!currentUser}
+          tooltip={<InfoTooltip text={!currentUser ? "You are not logged in — your piece will be created anonymously." : "When enabled, your username will not be shown publicly as the creator of this piece."} />}
+        />
       </div>
 
       <div className={styles["image-upload-section"]}>

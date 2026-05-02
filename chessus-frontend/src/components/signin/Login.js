@@ -93,26 +93,27 @@ const Login = (props) => {
   }
 
   return (
-    <div className={styles["main"]}>
+    <div className={styles["container"]}>
       <div className={styles["wrapper"]}>
-        {/* <img
-          src="//ssl.gstatic.com/accounts/ui/avatar_2x.png"
-          alt="profile-img"
-          className="profile-img-card"
-        /> */}
+        <div className={styles["card-header"]}>
+          <h1 className={styles["page-title"]}>Sign In</h1>
+          <p className={styles["page-subtitle"]}>Welcome back to GridGrove</p>
+        </div>
+
         {authMessage && (
-          <div className={styles["form-group"]}>
+          <div className={styles["auth-message"]}>
             <div className="alert alert-info" role="alert">
               {authMessage}
             </div>
           </div>
         )}
-        <form onSubmit={handleLogin} ref={form}>
-          <div className={styles["form-group"]}>
-            <label htmlFor="username" className={styles["field-label"]}>Username: </label>
+
+        <form onSubmit={handleLogin} ref={form} className={styles["form"]}>
+          <div className={styles["field-group"]}>
+            <label htmlFor="username" className={styles["field-label"]}>Username</label>
             <input
               type="text"
-              className={styles["form-control"]}
+              className={styles["field-input"]}
               id="username"
               name="username"
               value={username}
@@ -121,11 +122,11 @@ const Login = (props) => {
               validations={[required]}
             />
           </div>
-          <div className={styles["form-group"]}>
-            <label htmlFor="password" className={styles["field-label"]}>Password: </label>
+          <div className={styles["field-group"]}>
+            <label htmlFor="password" className={styles["field-label"]}>Password</label>
             <input
               type="password"
-              className="form-control"
+              className={styles["field-input"]}
               id="password"
               name="password"
               value={password}
@@ -134,26 +135,24 @@ const Login = (props) => {
               validations={[required]}
             />
           </div>
-          <div className={styles["form-group"]}>
-            <button className={styles["login-button"]} disabled={loading}>
-              {loading && (
-                <span className="spinner-border spinner-border-sm"></span>
-              )}
-              <span>Login</span>
-            </button>
-          </div>
-          <div style={{ textAlign: 'center', marginTop: '10px', marginBottom: '10px' }}>
-            <Link to="/forgot-password" style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontSize: '14px' }}>
-              Forgot Password?
+
+          <div className={styles["forgot-row"]}>
+            <Link to="/forgot-password" className={styles["forgot-link"]}>
+              Forgot password?
             </Link>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', margin: '10px 0' }}>
-            <hr style={{ flex: 1 }} />
-            <span style={{ padding: '0 10px', color: 'var(--text-muted)', fontSize: '14px' }}>or</span>
-            <hr style={{ flex: 1 }} />
+
+          <button className={styles["login-button"]} disabled={loading}>
+            {loading && <span className="spinner-border spinner-border-sm"></span>}
+            <span>Sign In</span>
+          </button>
+
+          <div className={styles["divider"]}>
+            <span>or</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
-            <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '4px', overflow: 'hidden', display: 'inline-block' }}>
+
+          <div className={styles["social-row"]}>
+            <div className={styles["google-wrapper"]}>
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={handleGoogleError}
@@ -164,45 +163,34 @@ const Login = (props) => {
               />
             </div>
           </div>
+
           {process.env.REACT_APP_LICHESS_CLIENT_ID && (
-            <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+            <div className={styles["social-row"]}>
               <button
                 type="button"
                 onClick={handleLichessLogin}
-                style={{
-                  width: '320px',
-                  padding: '10px 16px',
-                  backgroundColor: '#fff',
-                  color: '#333',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '10px',
-                }}
+                className={styles["lichess-button"]}
               >
-                <img src="https://lichess.org/assets/logo/lichess-favicon-32.png" alt="Lichess" style={{ width: '20px', height: '20px' }} />
+                <img src="https://lichess.org/assets/logo/lichess-favicon-32.png" alt="Lichess" className={styles["lichess-icon"]} />
                 Sign in with Lichess
               </button>
             </div>
           )}
+
           {message && messageDisplay && (
-            <div className={styles["form-group"]}>
+            <div className={styles["message-row"]}>
               <div className="alert alert-danger" role="alert">
                 {message}
               </div>
             </div>
           )}
+
           <button style={{ display: "none" }} ref={checkBtn} />
         </form>
-        <hr />
-        <h2>Don't have an account?</h2>
-        <div style={{paddingBottom: "10px"}}>
-        <button className={styles["login-button"]} onClick={handleSignup}>Sign Up</button>
+
+        <div className={styles["signup-link"]}>
+          Don't have an account?{" "}
+          <Link to="/register" className={styles["signup-anchor"]}>Create one</Link>
         </div>
       </div>
     </div>

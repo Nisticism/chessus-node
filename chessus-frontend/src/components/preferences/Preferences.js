@@ -5,6 +5,7 @@ import styles from "./preferences.module.scss";
 import Divider from "../Divider/Divider";
 import StandardButton from "../standardbutton/StandardButton";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import ToggleSwitch from "../common/ToggleSwitch";
 import axios from "axios";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
@@ -560,60 +561,40 @@ const Preferences = () => {
           {/* Animations Section */}
           <div className={styles["animations-section"]}>
             <div className={styles["animations-label"]}>Animations</div>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Enable board animations <InfoTooltip text="Shows visual effects on special pieces (e.g. smoky aura on multi-tile pieces)" /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={boardAnimations}
-                  onChange={(e) => setBoardAnimations(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Persist last-move highlight <InfoTooltip text="Keeps the previous move's highlight on the board for 1 second after a new move is made (with a fade-out), so you can see what just changed." /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={persistLastMoveHighlight}
-                  onChange={(e) => setPersistLastMoveHighlight(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={boardAnimations}
+              onChange={(v) => setBoardAnimations(v)}
+              label="Enable board animations"
+              tooltip={<InfoTooltip text="Shows visual effects on special pieces (e.g. smoky aura on multi-tile pieces)" />}
+            />
+            <ToggleSwitch
+              checked={persistLastMoveHighlight}
+              onChange={(v) => setPersistLastMoveHighlight(v)}
+              label="Persist last-move highlight"
+              tooltip={<InfoTooltip text="Keeps the previous move's highlight on the board for 1 second after a new move is made (with a fade-out), so you can see what just changed." />}
+            />
           </div>
 
           {/* Sound Effects Section */}
           <div className={styles["animations-section"]}>
             <div className={styles["animations-label"]}>Sound</div>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Enable sound effects <InfoTooltip text="Play sound effects for captures, moves, and other game events" /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={soundEnabled}
-                  onChange={(e) => setSoundEnabled(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={soundEnabled}
+              onChange={(v) => setSoundEnabled(v)}
+              label="Enable sound effects"
+              tooltip={<InfoTooltip text="Play sound effects for captures, moves, and other game events" />}
+            />
           </div>
 
           {/* Piece Shadow Section */}
           <div className={styles["animations-section"]}>
             <div className={styles["animations-label"]}>Piece Shadow</div>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Enable piece shadow <InfoTooltip text="Adds a subtle shadow beneath pieces as if lit from the upper right of the board" /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceShadow}
-                  onChange={(e) => setPieceShadow(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={pieceShadow}
+              onChange={(v) => setPieceShadow(v)}
+              label="Enable piece shadow"
+              tooltip={<InfoTooltip text="Adds a subtle shadow beneath pieces as if lit from the upper right of the board" />}
+            />
           </div>
         </section>
 
@@ -655,61 +636,36 @@ const Preferences = () => {
         <section className={styles["preference-section"]}>
           <h2>Privacy</h2>
           <div className={styles["animations-section"]}>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Hide donation badge <InfoTooltip text="When enabled, your donor badge will not be displayed on your profile page" /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={hideDonationBadge}
-                  onChange={(e) => setHideDonationBadge(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Allow DMs from non-friends <InfoTooltip text="When enabled, any user can send you direct messages. When disabled, only friends can message you." /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={allowNonFriendDMs}
-                  onChange={(e) => setAllowNonFriendDMs(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Disable in-game chat <InfoTooltip text="When enabled, you won't see or be able to send messages during live games" /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={disableGameChat}
-                  onChange={(e) => setDisableGameChat(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Allow spectators to view chat <InfoTooltip text="When enabled, spectators can see your in-game chat messages. Both players must enable this for spectators to see the chat." /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={chatPublicForSpectators}
-                  onChange={(e) => setChatPublicForSpectators(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Show my computer games publicly <InfoTooltip text="When enabled, your ongoing games against the computer will appear in the public Live Games list so others can spectate." /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={showComputerGamesPublicly}
-                  onChange={(e) => setShowComputerGamesPublicly(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={hideDonationBadge}
+              onChange={(v) => setHideDonationBadge(v)}
+              label="Hide donation badge"
+              tooltip={<InfoTooltip text="When enabled, your donor badge will not be displayed on your profile page" />}
+            />
+            <ToggleSwitch
+              checked={allowNonFriendDMs}
+              onChange={(v) => setAllowNonFriendDMs(v)}
+              label="Allow DMs from non-friends"
+              tooltip={<InfoTooltip text="When enabled, any user can send you direct messages. When disabled, only friends can message you." />}
+            />
+            <ToggleSwitch
+              checked={disableGameChat}
+              onChange={(v) => setDisableGameChat(v)}
+              label="Disable in-game chat"
+              tooltip={<InfoTooltip text="When enabled, you won't see or be able to send messages during live games" />}
+            />
+            <ToggleSwitch
+              checked={chatPublicForSpectators}
+              onChange={(v) => setChatPublicForSpectators(v)}
+              label="Allow spectators to view chat"
+              tooltip={<InfoTooltip text="When enabled, spectators can see your in-game chat messages. Both players must enable this for spectators to see the chat." />}
+            />
+            <ToggleSwitch
+              checked={showComputerGamesPublicly}
+              onChange={(v) => setShowComputerGamesPublicly(v)}
+              label="Show my computer games publicly"
+              tooltip={<InfoTooltip text="When enabled, your ongoing games against the computer will appear in the public Live Games list so others can spectate." />}
+            />
           </div>
         </section>
 
@@ -721,17 +677,12 @@ const Preferences = () => {
             We only send one notification email per week, and only when you've accumulated more than 20 unread notifications. Transactional emails (welcome, password reset, donation receipts) are not affected by these settings.
           </p>
           <div className={styles["animations-section"]}>
-            <label className={styles["toggle-row"]}>
-              <span className={styles["toggle-text"]}>Receive notification summary emails <InfoTooltip text="When disabled, you will not receive the weekly notification digest email regardless of activity." /></span>
-              <div className={styles["toggle-switch"]}>
-                <input
-                  type="checkbox"
-                  checked={emailEnabled}
-                  onChange={(e) => setEmailEnabled(e.target.checked)}
-                />
-                <span className={styles["toggle-slider"]} />
-              </div>
-            </label>
+            <ToggleSwitch
+              checked={emailEnabled}
+              onChange={(v) => setEmailEnabled(v)}
+              label="Receive notification summary emails"
+              tooltip={<InfoTooltip text="When disabled, you will not receive the weekly notification digest email regardless of activity." />}
+            />
             <div style={{ marginTop: 12, opacity: emailEnabled ? 1 : 0.5, pointerEvents: emailEnabled ? 'auto' : 'none' }}>
               <p style={{ marginBottom: 8, fontWeight: 600 }}>Per-type opt-out</p>
               <p style={{ marginTop: 0, fontSize: 13, opacity: 0.8 }}>
@@ -740,17 +691,12 @@ const Preferences = () => {
               {NOTIFICATION_EMAIL_TYPES.map((t) => {
                 const optedOut = emailDisabledTypes.includes(t.key);
                 return (
-                  <label key={t.key} className={styles["toggle-row"]}>
-                    <span className={styles["toggle-text"]}>{t.label}</span>
-                    <div className={styles["toggle-switch"]}>
-                      <input
-                        type="checkbox"
-                        checked={!optedOut}
-                        onChange={() => toggleEmailType(t.key)}
-                      />
-                      <span className={styles["toggle-slider"]} />
-                    </div>
-                  </label>
+                  <ToggleSwitch
+                    key={t.key}
+                    checked={!optedOut}
+                    onChange={() => toggleEmailType(t.key)}
+                    label={t.label}
+                  />
                 );
               })}
             </div>

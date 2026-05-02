@@ -431,6 +431,11 @@
     margin-bottom: 1rem;
     font-size: 1.2rem;
   }
+
+  // Space between consecutive toggle switches
+  [data-toggleswitch] + [data-toggleswitch] {
+    margin-top: 6px;
+  }
 }
 
 .narrow-section {
@@ -463,6 +468,15 @@
     color: var(--light-gray);
     margin-bottom: 0.75rem;
     font-weight: 500;
+  }
+
+  // Reset label overrides for ToggleSwitch components inside sub-field
+  [data-toggleswitch] label {
+    display: inline;
+    font-size: unset;
+    margin-bottom: 0;
+    font-weight: unset;
+    color: unset;
   }
 
   input[type="number"] {
@@ -564,6 +578,12 @@
 .direction-input {
   display: flex;
   flex-direction: column;
+  gap: 5px;
+
+  // direction-input uses gap for spacing — reset any condition-section sibling rule
+  [data-toggleswitch] + [data-toggleswitch] {
+    margin-top: 0;
+  }
 
   label {
     font-size: 0.9rem;

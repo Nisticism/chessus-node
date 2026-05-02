@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import styles from "./donate.module.scss";
 import Divider from "../Divider/Divider";
+import ToggleSwitch from "../common/ToggleSwitch";
 import StandardButton from "../standardbutton/StandardButton";
 import { trackDonation } from "../../analytics/GoogleAnalytics";
 import cashappQR from "../../assets/cashapp-qr.png";
@@ -332,14 +333,13 @@ const Donate = () => {
               <h3 className={styles.paymentMethodsTitle}>Select Payment Method</h3>
 
               {currentUser && (
-                <label className={styles.anonymousOption}>
-                  <input
-                    type="checkbox"
+                <div className={styles.anonymousOption}>
+                  <ToggleSwitch
                     checked={donateAnonymously}
-                    onChange={(e) => setDonateAnonymously(e.target.checked)}
+                    onChange={(v) => setDonateAnonymously(v)}
+                    label="Donate anonymously (hide my donor badge from my profile)"
                   />
-                  <span>Donate anonymously (hide my donor badge from my profile)</span>
-                </label>
+                </div>
               )}
               
               <div className={styles.paymentButtons}>

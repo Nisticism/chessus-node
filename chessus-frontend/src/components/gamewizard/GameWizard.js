@@ -29,6 +29,7 @@ const GameWizard = ({ editGameId }) => {
   const [loadError, setLoadError] = useState(null);
   const [showCheckmateWarning, setShowCheckmateWarning] = useState(false);
   const [imageMismatchWarning, setImageMismatchWarning] = useState(null);
+  const [impassablePiecesWarning, setImpassablePiecesWarning] = useState(null); // { conflicts: [{key, piece_name, player_id}] }
   const [saveError, setSaveError] = useState(null);
   const [missingFields, setMissingFields] = useState(null);
   // First-move custom-square conflict warning. Triggered when leaving Step 3 if both
@@ -293,9 +294,50 @@ const GameWizard = ({ editGameId }) => {
     }
   };
 
+  // Returns an array of pieces whose starting footprint overlaps an impassable square.
+  const getImpassablePieceConflicts = () => {
+    const conflicts = [];
+    try {
+      const specialStr = gameData.special_squares_string;
+      if (!specialStr) return conflicts;
+      const customSquares = JSON.parse(specialStr);
+      const impassableKeys = new Set(
+        Object.entries(customSquares)
+          .filter(([, cfg]) => cfg?.impassable)
+          .map(([k]) => k)
+      );
+      if (impassableKeys.size === 0) return conflicts;
+
+      const pieces = JSON.parse(gameData.pieces_string || '{}');
+      for (const [key, piece] of Object.entries(pieces)) {
+        if (!piece || piece._occupied) continue;
+        const [row, col] = key.split(',').map(Number);
+        const pw = piece.piece_width || 1;
+        const ph = piece.piece_height || 1;
+        let hasConflict = false;
+        for (let dy = 0; dy < ph && !hasConflict; dy++) {
+          for (let dx = 0; dx < pw && !hasConflict; dx++) {
+            if (impassableKeys.has(`${row + dy},${col + dx}`)) hasConflict = true;
+          }
+        }
+        if (hasConflict) {
+          conflicts.push({ key, piece_name: piece.piece_name || 'Piece', player_id: piece.player_id });
+        }
+      }
+    } catch (e) {}
+    return conflicts;
+  };
+
   const handleSubmit = async (skipWarning = false) => {
     setSaveError(null);
     setInitialStateError(null);
+
+    // Hard block: pieces cannot start on impassable squares
+    const impassableConflicts = getImpassablePieceConflicts();
+    if (impassableConflicts.length > 0) {
+      setImpassablePiecesWarning(impassableConflicts);
+      return;
+    }
 
     // Collect all missing required fields
     const missing = [];
@@ -768,6 +810,24 @@ const GameWizard = ({ editGameId }) => {
                 buttonText="Save Anyway"
                 onClick={() => { setImageMismatchWarning(null); handleSubmit(true); }}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {impassablePiecesWarning && (
+        <div className={styles["warning-overlay"]}>
+          <div className={styles["warning-modal"]}>
+            <h3>⚠️ Impassable Square Conflict</h3>
+            <p>The following pieces are placed on impassable squares. Pieces cannot start on impassable squares — please move or remove them in Step 4 before saving.</p>
+            <ul className={styles["missing-fields-list"]}>
+              {impassablePiecesWarning.map((c, i) => {
+                const [row, col] = c.key.split(',').map(Number);
+                return <li key={i}><strong>{c.piece_name}</strong> at column {col + 1}, row {row + 1} (Player {c.player_id})</li>;
+              })}
+            </ul>
+            <div className={styles["warning-buttons"]}>
+              <StandardButton buttonText="Go Back" onClick={() => setImpassablePiecesWarning(null)} />
             </div>
           </div>
         </div>

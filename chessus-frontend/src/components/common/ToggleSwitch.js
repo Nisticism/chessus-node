@@ -81,7 +81,7 @@ const ToggleSwitch = ({
   );
 
   return (
-    <div className={wrapperClasses} onClick={handleClick} role="presentation">
+    <div data-toggleswitch="" className={wrapperClasses} onClick={handleClick} role="presentation">
       <input
         id={inputId}
         type="checkbox"

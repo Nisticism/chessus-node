@@ -4,6 +4,7 @@ import PieceBoardPreview from "./PieceBoardPreview";
 import CustomSquareSelector from "./CustomSquareSelector";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
+import ToggleSwitch from "../common/ToggleSwitch";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
@@ -157,41 +158,32 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                 />
               </div>
               <div className={styles["additional-movement-line"]}>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={movement.exact}
-                    onChange={(e) => updateAdditionalMovement(direction, index, 'exact', e.target.checked)}
-                    disabled={movement.infinite}
-                  />
-                  <span>Exact</span>
-                </label>
+                <ToggleSwitch inline size="small"
+                  checked={movement.exact}
+                  onChange={(v) => updateAdditionalMovement(direction, index, 'exact', v)}
+                  label="Exact"
+                  disabled={movement.infinite}
+                />
               </div>
               <div className={styles["additional-movement-line"]}>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={movement.infinite}
-                    onChange={(e) => updateAdditionalMovement(direction, index, 'infinite', e.target.checked)}
-                  />
-                  <span>Infinite</span>
-                </label>
+                <ToggleSwitch inline size="small"
+                  checked={movement.infinite}
+                  onChange={(v) => updateAdditionalMovement(direction, index, 'infinite', v)}
+                  label="Infinite"
+                />
               </div>
               <div className={styles["additional-movement-line"]}>
-                <label className={styles["checkbox-label-inline"]}>
-                  <input
-                    type="checkbox"
-                    checked={!!movement.availableForMoves}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        updateAdditionalMovement(direction, index, 'availableForMoves', 1);
-                      } else {
-                        updateAdditionalMovement(direction, index, 'availableForMoves', null);
-                      }
-                    }}
-                  />
-                  <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                </label>
+                <ToggleSwitch inline size="small"
+                  checked={!!movement.availableForMoves}
+                  onChange={(v) => {
+                    if (v) {
+                      updateAdditionalMovement(direction, index, 'availableForMoves', 1);
+                    } else {
+                      updateAdditionalMovement(direction, index, 'availableForMoves', null);
+                    }
+                  }}
+                  label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                />
                 {movement.availableForMoves && (
                   <>
                     <NumberInput
@@ -227,28 +219,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       {/* Directional Movement */}
       <div className={styles["condition-section"]}>
         <h3>Directional Movement <InfoTooltip text="Configure per-direction movement. Set the number of squares (0 = disabled). 'Exact' means the piece must move exactly that distance (can't stop short). 'Infinite' means unlimited range in that direction. 'First N moves only' limits that direction to the piece's first N moves, then it becomes unavailable. You can add alternative movements per direction for different distances." /></h3>
-        <div className={styles["radio-group"]}>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="directional_movement_style"
-              value="true"
-              checked={pieceData.directional_movement_style === true}
-              onChange={(e) => handleBooleanChange("directional_movement_style", e.target.value)}
-            />
-            <span>Enable directional movement</span>
-          </label>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="directional_movement_style"
-              value="false"
-              checked={pieceData.directional_movement_style === false}
-              onChange={(e) => handleBooleanChange("directional_movement_style", e.target.value)}
-            />
-            <span>Disable</span>
-          </label>
-        </div>
+        <ToggleSwitch
+          checked={pieceData.directional_movement_style === true}
+          onChange={(v) => handleBooleanChange("directional_movement_style", v ? "true" : "false")}
+          label="Enable directional movement"
+        />
 
         {pieceData.directional_movement_style && (
           <div className={styles["directional-grid"]}>
@@ -262,37 +237,23 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                     options={{ disabled: pieceData.up_left_movement === 99 }}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.up_left_movement_exact}
-                      onChange={(e) => handleChange("up_left_movement_exact", e.target.checked)}
-                      disabled={pieceData.up_left_movement === 99}
-                    />
-                    <span>Exact</span>
-                  </label>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={pieceData.up_left_movement === 99}
-                      onChange={(e) => handleChange("up_left_movement", e.target.checked ? 99 : 0)}
-                    />
-                    <span>Infinite</span>
-                  </label>
-                </div>
+                <ToggleSwitch inline size="small"
+                  checked={!!pieceData.up_left_movement_exact}
+                  onChange={(v) => handleChange("up_left_movement_exact", v)}
+                  label="Exact"
+                  disabled={pieceData.up_left_movement === 99}
+                />
+                <ToggleSwitch inline size="small"
+                  checked={pieceData.up_left_movement === 99}
+                  onChange={(v) => handleChange("up_left_movement", v ? 99 : 0)}
+                  label="Infinite"
+                />
                 <div className={styles["available-for-moves-group"]}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.up_left_movement_available_for}
-                      onChange={(e) => handleChange("up_left_movement_available_for", e.target.checked ? 1 : null)}
-                      disabled={pieceData.up_left_movement === 99}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                  </label>
+                  <ToggleSwitch inline size="small"
+                    checked={!!pieceData.up_left_movement_available_for}
+                    onChange={(v) => handleChange("up_left_movement_available_for", v ? 1 : null)}
+                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                  />
                   {pieceData.up_left_movement_available_for && (
                     <>
                       <NumberInput
@@ -315,37 +276,23 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                     options={{ disabled: pieceData.up_movement === 99 }}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.up_movement_exact}
-                      onChange={(e) => handleChange("up_movement_exact", e.target.checked)}
-                      disabled={pieceData.up_movement === 99}
-                    />
-                    <span>Exact</span>
-                  </label>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={pieceData.up_movement === 99}
-                      onChange={(e) => handleChange("up_movement", e.target.checked ? 99 : 0)}
-                    />
-                    <span>Infinite</span>
-                  </label>
-                </div>
+                <ToggleSwitch inline size="small"
+                  checked={!!pieceData.up_movement_exact}
+                  onChange={(v) => handleChange("up_movement_exact", v)}
+                  label="Exact"
+                  disabled={pieceData.up_movement === 99}
+                />
+                <ToggleSwitch inline size="small"
+                  checked={pieceData.up_movement === 99}
+                  onChange={(v) => handleChange("up_movement", v ? 99 : 0)}
+                  label="Infinite"
+                />
                 <div className={styles["available-for-moves-group"]}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.up_movement_available_for}
-                      onChange={(e) => handleChange("up_movement_available_for", e.target.checked ? 1 : null)}
-                      disabled={pieceData.up_movement === 99}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                  </label>
+                  <ToggleSwitch inline size="small"
+                    checked={!!pieceData.up_movement_available_for}
+                    onChange={(v) => handleChange("up_movement_available_for", v ? 1 : null)}
+                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                  />
                   {pieceData.up_movement_available_for && (
                     <>
                       <NumberInput
@@ -368,37 +315,23 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                     options={{ disabled: pieceData.up_right_movement === 99 }}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.up_right_movement_exact}
-                      onChange={(e) => handleChange("up_right_movement_exact", e.target.checked)}
-                      disabled={pieceData.up_right_movement === 99}
-                    />
-                    <span>Exact</span>
-                  </label>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={pieceData.up_right_movement === 99}
-                      onChange={(e) => handleChange("up_right_movement", e.target.checked ? 99 : 0)}
-                    />
-                    <span>Infinite</span>
-                  </label>
-                </div>
+                <ToggleSwitch inline size="small"
+                  checked={!!pieceData.up_right_movement_exact}
+                  onChange={(v) => handleChange("up_right_movement_exact", v)}
+                  label="Exact"
+                  disabled={pieceData.up_right_movement === 99}
+                />
+                <ToggleSwitch inline size="small"
+                  checked={pieceData.up_right_movement === 99}
+                  onChange={(v) => handleChange("up_right_movement", v ? 99 : 0)}
+                  label="Infinite"
+                />
                 <div className={styles["available-for-moves-group"]}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.up_right_movement_available_for}
-                      onChange={(e) => handleChange("up_right_movement_available_for", e.target.checked ? 1 : null)}
-                      disabled={pieceData.up_right_movement === 99}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                  </label>
+                  <ToggleSwitch inline size="small"
+                    checked={!!pieceData.up_right_movement_available_for}
+                    onChange={(v) => handleChange("up_right_movement_available_for", v ? 1 : null)}
+                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                  />
                   {pieceData.up_right_movement_available_for && (
                     <>
                       <NumberInput
@@ -423,37 +356,23 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                     options={{ disabled: pieceData.left_movement === 99 }}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.left_movement_exact}
-                      onChange={(e) => handleChange("left_movement_exact", e.target.checked)}
-                      disabled={pieceData.left_movement === 99}
-                    />
-                    <span>Exact</span>
-                  </label>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={pieceData.left_movement === 99}
-                      onChange={(e) => handleChange("left_movement", e.target.checked ? 99 : 0)}
-                    />
-                    <span>Infinite</span>
-                  </label>
-                </div>
+                <ToggleSwitch inline size="small"
+                  checked={!!pieceData.left_movement_exact}
+                  onChange={(v) => handleChange("left_movement_exact", v)}
+                  label="Exact"
+                  disabled={pieceData.left_movement === 99}
+                />
+                <ToggleSwitch inline size="small"
+                  checked={pieceData.left_movement === 99}
+                  onChange={(v) => handleChange("left_movement", v ? 99 : 0)}
+                  label="Infinite"
+                />
                 <div className={styles["available-for-moves-group"]}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.left_movement_available_for}
-                      onChange={(e) => handleChange("left_movement_available_for", e.target.checked ? 1 : null)}
-                      disabled={pieceData.left_movement === 99}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                  </label>
+                  <ToggleSwitch inline size="small"
+                    checked={!!pieceData.left_movement_available_for}
+                    onChange={(v) => handleChange("left_movement_available_for", v ? 1 : null)}
+                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                  />
                   {pieceData.left_movement_available_for && (
                     <>
                       <NumberInput
@@ -485,37 +404,23 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                     options={{ disabled: pieceData.right_movement === 99 }}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.right_movement_exact}
-                      onChange={(e) => handleChange("right_movement_exact", e.target.checked)}
-                      disabled={pieceData.right_movement === 99}
-                    />
-                    <span>Exact</span>
-                  </label>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={pieceData.right_movement === 99}
-                      onChange={(e) => handleChange("right_movement", e.target.checked ? 99 : 0)}
-                    />
-                    <span>Infinite</span>
-                  </label>
-                </div>
+                <ToggleSwitch inline size="small"
+                  checked={!!pieceData.right_movement_exact}
+                  onChange={(v) => handleChange("right_movement_exact", v)}
+                  label="Exact"
+                  disabled={pieceData.right_movement === 99}
+                />
+                <ToggleSwitch inline size="small"
+                  checked={pieceData.right_movement === 99}
+                  onChange={(v) => handleChange("right_movement", v ? 99 : 0)}
+                  label="Infinite"
+                />
                 <div className={styles["available-for-moves-group"]}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.right_movement_available_for}
-                      onChange={(e) => handleChange("right_movement_available_for", e.target.checked ? 1 : null)}
-                      disabled={pieceData.right_movement === 99}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                  </label>
+                  <ToggleSwitch inline size="small"
+                    checked={!!pieceData.right_movement_available_for}
+                    onChange={(v) => handleChange("right_movement_available_for", v ? 1 : null)}
+                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                  />
                   {pieceData.right_movement_available_for && (
                     <>
                       <NumberInput
@@ -540,37 +445,23 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                     options={{ disabled: pieceData.down_left_movement === 99 }}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.down_left_movement_exact}
-                      onChange={(e) => handleChange("down_left_movement_exact", e.target.checked)}
-                      disabled={pieceData.down_left_movement === 99}
-                    />
-                    <span>Exact</span>
-                  </label>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={pieceData.down_left_movement === 99}
-                      onChange={(e) => handleChange("down_left_movement", e.target.checked ? 99 : 0)}
-                    />
-                    <span>Infinite</span>
-                  </label>
-                </div>
+                <ToggleSwitch inline size="small"
+                  checked={!!pieceData.down_left_movement_exact}
+                  onChange={(v) => handleChange("down_left_movement_exact", v)}
+                  label="Exact"
+                  disabled={pieceData.down_left_movement === 99}
+                />
+                <ToggleSwitch inline size="small"
+                  checked={pieceData.down_left_movement === 99}
+                  onChange={(v) => handleChange("down_left_movement", v ? 99 : 0)}
+                  label="Infinite"
+                />
                 <div className={styles["available-for-moves-group"]}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.down_left_movement_available_for}
-                      onChange={(e) => handleChange("down_left_movement_available_for", e.target.checked ? 1 : null)}
-                      disabled={pieceData.down_left_movement === 99}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                  </label>
+                  <ToggleSwitch inline size="small"
+                    checked={!!pieceData.down_left_movement_available_for}
+                    onChange={(v) => handleChange("down_left_movement_available_for", v ? 1 : null)}
+                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                  />
                   {pieceData.down_left_movement_available_for && (
                     <>
                       <NumberInput
@@ -593,37 +484,23 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                     options={{ disabled: pieceData.down_movement === 99 }}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.down_movement_exact}
-                      onChange={(e) => handleChange("down_movement_exact", e.target.checked)}
-                      disabled={pieceData.down_movement === 99}
-                    />
-                    <span>Exact</span>
-                  </label>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={pieceData.down_movement === 99}
-                      onChange={(e) => handleChange("down_movement", e.target.checked ? 99 : 0)}
-                    />
-                    <span>Infinite</span>
-                  </label>
-                </div>
+                <ToggleSwitch inline size="small"
+                  checked={!!pieceData.down_movement_exact}
+                  onChange={(v) => handleChange("down_movement_exact", v)}
+                  label="Exact"
+                  disabled={pieceData.down_movement === 99}
+                />
+                <ToggleSwitch inline size="small"
+                  checked={pieceData.down_movement === 99}
+                  onChange={(v) => handleChange("down_movement", v ? 99 : 0)}
+                  label="Infinite"
+                />
                 <div className={styles["available-for-moves-group"]}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.down_movement_available_for}
-                      onChange={(e) => handleChange("down_movement_available_for", e.target.checked ? 1 : null)}
-                      disabled={pieceData.down_movement === 99}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                  </label>
+                  <ToggleSwitch inline size="small"
+                    checked={!!pieceData.down_movement_available_for}
+                    onChange={(v) => handleChange("down_movement_available_for", v ? 1 : null)}
+                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                  />
                   {pieceData.down_movement_available_for && (
                     <>
                       <NumberInput
@@ -646,37 +523,23 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                     options={{ disabled: pieceData.down_right_movement === 99 }}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.down_right_movement_exact}
-                      onChange={(e) => handleChange("down_right_movement_exact", e.target.checked)}
-                      disabled={pieceData.down_right_movement === 99}
-                    />
-                    <span>Exact</span>
-                  </label>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={pieceData.down_right_movement === 99}
-                      onChange={(e) => handleChange("down_right_movement", e.target.checked ? 99 : 0)}
-                    />
-                    <span>Infinite</span>
-                  </label>
-                </div>
+                <ToggleSwitch inline size="small"
+                  checked={!!pieceData.down_right_movement_exact}
+                  onChange={(v) => handleChange("down_right_movement_exact", v)}
+                  label="Exact"
+                  disabled={pieceData.down_right_movement === 99}
+                />
+                <ToggleSwitch inline size="small"
+                  checked={pieceData.down_right_movement === 99}
+                  onChange={(v) => handleChange("down_right_movement", v ? 99 : 0)}
+                  label="Infinite"
+                />
                 <div className={styles["available-for-moves-group"]}>
-                  <label className={styles["checkbox-label-inline"]}>
-                    <input
-                      type="checkbox"
-                      checked={!!pieceData.down_right_movement_available_for}
-                      onChange={(e) => handleChange("down_right_movement_available_for", e.target.checked ? 1 : null)}
-                      disabled={pieceData.down_right_movement === 99}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}</span>
-                  </label>
+                  <ToggleSwitch inline size="small"
+                    checked={!!pieceData.down_right_movement_available_for}
+                    onChange={(v) => handleChange("down_right_movement_available_for", v ? 1 : null)}
+                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+                  />
                   {pieceData.down_right_movement_available_for && (
                     <>
                       <NumberInput
@@ -693,14 +556,12 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             </div>
             
             <div className={styles["sub-field"]}>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.repeating_movement}
-                  onChange={(e) => handleChange("repeating_movement", e.target.checked)}
-                />
-                <span>Repeating exact movement <InfoTooltip text="When enabled with exact movements, the piece can repeat its exact distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 could land on squares 2, 4, 6, 8, etc." /></span>
-              </label>
+              <ToggleSwitch
+                checked={pieceData.repeating_movement}
+                onChange={(v) => handleChange("repeating_movement", v)}
+                label="Repeating exact movement"
+                tooltip={<InfoTooltip text="When enabled with exact movements, the piece can repeat its exact distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 could land on squares 2, 4, 6, 8, etc." />}
+              />
             </div>
           </div>
         )}
@@ -709,28 +570,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       {/* Ratio Movement (Knight-like) */}
       <div className={styles["condition-section"]}>
         <h3>Ratio Movement (L-shape) <InfoTooltip text="L-shaped movement like a chess knight. Set two ratio values — the piece moves the first value in one direction, then the second value perpendicularly. For example, a knight uses 2-1 (2 squares in one direction, then 1 square perpendicular). This movement can jump to the destination directly." /></h3>
-        <div className={styles["radio-group"]}>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="ratio_movement_style"
-              value="true"
-              checked={pieceData.ratio_movement_style === true}
-              onChange={(e) => handleBooleanChange("ratio_movement_style", e.target.value)}
-            />
-            <span>Enable ratio movement</span>
-          </label>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="ratio_movement_style"
-              value="false"
-              checked={pieceData.ratio_movement_style === false}
-              onChange={(e) => handleBooleanChange("ratio_movement_style", e.target.value)}
-            />
-            <span>Disable</span>
-          </label>
-        </div>
+          <ToggleSwitch
+            checked={pieceData.ratio_movement_style === true}
+            onChange={(v) => handleBooleanChange("ratio_movement_style", v ? "true" : "false")}
+            label="Enable ratio movement"
+          />
 
         {pieceData.ratio_movement_style && (
           <div className={styles["sub-fields"]}>
@@ -752,24 +596,20 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                 />
               </div>
             </div>
-            <label className={styles["checkbox-label"]}>
-              <input
-                type="checkbox"
-                checked={pieceData.repeating_ratio}
-                onChange={(e) => handleChange("repeating_ratio", e.target.checked)}
-              />
-              <span>Repeating ratio <InfoTooltip text="When enabled, the piece can repeat its L-shaped jump multiple times in the same direction in a single move (e.g., a 2-1 knight could land at 2-1, 4-2, 6-3, etc.)." /></span>
-            </label>
+            <ToggleSwitch
+              checked={pieceData.repeating_ratio}
+              onChange={(v) => handleChange("repeating_ratio", v)}
+              label="Repeating ratio"
+              tooltip={<InfoTooltip text="When enabled, the piece can repeat its L-shaped jump multiple times in the same direction in a single move (e.g., a 2-1 knight could land at 2-1, 4-2, 6-3, etc.)." />}
+            />
             {pieceData.repeating_ratio && (
               <div className={styles["sub-option"]} style={{ marginLeft: '24px', marginTop: '8px' }}>
-                <label className={styles["checkbox-label"]}>
-                  <input
-                    type="checkbox"
-                    checked={pieceData.max_ratio_iterations === -1}
-                    onChange={(e) => handleChange("max_ratio_iterations", e.target.checked ? -1 : 2)}
-                  />
-                  <span>Infinite <InfoTooltip text="Allow unlimited ratio iterations in a single move." /></span>
-                </label>
+                <ToggleSwitch
+                  checked={pieceData.max_ratio_iterations === -1}
+                  onChange={(v) => handleChange("max_ratio_iterations", v ? -1 : 2)}
+                  label="Infinite"
+                  tooltip={<InfoTooltip text="Allow unlimited ratio iterations in a single move." />}
+                />
                 {pieceData.max_ratio_iterations !== -1 && (
                   <div style={{ marginTop: '8px' }}>
                     <label>Max Iterations</label>
@@ -790,28 +630,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       {/* Step by Step Movement */}
       <div className={styles["condition-section"]}>
         <h3>Step-by-Step Movement <InfoTooltip text="The piece gets a budget of steps and can move one square at a time in any direction, changing direction with each step. Like a king that can take multiple steps per turn. Set the max steps (1–8) and optionally exclude diagonal steps. Values of 7 or higher will disable additional custom-square movement because the step area already covers the entire 15×15 custom-square grid." /></h3>
-        <div className={styles["radio-group"]}>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="step_by_step_movement_style"
-              value="true"
-              checked={pieceData.step_by_step_movement_style === true}
-              onChange={(e) => handleBooleanChange("step_by_step_movement_style", e.target.value)}
-            />
-            <span>Enable step-by-step movement</span>
-          </label>
-          <label className={styles["radio-label"]}>
-            <input
-              type="radio"
-              name="step_by_step_movement_style"
-              value="false"
-              checked={pieceData.step_by_step_movement_style === false}
-              onChange={(e) => handleBooleanChange("step_by_step_movement_style", e.target.value)}
-            />
-            <span>Disable</span>
-          </label>
-        </div>
+          <ToggleSwitch
+            checked={pieceData.step_by_step_movement_style === true}
+            onChange={(v) => handleBooleanChange("step_by_step_movement_style", v ? "true" : "false")}
+            label="Enable step-by-step movement"
+          />
 
         {pieceData.step_by_step_movement_style && (
           <div className={styles["sub-field"]}>
@@ -819,25 +642,21 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             <NumberInput
               value={Math.abs(pieceData.step_by_step_movement_value || 0) || ""}
               onChange={(val) => {
-                const noDiagonal = document.getElementById("step_by_step_no_diagonal")?.checked;
+                const noDiagonal = pieceData.step_by_step_movement_value < 0;
                 const clamped = Math.min(MAX_STEP_BY_STEP, Math.max(0, Math.abs(val || 0)));
                 handleNumberChange("step_by_step_movement_value", noDiagonal ? -clamped : clamped);
               }}
               options={{ min: 1, max: MAX_STEP_BY_STEP, placeholder: `Total squares piece can move (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
             />
             <div className={styles["checkbox-row"]}>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  id="step_by_step_no_diagonal"
-                  checked={pieceData.step_by_step_movement_value < 0}
-                  onChange={(e) => {
-                    const absValue = Math.abs(pieceData.step_by_step_movement_value || 0);
-                    handleNumberChange("step_by_step_movement_value", e.target.checked ? -absValue : absValue);
-                  }}
-                />
-                <span>Exclude diagonal movement</span>
-              </label>
+              <ToggleSwitch
+                checked={pieceData.step_by_step_movement_value < 0}
+                onChange={(v) => {
+                  const absValue = Math.abs(pieceData.step_by_step_movement_value || 0);
+                  handleNumberChange("step_by_step_movement_value", v ? -absValue : absValue);
+                }}
+                label="Exclude diagonal movement"
+              />
             </div>
 
           </div>
@@ -847,43 +666,31 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       {/* Hopping */}
       <div className={styles["condition-section"]}>
         <h3>Hopping Ability <InfoTooltip text="Controls whether this piece can hop over other pieces during movement — it jumps over a piece in its path and lands on the square beyond. This does NOT capture the hopped-over piece by itself. For checkers-style 'capture on hop' (where hopping over an enemy captures it), see Step 3: Checkers-style Capture." /></h3>
-        <label className={styles["checkbox-label"]}>
-          <input
-            type="checkbox"
-            checked={pieceData.can_hop_over_allies}
-            onChange={(e) => handleChange("can_hop_over_allies", e.target.checked)}
-          />
-          <span>Can hop over allied pieces</span>
-        </label>
-        <label className={styles["checkbox-label"]}>
-          <input
-            type="checkbox"
-            checked={pieceData.can_hop_over_enemies}
-            onChange={(e) => handleChange("can_hop_over_enemies", e.target.checked)}
-          />
-          <span>Can hop over enemy pieces</span>
-        </label>
+        <ToggleSwitch
+          checked={pieceData.can_hop_over_allies}
+          onChange={(v) => handleChange("can_hop_over_allies", v)}
+          label="Can hop over allied pieces"
+        />
+        <ToggleSwitch
+          checked={pieceData.can_hop_over_enemies}
+          onChange={(v) => handleChange("can_hop_over_enemies", v)}
+          label="Can hop over enemy pieces"
+        />
         {(pieceData.can_hop_over_allies || pieceData.can_hop_over_enemies) && (
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.exact_ratio_hop_only}
-              onChange={(e) => handleChange("exact_ratio_hop_only", e.target.checked)}
-            />
-            <span>Require hopping for exact and ratio movement/attacks</span>
-            <InfoTooltip text="When enabled, any movement or attack that uses exact distance or ratio (L-shape) patterns will only work when the piece is actually hopping over another piece in its path. Non-exact (up-to) and step-by-step movement still work normally. Essential for checkers-style pieces that should only jump at their full range when hopping." />
-          </label>
+          <ToggleSwitch
+            checked={pieceData.exact_ratio_hop_only}
+            onChange={(v) => handleChange("exact_ratio_hop_only", v)}
+            label="Require hopping for exact and ratio movement/attacks"
+            tooltip={<InfoTooltip text="When enabled, any movement or attack that uses exact distance or ratio (L-shape) patterns will only work when the piece is actually hopping over another piece in its path. Non-exact (up-to) and step-by-step movement still work normally. Essential for checkers-style pieces that should only jump at their full range when hopping." />}
+          />
         )}
         {(pieceData.can_hop_over_allies || pieceData.can_hop_over_enemies) && (
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.directional_hop_disabled}
-              onChange={(e) => handleChange("directional_hop_disabled", e.target.checked)}
-            />
-            <span>Disable hopping for non-exact directional movement</span>
-            <InfoTooltip text="When enabled, hopping over pieces is disabled for non-exact directional (sliding) movements like rook or bishop movement. Hopping still works for exact directional movements, ratio (L-shape) movements, and step-by-step movements. Useful for hybrid pieces that should only hop with specific movement styles." />
-          </label>
+          <ToggleSwitch
+            checked={pieceData.directional_hop_disabled}
+            onChange={(v) => handleChange("directional_hop_disabled", v)}
+            label="Disable hopping for non-exact directional movement"
+            tooltip={<InfoTooltip text="When enabled, hopping over pieces is disabled for non-exact directional (sliding) movements like rook or bishop movement. Hopping still works for exact directional movements, ratio (L-shape) movements, and step-by-step movements. Useful for hybrid pieces that should only hop with specific movement styles." />}
+          />
         )}
       </div>
 

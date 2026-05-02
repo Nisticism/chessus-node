@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
+import ToggleSwitch from "../common/ToggleSwitch";
 
 const PieceStep4Special = ({ pieceData, updatePieceData }) => {
   const handleChange = (field, value) => {
@@ -73,91 +74,70 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
         <h3>Special Abilities</h3>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '12px' }}>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.can_promote || false}
-              onChange={(e) => handleChange("can_promote", e.target.checked)}
-            />
-            <span>Can Promote <InfoTooltip text="Allows this piece to promote (transform into a different piece) when it reaches a promotion square. Promotion squares and which target pieces are available are configured per-game in the game wizard (Step 4 \u2192 Promotion Options)." /></span>
-          </label>
-        </div>
+          <ToggleSwitch
+            checked={pieceData.can_promote || false}
+            onChange={(v) => handleChange("can_promote", v)}
+            label="Can Promote"
+            tooltip={<InfoTooltip text="Allows this piece to promote (transform into a different piece) when it reaches a promotion square. Promotion squares and which target pieces are available are configured per-game in the game wizard (Step 4 → Promotion Options)." />}
+          />
 
-        {/* Free Move After Promotion - grouped with promotion */}
-        {pieceData.can_promote && (
-          <div style={{ paddingLeft: '12px', marginTop: '4px' }}>
-            <label className={styles["checkbox-label"]}>
-              <input
-                type="checkbox"
-                checked={pieceData.free_move_after_promotion || false}
-                onChange={(e) => handleChange("free_move_after_promotion", e.target.checked)}
-              />
-              <span>Free Move After Promotion <InfoTooltip text="After this piece promotes (transforms into a different piece), the newly promoted piece can immediately take one additional move. Useful for checkers kings, which can continue moving or capturing after being promoted." /></span>
-            </label>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '12px', marginTop: '8px' }}>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.can_castle || false}
-              onChange={(e) => handleChange("can_castle", e.target.checked)}
-            />
-            <span>Can Castle <InfoTooltip text="Allows this piece to castle with a partner piece. The furthest allied piece to the left and right on the same row become castling partners. The castling distance (how many squares the piece moves) is configured per-placement in the game wizard. The partner moves to the opposite side. Both pieces must not have moved, and all squares between must be unoccupied. If this piece has check/checkmate rules, it cannot castle through enemy-controlled squares." /></span>
-          </label>
-
-          {canShowEnPassant && (
-            <label className={styles["checkbox-label"]}>
-              <input
-                type="checkbox"
-                checked={pieceData.can_en_passant || false}
-                onChange={(e) => handleChange("can_en_passant", e.target.checked)}
-              />
-              <span>Can En Passant <InfoTooltip text="Allows this piece to capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn. The capture must be made immediately after the enemy's qualifying move. Only available for pieces with no backward movement (pawn-like pieces)." /></span>
-            </label>
-          )}
-
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.can_capture_allies || false}
-              onChange={(e) => handleChange("can_capture_allies", e.target.checked)}
-            />
-            <span>Can Capture Allied Pieces <InfoTooltip text="When enabled, this piece can capture friendly pieces using any of its attack methods (directional, ratio, or ranged). Useful for sacrifice-based mechanics." /></span>
-          </label>
-
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={pieceData.must_move_if_able || false}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                if (checked) {
-                  handleChange("must_move_if_able", true);
-                } else {
-                  // Clear sub-option when parent unchecked
-                  updatePieceData({ must_move_if_able: false, must_move_uses_action: false });
-                }
-              }}
-            />
-            <span>Must Move If Able <InfoTooltip text="On its owner's turn, this piece is forced to move if it has any legal move available. Useful for pieces like the duck in Duck Chess. By default, this forced move does NOT consume one of the player's actions per turn." /></span>
-          </label>
-
-          {pieceData.must_move_if_able && (
+          {pieceData.can_promote && (
             <div style={{ paddingLeft: '24px' }}>
-              <label className={styles["checkbox-label"]}>
-                <input
-                  type="checkbox"
-                  checked={pieceData.must_move_uses_action || false}
-                  onChange={(e) => handleChange("must_move_uses_action", e.target.checked)}
-                />
-                <span>Forced Move Uses an Action <InfoTooltip text="When enabled, the forced move subtracts from the player's actions per turn. For example, if a player has 1 action per turn, this forced move would consume the entire turn." /></span>
-              </label>
+              <ToggleSwitch
+                checked={pieceData.free_move_after_promotion || false}
+                onChange={(v) => handleChange("free_move_after_promotion", v)}
+                label="Free Move After Promotion"
+                tooltip={<InfoTooltip text="After this piece promotes (transforms into a different piece), the newly promoted piece can immediately take one additional move. Useful for checkers kings, which can continue moving or capturing after being promoted." />}
+              />
             </div>
           )}
 
+          <ToggleSwitch
+            checked={pieceData.can_castle || false}
+            onChange={(v) => handleChange("can_castle", v)}
+            label="Can Castle"
+            tooltip={<InfoTooltip text="Allows this piece to castle with a partner piece. The furthest allied piece to the left and right on the same row become castling partners. The castling distance (how many squares the piece moves) is configured per-placement in the game wizard. The partner moves to the opposite side. Both pieces must not have moved, and all squares between must be unoccupied. If this piece has check/checkmate rules, it cannot castle through enemy-controlled squares." />}
+          />
 
+          {canShowEnPassant && (
+            <ToggleSwitch
+              checked={pieceData.can_en_passant || false}
+              onChange={(v) => handleChange("can_en_passant", v)}
+              label="Can En Passant"
+              tooltip={<InfoTooltip text="Allows this piece to capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn. The capture must be made immediately after the enemy's qualifying move. Only available for pieces with no backward movement (pawn-like pieces)." />}
+            />
+          )}
+
+          <ToggleSwitch
+            checked={pieceData.can_capture_allies || false}
+            onChange={(v) => handleChange("can_capture_allies", v)}
+            label="Can Capture Allied Pieces"
+            tooltip={<InfoTooltip text="When enabled, this piece can capture friendly pieces using any of its attack methods (directional, ratio, or ranged). Useful for sacrifice-based mechanics." />}
+          />
+
+          <ToggleSwitch
+            checked={pieceData.must_move_if_able || false}
+            onChange={(v) => {
+              if (v) {
+                handleChange("must_move_if_able", true);
+              } else {
+                updatePieceData({ must_move_if_able: false, must_move_uses_action: false });
+              }
+            }}
+            label="Must Move If Able"
+            tooltip={<InfoTooltip text="On its owner's turn, this piece is forced to move if it has any legal move available. Useful for pieces like the duck in Duck Chess. By default, this forced move does NOT consume one of the player's actions per turn." />}
+          />
+
+          {pieceData.must_move_if_able && (
+            <div style={{ paddingLeft: '24px' }}>
+              <ToggleSwitch
+                checked={pieceData.must_move_uses_action || false}
+                onChange={(v) => handleChange("must_move_uses_action", v)}
+                label="Forced Move Uses an Action"
+                tooltip={<InfoTooltip text="When enabled, the forced move subtracts from the player's actions per turn. For example, if a player has 1 action per turn, this forced move would consume the entire turn." />}
+              />
+            </div>
+          )}
         </div>
       </div>
 

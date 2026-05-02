@@ -195,6 +195,15 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   const hasRestrictionZones = useMemo(() => {
     return Object.values(specialSquaresData.custom).some(cfg => cfg && cfg.asRestrictionZone);
   }, [specialSquaresData.custom]);
+
+  // Build a Set of "row,col" keys for all impassable custom squares
+  const impassableSquares = useMemo(() => {
+    const s = new Set();
+    Object.entries(specialSquaresData.custom).forEach(([key, cfg]) => {
+      if (cfg?.impassable) s.add(key);
+    });
+    return s;
+  }, [specialSquaresData.custom]);
   
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -354,6 +363,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           const newPlacements = { ...prev };
           for (let col = 0; col < effectiveBoardWidth; col++) {
             const key = `${row},${col}`;
+            // Skip impassable squares — pieces cannot start there
+            if (impassableSquares.has(key)) continue;
             newPlacements[key] = {
               piece_id: pieceData.piece_id,
               player_id: pieceData.player_id,
@@ -409,6 +420,20 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         // Check if piece fits on board
         if (anchorCol + pw > boardW || anchorRow + ph > boardH) {
           alert(`This ${pw}×${ph} piece doesn't fit at this position. It would extend beyond the board.`);
+          setShowPieceSelector(false);
+          setSelectedSquare(null);
+          return;
+        }
+
+        // Check if piece footprint overlaps any impassable square
+        let onImpassable = false;
+        for (let dy = 0; dy < ph && !onImpassable; dy++) {
+          for (let dx = 0; dx < pw && !onImpassable; dx++) {
+            if (impassableSquares.has(`${anchorRow + dy},${anchorCol + dx}`)) onImpassable = true;
+          }
+        }
+        if (onImpassable) {
+          alert("Pieces cannot start on impassable squares. Remove the Impassable flag from this square in Step 3 if you want to place a piece here.");
           setShowPieceSelector(false);
           setSelectedSquare(null);
           return;
@@ -532,7 +557,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     }
     setShowPieceSelector(false);
     setSelectedSquare(null);
-  }, [selectedSquare, gameData.board_width, gameData.board_height, gameData.other_game_data, updateGameData, snapshotPlacementsForUndo]);
+  }, [selectedSquare, gameData.board_width, gameData.board_height, gameData.other_game_data, updateGameData, snapshotPlacementsForUndo, impassableSquares]);
 
   const handleRemovePiece = useCallback(() => {
     if (selectedSquare) {
@@ -646,6 +671,21 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
       return;
     }
 
+    // Check if target footprint overlaps any impassable square
+    let dropOnImpassable = false;
+    for (let dr = 0; dr < ph && !dropOnImpassable; dr++) {
+      for (let dc = 0; dc < pw && !dropOnImpassable; dc++) {
+        if (impassableSquares.has(`${targetRow + dr},${targetCol + dc}`)) dropOnImpassable = true;
+      }
+    }
+    if (dropOnImpassable) {
+      alert('Pieces cannot be placed on impassable squares.');
+      setDraggedPiece(null);
+      setDraggedPiecePosition(null);
+      setHoveredSquare(null);
+      return;
+    }
+
     snapshotPlacementsForUndo();
 
     setPiecePlacements(prev => {
@@ -711,7 +751,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     setDraggedPiece(null);
     setDraggedPiecePosition(null);
     setHoveredSquare(null);
-  }, [draggedPiece, gameData.board_width, gameData.board_height, snapshotPlacementsForUndo]);
+  }, [draggedPiece, gameData.board_width, gameData.board_height, snapshotPlacementsForUndo, impassableSquares]);
 
   const handleDragEnd = useCallback((e) => {
     // Reset opacity
@@ -775,47 +815,56 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           const pw = td.piece.piece_width || 1;
           const ph = td.piece.piece_height || 1;
           if (targetRow + ph <= boardH && targetCol + pw <= boardW) {
-            setPiecePlacements(prev => {
-              const newPlacements = { ...prev };
-              const [srcRow, srcCol] = sourceKey.split(',').map(Number);
-              for (let dr = 0; dr < ph; dr++) {
-                for (let dc = 0; dc < pw; dc++) {
-                  delete newPlacements[`${srcRow + dr},${srcCol + dc}`];
-                }
+            // Check if target footprint overlaps any impassable square
+            let touchDropImpassable = false;
+            for (let dr = 0; dr < ph && !touchDropImpassable; dr++) {
+              for (let dc = 0; dc < pw && !touchDropImpassable; dc++) {
+                if (impassableSquares.has(`${targetRow + dr},${targetCol + dc}`)) touchDropImpassable = true;
               }
-              for (let dr = 0; dr < ph; dr++) {
-                for (let dc = 0; dc < pw; dc++) {
-                  const checkKey = `${targetRow + dr},${targetCol + dc}`;
-                  const existing = newPlacements[checkKey];
-                  if (existing) {
-                    if (existing._occupied && existing._anchorKey) {
-                      const anchorData = newPlacements[existing._anchorKey];
-                      if (anchorData) {
-                        const aw = anchorData.piece_width || 1;
-                        const ah = anchorData.piece_height || 1;
-                        const [ar, ac] = existing._anchorKey.split(',').map(Number);
-                        for (let r2 = 0; r2 < ah; r2++) for (let c2 = 0; c2 < aw; c2++) delete newPlacements[`${ar + r2},${ac + c2}`];
+            }
+            if (!touchDropImpassable) {
+              setPiecePlacements(prev => {
+                const newPlacements = { ...prev };
+                const [srcRow, srcCol] = sourceKey.split(',').map(Number);
+                for (let dr = 0; dr < ph; dr++) {
+                  for (let dc = 0; dc < pw; dc++) {
+                    delete newPlacements[`${srcRow + dr},${srcCol + dc}`];
+                  }
+                }
+                for (let dr = 0; dr < ph; dr++) {
+                  for (let dc = 0; dc < pw; dc++) {
+                    const checkKey = `${targetRow + dr},${targetCol + dc}`;
+                    const existing = newPlacements[checkKey];
+                    if (existing) {
+                      if (existing._occupied && existing._anchorKey) {
+                        const anchorData = newPlacements[existing._anchorKey];
+                        if (anchorData) {
+                          const aw = anchorData.piece_width || 1;
+                          const ah = anchorData.piece_height || 1;
+                          const [ar, ac] = existing._anchorKey.split(',').map(Number);
+                          for (let r2 = 0; r2 < ah; r2++) for (let c2 = 0; c2 < aw; c2++) delete newPlacements[`${ar + r2},${ac + c2}`];
+                        }
+                      } else {
+                        const ew = existing.piece_width || 1;
+                        const eh = existing.piece_height || 1;
+                        const [er, ec] = checkKey.split(',').map(Number);
+                        for (let r2 = 0; r2 < eh; r2++) for (let c2 = 0; c2 < ew; c2++) delete newPlacements[`${er + r2},${ec + c2}`];
                       }
-                    } else {
-                      const ew = existing.piece_width || 1;
-                      const eh = existing.piece_height || 1;
-                      const [er, ec] = checkKey.split(',').map(Number);
-                      for (let r2 = 0; r2 < eh; r2++) for (let c2 = 0; c2 < ew; c2++) delete newPlacements[`${er + r2},${ec + c2}`];
                     }
                   }
                 }
-              }
-              newPlacements[targetKey] = { ...td.piece };
-              for (let dr = 0; dr < ph; dr++) {
-                for (let dc = 0; dc < pw; dc++) {
-                  if (dr === 0 && dc === 0) continue;
-                  newPlacements[`${targetRow + dr},${targetCol + dc}`] = {
-                    _anchorKey: targetKey, piece_id: td.piece.piece_id, player_id: td.piece.player_id, piece_name: td.piece.piece_name, _occupied: true
-                  };
+                newPlacements[targetKey] = { ...td.piece };
+                for (let dr = 0; dr < ph; dr++) {
+                  for (let dc = 0; dc < pw; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+                    newPlacements[`${targetRow + dr},${targetCol + dc}`] = {
+                      _anchorKey: targetKey, piece_id: td.piece.piece_id, player_id: td.piece.player_id, piece_name: td.piece.piece_name, _occupied: true
+                    };
+                  }
                 }
-              }
-              return newPlacements;
-            });
+                return newPlacements;
+              });
+            }
           }
         }
       }
@@ -826,7 +875,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     setDraggedPiece(null);
     setDraggedPiecePosition(null);
     setHoveredSquare(null);
-  }, [gameData.board_width, gameData.board_height]);
+  }, [gameData.board_width, gameData.board_height, impassableSquares]);
 
   const handleStartingModeToggle = (mode) => {
     setAllowedStartingModes(prev => {
@@ -1110,6 +1159,11 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         if (specialInfo) {
           squareStyle.boxShadow = `inset 0 0 0 3px ${specialInfo.color}`;
         }
+
+        // Impassable squares get a 'not-allowed' cursor when empty
+        if (impassableSquares.has(key) && !placement) {
+          squareStyle.cursor = 'not-allowed';
+        }
         
         const isExtensionSquare = placement && placement._occupied;
         
@@ -1152,6 +1206,17 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
                 squareSize={squareSize}
                 isLight={isLight}
               />
+            )}
+            {impassableSquares.has(key) && (
+              <div style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(120,120,120,0.22)',
+                border: '2px solid rgba(160,160,160,0.55)',
+                boxSizing: 'border-box',
+                pointerEvents: 'none',
+                zIndex: 2,
+              }} />
             )}
             {placement && !placement._occupied && (() => {
               const placePw = placement.piece_width || 1;
@@ -1273,7 +1338,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     }
     
     return board;
-  }, [piecePlacements, gameData.board_width, gameData.board_height, gameData.other_game_data, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handlePieceTouchStart, handlePieceTouchMove, handlePieceTouchEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, touchDragPiece, getSpecialSquareInfo]);
+  }, [piecePlacements, gameData.board_width, gameData.board_height, gameData.other_game_data, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handlePieceTouchStart, handlePieceTouchMove, handlePieceTouchEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, touchDragPiece, getSpecialSquareInfo, impassableSquares]);
 
   const handleMirrorPieces = useCallback((sourcePlayerId, targetPlayerId) => {
     const boardHeight = gameData.board_height || 8;
