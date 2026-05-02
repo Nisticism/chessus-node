@@ -17,6 +17,9 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Convenience flag: true when the logged-in user is Admin 2 (restricted)
+  const isAdmin2 = currentUser?.role === 'admin' && currentUser?.admin_level === 2;
+
   // Read ?tab= and ?gameTypeId= from the URL so other pages can deep-link
   // into a specific tab (e.g. the "Request AI analysis" button on game pages).
   const urlParams = new URLSearchParams(location.search);
@@ -51,6 +54,11 @@ const AdminDashboard = () => {
   // Delete account confirm modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteUser, setPendingDeleteUser] = useState(null);
+
+  // Promote-to-admin modal (choose Admin 1 vs Admin 2)
+  const [showPromoteModal, setShowPromoteModal] = useState(false);
+  const [promoteTarget, setPromoteTarget] = useState(null);
+  const [promoteLevel, setPromoteLevel] = useState(1);
   
   // Featured games states
   const [featuredGames, setFeaturedGames] = useState([null, null, null]); // 3 slots
@@ -822,26 +830,32 @@ const AdminDashboard = () => {
     }
   };
 
-  const handlePromote = async (user) => {
-    if (!window.confirm(`Are you sure you want to promote ${user.username} to admin?`)) {
-      return;
-    }
+  const handlePromote = (user) => {
+    setPromoteTarget(user);
+    setPromoteLevel(1);
+    setShowPromoteModal(true);
+  };
 
+  const handlePromoteConfirm = async () => {
+    if (!promoteTarget) return;
+    setShowPromoteModal(false);
     try {
       await axios.post(
-        `${API_URL}admin/users/${user.id}/promote`,
-        {},
+        `${API_URL}admin/users/${promoteTarget.id}/promote`,
+        { admin_level: promoteLevel },
         { headers: authHeader() }
       );
 
       setAlertType("success");
-      setAlertMessage(`User ${user.username} has been promoted to admin`);
+      setAlertMessage(`User ${promoteTarget.username} has been promoted to Admin ${promoteLevel}`);
       setShowAlert(true);
+      setPromoteTarget(null);
       fetchData(activeTab, pagination.page);
     } catch (err) {
       setAlertType("error");
       setAlertMessage(err.response?.data?.message || "Failed to promote user");
       setShowAlert(true);
+      setPromoteTarget(null);
     }
   };
 
@@ -1044,7 +1058,7 @@ const AdminDashboard = () => {
                     </>
                   )}
 
-                  {user.role !== 'owner' && (
+                  {user.role !== 'owner' && !isAdmin2 && (
                     <button
                       className={styles["delete-btn"]}
                       onClick={() => handleDeleteUser(user)}
@@ -1108,7 +1122,7 @@ const AdminDashboard = () => {
               <td>
                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                   <button className={styles["edit-btn"]} onClick={() => handleEdit(piece)}>Edit</button>
-                  <button className={styles["ban-btn"]} onClick={() => handleDeleteItem(piece, 'pieces')}>Delete</button>
+                  {!isAdmin2 && <button className={styles["ban-btn"]} onClick={() => handleDeleteItem(piece, 'pieces')}>Delete</button>}
                 </div>
               </td>
             </tr>
@@ -1154,7 +1168,7 @@ const AdminDashboard = () => {
               <td>
                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                   <button className={styles["edit-btn"]} onClick={() => handleEdit(game)}>Edit</button>
-                  <button className={styles["ban-btn"]} onClick={() => handleDeleteItem(game, 'games')}>Delete</button>
+                  {!isAdmin2 && <button className={styles["ban-btn"]} onClick={() => handleDeleteItem(game, 'games')}>Delete</button>}
                 </div>
               </td>
             </tr>
@@ -1523,7 +1537,7 @@ const AdminDashboard = () => {
               <td>
                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                   <button className={styles["edit-btn"]} onClick={() => handleEdit(forum)}>Edit</button>
-                  <button className={styles["ban-btn"]} onClick={() => handleDeleteForum(forum)}>Delete</button>
+                  {!isAdmin2 && <button className={styles["ban-btn"]} onClick={() => handleDeleteForum(forum)}>Delete</button>}
                 </div>
               </td>
             </tr>
@@ -1566,7 +1580,7 @@ const AdminDashboard = () => {
               <td>
                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                   <button className={styles["edit-btn"]} onClick={() => handleEdit(news)}>Edit</button>
-                  <button className={styles["ban-btn"]} onClick={() => handleDeleteNews(news)}>Delete</button>
+                  {!isAdmin2 && <button className={styles["ban-btn"]} onClick={() => handleDeleteNews(news)}>Delete</button>}
                 </div>
               </td>
             </tr>
@@ -3230,6 +3244,7 @@ const AdminDashboard = () => {
         <button
           className={`${styles["tab"]} ${activeTab === "settings" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("settings")}
+          style={isAdmin2 ? { display: 'none' } : undefined}
         >
           Settings
         </button>
@@ -3254,6 +3269,7 @@ const AdminDashboard = () => {
         <button
           className={`${styles["tab"]} ${activeTab === "ai-training" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("ai-training")}
+          style={isAdmin2 ? { display: 'none' } : undefined}
         >
           AI Training
         </button>
@@ -3272,6 +3288,7 @@ const AdminDashboard = () => {
         <button
           className={`${styles["tab"]} ${activeTab === "poll" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("poll")}
+          style={isAdmin2 ? { display: 'none' } : undefined}
         >
           Poll
         </button>
@@ -3651,6 +3668,58 @@ const AdminDashboard = () => {
           onConfirm={handleDeleteUserConfirmed}
           onCancel={() => { setShowDeleteConfirm(false); setPendingDeleteUser(null); }}
         />
+      )}
+      {showPromoteModal && promoteTarget && (
+        <div className={styles["modal-overlay"]} onClick={() => setShowPromoteModal(false)}>
+          <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className={styles["modal-header"]}>
+              <h2>Promote {promoteTarget.username} to Admin</h2>
+              <button className={styles["close-btn"]} onClick={() => setShowPromoteModal(false)}>×</button>
+            </div>
+            <div className={styles["modal-body"]}>
+              <p style={{ marginBottom: '16px' }}>Select the admin level for this user:</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="adminLevel"
+                    value={1}
+                    checked={promoteLevel === 1}
+                    onChange={() => setPromoteLevel(1)}
+                    style={{ marginTop: '3px' }}
+                  />
+                  <span>
+                    <strong>Admin 1</strong> — Full admin access (all dashboard tabs, all delete actions)
+                  </span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="adminLevel"
+                    value={2}
+                    checked={promoteLevel === 2}
+                    onChange={() => setPromoteLevel(2)}
+                    style={{ marginTop: '3px' }}
+                  />
+                  <span>
+                    <strong>Admin 2</strong> — Restricted access (cannot delete users, game types, news, forums, or pieces; no access to Poll, Site Settings, or AI Training)
+                  </span>
+                </label>
+              </div>
+              {promoteLevel === 1 && (
+                <div style={{ background: 'var(--bg-secondary, #2a2a2a)', border: '1px solid var(--accent-warning, #e6a817)', borderRadius: '6px', padding: '10px 14px', fontSize: '0.9em', color: 'var(--accent-warning, #e6a817)' }}>
+                  <strong>Note:</strong> Admin 1 has more power — they have full access including Poll management, Site Settings, AI Training, and all delete operations. Only grant this level to highly trusted users.
+                </div>
+              )}
+            </div>
+            <div className={styles["modal-footer"]} style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', padding: '16px' }}>
+              <button className={styles["edit-btn"]} onClick={() => setShowPromoteModal(false)}>Cancel</button>
+              <button className={styles["promote-btn"]} onClick={handlePromoteConfirm}>
+                Promote to Admin {promoteLevel}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

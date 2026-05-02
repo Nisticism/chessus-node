@@ -6,6 +6,7 @@ import { getGames, getGameById } from "../../actions/games";
 import { getOnlineFriends, setOnlineUsers, getFriends } from "../../actions/friends";
 import authHeader from "../../services/auth-header";
 import axios from "../../services/axios-interceptor";
+import API_URL from "../../global/global";
 import styles from "./play.module.scss";
 import FriendsList from "../../components/friendslist/FriendsList";
 import InfoTooltip from "../../components/piecewizard/InfoTooltip";
@@ -73,6 +74,7 @@ const Play = () => {
   const [challengedUserId, setChallengedUserId] = useState(null);
   const [challengedUsername, setChallengedUsername] = useState("");
   const [modalGameSearch, setModalGameSearch] = useState("");
+  const [modalSearchResults, setModalSearchResults] = useState([]);
   const [pendingChallenges, setPendingChallenges] = useState([]);
   const [gameDeletedMessage, setGameDeletedMessage] = useState(null);
 
@@ -600,12 +602,29 @@ const Play = () => {
     setPendingChallenges(prev => prev.filter(c => c.gameId !== gameId));
   };
 
-  // Filter game types for modal search
-  const modalFilteredGameTypes = modalGameSearch.trim() 
-    ? filteredGameTypes.filter(game => 
-        game.game_name?.toLowerCase().includes(modalGameSearch.toLowerCase())
-      )
-    : [];
+  // Fetch game types from the server when the modal search term changes.
+  // This ensures games not on the current sidebar page are still findable.
+  useEffect(() => {
+    const term = modalGameSearch.trim();
+    if (!term) {
+      setModalSearchResults([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await axios.get(API_URL + 'games', { params: { search: term, limit: 20, page: 1 } });
+        if (!cancelled) {
+          setModalSearchResults(Array.isArray(res.data?.games) ? res.data.games : []);
+        }
+      } catch {
+        // fail silently
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [modalGameSearch]);
+
+  const modalFilteredGameTypes = modalSearchResults;
 
   // Get win condition description for a game type
   const getWinCondition = (gameType) => {

@@ -156,7 +156,7 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
           label={
             <span>
               Simultaneous turns{' '}
-              <InfoTooltip text="Both players submit their moves secretly each round, then both moves resolve at the same time. Check is ignored, but checkmate still ends the game; if you and your opponent target the same square, both moves cancel. Requires exactly 1 action per turn." />
+              <InfoTooltip text="Both players submit their moves secretly each round, then both moves resolve at the same time. Check is ignored, but checkmate still ends the game. If you and your opponent target the same square, both moves cancel. You may capture your own pieces — if you sacrifice one of your pieces on a square and your opponent moves there simultaneously, their piece is captured too (a trap mechanic). Requires exactly 1 action per turn." />
             </span>
           }
         />

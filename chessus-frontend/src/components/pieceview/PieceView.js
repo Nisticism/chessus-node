@@ -468,7 +468,9 @@ const PieceView = () => {
       capture_on_hop: !!piece.capture_on_hop,
       chain_capture_enabled: !!piece.chain_capture_enabled,
       can_capture_allies: !!piece.can_capture_allies,
-      cannot_be_captured: !!piece.cannot_be_captured
+      cannot_be_captured: !!piece.cannot_be_captured,
+      must_move_if_able: !!piece.must_move_if_able,
+      must_move_uses_action: !!piece.must_move_uses_action,
     };
   }, [piece]);
 
