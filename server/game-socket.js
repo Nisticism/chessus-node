@@ -444,6 +444,20 @@ function broadcastGameOver(io, gameId, gameState, payload) {
   // Bound memory: drop the marker after 10 minutes (long enough for any
   // duplicate-call window to close, short enough to not leak forever).
   setTimeout(() => _gameOverBroadcasted.delete(key), 10 * 60 * 1000);
+  // Record adaptive bot games to the opening book for self-improvement.
+  if (gameState?.botPlayer?.difficulty === 'adaptive' && !gameState?.gameType?.simultaneous_turns) {
+    const gtid = gameState?.gameTypeId
+      ?? gameState?.gameType?.id
+      ?? gameState?.gameType?.game_type_id
+      ?? null;
+    if (gtid) {
+      try {
+        require('./ai/opening-book')
+          .recordGameToBook(gtid, gameState, payload?.winner)
+          .catch((err) => console.warn('[book] recordGameToBook failed:', err.message));
+      } catch (_) {}
+    }
+  }
   // Invalidate lobby cache so the ended game disappears promptly.
   invalidateLobbyCache();
   try {
@@ -10440,26 +10454,29 @@ async function getPromotionOptions(gameState, promotingPiece) {
 
       const existingPiece = pieces.find(p => parseInt(p.piece_id) === parseInt(pieceId));
       if (existingPiece) {
-        eligiblePieces.push({
-          piece_id: existingPiece.piece_id,
-          piece_name: existingPiece.piece_name,
-          image_location: existingPiece.image_location,
-          image: existingPiece.image,
-          image_url: existingPiece.image_url
-        });
+        eligiblePieces.push({ ...existingPiece });
       } else {
         try {
           const [[pieceData]] = await db_pool.query(
-            `SELECT id as piece_id, piece_name, image_location FROM pieces WHERE id = ?`,
+            `SELECT id as piece_id, piece_name, image_location, piece_value,
+              up_movement, down_movement, left_movement, right_movement,
+              up_left_movement, up_right_movement, down_left_movement, down_right_movement,
+              up_capture, down_capture, left_capture, right_capture,
+              up_left_capture, up_right_capture, down_left_capture, down_right_capture,
+              ratio_one_movement, ratio_two_movement, step_movement_value,
+              can_capture_enemy_via_range, can_hop_over_allies, can_hop_over_enemies,
+              ends_game_on_checkmate, ends_game_on_capture, can_control_squares
+             FROM pieces WHERE id = ?`,
             [pieceId]
           );
           if (pieceData) {
             eligiblePieces.push({
-              piece_id: pieceData.piece_id,
-              piece_name: pieceData.piece_name,
-              image_location: pieceData.image_location,
+              ...pieceData,
+              // Remap DB column names to the JS convention getPieceValue expects
+              ratio_movement_1: pieceData.ratio_one_movement,
+              ratio_movement_2: pieceData.ratio_two_movement,
               image: null,
-              image_url: null
+              image_url: null,
             });
           }
         } catch (dbErr) {
@@ -10525,13 +10542,7 @@ async function getPromotionOptions(gameState, promotingPiece) {
       }
     }
 
-    eligiblePieces.push({
-      piece_id: pieceData.piece_id,
-      piece_name: pieceData.piece_name,
-      image_location: pieceData.image_location,
-      image: pieceData.image,
-      image_url: pieceData.image_url
-    });
+    eligiblePieces.push({ ...pieceData });
   }
 
   return eligiblePieces;
@@ -13685,8 +13696,16 @@ async function processBotTurn(io, gameId, gameState) {
   const aiEngine = require('./ai/ai-engine');
   const settings = aiEngine.DIFFICULTY[botPlayer.difficulty] || aiEngine.DIFFICULTY.medium;
 
-  // Artificial thinking delay for natural feel
-  const delay = settings.thinkDelay + Math.floor(Math.random() * 300);
+  // Scale think delay down under time pressure so the bot doesn't waste clock
+  // on the artificial pause when it can't afford to.
+  const botTimeRemaining = gameState.playerTimes?.[botPlayer.id] ?? null; // seconds
+  let thinkDelay = settings.thinkDelay + Math.floor(Math.random() * 300);
+  if (botTimeRemaining != null) {
+    if (botTimeRemaining < 5) thinkDelay = 0;
+    else if (botTimeRemaining < 15) thinkDelay = Math.min(thinkDelay, 100);
+    else if (botTimeRemaining < 30) thinkDelay = Math.min(thinkDelay, 300);
+  }
+  const delay = thinkDelay;
 
   console.log(`[Bot] Processing turn in game ${gameId} (difficulty=${botPlayer.difficulty}, delay=${delay}ms, timeLimit=${settings.timeLimit}ms)`);
 

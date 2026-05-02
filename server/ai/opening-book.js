@@ -266,6 +266,113 @@ function matchBookMove(legalMoves, bookMoveStr) {
   return null;
 }
 
+/**
+ * Record a completed adaptive-bot game to the opening book.
+ * Replays move history from the initial position to compute per-ply
+ * position signatures, then writes a new book.json job file that is
+ * automatically merged on the next `loadBook` call.
+ *
+ * @param {number|string} gameTypeId
+ * @param {Object} gameState - live gameState at end of game
+ * @param {number|string|null} winnerId - userId of winner, or null for draw
+ */
+async function recordGameToBook(gameTypeId, gameState, winnerId) {
+  if (!gameTypeId) return;
+  const moveHistory = gameState.moveHistory;
+  const initialPieces = gameState.initialPieces;
+  if (!Array.isArray(moveHistory) || moveHistory.length === 0) return;
+  if (!Array.isArray(initialPieces) || initialPieces.length === 0) return;
+  // Skip simul-turns games — the Rust engine does not model them.
+  if (gameState.gameType?.simultaneous_turns) return;
+
+  // Resolve winner's board position (1 or 2), or null for a draw.
+  let winnerPosition = null;
+  if (winnerId != null) {
+    const wp = (gameState.players || []).find((p) => String(p.id) === String(winnerId));
+    winnerPosition = wp?.position ?? null;
+  }
+
+  // Minimal replay state: start from the initial piece positions.
+  const replayPieces = JSON.parse(JSON.stringify(initialPieces));
+  const replayState = {
+    pieces: replayPieces,
+    gameType: gameState.gameType,
+  };
+
+  const newBook = _emptyBook();
+  const limit = Math.min(moveHistory.length, BOOK_PLY_LIMIT);
+
+  for (let i = 0; i < limit; i++) {
+    const histMove = moveHistory[i];
+    if (!histMove) continue;
+    // Skip non-move records (cancelled, ranged_noop, place, etc.).
+    const mvType = histMove.type;
+    if (mvType && mvType !== 'move' && mvType !== 'ranged') continue;
+
+    const moverPosition = histMove.position ?? (i % 2 === 0 ? 1 : 2);
+
+    // Signature BEFORE applying the move.
+    const sig = positionSignature(replayState, moverPosition);
+    const mvStr = moveString(histMove);
+
+    // Result from the mover's perspective.
+    let resultCode;
+    if (winnerPosition === null) {
+      resultCode = 'D';
+    } else if (winnerPosition === moverPosition) {
+      resultCode = 'W';
+    } else {
+      resultCode = 'L';
+    }
+
+    if (!newBook.positions[sig]) {
+      newBook.positions[sig] = { moves: [], total: 0 };
+    }
+    const pos = newBook.positions[sig];
+    let mv = pos.moves.find((m) => m.mv === mvStr);
+    if (!mv) {
+      mv = { mv: mvStr, w: 0, l: 0, d: 0 };
+      pos.moves.push(mv);
+    }
+    if (resultCode === 'W') mv.w++;
+    else if (resultCode === 'L') mv.l++;
+    else mv.d++;
+    pos.total = pos.moves.reduce((s, m) => s + m.w + m.l + m.d, 0);
+
+    // Advance replay state: move piece + remove captured piece(s).
+    const piece = replayPieces.find((p) => String(p.id) === String(histMove.pieceId));
+    if (piece && histMove.to) {
+      piece.x = histMove.to.x ?? piece.x;
+      piece.y = histMove.to.y ?? piece.y;
+    }
+    const captured = histMove.allCaptured ?? (histMove.captured ? [histMove.captured] : []);
+    for (const cap of captured) {
+      if (!cap || cap.id == null) continue;
+      const idx = replayPieces.findIndex((p) => String(p.id) === String(cap.id));
+      if (idx >= 0) replayPieces.splice(idx, 1);
+    }
+  }
+
+  if (Object.keys(newBook.positions).length === 0) return;
+
+  let trainingDirFor;
+  try {
+    ({ trainingDirFor } = require('./export-game-rules'));
+  } catch (_) {
+    return;
+  }
+
+  const jobDir = path.join(trainingDirFor(gameTypeId), 'jobs', `live-${Date.now()}`);
+  try {
+    fs.mkdirSync(jobDir, { recursive: true });
+    fs.writeFileSync(path.join(jobDir, 'book.json'), JSON.stringify(newBook), 'utf8');
+    _cache.delete(gameTypeId);
+    console.log(`[book] Recorded game to ${jobDir} (${Object.keys(newBook.positions).length} positions)`);
+  } catch (e) {
+    console.warn('[book] Failed to write live game book:', e.message);
+  }
+}
+
 module.exports = {
   loadBook,
   lookupBookMove,
@@ -275,6 +382,7 @@ module.exports = {
   mergeBooks,
   loadLocalMergedBook,
   findAllBookPaths,
+  recordGameToBook,
   BOOK_FORMAT,
   BOOK_PLY_LIMIT,
   _clearCache: () => _cache.clear(),

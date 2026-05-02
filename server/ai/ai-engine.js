@@ -426,6 +426,43 @@ function getPieceValue(piece, boardSize) {
   // Bonus for pieces that can both move and capture in many directions
   if (moveDirections >= 4 && captureDirections >= 4) value += 2 * boardScale;
 
+  // Board coverage: cardinal directions let a piece reach every square;
+  // diagonal-only pieces are color-bound (can never reach half the board).
+  const hasCardinalMove = !!(
+    piece.up_movement > 0 || piece.down_movement > 0 ||
+    piece.left_movement > 0 || piece.right_movement > 0
+  );
+  const hasDiagonalMove = !!(
+    piece.up_left_movement > 0 || piece.up_right_movement > 0 ||
+    piece.down_left_movement > 0 || piece.down_right_movement > 0
+  );
+  const hasCardinalCap = !!(
+    piece.up_capture > 0 || piece.down_capture > 0 ||
+    piece.left_capture > 0 || piece.right_capture > 0
+  );
+  const hasDiagonalCap = !!(
+    piece.up_left_capture > 0 || piece.up_right_capture > 0 ||
+    piece.down_left_capture > 0 || piece.down_right_capture > 0
+  );
+
+  // Full board coverage bonus (can reach any square given enough moves)
+  if (hasCardinalMove && hasDiagonalMove) {
+    // Queen-like: covers all squares and all angles
+    value += 1.5 * boardScale;
+  } else if (hasCardinalMove) {
+    // Rook-like: covers all squares via two axes
+    value += 0.75 * boardScale;
+  }
+  // Diagonal-only (bishop-like): color-bound — subtract a penalty scaled by
+  // how infinite the diagonals are, since the limitation is most costly on
+  // long-range sliders that can never switch color.
+  if (!hasCardinalMove && !hasCardinalCap && hasDiagonalMove) {
+    const infiniteDiagonals = [
+      'up_left_movement', 'up_right_movement', 'down_left_movement', 'down_right_movement'
+    ].filter(d => piece[d] === 99).length;
+    value -= 1.0 + infiniteDiagonals * 0.4;
+  }
+
   if (piece.ratio_movement_1 && piece.ratio_movement_2) value += 2.5 * boardScale;
   if (piece.step_movement_value) value += Math.abs(piece.step_movement_value) * 0.8;
   if (piece.can_capture_enemy_via_range) value += 2;
@@ -1250,6 +1287,20 @@ function getBestMove(gameState, botPosition, difficulty = 'medium') {
         );
         return bookMove;
       }
+      // Phase 2: MCTS inference via Rust engine.
+      // Gate on 50+ recorded games so the policy has meaningful training data
+      // before paying the process-spawn overhead on every turn.
+      if (settings._adaptiveMeta && settings._adaptiveMeta.totalGamesPlayed >= 50) {
+        try {
+          const rustMove = await tryRustEngine(gtid, gameState, botPosition);
+          if (rustMove) {
+            console.log('[AI] Adaptive: Rust MCTS move chosen');
+            return rustMove;
+          }
+        } catch (e) {
+          console.warn('[adaptive] Rust engine error:', e.message);
+        }
+      }
       return getBestMoveSync(gameState, botPosition, difficulty, settings);
     });
   }
@@ -1292,11 +1343,180 @@ async function tryOpeningBook(gameTypeId, gameState, botPosition) {
   return matched;
 }
 
+/**
+ * Run the Rust MCTS engine as a child process and translate its move back
+ * to the JS live-game format.  Returns a legal-move object or null on any
+ * failure (binary missing, timeout, illegal move, etc.).
+ */
+async function tryRustEngine(gameTypeId, gameState, botPosition) {
+  if (!gameTypeId) return null;
+  const fs = require('fs');
+  const path = require('path');
+  const { spawn } = require('child_process');
+
+  const binaryPath = path.resolve(__dirname, '../../ai-engine-rs/target/release/ai-engine.exe');
+  const rulesPath = path.resolve(__dirname, `../../ai-training/${gameTypeId}/rules.json`);
+  if (!fs.existsSync(binaryPath) || !fs.existsSync(rulesPath)) return null;
+
+  let rules;
+  try {
+    rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+  } catch (_) {
+    return null;
+  }
+
+  // Map real_piece_id (DB) → virtual template id used inside the Rust engine.
+  const realToVirtual = new Map();
+  for (const t of (rules.pieces || [])) {
+    realToVirtual.set(t.real_piece_id, t.id);
+  }
+
+  // Build Rust board pieces, tracking Rust instance id → JS piece id.
+  const livePieces = gameState.pieces || [];
+  const instanceToJsId = new Map();
+  let nextId = 1;
+  const rustPieces = [];
+  for (const p of livePieces) {
+    const templateId = realToVirtual.get(p.piece_id);
+    if (templateId == null) continue; // unrecognized piece type — skip
+    const instanceId = nextId++;
+    instanceToJsId.set(instanceId, p.id);
+    rustPieces.push({
+      id: instanceId,
+      piece_id: templateId,
+      player: p.player_id ?? p.team ?? p.player_number ?? 1,
+      x: p.x,
+      y: p.y,
+      move_count: p.moveCount ?? p.move_count ?? 0,
+      has_moved: !!(p.hasMoved ?? p.has_moved ?? (p.moveCount > 0)),
+    });
+  }
+  if (rustPieces.length === 0) return null;
+
+  const boardJson = JSON.stringify({
+    width: gameState.gameType?.board_width || 8,
+    height: gameState.gameType?.board_height || 8,
+    pieces: rustPieces,
+    turn: gameState.currentTurn ?? botPosition ?? 1,
+    plies_since_capture: gameState.movesWithoutCapture ?? 0,
+    ply: gameState.moveCount ?? 0,
+    next_id: nextId,
+    control_half_turns: [0, 0],
+  });
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (val) => { if (!settled) { settled = true; resolve(val); } };
+
+    let child;
+    try {
+      child = spawn(binaryPath, ['play', '--rules', rulesPath, '--mcts-iters', '400'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (e) {
+      console.warn('[adaptive] Rust engine spawn failed:', e.message);
+      return done(null);
+    }
+
+    const timeoutHandle = setTimeout(() => {
+      try { child.kill(); } catch (_) {}
+      done(null);
+    }, 5000);
+
+    let output = '';
+    child.stdout.on('data', (d) => { output += d.toString(); });
+    child.on('close', () => {
+      clearTimeout(timeoutHandle);
+      try {
+        const line = output.trim().split('\n')[0];
+        if (!line) return done(null);
+        const mv = JSON.parse(line);
+        if (!mv || mv.error) return done(null);
+
+        const jsId = instanceToJsId.get(mv.piece_id);
+        if (!jsId) return done(null);
+
+        // Match against the JS legal-move list so the returned object carries
+        // the full JS format (isCastling, castlingWith, etc.).
+        const legalMoves = silent(() => {
+          const { getAllLegalMovesForPlayer } = getGameSocket();
+          return getAllLegalMovesForPlayer(gameState, botPosition) || [];
+        });
+        // eslint-disable-next-line eqeqeq
+        const matched = legalMoves.find((lm) =>
+          lm.pieceId == jsId &&
+          lm.from?.x === mv.from.x && lm.from?.y === mv.from.y &&
+          lm.to?.x === mv.to.x && lm.to?.y === mv.to.y,
+        );
+        if (!matched) {
+          console.warn('[adaptive] Rust move not in JS legal set; falling back to minimax');
+          return done(null);
+        }
+        done(matched);
+      } catch (e) {
+        console.warn('[adaptive] Rust engine parse failed:', e.message);
+        done(null);
+      }
+    });
+    child.on('error', () => { clearTimeout(timeoutHandle); done(null); });
+    try {
+      child.stdin.write(boardJson + '\n');
+      child.stdin.end();
+    } catch (_) {
+      done(null);
+    }
+  });
+}
+
 function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
-  const settings = settingsOverride || DIFFICULTY[difficulty] || DIFFICULTY.medium;
+  const baseSettings = settingsOverride || DIFFICULTY[difficulty] || DIFFICULTY.medium;
   const startTime = Date.now();
 
-  // Get accurate legal moves at root level using full game-socket validation
+  // Scale time budget and depth down when the bot is in clock trouble.
+  // botTimeRemaining is in seconds (set by the game timer).
+  const settings = { ...baseSettings };
+  const botId = gameState.botPlayer?.id;
+  const botTimeRemaining = botId != null ? (gameState.playerTimes?.[botId] ?? null) : null;
+  const gameTimeControl = gameState.timeControl; // minutes (null = unlimited)
+
+  if (botTimeRemaining != null && gameTimeControl) {
+    // We want to spend at most a fraction of remaining time per move.
+    // Target: use ~3 % of remaining time, capped by the base timeLimit.
+    // On very low time (< 10 s) drop to depth 1 with a hard 500 ms cap.
+    const remainingMs = botTimeRemaining * 1000;
+    if (remainingMs < 5000) {
+      // Under 5 seconds — absolute emergency, instant move
+      settings.timeLimit = Math.min(settings.timeLimit, 300);
+      settings.depth = 1;
+      settings.quiescenceDepth = 0;
+    } else if (remainingMs < 15000) {
+      // Under 15 seconds — very fast
+      settings.timeLimit = Math.min(settings.timeLimit, 800);
+      settings.depth = Math.min(settings.depth, 2);
+      settings.quiescenceDepth = Math.min(settings.quiescenceDepth, 1);
+    } else if (remainingMs < 30000) {
+      // Under 30 seconds — fast
+      settings.timeLimit = Math.min(settings.timeLimit, 2000);
+      settings.depth = Math.min(settings.depth, 3);
+      settings.quiescenceDepth = Math.min(settings.quiescenceDepth, 2);
+    } else {
+      // Healthy clock: cap to 3 % of remaining time so moves don't eat
+      // disproportionate chunks on long games.
+      const timeCap = Math.max(1000, Math.min(remainingMs * 0.03, settings.timeLimit));
+      settings.timeLimit = Math.round(timeCap);
+    }
+  } else if (gameTimeControl && gameTimeControl <= 1) {
+    // Bullet time control (≤ 1 min) even without a live clock reading
+    settings.timeLimit = Math.min(settings.timeLimit, 1500);
+    settings.depth = Math.min(settings.depth, 3);
+    settings.quiescenceDepth = Math.min(settings.quiescenceDepth, 2);
+  } else if (gameTimeControl && gameTimeControl <= 3) {
+    // Blitz (≤ 3 min)
+    settings.timeLimit = Math.min(settings.timeLimit, 3000);
+    settings.depth = Math.min(settings.depth, 4);
+  }
+
+
   const legalMoves = silent(() => {
     const { getAllLegalMovesForPlayer } = getGameSocket();
     return getAllLegalMovesForPlayer(gameState, botPosition);
@@ -1419,13 +1639,13 @@ function chooseBestPromotion(options) {
   if (options.length === 1) return options[0];
 
   let best = options[0];
-  let bestValue = 0;
+  let bestValue = getPieceValue(options[0]);
 
-  for (const opt of options) {
-    const value = getPieceValue(opt);
+  for (let i = 1; i < options.length; i++) {
+    const value = getPieceValue(options[i]);
     if (value > bestValue) {
       bestValue = value;
-      best = opt;
+      best = options[i];
     }
   }
 

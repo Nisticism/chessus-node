@@ -139,6 +139,10 @@ impl Mcts {
                     GameResult::Win(p) if p == side_just_moved => 1.0,
                     GameResult::Win(_) => -1.0,
                     GameResult::Draw => 0.0,
+                    GameResult::Value(v) => {
+                        // v is from player 1's perspective; flip sign for player 2.
+                        if side_just_moved == 1 { v } else { -v }
+                    }
                 };
                 n.visits += 1;
                 n.value_sum += reward;
@@ -158,6 +162,31 @@ impl Mcts {
 pub enum GameResult {
     Win(i32),
     Draw,
+    /// Material-balance estimate at rollout cap, from player 1's perspective.
+    /// Range: -1.0 (player 2 dominates) to +1.0 (player 1 dominates).
+    Value(f64),
+}
+
+/// Compute a material-balance heuristic when the rollout cap is reached.
+/// Returns Win/Draw only when one side has no pieces; otherwise Value(v)
+/// with v in [-1, 1] from player 1's perspective.
+fn material_heuristic(state: &Board, rules: &Rules) -> GameResult {
+    let mut p1_val: f64 = 0.0;
+    let mut p2_val: f64 = 0.0;
+    for p in &state.pieces {
+        let v = rules.piece(p.piece_id).map(|t| {
+            let base = t.piece_value as f64;
+            // Treat key-piece targets as higher value so the search
+            // actively hunts them even in the shallow heuristic.
+            if t.ends_game_on_capture { base + 10.0 } else { base }
+        }).unwrap_or(1.0);
+        if p.player == 1 { p1_val += v; } else { p2_val += v; }
+    }
+    let total = p1_val + p2_val;
+    if total <= 0.0 {
+        return GameResult::Draw;
+    }
+    GameResult::Value((p1_val - p2_val) / total)
 }
 
 /// Apply random moves until terminal or cap reached.
@@ -221,25 +250,61 @@ pub fn rollout_with_reason(
         }
 
         // Heuristic: prefer captures so rollouts decide faster, and *strongly*
-        // prefer royal captures (which terminate the game).
-        let mut royal_target: Option<i32> = None;
-        for m in &moves {
-            if let Some(cap_id) = m.capture {
-                if let Some(target) = state.pieces.iter().find(|p| p.id == cap_id) {
-                    if is_royal_piece(rules, target.piece_id) {
-                        royal_target = Some(target.player);
-                        break;
+        // prefer royal captures (which terminate the game). Only short-circuit
+        // when requires_all is NOT set — if all ends_game_on_capture pieces must
+        // be removed, one royal capture doesn't end the game; fall through so
+        // the capture_condition check can evaluate the remaining pieces.
+        if !rules.game.capture_condition_requires_all {
+            let mut royal_target: Option<i32> = None;
+            for m in &moves {
+                if let Some(cap_id) = m.capture {
+                    if let Some(target) = state.pieces.iter().find(|p| p.id == cap_id) {
+                        if is_royal_piece(rules, target.piece_id) {
+                            royal_target = Some(target.player);
+                            break;
+                        }
                     }
                 }
             }
-        }
-        if royal_target.is_some() {
-            // Capturing the opponent's royal is an immediate, decisive win.
-            return (GameResult::Win(mover), EndReason::RoyalCapture);
+            if royal_target.is_some() {
+                // Capturing the opponent's royal is an immediate, decisive win.
+                return (GameResult::Win(mover), EndReason::RoyalCapture);
+            }
         }
 
         let mv = pick_rollout_move(&moves, state, rules, rng, mover, false).clone();
+        let captured_id = mv.capture;
         state.apply(&mv);
+        // capture_condition: evaluate win after every capture, including
+        // requires_all variants (all ends_game_on_capture pieces must be gone).
+        if rules.game.capture_condition && captured_id.is_some() {
+            let requires_all = rules.game.capture_condition_requires_all;
+            let check_side_gone = |player: i32| -> bool {
+                if let Some(cp_id) = rules.game.capture_piece {
+                    !state.pieces.iter().any(|p| p.player == player
+                        && (p.piece_id == cp_id
+                            || rules.piece(p.piece_id)
+                                .map(|t| t.real_piece_id == cp_id || t.id == cp_id)
+                                .unwrap_or(false)))
+                } else if requires_all {
+                    !state.pieces.iter().any(|p| p.player == player
+                        && rules.piece(p.piece_id)
+                            .map(|t| t.ends_game_on_capture)
+                            .unwrap_or(false))
+                } else {
+                    !state.pieces.iter().any(|p| p.player == player)
+                }
+            };
+            let p1_gone = check_side_gone(1);
+            let p2_gone = check_side_gone(2);
+            if p1_gone && p2_gone {
+                return (GameResult::Draw, EndReason::CaptureCondition);
+            } else if p1_gone {
+                return (GameResult::Win(2), EndReason::CaptureCondition);
+            } else if p2_gone {
+                return (GameResult::Win(1), EndReason::CaptureCondition);
+            }
+        }
         // squares_condition: update consecutive holding counter; check for winner.
         if rules.game.squares_condition && !rules.control_squares.is_empty() {
             update_control_tracking(state, rules);
@@ -253,7 +318,7 @@ pub fn rollout_with_reason(
             }
         }
     }
-    (GameResult::Draw, EndReason::RolloutCap)
+    (material_heuristic(state, rules), EndReason::RolloutCap)
 }
 
 /// Aggressive variant of [`rollout_with_reason`] used by self-play past the
@@ -314,11 +379,15 @@ pub fn rollout_with_reason_aggressive(
         // Prioritize royal captures (decisive). Only meaningful in
         // non-mate_condition variants — in mate_condition games the
         // self-play loop rewrites this outcome to an indeterminate draw.
-        for m in &moves {
-            if let Some(cap_id) = m.capture {
-                if let Some(target) = state.pieces.iter().find(|p| p.id == cap_id) {
-                    if is_royal_piece(rules, target.piece_id) {
-                        return (GameResult::Win(mover), EndReason::RoyalCapture);
+        // Skip the short-circuit when requires_all is set — one royal capture
+        // doesn't end the game, so we must not report it as a decisive win.
+        if !rules.game.capture_condition_requires_all {
+            for m in &moves {
+                if let Some(cap_id) = m.capture {
+                    if let Some(target) = state.pieces.iter().find(|p| p.id == cap_id) {
+                        if is_royal_piece(rules, target.piece_id) {
+                            return (GameResult::Win(mover), EndReason::RoyalCapture);
+                        }
                     }
                 }
             }
@@ -328,7 +397,38 @@ pub fn rollout_with_reason_aggressive(
         // that land on a control square, overriding the aggressive capture preference.
         let mv = pick_rollout_move(&moves, state, rules, rng, mover, true).clone();
         let _ = board_height; // reserved for future promotion-square heuristics
+        let captured_id = mv.capture;
         state.apply(&mv);
+        // capture_condition: evaluate win after every capture, including
+        // requires_all variants (all ends_game_on_capture pieces must be gone).
+        if rules.game.capture_condition && captured_id.is_some() {
+            let requires_all = rules.game.capture_condition_requires_all;
+            let check_side_gone = |player: i32| -> bool {
+                if let Some(cp_id) = rules.game.capture_piece {
+                    !state.pieces.iter().any(|p| p.player == player
+                        && (p.piece_id == cp_id
+                            || rules.piece(p.piece_id)
+                                .map(|t| t.real_piece_id == cp_id || t.id == cp_id)
+                                .unwrap_or(false)))
+                } else if requires_all {
+                    !state.pieces.iter().any(|p| p.player == player
+                        && rules.piece(p.piece_id)
+                            .map(|t| t.ends_game_on_capture)
+                            .unwrap_or(false))
+                } else {
+                    !state.pieces.iter().any(|p| p.player == player)
+                }
+            };
+            let p1_gone = check_side_gone(1);
+            let p2_gone = check_side_gone(2);
+            if p1_gone && p2_gone {
+                return (GameResult::Draw, EndReason::CaptureCondition);
+            } else if p1_gone {
+                return (GameResult::Win(2), EndReason::CaptureCondition);
+            } else if p2_gone {
+                return (GameResult::Win(1), EndReason::CaptureCondition);
+            }
+        }
         // squares_condition: update consecutive holding counter; check for winner.
         if rules.game.squares_condition && !rules.control_squares.is_empty() {
             update_control_tracking(state, rules);
@@ -342,7 +442,7 @@ pub fn rollout_with_reason_aggressive(
             }
         }
     }
-    (GameResult::Draw, EndReason::RolloutCap)
+    (material_heuristic(state, rules), EndReason::RolloutCap)
 }
 
 // ---------------------------------------------------------------------------

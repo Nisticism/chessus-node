@@ -964,8 +964,8 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
 
 /// Compute a mobility-based power score for use when ranking promotion targets.
 /// Higher = better promotion choice. What matters is relative ordering:
-///   Queen (8 sliding dirs): ~40  |  Rook/Bishop (4 sliding): ~20
-///   Knight (ratio):          ~6
+///   Queen (8 sliding dirs): ~43  |  Rook (4 cardinal sliding): ~23
+///   Bishop (4 diagonal sliding): ~17  |  Knight (ratio): ~6
 ///
 /// Royal/game-ending pieces are filtered at the call site using the wizard
 /// flags (can_promote_to_checkmate / can_promote_to_capture), so no artificial
@@ -974,20 +974,50 @@ fn promotion_power_score(tpl: &PieceTemplate) -> i32 {
     let mut score: i32 = 0;
 
     // --- Directional movement ---
-    // Repeating (sliding) in a direction: 5 pts (rook-style).
+    // Repeating (sliding) in a direction: 5 pts base.
     // Non-repeating: 1–4 pts scaled by max range.
-    let dir_ranges = [
+    let cardinal_dirs = [
         tpl.up_movement, tpl.down_movement, tpl.left_movement, tpl.right_movement,
+    ];
+    let diagonal_dirs = [
         tpl.up_left_movement, tpl.up_right_movement,
         tpl.down_left_movement, tpl.down_right_movement,
     ];
-    for &d in &dir_ranges {
+
+    let mut has_cardinal = false;
+    let mut has_diagonal = false;
+    let mut infinite_diagonal_count = 0i32;
+
+    for &d in &cardinal_dirs {
         if d == 0 { continue; }
+        has_cardinal = true;
         if tpl.repeating_movement {
-            score += 5;  // sliding: unlimited range in this direction
+            score += 5;
         } else {
-            score += d.clamp(1, 4);  // fixed range: 1 sq = 1 pt, 4+ sq = 4 pts
+            score += d.clamp(1, 4);
         }
+    }
+    for &d in &diagonal_dirs {
+        if d == 0 { continue; }
+        has_diagonal = true;
+        if tpl.repeating_movement {
+            score += 5;
+            infinite_diagonal_count += 1;
+        } else {
+            score += d.clamp(1, 4);
+        }
+    }
+
+    // Full board coverage bonus: cardinal sliders can reach every square.
+    // Diagonal-only pieces are color-bound (permanently locked off half the board).
+    if has_cardinal && has_diagonal {
+        score += 3; // queen-like: all squares reachable
+    } else if has_cardinal {
+        score += 2; // rook-like: all squares reachable via axes
+    } else if has_diagonal && !has_cardinal {
+        // Bishop-like color-binding penalty: stronger the diagonals, bigger the
+        // opportunity cost of never reaching the other color.
+        score -= 2 + infinite_diagonal_count;
     }
 
     // --- Ratio (knight-like) movement ---
@@ -1162,7 +1192,14 @@ pub fn pseudo_legal(board: &Board, rules: &Rules) -> Vec<Move> {
 /// we have a royal piece).
 pub fn legal_moves(board: &Board, rules: &Rules) -> Vec<Move> {
     let pseudo = pseudo_legal(board, rules);
-    let mut legal: Vec<Move> = if !has_royal(board, rules, board.turn) {
+    // The check-legality filter (drop moves that leave a royal in check) only
+    // applies when mate_condition is enabled. This mirrors the live server's
+    // getAllLegalMovesForPlayer, which only calls wouldMoveLeaveInCheck when
+    // gameType.mate_condition === true. Without this gate, capture_condition
+    // games (e.g. Knightfall) incorrectly treat ends_game_on_capture pieces as
+    // "must be protected from attack", which filters nearly every move and
+    // causes false stalemates throughout self-play.
+    let mut legal: Vec<Move> = if !rules.game.mate_condition || !has_royal(board, rules, board.turn) {
         pseudo
     } else {
         let me = board.turn;

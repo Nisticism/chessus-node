@@ -5,7 +5,7 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 2, 2026",
-    title: "Simul turns improvements, disconnect timer fixes, admin split, impassable squares, UI consistency",
+    title: "Simul turns improvements, disconnect timer fixes, admin split, impassable squares, UI consistency, arrow-key board navigation, AI promotion & time-pressure improvements",
     items: [
       "In simultaneous turn games, you can now capture your own pieces. Any piece that can attack enemies may also move to a square occupied by one of your own pieces, sacrificing it. If your opponent moves to that same square at the same time, their piece is captured too — use this as a trap to predict and punish your opponent's moves. This mechanic is described in the simultaneous turns tooltip in the game wizard.",
       "Bug fix: in simultaneous turn games, a piece that moves away from a square can no longer be captured at the square it left — even if it also captures something on its new square.",
@@ -51,6 +51,9 @@ const changelogData = [
       "Bug fix: guest player names are now shown correctly in the correspondence games section of the /play lobby — games now display 'Guest: [name]' instead of a plain 'Guest' label.",
       "Bug fix: the Game Details section on the match detail page now shows the correct correspondence time control (e.g. '3 days/move') for correspondence games instead of 'Unlimited'.",
       "Bug fix: when an anonymous player hosts a waiting game, the top slot now shows 'Waiting for opponent\u2026' instead of incorrectly displaying '(You)' on the empty opponent slot.",
+      "Board replay and match history: you can now step through moves using the left and right arrow keys — left goes back one move, right goes forward one move.",
+      "AI improvement: the computer opponent now correctly prefers rooks over bishops when choosing a promotion piece. Previously both scored equally, so the bot would always pick a bishop (whichever came first). Bishops now receive a color-binding penalty since they are permanently restricted to one square color.",
+      "AI improvement: the computer opponent now reduces its thinking time and think delay when its clock is running low, so it spends less time per move and avoids flagging on fast time controls.",
     ],
   },
   {

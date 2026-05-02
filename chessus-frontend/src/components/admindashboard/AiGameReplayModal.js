@@ -403,6 +403,22 @@ export default function AiGameReplayModal({ jobId, onClose }) {
     setMoveIndex(Math.max(0, Math.min(idx, gameData.moves.length)));
   };
 
+  // Arrow-key navigation while the modal is open
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!gameData) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setMoveIndex(prev => Math.max(0, prev - 1));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setMoveIndex(prev => Math.min(prev + 1, gameData.moves.length));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [gameData]);
+
   const currentMove =
     gameData && moveIndex > 0 ? gameData.moves[moveIndex - 1] : null;
 

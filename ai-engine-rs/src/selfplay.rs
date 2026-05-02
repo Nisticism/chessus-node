@@ -399,7 +399,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
 
         let winner = match result {
             GameResult::Win(p) => Some(p),
-            GameResult::Draw => None,
+            GameResult::Draw | GameResult::Value(_) => None,
         };
         // Persist the per-move book records for this game now that we
         // know the winner. Failures are non-fatal — book is optional.
