@@ -64,6 +64,9 @@
   padding: 30px;
   margin: 0 20px;
   box-shadow: var(--shadow-card);
+  // Ensures overflowing tables are clipped by this container so the
+  // inner .table-container's overflow-x: auto actually scrolls.
+  overflow: hidden;
 }
 
 .table-container {
@@ -624,7 +627,8 @@
 
   .content {
     margin: 0 10px;
-    padding: 20px 15px;
+    padding: 20px 10px;
+    overflow: hidden;
   }
 
   .data-table {

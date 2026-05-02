@@ -2307,7 +2307,7 @@ const AdminDashboard = () => {
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {userGrowthLoading && <span style={{ color: 'var(--text-dim)', fontSize: '0.85em' }}>Loading…</span>}
-            {(['weekly', 'monthly']).map(v => (
+            {(['daily', 'weekly', 'monthly']).map(v => (
               <button
                 key={v}
                 onClick={() => switchView(v)}
@@ -2406,7 +2406,7 @@ const AdminDashboard = () => {
                 <div style={{ fontSize: '1.4em', fontWeight: 700 }}>{pts.length}</div>
               </div>
               <div style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '12px 18px', border: '1px solid var(--border-color, #333)' }}>
-                <div style={{ fontSize: '0.75em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Peak {userGrowthView === 'weekly' ? 'Week' : 'Month'}</div>
+                <div style={{ fontSize: '0.75em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Peak {userGrowthView === 'weekly' ? 'Week' : userGrowthView === 'daily' ? 'Day' : 'Month'}</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700 }}>
                   {pts.reduce((best, p) => p.signups > best.signups ? p : best, pts[0])?.label || '—'}
                   {' '}
@@ -2548,11 +2548,16 @@ const AdminDashboard = () => {
               <th>Username</th>
               <th>Role</th>
               <th>ELO</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {onlinePlayers.map((user) => (
+            {onlinePlayers.map((user) => {
+              const IDLE_MS = 10 * 60 * 1000;
+              const lastActive = user.last_active_at ? new Date(user.last_active_at).getTime() : null;
+              const isIdle = !lastActive || (Date.now() - lastActive) >= IDLE_MS;
+              return (
               <tr key={user.id}>
                 <td>{user.id}</td>
                 <td>
@@ -2565,10 +2570,25 @@ const AdminDashboard = () => {
                 </td>
                 <td>{user.elo}</td>
                 <td>
+                  <span style={{
+                    display: 'inline-block',
+                    padding: '2px 10px',
+                    borderRadius: '12px',
+                    fontSize: '0.8em',
+                    fontWeight: 600,
+                    background: isIdle ? 'rgba(180,120,0,0.18)' : 'rgba(40,180,80,0.18)',
+                    color: isIdle ? '#e6a817' : '#4caf50',
+                    border: `1px solid ${isIdle ? '#e6a81755' : '#4caf5055'}`,
+                  }}>
+                    {isIdle ? 'Idle' : 'Active'}
+                  </span>
+                </td>
+                <td>
                   <Link to={`/profile/${user.username}`} className={styles["edit-btn"]}>View</Link>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}

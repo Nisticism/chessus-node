@@ -9001,10 +9001,11 @@ app.post("/api/admin/initial-state/:gameTypeId/clear", authenticateAdmin, async 
 });
 
 // User growth stats: returns signup counts grouped by week or month, with cumulative totals.
-// GET /api/admin/user-growth?view=weekly|monthly
+// GET /api/admin/user-growth?view=daily|weekly|monthly
 app.get("/api/admin/user-growth", authenticateAdmin, async (req, res) => {
   try {
-    const view = req.query.view === 'monthly' ? 'monthly' : 'weekly';
+    const viewParam = req.query.view;
+    const view = viewParam === 'monthly' ? 'monthly' : viewParam === 'daily' ? 'daily' : 'weekly';
     let rows;
     // Use COALESCE so that legacy users without created_at fall back to last_active_at.
     if (view === 'monthly') {
@@ -9014,6 +9015,17 @@ app.get("/api/admin/user-growth", authenticateAdmin, async (req, res) => {
                 COUNT(*) AS signups
          FROM users
          WHERE COALESCE(created_at, last_active_at) IS NOT NULL
+         GROUP BY period
+         ORDER BY period ASC`
+      );
+    } else if (view === 'daily') {
+      [rows] = await db_pool.query(
+        `SELECT DATE_FORMAT(COALESCE(created_at, last_active_at), '%Y-%m-%d') AS period,
+                DATE_FORMAT(MIN(COALESCE(created_at, last_active_at)), '%b %d') AS label,
+                COUNT(*) AS signups
+         FROM users
+         WHERE COALESCE(created_at, last_active_at) IS NOT NULL
+           AND COALESCE(created_at, last_active_at) >= DATE_SUB(NOW(), INTERVAL 90 DAY)
          GROUP BY period
          ORDER BY period ASC`
       );
