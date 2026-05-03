@@ -2502,8 +2502,8 @@ app.get("/api/games", optionalAuthenticate, async (req, res) => {
     let selectExtra = '';
 
     // Always include upvote count + whether the current user has upvoted
-    joinClause = 'LEFT JOIN game_type_upvotes gu ON gt.id = gu.game_type_id';
-    selectExtra = ', COUNT(DISTINCT gu.id) as upvote_count, MAX(CASE WHEN gu.user_id = ? THEN 1 ELSE 0 END) as upvoted_by_user';
+    joinClause = 'LEFT JOIN game_type_upvotes gu ON gt.id = gu.game_type_id LEFT JOIN chessusnode.users cu ON gt.creator_id = cu.id';
+    selectExtra = ', COUNT(DISTINCT gu.id) as upvote_count, MAX(CASE WHEN gu.user_id = ? THEN 1 ELSE 0 END) as upvoted_by_user, CASE WHEN gt.is_anonymous_creator = 1 THEN \'Anonymous\' ELSE cu.username END as creator_username';
 
     switch (sort) {
       case 'popular':

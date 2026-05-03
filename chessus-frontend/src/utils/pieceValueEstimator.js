@@ -6,6 +6,8 @@
  */
 export function estimatePieceValue(piece, boardSize = 8) {
   if (!piece) return 0;
+  // Neutral pieces belong to neither player — contribute 0 to material balance
+  if (piece.is_neutral || piece.player_id === 0) return 0;
   if (piece.ends_game_on_checkmate || piece.ends_game_on_capture) return 100;
 
   const bs = boardSize || 8;

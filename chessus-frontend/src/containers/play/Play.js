@@ -1243,7 +1243,7 @@ const Play = () => {
             ) : (
               <div className={styles["selected-game-compact"]}>
                 <div className={styles["game-info-compact"]}>
-                  <h3>{selectedGameType.game_name}</h3>
+                  <h3><Link to={`/games/${selectedGameType.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>{selectedGameType.game_name}</Link></h3>
                   <div className={styles["game-stats"]}>
                     <span className={styles["stat-item"]}>
                       <span className={styles["stat-icon"]}>⊞</span>
@@ -1271,7 +1271,12 @@ const Play = () => {
                     {selectedGameType.creator_username && (
                       <span className={styles["creator"]}>
                         <span className={styles["stat-divider"]}>•</span>
-                        by {selectedGameType.creator_username}
+                        by{' '}
+                        {selectedGameType.creator_username === 'Anonymous' ? (
+                          <span>Anonymous</span>
+                        ) : (
+                          <Link to={`/profile/${selectedGameType.creator_username}`} style={{ textDecoration: 'none', color: 'inherit' }}>{selectedGameType.creator_username}</Link>
+                        )}
                       </span>
                     )}
                   </div>
@@ -1816,7 +1821,7 @@ const Play = () => {
                                   onClick={() => navigate(`/play/${game.id}`)}
                                   disabled={!isMyTurn}
                                 >
-                                  {isMyTurn ? 'Make Move' : "Opponent's Turn"}
+                                  {isMyTurn ? 'Make Move' : "Computer's Turn"}
                                 </button>
                               );
                             }
@@ -1893,12 +1898,20 @@ const Play = () => {
                           </div>
                           <div className={styles["match-players"]}>{game.player_names}</div>
                           <div className={styles["match-actions"]}>
-                            <button
-                              className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
-                              onClick={() => navigate(`/play/${game.id}`)}
-                            >
-                              Resume
-                            </button>
+                            {(() => {
+                              const isMyTurn = currentUser && game.player_ids
+                                ? game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn
+                                : true;
+                              return (
+                                <button
+                                  className={`${styles.btn} ${isMyTurn ? styles["btn-primary"] : styles["btn-secondary"]} ${styles["btn-small"]}`}
+                                  onClick={() => navigate(`/play/${game.id}`)}
+                                  disabled={!isMyTurn}
+                                >
+                                  {isMyTurn ? 'Make Move' : "Computer's Turn"}
+                                </button>
+                              );
+                            })()}
                             {isAdmin && (
                               <button
                                 className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}

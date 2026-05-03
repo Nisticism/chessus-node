@@ -47,6 +47,13 @@ const changelogData = [
       "AI trainer: the engine can no longer get stuck in infinite rollouts on games with neutral pieces — a hard cap prevents games from running forever when no draw-by-move-limit rule is configured.",
       "AI trainer: the engine now strongly prefers moving its own pieces over neutral pieces at every tier of its rollout heuristic, preventing the computer from repeatedly shuffling neutral pieces instead of advancing its own position.",
       "Admin portal — AI Training: added an 'AI Engine Error Log' section showing up to 50 recent stderr error lines from the Rust training process, with timestamps and job IDs. Useful for diagnosing stuck or crashing training jobs.",
+      "AI trainer: reverted neutral-piece rollout preference — the engine now picks moves uniformly at random across all available moves (own and neutral), letting it discover neutral piece strategy organically.",
+      "AI trainer: increased the infinite-loop safety cap from 300 to 400 half-moves before a game is declared a draw, giving the engine more room to find decisive outcomes.",
+      "Computer games (Play page): 'Opponent's Turn' label renamed to 'Computer's Turn' in public computer games. My Computer Games section now shows a 'Make Move' button when it is your turn and a disabled 'Computer's Turn' button when the computer is thinking, instead of a plain 'Resume' button.",
+      "JS bot (easy/medium/hard difficulty): the computer now avoids capturing neutral pieces — neutral pieces are assigned zero victim value in move ordering and are excluded from both sides' material balance. The bot will only capture a neutral piece if no better moves exist.",
+      "Captured pieces display: neutral pieces now contribute 0 to the material advantage calculation — since they belong to neither player, capturing one no longer inflates either side's material score.",
+      "Game library (/create/games): game cards now show the creator's username as a link to their profile.",
+      "Play page — chosen game panel: game name is now a link to the game detail page; creator username is now a link to their profile.",
     ],
   },
   {

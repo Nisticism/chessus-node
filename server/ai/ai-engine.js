@@ -513,8 +513,11 @@ function orderMoves(moves, state) {
     if (aCap && bCap) {
       const attackerA = posMap.get(`${a.from.x},${a.from.y}`);
       const attackerB = posMap.get(`${b.from.x},${b.from.y}`);
-      const victimValA = getPieceValue(targetA, bs);
-      const victimValB = getPieceValue(targetB, bs);
+      const isNeutralA = targetA?.is_neutral || (targetA?.player_id === 0 && !targetA?.team);
+      const isNeutralB = targetB?.is_neutral || (targetB?.player_id === 0 && !targetB?.team);
+      // Neutral pieces are not worth capturing — assign 0 victim value so they sort last
+      const victimValA = isNeutralA ? 0 : getPieceValue(targetA, bs);
+      const victimValB = isNeutralB ? 0 : getPieceValue(targetB, bs);
       const attackerValA = attackerA ? getPieceValue(attackerA, bs) : 0;
       const attackerValB = attackerB ? getPieceValue(attackerB, bs) : 0;
       // MVV-LVA: maximize (victim value - attacker value)
@@ -575,6 +578,8 @@ function evaluatePosition(state, perspective) {
   const opPieces = [];
   for (const piece of pieces) {
     const owner = piece.team || piece.player_id;
+    // Neutral pieces (player 0) belong to neither player — exclude from both sides' material
+    if (owner === 0) continue;
     const value = getPieceValue(piece, bs);
     if (owner === perspective) {
       myMaterial += value;
