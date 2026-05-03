@@ -415,6 +415,31 @@ const profilePictureUpload = multer({
 });
 
 /**
+ * Wraps a multer middleware so that MulterError (e.g. LIMIT_FILE_SIZE) is
+ * caught before it reaches Express's default error handler and returned as a
+ * clean 413/400 JSON response that the frontend can display directly.
+ *
+ * @param {Function} middleware - multer .single() / .array() / .fields() middleware
+ * @param {string}   sizeLabel  - human-readable size limit shown in the error, e.g. "2 MB"
+ */
+function multerWrap(middleware, sizeLabel = '2 MB') {
+  return (req, res, next) => {
+    middleware(req, res, (err) => {
+      if (!err) return next();
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({
+          message: `File too large. The maximum allowed size is ${sizeLabel}. Please reduce the file size and try again.`
+        });
+      }
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ message: `Upload error: ${err.message}` });
+      }
+      return next(err);
+    });
+  };
+}
+
+/**
  * Deduplicate an uploaded image file by SHA-256 content hash.
  * If a file with the same hash already exists in the same upload directory,
  * the new upload is deleted and the existing filename is reused. Otherwise
@@ -3595,7 +3620,7 @@ app.post("/api/profile/change-password", authenticateToken, async (req, res) => 
   }
 });
 
-app.post("/api/profile/upload-picture", profilePictureUpload.single('profile_picture'), async (req, res) => {
+app.post("/api/profile/upload-picture", multerWrap(profilePictureUpload.single('profile_picture'), '2 MB'), async (req, res) => {
   try {
     const userId = req.body.user_id;
     const imageFile = req.file;
@@ -6005,7 +6030,7 @@ const validatePieceLimits = (pieceData) => {
   return null;
 };
 
-app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_images', 8), async (req, res) => {
+app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('piece_images', 8), '2 MB'), async (req, res) => {
   try {
     const pieceData = req.body;
     const creator_id = req.user.id;
@@ -6414,7 +6439,7 @@ app.post("/api/pieces/create", authenticateToken, pieceUpload.array('piece_image
 
 // ----------------------- Pieces Update ------------------------------
 
-app.put("/api/pieces/:pieceId", authenticateToken, pieceUpload.array('piece_images', 8), async (req, res) => {
+app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array('piece_images', 8), '2 MB'), async (req, res) => {
   try {
     const { pieceId } = req.params;
     const pieceData = req.body;
@@ -7985,7 +8010,7 @@ const artifactUpload = multer({
 app.post(
   '/api/admin/ai-training/upload-artifacts',
   authenticateAdmin,
-  artifactUpload.single('artifact'),
+  multerWrap(artifactUpload.single('artifact'), '500 MB'),
   async (req, res) => {
     try {
       if (!req.file || !req.file.buffer) {
@@ -10387,7 +10412,7 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin1, async (req, res) =>
 app.post(
   "/api/admin/about/upload-picture",
   authenticateAdmin1,
-  profilePictureUpload.single('picture'),
+  multerWrap(profilePictureUpload.single('picture'), '2 MB'),
   async (req, res) => {
     try {
       const imageFile = req.file;

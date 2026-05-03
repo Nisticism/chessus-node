@@ -29,6 +29,8 @@ const changelogData = [
       "Small-range numeric inputs in the sandbox (actions per turn, draw move limit, repetition draw) and the tournament wizard (min/max players) now use the standard incrementor control for easier adjustment.",
       "Fixed inconsistent spacing between toggle switches on Step 4 of the piece wizard (Can Promote and Can Castle no longer have extra margin between them).",
       "Fixed toggle switches inside sub-fields on piece wizard steps occasionally rendering the label out of alignment with the switch.",
+      "When uploading a profile picture or piece image that exceeds the file size limit, you now see a clear friendly error message instead of a generic server error.",
+      "The piece image uploader now correctly shows a 2MB file size limit (matching the actual server limit).",
     ],
   },
   {

@@ -23,6 +23,7 @@ const PieceWizard = ({ editPieceId = null }) => {
   const [existingImages, setExistingImages] = useState([]);
   const [missingFields, setMissingFields] = useState(null);
   const [duplicateWarning, setDuplicateWarning] = useState(null); // { matches, nameSame }
+  const [submitError, setSubmitError] = useState(null);
   
   // Track if user has manually interacted with attacks_like_movement checkbox
   const hasManuallySetAttackStyle = useRef(false);
@@ -728,6 +729,7 @@ const PieceWizard = ({ editPieceId = null }) => {
       }
     } catch (error) {
       console.error(isEditMode ? "Error updating piece:" : "Error creating piece:", error);
+      setSubmitError(error || 'Failed to save piece. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -798,6 +800,12 @@ const PieceWizard = ({ editPieceId = null }) => {
       </div>
 
       <Divider />
+
+      {submitError && (
+        <div style={{ color: 'var(--error-color, #e74c3c)', background: 'var(--error-bg, rgba(231,76,60,0.1))', border: '1px solid var(--error-color, #e74c3c)', borderRadius: '6px', padding: '12px 16px', margin: '0 0 12px 0', textAlign: 'center' }}>
+          {typeof submitError === 'string' ? submitError : submitError}
+        </div>
+      )}
 
       <div className={styles["wizard-navigation"]}>
         <div className={styles["nav-buttons"]}>

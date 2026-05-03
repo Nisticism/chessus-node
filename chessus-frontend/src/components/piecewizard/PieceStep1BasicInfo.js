@@ -134,9 +134,9 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
         return;
       }
       
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size must be less than 5MB');
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Image size must be less than 2MB');
         return;
       }
 
@@ -401,7 +401,7 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
       </div>
 
       <div className={styles["image-upload-section"]}>
-        <h3>Piece Images <InfoTooltip text="Upload images for each player. Player 1 (light) and Player 2 (dark) are required. You can add more variant images for additional players. PNG, JPG, or SVG formats up to 5MB. SVG is recommended for multi-tile pieces as it scales without distortion." /> <span className={styles["required"]}>*</span></h3>
+        <h3>Piece Images <InfoTooltip text="Upload images for each player. Player 1 (light) and Player 2 (dark) are required. You can add more variant images for additional players. PNG, JPG, or SVG formats up to 2MB. SVG is recommended for multi-tile pieces as it scales without distortion." /> <span className={styles["required"]}>*</span></h3>
         
         {brightnessWarning && (
           <div className={styles["brightness-warning"]}>
@@ -470,7 +470,7 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
                       >
                         <div className={styles["upload-icon"]}>📁</div>
                         <p>Upload Image</p>
-                        <p className={styles["upload-hint"]}>PNG, JPG up to 5MB</p>
+                        <p className={styles["upload-hint"]}>PNG, JPG up to 2MB</p>
                       </button>
                       <button 
                         type="button"

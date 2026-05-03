@@ -182,7 +182,7 @@ const EditAccount = (props) => {
       }
     } catch (error) {
       console.error('Error uploading profile picture:', error);
-      alert('Failed to upload profile picture');
+      alert(error.response?.data?.message || 'Failed to upload profile picture');
     } finally {
       setUploadingPicture(false);
     }

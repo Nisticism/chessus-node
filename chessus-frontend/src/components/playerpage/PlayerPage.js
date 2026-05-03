@@ -445,7 +445,7 @@ const PlayerPage = (props) => {
     } catch (error) {
       console.error('Error uploading profile picture:', error);
       console.error('Error response:', error.response?.data);
-      setAlertMessage('Failed to upload profile picture');
+      setAlertMessage(error.response?.data?.message || 'Failed to upload profile picture');
       setAlertType('error');
       setShowAlert(true);
     } finally {
