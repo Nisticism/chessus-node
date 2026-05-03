@@ -90,13 +90,28 @@ class SoundManager {
       const sound = source.cloneNode();
       sound.volume = source.volume;
 
-      const cleanup = () => this.activeSounds.delete(sound);
-      sound.addEventListener('ended', cleanup, { once: true });
-      sound.addEventListener('error', cleanup, { once: true });
+      // Per-sound clip duration: move 0.25s, check 0.3s, everything else 0.6s.
+      const duration = soundName === 'move' ? 250 : soundName === 'check' ? 300 : 600;
+
+      // Schedule the clip timer SYNCHRONOUSLY before play() — never inside .then().
+      // The old code set the timer inside .then(), which could be skipped if a
+      // second sound started before the first Promise resolved, leaving orphan clones.
+      const stopTimer = setTimeout(() => {
+        try { sound.pause(); } catch (e) { /* ignore */ }
+        this.activeSounds.delete(sound);
+      }, duration);
+
+      const onDone = () => {
+        clearTimeout(stopTimer);
+        this.activeSounds.delete(sound);
+      };
+      sound.addEventListener('ended', onDone, { once: true });
+      sound.addEventListener('error', onDone, { once: true });
       this.activeSounds.add(sound);
 
       sound.play().catch(err => {
-        cleanup();
+        clearTimeout(stopTimer);
+        onDone();
         console.debug('Sound play prevented:', err.message);
       });
     } catch (err) {
