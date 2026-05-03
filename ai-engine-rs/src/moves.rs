@@ -1184,7 +1184,7 @@ fn ratio_path_ok(    board: &Board,
 /// recursive call by inspecting moves only â€” castling moves never threaten
 /// arbitrary squares anyway, so this is safe.
 fn square_attacked_by(board: &Board, rules: &Rules, x: i32, y: i32, our_player: i32, target_hp: i32) -> bool {
-    for enemy in board.pieces.iter().filter(|p| p.player != our_player) {
+    for enemy in board.pieces.iter().filter(|p| p.player != our_player && !p.is_neutral) {
         // Skip the king-style enemy's own castling logic to avoid recursion.
         let enemy_clone = enemy.clone();
         let enemy_moves = pseudo_moves_no_castle(board, rules, &enemy_clone);

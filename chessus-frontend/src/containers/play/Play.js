@@ -1814,6 +1814,16 @@ const Play = () => {
                               Spectate
                             </button>
                           )}
+                          {isAdmin && (
+                            <button
+                              className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
+                              onClick={() => handleDeleteGame(game.id)}
+                              disabled={deletingGameId === game.id}
+                              title="Delete bugged game (admin only)"
+                            >
+                              {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

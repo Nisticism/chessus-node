@@ -3018,7 +3018,8 @@ const LiveGame = () => {
     const isPreviewMode = gameState.status === 'waiting' || gameState.status === 'ready';
     const isOwnPiece = clickedPiece && (
       clickedPiece.player_id === currentPlayer?.position ||
-      clickedPiece.team === currentPlayer?.position
+      clickedPiece.team === currentPlayer?.position ||
+      clickedPiece.is_neutral
     );
     
     // If clicking on opponent's piece, clear selection and return
@@ -3251,7 +3252,7 @@ const LiveGame = () => {
     }
 
     const pieceTeam = piece.player_id || piece.team;
-    const isOwnPiece = currentPlayer && pieceTeam === currentPlayer.position;
+    const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
     
     // Allow dragging own pieces during your turn OR for premoves during opponent's turn
     const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
@@ -3522,7 +3523,7 @@ const LiveGame = () => {
     if (pendingMove) return;
 
     const pieceTeam = piece.player_id || piece.team;
-    const isOwnPiece = currentPlayer && pieceTeam === currentPlayer.position;
+    const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
     const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
     const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
 
@@ -4176,7 +4177,7 @@ const LiveGame = () => {
       
       pieces.forEach(piece => {
         const pieceTeam = piece.player_id || piece.team;
-        if (pieceTeam === currentPlayer.position) {
+        if (pieceTeam === currentPlayer.position || piece.is_neutral) {
           const moves = calculateValidMoves(piece, pieces, boardWidth, boardHeight);
           
           if (playerInCheck) {
@@ -4417,7 +4418,7 @@ const LiveGame = () => {
             )}
             {isAnchor && (() => {
               const pieceTeam = piece.player_id || piece.team;
-              const isOwnPiece = currentPlayer && pieceTeam === currentPlayer.position;
+              const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
               const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
               const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
               

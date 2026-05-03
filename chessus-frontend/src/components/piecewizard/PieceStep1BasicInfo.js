@@ -54,7 +54,7 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
   const [libraryTypeFilter, setLibraryTypeFilter] = useState('All');
   const [libraryCategoryFilter, setLibraryCategoryFilter] = useState('All');
   const [libraryStyleFilter, setLibraryStyleFilter] = useState('All');
-  const [categorySectionOpen, setCategorySectionOpen] = useState(false);
+  const [categorySectionOpen, setCategorySectionOpen] = useState(true);
   const [brightnessWarning, setBrightnessWarning] = useState('');
   const [libraryPage, setLibraryPage] = useState(1);
   const LIBRARY_PAGE_SIZE = 60;
@@ -798,7 +798,7 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
                   </select>
                 </div>
 
-                {communityLoading && (
+                {communityLoading && communityImages.length === 0 && (
                   <div className={styles["library-empty"]}>Loading community pieces...</div>
                 )}
 
@@ -806,8 +806,8 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
                   <div className={styles["library-empty"]}>No community pieces found.</div>
                 )}
 
-                {!communityLoading && communityImages.length > 0 && (
-                  <div className={styles["library-grid"]}>
+                {communityImages.length > 0 && (
+                  <div className={styles["library-grid"]} style={{ opacity: communityLoading ? 0.4 : 1, transition: 'opacity 0.15s ease', pointerEvents: communityLoading ? 'none' : undefined }}>
                     {communityImages.map((item) => (
                       <button
                         key={item.id}

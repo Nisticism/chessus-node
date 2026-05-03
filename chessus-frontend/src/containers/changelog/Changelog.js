@@ -36,6 +36,11 @@ const changelogData = [
       "Server startup: migration log messages now use plain ASCII ([OK], [DB]) instead of emoji characters, preventing garbled output on Windows terminals.",
       "Fixed: neutral pieces can now be moved in live games against the computer — they were previously not included in the bot's legal move set.",
       "Forum new/edit post pages: the category dropdown now shows dark background and light text, consistent with the rest of the form.",
+      "Fixed: neutral pieces can now be dragged, clicked, and selected in live games — they were previously unselectable due to an ownership check that excluded player_id=0 pieces.",
+      "Play page: admins can now delete games from the public Computer Games section (delete button was previously missing from that section).",
+      "AI trainer: neutral pieces (player=0) no longer incorrectly put either player in check — fixed in the Rust engine's attack-detection logic.",
+      "Piece Wizard image library: Color and Type filter labels are now left-aligned and shown in green to match the active tab color. The Category filter is now expanded by default. The filter panel height has been reduced for a more compact layout. The gap between the Category collapse arrow and its label has been increased for readability.",
+      "Piece Wizard community pieces: changing the sort order (newest / alphabetical / by uploader) no longer causes a flash — the current images stay visible (slightly dimmed) while the new order loads.",
     ],
   },
   {
