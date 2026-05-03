@@ -340,6 +340,12 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
     let in_bounds = |x: i32, y: i32| x >= 0 && y >= 0 && x < bw && y < bh;
     let is_player2 = mover.player == 2;
 
+    // Minimum game-ply restriction: piece cannot move until this many half-moves
+    // have been played (board.ply counts every half-move from game start).
+    if tpl.min_turns_per_move > 0 && board.ply < tpl.min_turns_per_move as u32 {
+        return vec![];
+    }
+
     let block_first_move = should_block_first_move_abilities(mover, rules);
     let move_count = mover.move_count as i32;
     let global_first_move_block = tpl.first_move_only && (move_count > 0 || block_first_move);

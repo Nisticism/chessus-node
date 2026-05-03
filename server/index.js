@@ -6240,7 +6240,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
       parseBooleanField(pieceData.directional_hop_disabled),
-      parseInt(pieceData.min_turns_per_move) || null,
+      Math.min(8, parseInt(pieceData.min_turns_per_move) || 0) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
       pieceData.first_move_only === 'true',
@@ -6797,7 +6797,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
       parseBooleanField(pieceData.directional_hop_disabled),
-      parseInt(pieceData.min_turns_per_move) || null,
+      Math.min(8, parseInt(pieceData.min_turns_per_move) || 0) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
       pieceData.first_move_only === 'true',

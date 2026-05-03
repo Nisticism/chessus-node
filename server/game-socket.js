@@ -1216,7 +1216,7 @@ function validateSimulMoveProposal(gameState, playerId, move) {
   if (toX == null || toY == null) return { ok: false, reason: 'Invalid destination' };
   // Verify the move is in the piece's legal move set (exact validation
   // matches existing canPieceAttackSquare / canPieceMoveToSquare helpers).
-  const possible = getPossibleMovesForPiece(piece, gameState.pieces, gameState.gameType) || [];
+  const possible = getPossibleMovesForPiece(piece, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0) || [];
   const match = possible.find(m => m.x === toX && m.y === toY);
   if (!match) return { ok: false, reason: 'Illegal move for this piece' };
   const kind = move.isRangedAttack ? 'ranged' : 'move';
@@ -4783,7 +4783,7 @@ function initializeSocket(server) {
               if ((p.player_id || p.team) !== moverPos) return false;
               if (p.id === move.pieceId) return false; // this IS the required piece
               if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
-              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0).length > 0;
             });
             if (blockedByMustMove.length > 0) {
               return socket.emit("error", {
@@ -5115,7 +5115,7 @@ function initializeSocket(server) {
             if (!p.must_move_if_able || p.must_move_uses_action) return false;
             if ((p.player_id || p.team) !== moverPosition) return false;
             if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
-            return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+            return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0).length > 0;
           });
         }
 
@@ -9197,7 +9197,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
   // getPossibleMovesForPiece so the client cannot bypass the rule.
   if (gameState.gameType && shouldBlockFirstMoveAbilities(piece, gameState.gameType)) {
     try {
-      const allowed = getPossibleMovesForPiece(originalPiece, pieces, gameState.gameType);
+      const allowed = getPossibleMovesForPiece(originalPiece, pieces, gameState.gameType, gameState.totalHalfMoves || 0);
       const isAllowed = allowed.some(m => m.x === to.x && m.y === to.y);
       if (!isAllowed) {
         return { valid: false, reason: "First-move ability not allowed from this square" };
@@ -12159,11 +12159,17 @@ function applyRangeSquareBonus(piece, gameType) {  if (!gameType) return piece;
  * @param {Object} gameType - The game type with board dimensions
  * @returns {Array} - Array of {x, y} positions the piece can move to
  */
-function getPossibleMovesForPiece(piece, allPieces, gameType) {
+function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   const moves = [];
   const boardWidth = gameType.board_width || 8;
   const boardHeight = gameType.board_height || 8;
-  
+
+  // Minimum game-ply restriction: piece cannot move until this many half-moves
+  // have been played (gamePly counts every half-move from game start).
+  if (piece.min_turns_per_move > 0 && gamePly < piece.min_turns_per_move) {
+    return [];
+  }
+
   // Apply range square bonus if piece is on a range square
   piece = applyRangeSquareBonus(piece, gameType);
   
@@ -13008,7 +13014,7 @@ function findAvailableCaptureForPlayer(gameState, playerPosition) {
     // 1) Regular movement-with-capture (covers most cases incl. capture-on-hop diagonals)
     let possibleMoves = [];
     try {
-      possibleMoves = getPossibleMovesForPiece(piece, pieces, gameType);
+      possibleMoves = getPossibleMovesForPiece(piece, pieces, gameType, gameState.totalHalfMoves || 0);
     } catch (e) { /* ignore */ }
     for (const toSquare of possibleMoves) {
       const victim = pieces.find(p => {
@@ -13089,7 +13095,7 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
   
   // For each piece, get all possible moves
   for (const piece of playerPieces) {
-    const possibleMoves = getPossibleMovesForPiece(piece, pieces, gameType);
+    const possibleMoves = getPossibleMovesForPiece(piece, pieces, gameType, gameState.totalHalfMoves || 0);
     
     // Check if each move is legal (doesn't leave player in check)
     for (const toSquare of possibleMoves) {
@@ -13749,7 +13755,7 @@ async function processBotTurn(io, gameId, gameState) {
               if (!p.must_move_if_able || p.must_move_uses_action) return false;
               if ((p.player_id || p.team) !== botPlayer.position) return false;
               if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
-              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0).length > 0;
             })
           : [];
         const actionMustMovePending = (mmActionsNow < mmActionsPerTurn && mmActionsNow + 1 >= mmActionsPerTurn)
@@ -13757,13 +13763,13 @@ async function processBotTurn(io, gameId, gameState) {
               if (!p.must_move_if_able || !p.must_move_uses_action) return false;
               if ((p.player_id || p.team) !== botPlayer.position) return false;
               if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
-              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0).length > 0;
             })
           : [];
         const forcedPieces = freeMustMovePending.length > 0 ? freeMustMovePending : actionMustMovePending;
         if (forcedPieces.length > 0) {
           const forcePiece = forcedPieces[0];
-          const forceMoves = getPossibleMovesForPiece(forcePiece, gameState.pieces, gameState.gameType);
+          const forceMoves = getPossibleMovesForPiece(forcePiece, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0);
           if (forceMoves.length > 0) {
             const chosen = forceMoves[Math.floor(Math.random() * forceMoves.length)];
             bestMove = { pieceId: forcePiece.id, from: { x: forcePiece.x, y: forcePiece.y }, to: chosen };
@@ -13782,7 +13788,7 @@ async function processBotTurn(io, gameId, gameState) {
         console.log = () => {};
         let pawnMoves;
         try {
-          pawnMoves = getPossibleMovesForPiece(unmovedPawn, gameState.pieces, gameState.gameType);
+          pawnMoves = getPossibleMovesForPiece(unmovedPawn, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0);
         } finally {
           console.log = _origLog;
         }
@@ -13948,7 +13954,7 @@ async function processBotTurn(io, gameId, gameState) {
         if (!p.must_move_if_able || p.must_move_uses_action) return false;
         if ((p.player_id || p.team) !== botPlayer.position) return false;
         if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
-        return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType).length > 0;
+        return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0).length > 0;
       }) : [];
       const botTurnSwitched = botActionsExhausted && botPendingFreeMustMoves.length === 0;
       if (botTurnSwitched) {

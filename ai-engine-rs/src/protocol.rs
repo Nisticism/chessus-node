@@ -221,6 +221,10 @@ pub struct PieceTemplate {
     pub can_capture_allies: bool,
     pub first_move_only: bool,
     pub first_move_only_capture: bool,
+    /// Piece cannot move until this many half-moves have been played in the game.
+    /// 0 means no restriction.
+    #[serde(default)]
+    pub min_turns_per_move: i32,
 
     // ---- Castling ----
     pub can_castle: bool,
@@ -318,6 +322,7 @@ impl Default for PieceTemplate {
             can_capture_allies: false,
             first_move_only: false,
             first_move_only_capture: false,
+            min_turns_per_move: 0,
             can_castle: false,
             castling_distance: 2,
             can_promote: false,

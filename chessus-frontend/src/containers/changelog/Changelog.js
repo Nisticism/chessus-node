@@ -31,6 +31,8 @@ const changelogData = [
       "Fixed toggle switches inside sub-fields on piece wizard steps occasionally rendering the label out of alignment with the switch.",
       "When uploading a profile picture or piece image that exceeds the file size limit, you now see a clear friendly error message instead of a generic server error.",
       "The piece image uploader now correctly shows a 2MB file size limit (matching the actual server limit).",
+      "The 'Minimum Turns Before Move' restriction on pieces is now enforced during gameplay. Pieces with this setting cannot move until the specified number of half-moves have been played from game start.",
+      "The maximum value for 'Minimum Turns Before Move' in the piece wizard is now capped at 8.",
     ],
   },
   {

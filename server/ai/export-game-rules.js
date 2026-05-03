@@ -322,6 +322,7 @@ async function exportGameRules(gameTypeId) {
       can_hop_over_enemies: toBool(p.can_hop_over_enemies),
       directional_hop_disabled: toBool(p.directional_hop_disabled),
       ghostwalk: toBool(p.ghostwalk),
+      min_turns_per_move: intOr(p.min_turns_per_move, 0),
 
       can_capture_enemy_on_move:
         p.can_capture_enemy_on_move == null ? true : toBool(p.can_capture_enemy_on_move),

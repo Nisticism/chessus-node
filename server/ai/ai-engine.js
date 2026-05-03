@@ -118,6 +118,7 @@ function cloneState(state) {
     gameType: state.gameType,
     players: state.players,
     moveCount: state.moveCount || 0,
+    gamePly: state.gamePly ?? (state.totalHalfMoves || 0),
     movesWithoutCapture: state.movesWithoutCapture || 0,
     enPassantTarget: state.enPassantTarget ? { ...state.enPassantTarget } : null,
     controlSquareTracking: state.controlSquareTracking
@@ -161,6 +162,7 @@ function applyMove(state, move) {
     });
     state.currentTurn = state.currentTurn === 1 ? 2 : 1;
     state.moveCount = (state.moveCount || 0) + 1;
+    state.gamePly = (state.gamePly ?? 0) + 1;
     state.movesWithoutCapture = (state.movesWithoutCapture || 0) + 1;
     return [];
   }
@@ -233,6 +235,7 @@ function applyMove(state, move) {
   // Switch turns
   state.currentTurn = state.currentTurn === 1 ? 2 : 1;
   state.moveCount = (state.moveCount || 0) + 1;
+  state.gamePly = (state.gamePly ?? 0) + 1;
 
   if (captured.length > 0) {
     state.movesWithoutCapture = 0;
@@ -334,7 +337,7 @@ function getMovesForSearch(state, playerPosition) {
   const moves = [];
   for (const piece of playerPieces) {
     const possibleMoves = silent(() =>
-      getPossibleMovesForPiece(piece, state.pieces, state.gameType)
+      getPossibleMovesForPiece(piece, state.pieces, state.gameType, state.gamePly ?? (state.totalHalfMoves || 0))
     );
 
     for (const toSquare of possibleMoves) {

@@ -61,7 +61,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
           <NumberInput 
             value={pieceData.min_turns_until_movement || 0}
             onChange={(value) => handleNumberChange("min_turns_until_movement", value)}
-            options={{ min: 0, max: 99, placeholder: "0" }}
+            options={{ min: 0, max: 8, placeholder: "0" }}
           />
           <p className={styles["field-hint"]}>
             Number of turns that must pass before this piece can move (useful for special pieces that activate later)
