@@ -2,7 +2,9 @@
  * Spawn, monitor, and resource-cap the Rust ai-engine training process.
  *
  * Design constraints:
- *   - At most ONE concurrent training job (configurable).
+ *   - Multiple concurrent training jobs allowed, subject to a global RAM cap.
+ *   - A new job (or resume) is rejected if its max_rss_mb would push the
+ *     combined total over the global memory cap (stored in site_settings).
  *   - Process is spawned at low OS priority so it can never starve the
  *     game server even if it pegs a core.
  *   - 1 GB RAM + 1 core defaults; tunable via job request.
@@ -28,7 +30,57 @@ const RUST_BIN = path.join(
   process.platform === 'win32' ? 'ai-engine.exe' : 'ai-engine',
 );
 
-const MAX_CONCURRENT_JOBS = 1;
+/**
+ * Default global RAM budget (MiB) used when no value has been saved in
+ * site_settings yet.  The live value is always read from and written to
+ * the DB so it can be changed from the admin dashboard without a restart.
+ */
+const GLOBAL_MEMORY_CAP_MB_DEFAULT = 8192; // 8 GiB
+
+/**
+ * Read the current global memory cap from site_settings.
+ * Falls back to GLOBAL_MEMORY_CAP_MB_DEFAULT if no row exists.
+ */
+async function getGlobalMemoryCapMb() {
+  try {
+    const [[row]] = await db_pool.query(
+      `SELECT setting_value FROM site_settings WHERE setting_key = 'ai_training_memory_cap_mb' LIMIT 1`,
+    );
+    if (row) {
+      const n = parseInt(row.setting_value, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  } catch (_) { /* fallback */ }
+  return GLOBAL_MEMORY_CAP_MB_DEFAULT;
+}
+
+/**
+ * Persist a new global memory cap.
+ * Throws if:
+ *   - The new value is not a positive integer.
+ *   - Running/queued jobs already exceed the new cap (admin must stop
+ *     one or more jobs, or choose a higher value).
+ */
+async function setGlobalMemoryCapMb(newCapMb) {
+  const cap = parseInt(newCapMb, 10);
+  if (!Number.isFinite(cap) || cap < 1) {
+    throw new Error('Global memory cap must be a positive integer (MB).');
+  }
+  const usedMb = await activeMemoryMb();
+  if (usedMb > cap) {
+    throw new Error(
+      `Cannot set global cap to ${cap} MB: running jobs are already using ${usedMb} MB. ` +
+      `Stop one or more jobs first, or set the cap to at least ${usedMb} MB.`,
+    );
+  }
+  await db_pool.query(
+    `INSERT INTO site_settings (setting_key, setting_value)
+     VALUES ('ai_training_memory_cap_mb', ?)
+     ON DUPLICATE KEY UPDATE setting_value = ?`,
+    [String(cap), String(cap)],
+  );
+  return cap;
+}
 
 /**
  * If true, `startJob` and `resumeJob` reject new requests with a clear
@@ -192,6 +244,17 @@ async function activeJobCount() {
     `SELECT COUNT(*) AS c FROM ai_training_jobs WHERE status IN ('queued','running')`,
   );
   return rows[0].c;
+}
+
+/**
+ * Sum of max_rss_mb for all currently queued/running jobs.
+ * Used to enforce GLOBAL_MEMORY_CAP_MB before starting a new job.
+ */
+async function activeMemoryMb() {
+  const [rows] = await db_pool.query(
+    `SELECT COALESCE(SUM(max_rss_mb), 0) AS total FROM ai_training_jobs WHERE status IN ('queued','running')`,
+  );
+  return Number(rows[0].total) || 0;
 }
 
 /**
@@ -416,8 +479,15 @@ async function startJob({
       `Rust binary not built. Run: cd ai-engine-rs && cargo build --release  (expected at ${RUST_BIN})`,
     );
   }
-  if ((await activeJobCount()) >= MAX_CONCURRENT_JOBS) {
-    throw new Error(`Already ${MAX_CONCURRENT_JOBS} training job(s) running. Stop them first.`);
+  {
+    const capMb = await getGlobalMemoryCapMb();
+    const usedMb = await activeMemoryMb();
+    if (usedMb + maxRssMb > capMb) {
+      throw new Error(
+        `Cannot start job: this job needs ${maxRssMb} MB but only ${capMb - usedMb} MB of the ${capMb} MB global cap is free (${usedMb} MB in use). ` +
+        `Stop or reduce memory on running jobs, or raise the global memory cap from the admin dashboard.`,
+      );
+    }
   }
 
   // Dump rules to disk so the Rust binary can read them.
@@ -534,8 +604,16 @@ async function resumeJob(jobId) {
   if (liveJobs.has(jobId)) {
     throw new Error(`Job ${jobId} is already running on this server`);
   }
-  if ((await activeJobCount()) >= MAX_CONCURRENT_JOBS) {
-    throw new Error(`Already ${MAX_CONCURRENT_JOBS} training job(s) running. Stop them first.`);
+  {
+    const resumeRssMb = job.max_rss_mb || 1024;
+    const capMb = await getGlobalMemoryCapMb();
+    const usedMb = await activeMemoryMb();
+    if (usedMb + resumeRssMb > capMb) {
+      throw new Error(
+        `Cannot resume job ${jobId}: it needs ${resumeRssMb} MB but only ${capMb - usedMb} MB of the ${capMb} MB global cap is free (${usedMb} MB in use). ` +
+        `Stop other running jobs first, or raise the global memory cap from the admin dashboard.`,
+      );
+    }
   }
 
   // Reconcile games_played from the log in case the DB row lagged behind
@@ -796,7 +874,9 @@ module.exports = {
   pauseNewJobs,
   resumeNewJobs,
   isNewJobsPaused,
-  MAX_CONCURRENT_JOBS,
+  getGlobalMemoryCapMb,
+  setGlobalMemoryCapMb,
+  activeMemoryMb,
   _invalidateModelMetaCache,
   getGameLog,
   getRecentAiErrors,

@@ -7516,6 +7516,7 @@ app.post("/api/admin/pieces/:pieceId/approve-moderation", authenticateAdmin, asy
 //   GET  /api/admin/ai-training/jobs/:id       — one job + recent log events
 //   POST /api/admin/ai-training/jobs           — start a new job
 //   POST /api/admin/ai-training/jobs/:id/stop  — signal SIGTERM to a running job
+//   PUT  /api/admin/ai-training/memory-cap     — update global memory budget
 //
 // All gated by `authenticateAdmin`. The trainer is sandboxed in a
 // subprocess (1 GB / 1 core by default) so the game server is unaffected.
@@ -7529,10 +7530,13 @@ app.get('/api/admin/ai-training/status', authenticateAdmin1, async (req, res) =>
       : trainingManager.isRustBuilt();
     const jobs = await trainingManager.listJobs(20);
     const active = jobs.filter(j => j.status === 'running' || j.status === 'queued').length;
+    const usedMemoryMb = await trainingManager.activeMemoryMb();
+    const globalMemoryCapMb = await trainingManager.getGlobalMemoryCapMb();
     res.json({
       engineAvailable: built,
       enginePath: trainingManager.RUST_BIN,
-      maxConcurrentJobs: trainingManager.MAX_CONCURRENT_JOBS,
+      globalMemoryCapMb,
+      activeMemoryMb: usedMemoryMb,
       activeJobs: active,
       remoteMode: !!trainingManager.REMOTE_MODE,
       jobs,
@@ -7540,6 +7544,16 @@ app.get('/api/admin/ai-training/status', authenticateAdmin1, async (req, res) =>
   } catch (err) {
     console.error('AI training status error:', err);
     res.status(500).send({ message: 'Failed to load AI training status' });
+  }
+});
+
+app.put('/api/admin/ai-training/memory-cap', authenticateAdmin1, async (req, res) => {
+  try {
+    const { memoryCapMb } = req.body;
+    const saved = await trainingManager.setGlobalMemoryCapMb(memoryCapMb);
+    res.json({ globalMemoryCapMb: saved });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 });
 

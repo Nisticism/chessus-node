@@ -41,6 +41,12 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
   const pollRef = useRef(null);
   const [pauseStatus, setPauseStatus] = useState(null);
 
+  // Global memory cap editing state
+  const [capEditing, setCapEditing] = useState(false);
+  const [capInput, setCapInput] = useState("");
+  const [capSaving, setCapSaving] = useState(false);
+  const [capError, setCapError] = useState(null);
+
   // Artifact upload state
   const [uploadGameTypeId, setUploadGameTypeId] = useState("");
   const [uploadFile, setUploadFile] = useState(null);
@@ -377,12 +383,83 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
       <h3>AI Training</h3>
       <p className={styles.intro}>
         Train a self-play AI for any game type. Training runs as a sandboxed
-        Rust subprocess (2 GB RAM / 1 core by default) so it cannot impact
-        the live game server.
+        Rust subprocess (1 core, configurable RAM) so it cannot impact the live
+        game server. Multiple jobs can run concurrently as long as their combined
+        RAM stays within the global memory cap.
         {status?.remoteMode && (
           <> Trainer runs on the <strong>frontend EC2 instance</strong> via the trainer-service proxy.</>
         )}
       </p>
+
+      {status && (
+        <div style={{ margin: '8px 0 12px', padding: '8px 12px', background: 'var(--bg-panel, #1a2a3a)', borderRadius: 4, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span>
+              Memory budget:{' '}
+              <strong style={{ color: (status.activeMemoryMb || 0) > 0 ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
+                {status.activeMemoryMb || 0} / {status.globalMemoryCapMb || 8192} MB
+              </strong>
+              {' '}in use &mdash; {status.activeJobs || 0} job{status.activeJobs !== 1 ? 's' : ''} running.
+              {status.globalMemoryCapMb && (status.activeMemoryMb || 0) > 0 && (
+                <span style={{ marginLeft: 8, color: (status.globalMemoryCapMb - (status.activeMemoryMb || 0)) < 512 ? '#e05' : undefined }}>
+                  ({status.globalMemoryCapMb - (status.activeMemoryMb || 0)} MB free)
+                </span>
+              )}
+            </span>
+            {!capEditing && (
+              <button
+                type="button"
+                style={{ fontSize: '0.8rem', padding: '2px 8px', cursor: 'pointer' }}
+                onClick={() => { setCapInput(String(status.globalMemoryCapMb || 8192)); setCapEditing(true); setCapError(null); }}
+              >
+                Set cap
+              </button>
+            )}
+          </div>
+          {capEditing && (
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                New global cap (MB):
+                <input
+                  type="number"
+                  min={1}
+                  max={131072}
+                  value={capInput}
+                  onChange={(e) => setCapInput(e.target.value)}
+                  style={{ width: 100, padding: '2px 6px' }}
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Escape') { setCapEditing(false); setCapError(null); } }}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={capSaving}
+                onClick={async () => {
+                  setCapSaving(true);
+                  setCapError(null);
+                  try {
+                    await axios.put(
+                      `${API_URL}admin/ai-training/memory-cap`,
+                      { memoryCapMb: parseInt(capInput, 10) },
+                      { headers: authHeader() },
+                    );
+                    setCapEditing(false);
+                    await fetchStatus();
+                  } catch (err) {
+                    setCapError(err?.response?.data?.message || err.message || 'Failed to save cap');
+                  } finally {
+                    setCapSaving(false);
+                  }
+                }}
+              >
+                {capSaving ? 'Saving\u2026' : 'Save'}
+              </button>
+              <button type="button" onClick={() => { setCapEditing(false); setCapError(null); }}>Cancel</button>
+            </div>
+          )}
+          {capError && <div className={styles.error} style={{ marginTop: 6 }}>{capError}</div>}
+        </div>
+      )}
 
       {error && <div className={styles.error}>{error}</div>}
 
@@ -513,6 +590,16 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
           >
             {submitting ? "Starting…" : "Start training"}
           </button>
+          {status && status.globalMemoryCapMb && parseInt(form.maxRssMb, 10) > 0 && (() => {
+            const free = status.globalMemoryCapMb - (status.activeMemoryMb || 0);
+            const needed = parseInt(form.maxRssMb, 10);
+            return needed > free ? (
+              <div className={styles.error} style={{ marginTop: 6 }}>
+                This job needs {needed} MB but only {free} MB is free under the {status.globalMemoryCapMb} MB global cap.
+                Stop a running job or lower Max RAM to proceed.
+              </div>
+            ) : null;
+          })()}
           {submitError && <div className={styles.error}>{submitError}</div>}
         </form>
       </div>

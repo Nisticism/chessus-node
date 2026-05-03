@@ -173,6 +173,7 @@ const LiveGame = () => {
     resumeDisconnectTimer,
     authenticateAnonCorresPlayer,
     getStoredAnonCorresId,
+    joinOpenGameAsGuest,
   } = useSocket();
 
   const [gameState, setGameState] = useState(null);
@@ -239,6 +240,9 @@ const LiveGame = () => {
   const [showCapturedPieces, setShowCapturedPieces] = useState(true); // Show/hide captured pieces section
   const [showPlacementModal, setShowPlacementModal] = useState(false);
   const [placementTarget, setPlacementTarget] = useState(null); // {x, y} where user wants to place
+  const [showGuestJoinModal, setShowGuestJoinModal] = useState(false);
+  const [guestJoinName, setGuestJoinName] = useState('');
+  const [isJoiningAsGuest, setIsJoiningAsGuest] = useState(false);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
   const [windowHeight, setWindowHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 1080);
   const [displayTimes, setDisplayTimes] = useState({}); // Locally interpolated clock times for sub-second display
@@ -4077,22 +4081,44 @@ const LiveGame = () => {
 
   // Check if user can join this game
   const canJoin = useMemo(() => {
-    if (!gameState || !currentUser) return false;
+    if (!gameState) return false;
     if (gameState.status !== 'waiting') return false;
-    const isAlreadyPlayer = gameState.players?.some(p => p.id === currentUser.id);
-    return !isAlreadyPlayer;
+    if (currentUser) {
+      const isAlreadyPlayer = gameState.players?.some(p => p.id === currentUser.id);
+      return !isAlreadyPlayer;
+    }
+    // Anonymous users can join unrated, non-challenge, non-correspondence games that aren't full
+    return !gameState.rated && !gameState.isChallenge && !gameState.isCorrespondence && (gameState.players?.length || 0) < 2;
   }, [gameState, currentUser]);
 
   // Handle joining the game
   const handleJoinGame = async () => {
     if (!currentUser) {
-      navigate('/login', { state: { message: "Please log in to join live games." } });
+      if (gameState?.rated || gameState?.isCorrespondence || gameState?.isChallenge) {
+        navigate('/login', { state: { message: "Please log in to join this game." } });
+      } else {
+        setGuestJoinName('');
+        setShowGuestJoinModal(true);
+      }
       return;
     }
     try {
       await joinGame(parseInt(gameId));
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  // Handle confirming join as guest from the modal
+  const handleConfirmGuestJoin = async () => {
+    setIsJoiningAsGuest(true);
+    try {
+      await joinOpenGameAsGuest(parseInt(gameId), guestJoinName || 'Guest');
+      setShowGuestJoinModal(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsJoiningAsGuest(false);
     }
   };
 
@@ -5283,7 +5309,7 @@ const LiveGame = () => {
                         className={`${styles.btn} ${styles["btn-primary"]}`}
                         onClick={handleJoinGame}
                       >
-                        Join Game
+                        {currentUser ? 'Join Game' : 'Join as Guest'}
                       </button>
                     </>
                   ) : !currentUser ? (
@@ -5291,7 +5317,7 @@ const LiveGame = () => {
                       <span><strong>{gameState.hostUsername || 'A player'}</strong> is hosting this game</span>
                       <button
                         className={`${styles.btn} ${styles["btn-primary"]}`}
-                        onClick={() => navigate('/login', { state: { message: "Please log in to join live games." } })}
+                        onClick={() => navigate('/login', { state: { message: "Please log in to join this game." } })}
                       >
                         Login to Join
                       </button>
@@ -6214,6 +6240,35 @@ const LiveGame = () => {
             <button className={styles["cancel-button"]} onClick={handlePlacementCancel}>
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+      {/* Guest Join Modal — for anonymous users joining a non-rated open game */}
+      {showGuestJoinModal && (
+        <div className={styles["promotion-modal-overlay"]} onClick={() => setShowGuestJoinModal(false)}>
+          <div className={styles["promotion-modal"]} onClick={(e) => e.stopPropagation()}>
+            <h3>Join as Guest</h3>
+            <p>Playing as a guest. This game is unrated.</p>
+            <input
+              type="text"
+              maxLength={20}
+              placeholder="Guest"
+              value={guestJoinName}
+              autoFocus
+              onChange={(e) => setGuestJoinName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmGuestJoin(); }}
+              style={{ width: '100%', padding: '8px', marginBottom: '16px', background: 'var(--bg-deep, #0d1b2e)', border: '1px solid var(--panel-border)', borderRadius: '4px', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button className={styles["cancel-button"]} onClick={() => setShowGuestJoinModal(false)}>Cancel</button>
+              <button
+                className={`${styles.btn} ${styles["btn-primary"]}`}
+                onClick={handleConfirmGuestJoin}
+                disabled={isJoiningAsGuest}
+              >
+                {isJoiningAsGuest ? 'Joining...' : 'Join Game'}
+              </button>
+            </div>
           </div>
         </div>
       )}
