@@ -831,6 +831,50 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
 
       <AnalysisSection gameTypes={gameTypes} initialGameTypeId={initialAnalysisGameTypeId} />
 
+      {/* AI Engine Error Log */}
+      <div className={styles.section} style={{ marginTop: 24 }}>
+        <div
+          style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
+          onClick={() => setAiErrorsCollapsed(c => !c)}
+        >
+          <span style={{ display: 'inline-block', width: '1em' }}>{aiErrorsCollapsed ? '\u25B6' : '\u25BC'}</span>
+          <strong>AI Engine Error Log</strong>
+          {aiErrors.length > 0 && (
+            <span className={styles.errorBadge}>{aiErrors.length}</span>
+          )}
+          <button
+            type="button"
+            className={styles.btnNeutral}
+            style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: '0.82em' }}
+            onClick={(e) => { e.stopPropagation(); fetchAiErrors(); }}
+            title="Refresh error log"
+          >
+            Refresh
+          </button>
+        </div>
+        {!aiErrorsCollapsed && (
+          <div style={{ marginTop: 8 }}>
+            {aiErrors.length === 0 ? (
+              <div className={styles.emptyNote}>No errors recorded since last server start.</div>
+            ) : (
+              <div className={styles.errorLog}>
+                {aiErrors.map((e, i) => (
+                  <div key={i} className={styles.errorLogEntry}>
+                    <span className={styles.errorLogTime}>
+                      {new Date(e.timestamp).toLocaleTimeString()} &mdash; Job #{e.jobId}
+                    </span>
+                    <pre className={styles.errorLogLine}>{e.line}</pre>
+                  </div>
+                ))}
+                <div className={styles.emptyNote} style={{ marginTop: 4 }}>
+                  Showing up to 50 most recent stderr lines. Cleared on server restart.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {replayJobId !== null && (
         <AiGameReplayModal
           jobId={replayJobId}
@@ -1139,50 +1183,6 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
           </div>
         </div>
       )}
-
-      {/* AI Engine Error Log */}
-      <div className={styles.section} style={{ marginTop: 24 }}>
-        <div
-          style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
-          onClick={() => setAiErrorsCollapsed(c => !c)}
-        >
-          <span style={{ display: 'inline-block', width: '1em' }}>{aiErrorsCollapsed ? '▶' : '▼'}</span>
-          <strong>AI Engine Error Log</strong>
-          {aiErrors.length > 0 && (
-            <span className={styles.errorBadge}>{aiErrors.length}</span>
-          )}
-          <button
-            type="button"
-            className={styles.btnNeutral}
-            style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: '0.82em' }}
-            onClick={(e) => { e.stopPropagation(); fetchAiErrors(); }}
-            title="Refresh error log"
-          >
-            Refresh
-          </button>
-        </div>
-        {!aiErrorsCollapsed && (
-          <div style={{ marginTop: 8 }}>
-            {aiErrors.length === 0 ? (
-              <div className={styles.emptyNote}>No errors recorded since last server start.</div>
-            ) : (
-              <div className={styles.errorLog}>
-                {aiErrors.map((e, i) => (
-                  <div key={i} className={styles.errorLogEntry}>
-                    <span className={styles.errorLogTime}>
-                      {new Date(e.timestamp).toLocaleTimeString()} — Job #{e.jobId}
-                    </span>
-                    <pre className={styles.errorLogLine}>{e.line}</pre>
-                  </div>
-                ))}
-                <div className={styles.emptyNote} style={{ marginTop: 4 }}>
-                  Showing up to 50 most recent stderr lines. Cleared on server restart.
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 };
