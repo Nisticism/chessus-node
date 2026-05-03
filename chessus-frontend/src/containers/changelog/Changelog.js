@@ -54,6 +54,12 @@ const changelogData = [
       "Captured pieces display: neutral pieces now contribute 0 to the material advantage calculation — since they belong to neither player, capturing one no longer inflates either side's material score.",
       "Game library (/create/games): game cards now show the creator's username as a link to their profile.",
       "Play page — chosen game panel: game name is now a link to the game detail page; creator username is now a link to their profile.",
+      "Game detail page — Board Setup: rank numbers (1, 2, 3...) now appear on the left side and file letters (a, b, c...) appear below the board when 'Show Details' is toggled on.",
+      "Game detail page — Range squares: the 'R' label on range squares now also shows the range bonus amount as a small superscript (e.g. R+2), so the exact bonus is visible at a glance.",
+      "Play page — game library cards in /create/games now show 'Created by' before the username instead of just the username alone.",
+      "Play page — chosen game: there is now proper spacing between the bullet separator and the 'by [creator]' text.",
+      "Play page — chosen game: game title now shows a light green hover highlight when you mouse over it.",
+      "Fixed: My Computer Games section now correctly shows 'Make Move' when it is your turn and 'Computer's Turn' when the computer is thinking (previously the button states were inverted for players who chose a specific side).",
     ],
   },
   {

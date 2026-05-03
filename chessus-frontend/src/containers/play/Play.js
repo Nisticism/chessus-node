@@ -1270,8 +1270,7 @@ const Play = () => {
                     </span>
                     {selectedGameType.creator_username && (
                       <span className={styles["creator"]}>
-                        <span className={styles["stat-divider"]}>•</span>
-                        by{' '}
+                        <span className={styles["stat-divider"]}>{' '}•{' '}</span>by{' '}
                         {selectedGameType.creator_username === 'Anonymous' ? (
                           <span>Anonymous</span>
                         ) : (
@@ -1814,7 +1813,8 @@ const Play = () => {
                           {(() => {
                             const isMyBotGame = currentUser && game.player_ids?.includes(currentUser.id);
                             if (isMyBotGame) {
-                              const isMyTurn = game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn;
+                              const botPos = game.botPosition || 2;
+                              const isMyTurn = game.player_turn !== botPos;
                               return (
                                 <button
                                   className={`${styles.btn} ${isMyTurn ? styles["btn-primary"] : styles["btn-secondary"]} ${styles["btn-small"]}`}
@@ -1899,9 +1899,8 @@ const Play = () => {
                           <div className={styles["match-players"]}>{game.player_names}</div>
                           <div className={styles["match-actions"]}>
                             {(() => {
-                              const isMyTurn = currentUser && game.player_ids
-                                ? game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn
-                                : true;
+                              const botPos = game.bot_position || 2;
+                              const isMyTurn = game.player_turn !== botPos;
                               return (
                                 <button
                                   className={`${styles.btn} ${isMyTurn ? styles["btn-primary"] : styles["btn-secondary"]} ${styles["btn-small"]}`}

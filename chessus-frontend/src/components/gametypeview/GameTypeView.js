@@ -1803,7 +1803,10 @@ const GameTypeView = () => {
                   pointerEvents: 'none'
                 }}
               >
-                {squareType === 'range' && 'R'}
+                {squareType === 'range' && (() => {
+                  const bonus = specialSquares.range[`${row},${col}`]?.rangeBonus || 1;
+                  return <span>R<span style={{ fontSize: `${squareSize * 0.22}px`, verticalAlign: 'super', lineHeight: 1 }}>+{bonus}</span></span>;
+                })()}
                 {squareType === 'promotion' && 'P'}
                 {squareType === 'control' && 'C'}
                 {squareType === 'special' && (() => {
@@ -2198,20 +2201,56 @@ const GameTypeView = () => {
             Hover over a piece to see where it can move and attack
           </p>}
           <div className={styles["board-container"]} ref={boardContainerRef}>
-            <div
-              className={styles["board"]}
-              style={{
-                display: 'grid',
-                gridTemplateRows: `repeat(${game.board_height}, ${squareSize}px)`,
-                gridTemplateColumns: `repeat(${game.board_width}, ${squareSize}px)`,
-                border: '2px solid var(--border-subtle)',
-                width: 'fit-content',
-                margin: '0 auto',
-                aspectRatio: 'unset'
-              }}
-            >
-              {renderBoard()}
-            </div>
+            {showDetails ? (
+              <div className={styles["board-with-notation"]}>
+                <div
+                  className={styles["gtv-rank-labels"]}
+                  style={{ gridTemplateRows: `repeat(${game.board_height}, ${squareSize}px)` }}
+                >
+                  {Array.from({ length: game.board_height }, (_, i) => (
+                    <div key={i} className={styles["gtv-rank-label"]}>{game.board_height - i}</div>
+                  ))}
+                </div>
+                <div className={styles["board-and-file-labels"]}>
+                  <div
+                    className={styles["board"]}
+                    style={{
+                      display: 'grid',
+                      gridTemplateRows: `repeat(${game.board_height}, ${squareSize}px)`,
+                      gridTemplateColumns: `repeat(${game.board_width}, ${squareSize}px)`,
+                      border: '2px solid var(--border-subtle)',
+                      width: 'fit-content',
+                      aspectRatio: 'unset'
+                    }}
+                  >
+                    {renderBoard()}
+                  </div>
+                  <div
+                    className={styles["gtv-file-labels"]}
+                    style={{ gridTemplateColumns: `repeat(${game.board_width}, ${squareSize}px)` }}
+                  >
+                    {Array.from({ length: game.board_width }, (_, i) => (
+                      <div key={i} className={styles["gtv-file-label"]}>{String.fromCharCode(97 + i)}</div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={styles["board"]}
+                style={{
+                  display: 'grid',
+                  gridTemplateRows: `repeat(${game.board_height}, ${squareSize}px)`,
+                  gridTemplateColumns: `repeat(${game.board_width}, ${squareSize}px)`,
+                  border: '2px solid var(--border-subtle)',
+                  width: 'fit-content',
+                  margin: '0 auto',
+                  aspectRatio: 'unset'
+                }}
+              >
+                {renderBoard()}
+              </div>
+            )}
           </div>
         </div>
 

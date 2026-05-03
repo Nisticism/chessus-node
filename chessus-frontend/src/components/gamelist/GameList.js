@@ -241,6 +241,7 @@ const GameList = () => {
 
             {game.creator_username && (
               <div className={styles["game-creator-byline"]}>
+                Created by{' '}
                 {game.creator_username === 'Anonymous' ? (
                   <span>Anonymous</span>
                 ) : (
