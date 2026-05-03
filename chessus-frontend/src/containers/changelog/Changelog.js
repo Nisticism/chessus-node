@@ -41,6 +41,12 @@ const changelogData = [
       "AI trainer: neutral pieces (player=0) no longer incorrectly put either player in check — fixed in the Rust engine's attack-detection logic.",
       "Piece Wizard image library: Color and Type filter labels are now left-aligned and shown in green to match the active tab color. The Category filter is now expanded by default. The filter panel height has been reduced for a more compact layout. The gap between the Category collapse arrow and its label has been increased for readability.",
       "Piece Wizard community pieces: changing the sort order (newest / alphabetical / by uploader) no longer causes a flash — the current images stay visible (slightly dimmed) while the new order loads.",
+      "Forum new/edit post pages: the category dropdown background now matches the title field exactly.",
+      "Computer games: disconnecting from your own game against the computer no longer ends the game — you can reconnect and resume without forfeiting. Time limits still apply.",
+      "Computer games (Play page): your own computer games in the public 'Computer Games' section now show a 'Make Move' or 'Opponent\\'s Turn' button instead of a spectate button. Other players' computer games still show 'Spectate' when spectating is allowed.",
+      "AI trainer: the engine can no longer get stuck in infinite rollouts on games with neutral pieces — a hard cap prevents games from running forever when no draw-by-move-limit rule is configured.",
+      "AI trainer: the engine now strongly prefers moving its own pieces over neutral pieces at every tier of its rollout heuristic, preventing the computer from repeatedly shuffling neutral pieces instead of advancing its own position.",
+      "Admin portal — AI Training: added an 'AI Engine Error Log' section showing up to 50 recent stderr error lines from the Rust training process, with timestamps and job IDs. Useful for diagnosing stuck or crashing training jobs.",
     ],
   },
   {

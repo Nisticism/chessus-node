@@ -1806,14 +1806,32 @@ const Play = () => {
                         </div>
                         <div className={styles["match-players"]}>{renderPlayerStack(game)}</div>
                         <div className={styles["match-actions"]}>
-                          {game.allow_spectators && (
-                            <button
-                              className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
-                              onClick={() => navigate(`/play/${game.id}`)}
-                            >
-                              Spectate
-                            </button>
-                          )}
+                          {(() => {
+                            const isMyBotGame = currentUser && game.player_ids?.includes(currentUser.id);
+                            if (isMyBotGame) {
+                              const isMyTurn = game.player_ids.indexOf(currentUser.id) + 1 === game.player_turn;
+                              return (
+                                <button
+                                  className={`${styles.btn} ${isMyTurn ? styles["btn-primary"] : styles["btn-secondary"]} ${styles["btn-small"]}`}
+                                  onClick={() => navigate(`/play/${game.id}`)}
+                                  disabled={!isMyTurn}
+                                >
+                                  {isMyTurn ? 'Make Move' : "Opponent's Turn"}
+                                </button>
+                              );
+                            }
+                            if (game.allow_spectators) {
+                              return (
+                                <button
+                                  className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
+                                  onClick={() => navigate(`/play/${game.id}`)}
+                                >
+                                  Spectate
+                                </button>
+                              );
+                            }
+                            return null;
+                          })()}
                           {isAdmin && (
                             <button
                               className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}

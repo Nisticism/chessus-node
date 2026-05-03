@@ -694,6 +694,9 @@ async function endGameByDisconnect(io, gameId, disconnectedUserId) {
 
   if (!gameState || gameState.status !== 'active') return;
 
+  // Computer games cannot be ended by disconnect — the user can still lose on time
+  if (gameState.botPlayer) return;
+
   const winner = gameState.players?.find(p => p.id !== disconnectedUserId);
   if (!winner) return;
 

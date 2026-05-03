@@ -8150,6 +8150,12 @@ app.delete('/api/admin/ai-training/wipe', authenticateAdmin1, async (req, res) =
   }
 });
 
+// Return the most recent Rust AI engine stderr errors (in-memory ring buffer,
+// max 50 entries, newest first). Useful for diagnosing stuck or crashing jobs.
+app.get('/api/admin/ai-engine/errors', authenticateAdmin1, (req, res) => {
+  res.json({ errors: trainingManager.getRecentAiErrors() });
+});
+
 // SNS / Lambda webhook for CloudWatch-driven auto-pause when the
 // frontend EC2 instance's CPUCreditBalance drops below threshold.
 // Authenticated via shared-secret header `X-Trainer-Token` so a Lambda

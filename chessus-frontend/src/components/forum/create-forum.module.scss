@@ -76,9 +76,10 @@
   }
 }
 
-// Dropdowns need a solid background so OS-rendered option items are readable.
+// The select itself uses the same semi-transparent background as the title input.
+// OS-rendered option items still need a solid fallback.
 select.forum-title-input {
-  background: var(--bg-card, #20242e);
+  background: rgba(0, 0, 0, 0.18);
   color: var(--text-heading);
 
   option {

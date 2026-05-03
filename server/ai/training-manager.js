@@ -56,6 +56,22 @@ function isNewJobsPaused() {
  * is alive; persistent state lives in the DB. */
 const liveJobs = new Map(); // jobId -> { child, log: { gamesPlayed, lastEvent } }
 
+// Ring buffer of recent Rust AI engine errors (stderr lines).
+// Capped at MAX_AI_ERRORS entries — oldest is dropped when the cap is exceeded.
+const MAX_AI_ERRORS = 50;
+const _recentAiErrors = []; // [ { timestamp, jobId, line } ]
+
+function _pushAiError(jobId, line) {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  _recentAiErrors.push({ timestamp: new Date().toISOString(), jobId, line: trimmed });
+  if (_recentAiErrors.length > MAX_AI_ERRORS) _recentAiErrors.shift();
+}
+
+function getRecentAiErrors() {
+  return _recentAiErrors.slice().reverse(); // newest first
+}
+
 function isRustBuilt() {
   // In remote mode, treat the binary as "available" if the trainer
   // service has it. We don't synchronously hit the network on every
@@ -289,7 +305,18 @@ function spawnTrainer({
 
   const stderrPath = path.join(outDir, 'stderr.log');
   const stderrStream = fs.createWriteStream(stderrPath, { flags: 'a' });
-  child.stderr.on('data', (chunk) => stderrStream.write(chunk));
+  let stderrBuf = '';
+  child.stderr.on('data', (chunk) => {
+    stderrStream.write(chunk);
+    // Accumulate lines in the ring buffer for admin visibility.
+    stderrBuf += chunk.toString('utf8');
+    const lines = stderrBuf.split('\n');
+    stderrBuf = lines.pop(); // keep incomplete trailing line
+    for (const ln of lines) _pushAiError(jobId, ln);
+  });
+  child.stderr.on('end', () => {
+    if (stderrBuf) { _pushAiError(jobId, stderrBuf); stderrBuf = ''; }
+  });
   child.stdout.on('data', () => {});
 
   child.on('exit', async (code, signal) => {
@@ -772,4 +799,5 @@ module.exports = {
   MAX_CONCURRENT_JOBS,
   _invalidateModelMetaCache,
   getGameLog,
+  getRecentAiErrors,
 };

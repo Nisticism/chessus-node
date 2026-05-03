@@ -331,6 +331,12 @@ pub fn rollout_with_reason(
                 return (GameResult::Draw, EndReason::MoveLimit);
             }
         }
+        // Safety fallback: prevent infinite loops in games without draw_move_limit
+        // (e.g. games with neutral pieces where both players keep shuffling a
+        // neutral piece back and forth indefinitely).
+        if state.plies_since_capture >= 300 {
+            return (GameResult::Draw, EndReason::MoveLimit);
+        }
     }
     (material_heuristic(state, rules), EndReason::RolloutCap)
 }
@@ -459,6 +465,10 @@ pub fn rollout_with_reason_aggressive(
                 return (GameResult::Draw, EndReason::MoveLimit);
             }
         }
+        // Safety fallback: prevent infinite loops in games without draw_move_limit.
+        if state.plies_since_capture >= 300 {
+            return (GameResult::Draw, EndReason::MoveLimit);
+        }
     }
     (material_heuristic(state, rules), EndReason::RolloutCap)
 }
@@ -552,6 +562,11 @@ pub fn pick_rollout_move<'a>(
     mover: i32,
     aggressive: bool,
 ) -> &'a Move {
+    // Helper: returns true if this move is made by the mover's own (non-neutral) piece.
+    let is_own_move = |m: &Move| -> bool {
+        state.pieces.iter().any(|p| p.id == m.piece_id && p.player == mover && !p.is_neutral)
+    };
+
     // Tier 1: Promotion — strong bias for games with promotion squares.
     if !rules.promotion_squares.is_empty() {
         let promo: Vec<&Move> = moves
@@ -572,7 +587,10 @@ pub fn pick_rollout_move<'a>(
             })
             .collect();
         if !promo.is_empty() && rng.gen_bool(0.85) {
-            return *promo.choose(rng).unwrap();
+            // Prefer promoting own pieces; fall back to any promo move if none.
+            let own_promo: Vec<&Move> = promo.iter().copied().filter(|m| is_own_move(m)).collect();
+            let pool = if own_promo.is_empty() { &promo } else { &own_promo };
+            return *pool.choose(rng).unwrap();
         }
     }
 
@@ -589,7 +607,9 @@ pub fn pick_rollout_move<'a>(
             .collect();
         let ctrl_bias = if aggressive { 0.8 } else { 0.7 };
         if !ctrl.is_empty() && rng.gen_bool(ctrl_bias) {
-            return *ctrl.choose(rng).unwrap();
+            let own_ctrl: Vec<&Move> = ctrl.iter().copied().filter(|m| is_own_move(m)).collect();
+            let pool = if own_ctrl.is_empty() { &ctrl } else { &own_ctrl };
+            return *pool.choose(rng).unwrap();
         }
     }
 
@@ -605,16 +625,20 @@ pub fn pick_rollout_move<'a>(
             })
             .collect();
         if !range.is_empty() && rng.gen_bool(0.4) {
-            return *range.choose(rng).unwrap();
+            let own_range: Vec<&Move> = range.iter().copied().filter(|m| is_own_move(m)).collect();
+            let pool = if own_range.is_empty() { &range } else { &own_range };
+            return *pool.choose(rng).unwrap();
         }
     }
 
-    // Tier 4: Capture preference.
+    // Tier 4: Capture preference — prefer capturing with own pieces.
     let captures: Vec<&Move> = moves.iter().filter(|m| m.capture.is_some()).collect();
     if !captures.is_empty() {
         let threshold = if aggressive { 1.0 } else { 0.5 };
         if rng.gen_bool(threshold) {
-            return *captures.choose(rng).unwrap();
+            let own_captures: Vec<&Move> = captures.iter().copied().filter(|m| is_own_move(m)).collect();
+            let pool = if own_captures.is_empty() { &captures } else { &own_captures };
+            return *pool.choose(rng).unwrap();
         }
     }
 
@@ -623,11 +647,15 @@ pub fn pick_rollout_move<'a>(
         let target_forward = |m: &Move| -> i32 {
             if mover == 1 { m.to.y - m.from.y } else { m.from.y - m.to.y }
         };
-        let best_score = moves.iter().map(|m| target_forward(m)).max().unwrap_or(0);
+        // Only consider own pieces for forward bias; neutrals have no "forward".
+        let own_moves: Vec<&Move> = moves.iter().filter(|m| is_own_move(m)).collect();
+        let fwd_pool = if own_moves.is_empty() { moves.iter().collect::<Vec<_>>() } else { own_moves };
+        let best_score = fwd_pool.iter().map(|m| target_forward(m)).max().unwrap_or(0);
         if rng.gen_bool(0.8) {
-            let forward: Vec<&Move> = moves
+            let forward: Vec<&Move> = fwd_pool
                 .iter()
                 .filter(|m| target_forward(m) == best_score)
+                .copied()
                 .collect();
             if !forward.is_empty() {
                 return *forward.choose(rng).unwrap();
@@ -635,6 +663,11 @@ pub fn pick_rollout_move<'a>(
         }
     }
 
-    // Tier 6: Random fallthrough.
-    moves.choose(rng).unwrap()
+    // Tier 6: Random fallthrough — prefer own pieces to avoid neutral monopoly.
+    let own_moves: Vec<&Move> = moves.iter().filter(|m| is_own_move(m)).collect();
+    if own_moves.is_empty() {
+        moves.choose(rng).unwrap()
+    } else {
+        own_moves.choose(rng).unwrap()
+    }
 }

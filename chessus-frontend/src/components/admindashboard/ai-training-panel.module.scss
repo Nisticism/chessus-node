@@ -386,3 +386,53 @@
     background: rgba(255, 255, 255, 0.22);
   }
 }
+
+/* AI Engine Error Log */
+.errorBadge {
+  display: inline-block;
+  padding: 1px 7px;
+  background: #7a1a1a;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 0.78em;
+  font-weight: 600;
+}
+
+.errorLog {
+  max-height: 320px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 100, 100, 0.25);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.errorLogEntry {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+
+  &:last-of-type {
+    border-bottom: none;
+  }
+}
+
+.errorLogTime {
+  font-size: 0.75em;
+  color: rgba(255, 200, 200, 0.7);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.errorLogLine {
+  margin: 0;
+  font-size: 0.8em;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #f88;
+}
+
+.emptyNote {
+  font-size: 0.85em;
+  color: rgba(255,255,255,0.45);
+  font-style: italic;
+}

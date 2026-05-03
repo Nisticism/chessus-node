@@ -49,6 +49,19 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
   const [uploadError, setUploadError] = useState(null);
   const uploadInputRef = useRef(null);
 
+  // AI engine error log state
+  const [aiErrors, setAiErrors] = useState([]);
+  const [aiErrorsCollapsed, setAiErrorsCollapsed] = useState(true);
+
+  const fetchAiErrors = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}admin/ai-engine/errors`, {
+        headers: authHeader(),
+      });
+      setAiErrors(res.data?.errors || []);
+    } catch (_) { /* non-fatal */ }
+  }, []);
+
   const fetchStatus = useCallback(async () => {
     try {
       const res = await axios.get(`${API_URL}admin/ai-training/status`, {
@@ -105,16 +118,18 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
     fetchStatus();
     fetchGameTypes();
     fetchPauseStatus();
-  }, [fetchStatus, fetchGameTypes, fetchPauseStatus]);
+    fetchAiErrors();
+  }, [fetchStatus, fetchGameTypes, fetchPauseStatus, fetchAiErrors]);
 
   // Poll status every 5 s while the panel is open.
   useEffect(() => {
     const id = setInterval(() => {
       fetchStatus();
       fetchPauseStatus();
+      fetchAiErrors();
     }, 5000);
     return () => clearInterval(id);
-  }, [fetchStatus, fetchPauseStatus]);
+  }, [fetchStatus, fetchPauseStatus, fetchAiErrors]);
 
   // Poll selected job detail every 3 s.
   useEffect(() => {
@@ -1124,6 +1139,50 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
           </div>
         </div>
       )}
+
+      {/* AI Engine Error Log */}
+      <div className={styles.section} style={{ marginTop: 24 }}>
+        <div
+          style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
+          onClick={() => setAiErrorsCollapsed(c => !c)}
+        >
+          <span style={{ display: 'inline-block', width: '1em' }}>{aiErrorsCollapsed ? '▶' : '▼'}</span>
+          <strong>AI Engine Error Log</strong>
+          {aiErrors.length > 0 && (
+            <span className={styles.errorBadge}>{aiErrors.length}</span>
+          )}
+          <button
+            type="button"
+            className={styles.btnNeutral}
+            style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: '0.82em' }}
+            onClick={(e) => { e.stopPropagation(); fetchAiErrors(); }}
+            title="Refresh error log"
+          >
+            Refresh
+          </button>
+        </div>
+        {!aiErrorsCollapsed && (
+          <div style={{ marginTop: 8 }}>
+            {aiErrors.length === 0 ? (
+              <div className={styles.emptyNote}>No errors recorded since last server start.</div>
+            ) : (
+              <div className={styles.errorLog}>
+                {aiErrors.map((e, i) => (
+                  <div key={i} className={styles.errorLogEntry}>
+                    <span className={styles.errorLogTime}>
+                      {new Date(e.timestamp).toLocaleTimeString()} — Job #{e.jobId}
+                    </span>
+                    <pre className={styles.errorLogLine}>{e.line}</pre>
+                  </div>
+                ))}
+                <div className={styles.emptyNote} style={{ marginTop: 4 }}>
+                  Showing up to 50 most recent stderr lines. Cleared on server restart.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
