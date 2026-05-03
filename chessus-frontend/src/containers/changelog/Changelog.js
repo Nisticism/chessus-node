@@ -5,8 +5,13 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 2, 2026",
-    title: "Simul turns improvements, disconnect timer fixes, admin split, impassable squares, UI consistency, arrow-key board navigation, AI promotion & time-pressure improvements",
+    title: "Simul turns improvements, disconnect timer fixes, admin split, impassable squares, UI consistency, arrow-key board navigation, AI promotion & time-pressure improvements, sound fix, piece shadow, admin table scrolling",
     items: [
+      "Bug fix: sound effects could stop playing entirely during long bot games. Fixed an audio channel exhaustion issue where rapidly-played sounds accumulated as orphaned audio elements until the browser hit its limit and silently rejected all further sounds.",
+      "Bug fix: sound effects could occasionally be delayed after returning to the tab. The browser's re-priming logic no longer resets audio element state in a way that caused clone playback to wait for a reload.",
+      "Piece shadows are slightly larger and more pronounced when the piece shadow preference is enabled.",
+      "Admin dashboard: the Users, Pieces, and Games tables now scroll horizontally on mobile so all columns are reachable.",
+      "Open Matches on the Play page now shows a short note explaining when matches are cleaned up (anonymous guest matches are closed after 24 hours and removed after 30 days; logged-in matches stay until joined or cancelled).",
       "In simultaneous turn games, you can now capture your own pieces. Any piece that can attack enemies may also move to a square occupied by one of your own pieces, sacrificing it. If your opponent moves to that same square at the same time, their piece is captured too — use this as a trap to predict and punish your opponent's moves. This mechanic is described in the simultaneous turns tooltip in the game wizard.",
       "Bug fix: in simultaneous turn games, a piece that moves away from a square can no longer be captured at the square it left — even if it also captures something on its new square.",
       "Captured pieces now display correctly during simultaneous-turns games without requiring a page reload.",

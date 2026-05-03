@@ -29,8 +29,8 @@ class SoundManager {
 
     this.enabled = true;
     this.unlocked = false;
-    this.currentSound = null;
-    this.currentStopTimer = null;
+    // Set of currently-playing clones; capped to prevent browser audio-channel exhaustion.
+    this.activeSounds = new Set();
 
     // Unlock audio on first user interaction (bypasses browser autoplay policy)
     const unlock = () => {
@@ -54,11 +54,20 @@ class SoundManager {
     document.addEventListener('keydown', unlock, { once: false });
     document.addEventListener('touchstart', unlock, { once: false });
 
-    // Re-prime audio when tab becomes visible again (browser may suspend audio in background)
+    // Re-prime audio when tab becomes visible again (browser may suspend audio context).
+    // Do NOT call sound.load() here — it resets the media element's load state and any
+    // subsequent cloneNode() will clone an element mid-reload, causing delayed playback.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && this.unlocked) {
+      if (document.visibilityState === 'visible' && !this.unlocked) {
+        // Page was never interacted with while in background; no action needed.
+        return;
+      }
+      if (document.visibilityState === 'visible') {
+        // Re-run the silent priming pass so the browser's audio context is warm.
         Object.values(this.sounds).forEach(sound => {
-          sound.load();
+          const primer = sound.cloneNode();
+          primer.volume = 0;
+          primer.play().then(() => { primer.pause(); }).catch(() => {});
         });
       }
     });
@@ -68,42 +77,26 @@ class SoundManager {
     if (!this.enabled || !this.sounds[soundName]) return;
 
     try {
-      // Stop any currently playing sound to prevent overlap/throttling
-      if (this.currentSound) {
-        try {
-          this.currentSound.pause();
-          this.currentSound.currentTime = 0;
-        } catch (e) { /* ignore */ }
-      }
-      if (this.currentStopTimer) {
-        clearTimeout(this.currentStopTimer);
-        this.currentStopTimer = null;
+      // Hard cap: if we already have too many concurrent sounds the browser will
+      // start silently rejecting play() calls. Stop the oldest clone first.
+      if (this.activeSounds.size >= 4) {
+        const oldest = this.activeSounds.values().next().value;
+        try { oldest.pause(); } catch (e) { /* ignore */ }
+        this.activeSounds.delete(oldest);
       }
 
       const source = this.sounds[soundName];
-      // Clone the audio node so the unlock prime cycle can't interfere
+      // Clone the audio node so the source element stays pristine for future clones.
       const sound = source.cloneNode();
       sound.volume = source.volume;
-      this.currentSound = sound;
 
-      // Per-sound duration: move 0.25s, check 0.3s, everything else 0.6s
-      const duration = soundName === 'move' ? 250 : soundName === 'check' ? 300 : 600;
+      const cleanup = () => this.activeSounds.delete(sound);
+      sound.addEventListener('ended', cleanup, { once: true });
+      sound.addEventListener('error', cleanup, { once: true });
+      this.activeSounds.add(sound);
 
-      sound.play().then(() => {
-        // Only set timer if this sound is still the active one
-        if (this.currentSound !== sound) return;
-        this.currentStopTimer = setTimeout(() => {
-          sound.pause();
-          if (this.currentSound === sound) {
-            this.currentSound = null;
-            this.currentStopTimer = null;
-          }
-        }, duration);
-      }).catch(err => {
-        if (this.currentSound === sound) {
-          this.currentSound = null;
-          this.currentStopTimer = null;
-        }
+      sound.play().catch(err => {
+        cleanup();
         console.debug('Sound play prevented:', err.message);
       });
     } catch (err) {

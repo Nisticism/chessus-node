@@ -1,11 +1,20 @@
 //! UCT (Upper-Confidence-bound applied to Trees) Monte-Carlo Tree Search
-//! with random rollouts.
+//! with biased rollouts and a material-balance leaf evaluator.
 //!
-//! No neural network yet — this is the "scaffold" version that produces
-//! genuinely-learning self-play games (since stronger MCTS thinking improves
-//! with more iterations even without a learned policy/value net). Phase 2
-//! replaces `rollout` with a value-net query and the prior with a
-//! policy-net softmax.
+//! Architecture (current / Phase 1):
+//!   * **Rollout play** — pseudo-legal moves selected by `pick_rollout_move`,
+//!     which uses a priority-tiered bias (promotion → control squares → range
+//!     squares → captures → forward advance → random).  Not purely random.
+//!   * **Leaf evaluation** — if the rollout cap is reached before a terminal,
+//!     `material_heuristic` returns `GameResult::Value(f64)` (material balance
+//!     in [-1, 1]).  Backprop handles this as a partial signal so information
+//!     is never wasted even when games don't complete.
+//!   * **No neural network** — the biases and the material heuristic are
+//!     hand-crafted, not learned.
+//!
+//! Phase 2 replaces `material_heuristic` with a trained value-net query and
+//! adds a policy-net prior to the UCT score, which is the standard AlphaZero
+//! improvement path.
 
 use crate::board::{Board, Move};
 use crate::moves::{in_check, is_royal_piece, legal_moves, pseudo_legal};

@@ -4492,7 +4492,7 @@ const LiveGame = () => {
                       style={{
                         width: '100%',
                         height: '100%',
-                        ...(pieceShadowEnabled ? { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } : {})
+                        ...(pieceShadowEnabled ? { filter: 'drop-shadow(4px 5px 6px rgba(0, 0, 0, 0.65))' } : {})
                       }}
                     />
                   ) : (
@@ -4500,7 +4500,7 @@ const LiveGame = () => {
                       src={imageUrl} 
                       alt={piece.piece_name || piece.name || 'piece'} 
                       draggable={false}
-                      {...(pieceShadowEnabled ? { style: { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } } : {})}
+                      {...(pieceShadowEnabled ? { style: { filter: 'drop-shadow(4px 5px 6px rgba(0, 0, 0, 0.65))' } } : {})}
                       onError={(e) => {
                         // Try to load a matching library fallback image
                         const fallbackSrc = getFallbackPieceImage(piece.piece_name || piece.name, piece.player_id);

@@ -64,13 +64,15 @@
   padding: 30px;
   margin: 0 20px;
   box-shadow: var(--shadow-card);
-  // Ensures overflowing tables are clipped by this container so the
-  // inner .table-container's overflow-x: auto actually scrolls.
-  overflow: hidden;
+  // overflow: clip clips the painted area without creating a scroll container,
+  // so mobile browsers do not intercept touch-scroll events before they reach
+  // the inner .table-container (overflow: hidden caused this on iOS Safari).
+  overflow: clip;
 }
 
 .table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch; // smooth momentum scroll on older iOS
   margin-bottom: 20px;
 }
 

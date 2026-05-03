@@ -2689,7 +2689,7 @@ const Sandbox = () => {
                     style={{
                       width: '100%',
                       height: '100%',
-                      ...(pieceShadowEnabled ? { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } : {})
+                      ...(pieceShadowEnabled ? { filter: 'drop-shadow(4px 5px 6px rgba(0, 0, 0, 0.65))' } : {})
                     }}
                     draggable={false}
                   />
@@ -2698,7 +2698,7 @@ const Sandbox = () => {
                     src={getBoardPieceImage(piece)}
                     alt={piece.piece_name}
                     draggable={false}
-                    {...(pieceShadowEnabled ? { style: { filter: 'drop-shadow(3px 3px 4px rgba(0, 0, 0, 0.5))' } } : {})}
+                    {...(pieceShadowEnabled ? { style: { filter: 'drop-shadow(4px 5px 6px rgba(0, 0, 0, 0.65))' } } : {})}
                     onError={(e) => handlePieceImageError(e, piece.piece_name, piece.player_id || piece.team)}
                   />
                 )}

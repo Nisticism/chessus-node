@@ -1433,6 +1433,9 @@ const Play = () => {
                 <span className={styles["match-count"]}>{openGames.length}</span>
               )}
             </h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginTop: '-8px', marginBottom: '12px' }}>
+              Open matches stay listed until someone joins or the host leaves. Anonymous (guest) matches are automatically closed after 24 hours and fully removed after 30 days.
+            </p>
 
             {!openGamesCollapsed && (
               openGames.length === 0 ? (
