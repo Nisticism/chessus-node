@@ -179,6 +179,12 @@ const PieceWizard = ({ editPieceId = null }) => {
     chain_hop_allies: false,
     max_chain_hops: null,
     free_move_after_promotion: false,
+    // promotion_pieces_ids: piece-level default for which pieces this piece type can promote to
+    // (JSON array of piece IDs). No UI control exists in the wizard yet — it is always saved as null.
+    // Per-placement overrides (set in game wizard Step 4 → Promotion Options) are stored in
+    // game_type_pieces.promotion_pieces_override instead, which IS exposed in the UI.
+    // The AI engine (export-game-rules.js, moves.rs) and getPromotionOptions() read this field
+    // as a fallback when promotion_pieces_override is null.
     promotion_pieces_ids: null,
     // Can capture allies
     can_capture_allies: false,
@@ -420,6 +426,8 @@ const PieceWizard = ({ editPieceId = null }) => {
             chain_hop_allies: !!piece.chain_hop_allies,
             max_chain_hops: piece.max_chain_hops ?? null,
             free_move_after_promotion: !!piece.free_move_after_promotion,
+            // Round-tripped from DB so existing values aren't clobbered on save.
+            // No wizard UI for this field — see defaultPieceData comment above.
             promotion_pieces_ids: piece.promotion_pieces_ids || null,
             can_capture_allies: !!piece.can_capture_allies,
             cannot_be_captured: !!piece.cannot_be_captured,

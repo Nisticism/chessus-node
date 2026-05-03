@@ -7309,6 +7309,16 @@ function initializeSocket(server) {
           }
         }
         socket.emit("gameState", gameState);
+        // Restore the simul-turns ready state for the reconnecting player.
+        // simulReadyPlayers is an in-memory Set that doesn't serialize — emit
+        // a simulReadyUpdate so the client knows who has already clicked Ready.
+        if (isSimulTurns(gameState) && gameState.status === 'ready' && gameState.simulReadyPlayers?.size > 0) {
+          socket.emit('simulReadyUpdate', {
+            gameId,
+            readyPlayerIds: Array.from(gameState.simulReadyPlayers),
+            allReady: false,
+          });
+        }
       } else {
         // Try to load from database
         try {
@@ -7793,6 +7803,14 @@ function initializeSocket(server) {
             }
           }
           socket.emit("gameState", gameState);
+          // Restore simul-turns ready state for reconnecting player (DB path).
+          if (isSimulTurns(gameState) && gameState.status === 'ready' && gameState.simulReadyPlayers?.size > 0) {
+            socket.emit('simulReadyUpdate', {
+              gameId,
+              readyPlayerIds: Array.from(gameState.simulReadyPlayers),
+              allReady: false,
+            });
+          }
         } catch (error) {
           console.error("Error loading game state:", error);
           socket.emit("error", { message: "Failed to load game" });
@@ -10397,8 +10415,9 @@ async function getPromotionOptions(gameState, promotingPiece) {
   const pieceOwner = promotingPiece.player_id || promotingPiece.team;
 
   // Per-placement override (set in game wizard Step 4 → Promotion Options).
-  // Falls back to default behaviour when null/empty.
-  let overrideRaw = promotingPiece.promotion_pieces_override;
+  // Falls back to piece-level default (promotion_pieces_ids on pieces table),
+  // then to the full default behaviour when both are null/empty.
+  let overrideRaw = promotingPiece.promotion_pieces_override || promotingPiece.promotion_pieces_ids;
   let overrideIds = null;
   if (overrideRaw) {
     try {
