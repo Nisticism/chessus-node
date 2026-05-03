@@ -13111,8 +13111,10 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
   const { pieces, gameType } = gameState;
   const legalMoves = [];
   
-  // Get all pieces belonging to this player
+  // Get all pieces belonging to this player, plus neutral pieces (is_neutral /
+  // player_id=0) which can be moved by either player on their turn.
   const playerPieces = pieces.filter(p => {
+    if (p.is_neutral || p.player_id === 0 || p.team === 0) return true;
     const pieceOwner = p.team || p.player_id;
     return pieceOwner === playerPosition;
   });

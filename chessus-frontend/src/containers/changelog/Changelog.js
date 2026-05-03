@@ -34,6 +34,8 @@ const changelogData = [
       "Game detail page — Promotion section: neutral pieces that can promote are now listed as 'Neutral: PieceName can promote to: ...' instead of 'Player 0: ...'.",
       "Fixed: /forums hub page no longer shows a persistent red background on liked forum rows.",
       "Server startup: migration log messages now use plain ASCII ([OK], [DB]) instead of emoji characters, preventing garbled output on Windows terminals.",
+      "Fixed: neutral pieces can now be moved in live games against the computer — they were previously not included in the bot's legal move set.",
+      "Forum new/edit post pages: the category dropdown now shows dark background and light text, consistent with the rest of the form.",
     ],
   },
   {

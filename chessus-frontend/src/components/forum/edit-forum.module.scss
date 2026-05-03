@@ -72,6 +72,17 @@
   }
 }
 
+// Dropdowns need a solid background so OS-rendered option items are readable.
+select.edit-forum-title-input {
+  background: var(--bg-card, #20242e);
+  color: var(--text-heading);
+
+  option {
+    background: var(--bg-card, #20242e);
+    color: var(--text-heading);
+  }
+}
+
 .edit-form-control {
   min-height: 240px;
   resize: vertical;
