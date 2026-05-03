@@ -45,12 +45,21 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
   return (
     <div className={styles["pagination"]}>
       <button
+        onClick={() => onPageChange(1)}
+        disabled={currentPage === 1}
+        className={styles["pagination-button"]}
+        aria-label="First page"
+      >
+        &laquo;
+      </button>
+
+      <button
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
         className={styles["pagination-button"]}
         aria-label="Previous page"
       >
-        &laquo; Previous
+        &lsaquo; Prev
       </button>
 
       {getPageNumbers().map((page, index) => {
@@ -83,7 +92,16 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
         className={styles["pagination-button"]}
         aria-label="Next page"
       >
-        Next &raquo;
+        Next &rsaquo;
+      </button>
+
+      <button
+        onClick={() => onPageChange(totalPages)}
+        disabled={currentPage === totalPages}
+        className={styles["pagination-button"]}
+        aria-label="Last page"
+      >
+        &raquo;
       </button>
     </div>
   );

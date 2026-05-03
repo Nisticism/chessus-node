@@ -674,7 +674,7 @@ const PieceSelector = ({
                   className={`${styles["image-option"]} ${neutralImageIndex === index ? styles["selected"] : ""}`}
                   onClick={() => setNeutralImageIndex(index)}
                 >
-                  <img src={imageUrl} alt={`Image ${index + 1}`} loading="lazy" />
+                  <img src={imageUrl} alt={`Variant ${index + 1}`} loading="lazy" />
                 </div>
               ))}
             </div>

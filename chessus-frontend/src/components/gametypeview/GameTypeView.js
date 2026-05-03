@@ -1274,7 +1274,8 @@ const GameTypeView = () => {
             }
             const extraStr = extras.length > 0 ? `\n   _${extras.join('; ')}._` : '';
 
-            const line = `• Player ${playerId}'s **${pieceName}** can promote to: ${promotesTo}${extraStr}`;
+            const playerLabel = playerId === 0 ? 'Neutral' : `Player ${playerId}'s`;
+            const line = `• ${playerLabel} **${pieceName}** can promote to: ${promotesTo}${extraStr}`;
             if (!seen.has(line)) {
               seen.add(line);
               ruleLines.push(line);

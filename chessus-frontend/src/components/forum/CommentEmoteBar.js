@@ -92,7 +92,7 @@ const CommentEmoteBar = ({ emotes, currentUserId, onEmote, isHovered }) => {
 
       {/* Emote picker — shown when the parent comment is hovered */}
       <div className={`${styles['emote-picker']} ${isHovered ? styles['emote-picker-visible'] : ''}`}>
-        {EMOTES.map(em => (
+        {EMOTES.filter(em => !(currentUserId && grouped[em.type]?.some(u => u.user_id === currentUserId))).map(em => (
           <span
             key={em.type}
             className={styles['emote-picker-btn']}

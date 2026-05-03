@@ -10124,7 +10124,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
   let junctionOverrides = null;
   try {
     if (gameState.gameTypeId) {
-      const playerNum = piece.player_id || piece.team || piece.player_number || 1;
+      const playerNum = piece.player_id != null ? piece.player_id : (piece.team || piece.player_number || 1);
       const [junctionRows] = await db_pool.query(
         `SELECT * FROM game_type_pieces
          WHERE game_type_id = ? AND piece_id = ?
@@ -10147,14 +10147,15 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     try {
       const images = JSON.parse(imageLocation);
       if (Array.isArray(images) && images.length > 0) {
-        const playerIndex = (piece.player_id || piece.team || 1) - 1;
+        const playerIndex = (piece.player_id != null ? piece.player_id : (piece.team || piece.player_number || 1));
+        const imageIdx = playerIndex === 0 ? 0 : playerIndex - 1;
         const overrideIdx = junctionOverrides && junctionOverrides.image_index != null
           ? junctionOverrides.image_index
           : null;
         if (overrideIdx != null && images[overrideIdx]) {
           imageUrl = images[overrideIdx];
         } else {
-          imageUrl = images[playerIndex] || images[0];
+          imageUrl = images[imageIdx] || images[0];
         }
       }
     } catch (e) { /* ignore */ }

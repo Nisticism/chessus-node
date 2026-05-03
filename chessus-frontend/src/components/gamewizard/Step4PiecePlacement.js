@@ -47,6 +47,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   const [randomizationOpen, setRandomizationOpen] = useState(false);
   const [hpAdSectionOpen, setHpAdSectionOpen] = useState(false);
   const longPressTimeoutRef = useRef(null);
+  const longPressTouchStartRef = useRef({ x: 0, y: 0 });
   const boardRef = useRef(null);
   const touchDragRef = useRef({ piece: null, key: null, startX: 0, startY: 0, isDragging: false });
   const [touchDragPos, setTouchDragPos] = useState(null);
@@ -211,7 +212,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
 
   // Detect mobile
   useEffect(() => {
-    setIsMobile(isMobileDevice());
+    setIsMobile(isTouchDevice());
   }, []);
 
   // Track window width for responsive board sizing
@@ -311,11 +312,27 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
 
   const handleTouchStart = useCallback((e, row, col) => {
     if (!isTouchDevice()) return;
-    
+    const touch = e.touches[0];
+    if (touch) {
+      longPressTouchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    }
     longPressTimeoutRef.current = setTimeout(() => {
       handleLongPress(row, col);
     }, 500);
   }, [handleLongPress]);
+
+  const handleTouchMoveCancel = useCallback((e) => {
+    if (!longPressTimeoutRef.current) return;
+    const touch = e.touches[0];
+    if (touch) {
+      const dx = touch.clientX - longPressTouchStartRef.current.x;
+      const dy = touch.clientY - longPressTouchStartRef.current.y;
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        clearTimeout(longPressTimeoutRef.current);
+        longPressTimeoutRef.current = null;
+      }
+    }
+  }, []);
 
   const handleTouchEnd = useCallback(() => {
     if (longPressTimeoutRef.current) {
@@ -1181,7 +1198,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
             onContextMenu={(e) => handleSquareRightClick(e, row, col)}
             onTouchStart={(e) => handleTouchStart(e, row, col)}
             onTouchEnd={handleTouchEnd}
-            onTouchMove={handleTouchEnd}
+            onTouchMove={handleTouchMoveCancel}
             onDragOver={(e) => handleDragOver(e, row, col)}
             onDrop={(e) => handleDrop(e, row, col)}
             onMouseEnter={() => {
@@ -1344,7 +1361,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     }
     
     return board;
-  }, [piecePlacements, gameData.board_width, gameData.board_height, gameData.other_game_data, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handlePieceTouchStart, handlePieceTouchMove, handlePieceTouchEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, touchDragPiece, getSpecialSquareInfo, impassableSquares]);
+  }, [piecePlacements, gameData.board_width, gameData.board_height, gameData.other_game_data, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handlePieceTouchStart, handlePieceTouchMove, handlePieceTouchEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, handleTouchMoveCancel, touchDragPiece, getSpecialSquareInfo, impassableSquares]);
 
   const handleMirrorPieces = useCallback((sourcePlayerId, targetPlayerId) => {
     const boardHeight = gameData.board_height || 8;

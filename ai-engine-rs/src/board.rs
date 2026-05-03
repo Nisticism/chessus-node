@@ -34,6 +34,10 @@ pub struct PieceOnBoard {
     /// a burn-killed piece is removed in process_turn_start. Default 0 = unknown.
     #[serde(default)]
     pub burn_attacker_player: i32,
+    /// True when this piece belongs to neither player (player_id = 0 in the DB).
+    /// Neutral pieces can be moved and captured by either side.
+    #[serde(default)]
+    pub is_neutral: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,6 +166,7 @@ impl Board {
                 burn_active_damage: 0,
                 burn_active_turns: 0,
                 burn_attacker_player: 0,
+                is_neutral: sp.is_neutral,
             });
         }
         b

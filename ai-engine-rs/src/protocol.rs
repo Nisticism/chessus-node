@@ -436,6 +436,8 @@ pub struct StartingPosition {
     pub x: i32,
     pub y: i32,
     pub player_number: i32,
+    #[serde(default)]
+    pub is_neutral: bool,
 }
 
 /// Why a self-play game ended. Helps the admin UI distinguish between the

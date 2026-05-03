@@ -1295,7 +1295,9 @@ pub fn in_check(board: &Board, rules: &Rules, player: i32) -> bool {
 /// Pseudo-legal moves for the side to move.
 pub fn pseudo_legal(board: &Board, rules: &Rules) -> Vec<Move> {
     let mut out = Vec::new();
-    for p in board.pieces.iter().filter(|p| p.player == board.turn) {
+    // Include the active player's pieces AND neutral pieces (is_neutral=true, player=0),
+    // since either player can move neutral pieces on their turn.
+    for p in board.pieces.iter().filter(|p| p.player == board.turn || p.is_neutral) {
         out.extend(moves_for(board, rules, p));
     }
     out

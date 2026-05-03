@@ -382,18 +382,12 @@
 }
 
 .like-cell-active {
-  background: rgba(220, 60, 80, 0.12) !important;
-
   .like-icon {
     color: #e05070;
   }
 
   .like-count {
     color: #e05070;
-  }
-
-  &:hover {
-    background: rgba(220, 60, 80, 0.2) !important;
   }
 }
 

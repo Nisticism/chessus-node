@@ -90,7 +90,8 @@ async function exportGameRules(gameTypeId) {
         gtp.capture_points_gain,
         gtp.capture_points_loss,
         gtp.limit_promote_checkmate_to_original,
-        gtp.limit_promote_capture_to_original
+        gtp.limit_promote_capture_to_original,
+        gtp.is_neutral
      FROM game_type_pieces gtp
      WHERE gtp.game_type_id = ?`,
     [id],
@@ -509,6 +510,7 @@ async function exportGameRules(gameTypeId) {
       x: intOr(sp.x, 0),
       y: intOr(sp.y, 0),
       player_number: intOr(sp.player_number, 1),
+      is_neutral: toBool(sp.is_neutral),
     })),
   };
 

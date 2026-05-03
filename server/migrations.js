@@ -50,7 +50,7 @@ const getColumnType = async (tableName, columnName) => {
 const runMigration = async (sql, description) => {
   try {
     await db_pool.query(sql);
-    console.log(`✓ ${description}`);
+    console.log(`[OK] ${description}`);
   } catch (err) {
     console.error(`Migration failed: ${description}`, err.message);
     throw err;
@@ -754,7 +754,7 @@ const migrations = [
  * Run all pending migrations
  */
 const runMigrations = async () => {
-  console.log('\n🔍 Checking for pending migrations...\n');
+  console.log('\n[DB] Checking for pending migrations...\n');
   
   let migrationsRun = 0;
   
@@ -3536,9 +3536,9 @@ const runMigrations = async () => {
   }
 
   if (migrationsRun === 0) {
-    console.log('✓ All migrations up to date\n');
+    console.log('[DB] All migrations up to date\n');
   } else {
-    console.log(`\n✓ Applied ${migrationsRun} migration(s)\n`);
+    console.log(`\n[DB] Applied ${migrationsRun} migration(s)\n`);
   }
 
   // Add composite index on games(status, start_time) for the ongoing-games query
