@@ -77,7 +77,8 @@ async function exportGameRules(gameTypeId) {
         gtp.hit_points,
         gtp.attack_damage,
         gtp.can_promote_to_checkmate,
-        gtp.can_promote_to_capture
+        gtp.can_promote_to_capture,
+        gtp.promotion_pieces_override
      FROM game_type_pieces gtp
      WHERE gtp.game_type_id = ?`,
     [id],
@@ -111,6 +112,15 @@ async function exportGameRules(gameTypeId) {
     p.can_en_passant ? 1 : 0,
     p.can_promote_to_checkmate ? 1 : 0,
     p.can_promote_to_capture ? 1 : 0,
+    (() => {
+      // Normalize promotion_pieces_override: sorted IDs so order doesn't
+      // create spurious virtual template splits.
+      let raw = p.promotion_pieces_override;
+      if (!raw) return '';
+      if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { return ''; } }
+      if (!Array.isArray(raw) || raw.length === 0) return '';
+      return [...raw].map(Number).sort((a, b) => a - b).join(',');
+    })(),
   ].join('|');
 
   const groupKeyToVirtualId = new Map();
@@ -161,6 +171,9 @@ async function exportGameRules(gameTypeId) {
       // via the game wizard (Step 4 → piece placement options).
       can_promote_to_checkmate: !!pos.can_promote_to_checkmate,
       can_promote_to_capture: !!pos.can_promote_to_capture,
+      // Per-placement promotion target override: if set, the Rust engine uses
+      // these piece IDs instead of the piece-level promotion_pieces_ids list.
+      promotion_pieces_override: pos.promotion_pieces_override ?? null,
       capture_points_gain: intOr(pos.capture_points_gain, 0),
       capture_points_loss: intOr(pos.capture_points_loss, 0),
     };
@@ -179,6 +192,56 @@ async function exportGameRules(gameTypeId) {
     const realId = p.real_piece_id ?? p.id;
     if (!realIdToFirstVirtualId.has(realId)) {
       realIdToFirstVirtualId.set(realId, p.id);
+    }
+  }
+
+  // Collect any piece IDs referenced in promotion_pieces_override or
+  // promotion_pieces_ids that are NOT already in starting_positions.  These
+  // are "off-board" promotion targets — pieces a player can promote into but
+  // that don't start on the board.  We add them to `pieces` (so the Rust
+  // engine knows their move templates) but NOT to `starting_positions`.
+  const promotionOnlyRealIds = new Set();
+  const parseIds = (raw) => {
+    if (!raw) return [];
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { return []; } }
+    return Array.isArray(raw) ? raw.map(Number).filter(Number.isFinite) : [];
+  };
+  for (const p of pieces) {
+    for (const rid of parseIds(p.promotion_pieces_override)) {
+      if (!realIdToFirstVirtualId.has(rid)) promotionOnlyRealIds.add(rid);
+    }
+    for (const rid of parseIds(p.promotion_pieces_ids)) {
+      if (!realIdToFirstVirtualId.has(rid)) promotionOnlyRealIds.add(rid);
+    }
+  }
+  if (promotionOnlyRealIds.size > 0) {
+    const offBoardIds = Array.from(promotionOnlyRealIds);
+    const placeholders = offBoardIds.map(() => '?').join(',');
+    const [offBoardRows] = await db_pool.query(
+      `SELECT * FROM pieces WHERE id IN (${placeholders})`,
+      offBoardIds,
+    );
+    for (const tpl of offBoardRows) {
+      const virtualId = VIRTUAL_ID_BASE + (virtualSeq++);
+      realIdToFirstVirtualId.set(tpl.id, virtualId);
+      pieces.push({
+        ...tpl,
+        id: virtualId,
+        real_piece_id: tpl.id,
+        // Off-board pieces have no per-placement overrides; use safe defaults.
+        ends_game_on_checkmate: false,
+        ends_game_on_capture: false,
+        can_promote_to_checkmate: false,
+        can_promote_to_capture: false,
+        cannot_be_captured: toBool(tpl.cannot_be_captured),
+        ghostwalk: toBool(tpl.ghostwalk),
+        die_on_capture: toBool(tpl.die_on_capture),
+        cannot_move_outside_zone: false,
+        can_en_passant: toBool(tpl.can_en_passant),
+        capture_points_gain: 0,
+        capture_points_loss: 0,
+        promotion_pieces_override: null,
+      });
     }
   }
 
@@ -335,16 +398,19 @@ async function exportGameRules(gameTypeId) {
 
       can_promote: toBool(p.can_promote),
       // Map promotion target real piece ids → virtual ids used in this export.
-      // promotion_pieces_ids is a JSON array of real piece DB ids in the DB.
+      // Prefer per-placement promotion_pieces_override (set in game wizard
+      // Step 4) over the piece-level promotion_pieces_ids default, mirroring
+      // how getPromotionOptions prioritises the override in game-socket.js.
+      // Both fields store real DB piece ids; we translate to virtual ids here.
       promotion_pieces_ids: (() => {
-        let raw = p.promotion_pieces_ids;
+        let raw = p.promotion_pieces_override || p.promotion_pieces_ids;
         if (!raw) return [];
         if (typeof raw === 'string') {
           try { raw = JSON.parse(raw); } catch (e) { return []; }
         }
         if (!Array.isArray(raw)) return [];
         return raw.map((rid) => {
-          const vid = realIdToFirstVirtualId.get(rid);
+          const vid = realIdToFirstVirtualId.get(Number(rid));
           return vid != null ? vid : null;
         }).filter((v) => v != null);
       })(),

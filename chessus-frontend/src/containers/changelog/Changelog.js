@@ -33,6 +33,7 @@ const changelogData = [
       "The piece image uploader now correctly shows a 2MB file size limit (matching the actual server limit).",
       "The 'Minimum Turns Before Move' restriction on pieces is now enforced during gameplay. Pieces with this setting cannot move until the specified number of half-moves have been played from game start.",
       "The maximum value for 'Minimum Turns Before Move' in the piece wizard is now capped at 8.",
+      "Fixed an issue where promoting to a piece type that was not in the starting position could cause the promoted piece to incorrectly inherit the promoting piece's promotion options and royal/checkmate flags.",
     ],
   },
   {

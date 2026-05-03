@@ -10248,7 +10248,21 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     custom_movement_squares: fullPieceData.custom_movement_squares,
     custom_attack_squares: fullPieceData.custom_attack_squares,
     moveCount: 0,
-    hasMoved: false
+    hasMoved: false,
+    // Reset per-placement promotion flags so they cannot carry over from the
+    // promoting piece via the ...piece spread above.  The junctionOverrides
+    // block below re-applies the TARGET piece's own configuration when a
+    // junction row exists for this game type.  For off-board pieces (no
+    // junction row) the safe false/null defaults are correct — the piece
+    // should behave as a plain non-royal piece with no curated promo list.
+    ends_game_on_checkmate: false,
+    ends_game_on_capture: false,
+    can_control_squares: false,
+    promotion_pieces_override: null,
+    can_promote_to_checkmate: false,
+    can_promote_to_capture: false,
+    limit_promote_checkmate_to_original: false,
+    limit_promote_capture_to_original: false,
   };
 
   // Apply per-game junction overrides — these take precedence over piece defaults
@@ -10282,11 +10296,11 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
       die_on_capture: j.die_on_capture ?? promotedPiece.die_on_capture ?? 0,
       attack_radius: j.attack_radius ?? promotedPiece.attack_radius ?? 0,
       image_index: j.image_index ?? null,
-      promotion_pieces_override: j.promotion_pieces_override ?? promotedPiece.promotion_pieces_override ?? null,
-      can_promote_to_checkmate: j.can_promote_to_checkmate ?? promotedPiece.can_promote_to_checkmate ?? 0,
-      limit_promote_checkmate_to_original: j.limit_promote_checkmate_to_original ?? 0,
-      can_promote_to_capture: j.can_promote_to_capture ?? promotedPiece.can_promote_to_capture ?? 0,
-      limit_promote_capture_to_original: j.limit_promote_capture_to_original ?? 0,
+      promotion_pieces_override: j.promotion_pieces_override ?? null,
+      can_promote_to_checkmate: j.can_promote_to_checkmate ?? false,
+      limit_promote_checkmate_to_original: j.limit_promote_checkmate_to_original ?? false,
+      can_promote_to_capture: j.can_promote_to_capture ?? false,
+      limit_promote_capture_to_original: j.limit_promote_capture_to_original ?? false,
       capture_points_gain: j.capture_points_gain ?? 0,
       capture_points_loss: j.capture_points_loss ?? 0,
     });
