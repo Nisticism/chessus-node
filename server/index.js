@@ -2095,6 +2095,88 @@ app.get("/api/pieces/full", async (req, res) => {
   }
 });
 
+// Browse community-uploaded piece images (used in the piece wizard image library).
+// Returns one image per piece (the first in image_location) along with creator info.
+// Query params: page, limit, sort (newest|alphabetical|by_uploader), search
+app.get("/api/pieces/community-images", async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 40));
+    const offset = (page - 1) * limit;
+    const sort = req.query.sort || 'newest';
+    const search = (req.query.search || '').trim();
+
+    const conditions = [
+      "p.image_location IS NOT NULL",
+      "p.image_location != '[]'",
+      "(p.name_review_status IS NULL OR p.name_review_status != 'pending_review')",
+    ];
+    const params = [];
+
+    if (search) {
+      conditions.push("p.piece_name LIKE ?");
+      params.push(`%${search}%`);
+    }
+
+    const whereClause = "WHERE " + conditions.join(" AND ");
+
+    let orderClause;
+    switch (sort) {
+      case 'alphabetical':
+        orderClause = "ORDER BY p.piece_name ASC";
+        break;
+      case 'by_uploader':
+        orderClause = "ORDER BY creator_name ASC, p.piece_name ASC";
+        break;
+      case 'newest':
+      default:
+        orderClause = "ORDER BY p.id DESC";
+        break;
+    }
+
+    const [[{ total }]] = await db_pool.query(
+      `SELECT COUNT(*) as total FROM pieces p ${whereClause}`,
+      params
+    );
+
+    const [rows] = await db_pool.query(
+      `SELECT p.id, p.piece_name, p.image_location, p.created_at,
+              CASE WHEN p.is_anonymous_creator = 1 THEN 'Anonymous'
+                   ELSE COALESCE(u.username, 'Unknown') END as creator_name
+       FROM pieces p
+       LEFT JOIN users u ON p.creator_id = u.id
+       ${whereClause}
+       ${orderClause}
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    // Parse the first image from each piece's image_location JSON array
+    const images = rows.map(row => {
+      let firstImage = null;
+      try {
+        const arr = JSON.parse(row.image_location || '[]');
+        firstImage = Array.isArray(arr) && arr.length > 0 ? arr[0] : null;
+      } catch (_) {}
+      return {
+        id: row.id,
+        piece_name: row.piece_name,
+        creator_name: row.creator_name,
+        created_at: row.created_at,
+        image_url: firstImage,
+      };
+    }).filter(r => r.image_url);
+
+    res.json({
+      images,
+      pagination: { page, limit, total: Number(total), totalPages: Math.ceil(Number(total) / limit) },
+    });
+  } catch (err) {
+    console.error("Error in /api/pieces/community-images:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
 // ---- Duplicate-ruleset check (used by the piece wizard before save) ----
 // Accepts { fields: <DB-column-named object>, excludeId: <number|null> }
 // Returns { matches: [{id, piece_name, creator_username, is_anonymous_creator}] }
@@ -2354,7 +2436,7 @@ app.get("/api/games/popular", async (req, res) => {
   }
 });
 
-app.get("/api/games", async (req, res) => {
+app.get("/api/games", optionalAuthenticate, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
@@ -2364,6 +2446,7 @@ app.get("/api/games", async (req, res) => {
     const search = req.query.search || '';
     const creatorId = req.query.creatorId ? parseInt(req.query.creatorId) : null;
     const includeDrafts = req.query.includeDrafts === 'true';
+    const userId = req.user?.id || 0;
 
     // Build WHERE clause
     let whereClause = '';
@@ -2418,9 +2501,9 @@ app.get("/api/games", async (req, res) => {
     let joinClause = '';
     let selectExtra = '';
 
-    // Always include upvote count
+    // Always include upvote count + whether the current user has upvoted
     joinClause = 'LEFT JOIN game_type_upvotes gu ON gt.id = gu.game_type_id';
-    selectExtra = ', COUNT(DISTINCT gu.id) as upvote_count';
+    selectExtra = ', COUNT(DISTINCT gu.id) as upvote_count, MAX(CASE WHEN gu.user_id = ? THEN 1 ELSE 0 END) as upvoted_by_user';
 
     switch (sort) {
       case 'popular':
@@ -2450,7 +2533,7 @@ app.get("/api/games", async (req, res) => {
 
     // Get paginated games
     const dataQuery = `SELECT gt.*${selectExtra} FROM game_types gt ${joinClause} ${whereClause} GROUP BY gt.id ${orderClause} LIMIT ? OFFSET ?`;
-    const [games] = await db_pool.query(dataQuery, [...whereParams, limit, offset]);
+    const [games] = await db_pool.query(dataQuery, [userId, ...whereParams, limit, offset]);
     
     res.json({
       games,
@@ -2816,7 +2899,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.limit_promote_capture_to_original || false,
               piece.capture_points_gain ?? 0,
               piece.capture_points_loss ?? 0,
-              piece.cannot_move_outside_zone || false
+              piece.cannot_move_outside_zone || false,
+              piece.is_neutral || false
             );
           }
         }
@@ -4804,7 +4888,7 @@ app.post("/api/forums/new", async (req, res) => {
   }
 });
 
-app.get("/api/forums", async (req, res) => {
+app.get("/api/forums", optionalAuthenticate, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
@@ -4812,6 +4896,7 @@ app.get("/api/forums", async (req, res) => {
     const gameTypeId = req.query.gameTypeId;
     const scope = req.query.scope; // 'general' | 'game' | undefined (all)
     const category = req.query.category;
+    const userId = req.user?.id || null;
 
     // Build query with optional gameTypeId / scope / category filter.
     // Always exclude career postings (is_career = 1) and news articles (is_news = 1).
@@ -4834,6 +4919,9 @@ app.get("/api/forums", async (req, res) => {
     // Single query: sort by most-recent comment, pull comment/like counts and
     // author/game names via aggregation subqueries and JOINs so there are zero
     // per-forum round trips. Previously this was 4 queries × N forums.
+    const likedByUserExpr = userId
+      ? `(SELECT COUNT(*) FROM likes WHERE article_id = a.id AND user_id = ${db_pool.escape(userId)}) > 0`
+      : '0';
     const articlesQuery = `
       SELECT a.*,
              lc.last_comment_at,
@@ -4842,6 +4930,7 @@ app.get("/api/forums", async (req, res) => {
              ulc.username AS last_comment_author_name,
              COALESCE(cc.comment_count, 0) AS comment_count,
              COALESCE(lk.like_count, 0) AS like_count,
+             (${likedByUserExpr}) AS liked_by_user,
              CASE WHEN a.author_id IS NULL THEN 'Anonymous' ELSE ua.username END AS author_name,
              gt.game_name
         FROM articles a
@@ -4942,6 +5031,18 @@ app.get("/api/forum", async (params, res) => {
     forum.likes = likes;
     forum.game_name = gameNameRows[0]?.[0]?.game_name ?? null;
     forum.comments = commentsWithAuthors[0];
+
+    // Attach emotes to each comment
+    if (forum.comments && forum.comments.length > 0) {
+      const commentIds = forum.comments.map(c => c.id);
+      const allEmotes = await dbHelpers.getEmotesByCommentIds(commentIds);
+      const emotesByComment = {};
+      allEmotes.forEach(e => {
+        if (!emotesByComment[e.comment_id]) emotesByComment[e.comment_id] = [];
+        emotesByComment[e.comment_id].push({ user_id: e.user_id, username: e.username, emote_type: e.emote_type });
+      });
+      forum.comments.forEach(c => { c.emotes = emotesByComment[c.id] || []; });
+    }
 
     res.json({ result: forum, message: "Forum found" });
   } catch (err) {
@@ -5238,6 +5339,74 @@ app.post("/api/likes/delete", async (req, res) => {
   } catch (err) {
     console.error("Error in /api/likes/delete:", err);
     res.status(500).send({ message: "Like deletion failed", err: err.message });
+  }
+});
+
+
+// ------------------- Forum Like Toggle -------------------
+
+app.post("/api/forums/:id/toggle-like", authenticateToken, async (req, res) => {
+  try {
+    const articleId = parseInt(req.params.id, 10);
+    const userId = req.user.id;
+
+    // Verify the article exists
+    const [[article]] = await db_pool.query("SELECT id FROM articles WHERE id = ?", [articleId]);
+    if (!article) {
+      return res.status(404).send({ message: "Forum post not found" });
+    }
+
+    // Check existing like
+    const [existing] = await db_pool.query(
+      "SELECT id FROM likes WHERE article_id = ? AND user_id = ?",
+      [articleId, userId]
+    );
+
+    if (existing.length > 0) {
+      await db_pool.query("DELETE FROM likes WHERE article_id = ? AND user_id = ?", [articleId, userId]);
+    } else {
+      await db_pool.query(
+        "INSERT INTO likes (article_id, user_id, liked) VALUES (?, ?, 1)",
+        [articleId, userId]
+      );
+    }
+
+    const [[countRow]] = await db_pool.query(
+      "SELECT COUNT(*) as like_count FROM likes WHERE article_id = ?",
+      [articleId]
+    );
+
+    res.json({ liked: existing.length === 0, like_count: countRow.like_count });
+  } catch (err) {
+    console.error("Error in /api/forums/:id/toggle-like:", err);
+    res.status(500).send({ message: "Like toggle failed", err: err.message });
+  }
+});
+
+
+// ------------------- Comment Emotes -----------------------const VALID_EMOTE_TYPES = new Set(['thumbsup', 'thumbsdown', 'heart', 'question', 'laugh', 'sad', 'exclaim']);
+
+app.post("/api/comments/:id/emotes", authenticateToken, async (req, res) => {
+  try {
+    const comment_id = parseInt(req.params.id, 10);
+    const { emote_type } = req.body;
+    const user_id = req.user.id;
+
+    if (!VALID_EMOTE_TYPES.has(emote_type)) {
+      return res.status(400).send({ message: "Invalid emote type" });
+    }
+
+    // Verify comment exists
+    const [[comment]] = await db_pool.query("SELECT id FROM comments WHERE id = ?", [comment_id]);
+    if (!comment) {
+      return res.status(404).send({ message: "Comment not found" });
+    }
+
+    const result = await dbHelpers.toggleCommentEmote({ comment_id, user_id, emote_type });
+    res.json({ result });
+  } catch (err) {
+    console.error("Error in /api/comments/:id/emotes:", err);
+    res.status(500).send({ message: "Emote toggle failed", err: err.message });
   }
 });
 
@@ -5880,7 +6049,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.limit_promote_capture_to_original || false,
               piece.capture_points_gain ?? 0,
               piece.capture_points_loss ?? 0,
-              piece.cannot_move_outside_zone || false
+              piece.cannot_move_outside_zone || false,
+              piece.is_neutral || false
             );
           }
         }

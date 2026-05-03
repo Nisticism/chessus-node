@@ -124,6 +124,24 @@ const deleteLike = async (id) => {
   return response.data;
 };
 
+const toggleCommentEmote = async (commentId, emoteType) => {
+  const response = await axios.post(
+    API_URL + `comments/${commentId}/emotes`,
+    { emote_type: emoteType },
+    { headers: authHeader() }
+  );
+  return response.data;
+};
+
+const toggleForumLike = async (forumId) => {
+  const response = await axios.post(
+    API_URL + `forums/${forumId}/toggle-like`,
+    {},
+    { headers: authHeader() }
+  );
+  return response.data;
+};
+
 
 const ForumsService = {
   getForums,
@@ -136,6 +154,8 @@ const ForumsService = {
   deleteComment,
   newLike,
   deleteLike,
+  toggleCommentEmote,
+  toggleForumLike,
 }
 
 export default ForumsService;

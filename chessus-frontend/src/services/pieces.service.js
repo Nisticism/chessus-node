@@ -69,6 +69,13 @@ const checkPieceDuplicates = async (fields, excludeId = null) => {
   return response;
 };
 
+const getCommunityImages = async ({ page = 1, limit = 40, sort = 'newest', search = '' } = {}) => {
+  const params = { page, limit, sort };
+  if (search) params.search = search;
+  const response = await axios.get(API_URL + "pieces/community-images", { params });
+  return response;
+};
+
 const PiecesService = {
   getPieces,
   getPieceById,
@@ -78,6 +85,7 @@ const PiecesService = {
   deletePiece,
   getGamesByPieceId,
   checkPieceDuplicates,
-}
+  getCommunityImages,
+};
 
 export default PiecesService;

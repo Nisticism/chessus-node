@@ -91,6 +91,7 @@ const Play = () => {
   const [ongoingCorrespondenceGamesPage, setOngoingCorrespondenceGamesPage] = useState(1);
   const [privateGamesPage, setPrivateGamesPage] = useState(1);
   const [computerGamesPage, setComputerGamesPage] = useState(1);
+  const [publicBotGamesPage, setPublicBotGamesPage] = useState(1);
 
   // Collapsible-section state, persisted per section in localStorage. Default open.
   const readCollapsed = (key) => {
@@ -106,6 +107,7 @@ const Play = () => {
   const [correspondenceGamesCollapsed, setCorrespondenceGamesCollapsed] = useState(() => readCollapsed('correspondenceGames'));
   const [privateGamesCollapsed, setPrivateGamesCollapsed] = useState(() => readCollapsed('privateGames'));
   const [computerGamesCollapsed, setComputerGamesCollapsed] = useState(() => readCollapsed('computerGames'));
+  const [publicBotGamesCollapsed, setPublicBotGamesCollapsed] = useState(() => readCollapsed('publicBotGames'));
   const [incomingChallengesCollapsed, setIncomingChallengesCollapsed] = useState(() => readCollapsed('incomingChallenges'));
   const toggleGameTypes = () => setGameTypesCollapsed(prev => { writeCollapsed('gameTypes', !prev); return !prev; });
   const toggleFriends = () => setFriendsCollapsed(prev => { writeCollapsed('friends', !prev); return !prev; });
@@ -114,6 +116,7 @@ const Play = () => {
   const toggleCorrespondenceGames = () => setCorrespondenceGamesCollapsed(prev => { writeCollapsed('correspondenceGames', !prev); return !prev; });
   const togglePrivateGames = () => setPrivateGamesCollapsed(prev => { writeCollapsed('privateGames', !prev); return !prev; });
   const toggleComputerGames = () => setComputerGamesCollapsed(prev => { writeCollapsed('computerGames', !prev); return !prev; });
+  const togglePublicBotGames = () => setPublicBotGamesCollapsed(prev => { writeCollapsed('publicBotGames', !prev); return !prev; });
 
   // Anonymous play state
   const [inviteCodeInput, setInviteCodeInput] = useState("");
@@ -655,8 +658,9 @@ const Play = () => {
           : Object.values(pieces).filter(p => !p._occupied);
         const player1Count = pieceArray.filter(p => (p.player_number || p.player_id || p.player) === 1).length;
         const player2Count = pieceArray.filter(p => (p.player_number || p.player_id || p.player) === 2).length;
-        if (player1Count > 0 || player2Count > 0) {
-          return { player1: player1Count, player2: player2Count, equal: player1Count === player2Count };
+        const neutralCount = pieceArray.filter(p => p.is_neutral || (p.player_number || p.player_id || p.player) === 0).length;
+        if (player1Count > 0 || player2Count > 0 || neutralCount > 0) {
+          return { player1: player1Count, player2: player2Count, neutral: neutralCount, equal: player1Count === player2Count };
         }
       } catch {
         // Fall through to starting_piece_count
@@ -665,7 +669,7 @@ const Play = () => {
     // Fallback to starting_piece_count (total pieces / 2 assumes equal distribution)
     if (gameType?.starting_piece_count) {
       const perPlayer = Math.floor(gameType.starting_piece_count / 2);
-      return { player1: perPlayer, player2: perPlayer, equal: true };
+      return { player1: perPlayer, player2: perPlayer, neutral: 0, equal: true };
     }
     return null;
   };
@@ -674,10 +678,10 @@ const Play = () => {
   const formatPieceCount = (gameType) => {
     const counts = getPieceCounts(gameType);
     if (!counts) return null;
-    if (counts.equal) {
-      return `${counts.player1} pieces each`;
-    }
-    return `White: ${counts.player1} / Black: ${counts.player2}`;
+    const base = counts.equal
+      ? `${counts.player1} pieces each`
+      : `White: ${counts.player1} / Black: ${counts.player2}`;
+    return counts.neutral > 0 ? `${base}, ${counts.neutral} neutral` : base;
   };
 
   // Paginated data
@@ -692,13 +696,17 @@ const Play = () => {
     return openGames.slice(start, start + PAGE_SIZE);
   }, [openGames, openGamesPage]);
 
-  // Split ongoing games into live and correspondence
+  // Split ongoing games into live and correspondence (excluding public bot games)
+  const publicBotGames = useMemo(() => {
+    return ongoingGames.filter(g => g.host_show_bot_public === 1 || g.host_show_bot_public === true);
+  }, [ongoingGames]);
+
   const ongoingLiveGames = useMemo(() => {
-    return ongoingGames.filter(g => !g.is_correspondence);
+    return ongoingGames.filter(g => !g.is_correspondence && !g.host_show_bot_public);
   }, [ongoingGames]);
 
   const ongoingCorrespondenceGames = useMemo(() => {
-    return ongoingGames.filter(g => g.is_correspondence);
+    return ongoingGames.filter(g => g.is_correspondence && !g.host_show_bot_public);
   }, [ongoingGames]);
 
   const paginatedOngoingLiveGames = useMemo(() => {
@@ -721,6 +729,11 @@ const Play = () => {
     const start = (computerGamesPage - 1) * PAGE_SIZE;
     return list.slice(start, start + PAGE_SIZE);
   }, [myBotGames, computerGamesPage]);
+
+  const paginatedPublicBotGames = useMemo(() => {
+    const start = (publicBotGamesPage - 1) * PAGE_SIZE;
+    return publicBotGames.slice(start, start + PAGE_SIZE);
+  }, [publicBotGames, publicBotGamesPage]);
 
   // Render two players stacked vertically with a stylized "vs" between them.
   // Each player links to their profile unless the entry is a Computer player.
@@ -763,6 +776,7 @@ const Play = () => {
   const totalOngoingCorrespondenceGamesPages = Math.ceil(ongoingCorrespondenceGames.length / PAGE_SIZE);
   const totalPrivateGamesPages = Math.ceil(privateGames.length / PAGE_SIZE);
   const totalComputerGamesPages = Math.ceil(((myBotGames || []).length) / PAGE_SIZE);
+  const totalPublicBotGamesPages = Math.ceil(publicBotGames.length / PAGE_SIZE);
   // Format time control for display
   const formatTimeControl = (game) => {
     if (game.is_correspondence) {
@@ -1763,15 +1777,68 @@ const Play = () => {
             )}
           </div>
 
-          {/* Computer Games Section (current user's bot games) */}
-          {currentUser && (
+          {/* Public Computer Games Section — all users' public bot games */}
+          <div className={styles["ongoing-games-section"]}>
+            <h2
+              onClick={togglePublicBotGames}
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+            >
+              <span style={{ display: 'inline-block', width: '1em' }}>{publicBotGamesCollapsed ? '▶' : '▼'}</span>
+              Computer Games
+              {publicBotGames.length > 0 && (
+                <span className={styles["match-count"]}>{publicBotGames.length}</span>
+              )}
+            </h2>
+
+            {!publicBotGamesCollapsed && (
+              publicBotGames.length === 0 ? (
+                <div className={styles["no-matches"]}>No public computer games are currently active.</div>
+              ) : (
+                <>
+                  <div className={styles["ongoing-games-list"]}>
+                    {paginatedPublicBotGames.map((game) => (
+                      <div key={game.id} className={styles["ongoing-game-card"]}>
+                        <div className={styles["match-header"]}>
+                          <span className={styles["match-game-name"]}>
+                            <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
+                          </span>
+                          <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
+                        </div>
+                        <div className={styles["match-players"]}>{renderPlayerStack(game)}</div>
+                        <div className={styles["match-actions"]}>
+                          {game.allow_spectators && (
+                            <button
+                              className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}
+                              onClick={() => navigate(`/play/${game.id}`)}
+                            >
+                              Spectate
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {totalPublicBotGamesPages > 1 && (
+                    <div className={styles["pagination"]}>
+                      <button disabled={publicBotGamesPage === 1} onClick={() => setPublicBotGamesPage(p => p - 1)} className={styles["pagination-btn"]}>← Prev</button>
+                      <span className={styles["pagination-info"]}>{publicBotGamesPage} / {totalPublicBotGamesPages}</span>
+                      <button disabled={publicBotGamesPage >= totalPublicBotGamesPages} onClick={() => setPublicBotGamesPage(p => p + 1)} className={styles["pagination-btn"]}>Next →</button>
+                    </div>
+                  )}
+                </>
+              )
+            )}
+          </div>
+
+          {/* Computer Games Section (current user's bot games - only show when not publicly visible) */}
+          {currentUser && !currentUser.show_computer_games_publicly && (
             <div className={styles["ongoing-games-section"]}>
               <h2
                 onClick={toggleComputerGames}
                 style={{ cursor: 'pointer', userSelect: 'none' }}
               >
                 <span style={{ display: 'inline-block', width: '1em' }}>{computerGamesCollapsed ? '▶' : '▼'}</span>
-                Computer Games
+                My Computer Games
                 {(myBotGames || []).length > 0 && (
                   <span className={styles["match-count"]}>{(myBotGames || []).length}</span>
                 )}

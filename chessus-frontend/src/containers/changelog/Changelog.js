@@ -5,8 +5,20 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 3, 2026",
-    title: "Notification routing fixes + board replay multi-tile capture fix",
+    title: "Community piece images, preferences UX improvements, public computer games section, forums interactivity, and neutral pieces",
     items: [
+      "Piece Wizard: browse community-uploaded piece images in the image library under the new 'Community Pieces' tab. Search by name and sort alphabetically, by uploader, or by upload date. Click any community piece image to use it as your piece's image.",
+      "User Preferences: added spacing between toggle switches for improved readability.",
+      "Preferences: 'Show my computer games publicly' is now enabled by default for new users.",
+      "Play page: new 'Computer Games' section shows all public games against the computer from any user, regardless of time control (live or correspondence). The existing 'My Computer Games' section only appears when your computer games are not set to show publicly.",
+      "Play page: match counts in all section headers are now displayed as consistently styled badges.",
+      "Game Wizard Step 4: new 'Neutral' player option — place pieces that belong to no player. Either player can move a neutral piece on their turn and use it to capture any other piece, and neutral pieces can be captured by either player. Enables Duck Chess variants and other games where board objects can be manipulated by both sides. Neutral is now displayed as a radio button alongside Player 1 and Player 2 options.",
+      "Game detail page: neutral pieces now appear under 'Starting Pieces' as 'Neutral: ...' alongside Player 1 and Player 2 entries.",
+      "Game library and /play lobby cards: piece count now includes neutral pieces (e.g. '8 each, 1 neutral'). Game creator username now appears as a clickable link directly below the game description.",
+      "Fixed: info tooltips in modals are no longer clipped by the modal header — tooltips now use fixed positioning and always display fully within the viewport.",
+      "New: react to forum comments with emoji reactions (thumbs up, thumbs down, heart, question mark, laughing, sad, exclamation). Hover a comment to reveal the emote picker; click an existing emote badge to add your reaction. Hover over any emote badge to see who reacted. Long-pressing works on mobile.",
+      "Forum list pages (/forums, /forums/general, /forums/game): clicking any cell navigates to the forum post. Clicking the 'Written By' cell navigates to that user's profile. Clicking the 'Likes' cell toggles your like directly from the list — your like is highlighted and persists across page refreshes. Each cell shows a hover highlight when moused over.",
+      "Game cards: upvote highlight now correctly persists after page refresh — the upvote button shows as highlighted on load when you have previously upvoted a game type.",
       "Fixed: clicking an AI analysis request notification now navigates to the correct admin page instead of showing a 404 Not Found error.",
       "Fixed: clicking a new user sign-up notification now navigates to the correct player profile page instead of showing a 404 Not Found error.",
       "Admin portal — AI Training board replay: multi-tile pieces that are captured on a non-anchor square are now correctly removed from the board. Previously the piece would remain on the board after being captured.",

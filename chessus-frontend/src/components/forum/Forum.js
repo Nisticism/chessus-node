@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./forum.module.scss";
 import { categoryLabel } from "../../helpers/forum-categories";
-import { deleteComment, getForum, newComment, editComment, deleteForum } from "../../actions/forums";
+import { deleteComment, getForum, newComment, editComment, deleteForum, toggleCommentEmote } from "../../actions/forums";
 import StandardButton from "../standardbutton/StandardButton";
 import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 
@@ -16,6 +16,7 @@ import EmojiPickerButton from "../common/EmojiPickerButton";
 import LinkInsertButton from "../common/LinkInsertButton";
 import ValidationWarningModal from "../common/ValidationWarningModal";
 import { renderContent } from "../../helpers/render-content";
+import CommentEmoteBar from "./CommentEmoteBar";
 
 const COMMENT_MAX = 10000;
 
@@ -36,6 +37,31 @@ const Forum = () => {
   // both work without imperative DOM manipulation.
   const [editingCommentId, setEditingCommentId] = useState(null);
   const editingContainerRef = useRef(null);
+
+  // Track which comment the mouse is hovering over (for emote picker visibility)
+  const [hoveredCommentId, setHoveredCommentId] = useState(null);
+  // Long-press state for mobile (stores a timeout id)
+  const longPressRef = useRef(null);
+
+  const handleCommentMouseEnter = (id) => setHoveredCommentId(id);
+  const handleCommentMouseLeave = () => setHoveredCommentId(null);
+
+  const handleCommentLongPressStart = (id) => {
+    longPressRef.current = setTimeout(() => {
+      setHoveredCommentId(id);
+    }, 500);
+  };
+  const handleCommentLongPressEnd = () => {
+    clearTimeout(longPressRef.current);
+  };
+
+  const handleEmote = (commentId, emoteType) => {
+    if (!currentUser) {
+      navigate('/login', { state: { message: "Please log in to react to comments." } });
+      return;
+    }
+    dispatch(toggleCommentEmote(commentId, emoteType, currentUser));
+  };
 
   const cancelCommentEdit = () => {
     setEditingCommentId(null);
@@ -237,8 +263,17 @@ const Forum = () => {
 
               const renderComment = (comment, depth = 0) => {
                 const replies = getReplies(comment.id);
+                const isHovered = hoveredCommentId === comment.id;
                 return (
-                  <div className={depth > 0 ? styles["reply-container"] : styles["comment-container"]} key={comment.id}>
+                  <div
+                    className={depth > 0 ? styles["reply-container"] : styles["comment-container"]}
+                    key={comment.id}
+                    onMouseEnter={() => handleCommentMouseEnter(comment.id)}
+                    onMouseLeave={handleCommentMouseLeave}
+                    onTouchStart={() => handleCommentLongPressStart(comment.id)}
+                    onTouchEnd={handleCommentLongPressEnd}
+                    onTouchMove={handleCommentLongPressEnd}
+                  >
                     <div className={styles["comment"]}>
                       <div className={styles["comment-data"]}>
                         <div className={styles["comment-date"]}>
@@ -281,6 +316,12 @@ const Forum = () => {
                       </div>
                     </div>
                     <div className={styles["comment-content-container"]}>{renderContent(comment.content)}</div>
+                    <CommentEmoteBar
+                      emotes={comment.emotes || []}
+                      currentUserId={currentUser ? currentUser.id : null}
+                      onEmote={(emoteType) => handleEmote(comment.id, emoteType)}
+                      isHovered={isHovered}
+                    />
                     {editingCommentId === comment.id && (
                       <div
                         id={comment.id + "edit"}

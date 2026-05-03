@@ -17,6 +17,7 @@ import {
   LIKE_SUCCESS,
   LIKE_FAILURE,
   DELETE_LIKE,
+  COMMENT_EMOTE_TOGGLE,
 
   FIRST_FORUMS_RENDER,
 } from "./types";
@@ -204,5 +205,23 @@ export const deleteLike = (id) => async (dispatch) => {
     });
   } catch (error) {
     console.error("Error deleting like:", error);
+  }
+};
+
+export const toggleCommentEmote = (commentId, emoteType, currentUser) => async (dispatch) => {
+  try {
+    const response = await ForumsService.toggleCommentEmote(commentId, emoteType);
+    dispatch({
+      type: COMMENT_EMOTE_TOGGLE,
+      payload: {
+        comment_id: commentId,
+        emote_type: emoteType,
+        added: response.result.added,
+        user_id: currentUser.id,
+        username: currentUser.username,
+      },
+    });
+  } catch (error) {
+    console.error("Error toggling comment emote:", error);
   }
 };

@@ -1,0 +1,105 @@
+.emote-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+  margin-top: 8px;
+}
+
+/* Existing emote chips -------------------------------------------------- */
+.emote-existing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.emote-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-card-border);
+  background: rgba(var(--panel-bg-start-rgb), 0.6);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  user-select: none;
+
+  &:hover {
+    border-color: var(--accent-primary-text);
+    background: rgba(var(--accent-rgb), 0.12);
+  }
+}
+
+.emote-chip-mine {
+  border-color: var(--accent-primary-text);
+  background: rgba(var(--accent-rgb), 0.18);
+}
+
+.emote-count {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+/* Emote picker ----------------------------------------------------------- */
+.emote-picker {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.emote-picker-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.emote-picker-btn {
+  font-size: 1.05rem;
+  padding: 2px 5px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-dim);
+  filter: grayscale(0.6);
+  transition: filter 0.12s ease, transform 0.12s ease, background 0.12s ease;
+  user-select: none;
+
+  &:hover {
+    filter: grayscale(0);
+    transform: scale(1.25);
+    background: rgba(var(--accent-rgb), 0.15);
+    color: var(--text-bright);
+  }
+}
+
+/* Tooltip --------------------------------------------------------------- */
+.emote-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 300;
+  background: var(--bg-deep);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 100px;
+  max-width: 220px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+}
+
+.emote-tooltip-user {
+  font-size: 0.85rem;
+  color: var(--text-bright);
+  padding: 2px 0;
+  line-height: 1.4;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid rgba(var(--panel-card-border-rgb), 0.4);
+  }
+}

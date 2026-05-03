@@ -766,7 +766,8 @@ const GameTypeView = () => {
         .map(([name, count]) => count > 1 ? `${count} ${name}s` : `1 ${name}`)
         .join(', ');
       
-      startingPiecesContent.push(`Player ${playerId}: ${pieceList} (${placements.length} pieces total)`);
+      const playerLabel = (String(playerId) === '0' || playerId === 0) ? 'Neutral' : `Player ${playerId}`;
+      startingPiecesContent.push(`${playerLabel}: ${pieceList} (${placements.length} piece${placements.length !== 1 ? 's' : ''} total)`);
     });
 
     if (startingPiecesContent.length > 0) {

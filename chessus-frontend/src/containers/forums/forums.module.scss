@@ -278,3 +278,61 @@
   text-transform: capitalize;
   white-space: nowrap;
 }
+
+// Per-cell hover highlight
+.clickable-cell {
+  position: relative;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(var(--accent-rgb), 0.12) !important;
+  }
+}
+
+// Like cell
+.like-cell {
+  cursor: pointer;
+  text-align: center;
+  user-select: none;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+
+  &:hover {
+    background: rgba(var(--accent-rgb), 0.12) !important;
+  }
+}
+
+.like-cell-active {
+  background: rgba(220, 60, 80, 0.12) !important;
+
+  .like-icon {
+    color: #e05070;
+  }
+
+  .like-count {
+    color: #e05070;
+  }
+
+  &:hover {
+    background: rgba(220, 60, 80, 0.2) !important;
+  }
+}
+
+.like-icon {
+  font-size: 1.1rem;
+  color: var(--text-dim);
+  margin-right: 4px;
+  transition: color 0.15s ease, transform 0.15s ease;
+
+  .like-cell:hover & {
+    transform: scale(1.2);
+    color: #e05070;
+  }
+}
+
+.like-count {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  vertical-align: middle;
+}

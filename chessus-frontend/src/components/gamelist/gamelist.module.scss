@@ -385,6 +385,21 @@
   }
 }
 
+.game-creator-byline {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: -4px 0 8px 0;
+}
+
+.creator-byline-link {
+  color: var(--text-info);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--text-info-hover);
+  }
+}
+
 .game-stats {
   display: flex;
   flex-wrap: wrap;

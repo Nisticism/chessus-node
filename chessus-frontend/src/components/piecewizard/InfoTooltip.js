@@ -3,7 +3,7 @@ import styles from "./piecewizard.module.scss";
 
 const InfoTooltip = ({ text }) => {
   const [visible, setVisible] = useState(false);
-  const [position, setPosition] = useState("top");
+  const [tooltipStyle, setTooltipStyle] = useState({});
   const iconRef = useRef(null);
   const tooltipRef = useRef(null);
 
@@ -11,11 +11,20 @@ const InfoTooltip = ({ text }) => {
     if (!iconRef.current || !tooltipRef.current) return;
     const iconRect = iconRef.current.getBoundingClientRect();
     const tooltipRect = tooltipRef.current.getBoundingClientRect();
-    // If tooltip would go above viewport, show below
-    if (iconRect.top - tooltipRect.height - 8 < 0) {
-      setPosition("bottom");
+    const viewportH = window.innerHeight;
+
+    // Center horizontally over the icon; keep within viewport
+    let left = iconRect.left + iconRect.width / 2 - tooltipRect.width / 2;
+    if (left < 8) left = 8;
+    if (left + tooltipRect.width > window.innerWidth - 8) {
+      left = window.innerWidth - tooltipRect.width - 8;
+    }
+
+    // Show above icon if there's room, otherwise below
+    if (iconRect.top - tooltipRect.height - 8 >= 0) {
+      setTooltipStyle({ position: 'fixed', left, top: iconRect.top - tooltipRect.height - 8 });
     } else {
-      setPosition("top");
+      setTooltipStyle({ position: 'fixed', left, top: iconRect.bottom + 8 });
     }
   }, []);
 
@@ -32,8 +41,9 @@ const InfoTooltip = ({ text }) => {
       <span className={styles["info-tooltip-icon"]} ref={iconRef}>ℹ️</span>
       {visible && (
         <span
-          className={`${styles["info-tooltip-bubble"]} ${styles[`info-tooltip-${position}`]}`}
+          className={styles["info-tooltip-bubble"]}
           ref={tooltipRef}
+          style={tooltipStyle}
         >
           {text}
         </span>

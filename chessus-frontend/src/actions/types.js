@@ -41,6 +41,8 @@ export const LIKE_SUCCESS = "LIKE_SUCCESS";
 export const LIKE_FAILURE = "LIKE_FAILURE";
 export const DELETE_LIKE = "DELETE_LIKE";
 
+export const COMMENT_EMOTE_TOGGLE = "COMMENT_EMOTE_TOGGLE";
+
 export const NEWS_SUCCESS = "NEWS_SUCCESS";
 export const NEWS_FAILURE = "NEWS_FAILURE";
 export const ALL_NEWS = "ALL_NEWS";

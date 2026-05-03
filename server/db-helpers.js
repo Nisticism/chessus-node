@@ -724,7 +724,7 @@ const getPiecesForGameType = async (gameTypeId) => {
  * @param {boolean} canControlSquares - If true, this piece can control squares for the control squares win condition
  * @returns {Promise<Object>} Insert result
  */
-const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false, trample = false, trampleRadius = 0, ghostwalk = false, dieOnCapture = false, attackRadius = 0, imageIndex = null, promotionPiecesOverride = null, canPromoteToCheckmate = false, limitPromoteCheckmateToOriginal = false, canPromoteToCapture = false, limitPromoteCaptureToOriginal = false, capturePointsGain = 0, capturePointsLoss = 0, cannotMoveOutsideZone = false) => {
+const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false, trample = false, trampleRadius = 0, ghostwalk = false, dieOnCapture = false, attackRadius = 0, imageIndex = null, promotionPiecesOverride = null, canPromoteToCheckmate = false, limitPromoteCheckmateToOriginal = false, canPromoteToCapture = false, limitPromoteCaptureToOriginal = false, capturePointsGain = 0, capturePointsLoss = 0, cannotMoveOutsideZone = false, isNeutral = false) => {
   // Normalize promotionPiecesOverride: accept null, JSON string, or array
   let promoOverrideJson = null;
   if (promotionPiecesOverride != null) {
@@ -738,9 +738,9 @@ const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, e
     }
   }
   const result = await query(`
-    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen, burn_damage, burn_duration, show_burn, trample, trample_radius, ghostwalk, die_on_capture, attack_radius, image_index, promotion_pieces_override, can_promote_to_checkmate, limit_promote_checkmate_to_original, can_promote_to_capture, limit_promote_capture_to_original, capture_points_gain, capture_points_loss, cannot_move_outside_zone)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0, burnDamage || 0, burnDuration || 0, showBurn ? 1 : 0, trample ? 1 : 0, trampleRadius || 0, ghostwalk ? 1 : 0, dieOnCapture ? 1 : 0, attackRadius || 0, (imageIndex == null || imageIndex < 0) ? null : Number(imageIndex), promoOverrideJson, canPromoteToCheckmate ? 1 : 0, limitPromoteCheckmateToOriginal ? 1 : 0, canPromoteToCapture ? 1 : 0, limitPromoteCaptureToOriginal ? 1 : 0, capturePointsGain || 0, capturePointsLoss || 0, cannotMoveOutsideZone ? 1 : 0]);
+    INSERT INTO chessusnode.game_type_pieces (game_type_id, piece_id, x, y, player_number, ends_game_on_checkmate, ends_game_on_capture, manual_castling_partners, castling_partner_left_key, castling_partner_right_key, can_control_squares, castling_distance, hit_points, attack_damage, show_hp_ad, hp_regen, cannot_be_captured, show_regen, burn_damage, burn_duration, show_burn, trample, trample_radius, ghostwalk, die_on_capture, attack_radius, image_index, promotion_pieces_override, can_promote_to_checkmate, limit_promote_checkmate_to_original, can_promote_to_capture, limit_promote_capture_to_original, capture_points_gain, capture_points_loss, cannot_move_outside_zone, is_neutral)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [gameTypeId, pieceId, x, y, playerNumber, endsGameOnCheckmate ? 1 : 0, endsGameOnCapture ? 1 : 0, manualCastlingPartners ? 1 : 0, castlingPartnerLeftKey, castlingPartnerRightKey, canControlSquares ? 1 : 0, castlingDistance || 2, hitPoints || 1, attackDamage || 1, showHpAd ? 1 : 0, hpRegen || 0, cannotBeCaptured ? 1 : 0, showRegen ? 1 : 0, burnDamage || 0, burnDuration || 0, showBurn ? 1 : 0, trample ? 1 : 0, trampleRadius || 0, ghostwalk ? 1 : 0, dieOnCapture ? 1 : 0, attackRadius || 0, (imageIndex == null || imageIndex < 0) ? null : Number(imageIndex), promoOverrideJson, canPromoteToCheckmate ? 1 : 0, limitPromoteCheckmateToOriginal ? 1 : 0, canPromoteToCapture ? 1 : 0, limitPromoteCaptureToOriginal ? 1 : 0, capturePointsGain || 0, capturePointsLoss || 0, cannotMoveOutsideZone ? 1 : 0, isNeutral ? 1 : 0]);
   return result;
 };
 
@@ -878,6 +878,50 @@ const updateComment = async ({ id, content, last_updated_at }) => {
 const deleteComment = async (id) => {
   // Replies are deleted via ON DELETE CASCADE on parent_id FK
   return await query("DELETE FROM chessusnode.comments WHERE id = ?", [id]);
+};
+
+/**
+ * Get all emotes for a list of comment IDs
+ * @param {number[]} commentIds
+ * @returns {Promise<Array>} Array of { comment_id, user_id, emote_type, username }
+ */
+const getEmotesByCommentIds = async (commentIds) => {
+  if (!commentIds || commentIds.length === 0) return [];
+  const placeholders = commentIds.map(() => '?').join(',');
+  return await query(
+    `SELECT ce.comment_id, ce.user_id, ce.emote_type,
+            COALESCE(u.username, 'User Deleted') AS username
+       FROM chessusnode.comment_emotes ce
+       LEFT JOIN chessusnode.users u ON u.id = ce.user_id
+      WHERE ce.comment_id IN (${placeholders})`,
+    commentIds
+  );
+};
+
+/**
+ * Toggle a comment emote — adds if not present, removes if already present.
+ * Returns { added: bool, emote_type, comment_id, user_id }
+ * @param {Object} params
+ * @param {number} params.comment_id
+ * @param {number} params.user_id
+ * @param {string} params.emote_type
+ */
+const toggleCommentEmote = async ({ comment_id, user_id, emote_type }) => {
+  const existing = await query(
+    "SELECT id FROM chessusnode.comment_emotes WHERE comment_id = ? AND user_id = ? AND emote_type = ?",
+    [comment_id, user_id, emote_type]
+  );
+  if (existing.length > 0) {
+    await query("DELETE FROM chessusnode.comment_emotes WHERE comment_id = ? AND user_id = ? AND emote_type = ?",
+      [comment_id, user_id, emote_type]);
+    return { added: false, emote_type, comment_id, user_id };
+  } else {
+    await query(
+      "INSERT INTO chessusnode.comment_emotes (comment_id, user_id, emote_type) VALUES (?, ?, ?)",
+      [comment_id, user_id, emote_type]
+    );
+    return { added: true, emote_type, comment_id, user_id };
+  }
 };
 
 /**
@@ -1252,6 +1296,8 @@ module.exports = {
   createComment,
   updateComment,
   deleteComment,
+  getEmotesByCommentIds,
+  toggleCommentEmote,
   createLike,
   deleteLike,
   getAllNews,

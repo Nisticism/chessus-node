@@ -7,6 +7,9 @@ import ToggleSwitch from "../common/ToggleSwitch";
 import { pieceImageLibrary } from "../../assets/piece-images";
 import { checkForLinks, checkOffensiveContent, checkProfessionalName } from "../../utils/contentModeration";
 import LinkInsertButton from "../common/LinkInsertButton";
+import PiecesService from "../../services/pieces.service";
+
+const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
 // Compute average perceived brightness (0-255) of an image from its data URL
 const computeImageBrightness = (dataUrl) => {
@@ -46,6 +49,7 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
   const [visibleImageCount, setVisibleImageCount] = useState(2);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [libraryTargetIndex, setLibraryTargetIndex] = useState(0);
+  const [libraryTab, setLibraryTab] = useState('builtin'); // 'builtin' | 'community'
   const [libraryColorFilter, setLibraryColorFilter] = useState('All');
   const [libraryTypeFilter, setLibraryTypeFilter] = useState('All');
   const [libraryCategoryFilter, setLibraryCategoryFilter] = useState('All');
@@ -54,6 +58,15 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
   const [brightnessWarning, setBrightnessWarning] = useState('');
   const [libraryPage, setLibraryPage] = useState(1);
   const LIBRARY_PAGE_SIZE = 60;
+
+  // Community tab state
+  const [communitySearch, setCommunitySearch] = useState('');
+  const [communitySort, setCommunitySort] = useState('newest');
+  const [communityPage, setCommunityPage] = useState(1);
+  const [communityImages, setCommunityImages] = useState([]);
+  const [communityPagination, setCommunityPagination] = useState(null);
+  const [communityLoading, setCommunityLoading] = useState(false);
+
   const fileInputRefs = useRef([]);
 
   // Check brightness whenever both P1 and P2 previews are set
@@ -88,6 +101,61 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
 
   const [contentWarnings, setContentWarnings] = useState({});
   const [pieceNameReviewWarning, setPieceNameReviewWarning] = useState(false);
+
+  // Fetch community images whenever the community tab is visible and filters change
+  useEffect(() => {
+    if (!showLibraryModal || libraryTab !== 'community') return;
+    let cancelled = false;
+    setCommunityLoading(true);
+    PiecesService.getCommunityImages({ page: communityPage, limit: 40, sort: communitySort, search: communitySearch })
+      .then(res => {
+        if (cancelled) return;
+        setCommunityImages(res.data.images || []);
+        setCommunityPagination(res.data.pagination || null);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error('Failed to load community images:', err);
+        setCommunityImages([]);
+      })
+      .finally(() => { if (!cancelled) setCommunityLoading(false); });
+    return () => { cancelled = true; };
+  }, [showLibraryModal, libraryTab, communityPage, communitySort, communitySearch]);
+
+  const handleCommunityImageSelect = async (item) => {
+    if (!item.image_url) return;
+    const fullUrl = item.image_url.startsWith('http') ? item.image_url : `${ASSET_URL}${item.image_url}`;
+    try {
+      const response = await fetch(fullUrl);
+      const blob = await response.blob();
+      let extension = 'png';
+      if (blob.type) {
+        const typePart = blob.type.split('/').pop();
+        extension = typePart.split('+')[0] || typePart;
+      }
+      const safeName = item.piece_name.replace(/[^a-zA-Z0-9]/g, '_');
+      const file = new File([blob], `${safeName}.${extension}`, { type: blob.type || 'image/png' });
+
+      if (isEditMode && setExistingImages && existingImages.length > 0 && libraryTargetIndex < existingImages.length) {
+        const newExistingImages = [...existingImages];
+        newExistingImages.splice(libraryTargetIndex, 1);
+        setExistingImages(newExistingImages);
+      }
+
+      const newImages = [...(pieceData.piece_images || [])];
+      const newPreviews = [...(pieceData.piece_image_previews || [])];
+      const newSources = [...(pieceData.piece_image_sources || [])];
+      newImages[libraryTargetIndex] = file;
+      newPreviews[libraryTargetIndex] = fullUrl;
+      newSources[libraryTargetIndex] = 'community';
+
+      updatePieceData({ piece_images: newImages, piece_image_previews: newPreviews, piece_image_sources: newSources });
+      setShowLibraryModal(false);
+    } catch (error) {
+      console.error('Error selecting community image:', error);
+      alert('Failed to select image. Please try again.');
+    }
+  };
 
   const handleChange = (field, value) => {
     updatePieceData({ [field]: value });
@@ -227,6 +295,7 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
 
   const openLibrary = (index) => {
     setLibraryTargetIndex(index);
+    setLibraryTab('builtin');
     setShowLibraryModal(true);
   };
 
@@ -565,8 +634,28 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
                 ×
               </button>
             </div>
-            
-            <div className={styles["library-filter"]}>
+
+            {/* Tab switcher */}
+            <div className={styles["library-tabs"]}>
+              <button
+                type="button"
+                className={`${styles["library-tab"]} ${libraryTab === 'builtin' ? styles["library-tab-active"] : ''}`}
+                onClick={() => setLibraryTab('builtin')}
+              >
+                Built-in Library
+              </button>
+              <button
+                type="button"
+                className={`${styles["library-tab"]} ${libraryTab === 'community' ? styles["library-tab-active"] : ''}`}
+                onClick={() => setLibraryTab('community')}
+              >
+                Community Pieces
+              </button>
+            </div>
+
+            {libraryTab === 'builtin' && (
+              <>
+                <div className={styles["library-filter"]}>
               {/* Color filter */}
               <div className={styles["filter-section"]}>
                 <span className={styles["filter-label"]}>Color</span>
@@ -657,7 +746,7 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
                 </div>
               )}
             </div>
-            
+
             <div className={styles["library-grid"]}>
               {filteredLibraryImages.length === 0 && (
                 <div className={styles["library-empty"]}>No images match the selected filters.</div>
@@ -684,6 +773,72 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
                 <button type="button" disabled={libraryPage === totalLibraryPages} onClick={() => setLibraryPage(totalLibraryPages)}>»»</button>
               </div>
             )}
+              </>
+            )}
+
+            {libraryTab === 'community' && (
+              <>
+                {/* Community search + sort controls */}
+                <div className={styles["community-controls"]}>
+                  <input
+                    type="text"
+                    placeholder="Search by piece name..."
+                    value={communitySearch}
+                    onChange={(e) => { setCommunitySearch(e.target.value); setCommunityPage(1); }}
+                    className={styles["community-search-input"]}
+                  />
+                  <select
+                    value={communitySort}
+                    onChange={(e) => { setCommunitySort(e.target.value); setCommunityPage(1); }}
+                    className={styles["community-sort-select"]}
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="alphabetical">Alphabetical</option>
+                    <option value="by_uploader">By uploader</option>
+                  </select>
+                </div>
+
+                {communityLoading && (
+                  <div className={styles["library-empty"]}>Loading community pieces...</div>
+                )}
+
+                {!communityLoading && communityImages.length === 0 && (
+                  <div className={styles["library-empty"]}>No community pieces found.</div>
+                )}
+
+                {!communityLoading && communityImages.length > 0 && (
+                  <div className={styles["library-grid"]}>
+                    {communityImages.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={styles["library-item"]}
+                        onClick={() => handleCommunityImageSelect(item)}
+                        title={`${item.piece_name} — uploaded by ${item.creator_name}`}
+                      >
+                        <img
+                          src={item.image_url.startsWith('http') ? item.image_url : `${ASSET_URL}${item.image_url}`}
+                          alt={item.piece_name}
+                          loading="lazy"
+                        />
+                        <span className={styles["library-item-name"]}>{item.piece_name}</span>
+                        <span className={styles["library-item-creator"]}>by {item.creator_name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {communityPagination && communityPagination.totalPages > 1 && (
+                  <div className={styles["library-pagination"]}>
+                    <button type="button" disabled={communityPage === 1} onClick={() => setCommunityPage(1)}>««</button>
+                    <button type="button" disabled={communityPage === 1} onClick={() => setCommunityPage(p => p - 1)}>«</button>
+                    <span>Page {communityPage} of {communityPagination.totalPages} ({communityPagination.total} pieces)</span>
+                    <button type="button" disabled={communityPage >= communityPagination.totalPages} onClick={() => setCommunityPage(p => p + 1)}>»</button>
+                    <button type="button" disabled={communityPage >= communityPagination.totalPages} onClick={() => setCommunityPage(communityPagination.totalPages)}>»»</button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -692,3 +847,4 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
 };
 
 export default PieceStep1BasicInfo;
+

@@ -75,6 +75,8 @@ const PieceSelector = ({
   const [dieOnCapture, setDieOnCapture] = useState(currentPlacement?.die_on_capture || false);
   const [attackRadius, setAttackRadius] = useState(currentPlacement?.attack_radius ?? 0);
   const [cannotMoveOutsideZone, setCannotMoveOutsideZone] = useState(currentPlacement?.cannot_move_outside_zone || false);
+  const [isNeutral, setIsNeutral] = useState(currentPlacement?.is_neutral || false);
+  const [neutralImageIndex, setNeutralImageIndex] = useState(currentPlacement?.neutral_image_index ?? 0);
   
   // Burn/DOT system state
   const [burnDamage, setBurnDamage] = useState(currentPlacement?.burn_damage ?? 0);
@@ -95,7 +97,7 @@ const PieceSelector = ({
     (currentPlacement?.hit_points ?? 1) > 1 || (currentPlacement?.attack_damage ?? 1) > 1 || (currentPlacement?.hp_regen ?? 0) > 0 || (currentPlacement?.burn_damage ?? 0) > 0
   );
   const [additionalSettingsOpen, setAdditionalSettingsOpen] = useState(
-    currentPlacement?.cannot_be_captured || currentPlacement?.trample || currentPlacement?.ghostwalk || currentPlacement?.die_on_capture || (currentPlacement?.attack_radius > 0) || currentPlacement?.cannot_move_outside_zone || false
+    currentPlacement?.cannot_be_captured || currentPlacement?.trample || currentPlacement?.ghostwalk || currentPlacement?.die_on_capture || (currentPlacement?.attack_radius > 0) || currentPlacement?.cannot_move_outside_zone || currentPlacement?.is_neutral || false
   );
 
   // Promotion options state (per-placement override)
@@ -290,7 +292,7 @@ const PieceSelector = ({
       ...selectedPiece,  // Include ALL piece data (movement, capture, etc.)
       piece_id: selectedPieceId,
       piece_name: selectedPiece.piece_name,
-      player_id: selectedPlayerId,
+      player_id: isNeutral ? 0 : selectedPlayerId,
       image_url: selectedImageUrl,
       image_index: imageIndex,
       ends_game_on_checkmate: endsGameOnCheckmate,
@@ -324,6 +326,9 @@ const PieceSelector = ({
       attack_radius: attackRadius,
       // Restriction zone
       cannot_move_outside_zone: cannotMoveOutsideZone,
+      // Neutral piece
+      is_neutral: isNeutral,
+      neutral_image_index: isNeutral ? neutralImageIndex : null,
       // Promotion options (per-placement override)
       promotion_pieces_override: customizePromotion && promotionPieceIds.length > 0 ? JSON.stringify(promotionPieceIds) : null,
       can_promote_to_checkmate: !!canPromoteToCheckmate,
@@ -504,12 +509,22 @@ const PieceSelector = ({
                   type="radio"
                   name="player"
                   value={playerId}
-                  checked={selectedPlayerId === playerId}
-                  onChange={(e) => setSelectedPlayerId(parseInt(e.target.value))}
+                  checked={!isNeutral && selectedPlayerId === playerId}
+                  onChange={(e) => { setSelectedPlayerId(parseInt(e.target.value)); setIsNeutral(false); }}
                 />
                 <span>Player {playerId}</span>
               </label>
             ))}
+            <label className={styles["player-radio-label"]}>
+              <input
+                type="radio"
+                name="player"
+                value="neutral"
+                checked={isNeutral}
+                onChange={() => setIsNeutral(true)}
+              />
+              <span>Neutral <InfoTooltip text="A neutral piece belongs to no player. Either player can move it on their turn and use it to capture any other piece. It can also be captured by any player unless 'Uncapturable' is enabled. Use neutral pieces to create Duck Chess variants (where a duck block must be moved each turn) and other games where board objects can be manipulated by both sides." /></span>
+            </label>
           </div>
         </div>
 
@@ -642,6 +657,24 @@ const PieceSelector = ({
                   }}
                 >
                   <img src={imageUrl} alt={`Option ${index + 1}`} loading="lazy" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Neutral Image Selection (shown when neutral is checked and piece has multiple images) */}
+        {isNeutral && selectedPieceId && availableImages.length > 1 && (
+          <div className={styles["image-selection-section"]}>
+            <h3>Neutral Piece Image:</h3>
+            <div className={styles["image-grid"]}>
+              {availableImages.map((imageUrl, index) => (
+                <div
+                  key={index}
+                  className={`${styles["image-option"]} ${neutralImageIndex === index ? styles["selected"] : ""}`}
+                  onClick={() => setNeutralImageIndex(index)}
+                >
+                  <img src={imageUrl} alt={`Image ${index + 1}`} loading="lazy" />
                 </div>
               ))}
             </div>

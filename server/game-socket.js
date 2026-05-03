@@ -1209,7 +1209,7 @@ function validateSimulMoveProposal(gameState, playerId, move) {
   const piece = (gameState.pieces || []).find(p => String(p.id) === String(move.pieceId));
   if (!piece) return { ok: false, reason: 'Piece not found' };
   const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
-  if (!playerPosition || (piece.team || piece.player_id) !== playerPosition) {
+  if (!playerPosition || ((piece.team || piece.player_id) !== playerPosition && !piece.is_neutral)) {
     return { ok: false, reason: 'Not your piece' };
   }
   const toX = move.to?.x, toY = move.to?.y;
@@ -1227,7 +1227,7 @@ function validateSimulMoveProposal(gameState, playerId, move) {
   const occupant = (gameState.pieces || []).find(p => p.x === toX && p.y === toY && String(p.id) !== String(piece.id));
   if (occupant) {
     capturedPieceId = occupant.id;
-    isAllyCapture = (occupant.team || occupant.player_id) === playerPosition;
+    isAllyCapture = !occupant.is_neutral && (occupant.team || occupant.player_id) === playerPosition;
   }
   return {
     ok: true,
@@ -2708,7 +2708,8 @@ function initializeSocket(server) {
               burn_duration: piece.burn_duration ?? 0,
               show_burn: !!piece.show_burn,
               burn_active_damage: 0,
-              burn_active_turns: 0
+              burn_active_turns: 0,
+              is_neutral: !!piece.is_neutral
             };
           });
           
@@ -9198,7 +9199,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     pieceOwnerPosition === currentPlayer.position || 
     pieceOwnerId === currentPlayer.id;
     
-  if (!belongsToCurrentPlayer) {
+  if (!belongsToCurrentPlayer && !piece.is_neutral) {
     vlog('Piece ownership check failed:', {
       pieceTeam: piece.team,
       piecePlayerId: piece.player_id,
@@ -9841,7 +9842,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
           
           // Check if allied piece (trample only damages enemies unless can_capture_allies)
           const targetOwner = targetPiece.team || targetPiece.player_id;
-          if (targetOwner === pieceOwner && !(movingPiece.can_capture_allies === 1 || movingPiece.can_capture_allies === true)) {
+          if (!targetPiece.is_neutral && targetOwner === pieceOwner && !(movingPiece.can_capture_allies === 1 || movingPiece.can_capture_allies === true)) {
             continue;
           }
           
@@ -9897,7 +9898,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
           if (targetPiece.ends_game_on_checkmate) continue;
           // Only damage enemies (unless can_capture_allies)
           const targetOwner = targetPiece.team || targetPiece.player_id;
-          if (targetOwner === pieceOwner && !(movingPiece.can_capture_allies === 1 || movingPiece.can_capture_allies === true)) continue;
+          if (!targetPiece.is_neutral && targetOwner === pieceOwner && !(movingPiece.can_capture_allies === 1 || movingPiece.can_capture_allies === true)) continue;
 
           attackedPieceIds.add(targetPiece.id);
           const prevHp = targetPiece.current_hp ?? targetPiece.hit_points ?? 1;

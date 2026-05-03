@@ -397,6 +397,21 @@ const tableMigrations = [
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`,
     description: "Create poll_votes table for user poll responses"
+  },
+  {
+    table: 'comment_emotes',
+    sql: `CREATE TABLE IF NOT EXISTS comment_emotes (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      comment_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      emote_type VARCHAR(20) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT NOW(),
+      UNIQUE KEY uq_comment_user_emote (comment_id, user_id, emote_type),
+      INDEX idx_ce_comment (comment_id),
+      FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    description: "Create comment_emotes table for emoji reactions on forum comments"
   }
 ];
 
@@ -3479,6 +3494,19 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error adding cannot_move_outside_zone column:', err.message);
+  }
+
+  // is_neutral on game_type_pieces: marks a piece as belonging to no player (neutral).
+  try {
+    if (!(await columnExists('game_type_pieces', 'is_neutral'))) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN is_neutral TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'If true, this piece can be moved and captured by any player'`,
+        "Add is_neutral column to game_type_pieces"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_neutral column:', err.message);
   }
 
   // created_at on users: tracks account registration date for user-growth admin stats.

@@ -17,6 +17,7 @@ import {
   LIKE_SUCCESS,
   LIKE_FAILURE,
   DELETE_LIKE,
+  COMMENT_EMOTE_TOGGLE,
   FIRST_FORUMS_RENDER,
 } from "../actions/types";
 
@@ -184,6 +185,24 @@ const forumsReducer = (state = initialState, action) => {
         },
         forums: updatedForumsWithoutLike
       }
+    case COMMENT_EMOTE_TOGGLE: {
+      const { comment_id, emote_type, added, user_id, username } = payload;
+      const updatedComments = state.forum.comments.map(c => {
+        if (c.id !== comment_id) return c;
+        const prevEmotes = c.emotes || [];
+        let newEmotes;
+        if (added) {
+          newEmotes = [...prevEmotes, { user_id, username, emote_type }];
+        } else {
+          newEmotes = prevEmotes.filter(e => !(e.user_id === user_id && e.emote_type === emote_type));
+        }
+        return { ...c, emotes: newEmotes };
+      });
+      return {
+        ...state,
+        forum: { ...state.forum, comments: updatedComments },
+      };
+    }
     default:
       return state;
   }

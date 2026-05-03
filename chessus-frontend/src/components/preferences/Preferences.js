@@ -174,7 +174,8 @@ const Preferences = () => {
   });
 
   const [showComputerGamesPublicly, setShowComputerGamesPublicly] = useState(() => {
-    return currentUser?.show_computer_games_publicly === 1 || currentUser?.show_computer_games_publicly === true;
+    // Default to true for new users (null/undefined); only false if explicitly set to 0 or false
+    return currentUser?.show_computer_games_publicly !== 0 && currentUser?.show_computer_games_publicly !== false;
   });
 
   // Email notification preferences (loaded async from /email-preferences)
@@ -683,7 +684,7 @@ const Preferences = () => {
               label="Receive notification summary emails"
               tooltip={<InfoTooltip text="When disabled, you will not receive the weekly notification digest email regardless of activity." />}
             />
-            <div style={{ marginTop: 12, opacity: emailEnabled ? 1 : 0.5, pointerEvents: emailEnabled ? 'auto' : 'none' }}>
+            <div style={{ marginTop: 12, opacity: emailEnabled ? 1 : 0.5, pointerEvents: emailEnabled ? 'auto' : 'none', display: 'flex', flexDirection: 'column', gap: 16 }}>
               <p style={{ marginBottom: 8, fontWeight: 600 }}>Per-type opt-out</p>
               <p style={{ marginTop: 0, fontSize: 13, opacity: 0.8 }}>
                 Notifications you opt out of here are excluded from both the threshold count and the email itself.

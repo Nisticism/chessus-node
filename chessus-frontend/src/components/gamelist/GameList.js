@@ -77,6 +77,16 @@ const GameList = () => {
     ? allGames.gamesList.filter(game => game.id)
     : [];
 
+  // Sync upvote state from server data whenever the games list refreshes.
+  // This ensures the upvote highlight persists across page loads/refreshes.
+  useEffect(() => {
+    if (!currentUser || games.length === 0) return;
+    const serverState = {};
+    games.forEach(g => { serverState[g.id] = Boolean(g.upvoted_by_user); });
+    setUpvotedGames(serverState);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [games.map(g => g.id).join(','), currentUser?.id]);
+
   const pagination = allGames.pagination;
   const totalCount = pagination?.total || 0;
 
@@ -178,8 +188,10 @@ const GameList = () => {
           : Object.values(pieces).filter(p => !p._occupied);
         const p1 = pieceArray.filter(p => (p.player_number || p.player_id || p.player) === 1).length;
         const p2 = pieceArray.filter(p => (p.player_number || p.player_id || p.player) === 2).length;
-        if (p1 > 0 || p2 > 0) {
-          return p1 === p2 ? `${p1} each` : `${p1} / ${p2}`;
+        const neutral = pieceArray.filter(p => (p.is_neutral) || (p.player_number || p.player_id || p.player) === 0).length;
+        if (p1 > 0 || p2 > 0 || neutral > 0) {
+          const base = p1 === p2 ? `${p1} each` : `${p1} / ${p2}`;
+          return neutral > 0 ? `${base}, ${neutral} neutral` : base;
         }
       } catch { /* fall through */ }
     }
@@ -226,6 +238,26 @@ const GameList = () => {
             <p className={styles["game-description"]}>
               {game.descript && game.descript.trim() ? game.descript : 'No description available'}
             </p>
+
+            {game.creator_username && (
+              <div className={styles["game-creator-byline"]}>
+                {game.creator_username === 'Anonymous' ? (
+                  <span>Anonymous</span>
+                ) : (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      navigate(`/profile/${game.creator_username}`);
+                    }}
+                    style={{ cursor: 'pointer', textDecoration: 'none' }}
+                    className={styles["creator-byline-link"]}
+                  >
+                    {game.creator_username}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className={styles["game-stats"]}>
               <div className={styles["stat-item"]}>

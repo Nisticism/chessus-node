@@ -22,7 +22,8 @@ export const getGames = (page = 1, limit = 20, sort = 'newest', winCondition = '
     if (creatorId) params.creatorId = creatorId;
     if (includeDrafts) params.includeDrafts = includeDrafts;
     const response = await axios.get(API_URL + "games", {
-      params
+      params,
+      headers: authHeader()
     });
     
     dispatch({
