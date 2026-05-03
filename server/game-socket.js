@@ -10491,23 +10491,21 @@ async function getPromotionOptions(gameState, promotingPiece) {
       } else {
         try {
           const [[pieceData]] = await db_pool.query(
-            `SELECT id as piece_id, piece_name, image_location, piece_value,
-              up_movement, down_movement, left_movement, right_movement,
-              up_left_movement, up_right_movement, down_left_movement, down_right_movement,
-              up_capture, down_capture, left_capture, right_capture,
-              up_left_capture, up_right_capture, down_left_capture, down_right_capture,
-              ratio_one_movement, ratio_two_movement, step_movement_value,
-              can_capture_enemy_via_range, can_hop_over_allies, can_hop_over_enemies,
-              ends_game_on_checkmate, ends_game_on_capture, can_control_squares
-             FROM pieces WHERE id = ?`,
+            `SELECT * FROM pieces WHERE id = ?`,
             [pieceId]
           );
           if (pieceData) {
             eligiblePieces.push({
               ...pieceData,
-              // Remap DB column names to the JS convention getPieceValue expects
+              piece_id: pieceData.id,
+              // Remap DB column names to JS conventions used elsewhere
               ratio_movement_1: pieceData.ratio_one_movement,
               ratio_movement_2: pieceData.ratio_two_movement,
+              step_movement_value: pieceData.step_by_step_movement_value,
+              // ends_game_on_checkmate / ends_game_on_capture live on game_type_pieces,
+              // not on the pieces table — off-board promotion targets default to false.
+              ends_game_on_checkmate: false,
+              ends_game_on_capture: false,
               image: null,
               image_url: null,
             });
