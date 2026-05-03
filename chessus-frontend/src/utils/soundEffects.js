@@ -31,6 +31,8 @@ class SoundManager {
     this.unlocked = false;
     // Set of currently-playing clones; capped to prevent browser audio-channel exhaustion.
     this.activeSounds = new Set();
+    // Last sound name requested while the tab was hidden; replayed on tab focus.
+    this.pendingSound = null;
 
     // Unlock audio on first user interaction (bypasses browser autoplay policy)
     const unlock = () => {
@@ -69,12 +71,25 @@ class SoundManager {
           primer.volume = 0;
           primer.play().then(() => { primer.pause(); }).catch(() => {});
         });
+        // Play any sound that was missed while the tab was hidden.
+        // Small delay lets the priming settle before the real playback attempt.
+        if (this.pendingSound) {
+          const queued = this.pendingSound;
+          this.pendingSound = null;
+          setTimeout(() => this.play(queued), 80);
+        }
       }
     });
   }
 
   play(soundName) {
     if (!this.enabled || !this.sounds[soundName]) return;
+
+    // Tab is hidden — queue the sound so it fires when the user returns.
+    if (document.visibilityState === 'hidden') {
+      this.pendingSound = soundName;
+      return;
+    }
 
     try {
       // Hard cap: if we already have too many concurrent sounds the browser will
