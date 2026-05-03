@@ -26,7 +26,6 @@ use crate::board::{Board, Coord, Move, PieceOnBoard};
 use crate::rules::{PieceTemplate, Rules};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 /// Cardinal directions, in JS order: up, down, left, right,
 /// up_left, up_right, down_left, down_right.
@@ -126,78 +125,19 @@ fn directional_capture_exact(p: &PieceTemplate, dir: &str) -> bool {
 
 // ---------- special-square helpers ----------
 
-fn parse_squares_map(s: &Option<String>) -> Option<HashMap<String, Value>> {
-    let raw = s.as_ref()?;
-    let v: Value = serde_json::from_str(raw).ok()?;
-    let obj = v.as_object()?;
-    Some(obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-}
-
 /// Mirrors `shouldBlockFirstMoveAbilities`. The `piece` here is the
 /// on-board piece (we need its x/y).
 fn should_block_first_move_abilities(p: &PieceOnBoard, rules: &Rules) -> bool {
-    let map = match parse_squares_map(&rules.game.special_squares_string) {
-        Some(m) => m,
-        None => return false,
-    };
-    let current_key = format!("{},{}", p.y, p.x);
-    if let Some(cfg) = map.get(&current_key) {
-        if cfg.get("disableFirstMoveHere").and_then(|v| v.as_bool()).unwrap_or(false) {
-            return true;
-        }
+    // disableFirstMoveHere: block all first-N-move abilities on this square.
+    if rules.disable_first_move_here_squares.contains(&(p.x, p.y)) {
+        return true;
     }
-    let mut restrict_exists = false;
-    let mut on_allowed_square = false;
-    for (key, cfg) in &map {
-        if cfg.get("restrictFirstMoveToCustom").and_then(|v| v.as_bool()).unwrap_or(false) {
-            restrict_exists = true;
-            if key == &current_key {
-                on_allowed_square = true;
-            }
-        }
+    // restrictFirstMoveToCustom: when any such square exists, first-N-move
+    // abilities are only allowed from those squares.
+    if !rules.restrict_first_move_to_custom_squares.is_empty() {
+        return !rules.restrict_first_move_to_custom_squares.contains(&(p.x, p.y));
     }
-    restrict_exists && !on_allowed_square
-}
-
-/// Collect all (x, y) squares that are part of the Restriction Zone
-/// (custom squares with asRestrictionZone == true in special_squares_string).
-/// Returns None when no restriction zone squares exist.
-fn collect_restriction_zone_squares(rules: &Rules) -> Option<HashSet<(i32, i32)>> {
-    let map = parse_squares_map(&rules.game.special_squares_string)?;
-    let mut zones = HashSet::new();
-    for (key, cfg) in &map {
-        if cfg.get("asRestrictionZone").and_then(|v| v.as_bool()).unwrap_or(false) {
-            let parts: Vec<&str> = key.split(',').collect();
-            if parts.len() == 2 {
-                if let (Ok(y), Ok(x)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
-                    zones.insert((x, y));
-                }
-            }
-        }
-    }
-    if zones.is_empty() { None } else { Some(zones) }
-}
-
-/// Combine `range_squares_string` with `special_squares_string` entries
-/// flagged `asRange`. Returns key -> bonus.
-fn collect_range_squares(rules: &Rules) -> HashMap<String, i32> {
-    let mut out: HashMap<String, i32> = HashMap::new();
-    if let Some(map) = parse_squares_map(&rules.game.range_squares_string) {
-        for (k, v) in map {
-            let bonus = v.get("rangeBonus").and_then(|x| x.as_i64()).unwrap_or(1) as i32;
-            out.insert(k, bonus);
-        }
-    }
-    if let Some(map) = parse_squares_map(&rules.game.special_squares_string) {
-        for (k, v) in map {
-            let as_range = v.get("asRange").and_then(|x| x.as_bool()).unwrap_or(false);
-            if as_range && !out.contains_key(&k) {
-                let bonus = v.get("rangeBonus").and_then(|x| x.as_i64()).unwrap_or(1) as i32;
-                out.insert(k, bonus);
-            }
-        }
-    }
-    out
+    false
 }
 
 fn boost_value(v: i32, bonus: i32) -> i32 {
@@ -294,6 +234,12 @@ fn is_path_clear(
             let mut x = mover.x + sdx + step_x;
             let mut y = mover.y + sdy + step_y;
             while x != to_x + sdx || y != to_y + sdy {
+                // Impassable squares always block the path (no hopping through them).
+                if !rules.impassable_squares.is_empty()
+                    && rules.impassable_squares.contains(&(x, y))
+                {
+                    return false;
+                }
                 if let Some(blocker) = piece_occupying_excluding(board, rules, x, y, mover.id) {
                     if !allow_hop || !can_hop_over(blocker, mover.player, tpl) {
                         return false;
@@ -341,10 +287,8 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
         None => return vec![],
     };
 
-    // Range-square bonus.
-    let range_map = collect_range_squares(rules);
-    let key = format!("{},{}", mover.y, mover.x);
-    let tpl = if let Some(&bonus) = range_map.get(&key) {
+    // Range-square bonus (pre-cached in rules to avoid per-call JSON parsing).
+    let tpl = if let Some(&bonus) = rules.range_square_bonuses.get(&(mover.x, mover.y)) {
         apply_range_bonus_to_template(&raw_tpl, bonus)
     } else {
         raw_tpl
@@ -431,6 +375,11 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             let tx = mover.x + dx * dist;
             let ty = mover.y + dy * dist;
             if !in_bounds(tx, ty) { break; }
+            // Impassable squares: cannot move to or slide through them.
+            if !tpl.ghostwalk
+                && !rules.impassable_squares.is_empty()
+                && rules.impassable_squares.contains(&(tx, ty))
+            { break; }
             if !is_path_clear(board, rules, mover, &tpl, tx, ty, dir_hop_allowed) { break; }
 
             if let Some(target) = piece_occupying(board, rules, tx, ty) {
@@ -651,6 +600,14 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                 let scan_last = if close_range { target_x } else { partner.x - side };
                 let mut x = mover.x + side;
                 loop {
+                    // Impassable squares block the castling path.
+                    if !tpl.ghostwalk
+                        && !rules.impassable_squares.is_empty()
+                        && rules.impassable_squares.contains(&(x, mover.y))
+                    {
+                        path_clear = false;
+                        break;
+                    }
                     if let Some(occ) = piece_occupying(board, rules, x, mover.y) {
                         if occ.id != partner.id {
                             path_clear = false;
@@ -998,14 +955,18 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
         }
     }
 
+    // Impassable squares: pieces cannot land on impassable squares (unless ghostwalk).
+    // Path-through blocking is already handled in is_path_clear and check_dir.
+    if !tpl.ghostwalk && !rules.impassable_squares.is_empty() {
+        out.retain(|mv| !rules.impassable_squares.contains(&(mv.to.x, mv.to.y)));
+    }
+
     // Restriction zone filter: once a piece with cannot_move_outside_zone is
     // standing on a zone square it may only move to other zone squares (locked in).
     // A piece that starts outside the zone moves freely until it steps onto one.
-    if tpl.cannot_move_outside_zone {
-        if let Some(zones) = collect_restriction_zone_squares(rules) {
-            if zones.contains(&(mover.x, mover.y)) {
-                out.retain(|mv| zones.contains(&(mv.to.x, mv.to.y)));
-            }
+    if tpl.cannot_move_outside_zone && !rules.restriction_zone_squares.is_empty() {
+        if rules.restriction_zone_squares.contains(&(mover.x, mover.y)) {
+            out.retain(|mv| rules.restriction_zone_squares.contains(&(mv.to.x, mv.to.y)));
         }
     }
 
@@ -1215,6 +1176,11 @@ fn pseudo_moves_no_castle(board: &Board, rules: &Rules, p: &PieceOnBoard) -> Vec
                 control_half_turns_required: rules.control_half_turns_required,
                 promotion_squares: rules.promotion_squares.clone(),
                 range_squares: rules.range_squares.clone(),
+                range_square_bonuses: rules.range_square_bonuses.clone(),
+                impassable_squares: rules.impassable_squares.clone(),
+                restriction_zone_squares: rules.restriction_zone_squares.clone(),
+                disable_first_move_here_squares: rules.disable_first_move_here_squares.clone(),
+                restrict_first_move_to_custom_squares: rules.restrict_first_move_to_custom_squares.clone(),
             };
             return moves_for(board, &tmp_rules, p);
         }

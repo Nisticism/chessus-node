@@ -1243,7 +1243,7 @@ const Play = () => {
             ) : (
               <div className={styles["selected-game-compact"]}>
                 <div className={styles["game-info-compact"]}>
-                  <h3><Link to={`/games/${selectedGameType.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>{selectedGameType.game_name}</Link></h3>
+                  <h3><Link to={`/games/${selectedGameType.id}`}>{selectedGameType.game_name}</Link></h3>
                   <div className={styles["game-stats"]}>
                     <span className={styles["stat-item"]}>
                       <span className={styles["stat-icon"]}>⊞</span>
@@ -1819,7 +1819,6 @@ const Play = () => {
                                 <button
                                   className={`${styles.btn} ${isMyTurn ? styles["btn-primary"] : styles["btn-secondary"]} ${styles["btn-small"]}`}
                                   onClick={() => navigate(`/play/${game.id}`)}
-                                  disabled={!isMyTurn}
                                 >
                                   {isMyTurn ? 'Make Move' : "Computer's Turn"}
                                 </button>
@@ -1905,7 +1904,6 @@ const Play = () => {
                                 <button
                                   className={`${styles.btn} ${isMyTurn ? styles["btn-primary"] : styles["btn-secondary"]} ${styles["btn-small"]}`}
                                   onClick={() => navigate(`/play/${game.id}`)}
-                                  disabled={!isMyTurn}
                                 >
                                   {isMyTurn ? 'Make Move' : "Computer's Turn"}
                                 </button>

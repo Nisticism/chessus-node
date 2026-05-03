@@ -2,7 +2,7 @@
 //! and exposes look-ups used by the move generator.
 
 use anyhow::{Context, Result};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 pub use crate::protocol::{GameType, PieceTemplate, RulesDoc, StartingPosition};
@@ -153,6 +153,52 @@ fn parse_range_square_coords(game: &GameType) -> Vec<(i32, i32)> {
     )
 }
 
+/// Build a map of (x, y) -> range_bonus for all range squares (pre-cached to
+/// avoid repeated JSON parsing in move generation).
+fn parse_range_bonuses(game: &GameType) -> HashMap<(i32, i32), i32> {
+    let mut out: HashMap<(i32, i32), i32> = HashMap::new();
+    if let Some(s) = game.range_squares_string.as_deref().filter(|s| !s.is_empty()) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
+            if let Some(obj) = v.as_object() {
+                for (key, val) in obj {
+                    if let Some(coords) = parse_yx_key(key) {
+                        let bonus = val.get("rangeBonus").and_then(|x| x.as_i64()).unwrap_or(1) as i32;
+                        out.insert(coords, bonus);
+                    }
+                }
+            }
+        }
+    }
+    if let Some(s) = game.special_squares_string.as_deref().filter(|s| !s.is_empty()) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
+            if let Some(obj) = v.as_object() {
+                for (key, val) in obj {
+                    if val.get("asRange").and_then(|x| x.as_bool()).unwrap_or(false) {
+                        if let Some(coords) = parse_yx_key(key) {
+                            if !out.contains_key(&coords) {
+                                let bonus = val.get("rangeBonus").and_then(|x| x.as_i64()).unwrap_or(1) as i32;
+                                out.insert(coords, bonus);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Collect all `special_squares_string` entries where `flag == true` into a
+/// HashSet of (x, y) coordinates. Returns an empty set when the string is
+/// absent or contains no matching entries.
+fn parse_flagged_set(game: &GameType, flag: &str) -> HashSet<(i32, i32)> {
+    game.special_squares_string
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| parse_flagged_keys(s, flag).into_iter().collect())
+        .unwrap_or_default()
+}
+
 // ---------------------------------------------------------------------------
 // Rules struct
 // ---------------------------------------------------------------------------
@@ -178,6 +224,22 @@ pub struct Rules {
     /// Landing on one of these gives a piece a movement-range bonus on the
     /// next turn.
     pub range_squares: Vec<(i32, i32)>,
+    /// Pre-parsed range-bonus map: (x, y) -> bonus value. Avoids repeated
+    /// JSON parsing in `moves_for` which is called thousands of times per search.
+    pub range_square_bonuses: HashMap<(i32, i32), i32>,
+    /// Squares where `impassable == true` in `special_squares_string`.
+    /// Pieces cannot move to or slide through these squares (unless ghostwalk).
+    pub impassable_squares: HashSet<(i32, i32)>,
+    /// Squares where `asRestrictionZone == true` in `special_squares_string`.
+    /// A piece with `cannot_move_outside_zone` that is currently on one of
+    /// these may only move to other restriction-zone squares.
+    pub restriction_zone_squares: HashSet<(i32, i32)>,
+    /// Squares where `disableFirstMoveHere == true`. First-N-move abilities
+    /// are blocked when the piece stands on any of these squares.
+    pub disable_first_move_here_squares: HashSet<(i32, i32)>,
+    /// Squares where `restrictFirstMoveToCustom == true`. When this set is
+    /// non-empty, first-N-move abilities are only usable from these squares.
+    pub restrict_first_move_to_custom_squares: HashSet<(i32, i32)>,
 }
 
 impl Rules {
@@ -193,6 +255,12 @@ impl Rules {
         let (control_squares, control_half_turns_required) = parse_control_squares(&doc.game);
         let promotion_squares = parse_promotion_squares(&doc.game);
         let range_squares = parse_range_square_coords(&doc.game);
+        let range_square_bonuses = parse_range_bonuses(&doc.game);
+        let impassable_squares = parse_flagged_set(&doc.game, "impassable");
+        let restriction_zone_squares = parse_flagged_set(&doc.game, "asRestrictionZone");
+        let disable_first_move_here_squares = parse_flagged_set(&doc.game, "disableFirstMoveHere");
+        let restrict_first_move_to_custom_squares =
+            parse_flagged_set(&doc.game, "restrictFirstMoveToCustom");
         let pieces: HashMap<i64, PieceTemplate> =
             doc.pieces.into_iter().map(|p| (p.id, p)).collect();
         Self {
@@ -203,6 +271,11 @@ impl Rules {
             control_half_turns_required,
             promotion_squares,
             range_squares,
+            range_square_bonuses,
+            impassable_squares,
+            restriction_zone_squares,
+            disable_first_move_here_squares,
+            restrict_first_move_to_custom_squares,
         }
     }
 
