@@ -128,6 +128,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         let game_started = Instant::now();
         let mut board = Board::from_rules(&rules);
         let mut moves_played = 0u32;
+        let mut consecutive_equal_score_turns = 0i32;
         let mut book_buffer: Vec<PendingBookRecord> = Vec::with_capacity(BOOK_PLY_LIMIT as usize);
         // Human-readable move lines for this game — appended to games.txt after the game ends.
         // Only populated when the game log is enabled.
@@ -299,8 +300,68 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                 }
                 move_lines.push(line);
             }
-            board.apply(&mv);
+            let apply_result = board.apply(&mv, &rules);
             moves_played += 1;
+
+            // --- Turn-start effects for the new active player ---
+            // Apply burn DoT, then HP regen, mirroring game-socket.js order.
+            let burn_kills = board.process_turn_start(board.turn, &rules);
+            // Win conditions triggered by burn kills (capture/elimination).
+            if !burn_kills.is_empty() {
+                if rules.game.capture_condition {
+                    let requires_all = rules.game.capture_condition_requires_all;
+                    let check_side_gone = |player: i32| -> bool {
+                        if requires_all {
+                            !board.pieces.iter().any(|p| p.player == player
+                                && rules.piece(p.piece_id).map(|t| t.ends_game_on_capture).unwrap_or(false))
+                        } else {
+                            !board.pieces.iter().any(|p| p.player == player)
+                        }
+                    };
+                    if check_side_gone(1) && check_side_gone(2) {
+                        break (GameResult::Draw, crate::protocol::EndReason::BurnKill);
+                    } else if check_side_gone(1) {
+                        break (GameResult::Win(2), crate::protocol::EndReason::BurnKill);
+                    } else if check_side_gone(2) {
+                        break (GameResult::Win(1), crate::protocol::EndReason::BurnKill);
+                    }
+                }
+            }
+
+            // --- points_to_win check ---
+            if let Some(threshold) = rules.game.points_to_win {
+                let p1_wins = board.points[0] >= threshold;
+                let p2_wins = board.points[1] >= threshold;
+                if p1_wins && p2_wins {
+                    break (GameResult::Draw, crate::protocol::EndReason::PointsDraw);
+                } else if p1_wins {
+                    break (GameResult::Win(1), crate::protocol::EndReason::PointsWin);
+                } else if p2_wins {
+                    break (GameResult::Win(2), crate::protocol::EndReason::PointsWin);
+                }
+            }
+
+            // --- equal-points draw checks ---
+            if rules.game.draw_equal_points_at_turn.is_some()
+                || rules.game.draw_equal_points_consecutive.is_some()
+            {
+                let equal = board.points[0] == board.points[1];
+                if equal {
+                    consecutive_equal_score_turns += 1;
+                } else {
+                    consecutive_equal_score_turns = 0;
+                }
+                if let Some(turn_thresh) = rules.game.draw_equal_points_at_turn {
+                    if board.ply as i32 >= turn_thresh * 2 && equal {
+                        break (GameResult::Draw, crate::protocol::EndReason::PointsDraw);
+                    }
+                }
+                if let Some(consec_thresh) = rules.game.draw_equal_points_consecutive {
+                    if consecutive_equal_score_turns >= consec_thresh {
+                        break (GameResult::Draw, crate::protocol::EndReason::PointsDraw);
+                    }
+                }
+            }
 
             // --- Post-move win condition checks ---
             // Capture the moving side BEFORE we read board.turn (which now
@@ -318,8 +379,8 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             }
 
             // lose_all_pieces_condition (anti-chess): a player WINS when they
-            // have lost all their pieces. Check both sides after each capture.
-            if rules.game.lose_all_pieces_condition && mv.capture.is_some() {
+            // have lost all their pieces. Check both sides after each kill.
+            if rules.game.lose_all_pieces_condition && apply_result.any_killed() {
                 let p1_count = board.pieces.iter().filter(|p| p.player == 1).count();
                 let p2_count = board.pieces.iter().filter(|p| p.player == 2).count();
                 if p1_count == 0 && p2_count == 0 {
@@ -340,7 +401,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             // `ends_game_on_capture` must be removed (mirrors the live server's
             // anti-king-only-capture logic for variants where every named piece
             // must fall before the game ends).
-            if rules.game.capture_condition && mv.capture.is_some() {
+            if rules.game.capture_condition && apply_result.any_killed() {
                 let requires_all = rules.game.capture_condition_requires_all;
                 let check_side_gone = |player: i32| -> bool {
                     if let Some(cp_id) = rules.game.capture_piece {

@@ -104,7 +104,7 @@ impl Mcts {
                     }
                 }
                 let (mv, ci) = nodes[node_idx].children[best_child].clone();
-                state.apply(&mv);
+                let _ = state.apply(&mv, rules);
                 node_idx = ci;
                 path.push(node_idx);
             }
@@ -114,7 +114,7 @@ impl Mcts {
             if !nodes[node_idx].untried.is_empty() {
                 let i = rng.gen_range(0..nodes[node_idx].untried.len());
                 let mv = nodes[node_idx].untried.swap_remove(i);
-                state.apply(&mv);
+                let _ = state.apply(&mv, rules);
                 let next_legal = legal_moves(&state, rules);
                 let new_idx = nodes.len();
                 let new_side = state.turn;
@@ -254,7 +254,7 @@ pub fn rollout_with_reason(
             }
             // Pseudo was empty but legal isn't (shouldn't happen, but be safe).
             let mv = legal.choose(rng).unwrap().clone();
-            state.apply(&mv);
+            let _ = state.apply(&mv, rules);
             continue;
         }
 
@@ -269,8 +269,13 @@ pub fn rollout_with_reason(
                 if let Some(cap_id) = m.capture {
                     if let Some(target) = state.pieces.iter().find(|p| p.id == cap_id) {
                         if is_royal_piece(rules, target.piece_id) {
-                            royal_target = Some(target.player);
-                            break;
+                            // Only short-circuit if the attack will actually kill the target.
+                            // With HP > 1, an attack that doesn't kill is not a win yet.
+                            let would_kill = m.hp_damage == 0 || target.current_hp <= m.hp_damage;
+                            if would_kill {
+                                royal_target = Some(target.player);
+                                break;
+                            }
                         }
                     }
                 }
@@ -283,10 +288,10 @@ pub fn rollout_with_reason(
 
         let mv = pick_rollout_move(&moves, state, rules, rng, mover, false).clone();
         let captured_id = mv.capture;
-        state.apply(&mv);
-        // capture_condition: evaluate win after every capture, including
-        // requires_all variants (all ends_game_on_capture pieces must be gone).
-        if rules.game.capture_condition && captured_id.is_some() {
+        let rollout_result = state.apply(&mv, rules);
+        let had_kill = rollout_result.any_killed();
+        // capture_condition: evaluate win after every kill.
+        if rules.game.capture_condition && (had_kill || captured_id.is_some()) {
             let requires_all = rules.game.capture_condition_requires_all;
             let check_side_gone = |player: i32| -> bool {
                 if let Some(cp_id) = rules.game.capture_piece {
@@ -381,7 +386,7 @@ pub fn rollout_with_reason_aggressive(
                 return (GameResult::Draw, EndReason::Stalemate);
             }
             let mv = legal.choose(rng).unwrap().clone();
-            state.apply(&mv);
+            let _ = state.apply(&mv, rules);
             continue;
         }
 
@@ -395,7 +400,11 @@ pub fn rollout_with_reason_aggressive(
                 if let Some(cap_id) = m.capture {
                     if let Some(target) = state.pieces.iter().find(|p| p.id == cap_id) {
                         if is_royal_piece(rules, target.piece_id) {
-                            return (GameResult::Win(mover), EndReason::RoyalCapture);
+                            // Only short-circuit if the attack will actually kill (HP check).
+                            let would_kill = m.hp_damage == 0 || target.current_hp <= m.hp_damage;
+                            if would_kill {
+                                return (GameResult::Win(mover), EndReason::RoyalCapture);
+                            }
                         }
                     }
                 }
@@ -407,10 +416,10 @@ pub fn rollout_with_reason_aggressive(
         let mv = pick_rollout_move(&moves, state, rules, rng, mover, true).clone();
         let _ = board_height; // reserved for future promotion-square heuristics
         let captured_id = mv.capture;
-        state.apply(&mv);
-        // capture_condition: evaluate win after every capture, including
-        // requires_all variants (all ends_game_on_capture pieces must be gone).
-        if rules.game.capture_condition && captured_id.is_some() {
+        let rollout_result2 = state.apply(&mv, rules);
+        let had_kill2 = rollout_result2.any_killed();
+        // capture_condition: evaluate win after every kill.
+        if rules.game.capture_condition && (had_kill2 || captured_id.is_some()) {
             let requires_all = rules.game.capture_condition_requires_all;
             let check_side_gone = |player: i32| -> bool {
                 if let Some(cp_id) = rules.game.capture_piece {
@@ -471,11 +480,19 @@ pub fn update_control_tracking(board: &mut Board, rules: &Rules) {
         let held = rules
             .control_squares
             .iter()
-            .filter(|&&(cx, cy)| {
-                board
-                    .pieces
-                    .iter()
-                    .any(|p| p.player == player && p.x == cx && p.y == cy)
+            .filter(|cs| {
+                board.pieces.iter().any(|p| {
+                    p.player == player
+                        && p.x == cs.x
+                        && p.y == cs.y
+                        // If requireSpecificPiece is set, only pieces with
+                        // can_control_squares = true may claim this square.
+                        && (!cs.require_specific_piece
+                            || rules
+                                .piece(p.piece_id)
+                                .map(|t| t.can_control_squares)
+                                .unwrap_or(false))
+                })
             })
             .count() as i32;
         if held >= need {
@@ -567,7 +584,7 @@ pub fn pick_rollout_move<'a>(
                 rules
                     .control_squares
                     .iter()
-                    .any(|&(cx, cy)| m.to.x == cx && m.to.y == cy)
+                    .any(|cs| m.to.x == cs.x && m.to.y == cs.y)
             })
             .collect();
         let ctrl_bias = if aggressive { 0.8 } else { 0.7 };

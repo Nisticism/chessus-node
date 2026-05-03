@@ -365,6 +365,13 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             is_promotion: false,
             promote_to: None,
             creates_en_passant: false,
+            hp_damage: if capture.is_some() { tpl.attack_damage.max(1) } else { 0 },
+            attacker_dies: tpl.die_on_capture && capture.is_some(),
+            has_trample: tpl.trample,
+            trample_radius: tpl.trample_radius,
+            area_radius: tpl.attack_radius,
+            burn_damage: if capture.is_some() { tpl.burn_damage } else { 0 },
+            burn_duration: if capture.is_some() { tpl.burn_duration } else { 0 },
         });
     };
 
@@ -665,6 +672,13 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                     is_promotion: false,
                     promote_to: None,
                     creates_en_passant: false,
+                    hp_damage: 0,
+                    attacker_dies: false,
+                    has_trample: tpl.trample,
+                    trample_radius: tpl.trample_radius,
+                    area_radius: tpl.attack_radius,
+                    burn_damage: 0,
+                    burn_duration: 0,
                 });
             }
         }
@@ -869,6 +883,13 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                         is_promotion: false,
                         promote_to: None,
                         creates_en_passant: false,
+                        hp_damage: tpl.attack_damage.max(1),
+                        attacker_dies: tpl.die_on_capture,
+                        has_trample: tpl.trample,
+                        trample_radius: tpl.trample_radius,
+                        area_radius: tpl.attack_radius,
+                        burn_damage: tpl.burn_damage,
+                        burn_duration: tpl.burn_duration,
                     });
                 }
             }
@@ -897,6 +918,14 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             let target_allowed = |t: &PieceTemplate| -> bool {
                 if t.ends_game_on_checkmate && !tpl.can_promote_to_checkmate { return false; }
                 if t.ends_game_on_capture   && !tpl.can_promote_to_capture   { return false; }
+                // limit_promote_*_to_original: cannot promote to this type if
+                // the owner already has as many (or more) as they started with.
+                if t.ends_game_on_checkmate && tpl.limit_promote_checkmate_to_original {
+                    if promotion_count_exceeds_original(board, rules, mover.player, t.real_piece_id) { return false; }
+                }
+                if t.ends_game_on_capture && tpl.limit_promote_capture_to_original {
+                    if promotion_count_exceeds_original(board, rules, mover.player, t.real_piece_id) { return false; }
+                }
                 true
             };
 
@@ -1047,8 +1076,34 @@ fn promotion_power_score(tpl: &PieceTemplate) -> i32 {
     score.max(1)
 }
 
-fn ratio_path_ok(
+/// Returns true when the owner already has at least as many pieces of the
+/// given `real_piece_id` type as were in the starting position — used to
+/// enforce `limit_promote_checkmate_to_original` /
+/// `limit_promote_capture_to_original`.
+fn promotion_count_exceeds_original(
     board: &Board,
+    rules: &Rules,
+    player: i32,
+    real_target_id: i64,
+) -> bool {
+    let original = rules.starting_positions.iter()
+        .filter(|sp| sp.player_number == player && {
+            rules.piece(sp.piece_id)
+                .map(|t| t.real_piece_id == real_target_id || t.id == real_target_id)
+                .unwrap_or(false)
+        })
+        .count();
+    let current = board.pieces.iter()
+        .filter(|p| p.player == player && {
+            rules.piece(p.piece_id)
+                .map(|t| t.real_piece_id == real_target_id || t.id == real_target_id)
+                .unwrap_or(false)
+        })
+        .count();
+    current >= original
+}
+
+fn ratio_path_ok(    board: &Board,
     mover: &PieceOnBoard,
     tpl: &PieceTemplate,
     dx: i32, dy: i32,
@@ -1212,7 +1267,7 @@ pub fn legal_moves(board: &Board, rules: &Rules) -> Vec<Move> {
         let mut filtered = Vec::with_capacity(pseudo.len());
         for mv in pseudo {
             let mut next = board.clone();
-            next.apply(&mv);
+            let _ = next.apply(&mv, rules);
             if !in_check(&next, rules, me) {
                 filtered.push(mv);
             }

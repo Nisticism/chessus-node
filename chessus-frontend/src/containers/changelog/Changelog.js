@@ -5,6 +5,19 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 2, 2026",
+    title: "AI engine: HP/AD, burn, trample, AoE, points, control squares, promotion limits, die-on-capture",
+    items: [
+      "AI trainer now fully supports HP and Attack Damage — pieces with more than 1 HP can survive hits, multi-HP royals are correctly handled, and the search no longer shortcuts a game as won when an attack only deals partial damage.",
+      "Burn damage-over-time is now processed by the AI trainer each turn start, including win-condition checks for pieces killed by burn.",
+      "Trample (straight-line path damage) and Area-of-Effect (Chebyshev splash at landing square) are now simulated by the AI trainer.",
+      "The AI trainer now tracks and awards capture points, checks points-to-win thresholds, and handles equal-points draw conditions.",
+      "Control squares that require a specific piece type (requireSpecificPiece flag) are now respected in the AI trainer's control tracking.",
+      "Promotion limits (limit to original count of checkmate/capture pieces) are now enforced during AI training self-play.",
+      "Die-on-capture (kamikaze pieces) is now handled correctly during AI training.",
+    ],
+  },
+  {
+    date: "May 2, 2026",
     title: "Simul turns improvements, disconnect timer fixes, admin split, impassable squares, UI consistency, arrow-key board navigation, AI promotion & time-pressure improvements, sound fix, piece shadow, admin table scrolling",
     items: [
       "Bug fix: sound effects could stop playing entirely during long bot games. Fixed an audio channel exhaustion issue where rapidly-played sounds accumulated as orphaned audio elements until the browser hit its limit and silently rejected all further sounds.",

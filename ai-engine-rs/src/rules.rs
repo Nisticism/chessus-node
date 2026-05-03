@@ -84,10 +84,22 @@ fn merge_special_squares(
 // Per-string-type parsers
 // ---------------------------------------------------------------------------
 
-/// Parse control_squares_string (keyed "y,x") into a list of (x, y) board
-/// coordinates and compute how many consecutive half-turns a player must hold
-/// enough of those squares to win.
-fn parse_control_squares(game: &GameType) -> (Vec<(i32, i32)>, u32) {
+/// A single control square with optional `requireSpecificPiece` flag.
+/// When `require_specific_piece` is true, only pieces whose template has
+/// `can_control_squares = true` may claim this square for the squares_condition.
+/// When false (the default) any piece occupying the square counts.
+#[derive(Debug, Clone)]
+pub struct ControlSquare {
+    pub x: i32,
+    pub y: i32,
+    /// Mirrors the `requireSpecificPiece` flag in `control_squares_string`.
+    pub require_specific_piece: bool,
+}
+
+/// Parse control_squares_string (keyed "y,x") into a list of ControlSquare and
+/// compute how many consecutive half-turns a player must hold enough of those
+/// squares to win.
+fn parse_control_squares(game: &GameType) -> (Vec<ControlSquare>, u32) {
     let s = match game.control_squares_string.as_deref() {
         Some(s) if !s.is_empty() => s,
         _ => return (vec![], 2),
@@ -100,11 +112,15 @@ fn parse_control_squares(game: &GameType) -> (Vec<(i32, i32)>, u32) {
         Some(o) => o,
         None => return (vec![], 2),
     };
-    let mut squares: Vec<(i32, i32)> = Vec::with_capacity(obj.len());
+    let mut squares: Vec<ControlSquare> = Vec::with_capacity(obj.len());
     let mut max_turns_required: u32 = 1;
     for (key, val) in obj.iter() {
-        if let Some(coords) = parse_yx_key(key) {
-            squares.push(coords);
+        if let Some((x, y)) = parse_yx_key(key) {
+            let require_specific_piece = val
+                .get("requireSpecificPiece")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            squares.push(ControlSquare { x, y, require_specific_piece });
         }
         if let Some(tr) = val.get("turnsRequired").and_then(|v| v.as_u64()) {
             max_turns_required = max_turns_required.max(tr as u32);
@@ -146,9 +162,9 @@ pub struct Rules {
     pub game: GameType,
     pub pieces: HashMap<i64, PieceTemplate>,
     pub starting_positions: Vec<StartingPosition>,
-    /// Parsed (x, y) coordinates of all control squares.  Empty when
+    /// Parsed control squares with per-square flags. Empty when
     /// `squares_condition` is off or no squares are configured.
-    pub control_squares: Vec<(i32, i32)>,
+    pub control_squares: Vec<ControlSquare>,
     /// How many consecutive half-turns a player must hold ≥ `squares_count`
     /// (or all) control squares to win.  Mirrors `halfTurnsRequired` in the
     /// Node game-socket.  Defaults to 2 (one full round).

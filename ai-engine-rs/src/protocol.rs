@@ -13,6 +13,11 @@ fn _default_true() -> bool {
     true
 }
 
+/// Serde-default helper for i32 fields whose semantic default is 1.
+fn default_one_i32() -> i32 {
+    1
+}
+
 /// Top-level rules.json document.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RulesDoc {
@@ -272,6 +277,59 @@ pub struct PieceTemplate {
     /// When true the piece can capture en passant AND creates an en passant
     /// target when it makes a multi-square first-move advance.
     pub can_en_passant: bool,
+
+    // ---- HP / AD combat system ----
+    /// Maximum hit-point pool. Pieces with hit_points > 1 survive multiple
+    /// attacks; they are only removed when current_hp reaches 0.
+    #[serde(default = "default_one_i32")]
+    pub hit_points: i32,
+    /// Damage this piece deals per attack. Defaults to 1 (one-hit kill on 1-HP targets).
+    #[serde(default = "default_one_i32")]
+    pub attack_damage: i32,
+    /// HP regenerated at the start of this piece's owner's turn. Capped at hit_points.
+    #[serde(default)]
+    pub hp_regen: i32,
+
+    // ---- Kamikaze ----
+    /// When true, the moving piece is also removed from the board after it kills an enemy.
+    #[serde(default)]
+    pub die_on_capture: bool,
+
+    // ---- Burn / DOT ----
+    /// Damage-over-time inflicted on enemies this piece hits (applied at the start of the
+    /// victim's subsequent turns). 0 = no burn.
+    #[serde(default)]
+    pub burn_damage: i32,
+    /// Number of turns the burn effect lasts on the target.
+    #[serde(default)]
+    pub burn_duration: i32,
+
+    // ---- Trample / AoE ----
+    /// Trample: damages every piece along the straight-line movement path.
+    #[serde(default)]
+    pub trample: bool,
+    /// How many squares around each trample path step are also affected.
+    #[serde(default)]
+    pub trample_radius: i32,
+    /// Area-of-effect radius at the landing square. All pieces within this
+    /// distance take attack_damage (0 = no AoE).
+    #[serde(default)]
+    pub attack_radius: i32,
+
+    // ---- Control squares ----
+    /// Whether this piece can claim control squares when a control square has
+    /// `requireSpecificPiece` set. Without that flag any piece counts.
+    #[serde(default)]
+    pub can_control_squares: bool,
+
+    // ---- Promotion limits ----
+    /// If true, this piece cannot promote into a piece with `ends_game_on_checkmate`
+    /// if the owner already has at least as many of that type as they started with.
+    #[serde(default)]
+    pub limit_promote_checkmate_to_original: bool,
+    /// Same as above but for `ends_game_on_capture` promotion targets.
+    #[serde(default)]
+    pub limit_promote_capture_to_original: bool,
 }
 
 impl Default for PieceTemplate {
@@ -344,6 +402,18 @@ impl Default for PieceTemplate {
             custom_movement_squares: None,
             custom_attack_squares: None,
             can_en_passant: false,
+            hit_points: 1,
+            attack_damage: 1,
+            hp_regen: 0,
+            die_on_capture: false,
+            burn_damage: 0,
+            burn_duration: 0,
+            trample: false,
+            trample_radius: 0,
+            attack_radius: 0,
+            can_control_squares: false,
+            limit_promote_checkmate_to_original: false,
+            limit_promote_capture_to_original: false,
         }
     }
 }
@@ -402,6 +472,12 @@ pub enum EndReason {
     /// Simul-turns: same-square cancellation count reached the configured
     /// `simul_turns_draw_after_cancellations` threshold.
     CancellationDraw,
+    /// `points_to_win`: a player accumulated enough points.
+    PointsWin,
+    /// Points draw: equal points at draw turn or consecutive equal turns.
+    PointsDraw,
+    /// A burn DoT effect killed a piece that triggered a win condition.
+    BurnKill,
 }
 
 /// One progress event written to `log.ndjson` (one per line).
