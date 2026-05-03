@@ -99,6 +99,21 @@ async function listJobs(limit = 50) {
       row.games_played = played;
     } catch (_) { /* non-fatal */ }
   }
+  // Annotate each row with whether a games.txt game-log file exists on disk.
+  // Used by the admin UI to grey out the Game Log / Board Replay buttons for
+  // jobs that were started with --no-game-log. In REMOTE_MODE we cannot check
+  // the trainer host's filesystem, so we leave has_game_log as false (safe —
+  // the buttons remain hidden and the user must enable game-log when starting).
+  if (!REMOTE_MODE) {
+    for (const row of rows) {
+      const gamesLogPath = path.join(jobsDirFor(row.game_type_id, row.id), 'games.txt');
+      row.has_game_log = fs.existsSync(gamesLogPath);
+    }
+  } else {
+    for (const row of rows) {
+      row.has_game_log = false;
+    }
+  }
   return rows;
 }
 

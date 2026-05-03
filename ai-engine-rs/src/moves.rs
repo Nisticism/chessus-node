@@ -240,12 +240,26 @@ fn apply_range_bonus_to_template(tpl: &PieceTemplate, bonus: i32) -> PieceTempla
 
 // ---------- board queries ----------
 
-fn piece_at<'a>(board: &'a Board, x: i32, y: i32) -> Option<&'a PieceOnBoard> {
-    board.pieces.iter().find(|p| p.x == x && p.y == y)
+/// Find the piece whose footprint covers square (x, y).
+/// Accounts for multi-tile pieces: a 2×2 piece at anchor (3,3) matches
+/// queries at (3,3), (4,3), (3,4), and (4,4).
+fn piece_occupying<'a>(board: &'a Board, rules: &Rules, x: i32, y: i32) -> Option<&'a PieceOnBoard> {
+    board.pieces.iter().find(|p| {
+        let (pw, ph) = rules.piece(p.piece_id)
+            .map(|t| (t.piece_width.max(1), t.piece_height.max(1)))
+            .unwrap_or((1, 1));
+        x >= p.x && x < p.x + pw && y >= p.y && y < p.y + ph
+    })
 }
 
-fn piece_at_excluding<'a>(board: &'a Board, x: i32, y: i32, exclude_id: u32) -> Option<&'a PieceOnBoard> {
-    board.pieces.iter().find(|p| p.x == x && p.y == y && p.id != exclude_id)
+fn piece_occupying_excluding<'a>(board: &'a Board, rules: &Rules, x: i32, y: i32, exclude_id: u32) -> Option<&'a PieceOnBoard> {
+    board.pieces.iter().find(|p| {
+        if p.id == exclude_id { return false; }
+        let (pw, ph) = rules.piece(p.piece_id)
+            .map(|t| (t.piece_width.max(1), t.piece_height.max(1)))
+            .unwrap_or((1, 1));
+        x >= p.x && x < p.x + pw && y >= p.y && y < p.y + ph
+    })
 }
 
 fn cannot_be_captured(rules: &Rules, target: &PieceOnBoard) -> bool {
@@ -264,6 +278,7 @@ fn can_hop_over(
 
 fn is_path_clear(
     board: &Board,
+    rules: &Rules,
     mover: &PieceOnBoard,
     tpl: &PieceTemplate,
     to_x: i32, to_y: i32,
@@ -279,7 +294,7 @@ fn is_path_clear(
             let mut x = mover.x + sdx + step_x;
             let mut y = mover.y + sdy + step_y;
             while x != to_x + sdx || y != to_y + sdy {
-                if let Some(blocker) = piece_at_excluding(board, x, y, mover.id) {
+                if let Some(blocker) = piece_occupying_excluding(board, rules, x, y, mover.id) {
                     if !allow_hop || !can_hop_over(blocker, mover.player, tpl) {
                         return false;
                     }
@@ -307,7 +322,7 @@ fn is_destination_clear(
     let ph = tpl.piece_height.max(1);
     for sdy in 0..ph {
         for sdx in 0..pw {
-            if let Some(o) = piece_at_excluding(board, to_x + sdx, to_y + sdy, mover.id) {
+            if let Some(o) = piece_occupying_excluding(board, rules, to_x + sdx, to_y + sdy, mover.id) {
                 if o.player == mover.player { return false; }
                 if cannot_be_captured(rules, o) { return false; }
             }
@@ -370,8 +385,8 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             has_trample: tpl.trample,
             trample_radius: tpl.trample_radius,
             area_radius: tpl.attack_radius,
-            burn_damage: if capture.is_some() { tpl.burn_damage } else { 0 },
-            burn_duration: if capture.is_some() { tpl.burn_duration } else { 0 },
+            burn_damage: tpl.burn_damage,
+            burn_duration: tpl.burn_duration,
         });
     };
 
@@ -416,9 +431,9 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             let tx = mover.x + dx * dist;
             let ty = mover.y + dy * dist;
             if !in_bounds(tx, ty) { break; }
-            if !is_path_clear(board, mover, &tpl, tx, ty, dir_hop_allowed) { break; }
+            if !is_path_clear(board, rules, mover, &tpl, tx, ty, dir_hop_allowed) { break; }
 
-            if let Some(target) = piece_at(board, tx, ty) {
+            if let Some(target) = piece_occupying(board, rules, tx, ty) {
                 let is_landing = if exact_flag {
                     if repeating { exact_dist != 0 && dist % exact_dist == 0 }
                     else { dist == exact_dist }
@@ -545,8 +560,8 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             let tx = mover.x + dx;
             let ty = mover.y + dy;
             if !in_bounds(tx, ty) { continue; }
-            if !ratio_path_ok(board, mover, &tpl, dx, dy, tx, ty, no_hop) { continue; }
-            if let Some(target) = piece_at(board, tx, ty) {
+            if !ratio_path_ok(board, rules, mover, &tpl, dx, dy, tx, ty, no_hop) { continue; }
+            if let Some(target) = piece_occupying(board, rules, tx, ty) {
                 if !cannot_be_captured(rules, target) {
                     if target.player != mover.player && tpl.can_capture_enemy_on_move {
                         push(&mut out, tx, ty, Some(target.id));
@@ -575,7 +590,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                         for j in 1..k {
                             let ix = mover.x + dx * j;
                             let iy = mover.y + dy * j;
-                            if let Some(b) = piece_at_excluding(board, ix, iy, mover.id) {
+                            if let Some(b) = piece_occupying_excluding(board, rules, ix, iy, mover.id) {
                                 let _ = b;
                                 intermediates_clear = false;
                                 break;
@@ -583,7 +598,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                         }
                         if !intermediates_clear { break; }
                     }
-                    if let Some(target) = piece_at(board, tx, ty) {
+                    if let Some(target) = piece_occupying(board, rules, tx, ty) {
                         if !cannot_be_captured(rules, target) {
                             if target.player != mover.player && tpl.can_capture_enemy_on_move {
                                 push(&mut out, tx, ty, Some(target.id));
@@ -636,7 +651,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                 let scan_last = if close_range { target_x } else { partner.x - side };
                 let mut x = mover.x + side;
                 loop {
-                    if let Some(occ) = piece_at(board, x, mover.y) {
+                    if let Some(occ) = piece_occupying(board, rules, x, mover.y) {
                         if occ.id != partner.id {
                             path_clear = false;
                             break;
@@ -653,7 +668,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                 let end = mover.x + side * castle_dist;
                 let step = side;
                 loop {
-                    if square_attacked_by(board, rules, x, mover.y, mover.player) {
+                    if square_attacked_by(board, rules, x, mover.y, mover.player, mover.current_hp) {
                         path_clear = false; break;
                     }
                     if x == end { break; }
@@ -721,7 +736,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                 if !in_bounds(nx, ny) { continue; }
                 if visited.contains_key(&(nx, ny)) { continue; }
                 if (nx, ny) == (mover.x, mover.y) { continue; }
-                let occupant = piece_at_excluding(board, nx, ny, mover.id);
+                let occupant = piece_occupying_excluding(board, rules, nx, ny, mover.id);
                 match occupant {
                     None => {
                         // Empty square reachable as a move.
@@ -777,7 +792,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                 if !in_bounds(nx, ny) { continue; }
                 if visited.contains_key(&(nx, ny)) { continue; }
                 if (nx, ny) == (mover.x, mover.y) { continue; }
-                if let Some(target) = piece_at_excluding(board, nx, ny, mover.id) {
+                if let Some(target) = piece_occupying_excluding(board, rules, nx, ny, mover.id) {
                     if target.player != mover.player
                         && !cannot_be_captured(rules, target)
                     {
@@ -804,7 +819,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                     let ty = mover.y + oy;
                     if !in_bounds(tx, ty) { continue; }
                     if out.iter().any(|m| m.to.x == tx && m.to.y == ty) { continue; }
-                    if let Some(target) = piece_at(board, tx, ty) {
+                    if let Some(target) = piece_occupying(board, rules, tx, ty) {
                         if !cannot_be_captured(rules, target) {
                             if target.player != mover.player && tpl.can_capture_enemy_on_move {
                                 push(&mut out, tx, ty, Some(target.id));
@@ -832,7 +847,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                     let ty = mover.y + oy;
                     if !in_bounds(tx, ty) { continue; }
                     if out.iter().any(|m| m.to.x == tx && m.to.y == ty) { continue; }
-                    if let Some(target) = piece_at(board, tx, ty) {
+                    if let Some(target) = piece_occupying(board, rules, tx, ty) {
                         if !cannot_be_captured(rules, target)
                             && target.player != mover.player {
                             push(&mut out, tx, ty, Some(target.id));
@@ -1104,6 +1119,7 @@ fn promotion_count_exceeds_original(
 }
 
 fn ratio_path_ok(    board: &Board,
+    rules: &Rules,
     mover: &PieceOnBoard,
     tpl: &PieceTemplate,
     dx: i32, dy: i32,
@@ -1120,7 +1136,7 @@ fn ratio_path_ok(    board: &Board,
     let tertiary_dir = if primary_is_x { dy.signum() } else { dx.signum() };
 
     let blocked = |x: i32, y: i32| -> bool {
-        if let Some(b) = piece_at_excluding(board, x, y, mover.id) {
+        if let Some(b) = piece_occupying_excluding(board, rules, x, y, mover.id) {
             if no_hop_ability { return true; }
             return !can_hop_over(b, mover.player, tpl);
         }
@@ -1167,12 +1183,15 @@ fn ratio_path_ok(    board: &Board,
 /// we temporarily skip the moving piece's `can_castle` flag inside the
 /// recursive call by inspecting moves only â€” castling moves never threaten
 /// arbitrary squares anyway, so this is safe.
-fn square_attacked_by(board: &Board, rules: &Rules, x: i32, y: i32, our_player: i32) -> bool {
+fn square_attacked_by(board: &Board, rules: &Rules, x: i32, y: i32, our_player: i32, target_hp: i32) -> bool {
     for enemy in board.pieces.iter().filter(|p| p.player != our_player) {
         // Skip the king-style enemy's own castling logic to avoid recursion.
         let enemy_clone = enemy.clone();
         let enemy_moves = pseudo_moves_no_castle(board, rules, &enemy_clone);
-        if enemy_moves.iter().any(|m| m.to.x == x && m.to.y == y) {
+        if enemy_moves.iter().any(|m| {
+            m.to.x == x && m.to.y == y
+            && (m.hp_damage == 0 || target_hp <= m.hp_damage)
+        }) {
             return true;
         }
     }
@@ -1231,13 +1250,46 @@ fn has_royal(board: &Board, rules: &Rules, player: i32) -> bool {
     board.pieces.iter().any(|p| p.player == player && is_royal_piece(rules, p.piece_id))
 }
 
-/// True if any of our royal pieces are currently under attack.
+/// True if the side `player` is in check.
+///
+/// Standard mode (`mate_condition_requires_all == false`): returns true as
+/// soon as **any** royal piece is under lethal attack — the traditional
+/// single-king rule.
+///
+/// Requires-all mode (`mate_condition_requires_all == true`): returns true
+/// only when **every** royal piece on this side is simultaneously under lethal
+/// attack. Used for multi-king variants where the loss condition is "all your
+/// royals are threatened at once". Mirrors `checkForCheck` in game-socket.js.
 pub fn in_check(board: &Board, rules: &Rules, player: i32) -> bool {
-    for p in board.pieces.iter().filter(|p| p.player == player) {
-        if !is_royal_piece(rules, p.piece_id) { continue; }
-        if square_attacked_by(board, rules, p.x, p.y, player) { return true; }
+    let requires_all = rules.game.mate_condition_requires_all;
+
+    let royals: Vec<&PieceOnBoard> = board.pieces.iter()
+        .filter(|p| p.player == player && is_royal_piece(rules, p.piece_id))
+        .collect();
+
+    if royals.is_empty() { return false; }
+
+    for p in &royals {
+        let (pw, ph) = rules.piece(p.piece_id)
+            .map(|t| (t.piece_width.max(1), t.piece_height.max(1)))
+            .unwrap_or((1, 1));
+        let piece_attacked = (0..ph).any(|sdy| {
+            (0..pw).any(|sdx| {
+                square_attacked_by(board, rules, p.x + sdx, p.y + sdy, player, p.current_hp)
+            })
+        });
+        if requires_all {
+            // Every royal must be attacked — short-circuit if any is safe.
+            if !piece_attacked { return false; }
+        } else {
+            // Any royal attacked is enough.
+            if piece_attacked { return true; }
+        }
     }
-    false
+
+    // In requires_all mode: if we get here, all royals were attacked.
+    // In standard mode: if we get here, no royal was attacked.
+    requires_all
 }
 
 /// Pseudo-legal moves for the side to move.

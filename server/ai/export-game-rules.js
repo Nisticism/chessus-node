@@ -311,6 +311,7 @@ async function exportGameRules(gameTypeId) {
       simul_turns_simultaneous_capture_draw: g.simul_turns_simultaneous_capture_draw == null ? true : toBool(g.simul_turns_simultaneous_capture_draw),
       simul_turns_simultaneous_checkmate_draw: g.simul_turns_simultaneous_checkmate_draw == null ? true : toBool(g.simul_turns_simultaneous_checkmate_draw),
       mate_condition: toBool(g.mate_condition),
+      mate_condition_requires_all: toBool(g.mate_condition_requires_all),
       mate_piece: g.mate_piece == null ? null : intOr(g.mate_piece, null),
       capture_condition: toBool(g.capture_condition),
       capture_piece: g.capture_piece == null ? null : intOr(g.capture_piece, null),
@@ -354,6 +355,12 @@ async function exportGameRules(gameTypeId) {
       promotion_squares_string: g.promotion_squares_string || null,
       special_squares_string: g.special_squares_string || null,
       control_squares_string: g.control_squares_string || null,
+      global_hp_regen: (() => {
+        try {
+          const ogd = g.other_game_data ? JSON.parse(g.other_game_data) : {};
+          return intOr(ogd.global_hp_regen, 0);
+        } catch { return 0; }
+      })(),
     },
     pieces: pieces.map((p) => ({
       id: p.id,

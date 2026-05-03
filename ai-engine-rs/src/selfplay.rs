@@ -435,7 +435,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
 
             // squares_condition: update holding counter and check if a player
             // has held enough control squares for the required half-turns.
-            if rules.game.squares_condition && !rules.control_squares.is_empty() {
+            if !rules.control_squares.is_empty() {
                 update_control_tracking(&mut board, &rules);
                 if let Some(winner) = check_squares_winner(&board, &rules) {
                     break (GameResult::Win(winner), crate::protocol::EndReason::SquaresCondition);

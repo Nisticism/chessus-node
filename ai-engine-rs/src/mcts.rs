@@ -320,7 +320,7 @@ pub fn rollout_with_reason(
             }
         }
         // squares_condition: update consecutive holding counter; check for winner.
-        if rules.game.squares_condition && !rules.control_squares.is_empty() {
+        if !rules.control_squares.is_empty() {
             update_control_tracking(state, rules);
             if let Some(winner) = check_squares_winner(state, rules) {
                 return (GameResult::Win(winner), EndReason::SquaresCondition);
@@ -448,7 +448,7 @@ pub fn rollout_with_reason_aggressive(
             }
         }
         // squares_condition: update consecutive holding counter; check for winner.
-        if rules.game.squares_condition && !rules.control_squares.is_empty() {
+        if !rules.control_squares.is_empty() {
             update_control_tracking(state, rules);
             if let Some(winner) = check_squares_winner(state, rules) {
                 return (GameResult::Win(winner), EndReason::SquaresCondition);
@@ -506,7 +506,7 @@ pub fn update_control_tracking(board: &mut Board, rules: &Rules) {
 /// Returns `Some(winner_player)` if `squares_condition` is now satisfied for
 /// any player, `None` otherwise.
 pub fn check_squares_winner(board: &Board, rules: &Rules) -> Option<i32> {
-    if !rules.game.squares_condition || rules.control_squares.is_empty() {
+    if rules.control_squares.is_empty() {
         return None;
     }
     for player_idx in 0..2usize {
@@ -577,7 +577,7 @@ pub fn pick_rollout_move<'a>(
     }
 
     // Tier 2: Control squares.
-    if rules.game.squares_condition && !rules.control_squares.is_empty() {
+    if !rules.control_squares.is_empty() {
         let ctrl: Vec<&Move> = moves
             .iter()
             .filter(|m| {

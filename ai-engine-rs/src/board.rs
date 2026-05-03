@@ -30,6 +30,10 @@ pub struct PieceOnBoard {
     /// Turns of burn remaining (decremented each turn the burn fires).
     #[serde(default)]
     pub burn_active_turns: i32,
+    /// Player who applied the burn (1 or 2). Used to award capture_points when
+    /// a burn-killed piece is removed in process_turn_start. Default 0 = unknown.
+    #[serde(default)]
+    pub burn_attacker_player: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,6 +161,7 @@ impl Board {
                 current_hp: hp,
                 burn_active_damage: 0,
                 burn_active_turns: 0,
+                burn_attacker_player: 0,
             });
         }
         b
@@ -198,16 +203,23 @@ impl Board {
         for id in &killed {
             if let Some(idx) = self.pieces.iter().position(|p| p.id == *id) {
                 let dead = self.pieces.remove(idx);
-                // Burn kills: no explicit attacker for points — skip gain/loss.
-                // (The initial hit already ran capture_points at time of attack.)
-                let _ = dead;
+                // Award capture points to the burn attacker if stored.
+                if dead.burn_attacker_player > 0 {
+                    if let Some(t) = rules.piece(dead.piece_id) {
+                        let gainer = (dead.burn_attacker_player - 1) as usize;
+                        let loser = (dead.player - 1) as usize;
+                        if gainer < 2 { self.points[gainer] = self.points[gainer].saturating_add(t.capture_points_gain); }
+                        if loser < 2 { self.points[loser] = self.points[loser].saturating_sub(t.capture_points_loss).max(0); }
+                    }
+                }
                 self.plies_since_capture = 0;
             }
         }
 
         // HP regen: restore hp_regen HP to surviving pieces of `player`, capped at max.
         for p in self.pieces.iter_mut().filter(|p| p.player == player) {
-            let regen = rules.piece(p.piece_id).map(|t| t.hp_regen).unwrap_or(0);
+            let per_piece_regen = rules.piece(p.piece_id).map(|t| t.hp_regen).unwrap_or(0);
+            let regen = if per_piece_regen > 0 { per_piece_regen } else { rules.game.global_hp_regen };
             if regen > 0 {
                 let max_hp = rules.piece(p.piece_id).map(|t| t.hit_points.max(1)).unwrap_or(1);
                 p.current_hp = (p.current_hp + regen).min(max_hp);
@@ -271,6 +283,7 @@ impl Board {
                     if mv.burn_damage > 0 && mv.burn_duration > 0 {
                         self.pieces[idx].burn_active_damage = mv.burn_damage;
                         self.pieces[idx].burn_active_turns = mv.burn_duration;
+                        self.pieces[idx].burn_attacker_player = attacker_player;
                     }
                     // Do not advance the attacker.
                     self.turn = if self.turn == 1 { 2 } else { 1 };
@@ -346,7 +359,8 @@ impl Board {
                     let victim_ids: Vec<u32> = self.pieces.iter()
                         .filter(|p| p.x == ax && p.y == ay
                             && p.id != mv.piece_id
-                            && !already_killed.contains(&p.id))
+                            && !already_killed.contains(&p.id)
+                            && !rules.piece(p.piece_id).map(|t| t.cannot_be_captured).unwrap_or(false))
                         .map(|p| p.id)
                         .collect();
                     for vid in victim_ids {
@@ -361,6 +375,7 @@ impl Board {
                                 if mv.burn_damage > 0 && mv.burn_duration > 0 {
                                     self.pieces[idx].burn_active_damage = mv.burn_damage;
                                     self.pieces[idx].burn_active_turns = mv.burn_duration;
+                                    self.pieces[idx].burn_attacker_player = attacker_player;
                                 }
                             }
                         }
@@ -388,6 +403,7 @@ impl Board {
                     && !already_killed.contains(&p.id)
                     && (p.x - mv.to.x).abs() <= mv.area_radius
                     && (p.y - mv.to.y).abs() <= mv.area_radius
+                    && !rules.piece(p.piece_id).map(|t| t.cannot_be_captured).unwrap_or(false)
                 })
                 .map(|p| p.id)
                 .collect();
@@ -403,6 +419,7 @@ impl Board {
                         if mv.burn_damage > 0 && mv.burn_duration > 0 {
                             self.pieces[idx].burn_active_damage = mv.burn_damage;
                             self.pieces[idx].burn_active_turns = mv.burn_duration;
+                            self.pieces[idx].burn_attacker_player = attacker_player;
                         }
                     }
                 }

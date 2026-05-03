@@ -39,6 +39,10 @@ pub struct GameType {
 
     // Win conditions
     pub mate_condition: bool,
+    /// When true, a player is only in check when ALL their checkmate-flagged
+    /// pieces are simultaneously under lethal attack. Mirrors
+    /// `mate_condition_requires_all` in server/game-socket.js.
+    pub mate_condition_requires_all: bool,
     pub mate_piece: Option<i64>,
     pub capture_condition: bool,
     pub capture_piece: Option<i64>,
@@ -105,6 +109,10 @@ pub struct GameType {
     /// 'allow' lets the place override the move. The trainer never
     /// generates place actions today so this rarely matters.
     pub simul_turns_place_conflict: Option<String>,
+    /// Post-promotion free-move policy in simul mode: 'disable' (default) /
+    /// 'allow' / 'restage'. Stored here to avoid silent data loss; simul.rs
+    /// does not yet model promotions so this is unused until that lands.
+    pub simul_turns_free_move_after_capture: Option<String>,
 
     // Special-square JSON blobs (parsed lazily in rules.rs)
     pub range_squares_string: Option<String>,
@@ -118,6 +126,10 @@ pub struct GameType {
     pub starting_points_p2: i32,
     pub draw_equal_points_at_turn: Option<i32>,
     pub draw_equal_points_consecutive: Option<i32>,
+    /// Game-wide HP regen applied per turn to every piece whose per-piece
+    /// `hp_regen` is 0. Mirrors `other_game_data.global_hp_regen` parsed
+    /// in server/game-socket.js.
+    pub global_hp_regen: i32,
 }
 
 /// Piece template (one row of the `pieces` table).

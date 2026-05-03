@@ -695,11 +695,17 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                     {j.status !== "running" && (j.games_played || 0) > 0 && (
                       <button
                         type="button"
-                        title="Download a human-readable transcript of every move the AI played in this job (first 200 games), in chess notation. Useful for verifying that game rules are applied correctly during training."
+                        disabled={!j.has_game_log}
+                        title={
+                          j.has_game_log
+                            ? "Download a human-readable transcript of every move the AI played in this job (first 200 games), in chess notation. Useful for verifying that game rules are applied correctly during training."
+                            : "No game log available. Start a new job with 'Generate game log' enabled to create one."
+                        }
                         className={`${styles.btn} ${styles.btnNeutral}`}
+                        style={j.has_game_log ? undefined : { opacity: 0.45, cursor: "not-allowed" }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleGameLog(j.id);
+                          if (j.has_game_log) handleGameLog(j.id);
                         }}
                       >
                         📋 Game Log
@@ -708,11 +714,17 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                     {j.status !== "running" && (j.games_played || 0) > 0 && (
                       <button
                         type="button"
-                        title="Open an interactive board viewer to step through any game in this job's game log. Useful for verifying that pieces move correctly during training."
+                        disabled={!j.has_game_log}
+                        title={
+                          j.has_game_log
+                            ? "Open an interactive board viewer to step through any game in this job's game log. Useful for verifying that pieces move correctly during training."
+                            : "No game log available. Start a new job with 'Generate game log' enabled to create one."
+                        }
                         className={`${styles.btn} ${styles.btnNeutral}`}
+                        style={j.has_game_log ? undefined : { opacity: 0.45, cursor: "not-allowed" }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setReplayJobId(j.id);
+                          if (j.has_game_log) setReplayJobId(j.id);
                         }}
                       >
                         ♟ Board Replay

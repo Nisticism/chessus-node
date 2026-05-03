@@ -5,7 +5,7 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 2, 2026",
-    title: "AI engine: HP/AD, burn, trample, AoE, points, control squares, promotion limits, die-on-capture",
+    title: "AI engine: HP/AD, burn, trample, AoE, points, control squares, promotion limits, die-on-capture, multi-tile AABB, cannot-be-captured, burn-kill points, HP-aware check, mate-requires-all, global HP regen; game replay 404 fix + log-missing button greying",
     items: [
       "AI trainer now fully supports HP and Attack Damage — pieces with more than 1 HP can survive hits, multi-HP royals are correctly handled, and the search no longer shortcuts a game as won when an attack only deals partial damage.",
       "Burn damage-over-time is now processed by the AI trainer each turn start, including win-condition checks for pieces killed by burn.",
@@ -14,6 +14,15 @@ const changelogData = [
       "Control squares that require a specific piece type (requireSpecificPiece flag) are now respected in the AI trainer's control tracking.",
       "Promotion limits (limit to original count of checkmate/capture pieces) are now enforced during AI training self-play.",
       "Die-on-capture (kamikaze pieces) is now handled correctly during AI training.",
+      "AI trainer move generation now uses full AABB (axis-aligned bounding box) footprint lookups for multi-tile pieces — a multi-tile piece occupying several squares is now correctly detected as blocking or as a capture target when any of its squares overlap, not just its anchor square.",
+      "cannot_be_captured pieces are now correctly excluded from trample splash and AoE (area-of-effect) damage during AI training self-play.",
+      "Burn-kill points: when a burn DoT effect kills a piece, the player who applied the burn now correctly receives the capture points. Previously burn kills awarded points to no one.",
+      "HP-aware check detection: the AI engine now considers a piece's current HP and its attacker's AD when determining whether a royal is in check. A piece whose AD is too low to kill the royal (even ignoring HP regen) no longer counts as a check threat, preventing spurious 'in check' false positives.",
+      "mate_condition_requires_all support: when a game uses the 'all royals must be threatened simultaneously' rule for checkmate, the AI engine now correctly enforces this during both legal-move filtering and self-play.",
+      "global_hp_regen support: the AI trainer now applies the game-level HP regen fallback when a piece has no per-piece regen configured.",
+      "Control square tracking in the AI engine no longer requires the squares_condition flag to be set in the database — control squares are now tracked whenever the game has any control squares configured, matching live-game behaviour.",
+      "Admin portal — AI Training: fixed a 404 error when opening the Board Replay viewer for a job that ran without a game log. The modal now shows a clear error message instead of a browser console error.",
+      "Admin portal — AI Training: the 'Game Log' and 'Board Replay' buttons are now greyed out and disabled for jobs that were started without 'Generate game log' enabled. Hovering them shows a tooltip explaining that no log is available and how to create one.",
     ],
   },
   {
