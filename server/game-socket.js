@@ -2681,7 +2681,7 @@ function initializeSocket(server) {
             return {
               ...piece,
               id: `${piece.piece_id}_${piece.y}_${piece.x}`, // Unique ID for this piece instance
-              player_id: piece.player_number || 1, // Ensure player_id is set from junction table
+              player_id: piece.player_number ?? 1, // Ensure player_id is set from junction table
               // Store initial position for promotion square checking
               initial_x: piece.x,
               initial_y: piece.y,
@@ -3271,7 +3271,7 @@ function initializeSocket(server) {
         let piecesArray = junctionPieces.map(piece => ({
           ...piece,
           id: `${piece.piece_id}_${piece.y}_${piece.x}`,
-          player_id: piece.player_number || 1, // Ensure player_id is set from junction table
+          player_id: piece.player_number ?? 1, // Ensure player_id is set from junction table
           initial_x: piece.x,
           initial_y: piece.y,
           ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
@@ -7412,7 +7412,7 @@ function initializeSocket(server) {
               pieces = junctionPieces.map(piece => ({
                 ...piece,
                 id: `${piece.piece_id}_${piece.y}_${piece.x}`,
-                player_id: piece.player_number || 1, // Ensure player_id is set from junction table
+                player_id: piece.player_number ?? 1, // Ensure player_id is set from junction table
                 ends_game_on_checkmate: !!piece.ends_game_on_checkmate,
                 ends_game_on_capture: !!piece.ends_game_on_capture,
                 // Control squares flag from junction table

@@ -5384,7 +5384,8 @@ app.post("/api/forums/:id/toggle-like", authenticateToken, async (req, res) => {
 });
 
 
-// ------------------- Comment Emotes -----------------------const VALID_EMOTE_TYPES = new Set(['thumbsup', 'thumbsdown', 'heart', 'question', 'laugh', 'sad', 'exclaim']);
+// ------------------- Comment Emotes -----------------------
+const VALID_EMOTE_TYPES = new Set(['thumbsup', 'thumbsdown', 'heart', 'question', 'laugh', 'sad', 'exclaim']);
 
 app.post("/api/comments/:id/emotes", authenticateToken, async (req, res) => {
   try {

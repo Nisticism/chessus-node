@@ -110,14 +110,12 @@ const GameForums = () => {
                   className={styles["forum-row"]}
                   onClick={(e) => handleRowClick(forum.id, e)}
                 >
-                  <td className={`${styles["subject-cell"]} ${styles["clickable-cell"]}`}
-                    onClick={() => navigate(`/forums/${forum.id}`)}>
+                  <td className={`${styles["subject-cell"]} ${styles["clickable-cell"]}`}>
                     <div className={styles["forums-link"]}>
                       <strong><div className={styles["forum-title"]}>{forum.title}</div></strong>
                     </div>
                   </td>
-                  <td className={styles["clickable-cell"]}
-                    onClick={() => navigate(`/forums/${forum.id}`)}>
+                  <td className={styles["clickable-cell"]}>
                     {forum.game_type_id && forum.game_name ? (
                       <div className={styles["game-link"]}>
                         <Link to={`/games/${forum.game_type_id}`} onClick={(e) => e.stopPropagation()}>
@@ -138,8 +136,7 @@ const GameForums = () => {
                       <div className={styles["forums-username"]}>{forum.author_name || 'User Deleted'}</div>
                     </div>
                   </td>
-                  <td className={styles["clickable-cell"]}
-                    onClick={() => navigate(`/forums/${forum.id}`)}>
+                  <td className={styles["clickable-cell"]}>
                     <div className={styles["forums-comment-likes"]}>{forum.comment_count}</div>
                   </td>
                   <td
@@ -151,17 +148,14 @@ const GameForums = () => {
                     <span className={styles["like-icon"]}>{likedForums[forum.id] ? '♥' : '♡'}</span>
                     <span className={styles["like-count"]}>{likeCounts[forum.id] ?? forum.like_count ?? 0}</span>
                   </td>
-                  <td className={`${styles["forums-link-content"]} ${styles["clickable-cell"]}`}
-                    onClick={() => navigate(`/forums/${forum.id}`)}>
+                  <td className={`${styles["forums-link-content"]} ${styles["clickable-cell"]}`}>
                     <div className={styles["forum-content"]}>{forum.content}</div>
                   </td>
                   <td className={`${styles["date-td"]} ${styles["clickable-cell"]}`}>
                     <div className={styles["forums-date"]}>
                       {forum.last_comment_at ? (
                         <>
-                          <span onClick={() => navigate(`/forums/${forum.id}`)}>
-                            {formatDateLegacy(forum.last_comment_at)}
-                          </span>
+                          <span>{formatDateLegacy(forum.last_comment_at)}</span>
                           {forum.last_comment_author_name && (
                             <div style={{ fontSize: '0.8em', opacity: 0.8 }}>
                               by{' '}
@@ -175,9 +169,7 @@ const GameForums = () => {
                           )}
                         </>
                       ) : (
-                        <span style={{ opacity: 0.6 }} onClick={() => navigate(`/forums/${forum.id}`)}>
-                          No comments yet
-                        </span>
+                        <span style={{ opacity: 0.6 }}>No comments yet</span>
                       )}
                     </div>
                   </td>

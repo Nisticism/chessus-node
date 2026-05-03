@@ -40,7 +40,7 @@ const PieceSelector = ({
   
   // Initialize selectedPlayerId with last used value from localStorage, or currentPlacement, or default to 1
   const getInitialPlayerId = () => {
-    if (currentPlacement?.player_id) {
+    if (currentPlacement?.player_id != null) {
       return currentPlacement.player_id;
     }
     const lastUsedPlayer = localStorage.getItem('lastSelectedPlayerId');
@@ -132,7 +132,7 @@ const PieceSelector = ({
   
   // Update selectedPlayerId when currentPlacement changes (e.g., when opening modal for different piece)
   useEffect(() => {
-    if (currentPlacement?.player_id) {
+    if (currentPlacement?.player_id != null) {
       setSelectedPlayerId(currentPlacement.player_id);
     }
   }, [currentPlacement?.player_id]);

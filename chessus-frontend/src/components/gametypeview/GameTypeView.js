@@ -637,8 +637,11 @@ const GameTypeView = () => {
   };
 
   const getPlacementImageUrl = (placement) => {
-    // Support player_id, player_number, and player interchangeably
-    const playerId = placement.player_id || placement.player_number || placement.player || 1;
+    // Support player_id, player_number, and player interchangeably.
+    // Neutral pieces have player_id=0; use image_index for them instead of playerId-1.
+    const rawPlayerId = placement.player_id ?? placement.player_number ?? placement.player;
+    const isNeutralPlacement = placement.is_neutral || rawPlayerId === 0;
+    const playerId = (rawPlayerId != null && rawPlayerId !== 0) ? rawPlayerId : (isNeutralPlacement ? 0 : 1);
     
     // First try to use the saved image_url from placement (player-specific)
     if (placement.image_url) {
@@ -650,7 +653,12 @@ const GameTypeView = () => {
       try {
         const images = JSON.parse(placement.image_location);
         if (Array.isArray(images) && images.length > 0) {
-          const imageIndex = Math.min(playerId - 1, images.length - 1);
+          // For neutrals use neutral_image_index (or image_index) falling back to 0.
+          // For regular players use playerId-1 as the index.
+          const rawIdx = isNeutralPlacement
+            ? (placement.neutral_image_index ?? placement.image_index ?? 0)
+            : Math.min(playerId - 1, images.length - 1);
+          const imageIndex = Math.min(Math.max(0, rawIdx), images.length - 1);
           const imagePath = images[imageIndex];
           return imagePath.startsWith('http') ? imagePath : `${ASSET_URL}${imagePath}`;
         }
@@ -666,7 +674,10 @@ const GameTypeView = () => {
         try {
           const images = JSON.parse(piece.image_location);
           if (Array.isArray(images) && images.length > 0) {
-            const imageIndex = Math.min(playerId - 1, images.length - 1);
+            const rawIdx = isNeutralPlacement
+              ? (placement.neutral_image_index ?? placement.image_index ?? 0)
+              : Math.min(playerId - 1, images.length - 1);
+            const imageIndex = Math.min(Math.max(0, rawIdx), images.length - 1);
             const imagePath = images[imageIndex];
             return imagePath.startsWith('http') ? imagePath : `${ASSET_URL}${imagePath}`;
           }
@@ -745,11 +756,19 @@ const GameTypeView = () => {
       }
     });
 
-    // Starting pieces
+    // Starting pieces — list regular players first, neutral last
     const startingPiecesContent = [];
     const uniquePieceLinks = new Map(); // Track unique pieces with their IDs
     
-    Object.entries(piecesByPlayer).forEach(([playerId, placements]) => {
+    const playerEntries = Object.entries(piecesByPlayer).sort(([a], [b]) => {
+      const na = Number(a); const nb = Number(b);
+      // Neutral (0) always last
+      if (na === 0) return 1;
+      if (nb === 0) return -1;
+      return na - nb;
+    });
+
+    playerEntries.forEach(([playerId, placements]) => {
       const pieceCounts = {};
       placements.forEach(p => {
         const name = p.piece_name || 'Unknown';

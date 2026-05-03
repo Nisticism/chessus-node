@@ -570,8 +570,14 @@ const getGameById = async (gameId) => {
     for (const piece of pieces) {
       const key = `${piece.y},${piece.x}`;
       
-      // Priority: 1) original pieces_string, 2) junction table player_number
-      let playerId = originalPiecePlayerMap[key] || piece.player_number || 1;
+      // Use is_neutral from junction table as the authoritative source.
+      // player_number=0 means neutral; || 1 would coerce 0→1, so we check is_neutral first.
+      const isNeutralPiece = Boolean(piece.is_neutral);
+      let playerId = isNeutralPiece ? 0 : (piece.player_number != null ? piece.player_number : 1);
+      // For non-neutral pieces, prefer the original pieces_string value if available
+      if (!isNeutralPiece && originalPiecePlayerMap[key] != null) {
+        playerId = originalPiecePlayerMap[key] || playerId;
+      }
       
       // Parse image_location and get the correct player image
       let imageUrl = null;
@@ -579,12 +585,12 @@ const getGameById = async (gameId) => {
         try {
           const images = JSON.parse(piece.image_location);
           if (Array.isArray(images) && images.length > 0) {
-            // Per-placement image_index override (NULL/invalid → fall back to player_id-1)
+            // Per-placement image_index override; for neutrals (playerId=0) fall back to index 0
             let imageIndex;
             if (piece.image_index != null && piece.image_index >= 0 && piece.image_index < images.length) {
               imageIndex = piece.image_index;
             } else {
-              imageIndex = Math.min((playerId || 1) - 1, images.length - 1);
+              imageIndex = isNeutralPiece ? 0 : Math.min((playerId || 1) - 1, images.length - 1);
             }
             const imagePath = images[imageIndex];
             if (imagePath) {
@@ -641,7 +647,10 @@ const getGameById = async (gameId) => {
         can_promote_to_checkmate: Boolean(piece.can_promote_to_checkmate),
         limit_promote_checkmate_to_original: Boolean(piece.limit_promote_checkmate_to_original),
         can_promote_to_capture: Boolean(piece.can_promote_to_capture),
-        limit_promote_capture_to_original: Boolean(piece.limit_promote_capture_to_original)
+        limit_promote_capture_to_original: Boolean(piece.limit_promote_capture_to_original),
+        // Neutral piece
+        is_neutral: isNeutralPiece,
+        neutral_image_index: isNeutralPiece ? ((piece.image_index != null && piece.image_index >= 0) ? piece.image_index : 0) : null
       };
 
       // For multi-tile pieces, create extension square markers
