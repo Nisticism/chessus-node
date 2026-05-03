@@ -276,26 +276,6 @@ const GameList = () => {
             </div>
 
             <div className={styles["game-meta"]}>
-              {game.creator_username && (
-                <div className={styles["meta-item"]}>
-                  <span className={styles["meta-label"]}>Creator:</span>
-                  {game.creator_username === 'Anonymous' ? (
-                    <span className={styles["creator-link"]}>Anonymous</span>
-                  ) : (
-                    <span 
-                      className={styles["creator-link"]}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        navigate(`/profile/${game.creator_username}`);
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      {game.creator_username}
-                    </span>
-                  )}
-                </div>
-              )}
               <div className={styles["meta-item"]}>
                 <span className={styles["meta-label"]}>Win Conditions:</span>
                 <span>{getWinCondition(game)}</span>

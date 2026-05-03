@@ -471,6 +471,9 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
 
       <div className={styles["image-upload-section"]}>
         <h3>Piece Images <InfoTooltip text="Upload images for each player. Player 1 (light) and Player 2 (dark) are required. You can add more variant images for additional players. PNG, JPG, or SVG formats up to 2MB. SVG is recommended for multi-tile pieces as it scales without distortion." /> <span className={styles["required"]}>*</span></h3>
+        <p className={styles["upload-community-notice"]}>
+          Uploaded images will be available under <strong>Community Images</strong> in the piece image library, and may be used by other players to create their own pieces. By uploading, you confirm that your image does not have a license that would prohibit this use.
+        </p>
         
         {brightnessWarning && (
           <div className={styles["brightness-warning"]}>

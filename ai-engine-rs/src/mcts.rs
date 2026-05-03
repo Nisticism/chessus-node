@@ -183,6 +183,10 @@ fn material_heuristic(state: &Board, rules: &Rules) -> GameResult {
     let mut p1_val: f64 = 0.0;
     let mut p2_val: f64 = 0.0;
     for p in &state.pieces {
+        // Skip neutral pieces — they belong to neither side and counting
+        // them in p2_val (the else branch) would make the AI want to capture
+        // neutral pieces rather than use them as mobile pieces.
+        if p.is_neutral { continue; }
         let v = rules.piece(p.piece_id).map(|t| {
             let base = t.piece_value as f64;
             // Treat key-piece targets as higher value so the search

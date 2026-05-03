@@ -8468,7 +8468,7 @@ async function getOngoingGames() {
                 GROUP_CONCAT(COALESCE(u.username, 'Guest') ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
                 GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
                 COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) as move_count,
-                MAX(COALESCE(u.show_computer_games_publicly, 0)) as host_show_bot_public
+                MAX(CASE WHEN JSON_EXTRACT(g.other_data, '$.isBotGame') = true THEN COALESCE(u.show_computer_games_publicly, 0) ELSE 0 END) as host_show_bot_public
          FROM games g
          JOIN game_types gt ON g.game_type_id = gt.id
          JOIN players p ON g.id = p.game_id
@@ -8479,7 +8479,7 @@ async function getOngoingGames() {
          HAVING (
            JSON_EXTRACT(g.other_data, '$.isBotGame') IS NULL
            OR JSON_EXTRACT(g.other_data, '$.isBotGame') = false
-           OR MAX(COALESCE(u.show_computer_games_publicly, 0)) = 1
+           OR MAX(CASE WHEN JSON_EXTRACT(g.other_data, '$.isBotGame') = true THEN COALESCE(u.show_computer_games_publicly, 0) ELSE 0 END) = 1
          )
          ORDER BY g.start_time DESC, g.created_at DESC`
       );
