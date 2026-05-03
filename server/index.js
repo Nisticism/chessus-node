@@ -7615,7 +7615,9 @@ app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin1, async
     }
 
     const [posRows] = await db_pool.query(
-      `SELECT gtp.x, gtp.y, gtp.player_number, p.id AS piece_id, p.piece_name
+      `SELECT gtp.x, gtp.y, gtp.player_number, p.id AS piece_id, p.piece_name,
+              COALESCE(p.piece_width,  1) AS piece_width,
+              COALESCE(p.piece_height, 1) AS piece_height
        FROM game_type_pieces gtp
        JOIN pieces p ON gtp.piece_id = p.id
        WHERE gtp.game_type_id = ?
@@ -7624,11 +7626,13 @@ app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin1, async
     );
 
     const startingPieces = posRows.map((row, i) => ({
-      instanceId: `sp_${i}`,
-      pieceName:  row.piece_name,
-      player:     row.player_number,
-      x:          row.x,
-      y:          row.y,
+      instanceId:  `sp_${i}`,
+      pieceName:   row.piece_name,
+      player:      row.player_number,
+      x:           row.x,
+      y:           row.y,
+      pieceWidth:  row.piece_width  || 1,
+      pieceHeight: row.piece_height || 1,
     }));
 
     // Get the game log
@@ -8287,7 +8291,7 @@ app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, 
       title: `AI analysis requested for "${gameType.game_name}"`,
       content: `${requester.username} requested AI analysis training for game #${gameTypeId} — "${gameType.game_name}".`,
       related_id: gameTypeId,
-      action_url: `/admin?tab=ai-analysis-requests&gameTypeId=${gameTypeId}`,
+      action_url: `/admin/dashboard?tab=ai-analysis-requests&gameTypeId=${gameTypeId}`,
     });
 
     // Real-time push if owner is online

@@ -4,6 +4,15 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 3, 2026",
+    title: "Notification routing fixes + board replay multi-tile capture fix",
+    items: [
+      "Fixed: clicking an AI analysis request notification now navigates to the correct admin page instead of showing a 404 Not Found error.",
+      "Fixed: clicking a new user sign-up notification now navigates to the correct player profile page instead of showing a 404 Not Found error.",
+      "Admin portal — AI Training board replay: multi-tile pieces that are captured on a non-anchor square are now correctly removed from the board. Previously the piece would remain on the board after being captured.",
+    ],
+  },
+  {
     date: "May 2, 2026",
     title: "AI engine: HP/AD, burn, trample, AoE, points, control squares, promotion limits, die-on-capture, multi-tile AABB, cannot-be-captured, burn-kill points, HP-aware check, mate-requires-all, global HP regen; game replay 404 fix + log-missing button greying",
     items: [

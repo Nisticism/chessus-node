@@ -203,10 +203,10 @@ function App() {
             <Route exact path="/match/:gameId" element={<MatchView />} />
             <Route exact path="/chess-original" element={<ChessBoard />} />
             <Route exact path="/account-deleted" element={<DeletedAccount />} />
-            <Route exact path="profile/edit" element={<EditAccount />}  />
-            <Route exact path="profile/id/:userId" element={<ProfileById />} />
-            <Route exact path="profile/:username" element={<PlayerPage />} />
-            <Route exact path="profile/:profileUsername/edit" element={<EditAccount />} />
+            <Route exact path="/profile/edit" element={<EditAccount />}  />
+            <Route exact path="/profile/id/:userId" element={<ProfileById />} />
+            <Route exact path="/profile/:username" element={<PlayerPage />} />
+            <Route exact path="/profile/:profileUsername/edit" element={<EditAccount />} />
             <Route exact path="/pieces" element={<Pieces />} />
             <Route exact path="/forums" element={<ForumsHub />} />
             <Route exact path="/forums/general" element={<Forums />} />

@@ -79,13 +79,22 @@ function applyMove(pieces, move) {
   // pass-through pieces; blindly filtering would erase those pieces from the
   // visual board even though the Rust engine leaves them alive.
   if (move.isCapture) {
+    // For multi-tile pieces the stored position is the anchor square.
+    // A capture is valid if the destination falls anywhere within the
+    // piece's bounding box [x, x+pw) × [y, y+ph).
+    const overlaps = (p, tx, ty) => {
+      const pw = p.pieceWidth  || 1;
+      const ph = p.pieceHeight || 1;
+      return tx >= p.x && tx < p.x + pw && ty >= p.y && ty < p.y + ph;
+    };
+
     const hadPieceAtDest = board.some(
-      (p) => p.instanceId !== movingPiece.instanceId && p.x === move.toX && p.y === move.toY,
+      (p) => p.instanceId !== movingPiece.instanceId && overlaps(p, move.toX, move.toY),
     );
     board = board.filter(
       (p) =>
         p.instanceId === movingPiece.instanceId ||
-        !(p.x === move.toX && p.y === move.toY),
+        !overlaps(p, move.toX, move.toY),
     );
     // En-passant: the captured pawn is NOT at the destination square —
     // it sits on the same rank as the mover (fromY) and the same file as
@@ -95,7 +104,7 @@ function applyMove(pieces, move) {
       board = board.filter(
         (p) =>
           p.instanceId === movingPiece.instanceId ||
-          !(p.x === move.toX && p.y === move.fromY),
+          !overlaps(p, move.toX, move.fromY),
       );
     }
   }
