@@ -909,34 +909,22 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   }, [gameData.board_width, gameData.board_height, impassableSquares]);
 
   const handleStartingModeToggle = (mode) => {
-    setAllowedStartingModes(prev => {
-      let newModes;
-      if (prev.includes(mode)) {
-        // Don't allow removing the last mode
-        if (prev.length === 1) return prev;
-        newModes = prev.filter(m => m !== mode);
-      } else {
-        newModes = [...prev, mode];
-      }
-      
-      // Store the allowed starting modes
-      const randomizedData = {
-        allowedModes: newModes
-      };
-      updateGameData({ randomized_starting_positions: JSON.stringify(randomizedData) });
+    // Compute new modes synchronously — don't nest setState calls inside an updater,
+    // which triggers state updates during rendering and throws in React 18 StrictMode.
+    if (allowedStartingModes.includes(mode) && allowedStartingModes.length === 1) return;
+    const newModes = allowedStartingModes.includes(mode)
+      ? allowedStartingModes.filter(m => m !== mode)
+      : [...allowedStartingModes, mode];
 
-      // If the default mode was just removed, fall back to the first remaining mode
-      setDefaultStartingMode(prev2 => {
-        if (!newModes.includes(prev2)) {
-          const fallback = newModes[0] || 'none';
-          updateGameData({ default_starting_mode: fallback });
-          return fallback;
-        }
-        return prev2;
-      });
-      
-      return newModes;
-    });
+    setAllowedStartingModes(newModes);
+    updateGameData({ randomized_starting_positions: JSON.stringify({ allowedModes: newModes }) });
+
+    // If the default mode was just removed, fall back to the first remaining mode
+    if (!newModes.includes(defaultStartingMode)) {
+      const fallback = newModes[0] || 'none';
+      setDefaultStartingMode(fallback);
+      updateGameData({ default_starting_mode: fallback });
+    }
   };
 
   const handleDefaultModeChange = (mode) => {

@@ -377,18 +377,24 @@ const Play = () => {
     return ['none'];
   }, [selectedGameType]);
 
+  // Derive the game type's default starting mode (stable memo so the effect below
+  // doesn't need selectedGameType directly in its dependency array).
+  const gameTypeDefaultMode = useMemo(
+    () => selectedGameType?.default_starting_mode || null,
+    [selectedGameType]
+  );
+
   // Reset starting mode when game type changes
   useEffect(() => {
     if (allowedStartingModes.length > 0) {
       // Prefer the game type's saved default mode if it's still in the allowed list
-      const savedDefault = selectedGameType?.default_starting_mode;
-      if (savedDefault && allowedStartingModes.includes(savedDefault)) {
-        setStartingMode(savedDefault);
+      if (gameTypeDefaultMode && allowedStartingModes.includes(gameTypeDefaultMode)) {
+        setStartingMode(gameTypeDefaultMode);
       } else {
         setStartingMode(allowedStartingModes[0]);
       }
     }
-  }, [allowedStartingModes, selectedGameType]);
+  }, [allowedStartingModes, gameTypeDefaultMode]);
 
   // Fetch open games when connected
   useEffect(() => {
