@@ -15,12 +15,12 @@
  *   DB_HOST=... DB_USER=... DB_PASSWORD=... DB_NAME=... \
  *   node server/ai/trainer-service.js
  *
- * Or place a .env file at server/ai/.env (see server/ai/.env.example) and
- * launch with:  node server/ai/trainer-service.js
+ * Or set the variables in the repo-root .env file (same one used by the main
+ * backend server) and launch with:  node server/ai/trainer-service.js
  *
  * (Add to PM2 / systemd alongside any frontend processes.)
  */
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '../..', '.env') });
 const express = require('express');
 const trainingManager = require('./training-manager');
 
