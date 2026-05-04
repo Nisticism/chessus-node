@@ -7868,13 +7868,20 @@ app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin1, async
 
 app.get('/api/admin/ai-training/jobs/:id/download', authenticateAdmin1, async (req, res) => {
   try {
-    if (trainingManager.REMOTE_MODE) {
-      return res.status(400).send({
-        message: 'Downloads are only available when the trainer runs on the same host as the backend (local dev). In remote mode, fetch the artifacts from the trainer service host directly.',
-      });
-    }
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).send({ message: 'Invalid job id' });
+
+    if (trainingManager.REMOTE_MODE) {
+      const trainerClient = require('./ai/trainer-client');
+      const result = await trainerClient.downloadJobZip(id);
+      const fname = result.filename
+        ? result.filename.match(/filename="?([^"]+)"?/)?.[1] || `ai-job-${id}.zip`
+        : `ai-job-${id}.zip`;
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+      res.setHeader('Content-Length', result.buffer.length);
+      return res.end(result.buffer);
+    }
     const job = await trainingManager.getJobStatus(id);
     if (!job || !job.job) return res.status(404).send({ message: 'Job not found' });
     const fs = require('fs');
@@ -9534,6 +9541,7 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
     const includeTrainingOnly = req.query.includeTrainingOnly === 'true';
 
     const trainingFilter = includeTrainingOnly ? '' : 'AND COALESCE(g.is_training_only, 0) = 0';
+    const trainingFilterCount = includeTrainingOnly ? '' : 'AND COALESCE(is_training_only, 0) = 0';
 
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_name, g.descript, g.board_width, g.board_height, 
@@ -9554,7 +9562,7 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
     );
 
     const [[{ total }]] = await db_pool.query(
-      `SELECT COUNT(*) as total FROM game_types WHERE COALESCE(is_draft, 0) = 0 ${trainingFilter}`
+      `SELECT COUNT(*) as total FROM game_types WHERE COALESCE(is_draft, 0) = 0 ${trainingFilterCount}`
     );
 
     res.json({

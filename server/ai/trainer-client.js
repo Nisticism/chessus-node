@@ -183,4 +183,42 @@ module.exports = {
   // Download a rules.json file for a game type.
   // Returns the raw JSON buffer (axios response.data).
   downloadRules: (gameTypeId) => request('GET', `/trainer/rules/${Number(gameTypeId)}`),
+  // Download a zip of all on-disk artifacts for a job. Returns a Buffer.
+  downloadJobZip: (jobId) => {
+    if (!REMOTE_URL) return Promise.reject(new Error('REMOTE_TRAINER_URL not configured'));
+    const u = new URL(`/trainer/jobs/${Number(jobId)}/download`, REMOTE_URL);
+    const lib = u.protocol === 'https:' ? https : http;
+    const opts = {
+      method: 'GET',
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + (u.search || ''),
+      headers: { 'X-Trainer-Token': SHARED_SECRET },
+      timeout: 120_000,
+    };
+    return new Promise((resolve, reject) => {
+      const req = lib.request(opts, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          if (res.statusCode === 404) {
+            let msg = 'Job directory not found on trainer host';
+            try { msg = JSON.parse(buf.toString('utf8')).message || msg; } catch { /* ignore */ }
+            return reject(new Error(msg));
+          }
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve({ buffer: buf, contentType: res.headers['content-type'] || 'application/zip', filename: res.headers['content-disposition'] || null });
+          } else {
+            let msg = `Trainer service ${res.statusCode}`;
+            try { msg = JSON.parse(buf.toString('utf8')).message || msg; } catch { /* ignore */ }
+            reject(new Error(msg));
+          }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => req.destroy(new Error('Trainer service timeout')));
+      req.end();
+    });
+  },
 };

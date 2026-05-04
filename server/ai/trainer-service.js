@@ -453,6 +453,35 @@ app.post('/trainer/restore', (req, res) => {
   }
 });
 
+// Download a zip of all on-disk artifacts for a training job.
+app.get('/trainer/jobs/:id/download', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const AdmZip = require('adm-zip');
+    const { trainingDirFor } = require('./export-game-rules');
+    const db = require('../../configs/db');
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ message: 'Invalid job id' });
+    const [[row]] = await db.query('SELECT game_type_id FROM ai_training_jobs WHERE id = ? LIMIT 1', [id]);
+    if (!row) return res.status(404).json({ message: 'Job not found' });
+    const jobDir = path.join(trainingDirFor(row.game_type_id), 'jobs', String(id));
+    if (!fs.existsSync(jobDir)) {
+      return res.status(404).json({ message: 'Job directory does not exist on disk' });
+    }
+    const zip = new AdmZip();
+    zip.addLocalFolder(jobDir);
+    const buf = zip.toBuffer();
+    const fname = `ai-job-${row.game_type_id}-${id}.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    res.setHeader('Content-Length', buf.length);
+    res.end(buf);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Check which job directories actually exist on disk.
 // Body: { jobs: [{ id, game_type_id }] }
 // Returns { present: [id,...], absent: [id,...] }
