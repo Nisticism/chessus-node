@@ -234,7 +234,9 @@ app.get('/trainer/verify-disk/:gameTypeId', (req, res) => {
     const gameTypeId = parseInt(req.params.gameTypeId, 10);
     if (!Number.isFinite(gameTypeId)) return res.status(400).json({ message: 'Invalid gameTypeId' });
     const { trainingDirFor } = require('./export-game-rules');
-    const jobsRoot = path.join(trainingDirFor(gameTypeId), 'jobs');
+    const trainingDir = trainingDirFor(gameTypeId);
+    const gameDirExists = fs.existsSync(trainingDir);
+    const jobsRoot = path.join(trainingDir, 'jobs');
     const jobs = [];
     if (fs.existsSync(jobsRoot)) {
       for (const entry of fs.readdirSync(jobsRoot)) {
@@ -270,7 +272,7 @@ app.get('/trainer/verify-disk/:gameTypeId', (req, res) => {
         jobs.push({ jobId, gamesOnDisk, source });
       }
     }
-    res.json({ gameTypeId, jobs });
+    res.json({ gameTypeId, jobs, gameDirExists });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

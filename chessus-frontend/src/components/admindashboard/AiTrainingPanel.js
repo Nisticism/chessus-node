@@ -1153,24 +1153,40 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
         </button>
         {syncError && <div className={styles.error} style={{ marginTop: 8 }}>{syncError}</div>}
         {syncResult && (
-          <div style={{ marginTop: 8, color: syncResult.updated.length > 0 ? '#ffd96b' : '#4caf50' }}>
-            Scanned {syncResult.scannedGameTypes} game type{syncResult.scannedGameTypes === 1 ? '' : 's'}.{' '}
-            {syncResult.updated.length === 0 ? (
-              'All games_played counts match disk — no changes needed.'
-            ) : (
-              <>
-                {syncResult.updated.length} job{syncResult.updated.length === 1 ? '' : 's'} updated:
-                <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-                  {syncResult.updated.map((u) => (
-                    <li key={u.jobId}>
-                      Job #{u.jobId} (game #{u.gameTypeId}):
-                      {' '}{u.oldGamesPlayed} → {u.newGamesPlayed} games
-                      {u.reason === 'disk_data_missing' ? ' [disk data missing]' : ' [count corrected]'}
-                    </li>
+          <div style={{ marginTop: 8 }}>
+            {syncResult.skipped?.length > 0 && (
+              <div style={{ color: '#ff7043', marginBottom: 6, fontWeight: 600 }}>
+                Warning: {syncResult.skipped.length} game type{syncResult.skipped.length === 1 ? '' : 's'} skipped
+                — training directory not found at TRAINING_ROOT.
+                No DB counts were changed for these game types.
+                This usually means <code>TRAINING_DATA_DIR</code> in <code>.env</code> is pointing
+                to the wrong location. Fix it, restart the trainer service, then sync again.
+                <ul style={{ margin: '4px 0 0 16px', padding: 0, fontWeight: 'normal' }}>
+                  {syncResult.skipped.map((s) => (
+                    <li key={s.gameTypeId}>Game type #{s.gameTypeId} — directory not found</li>
                   ))}
                 </ul>
-              </>
+              </div>
             )}
+            <div style={{ color: syncResult.updated.length > 0 ? '#ffd96b' : '#4caf50' }}>
+              Scanned {syncResult.scannedGameTypes} game type{syncResult.scannedGameTypes === 1 ? '' : 's'}.{' '}
+              {syncResult.updated.length === 0 ? (
+                'All games_played counts match disk — no changes needed.'
+              ) : (
+                <>
+                  {syncResult.updated.length} job{syncResult.updated.length === 1 ? '' : 's'} updated:
+                  <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                    {syncResult.updated.map((u) => (
+                      <li key={u.jobId}>
+                        Job #{u.jobId} (game #{u.gameTypeId}):
+                        {' '}{u.oldGamesPlayed} → {u.newGamesPlayed} games
+                        {u.reason === 'disk_data_missing' ? ' [disk data missing]' : ' [count corrected]'}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

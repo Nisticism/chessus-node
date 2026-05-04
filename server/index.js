@@ -8086,14 +8086,19 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
     }
 
     const allUpdated = [];
+    const allSkipped = [];
 
     for (const gtid of gtids) {
       // Get per-job disk counts.
       let diskJobs = [];
+      let gameDirExists = true; // default: assume exists (local path determined below)
       if (trainingManager.REMOTE_MODE) {
         try {
           const result = await trainerClient.verifyDisk(gtid);
           diskJobs = result?.jobs || [];
+          // gameDirExists tells us whether <TRAINING_ROOT>/<gtid>/ exists on the trainer host.
+          // If false, the trainer path is likely misconfigured — do NOT zero out DB counts.
+          gameDirExists = result?.gameDirExists ?? true;
         } catch (e) {
           return res.status(502).send({ message: `Trainer service error: ${e.message}` });
         }
@@ -8101,6 +8106,7 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
         // Local: scan directly.
         const fs = require('fs');
         const path = require('path');
+        gameDirExists = fs.existsSync(trainingDirFor(gtid));
         const jobsRoot = path.join(trainingDirFor(gtid), 'jobs');
         if (fs.existsSync(jobsRoot)) {
           for (const entry of fs.readdirSync(jobsRoot)) {
@@ -8145,6 +8151,29 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
         `SELECT id, games_played, status FROM ai_training_jobs WHERE game_type_id = ?`,
         [gtid],
       );
+
+      // Safety guard: if the game type training directory does not exist at
+      // TRAINING_ROOT, the path is almost certainly misconfigured (e.g. TRAINING_DATA_DIR
+      // was changed to an empty location).  Skip ALL zeroing for this game type
+      // and report it so the admin knows what happened.  Only count-corrections
+      // (where disk data IS present but differs) are still applied.
+      if (!gameDirExists) {
+        allSkipped.push({ gameTypeId: gtid, reason: 'game_dir_not_found' });
+        // Still apply count corrections if disk reported any jobs (edge case: partial dir)
+        const diskMap2 = {};
+        for (const j of diskJobs) diskMap2[j.jobId] = j;
+        for (const row of dbRows) {
+          const disk = diskMap2[row.id];
+          if (disk && disk.gamesOnDisk > 0 && disk.gamesOnDisk !== row.games_played) {
+            await db_pool.query(
+              `UPDATE ai_training_jobs SET games_played = ? WHERE id = ?`,
+              [disk.gamesOnDisk, row.id],
+            );
+            allUpdated.push({ jobId: row.id, gameTypeId: gtid, oldGamesPlayed: row.games_played, newGamesPlayed: disk.gamesOnDisk, reason: 'count_mismatch' });
+          }
+        }
+        continue;
+      }
 
       for (const row of dbRows) {
         const disk = diskMap[row.id];
@@ -8198,7 +8227,7 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
       } catch { /* non-fatal */ }
     }
 
-    res.json({ ok: true, updated: allUpdated, scannedGameTypes: gtids.length });
+    res.json({ ok: true, updated: allUpdated, skipped: allSkipped, scannedGameTypes: gtids.length });
   } catch (err) {
     console.error('Sync disk error:', err);
     res.status(500).send({ message: err.message || 'Sync failed' });
