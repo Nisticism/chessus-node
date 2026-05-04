@@ -905,30 +905,40 @@ export const toChessNotation = (col, row) => {
  * @returns {string} Formatted move (e.g., "e2-e4", "Nxf3")
  */
 export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) => {
-  if (!move || !move.from || !move.to) return '';
-  
+  if (!move) return '';
+
+  // Place-type moves (piece placement action — no 'from' square)
+  if (move.type === 'place') {
+    if (!move.to) return '';
+    return `@${colToFile(move.to.x)}${rowToRank(boardHeight - 1 - move.to.y)}`;
+  }
+
+  if (!move.from || !move.to) return '';
+
   // Check/checkmate suffix
   const suffix = move.isCheckmate ? '#' : (move.isCheck ? '+' : '');
-  
+  // Attacker-died indicator: moving piece captured but was itself removed (die_on_capture)
+  const selfSuffix = move.attackerDied ? '\u2020' : '';
+
   // Castling notation
   if (move.isCastling) {
     const dx = move.to.x - move.from.x;
-    return (dx < 0 ? 'O-O-O' : 'O-O') + suffix;
+    return (dx < 0 ? 'O-O-O' : 'O-O') + selfSuffix + suffix;
   }
-  
+
   const fromSquare = colToFile(move.from.x) + rowToRank(boardHeight - 1 - move.from.y);
   const toSquare = colToFile(move.to.x) + rowToRank(boardHeight - 1 - move.to.y);
-  
+
   // Ranged attack notation
   if (move.isRangedAttack) {
     if (move.captured) {
-      return `${fromSquare}→${toSquare}×` + suffix;
+      return `${fromSquare}→${toSquare}×` + selfSuffix + suffix;
     }
     // Ranged attack that dealt damage but didn't kill
     if (move.damagedPieces && move.damagedPieces.length > 0) {
-      return `${fromSquare}→${toSquare}⚔` + suffix;
+      return `${fromSquare}→${toSquare}⚔` + selfSuffix + suffix;
     }
-    return `${fromSquare}→${toSquare}` + suffix;
+    return `${fromSquare}→${toSquare}` + selfSuffix + suffix;
   }
 
   const captureSymbol = move.captured ? 'x' : '-';
@@ -944,10 +954,10 @@ export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) =>
   }
 
   if (includeFrom) {
-    return `${fromSquare}${captureSymbol}${toSquare}${promoSuffix}` + suffix;
+    return `${fromSquare}${captureSymbol}${toSquare}${promoSuffix}` + selfSuffix + suffix;
   }
 
-  return `${move.captured ? 'x' : ''}${toSquare}${promoSuffix}` + suffix;
+  return `${move.captured ? 'x' : ''}${toSquare}${promoSuffix}` + selfSuffix + suffix;
 };
 
 /**
@@ -966,7 +976,7 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
     // Place-mode moves (Othello-style) — skip, can't fully reconstruct
     if (move.type === 'place') continue;
 
-    // Remove captured pieces
+    // Remove directly-captured pieces (destination kills)
     if (move.allCaptured && move.allCaptured.length > 0) {
       const capturedIds = new Set(move.allCaptured.map(c => c.id));
       for (let j = pieces.length - 1; j >= 0; j--) {
@@ -975,6 +985,14 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
     } else if (move.captured) {
       const idx = pieces.findIndex(p => p.id === move.captured.id);
       if (idx !== -1) pieces.splice(idx, 1);
+    }
+
+    // Remove pieces killed by hop-path, trample, or attack-radius
+    if (move.capturedByHop && move.capturedByHop.length > 0) {
+      const hopIds = new Set(move.capturedByHop.map(c => c.id));
+      for (let j = pieces.length - 1; j >= 0; j--) {
+        if (hopIds.has(pieces[j].id)) pieces.splice(j, 1);
+      }
     }
 
     // Apply HP damage to surviving pieces
@@ -990,6 +1008,13 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
     if (movingPiece && !move.moveCancelled && !move.isRangedAttack) {
       movingPiece.x = move.to.x;
       movingPiece.y = move.to.y;
+    }
+
+    // Remove the moving piece when die_on_capture fired (after position update so the
+    // piece appears at its destination square for this exact move index)
+    if (move.attackerDied) {
+      const selfIdx = pieces.findIndex(p => p.id === move.pieceId);
+      if (selfIdx !== -1) pieces.splice(selfIdx, 1);
     }
 
     // Promotion: transform the moving piece into the promoted-to piece on

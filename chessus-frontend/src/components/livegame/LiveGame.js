@@ -5408,7 +5408,7 @@ const LiveGame = () => {
               {initialPiecesRef.current && gameState.moveHistory && gameState.moveHistory.length > 0 && (
                 <div className={styles["move-nav-arrows"]}>
                   <button onClick={() => setGhostMoveIndex(0)} disabled={ghostMoveIndex === 0} title="First move">⏮</button>
-                  <button onClick={() => setGhostMoveIndex(prev => prev === null ? (gameState.moveHistory.length - 2) : Math.max(0, prev - 1))} disabled={ghostMoveIndex === 0} title="Previous move">◀</button>
+                  <button onClick={() => setGhostMoveIndex(prev => prev === null ? (gameState.moveHistory.length - 1) : Math.max(0, prev - 1))} disabled={ghostMoveIndex === 0} title="Previous move">◀</button>
                   <button onClick={() => setGhostMoveIndex(prev => prev === null ? 0 : (prev >= gameState.moveHistory.length - 1 ? null : prev + 1))} disabled={ghostMoveIndex === null || ghostMoveIndex >= gameState.moveHistory.length - 1} title="Next move">▶</button>
                   <button onClick={() => setGhostMoveIndex(null)} disabled={ghostMoveIndex === null} title="Live board">⏭</button>
                 </div>
@@ -5857,25 +5857,50 @@ const LiveGame = () => {
             {(() => {
               const moves = gameState.moveHistory || [];
               const bh = gameState?.gameType?.board_height || 8;
+              const canReview = !!initialPiecesRef.current;
+              // Group consecutive same-position moves into half-turns so that
+              // multi-action turns, chain captures, and must-move pieces all
+              // appear in the correct player column.
+              const halfTurns = [];
+              let htIdx = 0;
+              while (htIdx < moves.length) {
+                const pos = moves[htIdx]?.position;
+                const group = [];
+                while (htIdx < moves.length && moves[htIdx]?.position === pos) {
+                  group.push({ move: moves[htIdx], origIndex: htIdx });
+                  htIdx++;
+                }
+                halfTurns.push({ position: pos, moves: group });
+              }
               const rows = [];
-              for (let i = 0; i < moves.length; i += 2) {
-                const a = moves[i];
-                const b = moves[i + 1];
-                const p1Move = a?.position === 1 ? a : (b?.position === 1 ? b : a);
-                const p2Move = a?.position === 2 ? a : (b?.position === 2 ? b : (b && b !== p1Move ? b : null));
+              for (let r = 0; r < halfTurns.length; r += 2) {
+                const htA = halfTurns[r];
+                const htB = halfTurns[r + 1] || null;
+                const p1HT = htA?.position === 1 ? htA : htB;
+                const p2HT = htA?.position === 2 ? htA : htB;
+                const rowNum = Math.floor(r / 2) + 1;
+                const renderHT = (ht, colStyle) => {
+                  if (!ht) return <span key="empty" className={styles[colStyle]} />;
+                  return (
+                    <span key={ht.moves[0].origIndex} className={styles[colStyle]}>
+                      {ht.moves.map((m, mi) => (
+                        <React.Fragment key={m.origIndex}>
+                          {mi > 0 && <span style={{ color: '#666', margin: '0 2px' }}>/</span>}
+                          <span
+                            className={ghostMoveIndex === m.origIndex ? styles["active-move"] : undefined}
+                            onClick={() => canReview && setGhostMoveIndex(ghostMoveIndex === m.origIndex ? null : m.origIndex)}
+                            style={{ cursor: canReview ? 'pointer' : 'default' }}
+                          >{formatMoveNotation(m.move, true, bh)}</span>
+                        </React.Fragment>
+                      ))}
+                    </span>
+                  );
+                };
                 rows.push(
-                  <div key={i} className={styles["move-row"]}>
-                    <span className={styles["move-number"]}>{Math.floor(i / 2) + 1}.</span>
-                    <span 
-                      className={`${styles["move-white"]}${ghostMoveIndex === i ? ` ${styles["active-move"]}` : ''}`}
-                      onClick={() => initialPiecesRef.current && setGhostMoveIndex(ghostMoveIndex === i ? null : i)}
-                      style={{ cursor: initialPiecesRef.current ? 'pointer' : 'default' }}
-                    >{formatMoveNotation(p1Move, true, bh)}</span>
-                    <span 
-                      className={`${styles["move-black"]}${ghostMoveIndex === i + 1 ? ` ${styles["active-move"]}` : ''}`}
-                      onClick={() => p2Move && initialPiecesRef.current && setGhostMoveIndex(ghostMoveIndex === i + 1 ? null : i + 1)}
-                      style={{ cursor: p2Move && initialPiecesRef.current ? 'pointer' : 'default' }}
-                    >{p2Move ? formatMoveNotation(p2Move, true, bh) : ''}</span>
+                  <div key={r} className={styles["move-row"]}>
+                    <span className={styles["move-number"]}>{rowNum}.</span>
+                    {renderHT(p1HT, "move-white")}
+                    {renderHT(p2HT, "move-black")}
                   </div>
                 );
               }
@@ -5890,7 +5915,7 @@ const LiveGame = () => {
           {initialPiecesRef.current && gameState.moveHistory && gameState.moveHistory.length > 0 && (
             <div className={styles["move-nav-arrows"]}>
               <button onClick={() => setGhostMoveIndex(0)} disabled={ghostMoveIndex === 0} title="First move">⏮</button>
-              <button onClick={() => setGhostMoveIndex(prev => prev === null ? (gameState.moveHistory.length - 2) : Math.max(0, prev - 1))} disabled={ghostMoveIndex === 0} title="Previous move">◀</button>
+              <button onClick={() => setGhostMoveIndex(prev => prev === null ? (gameState.moveHistory.length - 1) : Math.max(0, prev - 1))} disabled={ghostMoveIndex === 0} title="Previous move">◀</button>
               <button onClick={() => setGhostMoveIndex(prev => prev === null ? 0 : (prev >= gameState.moveHistory.length - 1 ? null : prev + 1))} disabled={ghostMoveIndex === null || ghostMoveIndex >= gameState.moveHistory.length - 1} title="Next move">▶</button>
               <button onClick={() => setGhostMoveIndex(null)} disabled={ghostMoveIndex === null} title="Live board">⏭</button>
             </div>

@@ -4823,6 +4823,16 @@ function initializeSocket(server) {
           ...(moveResult.allCaptured && moveResult.allCaptured.length > 1 ? { allCaptured: moveResult.allCaptured } : {}),
           ...(moveResult.damagedPieces && moveResult.damagedPieces.length > 0 ? { damagedPieces: moveResult.damagedPieces } : {}),
           ...(moveResult.moveCancelled ? { moveCancelled: true } : {}),
+          ...(() => {
+            // hoppedCaptures contains: pieces killed by hop-path / trample / attack-radius,
+            // AND the moving piece itself when die_on_capture fired (identified by pieceId).
+            const hopKills = (moveResult.hoppedCaptures || []).filter(p => p.id !== move.pieceId);
+            const selfDied = (moveResult.hoppedCaptures || []).some(p => p.id === move.pieceId);
+            return {
+              ...(hopKills.length > 0 ? { capturedByHop: hopKills } : {}),
+              ...(selfDied ? { attackerDied: true } : {}),
+            };
+          })(),
           player: userId,
           position: gameState.currentTurn,
           timestamp: Date.now(),
@@ -5264,6 +5274,14 @@ function initializeSocket(server) {
               ...(premoveResult.allCaptured && premoveResult.allCaptured.length > 1 ? { allCaptured: premoveResult.allCaptured } : {}),
               ...(premoveResult.damagedPieces && premoveResult.damagedPieces.length > 0 ? { damagedPieces: premoveResult.damagedPieces } : {}),
               ...(premoveResult.moveCancelled ? { moveCancelled: true } : {}),
+              ...(() => {
+                const hopKills = (premoveResult.hoppedCaptures || []).filter(p => p.id !== premove.move.pieceId);
+                const selfDied = (premoveResult.hoppedCaptures || []).some(p => p.id === premove.move.pieceId);
+                return {
+                  ...(hopKills.length > 0 ? { capturedByHop: hopKills } : {}),
+                  ...(selfDied ? { attackerDied: true } : {}),
+                };
+              })(),
               player: nextPlayer.id,
               position: gameState.currentTurn,
               timestamp: Date.now(),

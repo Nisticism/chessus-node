@@ -610,32 +610,62 @@ const MatchView = () => {
         {match.moveHistory && match.moveHistory.length > 0 && (
           <div className={styles["move-history"]}>
             <h3>Move History</h3>
+            {match.initialPieces && (
+              <div className={styles["review-controls"]}>
+                <button onClick={() => setReviewMoveIndex(-1)} disabled={reviewMoveIndex === -1} title="Starting position">⏮</button>
+                <button onClick={() => setReviewMoveIndex(prev => prev === null ? match.moveHistory.length - 1 : Math.max(-1, prev - 1))} disabled={reviewMoveIndex === -1} title="Previous move">◀</button>
+                <button onClick={() => setReviewMoveIndex(prev => prev !== null && prev < match.moveHistory.length - 1 ? prev + 1 : null)} disabled={reviewMoveIndex === null} title="Next move">▶</button>
+                <button onClick={() => setReviewMoveIndex(null)} disabled={reviewMoveIndex === null} title="Final position">⏭</button>
+              </div>
+            )}
             <div className={styles["moves-list"]}>
               {(() => {
                 const moves = match.moveHistory;
                 const bh = match.boardHeight || 8;
                 const canReview = !!match.initialPieces;
+                // Group consecutive same-position moves into half-turns so that
+                // multi-action turns, chain captures, and must-move pieces all
+                // appear in the correct player column.
+                const halfTurns = [];
+                let htIdx = 0;
+                while (htIdx < moves.length) {
+                  const pos = moves[htIdx]?.position;
+                  const group = [];
+                  while (htIdx < moves.length && moves[htIdx]?.position === pos) {
+                    group.push({ move: moves[htIdx], origIndex: htIdx });
+                    htIdx++;
+                  }
+                  halfTurns.push({ position: pos, moves: group });
+                }
                 const rows = [];
-                for (let i = 0; i < moves.length; i += 2) {
-                  const p1Move = moves[i];
-                  const p2Move = moves[i + 1] || null;
+                for (let r = 0; r < halfTurns.length; r += 2) {
+                  const htA = halfTurns[r];
+                  const htB = halfTurns[r + 1] || null;
+                  const p1HT = htA?.position === 1 ? htA : htB;
+                  const p2HT = htA?.position === 2 ? htA : htB;
+                  const rowNum = Math.floor(r / 2) + 1;
+                  const renderHT = (ht, colStyle) => {
+                    if (!ht) return <span key="empty" className={`${styles["move-item"]} ${styles[colStyle]}`} />;
+                    return (
+                      <span key={ht.moves[0].origIndex} className={`${styles["move-item"]} ${styles[colStyle]}`}>
+                        {ht.moves.map((m, mi) => (
+                          <React.Fragment key={m.origIndex}>
+                            {mi > 0 && <span style={{ color: '#666', margin: '0 2px' }}>/</span>}
+                            <span
+                              className={reviewMoveIndex === m.origIndex ? styles["active-move"] : undefined}
+                              onClick={() => canReview && setReviewMoveIndex(reviewMoveIndex === m.origIndex ? null : m.origIndex)}
+                              style={{ cursor: canReview ? 'pointer' : 'default' }}
+                            >{formatMoveNotation(m.move, true, bh)}</span>
+                          </React.Fragment>
+                        ))}
+                      </span>
+                    );
+                  };
                   rows.push(
-                    <div key={i} className={styles["move-row"]}>
-                      <span className={styles["move-number"]}>{Math.floor(i / 2) + 1}.</span>
-                      <span 
-                        className={`${styles["move-item"]} ${styles["move-white"]}${reviewMoveIndex === i ? ` ${styles["active-move"]}` : ''}`}
-                        onClick={() => canReview && setReviewMoveIndex(reviewMoveIndex === i ? null : i)}
-                        style={{ cursor: canReview ? 'pointer' : 'default' }}
-                      >
-                        {formatMoveNotation(p1Move, true, bh)}
-                      </span>
-                      <span 
-                        className={`${styles["move-item"]} ${styles["move-black"]}${reviewMoveIndex === i + 1 ? ` ${styles["active-move"]}` : ''}`}
-                        onClick={() => p2Move && canReview && setReviewMoveIndex(reviewMoveIndex === i + 1 ? null : i + 1)}
-                        style={{ cursor: p2Move && canReview ? 'pointer' : 'default' }}
-                      >
-                        {p2Move ? formatMoveNotation(p2Move, true, bh) : ''}
-                      </span>
+                    <div key={r} className={styles["move-row"]}>
+                      <span className={styles["move-number"]}>{rowNum}.</span>
+                      {renderHT(p1HT, "move-white")}
+                      {renderHT(p2HT, "move-black")}
                     </div>
                   );
                 }

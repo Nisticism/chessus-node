@@ -18,6 +18,7 @@ const changelogData = [
       "AI trainer: TRAINING_BACKUP_DIR environment variable is documented in the new .env.example — set this to enable training data backups.",
       "AI training upload: MCTS iterations are now recorded alongside uploaded training artifacts (previously always stored as 0). An MCTS iters field has been added to the manual upload form in the admin AI Training panel.",
       "Fixed: Points Win Condition settings (target score, starting points, and points-based draw conditions) no longer disappear when editing an existing game — all five fields are now correctly reloaded into the wizard. Custom square control-point values are also correctly shown as active in the square editor when a saved points condition exists.",
+      "Fixed: Move history and board step-through now correctly handle all game variants — die-on-capture pieces no longer ghost in replay; trample, attack-radius, and hop-path kills are properly removed; games with multiple actions per turn or chain captures now show all moves in the correct player column; placement actions show their target square instead of a blank entry. Board review navigation controls added to the match history detail page.",
     ],
   },
   {
