@@ -711,7 +711,12 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                   onClick={() => setSelectedJobId(j.id)}
                 >
                   <td>{j.id}</td>
-                  <td>{j.game_type_id}</td>
+                  <td>
+                    #{j.game_type_id}
+                    {j.game_name && (
+                      <span style={{ marginLeft: 5, color: '#b0b0b0' }}>{j.game_name}</span>
+                    )}
+                  </td>
                   <td>
                     <span className={`${styles.status} ${styles[`status_${j.status}`] || ""}`}>
                       {j.status}
@@ -1168,7 +1173,15 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
       {summary && (
         <div className={styles.analysisBlock}>
           <div className={styles.analysisStats}>
-            <div><strong>Total games:</strong> {summary.totalGames ?? 0} (across {summary.jobCount ?? 0} job{(summary.jobCount ?? 0) === 1 ? '' : 's'})</div>
+            <div>
+              <strong>Total games:</strong> {summary.totalGames ?? 0} (across {summary.jobCount ?? 0} job{(summary.jobCount ?? 0) === 1 ? '' : 's'})
+              {(summary.dbOnlyGames ?? 0) > 0 && (
+                <span style={{ marginLeft: 8, color: '#ffd96b', fontSize: '0.9em' }}
+                  title="These jobs' disk data is unavailable on the trainer host — win/loss/draw breakdown cannot be computed for them.">
+                  + {summary.dbOnlyGames} games from {summary.dbOnlyJobCount} older job{summary.dbOnlyJobCount === 1 ? '' : 's'} (no disk data — count only)
+                </span>
+              )}
+            </div>
             <div><strong>Decisive:</strong> {summary.decisive ?? 0} ({(((summary.decisive ?? 0) / Math.max(1, summary.totalGames ?? 0)) * 100).toFixed(1)}%) — <strong>Draws:</strong> {summary.draws ?? 0} ({(((summary.draws ?? 0) / Math.max(1, summary.totalGames ?? 0)) * 100).toFixed(1)}%)</div>
             {summary.perSide && summary.perSide['1'] && (
               <div><strong>Player 1 wins:</strong> {summary.perSide['1'].wins} ({(summary.perSide['1'].winRate * 100).toFixed(1)}%)</div>

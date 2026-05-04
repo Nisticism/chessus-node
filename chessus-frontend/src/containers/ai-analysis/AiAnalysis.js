@@ -126,6 +126,11 @@ const AiAnalysis = () => {
         <ul>
           <li>{s.jobCount} training job{s.jobCount === 1 ? '' : 's'}</li>
           <li>{s.totalGames} total games (game length: {s.minMoves}–{s.maxMoves} moves)</li>
+          {(s.dbOnlyGames ?? 0) > 0 && (
+            <li style={{ color: '#c8a000' }}>
+              {s.dbOnlyGames} additional game{s.dbOnlyGames === 1 ? '' : 's'} from {s.dbOnlyJobCount} older job{s.dbOnlyJobCount === 1 ? '' : 's'} are counted but not included in the balance breakdown (disk data unavailable on the trainer host).
+            </li>
+          )}
           <li>Average game time: {(s.avgElapsedMs / 1000).toFixed(1)}s</li>
           {s.filteredLegacy && s.legacyExcluded > 0 && (
             <li>

@@ -52,6 +52,47 @@ function readGameEvents(logPath) {
   return out;
 }
 
+/**
+ * Synthesize game-complete events from a book.jsonl file.
+ *
+ * Used for uploaded jobs that have no log.ndjson (only book.jsonl).
+ * At ply 1 the mover is always player 1, so `r` encodes the game result
+ * from player 1's perspective: "W" = P1 won, "L" = P2 won, "D" = draw.
+ *
+ * The synthetic events carry `end_reason: "unknown"` (a non-empty string)
+ * so they pass the filterLegacy check without inflating the
+ * "legacy excluded" counter.  Move counts and elapsed time will be 0.
+ */
+function readEventsFromBook(bookPath) {
+  const out = [];
+  let text;
+  try { text = fs.readFileSync(bookPath, 'utf8'); } catch { return out; }
+  let index = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    let rec;
+    try { rec = JSON.parse(line); } catch (_) { continue; }
+    // p=0 records represent the FIRST ply of each game (ply counting starts
+    // at 0, not 1). At ply 0 the mover is always player 1, so:
+    //   r="W" → player 1 won, r="L" → player 2 won, r="D" → draw.
+    if (rec.p !== 0 && rec.p !== '0') continue;
+    index++;
+    let winner = null;
+    if (rec.r === 'W') winner = 1;       // player 1 won
+    else if (rec.r === 'L') winner = 2;  // player 2 won
+    // 'D' → winner stays null (draw)
+    out.push({
+      type: 'game_complete',
+      index,
+      moves: 0,
+      winner,
+      end_reason: 'unknown',
+      elapsed_ms: 0,
+    });
+  }
+  return out;
+}
+
 const DRAW_REASONS = [
   'stalemate', 'move_limit', 'move_cap_rollout',
   'rollout_cap', 'no_move', 'repetition', 'insufficient_material',
@@ -189,25 +230,84 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
  * exclude all such jobs and produce a bogus 0-game summary.
  *
  * The "Clear Data" action deletes the log file on disk, so cleared jobs
- * naturally disappear from listJobLogs() and never reach this loop.
- * The only edge case where a cleared job's log might still exist is a
- * failed remote deletion (best-effort); in that case including the data
- * is preferable to returning zeros for every other valid job.
+ * naturally disappear from the scan below and are never counted.
  *
- * Jobs with an existing log.ndjson but zero game_complete events are
- * skipped (e.g. the Rust process wrote the "started" header then crashed
- * immediately).
+ * Uploaded jobs (source='uploaded') may only have book.jsonl and no
+ * log.ndjson (e.g. when a bare book.jsonl was imported without a zip that
+ * included the log).  For those, we synthesise game-complete events from
+ * the book's ply-1 records so their win/loss/draw counts still appear in
+ * the balance report.  Move-count and elapsed-time stats will be 0 for
+ * those synthetic events, but the balance numbers are accurate.
  */
 async function computeAnalysis(gameTypeId, opts = {}) {
+  const root = path.join(trainingDirFor(gameTypeId), 'jobs');
+  const diskJobIds = new Set();
   const allEvents = [];
   const jobMeta = [];
-  for (const j of listJobLogs(gameTypeId)) {
-    const evs = readGameEvents(j.logPath);
-    if (evs.length === 0) continue; // no game events — skip (crashed before first game)
-    allEvents.push(...evs);
-    jobMeta.push({ jobId: j.jobId, games: evs.length });
+
+  if (fs.existsSync(root)) {
+    const jobDirs = fs.readdirSync(root)
+      .map((name) => ({ jobId: Number(name), dir: path.join(root, name) }))
+      .filter((j) => {
+        if (!Number.isFinite(j.jobId) || j.jobId <= 0) return false;
+        try { return fs.statSync(j.dir).isDirectory(); } catch { return false; }
+      });
+
+    for (const j of jobDirs) {
+      const logPath  = path.join(j.dir, 'log.ndjson');
+      const bookPath = path.join(j.dir, 'book.jsonl');
+
+      if (fs.existsSync(logPath)) {
+        // Primary: real game_complete events from the progress log.
+        const evs = readGameEvents(logPath);
+        if (evs.length === 0) continue; // log exists but no events (crashed immediately)
+        allEvents.push(...evs);
+        jobMeta.push({ jobId: j.jobId, games: evs.length, source: 'log' });
+        diskJobIds.add(j.jobId);
+      } else if (fs.existsSync(bookPath)) {
+        // Fallback: uploaded job without log.ndjson — synthesise from book.
+        const evs = readEventsFromBook(bookPath);
+        if (evs.length === 0) continue;
+        allEvents.push(...evs);
+        jobMeta.push({ jobId: j.jobId, games: evs.length, source: 'book' });
+        diskJobIds.add(j.jobId);
+      }
+      // No data files at all — skip.
+    }
   }
-  return summarize(allEvents, jobMeta, opts);
+
+  // DB fallback: jobs the DB knows about but whose disk data is missing
+  // (e.g. the trainer-service was redeployed and ai-training/ was not
+  // retained, or the job ran on a different machine). We cannot reconstruct
+  // win/loss/draw outcomes, but we can count the games from games_played
+  // and surface them as context so the analysis doesn't silently show 0.
+  let dbOnlyGames = 0;
+  let dbOnlyJobCount = 0;
+  try {
+    const [rows] = await db_pool.query(
+      `SELECT id, games_played FROM ai_training_jobs
+       WHERE game_type_id = ? AND games_played > 0 AND status != 'failed'`,
+      [gameTypeId],
+    );
+    for (const r of rows) {
+      if (!diskJobIds.has(r.id)) {
+        const gp = r.games_played || 0;
+        dbOnlyGames += gp;
+        dbOnlyJobCount++;
+        // Include in jobMeta so jobCount reflects reality.
+        jobMeta.push({ jobId: r.id, games: gp, source: 'db_only' });
+      }
+    }
+  } catch (_) {
+    // DB unavailable — skip fallback silently.
+  }
+
+  const summary = summarize(allEvents, jobMeta, opts);
+  if (dbOnlyGames > 0) {
+    summary.dbOnlyGames = dbOnlyGames;
+    summary.dbOnlyJobCount = dbOnlyJobCount;
+  }
+  return summary;
 }
 
 /**

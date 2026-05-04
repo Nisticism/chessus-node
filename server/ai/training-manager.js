@@ -143,11 +143,12 @@ function jobsDirFor(gameTypeId, jobId) {
 
 async function listJobs(limit = 50) {
   const [rows] = await db_pool.query(
-    `SELECT id, game_type_id, status, games_target, games_played, mcts_iters,
-            max_rss_mb, started_at, ended_at, error_message, created_by_user_id,
-            source
-     FROM ai_training_jobs
-     ORDER BY id DESC
+    `SELECT j.id, j.game_type_id, j.status, j.games_target, j.games_played, j.mcts_iters,
+            j.max_rss_mb, j.started_at, j.ended_at, j.error_message, j.created_by_user_id,
+            j.source, gt.game_name
+     FROM ai_training_jobs j
+     LEFT JOIN game_types gt ON gt.id = j.game_type_id
+     ORDER BY j.id DESC
      LIMIT ?`,
     [Number(limit)],
   );
