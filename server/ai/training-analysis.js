@@ -181,31 +181,29 @@ function summarize(events, jobMeta, { filterLegacy = true } = {}) {
 
 /**
  * Compute a fresh summary from disk for a given game type.
- * Cross-references the DB so that jobs whose data has been cleared
- * (games_played = 0) are excluded even if stale log files remain on disk.
+ *
+ * Log files are the source of truth for whether a job has data — a job
+ * whose process was killed before its exit handler ran will have
+ * games_played = 0 in the DB even though its log.ndjson contains valid
+ * game_complete events.  Filtering by games_played > 0 would silently
+ * exclude all such jobs and produce a bogus 0-game summary.
+ *
+ * The "Clear Data" action deletes the log file on disk, so cleared jobs
+ * naturally disappear from listJobLogs() and never reach this loop.
+ * The only edge case where a cleared job's log might still exist is a
+ * failed remote deletion (best-effort); in that case including the data
+ * is preferable to returning zeros for every other valid job.
+ *
+ * Jobs with an existing log.ndjson but zero game_complete events are
+ * skipped (e.g. the Rust process wrote the "started" header then crashed
+ * immediately).
  */
 async function computeAnalysis(gameTypeId, opts = {}) {
-  // Fetch the set of job IDs that still have data (games_played > 0).
-  // Jobs cleared via "Clear Data" are reset to games_played = 0 and should
-  // not appear in the analysis even if their directory lingers on disk.
-  let activeJobIds = null;
-  try {
-    const [rows] = await db_pool.query(
-      `SELECT id FROM ai_training_jobs WHERE game_type_id = ? AND games_played > 0`,
-      [gameTypeId],
-    );
-    activeJobIds = new Set(rows.map((r) => r.id));
-  } catch (_) {
-    // DB unavailable — fall back to disk-only (original behaviour)
-  }
-
-  const jobs = listJobLogs(gameTypeId).filter(
-    (j) => activeJobIds === null || activeJobIds.has(j.jobId),
-  );
   const allEvents = [];
   const jobMeta = [];
-  for (const j of jobs) {
+  for (const j of listJobLogs(gameTypeId)) {
     const evs = readGameEvents(j.logPath);
+    if (evs.length === 0) continue; // no game events — skip (crashed before first game)
     allEvents.push(...evs);
     jobMeta.push({ jobId: j.jobId, games: evs.length });
   }
