@@ -7531,7 +7531,7 @@ app.get('/api/admin/ai-training/status', authenticateAdmin1, async (req, res) =>
     const built = trainingManager.REMOTE_MODE
       ? await trainingManager.isRustBuiltRemote()
       : trainingManager.isRustBuilt();
-    const jobs = await trainingManager.listJobs(20);
+    const jobs = await trainingManager.listJobs(200);
     const active = jobs.filter(j => j.status === 'running' || j.status === 'queued').length;
     const usedMemoryMb = await trainingManager.activeMemoryMb();
     const globalMemoryCapMb = await trainingManager.getGlobalMemoryCapMb();
@@ -7562,7 +7562,7 @@ app.put('/api/admin/ai-training/memory-cap', authenticateAdmin1, async (req, res
 
 app.get('/api/admin/ai-training/jobs', authenticateAdmin1, async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
     const jobs = await trainingManager.listJobs(limit);
     res.json({ jobs });
   } catch (err) {
@@ -8079,8 +8079,11 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
       }
       gtids = [gtid];
     } else {
+      // Scan every game type that has at least one job — not just those with
+      // games_played > 0.  This is critical after a restore, where files are
+      // back on disk but the DB counts were zeroed and need to be recovered.
       const [rows] = await db_pool.query(
-        `SELECT DISTINCT game_type_id FROM ai_training_jobs WHERE games_played > 0`
+        `SELECT DISTINCT game_type_id FROM ai_training_jobs`
       );
       gtids = rows.map((r) => r.game_type_id);
     }

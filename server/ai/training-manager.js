@@ -141,7 +141,7 @@ function jobsDirFor(gameTypeId, jobId) {
   return path.join(trainingDirFor(gameTypeId), 'jobs', String(jobId));
 }
 
-async function listJobs(limit = 50) {
+async function listJobs(limit = 200) {
   const [rows] = await db_pool.query(
     `SELECT j.id, j.game_type_id, j.status, j.games_target, j.games_played, j.mcts_iters,
             j.max_rss_mb, j.started_at, j.ended_at, j.error_message, j.created_by_user_id,
