@@ -165,4 +165,17 @@ module.exports = {
   // Wipe on-disk data (jobs dirs + rules.json) for one or more game types.
   // Pass an array of game type IDs, or omit to wipe everything.
   wipeGameTypes: (gameTypeIds) => request('DELETE', '/trainer/wipe', { gameTypeIds: gameTypeIds || [] }).catch(() => null),
+  // Return per-job disk game counts for a game type so the backend can
+  // reconcile games_played in the DB against actual on-disk data.
+  verifyDisk: (gameTypeId) => request('GET', `/trainer/verify-disk/${Number(gameTypeId)}`),
+  // Copy all training data for the given game type IDs (or all if omitted)
+  // to the backup directory on the trainer host.
+  backup: (gameTypeIds) => request('POST', '/trainer/backup', { gameTypeIds: gameTypeIds || [] }),
+  // Check which job directories actually exist on disk.
+  // jobs: [{ id, game_type_id }]
+  // Returns { present: [id,...], absent: [id,...] }
+  diskStatus: (jobs) => request('POST', '/trainer/disk-status', { jobs: jobs || [] }),
+  // Download a rules.json file for a game type.
+  // Returns the raw JSON buffer (axios response.data).
+  downloadRules: (gameTypeId) => request('GET', `/trainer/rules/${Number(gameTypeId)}`),
 };

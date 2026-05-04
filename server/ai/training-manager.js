@@ -145,7 +145,7 @@ async function listJobs(limit = 50) {
   const [rows] = await db_pool.query(
     `SELECT j.id, j.game_type_id, j.status, j.games_target, j.games_played, j.mcts_iters,
             j.max_rss_mb, j.started_at, j.ended_at, j.error_message, j.created_by_user_id,
-            j.source, gt.game_name
+            j.source, gt.game_name, gt.is_training_only
      FROM ai_training_jobs j
      LEFT JOIN game_types gt ON gt.id = j.game_type_id
      ORDER BY j.id DESC
@@ -492,9 +492,25 @@ async function startJob({
   }
 
   // Dump rules to disk so the Rust binary can read them.
-  const exportInfo = await exportGameRules(gameTypeId);
-  if (exportInfo.positionCount === 0) {
-    throw new Error(`Game type ${gameTypeId} has no starting pieces; cannot train.`);
+  // For is_training_only game types the rules.json was uploaded directly —
+  // skip re-export and just verify the file is present.
+  const [[gtRow]] = await db_pool.query(
+    `SELECT is_training_only FROM game_types WHERE id = ? LIMIT 1`, [gameTypeId],
+  );
+  const isTrainingOnly = !!(gtRow?.is_training_only);
+  if (isTrainingOnly) {
+    const rulesFile = rulesPathFor(gameTypeId);
+    if (!fs.existsSync(rulesFile)) {
+      throw new Error(
+        `Game type ${gameTypeId} is training-only but rules.json is missing at ${rulesFile}. ` +
+        `Re-upload the rules.json file first.`,
+      );
+    }
+  } else {
+    const exportInfo = await exportGameRules(gameTypeId);
+    if (exportInfo.positionCount === 0) {
+      throw new Error(`Game type ${gameTypeId} has no starting pieces; cannot train.`);
+    }
   }
 
   const [insertRes] = await db_pool.query(
@@ -633,9 +649,25 @@ async function resumeJob(jobId) {
   }
 
   // Refresh the rules dump so any rule edits since the original run apply.
-  const exportInfo = await exportGameRules(job.game_type_id);
-  if (exportInfo.positionCount === 0) {
-    throw new Error(`Game type ${job.game_type_id} has no starting pieces; cannot resume.`);
+  // For is_training_only game types the rules.json was uploaded directly —
+  // skip re-export and just verify the file is present.
+  const [[resumeGtRow]] = await db_pool.query(
+    `SELECT is_training_only FROM game_types WHERE id = ? LIMIT 1`, [job.game_type_id],
+  );
+  const isTrainingOnly = !!(resumeGtRow?.is_training_only);
+  if (isTrainingOnly) {
+    const rulesFile = rulesPathFor(job.game_type_id);
+    if (!fs.existsSync(rulesFile)) {
+      throw new Error(
+        `Game type ${job.game_type_id} is training-only but rules.json is missing at ${rulesFile}. ` +
+        `Re-upload the rules.json file first.`,
+      );
+    }
+  } else {
+    const exportInfo = await exportGameRules(job.game_type_id);
+    if (exportInfo.positionCount === 0) {
+      throw new Error(`Game type ${job.game_type_id} has no starting pieces; cannot resume.`);
+    }
   }
 
   const outDir = jobsDirFor(job.game_type_id, jobId);

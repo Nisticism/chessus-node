@@ -38,6 +38,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   const [lastPlacedPiece, setLastPlacedPiece] = useState(null);
   const [draggedPiece, setDraggedPiece] = useState(null);
   const [allowedStartingModes, setAllowedStartingModes] = useState(['none', 'backrow', 'mirrored', 'independent', 'shared', 'full']); // All enabled by default
+  const [defaultStartingMode, setDefaultStartingMode] = useState('none');
   const [pieceDataMap, setPieceDataMap] = useState({});
   const [, setHoveredSquare] = useState(null);
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
@@ -286,6 +287,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
       // If it's not JSON, keep all modes enabled (default)
     }
   }, [gameData.randomized_starting_positions]);
+
+  // Load saved default_starting_mode on edit
+  useEffect(() => {
+    if (gameData.default_starting_mode) {
+      setDefaultStartingMode(gameData.default_starting_mode);
+    }
+  }, [gameData.default_starting_mode]);
 
   // Update gameData whenever piecePlacements changes
   useEffect(() => {
@@ -916,9 +924,24 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         allowedModes: newModes
       };
       updateGameData({ randomized_starting_positions: JSON.stringify(randomizedData) });
+
+      // If the default mode was just removed, fall back to the first remaining mode
+      setDefaultStartingMode(prev2 => {
+        if (!newModes.includes(prev2)) {
+          const fallback = newModes[0] || 'none';
+          updateGameData({ default_starting_mode: fallback });
+          return fallback;
+        }
+        return prev2;
+      });
       
       return newModes;
     });
+  };
+
+  const handleDefaultModeChange = (mode) => {
+    setDefaultStartingMode(mode);
+    updateGameData({ default_starting_mode: mode });
   };
 
   // Helper function to get placement image URL with fallback
@@ -1711,78 +1734,63 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         </h3>
         {randomizationOpen && (
         <>
-        <p className={styles["field-hint"]} style={{ marginBottom: '15px' }}>
+        <p className={styles["field-hint"]} style={{ marginBottom: '8px' }}>
           Select which starting position modes players can choose from when creating a match with this game type.
         </p>
+        <p className={styles["field-hint"]} style={{ marginBottom: '15px', color: 'var(--text-dim)' }}>
+          Click <strong>Set as default</strong> to choose which mode is pre-selected in the host game modal.
+        </p>
         <div className={styles["checkbox-group-vertical"]}>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={allowedStartingModes.includes('none')}
-              onChange={() => handleStartingModeToggle('none')}
-              disabled={allowedStartingModes.length === 1 && allowedStartingModes.includes('none')}
-            />
-            <span>Fixed Starting Positions</span>
-            <p className={styles["checkbox-hint"]}>Pieces always start in the positions configured above</p>
-          </label>
-          <label className={styles["checkbox-label"]} style={{ opacity: isBoardSymmetric ? 1 : 0.5 }}>
-            <input
-              type="checkbox"
-              checked={allowedStartingModes.includes('backrow')}
-              onChange={() => handleStartingModeToggle('backrow')}
-              disabled={!isBoardSymmetric || (allowedStartingModes.length === 1 && allowedStartingModes.includes('backrow'))}
-            />
-            <span>Back Row Only Mirrored Randomization</span>
-            <p className={styles["checkbox-hint"]}>
-              {isBoardSymmetric 
-                ? "Only the back row is randomized in a mirrored fashion. Other pieces (like pawns) stay in place. Like Chess960!"
-                : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups"}
-            </p>
-          </label>
-          <label className={styles["checkbox-label"]} style={{ opacity: isBoardSymmetric ? 1 : 0.5 }}>
-            <input
-              type="checkbox"
-              checked={allowedStartingModes.includes('mirrored')}
-              onChange={() => handleStartingModeToggle('mirrored')}
-              disabled={!isBoardSymmetric || (allowedStartingModes.length === 1 && allowedStartingModes.includes('mirrored'))}
-            />
-            <span>Full Mirrored Randomization</span>
-            <p className={styles["checkbox-hint"]}>
-              {isBoardSymmetric 
-                ? "Both players get the same random configuration for all pieces, maintaining mirror symmetry."
-                : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups"}
-            </p>
-          </label>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={allowedStartingModes.includes('independent')}
-              onChange={() => handleStartingModeToggle('independent')}
-              disabled={allowedStartingModes.length === 1 && allowedStartingModes.includes('independent')}
-            />
-            <span>Independent Randomization</span>
-            <p className={styles["checkbox-hint"]}>Each player's pieces randomized independently within their starting squares</p>
-          </label>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={allowedStartingModes.includes('shared')}
-              onChange={() => handleStartingModeToggle('shared')}
-              disabled={allowedStartingModes.length === 1 && allowedStartingModes.includes('shared')}
-            />
-            <span>Shared Starting Squares</span>
-            <p className={styles["checkbox-hint"]}>All pieces from both players redistributed randomly across all starting squares</p>
-          </label>
-          <label className={styles["checkbox-label"]}>
-            <input
-              type="checkbox"
-              checked={allowedStartingModes.includes('full')}
-              onChange={() => handleStartingModeToggle('full')}
-              disabled={allowedStartingModes.length === 1 && allowedStartingModes.includes('full')}
-            />
-            <span>Full Board Randomization</span>
-            <p className={styles["checkbox-hint"]}>Pieces placed randomly anywhere on the board. Maximum chaos!</p>
-          </label>
+          {[
+            { mode: 'none', label: 'Fixed Starting Positions', hint: 'Pieces always start in the positions configured above', sym: false },
+            { mode: 'backrow', label: 'Back Row Only Mirrored Randomization', hint: isBoardSymmetric ? "Only the back row is randomized in a mirrored fashion. Other pieces (like pawns) stay in place. Like Chess960!" : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups", sym: true },
+            { mode: 'mirrored', label: 'Full Mirrored Randomization', hint: isBoardSymmetric ? "Both players get the same random configuration for all pieces, maintaining mirror symmetry." : "⚠️ Not available: Board must have 2 players with identical mirrored piece setups", sym: true },
+            { mode: 'independent', label: 'Independent Randomization', hint: "Each player's pieces randomized independently within their starting squares", sym: false },
+            { mode: 'shared', label: 'Shared Starting Squares', hint: 'All pieces from both players redistributed randomly across all starting squares', sym: false },
+            { mode: 'full', label: 'Full Board Randomization', hint: 'Pieces placed randomly anywhere on the board. Maximum chaos!', sym: false },
+          ].map(({ mode, label, hint, sym }) => {
+            const requiresSymmetry = sym;
+            const isAvailable = !requiresSymmetry || isBoardSymmetric;
+            const isChecked = allowedStartingModes.includes(mode);
+            const isOnlyOne = allowedStartingModes.length === 1 && isChecked;
+            const isDefault = defaultStartingMode === mode;
+            return (
+              <div key={mode} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', opacity: isAvailable ? 1 : 0.5, marginBottom: '8px' }}>
+                <label className={styles["checkbox-label"]} style={{ flex: 1, margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => handleStartingModeToggle(mode)}
+                    disabled={!isAvailable || isOnlyOne}
+                  />
+                  <span>{label}</span>
+                  <p className={styles["checkbox-hint"]}>{hint}</p>
+                </label>
+                {isChecked && (
+                  <button
+                    type="button"
+                    onClick={() => handleDefaultModeChange(mode)}
+                    title={isDefault ? 'This is the default mode' : 'Set as the pre-selected default in the host game modal'}
+                    style={{
+                      marginTop: '2px',
+                      flexShrink: 0,
+                      padding: '3px 10px',
+                      fontSize: '0.75em',
+                      borderRadius: '4px',
+                      border: isDefault ? '1px solid #7289da' : '1px solid var(--border-color, #555)',
+                      background: isDefault ? 'rgba(114,137,218,0.25)' : 'transparent',
+                      color: isDefault ? '#7289da' : 'var(--text-dim)',
+                      cursor: isDefault ? 'default' : 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                    disabled={isDefault}
+                  >
+                    {isDefault ? 'Default ✓' : 'Set as default'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
         </>
         )}

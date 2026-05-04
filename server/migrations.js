@@ -3535,6 +3535,34 @@ const runMigrations = async () => {
     console.error('Error adding admin_level column to users:', err.message);
   }
 
+  // is_training_only: game types created by uploading rules.json for local AI
+  // training; they are hidden from all public-facing listings.
+  try {
+    if (!(await columnExists('game_types', 'is_training_only'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN is_training_only TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'If true, game type is for AI training only and hidden from public listings'`,
+        "Add is_training_only column to game_types"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_training_only column to game_types:', err.message);
+  }
+
+  // default_starting_mode: which starting position mode is pre-selected when
+  // a player opens the Host Game modal for this game type.
+  try {
+    if (!(await columnExists('game_types', 'default_starting_mode'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN default_starting_mode VARCHAR(30) DEFAULT NULL COMMENT 'Default starting position mode shown in the host game modal (none/backrow/mirrored/independent/shared/full)'`,
+        "Add default_starting_mode column to game_types"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding default_starting_mode column to game_types:', err.message);
+  }
+
   if (migrationsRun === 0) {
     console.log('[DB] All migrations up to date\n');
   } else {

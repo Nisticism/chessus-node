@@ -10,10 +10,19 @@ const path = require('path');
 const db_pool = require('../../configs/db');
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
-const TRAINING_ROOT = path.join(REPO_ROOT, 'ai-training');
+// Allow the training data directory to live outside the repo so that git
+// operations (fresh clone, clean, etc.) can never touch it.  Set
+// TRAINING_DATA_DIR in .env on the server; leave unset for local dev.
+const TRAINING_ROOT = process.env.TRAINING_DATA_DIR
+  ? path.resolve(process.env.TRAINING_DATA_DIR)
+  : path.join(REPO_ROOT, 'ai-training');
 
 function trainingDirFor(gameTypeId) {
   return path.join(TRAINING_ROOT, String(gameTypeId));
+}
+
+function trainingRootDir() {
+  return TRAINING_ROOT;
 }
 
 function rulesPathFor(gameTypeId) {
@@ -524,5 +533,6 @@ module.exports = {
   exportGameRules,
   rulesPathFor,
   trainingDirFor,
+  trainingRootDir,
   TRAINING_ROOT,
 };

@@ -106,7 +106,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
 
   const fetchGameTypes = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_URL}admin/games?limit=500&page=1`, {
+      const res = await axios.get(`${API_URL}admin/games?limit=500&page=1&includeTrainingOnly=true`, {
         headers: authHeader(),
       });
       const list = Array.isArray(res.data?.data)
@@ -302,6 +302,124 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
   const [wiping, setWiping] = useState(false);
   const [wipeResult, setWipeResult] = useState(null);
   const [wipeError, setWipeError] = useState(null);
+
+  // Disk status state (on-demand per-job check)
+  const [diskPresent, setDiskPresent] = useState(null); // Set<number> of job IDs on disk
+  const [diskAbsent, setDiskAbsent] = useState(null);   // Set<number> of job IDs NOT on disk
+  const [diskChecking, setDiskChecking] = useState(false);
+  const [diskCheckError, setDiskCheckError] = useState(null);
+
+  // Import rules (training-only game type) state
+  const [importRulesFile, setImportRulesFile] = useState(null);
+  const [importRulesName, setImportRulesName] = useState('');
+  const [importingRules, setImportingRules] = useState(false);
+  const [importRulesResult, setImportRulesResult] = useState(null);
+  const [importRulesError, setImportRulesError] = useState(null);
+  const importRulesInputRef = React.useRef(null);
+
+  const handleImportRules = async (e) => {
+    e.preventDefault();
+    setImportRulesError(null);
+    setImportRulesResult(null);
+    if (!importRulesFile) {
+      setImportRulesError('Choose a rules.json file first.');
+      return;
+    }
+    if (!importRulesFile.name.toLowerCase().endsWith('.json')) {
+      setImportRulesError('File must be a .json file (exported rules.json).');
+      return;
+    }
+    setImportingRules(true);
+    try {
+      const fd = new FormData();
+      fd.append('rules', importRulesFile);
+      if (importRulesName.trim()) fd.append('display_name', importRulesName.trim());
+      const res = await axios.post(
+        `${API_URL}admin/ai-training/upload-rules`,
+        fd,
+        { headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' } },
+      );
+      setImportRulesResult(res.data);
+      setImportRulesFile(null);
+      setImportRulesName('');
+      if (importRulesInputRef.current) importRulesInputRef.current.value = '';
+      await fetchGameTypes(); // refresh dropdowns so the new type appears
+    } catch (err) {
+      setImportRulesError(err?.response?.data?.message || err.message || 'Import failed');
+    } finally {
+      setImportingRules(false);
+    }
+  };
+
+  const handleCheckDisk = async () => {
+    if (!status?.jobs?.length) return;
+    setDiskChecking(true);
+    setDiskCheckError(null);
+    try {
+      const jobs = status.jobs.map((j) => ({ id: j.id, game_type_id: j.game_type_id }));
+      const res = await axios.post(
+        `${API_URL}admin/ai-training/disk-status`,
+        { jobs },
+        { headers: authHeader() },
+      );
+      setDiskPresent(new Set(res.data.present));
+      setDiskAbsent(new Set(res.data.absent));
+    } catch (err) {
+      setDiskCheckError(err?.response?.data?.message || err.message || 'Disk check failed');
+    } finally {
+      setDiskChecking(false);
+    }
+  };
+
+  // Sync-disk state
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+  const [syncError, setSyncError] = useState(null);
+
+  const handleSyncDisk = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    setSyncError(null);
+    try {
+      const res = await axios.post(
+        `${API_URL}admin/ai-training/sync-disk`,
+        {},
+        { headers: authHeader() },
+      );
+      setSyncResult(res.data);
+      await fetchStatus();
+    } catch (err) {
+      setSyncError(err?.response?.data?.message || err.message || 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Backup state
+  const [backupGameTypeId, setBackupGameTypeId] = useState('');
+  const [backing, setBacking] = useState(false);
+  const [backupResult, setBackupResult] = useState(null);
+  const [backupError, setBackupError] = useState(null);
+
+  const handleBackup = async () => {
+    setBacking(true);
+    setBackupResult(null);
+    setBackupError(null);
+    try {
+      const body = {};
+      if (backupGameTypeId) body.gameTypeId = parseInt(backupGameTypeId, 10);
+      const res = await axios.post(
+        `${API_URL}admin/ai-training/backup`,
+        body,
+        { headers: authHeader() },
+      );
+      setBackupResult(res.data);
+    } catch (err) {
+      setBackupError(err?.response?.data?.message || err.message || 'Backup failed');
+    } finally {
+      setBacking(false);
+    }
+  };
 
   const handleWipe = async () => {
     const targetLabel = wipeGameTypeId
@@ -687,10 +805,75 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
       </div>
 
       <div className={styles.section}>
+        <h4>Import game rules for local training</h4>
+        <p className={styles.intro}>
+          Upload a <code>rules.json</code> exported from another instance (or generated
+          with <code>exportGameRules</code>) to create a training-only game type here.
+          Training-only games are hidden from public listings but can be trained, analyzed,
+          and have artifacts uploaded to them. Use this workflow to train locally on game
+          configs that live on a different site instance.
+        </p>
+        <form onSubmit={handleImportRules} className={styles.form}>
+          <label>
+            Display name (optional)
+            <input
+              type="text"
+              maxLength={100}
+              placeholder="e.g. My Custom Variant (training only)"
+              value={importRulesName}
+              onChange={(e) => setImportRulesName(e.target.value)}
+            />
+          </label>
+          <label>
+            rules.json file
+            <input
+              ref={importRulesInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={(e) => { setImportRulesFile(e.target.files?.[0] || null); setImportRulesResult(null); setImportRulesError(null); }}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={importingRules || !importRulesFile}
+          >
+            {importingRules ? 'Importing…' : 'Import rules'}
+          </button>
+          {importRulesError && <div className={styles.error}>{importRulesError}</div>}
+          {importRulesResult && (
+            <div className={styles.success || ''} style={{ color: '#4caf50' }}>
+              Imported as game #{importRulesResult.gameTypeId} — &quot;{importRulesResult.gameName}&quot;.
+              You can now start a training job for it from the &quot;Start a new training job&quot; section above.
+            </div>
+          )}
+        </form>
+      </div>
+
+      <div className={styles.section}>
         <h4>Recent jobs</h4>
         {(!status || !status.jobs || status.jobs.length === 0) ? (
           <div className={styles.empty}>No training jobs yet.</div>
         ) : (
+          <>
+            <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                disabled={diskChecking}
+                className={`${styles.btn} ${styles.btnNeutral}`}
+                onClick={handleCheckDisk}
+                title="Check which jobs have their data directory on disk. Shows a green dot or red dash in the Data column."
+              >
+                {diskChecking ? 'Checking disk…' : 'Check disk data'}
+              </button>
+              {diskCheckError && (
+                <span className={styles.error} style={{ fontSize: '0.88em' }}>{diskCheckError}</span>
+              )}
+              {(diskPresent || diskAbsent) && !diskChecking && (
+                <span style={{ fontSize: '0.88em', color: 'var(--text-muted)' }}>
+                  {diskPresent?.size ?? 0} present, {diskAbsent?.size ?? 0} missing
+                </span>
+              )}
+            </div>
           <table className={styles.table}>
             <thead>
               <tr>
@@ -700,6 +883,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                 <th>Progress</th>
                 <th>MCTS</th>
                 <th>Started</th>
+                <th title="Whether this job's data directory exists on disk (only visible after 'Check disk data')">Data</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -716,6 +900,14 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                     {j.game_name && (
                       <span style={{ marginLeft: 5, color: '#b0b0b0' }}>{j.game_name}</span>
                     )}
+                    {j.is_training_only ? (
+                      <span
+                        style={{ marginLeft: 5, fontSize: '0.75em', padding: '1px 5px', borderRadius: 3, background: '#3a2a5a', color: '#c5a6ff', border: '1px solid #7c5cbe' }}
+                        title="This game type was imported from a rules.json file for local AI training. It is hidden from public listings."
+                      >
+                        training only
+                      </span>
+                    ) : null}
                   </td>
                   <td>
                     <span className={`${styles.status} ${styles[`status_${j.status}`] || ""}`}>
@@ -744,6 +936,22 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                   </td>
                   <td>{j.mcts_iters}</td>
                   <td>{j.started_at ? new Date(j.started_at).toLocaleString() : "-"}</td>
+                  <td title={
+                    !diskPresent && !diskAbsent ? 'Click "Check disk data" to verify' :
+                    diskPresent?.has(j.id) ? 'Job directory found on disk' :
+                    diskAbsent?.has(j.id) ? 'Job directory NOT found on disk' :
+                    'Not checked'
+                  } style={{ textAlign: 'center', fontSize: '1.1em' }}>
+                    {!diskPresent && !diskAbsent ? (
+                      <span style={{ color: '#666' }}>—</span>
+                    ) : diskPresent?.has(j.id) ? (
+                      <span style={{ color: '#4caf50' }}>●</span>
+                    ) : diskAbsent?.has(j.id) ? (
+                      <span style={{ color: '#f44336' }}>✕</span>
+                    ) : (
+                      <span style={{ color: '#666' }}>—</span>
+                    )}
+                  </td>
                   <td>
                     {j.status === "running" && (
                       <button
@@ -855,6 +1063,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
 
@@ -878,6 +1087,92 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
           </div>
         </div>
       )}
+
+      <div className={styles.section}>
+        <h4>Sync disk data</h4>
+        <p className={styles.intro}>
+          Scans the trainer host's disk and compares actual game counts against
+          what the database believes. Jobs whose files are missing from disk get
+          their <code>games_played</code> zeroed so counts are accurate. Run
+          this after a suspected data-loss event to fix the "trained on N games"
+          display and the analysis numbers.
+        </p>
+        <button
+          type="button"
+          disabled={syncing}
+          className={`${styles.btn} ${styles.btnNeutral}`}
+          onClick={handleSyncDisk}
+        >
+          {syncing ? 'Scanning…' : 'Verify &amp; sync disk data'}
+        </button>
+        {syncError && <div className={styles.error} style={{ marginTop: 8 }}>{syncError}</div>}
+        {syncResult && (
+          <div style={{ marginTop: 8, color: syncResult.updated.length > 0 ? '#ffd96b' : '#4caf50' }}>
+            Scanned {syncResult.scannedGameTypes} game type{syncResult.scannedGameTypes === 1 ? '' : 's'}.{' '}
+            {syncResult.updated.length === 0 ? (
+              'All games_played counts match disk — no changes needed.'
+            ) : (
+              <>
+                {syncResult.updated.length} job{syncResult.updated.length === 1 ? '' : 's'} updated:
+                <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                  {syncResult.updated.map((u) => (
+                    <li key={u.jobId}>
+                      Job #{u.jobId} (game #{u.gameTypeId}):
+                      {' '}{u.oldGamesPlayed} → {u.newGamesPlayed} games
+                      {u.reason === 'disk_data_missing' ? ' [disk data missing]' : ' [count corrected]'}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className={styles.section}>
+        <h4>Backup training data</h4>
+        <p className={styles.intro}>
+          Copies all training files (logs, models, book files) to a snapshot
+          directory outside the repo on the trainer host.
+          Set <code>TRAINING_BACKUP_DIR</code> in the trainer's <code>.env</code> to
+          control where snapshots go; defaults to <code>ai-training-backup/</code>
+          next to the repo root. Each run creates a timestamped subfolder so
+          previous snapshots are not overwritten.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            Game type (blank = all)
+            <select
+              value={backupGameTypeId}
+              onChange={(e) => { setBackupGameTypeId(e.target.value); setBackupResult(null); setBackupError(null); }}
+              style={{ marginLeft: 6 }}
+            >
+              <option value="">— all game types —</option>
+              {gameTypes.map((g) => (
+                <option key={g.id} value={g.id}>
+                  #{g.id} — {g.game_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={backing}
+            className={`${styles.btn} ${styles.btnNeutral}`}
+            onClick={handleBackup}
+          >
+            {backing ? 'Backing up…' : 'Back up now'}
+          </button>
+        </div>
+        {backupError && <div className={styles.error} style={{ marginTop: 8 }}>{backupError}</div>}
+        {backupResult && (
+          <div style={{ marginTop: 8, color: '#4caf50' }}>
+            Backed up {backupResult.copiedGameTypes} game type{backupResult.copiedGameTypes === 1 ? '' : 's'}
+            {backupResult.copiedFiles > 0 ? ` (${backupResult.copiedFiles} files)` : ''}.
+            Snapshot: <code style={{ fontSize: '0.85em' }}>{backupResult.backupPath}</code>
+          </div>
+        )}
+      </div>
 
       <div className={styles.section}>
         <h4>Global wipe analysis data</h4>
@@ -1154,6 +1449,36 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
           disabled={!analysisGameTypeId || busy}
         >
           {analysis ? 'Regenerate analysis' : 'Generate analysis'}
+        </button>
+        <button
+          type="button"
+          disabled={!analysisGameTypeId}
+          title="Download the rules.json for this game type (re-generated from the database). Use it for local training with the Rust engine."
+          onClick={() => {
+            if (!analysisGameTypeId) return;
+            // Trigger browser download via a hidden link.
+            const a = document.createElement('a');
+            a.href = `${API_URL}admin/ai-training/rules/${analysisGameTypeId}`;
+            a.download = `rules-${analysisGameTypeId}.json`;
+            // Include auth token as query param isn't ideal — use fetch + blob instead.
+            axios.get(`${API_URL}admin/ai-training/rules/${analysisGameTypeId}`, {
+              headers: authHeader(),
+              responseType: 'blob',
+            }).then((res) => {
+              const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/json' }));
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `rules-${analysisGameTypeId}.json`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(url);
+            }).catch((err) => {
+              alert(err?.response?.data?.message || err.message || 'Failed to download rules');
+            });
+          }}
+        >
+          Download rules.json
         </button>
         <ToggleSwitch
           checked={filterLegacy}

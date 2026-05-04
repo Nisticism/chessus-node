@@ -15,8 +15,12 @@
  *   DB_HOST=... DB_USER=... DB_PASSWORD=... DB_NAME=... \
  *   node server/ai/trainer-service.js
  *
+ * Or place a .env file at server/ai/.env (see server/ai/.env.example) and
+ * launch with:  node server/ai/trainer-service.js
+ *
  * (Add to PM2 / systemd alongside any frontend processes.)
  */
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const trainingManager = require('./training-manager');
 
@@ -159,9 +163,9 @@ app.delete('/trainer/jobs/:id/data', (req, res) => {
     if (!Number.isFinite(jobId)) return res.status(400).json({ message: 'Invalid job id' });
     const fs = require('fs');
     const path = require('path');
-    const { trainingDirFor } = require('./export-game-rules');
+    const { trainingRootDir } = require('./export-game-rules');
     // We don't know the game_type_id here, so scan all game type dirs.
-    const TRAINING_ROOT = path.resolve(__dirname, '../..', 'ai-training');
+    const TRAINING_ROOT = trainingRootDir();
     let deleted = false;
     if (fs.existsSync(TRAINING_ROOT)) {
       for (const entry of fs.readdirSync(TRAINING_ROOT)) {
@@ -185,8 +189,8 @@ app.delete('/trainer/wipe', (req, res) => {
   try {
     const fs = require('fs');
     const path = require('path');
-    const { trainingDirFor, rulesPathFor } = require('./export-game-rules');
-    const TRAINING_ROOT = path.resolve(__dirname, '../..', 'ai-training');
+    const { trainingDirFor, trainingRootDir, rulesPathFor } = require('./export-game-rules');
+    const TRAINING_ROOT = trainingRootDir();
     const gameTypeIds = Array.isArray(req.body?.gameTypeIds) ? req.body.gameTypeIds : null;
     let deletedDirs = 0;
     let deletedRules = 0;
@@ -216,6 +220,182 @@ app.delete('/trainer/wipe', (req, res) => {
       }
     }
     res.json({ ok: true, deletedDirs, deletedRules });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Verify what's actually on disk for every job of a game type and return
+// per-job game counts.  The backend uses this to reconcile games_played.
+app.get('/trainer/verify-disk/:gameTypeId', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const gameTypeId = parseInt(req.params.gameTypeId, 10);
+    if (!Number.isFinite(gameTypeId)) return res.status(400).json({ message: 'Invalid gameTypeId' });
+    const { trainingDirFor } = require('./export-game-rules');
+    const jobsRoot = path.join(trainingDirFor(gameTypeId), 'jobs');
+    const jobs = [];
+    if (fs.existsSync(jobsRoot)) {
+      for (const entry of fs.readdirSync(jobsRoot)) {
+        const jobId = parseInt(entry, 10);
+        if (!Number.isFinite(jobId) || jobId <= 0) continue;
+        const dir = path.join(jobsRoot, entry);
+        try { if (!fs.statSync(dir).isDirectory()) continue; } catch { continue; }
+        const logPath  = path.join(dir, 'log.ndjson');
+        const bookPath = path.join(dir, 'book.jsonl');
+        let gamesOnDisk = 0;
+        let source = 'none';
+        if (fs.existsSync(logPath)) {
+          // Count game_complete events in the log.
+          try {
+            const text = fs.readFileSync(logPath, 'utf8');
+            for (const line of text.split(/\r?\n/)) {
+              if (!line) continue;
+              try { const ev = JSON.parse(line); if (ev?.type === 'game_complete') gamesOnDisk++; } catch { /* skip */ }
+            }
+            source = 'log';
+          } catch { /* unreadable log */ }
+        } else if (fs.existsSync(bookPath)) {
+          // Count p=0 records as game count.
+          try {
+            const text = fs.readFileSync(bookPath, 'utf8');
+            for (const line of text.split(/\r?\n/)) {
+              if (!line.trim()) continue;
+              try { const r = JSON.parse(line); if (r.p === 0 || r.p === '0') gamesOnDisk++; } catch { /* skip */ }
+            }
+            source = 'book';
+          } catch { /* unreadable book */ }
+        }
+        jobs.push({ jobId, gamesOnDisk, source });
+      }
+    }
+    res.json({ gameTypeId, jobs });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Back up all training data for a game type (or all game types) to a
+// directory outside the repo so it survives git operations.
+// Set TRAINING_BACKUP_DIR env var on the trainer host; defaults to a
+// sibling of the training directory named ai-training-backup.
+app.post('/trainer/backup', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingDirFor, trainingRootDir } = require('./export-game-rules');
+    const TRAINING_ROOT = trainingRootDir();
+    const BACKUP_ROOT = process.env.TRAINING_BACKUP_DIR
+      ? path.resolve(process.env.TRAINING_BACKUP_DIR)
+      : path.join(path.dirname(TRAINING_ROOT), 'ai-training-backup');
+
+    const gameTypeIds = Array.isArray(req.body?.gameTypeIds) && req.body.gameTypeIds.length > 0
+      ? req.body.gameTypeIds.map(Number).filter(Number.isFinite)
+      : null; // null = all
+
+    // Collect which game type dirs to back up.
+    let gtids = [];
+    if (gameTypeIds) {
+      gtids = gameTypeIds;
+    } else if (fs.existsSync(TRAINING_ROOT)) {
+      for (const entry of fs.readdirSync(TRAINING_ROOT)) {
+        const id = parseInt(entry, 10);
+        if (Number.isFinite(id)) gtids.push(id);
+      }
+    }
+
+    // Recursive copy helper.
+    function copyDir(src, dest) {
+      fs.mkdirSync(dest, { recursive: true });
+      for (const entry of fs.readdirSync(src)) {
+        const s = path.join(src, entry);
+        const d = path.join(dest, entry);
+        const st = fs.statSync(s);
+        if (st.isDirectory()) {
+          copyDir(s, d);
+        } else {
+          fs.copyFileSync(s, d);
+        }
+      }
+    }
+
+    let copiedGameTypes = 0;
+    let copiedFiles = 0;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const snapshotRoot = path.join(BACKUP_ROOT, timestamp);
+
+    for (const gtid of gtids) {
+      const src = trainingDirFor(gtid);
+      if (!fs.existsSync(src)) continue;
+      const dest = path.join(snapshotRoot, String(gtid));
+      copyDir(src, dest);
+      copiedGameTypes++;
+      // Count files for reporting.
+      const countFiles = (d) => {
+        let n = 0;
+        for (const e of fs.readdirSync(d)) {
+          const full = path.join(d, e);
+          if (fs.statSync(full).isDirectory()) n += countFiles(full);
+          else n++;
+        }
+        return n;
+      };
+      try { copiedFiles += countFiles(dest); } catch { /* non-fatal */ }
+    }
+
+    res.json({ ok: true, backupPath: snapshotRoot, copiedGameTypes, copiedFiles, timestamp });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Check which job directories actually exist on disk.
+// Body: { jobs: [{ id, game_type_id }] }
+// Returns { present: [id,...], absent: [id,...] }
+app.post('/trainer/disk-status', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingRootDir } = require('./export-game-rules');
+    const jobs = Array.isArray(req.body?.jobs) ? req.body.jobs : [];
+    const present = [];
+    const absent = [];
+    for (const j of jobs) {
+      const jobId = Number(j.id);
+      const gtid = Number(j.game_type_id);
+      if (!Number.isFinite(jobId) || !Number.isFinite(gtid)) continue;
+      const dir = path.join(trainingRootDir(), String(gtid), 'jobs', String(jobId));
+      if (fs.existsSync(dir)) {
+        present.push(jobId);
+      } else {
+        absent.push(jobId);
+      }
+    }
+    res.json({ present, absent });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Serve a rules.json file for a game type.
+// GET /trainer/rules/:gameTypeId
+app.get('/trainer/rules/:gameTypeId', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingRootDir } = require('./export-game-rules');
+    const gtid = parseInt(req.params.gameTypeId, 10);
+    if (!Number.isFinite(gtid) || gtid <= 0) {
+      return res.status(400).json({ message: 'Invalid gameTypeId' });
+    }
+    const rulesFile = path.join(trainingRootDir(), String(gtid), 'rules.json');
+    if (!fs.existsSync(rulesFile)) {
+      return res.status(404).json({ message: 'rules.json not found for this game type — export it first' });
+    }
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="rules-${gtid}.json"`);
+    fs.createReadStream(rulesFile).pipe(res);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

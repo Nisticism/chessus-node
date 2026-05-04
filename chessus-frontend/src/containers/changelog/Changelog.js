@@ -4,6 +4,21 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 4, 2026",
+    title: "Storage metrics, default starting positions, AI training improvements, and trainer env config",
+    items: [
+      "Admin Server Stats: new 'Load storage metrics' section shows partition disk usage (used/free/total with a visual bar), folder sizes for uploads/, pieces/, profile-pictures/, and ai-training/, plus DB table row counts for key tables.",
+      "Game Wizard Step 4: each allowed starting position mode now has a 'Set as default' button. The chosen default is pre-selected when any player opens the Host Game modal for that game type.",
+      "Game detail page: if more than one starting position mode is available, all allowed modes are now listed under 'Starting Position Modes', with the default marked.",
+      "Admin AI Training: per-job disk data status column (green/red indicator) — quickly see which jobs have training data on the trainer host.",
+      "Admin AI Training: download rules.json button in the Analysis section — export the current game rules file for inspection or offline training.",
+      "Admin AI Training: 'Import game rules' panel — upload a rules.json to create a training-only game type that is hidden from all public listings.",
+      "Training-only game types are now excluded from all public game listings and the play lobby.",
+      "AI trainer service: the service now loads a local .env file (server/ai/.env) on startup. A .env.example template with all supported environment variables is included.",
+      "AI trainer: TRAINING_BACKUP_DIR environment variable is documented in the new .env.example — set this to enable training data backups.",
+    ],
+  },
+  {
     date: "May 3, 2026",
     title: "Community piece images, preferences UX improvements, public computer games section, forums interactivity, and neutral pieces",
     items: [

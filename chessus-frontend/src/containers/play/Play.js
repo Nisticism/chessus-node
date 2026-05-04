@@ -380,10 +380,15 @@ const Play = () => {
   // Reset starting mode when game type changes
   useEffect(() => {
     if (allowedStartingModes.length > 0) {
-      // Use first allowed mode as default
-      setStartingMode(allowedStartingModes[0]);
+      // Prefer the game type's saved default mode if it's still in the allowed list
+      const savedDefault = selectedGameType?.default_starting_mode;
+      if (savedDefault && allowedStartingModes.includes(savedDefault)) {
+        setStartingMode(savedDefault);
+      } else {
+        setStartingMode(allowedStartingModes[0]);
+      }
     }
-  }, [allowedStartingModes]);
+  }, [allowedStartingModes, selectedGameType]);
 
   // Fetch open games when connected
   useEffect(() => {

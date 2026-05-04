@@ -2453,10 +2453,11 @@ app.get("/api/games", optionalAuthenticate, async (req, res) => {
     const whereParams = [];
     const conditions = [];
 
-    // By default, exclude drafts from public listings
+    // By default, exclude drafts and training-only games from public listings
     // Only show drafts when explicitly requested AND filtering by creator
     if (!includeDrafts || !creatorId) {
       conditions.push('(gt.is_draft = 0 OR gt.is_draft IS NULL)');
+      conditions.push('(gt.is_training_only = 0 OR gt.is_training_only IS NULL)');
     }
 
     // Exclude games whose name is pending professional-name review from public listings.
@@ -2805,6 +2806,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       special_squares_string:                sanitizeSpecialSquaresJSON(gameData.special_squares_string) || null,
       control_squares_string:                gameData.control_squares_string || null,
       randomized_starting_positions:         gameData.randomized_starting_positions || null,
+      default_starting_mode:                 ['none','backrow','mirrored','independent','shared','full'].includes(gameData.default_starting_mode) ? gameData.default_starting_mode : null,
       other_game_data:                       gameData.other_game_data || null,
       optional_condition:                    gameData.optional_condition || null,
       draw_move_limit:                       gameData.draw_move_limit != null ? gameData.draw_move_limit : null,
@@ -3056,7 +3058,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
               range_squares_string, promotion_squares_string, special_squares_string, control_squares_string,
               other_game_data, game_name, created_at
        FROM game_types
-       WHERE id != ? AND (is_draft = 0 OR is_draft IS NULL)`,
+       WHERE id != ? AND (is_draft = 0 OR is_draft IS NULL) AND (is_training_only = 0 OR is_training_only IS NULL)`,
       [gameId]
     );
 
@@ -5959,6 +5961,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       special_squares_string:                sanitizeSpecialSquaresJSON(gameData.special_squares_string) || null,
       control_squares_string:                gameData.control_squares_string || null,
       randomized_starting_positions:         gameData.randomized_starting_positions || null,
+      default_starting_mode:                 ['none','backrow','mirrored','independent','shared','full'].includes(gameData.default_starting_mode) ? gameData.default_starting_mode : null,
       other_game_data:                       gameData.other_game_data || null,
       optional_condition:                    gameData.optional_condition || null,
       draw_move_limit:                       gameData.draw_move_limit != null ? gameData.draw_move_limit : null,
@@ -8056,6 +8059,370 @@ app.post('/api/admin/ai-training/resume', authenticateAdmin1, (req, res) => {
   res.json(trainingManager.isNewJobsPaused());
 });
 
+// Sync disk: scan disk for actual game counts per job and reconcile the
+// games_played column in the DB. Jobs whose on-disk data is gone (e.g.
+// after accidental deletion) get games_played reset to 0 so the UI
+// accurately reflects the loss. In REMOTE_MODE proxies to the trainer-service
+// for the disk scan, then applies DB updates here (shared MySQL).
+app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res) => {
+  try {
+    const { gameTypeId } = req.body || {};
+    const trainerClient = require('./ai/trainer-client');
+    const { trainingDirFor } = require('./ai/export-game-rules');
+
+    // Collect which game type IDs to scan.
+    let gtids = [];
+    if (gameTypeId) {
+      const gtid = parseInt(gameTypeId, 10);
+      if (!Number.isFinite(gtid) || gtid <= 0) {
+        return res.status(400).send({ message: 'Invalid gameTypeId' });
+      }
+      gtids = [gtid];
+    } else {
+      const [rows] = await db_pool.query(
+        `SELECT DISTINCT game_type_id FROM ai_training_jobs WHERE games_played > 0`
+      );
+      gtids = rows.map((r) => r.game_type_id);
+    }
+
+    const allUpdated = [];
+
+    for (const gtid of gtids) {
+      // Get per-job disk counts.
+      let diskJobs = [];
+      if (trainingManager.REMOTE_MODE) {
+        try {
+          const result = await trainerClient.verifyDisk(gtid);
+          diskJobs = result?.jobs || [];
+        } catch (e) {
+          return res.status(502).send({ message: `Trainer service error: ${e.message}` });
+        }
+      } else {
+        // Local: scan directly.
+        const fs = require('fs');
+        const path = require('path');
+        const jobsRoot = path.join(trainingDirFor(gtid), 'jobs');
+        if (fs.existsSync(jobsRoot)) {
+          for (const entry of fs.readdirSync(jobsRoot)) {
+            const jobId = parseInt(entry, 10);
+            if (!Number.isFinite(jobId) || jobId <= 0) continue;
+            const dir = path.join(jobsRoot, entry);
+            try { if (!fs.statSync(dir).isDirectory()) continue; } catch { continue; }
+            const logPath  = path.join(dir, 'log.ndjson');
+            const bookPath = path.join(dir, 'book.jsonl');
+            let gamesOnDisk = 0;
+            let source = 'none';
+            if (fs.existsSync(logPath)) {
+              try {
+                const text = fs.readFileSync(logPath, 'utf8');
+                for (const line of text.split(/\r?\n/)) {
+                  if (!line) continue;
+                  try { const ev = JSON.parse(line); if (ev?.type === 'game_complete') gamesOnDisk++; } catch { /* skip */ }
+                }
+                source = 'log';
+              } catch { /* unreadable */ }
+            } else if (fs.existsSync(bookPath)) {
+              try {
+                const text = fs.readFileSync(bookPath, 'utf8');
+                for (const line of text.split(/\r?\n/)) {
+                  if (!line.trim()) continue;
+                  try { const r = JSON.parse(line); if (r.p === 0 || r.p === '0') gamesOnDisk++; } catch { /* skip */ }
+                }
+                source = 'book';
+              } catch { /* unreadable */ }
+            }
+            diskJobs.push({ jobId, gamesOnDisk, source });
+          }
+        }
+      }
+
+      // Build a map of disk counts by jobId.
+      const diskMap = {};
+      for (const j of diskJobs) diskMap[j.jobId] = j;
+
+      // Fetch DB records for this game type.
+      const [dbRows] = await db_pool.query(
+        `SELECT id, games_played, status FROM ai_training_jobs WHERE game_type_id = ?`,
+        [gtid],
+      );
+
+      for (const row of dbRows) {
+        const disk = diskMap[row.id];
+        const diskGames = disk?.gamesOnDisk ?? 0;
+        if (row.games_played > 0 && diskGames === 0) {
+          // Data is gone from disk — zero out DB so UI reflects reality.
+          await db_pool.query(
+            `UPDATE ai_training_jobs SET games_played = 0,
+               error_message = CONCAT(IFNULL(error_message, ''), ' [disk data missing — zeroed by sync]')
+             WHERE id = ?`,
+            [row.id],
+          );
+          allUpdated.push({
+            jobId: row.id,
+            gameTypeId: gtid,
+            oldGamesPlayed: row.games_played,
+            newGamesPlayed: 0,
+            reason: 'disk_data_missing',
+          });
+        } else if (disk && diskGames > 0 && diskGames !== row.games_played) {
+          // Disk says a different count than DB — trust disk.
+          await db_pool.query(
+            `UPDATE ai_training_jobs SET games_played = ? WHERE id = ?`,
+            [diskGames, row.id],
+          );
+          allUpdated.push({
+            jobId: row.id,
+            gameTypeId: gtid,
+            oldGamesPlayed: row.games_played,
+            newGamesPlayed: diskGames,
+            reason: 'count_mismatch',
+          });
+        }
+      }
+
+      // Invalidate model meta cache for this game type.
+      try { trainingManager._invalidateModelMetaCache?.(gtid); } catch { /* non-fatal */ }
+
+      // Regenerate analysis for this game type so it reflects the corrected data.
+      try {
+        const _trainingAnalysis = require('./ai/training-analysis');
+        const [[remaining]] = await db_pool.query(
+          `SELECT COUNT(*) AS c FROM ai_training_jobs WHERE game_type_id = ? AND games_played > 0`,
+          [gtid],
+        );
+        if ((remaining?.c || 0) === 0) {
+          await _trainingAnalysis.deleteAnalysis(gtid);
+        } else {
+          await _trainingAnalysis.regenerateAndStore(gtid, null, { filterLegacy: true });
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    res.json({ ok: true, updated: allUpdated, scannedGameTypes: gtids.length });
+  } catch (err) {
+    console.error('Sync disk error:', err);
+    res.status(500).send({ message: err.message || 'Sync failed' });
+  }
+});
+
+// Back up training data on the trainer host to a directory outside the repo.
+// In REMOTE_MODE proxies to the trainer-service (data lives there).
+// Locally, copies from ai-training/ to the TRAINING_BACKUP_DIR or a sibling
+// directory named ai-training-backup.
+app.post('/api/admin/ai-training/backup', authenticateAdmin1, async (req, res) => {
+  try {
+    const { gameTypeId } = req.body || {};
+    const gameTypeIds = gameTypeId ? [parseInt(gameTypeId, 10)] : [];
+    const trainerClient = require('./ai/trainer-client');
+
+    if (trainingManager.REMOTE_MODE) {
+      const result = await trainerClient.backup(gameTypeIds);
+      return res.json(result);
+    }
+
+    // Local backup.
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingDirFor, trainingRootDir } = require('./ai/export-game-rules');
+    const TRAINING_ROOT = trainingRootDir();
+    const BACKUP_ROOT = process.env.TRAINING_BACKUP_DIR
+      ? path.resolve(process.env.TRAINING_BACKUP_DIR)
+      : path.join(path.dirname(TRAINING_ROOT), 'ai-training-backup');
+
+    let gtids = gameTypeIds.length > 0 ? gameTypeIds : [];
+    if (gtids.length === 0 && fs.existsSync(TRAINING_ROOT)) {
+      for (const entry of fs.readdirSync(TRAINING_ROOT)) {
+        const id = parseInt(entry, 10);
+        if (Number.isFinite(id)) gtids.push(id);
+      }
+    }
+
+    function copyDir(src, dest) {
+      fs.mkdirSync(dest, { recursive: true });
+      for (const entry of fs.readdirSync(src)) {
+        const s = path.join(src, entry);
+        const d = path.join(dest, entry);
+        if (fs.statSync(s).isDirectory()) copyDir(s, d);
+        else fs.copyFileSync(s, d);
+      }
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const snapshotRoot = path.join(BACKUP_ROOT, timestamp);
+    let copiedGameTypes = 0;
+    let copiedFiles = 0;
+    for (const gtid of gtids) {
+      const src = trainingDirFor(gtid);
+      if (!fs.existsSync(src)) continue;
+      copyDir(src, path.join(snapshotRoot, String(gtid)));
+      copiedGameTypes++;
+      const countFiles = (d) => {
+        let n = 0;
+        for (const e of fs.readdirSync(d)) {
+          const full = path.join(d, e);
+          n += fs.statSync(full).isDirectory() ? countFiles(full) : 1;
+        }
+        return n;
+      };
+      try { copiedFiles += countFiles(path.join(snapshotRoot, String(gtid))); } catch { /* non-fatal */ }
+    }
+
+    res.json({ ok: true, backupPath: snapshotRoot, copiedGameTypes, copiedFiles, timestamp });
+  } catch (err) {
+    console.error('Backup training data error:', err);
+    res.status(500).send({ message: err.message || 'Backup failed' });
+  }
+});
+
+// Check which job directories exist on disk (on-demand, per-job).
+// Body: { jobs: [{ id, game_type_id }] }
+// Returns { present: [id,...], absent: [id,...] }
+app.post('/api/admin/ai-training/disk-status', authenticateAdmin1, async (req, res) => {
+  try {
+    const jobs = Array.isArray(req.body?.jobs) ? req.body.jobs : [];
+    if (trainingManager.REMOTE_MODE) {
+      const trainerClient = require('./ai/trainer-client');
+      const result = await trainerClient.diskStatus(jobs);
+      return res.json(result);
+    }
+    // Local: check directories directly.
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingRootDir } = require('./ai/export-game-rules');
+    const TRAINING_ROOT = trainingRootDir();
+    const present = [];
+    const absent = [];
+    for (const j of jobs) {
+      const jobId = Number(j.id);
+      const gtid = Number(j.game_type_id);
+      if (!Number.isFinite(jobId) || !Number.isFinite(gtid)) continue;
+      const dir = path.join(TRAINING_ROOT, String(gtid), 'jobs', String(jobId));
+      if (fs.existsSync(dir)) {
+        present.push(jobId);
+      } else {
+        absent.push(jobId);
+      }
+    }
+    res.json({ present, absent });
+  } catch (err) {
+    console.error('Disk status check error:', err);
+    res.status(500).send({ message: err.message || 'Disk status check failed' });
+  }
+});
+
+// Download the rules.json for a game type. Ensures an up-to-date export
+// exists first (re-generates from DB if needed). In REMOTE_MODE the file
+// lives on the trainer host; a dedicated /trainer/rules/:id endpoint serves it.
+app.get('/api/admin/ai-training/rules/:gameTypeId', authenticateAdmin1, async (req, res) => {
+  try {
+    const gtid = parseInt(req.params.gameTypeId, 10);
+    if (!Number.isFinite(gtid) || gtid <= 0) {
+      return res.status(400).send({ message: 'Invalid gameTypeId' });
+    }
+    const { exportGameRules, rulesPathFor } = require('./ai/export-game-rules');
+    if (trainingManager.REMOTE_MODE) {
+      // Re-export from DB (shared MySQL) then serve via trainer.
+      await exportGameRules(gtid);
+      const trainerClient = require('./ai/trainer-client');
+      const data = await trainerClient.downloadRules(gtid);
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="rules-${gtid}.json"`);
+      return res.send(typeof data === 'string' ? data : JSON.stringify(data));
+    }
+    // Local: re-export then serve file.
+    await exportGameRules(gtid);
+    const filePath = rulesPathFor(gtid);
+    const fs = require('fs');
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send({ message: 'rules.json not found after export — check game type has pieces' });
+    }
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="rules-${gtid}.json"`);
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    console.error('Download rules error:', err);
+    res.status(500).send({ message: err.message || 'Download rules failed' });
+  }
+});
+
+// Upload a rules.json file to create a training-only game type.
+// This allows local training data to be uploaded for game configs that don't
+// live in this database instance (e.g. training locally for a remote site).
+//
+// Body: multipart/form-data with:
+//   rules        — the rules.json file
+//   display_name — optional human-readable name (default: "Imported #<id>")
+//
+// Creates a minimal game_types row with is_training_only = 1, is_draft = 0.
+// Writes the uploaded rules.json to ai-training/<id>/rules.json directly
+// (bypasses exportGameRules — the uploaded file IS the canonical rules).
+// Returns { gameTypeId, gameName }.
+app.post('/api/admin/ai-training/upload-rules', authenticateAdmin1, async (req, res) => {
+  try {
+    const multer = require('multer');
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+    upload.single('rules')(req, res, async (multerErr) => {
+      try {
+        if (multerErr) {
+          return res.status(400).send({ message: multerErr.message || 'File upload failed' });
+        }
+        if (!req.file) {
+          return res.status(400).send({ message: 'No rules file provided' });
+        }
+
+        // Parse to validate it is valid JSON.
+        let rulesData;
+        try {
+          rulesData = JSON.parse(req.file.buffer.toString('utf8'));
+        } catch (_) {
+          return res.status(400).send({ message: 'Uploaded file is not valid JSON' });
+        }
+
+        const displayName = (typeof req.body?.display_name === 'string' && req.body.display_name.trim())
+          ? req.body.display_name.trim().slice(0, 100)
+          : null;
+
+        // Read board dimensions from rules if available; fall back to defaults.
+        const boardWidth  = Number(rulesData?.game_type?.board_width)  || 8;
+        const boardHeight = Number(rulesData?.game_type?.board_height) || 8;
+        const userId = req.user?.id || null;
+
+        // Insert a minimal game_types row.
+        const tmpName = displayName || `Imported game (pending)`;
+        const [insertRes] = await db_pool.query(
+          `INSERT INTO game_types
+             (game_name, creator_id, is_draft, is_training_only,
+              board_width, board_height, player_count, created_at)
+           VALUES (?, ?, 0, 1, ?, ?, 2, NOW())`,
+          [tmpName, userId, boardWidth, boardHeight],
+        );
+        const newGtid = insertRes.insertId;
+        const gameName = displayName || `Imported #${newGtid}`;
+        // Update name to include the ID if it was auto-generated.
+        if (!displayName) {
+          await db_pool.query(`UPDATE game_types SET game_name = ? WHERE id = ?`, [gameName, newGtid]);
+        }
+
+        // Write the rules.json to ai-training/<id>/rules.json.
+        const fs = require('fs');
+        const path = require('path');
+        const { trainingDirFor } = require('./ai/export-game-rules');
+        const gtDir = trainingDirFor(newGtid);
+        fs.mkdirSync(gtDir, { recursive: true });
+        fs.writeFileSync(path.join(gtDir, 'rules.json'), req.file.buffer);
+
+        return res.json({ gameTypeId: newGtid, gameName });
+      } catch (innerErr) {
+        console.error('Upload rules inner error:', innerErr);
+        return res.status(500).send({ message: innerErr.message || 'Upload rules failed' });
+      }
+    });
+  } catch (err) {
+    console.error('Upload rules error:', err);
+    res.status(500).send({ message: err.message || 'Upload rules failed' });
+  }
+});
+
 // Bulk wipe: delete ALL training jobs (and their on-disk data) for every
 // game type, or for a single game type when `gameTypeId` is supplied in
 // the request body. Running jobs are refused — caller must stop them first.
@@ -9031,10 +9398,16 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
+    // When `includeTrainingOnly=true`, include game types created by uploading
+    // a rules.json (is_training_only = 1). These are hidden from the regular
+    // admin game list but the AI training panel needs to see them for job setup.
+    const includeTrainingOnly = req.query.includeTrainingOnly === 'true';
+
+    const trainingFilter = includeTrainingOnly ? '' : 'AND COALESCE(g.is_training_only, 0) = 0';
 
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_name, g.descript, g.board_width, g.board_height, 
-       g.player_count, g.last_played_at, g.is_anonymous_creator,
+       g.player_count, g.last_played_at, g.is_anonymous_creator, g.is_training_only,
        u.username as real_creator_name,
        CASE 
          WHEN g.creator_id IS NULL THEN 'Anonymous (not logged in)'
@@ -9044,13 +9417,15 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
        (SELECT COUNT(*) FROM games gm WHERE gm.game_type_id = g.id) as play_count
        FROM game_types g
        LEFT JOIN users u ON g.creator_id = u.id
-       WHERE COALESCE(g.is_draft, 0) = 0
+       WHERE COALESCE(g.is_draft, 0) = 0 ${trainingFilter}
        ORDER BY g.id DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
 
-    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM game_types WHERE COALESCE(is_draft, 0) = 0");
+    const [[{ total }]] = await db_pool.query(
+      `SELECT COUNT(*) as total FROM game_types WHERE COALESCE(is_draft, 0) = 0 ${trainingFilter}`
+    );
 
     res.json({
       data: games,
@@ -11111,6 +11486,92 @@ app.get("/api/admin/memory-stats", authenticateAdmin, (req, res) => {
   } catch (err) {
     console.error('memory-stats error:', err);
     res.status(500).json({ error: 'Failed to read stats' });
+  }
+});
+
+// Admin endpoint: folder sizes, disk space, and DB table row counts.
+// Called on-demand from the Server Stats tab in the admin dashboard.
+app.get("/api/admin/storage-stats", authenticateAdmin1, async (req, res) => {
+  try {
+    const { execSync } = require('child_process');
+    const { trainingRootDir } = require('./ai/export-game-rules');
+
+    // Recursively compute directory size in bytes.
+    function getDirSizeBytes(dirPath) {
+      let total = 0;
+      try {
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+          const full = path.join(dirPath, entry.name);
+          try {
+            if (entry.isDirectory()) {
+              total += getDirSizeBytes(full);
+            } else if (entry.isFile() || entry.isSymbolicLink()) {
+              total += fs.statSync(full).size;
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+      return total;
+    }
+
+    // Count files (non-recursively) in a directory.
+    function countFilesShallow(dirPath) {
+      try {
+        return fs.readdirSync(dirPath, { withFileTypes: true }).filter(e => e.isFile()).length;
+      } catch (_) { return 0; }
+    }
+
+    const repoRoot = path.join(__dirname, '..');
+    const uploadsDir = path.join(repoRoot, 'uploads');
+    const piecesDir = path.join(uploadsDir, 'pieces');
+    const avatarsDir = path.join(uploadsDir, 'profile-pictures');
+    let trainingDir;
+    try { trainingDir = trainingRootDir(); } catch (_) { trainingDir = path.join(repoRoot, 'ai-training'); }
+
+    const folderSizes = {
+      uploads: getDirSizeBytes(uploadsDir),
+      pieces: getDirSizeBytes(piecesDir),
+      profilePictures: getDirSizeBytes(avatarsDir),
+      aiTraining: getDirSizeBytes(trainingDir),
+    };
+
+    const fileCounts = {
+      pieces: countFilesShallow(piecesDir),
+      profilePictures: countFilesShallow(avatarsDir),
+    };
+
+    // Partition disk space via `df` (Linux). Returns null on non-Linux or error.
+    let diskSpace = null;
+    try {
+      const out = execSync(`df -k "${repoRoot}"`, { timeout: 5000 }).toString();
+      const lines = out.trim().split('\n');
+      // df may wrap long filesystem names to next line; last line has the numbers
+      const dataLine = lines[lines.length - 1].trim().split(/\s+/);
+      // df -k columns: Filesystem 1K-blocks Used Available Use% Mounted
+      if (dataLine.length >= 5) {
+        diskSpace = {
+          totalBytes:     parseInt(dataLine[dataLine.length - 5], 10) * 1024,
+          usedBytes:      parseInt(dataLine[dataLine.length - 4], 10) * 1024,
+          freeBytes:      parseInt(dataLine[dataLine.length - 3], 10) * 1024,
+        };
+      }
+    } catch (_) {}
+
+    // DB table row counts
+    const tableList = ['users', 'games', 'game_types', 'pieces', 'ai_training_jobs'];
+    const rowCounts = {};
+    await Promise.all(tableList.map(async (t) => {
+      try {
+        const [[r]] = await db_pool.query(`SELECT COUNT(*) AS cnt FROM \`${t}\``);
+        rowCounts[t] = r.cnt;
+      } catch (_) { rowCounts[t] = null; }
+    }));
+
+    res.json({ folderSizes, fileCounts, diskSpace, rowCounts });
+  } catch (err) {
+    console.error('storage-stats error:', err);
+    res.status(500).json({ error: 'Failed to compute storage stats' });
   }
 });
 

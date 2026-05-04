@@ -129,6 +129,11 @@ const AdminDashboard = () => {
   const [serverStatsLoading, setServerStatsLoading] = useState(false);
   const [serverStatsError, setServerStatsError] = useState(null);
 
+  // Storage stats state
+  const [storageStats, setStorageStats] = useState(null);
+  const [storageStatsLoading, setStorageStatsLoading] = useState(false);
+  const [storageStatsError, setStorageStatsError] = useState(null);
+
   // AI Analysis Requests state
   const [aiAnalysisRequests, setAiAnalysisRequests] = useState([]);
   const [aiAnalysisRequestsLoading, setAiAnalysisRequestsLoading] = useState(false);
@@ -376,6 +381,21 @@ const AdminDashboard = () => {
       setServerStatsError(msg);
     } finally {
       setServerStatsLoading(false);
+    }
+  };
+
+  const fetchStorageStats = async () => {
+    setStorageStatsLoading(true);
+    setStorageStatsError(null);
+    try {
+      const response = await axios.get(`${API_URL}admin/storage-stats`, { headers: authHeader() });
+      setStorageStats({ ...response.data, _fetchedAt: Date.now() });
+    } catch (error) {
+      const status = error?.response?.status;
+      const msg = error?.response?.data?.error || error?.message;
+      setStorageStatsError(`Failed to load storage stats${status ? ` (HTTP ${status})` : ''}${msg ? `: ${msg}` : ''}`);
+    } finally {
+      setStorageStatsLoading(false);
     }
   };
 
@@ -2524,6 +2544,80 @@ const AdminDashboard = () => {
           </>
         );
       })()}
+
+      {/* Storage & Disk Metrics */}
+      <div style={{ marginTop: '32px', borderTop: '1px solid var(--border-color, #333)', paddingTop: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <span style={{ fontWeight: 600 }}>Storage &amp; Disk Metrics</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {storageStatsLoading && <span style={{ color: 'var(--text-dim)', fontSize: '0.85em' }}>Loading…</span>}
+            <StandardButton onClick={fetchStorageStats} buttonText="Load storage metrics" disabled={storageStatsLoading} />
+          </div>
+        </div>
+        {storageStatsError && (
+          <p style={{ color: 'var(--text-danger, red)', fontSize: '0.85em', wordBreak: 'break-word' }}>{storageStatsError}</p>
+        )}
+        {!storageStats && !storageStatsLoading && !storageStatsError && (
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85em' }}>Click "Load storage metrics" to fetch disk and table stats. This may take a few seconds on large directories.</p>
+        )}
+        {storageStats && (() => {
+          const fmtBytes = (b) => {
+            if (b == null) return '—';
+            if (b >= 1024 * 1024 * 1024) return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
+            if (b >= 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`;
+            return `${(b / 1024).toFixed(0)} KB`;
+          };
+          const fetchedAt = storageStats._fetchedAt ? new Date(storageStats._fetchedAt).toLocaleTimeString() : null;
+          const disk = storageStats.diskSpace;
+          const diskPct = disk ? Math.round(disk.usedBytes / disk.totalBytes * 100) : null;
+          const diskHighlight = diskPct != null && diskPct > 85;
+          return (
+            <>
+              {fetchedAt && <p style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginBottom: '12px' }}>Last fetched: {fetchedAt}</p>}
+              {disk && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '0.8em', color: 'var(--text-dim)', marginBottom: '6px' }}>Partition disk usage ({diskPct}% used)</div>
+                  <div style={{ height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden', marginBottom: '6px', maxWidth: '400px' }}>
+                    <div style={{ width: `${diskPct}%`, height: '100%', background: diskHighlight ? 'var(--text-danger, #e55)' : 'var(--accent, #7289da)', borderRadius: '4px' }} />
+                  </div>
+                  <div style={{ fontSize: '0.8em', color: 'var(--text-dim)' }}>
+                    Used: <strong style={{ color: diskHighlight ? 'var(--text-danger, #e55)' : 'inherit' }}>{fmtBytes(disk.usedBytes)}</strong>
+                    {' / Total: '}<strong>{fmtBytes(disk.totalBytes)}</strong>
+                    {' / Free: '}<strong>{fmtBytes(disk.freeBytes)}</strong>
+                  </div>
+                </div>
+              )}
+              {!disk && <p style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginBottom: '12px' }}>Disk space info unavailable (server may not support df).</p>}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+                {[
+                  { label: 'uploads/ (total)', value: fmtBytes(storageStats.folderSizes?.uploads) },
+                  { label: 'pieces/ folder', value: `${fmtBytes(storageStats.folderSizes?.pieces)} (${storageStats.fileCounts?.pieces ?? '?'} files)` },
+                  { label: 'profile-pictures/', value: `${fmtBytes(storageStats.folderSizes?.profilePictures)} (${storageStats.fileCounts?.profilePictures ?? '?'} files)` },
+                  { label: 'ai-training/ folder', value: fmtBytes(storageStats.folderSizes?.aiTraining) },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '12px 14px', border: '1px solid var(--border-color, #333)' }}>
+                    <div style={{ fontSize: '0.7em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>{label}</div>
+                    <div style={{ fontSize: '1.1em', fontWeight: 700 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              {storageStats.rowCounts && (
+                <div>
+                  <div style={{ fontSize: '0.8em', color: 'var(--text-dim)', marginBottom: '8px' }}>DB Table Row Counts</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {Object.entries(storageStats.rowCounts).map(([table, count]) => (
+                      <div key={table} style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '6px', padding: '8px 12px', border: '1px solid var(--border-color, #333)', fontSize: '0.85em' }}>
+                        <span style={{ color: 'var(--text-dim)' }}>{table}: </span>
+                        <strong>{count != null ? count.toLocaleString() : '—'}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </div>
     </div>
   );
 

@@ -803,6 +803,39 @@ const GameTypeView = () => {
       });
     }
 
+    // Starting position modes
+    {
+      const modeLabels = {
+        none: 'Fixed Starting Positions',
+        backrow: 'Back Row Only Mirrored Randomization',
+        mirrored: 'Full Mirrored Randomization',
+        independent: 'Independent Randomization',
+        shared: 'Shared Starting Squares',
+        full: 'Full Board Randomization',
+      };
+      let allowedModes = null;
+      try {
+        if (game.randomized_starting_positions) {
+          const parsed = JSON.parse(game.randomized_starting_positions);
+          if (parsed?.allowedModes && Array.isArray(parsed.allowedModes)) {
+            allowedModes = parsed.allowedModes;
+          } else if (parsed?.mode) {
+            allowedModes = [parsed.mode];
+          }
+        }
+      } catch (_) {}
+      if (allowedModes && allowedModes.length > 0) {
+        const defaultMode = game.default_starting_mode;
+        const modeList = allowedModes
+          .map(m => {
+            const label = modeLabels[m] || m;
+            return defaultMode === m ? `${label} (default)` : label;
+          })
+          .join(', ');
+        rules.push({ title: "Starting Position Modes", content: modeList });
+      }
+    }
+
     // Piece movements
     const pieceDescriptions = [];
     const moveAttackPieceLinks = [];
