@@ -1027,7 +1027,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
                           Resume
                         </button>
                       )}
-                    {!status?.remoteMode && (j.games_played || 0) > 0 && (
+                    {(j.games_played || 0) > 0 && (
                       <button
                         type="button"
                         title="Download this job's data as a ZIP. Upload the result on the live site's admin portal to merge it into production training data."
