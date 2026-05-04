@@ -401,6 +401,14 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
   const [backupResult, setBackupResult] = useState(null);
   const [backupError, setBackupError] = useState(null);
 
+  // Restore state
+  const [latestSnapshot, setLatestSnapshot] = useState(null);
+  const [latestSnapshotLoading, setLatestSnapshotLoading] = useState(false);
+  const [latestSnapshotError, setLatestSnapshotError] = useState(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreResult, setRestoreResult] = useState(null);
+  const [restoreError, setRestoreError] = useState(null);
+
   const handleBackup = async () => {
     setBacking(true);
     setBackupResult(null);
@@ -414,10 +422,48 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
         { headers: authHeader() },
       );
       setBackupResult(res.data);
+      // Invalidate cached snapshot info so restore section refreshes
+      setLatestSnapshot(null);
     } catch (err) {
       setBackupError(err?.response?.data?.message || err.message || 'Backup failed');
     } finally {
       setBacking(false);
+    }
+  };
+
+  const handleLoadLatestSnapshot = async () => {
+    setLatestSnapshotLoading(true);
+    setLatestSnapshotError(null);
+    try {
+      const res = await axios.get(`${API_URL}admin/ai-training/backup/latest-snapshot`, { headers: authHeader() });
+      setLatestSnapshot(res.data);
+    } catch (err) {
+      setLatestSnapshotError(err?.response?.data?.message || err.message || 'Failed to read backup directory');
+    } finally {
+      setLatestSnapshotLoading(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!latestSnapshot?.snapshot) return;
+    const confirmed = window.confirm(
+      `Restore from snapshot "${latestSnapshot.snapshot}"?\n\n` +
+      `This will copy all files from that snapshot back into the active training directory, ` +
+      `overwriting any existing files. It does NOT delete files that are not in the backup.\n\n` +
+      `Game types in snapshot: ${latestSnapshot.gameTypeIds?.join(', ') || '(none)'}\n\n` +
+      `Continue?`
+    );
+    if (!confirmed) return;
+    setRestoring(true);
+    setRestoreResult(null);
+    setRestoreError(null);
+    try {
+      const res = await axios.post(`${API_URL}admin/ai-training/restore`, {}, { headers: authHeader() });
+      setRestoreResult(res.data);
+    } catch (err) {
+      setRestoreError(err?.response?.data?.message || err.message || 'Restore failed');
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -1170,6 +1216,79 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
             Backed up {backupResult.copiedGameTypes} game type{backupResult.copiedGameTypes === 1 ? '' : 's'}
             {backupResult.copiedFiles > 0 ? ` (${backupResult.copiedFiles} files)` : ''}.
             Snapshot: <code style={{ fontSize: '0.85em' }}>{backupResult.backupPath}</code>
+          </div>
+        )}
+      </div>
+
+      <div className={styles.section}>
+        <h4>Restore from latest backup</h4>
+        <p className={styles.intro}>
+          Copies files from the most recent backup snapshot back into the active
+          training directory. Existing files are overwritten; files not present
+          in the backup are left in place.
+        </p>
+        {!latestSnapshot && (
+          <button
+            type="button"
+            disabled={latestSnapshotLoading}
+            className={`${styles.btn} ${styles.btnNeutral}`}
+            onClick={handleLoadLatestSnapshot}
+          >
+            {latestSnapshotLoading ? 'Checking…' : 'Check latest snapshot'}
+          </button>
+        )}
+        {latestSnapshotError && <div className={styles.error} style={{ marginTop: 8 }}>{latestSnapshotError}</div>}
+        {latestSnapshot && (
+          latestSnapshot.snapshot ? (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ marginBottom: 8, color: '#ccc', fontSize: '0.9em' }}>
+                Latest snapshot: <code style={{ fontSize: '0.85em' }}>{latestSnapshot.snapshot}</code>
+                {' '}— {latestSnapshot.gameTypeIds?.length ?? 0} game type{latestSnapshot.gameTypeIds?.length === 1 ? '' : 's'}
+                {latestSnapshot.gameTypeIds?.length > 0 && (
+                  <span> (#{latestSnapshot.gameTypeIds.join(', #')})</span>
+                )}
+                {latestSnapshot.totalSnapshots > 1 && (
+                  <span style={{ marginLeft: 8, opacity: 0.6 }}>({latestSnapshot.totalSnapshots} snapshots total)</span>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={restoring}
+                className={`${styles.btn} ${styles.btnDanger}`}
+                onClick={handleRestore}
+              >
+                {restoring ? 'Restoring…' : 'Restore from this snapshot'}
+              </button>
+              <button
+                type="button"
+                disabled={latestSnapshotLoading}
+                className={`${styles.btn} ${styles.btnNeutral}`}
+                style={{ marginLeft: 8 }}
+                onClick={() => { setLatestSnapshot(null); setRestoreResult(null); setRestoreError(null); }}
+              >
+                Refresh
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginTop: 8, color: '#aaa' }}>
+              No backup snapshots found in <code style={{ fontSize: '0.85em' }}>{latestSnapshot.backupRoot}</code>.
+              <button
+                type="button"
+                className={`${styles.btn} ${styles.btnNeutral}`}
+                style={{ marginLeft: 8 }}
+                onClick={() => { setLatestSnapshot(null); setLatestSnapshotError(null); }}
+              >
+                Retry
+              </button>
+            </div>
+          )
+        )}
+        {restoreError && <div className={styles.error} style={{ marginTop: 8 }}>{restoreError}</div>}
+        {restoreResult && (
+          <div style={{ marginTop: 8, color: '#4caf50' }}>
+            Restored {restoreResult.restoredGameTypes} game type{restoreResult.restoredGameTypes === 1 ? '' : 's'}
+            {restoreResult.restoredFiles > 0 ? ` (${restoreResult.restoredFiles} files)` : ''}{' '}
+            from snapshot <code style={{ fontSize: '0.85em' }}>{restoreResult.snapshot}</code>.
           </div>
         )}
       </div>

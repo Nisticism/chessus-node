@@ -350,6 +350,107 @@ app.post('/trainer/backup', (req, res) => {
   }
 });
 
+// Return info about the most recent backup snapshot (latest timestamped subfolder).
+app.get('/trainer/backup/latest-snapshot', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingRootDir } = require('./export-game-rules');
+    const TRAINING_ROOT = trainingRootDir();
+    const BACKUP_ROOT = process.env.TRAINING_BACKUP_DIR
+      ? path.resolve(process.env.TRAINING_BACKUP_DIR)
+      : path.join(path.dirname(TRAINING_ROOT), 'ai-training-backup');
+
+    if (!fs.existsSync(BACKUP_ROOT)) {
+      return res.json({ snapshot: null, backupRoot: BACKUP_ROOT });
+    }
+    const entries = fs.readdirSync(BACKUP_ROOT)
+      .filter(e => fs.statSync(path.join(BACKUP_ROOT, e)).isDirectory())
+      .sort();
+    if (entries.length === 0) {
+      return res.json({ snapshot: null, backupRoot: BACKUP_ROOT });
+    }
+    const latest = entries[entries.length - 1];
+    const snapshotPath = path.join(BACKUP_ROOT, latest);
+    const gameTypeIds = fs.readdirSync(snapshotPath)
+      .map(e => parseInt(e, 10))
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    res.json({ snapshot: latest, snapshotPath, backupRoot: BACKUP_ROOT, gameTypeIds, totalSnapshots: entries.length });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Restore training data from the most recent backup snapshot into TRAINING_ROOT.
+// Overwrites existing files — does not delete files that are in TRAINING_ROOT but
+// not in the backup.  Pass optional gameTypeIds array to limit restore scope.
+app.post('/trainer/restore', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingDirFor, trainingRootDir } = require('./export-game-rules');
+    const TRAINING_ROOT = trainingRootDir();
+    const BACKUP_ROOT = process.env.TRAINING_BACKUP_DIR
+      ? path.resolve(process.env.TRAINING_BACKUP_DIR)
+      : path.join(path.dirname(TRAINING_ROOT), 'ai-training-backup');
+
+    if (!fs.existsSync(BACKUP_ROOT)) {
+      return res.status(400).json({ message: `Backup directory does not exist: ${BACKUP_ROOT}` });
+    }
+    const entries = fs.readdirSync(BACKUP_ROOT)
+      .filter(e => fs.statSync(path.join(BACKUP_ROOT, e)).isDirectory())
+      .sort();
+    if (entries.length === 0) {
+      return res.status(400).json({ message: 'No backup snapshots found.' });
+    }
+    const latest = entries[entries.length - 1];
+    const snapshotRoot = path.join(BACKUP_ROOT, latest);
+
+    const requestedIds = Array.isArray(req.body?.gameTypeIds) && req.body.gameTypeIds.length > 0
+      ? req.body.gameTypeIds.map(Number).filter(Number.isFinite)
+      : null;
+
+    const availableIds = fs.readdirSync(snapshotRoot)
+      .map(e => parseInt(e, 10))
+      .filter(Number.isFinite);
+    const gtids = requestedIds ? requestedIds.filter(id => availableIds.includes(id)) : availableIds;
+
+    function copyDir(src, dest) {
+      fs.mkdirSync(dest, { recursive: true });
+      for (const entry of fs.readdirSync(src)) {
+        const s = path.join(src, entry);
+        const d = path.join(dest, entry);
+        if (fs.statSync(s).isDirectory()) copyDir(s, d);
+        else fs.copyFileSync(s, d);
+      }
+    }
+
+    let restoredGameTypes = 0;
+    let restoredFiles = 0;
+    for (const gtid of gtids) {
+      const src = path.join(snapshotRoot, String(gtid));
+      if (!fs.existsSync(src)) continue;
+      const dest = trainingDirFor(gtid);
+      copyDir(src, dest);
+      restoredGameTypes++;
+      const countFiles = (d) => {
+        let n = 0;
+        for (const e of fs.readdirSync(d)) {
+          const full = path.join(d, e);
+          n += fs.statSync(full).isDirectory() ? countFiles(full) : 1;
+        }
+        return n;
+      };
+      try { restoredFiles += countFiles(dest); } catch { /* non-fatal */ }
+    }
+
+    res.json({ ok: true, snapshot: latest, snapshotPath: snapshotRoot, restoredGameTypes, restoredFiles });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Check which job directories actually exist on disk.
 // Body: { jobs: [{ id, game_type_id }] }
 // Returns { present: [id,...], absent: [id,...] }

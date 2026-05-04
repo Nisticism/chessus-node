@@ -8274,6 +8274,104 @@ app.post('/api/admin/ai-training/backup', authenticateAdmin1, async (req, res) =
   }
 });
 
+// Return info about the most recent backup snapshot so the admin UI can show
+// what will be restored before confirming.
+app.get('/api/admin/ai-training/backup/latest-snapshot', authenticateAdmin1, async (req, res) => {
+  try {
+    const trainerClient = require('./ai/trainer-client');
+    if (trainingManager.REMOTE_MODE) {
+      const result = await trainerClient.latestSnapshot();
+      return res.json(result);
+    }
+    // Local path.
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingRootDir } = require('./ai/export-game-rules');
+    const TRAINING_ROOT = trainingRootDir();
+    const BACKUP_ROOT = process.env.TRAINING_BACKUP_DIR
+      ? path.resolve(process.env.TRAINING_BACKUP_DIR)
+      : path.join(path.dirname(TRAINING_ROOT), 'ai-training-backup');
+    if (!fs.existsSync(BACKUP_ROOT)) return res.json({ snapshot: null, backupRoot: BACKUP_ROOT });
+    const entries = fs.readdirSync(BACKUP_ROOT)
+      .filter(e => fs.statSync(path.join(BACKUP_ROOT, e)).isDirectory())
+      .sort();
+    if (entries.length === 0) return res.json({ snapshot: null, backupRoot: BACKUP_ROOT });
+    const latest = entries[entries.length - 1];
+    const snapshotPath = path.join(BACKUP_ROOT, latest);
+    const gameTypeIds = fs.readdirSync(snapshotPath)
+      .map(e => parseInt(e, 10)).filter(Number.isFinite).sort((a, b) => a - b);
+    res.json({ snapshot: latest, snapshotPath, backupRoot: BACKUP_ROOT, gameTypeIds, totalSnapshots: entries.length });
+  } catch (err) {
+    console.error('latest-snapshot error:', err);
+    res.status(500).send({ message: err.message || 'Failed to read backup directory' });
+  }
+});
+
+// Restore training data from the most recent backup snapshot into TRAINING_ROOT.
+app.post('/api/admin/ai-training/restore', authenticateAdmin1, async (req, res) => {
+  try {
+    const { gameTypeIds: rawIds } = req.body || {};
+    const gameTypeIds = Array.isArray(rawIds) && rawIds.length > 0
+      ? rawIds.map(Number).filter(Number.isFinite)
+      : [];
+    const trainerClient = require('./ai/trainer-client');
+    if (trainingManager.REMOTE_MODE) {
+      const result = await trainerClient.restore(gameTypeIds);
+      return res.json(result);
+    }
+    // Local restore.
+    const fs = require('fs');
+    const path = require('path');
+    const { trainingDirFor, trainingRootDir } = require('./ai/export-game-rules');
+    const TRAINING_ROOT = trainingRootDir();
+    const BACKUP_ROOT = process.env.TRAINING_BACKUP_DIR
+      ? path.resolve(process.env.TRAINING_BACKUP_DIR)
+      : path.join(path.dirname(TRAINING_ROOT), 'ai-training-backup');
+    if (!fs.existsSync(BACKUP_ROOT)) {
+      return res.status(400).send({ message: `Backup directory does not exist: ${BACKUP_ROOT}` });
+    }
+    const entries = fs.readdirSync(BACKUP_ROOT)
+      .filter(e => fs.statSync(path.join(BACKUP_ROOT, e)).isDirectory()).sort();
+    if (entries.length === 0) return res.status(400).send({ message: 'No backup snapshots found.' });
+    const latest = entries[entries.length - 1];
+    const snapshotRoot = path.join(BACKUP_ROOT, latest);
+    const availableIds = fs.readdirSync(snapshotRoot).map(e => parseInt(e, 10)).filter(Number.isFinite);
+    const gtids = gameTypeIds.length > 0 ? gameTypeIds.filter(id => availableIds.includes(id)) : availableIds;
+
+    function copyDir(src, dest) {
+      fs.mkdirSync(dest, { recursive: true });
+      for (const entry of fs.readdirSync(src)) {
+        const s = path.join(src, entry);
+        const d = path.join(dest, entry);
+        if (fs.statSync(s).isDirectory()) copyDir(s, d);
+        else fs.copyFileSync(s, d);
+      }
+    }
+
+    let restoredGameTypes = 0;
+    let restoredFiles = 0;
+    for (const gtid of gtids) {
+      const src = path.join(snapshotRoot, String(gtid));
+      if (!fs.existsSync(src)) continue;
+      copyDir(src, trainingDirFor(gtid));
+      restoredGameTypes++;
+      const countFiles = (d) => {
+        let n = 0;
+        for (const e of fs.readdirSync(d)) {
+          const full = path.join(d, e);
+          n += fs.statSync(full).isDirectory() ? countFiles(full) : 1;
+        }
+        return n;
+      };
+      try { restoredFiles += countFiles(trainingDirFor(gtid)); } catch { /* non-fatal */ }
+    }
+    res.json({ ok: true, snapshot: latest, snapshotPath: snapshotRoot, restoredGameTypes, restoredFiles });
+  } catch (err) {
+    console.error('Restore training data error:', err);
+    res.status(500).send({ message: err.message || 'Restore failed' });
+  }
+});
+
 // Check which job directories exist on disk (on-demand, per-job).
 // Body: { jobs: [{ id, game_type_id }] }
 // Returns { present: [id,...], absent: [id,...] }

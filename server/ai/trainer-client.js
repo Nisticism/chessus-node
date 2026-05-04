@@ -171,6 +171,11 @@ module.exports = {
   // Copy all training data for the given game type IDs (or all if omitted)
   // to the backup directory on the trainer host.
   backup: (gameTypeIds) => request('POST', '/trainer/backup', { gameTypeIds: gameTypeIds || [] }),
+  // Return the path and game type list of the most recent backup snapshot.
+  latestSnapshot: () => request('GET', '/trainer/backup/latest-snapshot'),
+  // Restore training data from the most recent backup snapshot.
+  // Pass optional gameTypeIds array to limit to specific game types.
+  restore: (gameTypeIds) => request('POST', '/trainer/restore', { gameTypeIds: gameTypeIds || [] }),
   // Check which job directories actually exist on disk.
   // jobs: [{ id, game_type_id }]
   // Returns { present: [id,...], absent: [id,...] }
