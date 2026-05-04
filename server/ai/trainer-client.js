@@ -155,9 +155,10 @@ module.exports = {
     const suffix = qs.length ? `?${qs.join('&')}` : '';
     return request('GET', `/trainer/analysis/${Number(gameTypeId)}${suffix}`);
   },
-  uploadArtifact: ({ gameTypeId, kind, buffer, userId }) => {
+  uploadArtifact: ({ gameTypeId, kind, buffer, userId, mctsIters }) => {
     const qs = new URLSearchParams({ gameTypeId: String(gameTypeId), kind });
     if (userId) qs.set('userId', String(userId));
+    if (mctsIters) qs.set('mctsIters', String(mctsIters));
     return uploadBinary(`/trainer/upload?${qs.toString()}`, buffer);
   },
   // Delete on-disk data for a specific job. Used when admin clears/deletes a job.

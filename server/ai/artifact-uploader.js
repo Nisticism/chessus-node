@@ -160,14 +160,15 @@ async function importUpload(gameTypeId, payload, opts = {}) {
 
   // Create the job row. games_target = games_played so the UI shows 100%.
   const games = validation.gamesEstimate;
+  const mctsIters = Number.isFinite(opts.mctsIters) && opts.mctsIters > 0 ? Math.round(opts.mctsIters) : 0;
   const [result] = await db_pool.query(
     `INSERT INTO ai_training_jobs
        (game_type_id, status, games_target, games_played, mcts_iters,
         max_rss_mb, checkpoint_every, seed, rules_path,
         created_by_user_id, started_at, ended_at, source)
-     VALUES (?, 'completed', ?, ?, 0, 0, 0, 0, '',
+     VALUES (?, 'completed', ?, ?, ?, 0, 0, 0, '',
              ?, NOW(), NOW(), 'uploaded')`,
-    [gtid, games, games, opts.userId || null],
+    [gtid, games, games, mctsIters, opts.userId || null],
   );
   const jobId = result.insertId;
 

@@ -16,6 +16,8 @@ const changelogData = [
       "Training-only game types are now excluded from all public game listings and the play lobby.",
       "AI trainer service: the service now loads a local .env file (server/ai/.env) on startup. A .env.example template with all supported environment variables is included.",
       "AI trainer: TRAINING_BACKUP_DIR environment variable is documented in the new .env.example — set this to enable training data backups.",
+      "AI training upload: MCTS iterations are now recorded alongside uploaded training artifacts (previously always stored as 0). An MCTS iters field has been added to the manual upload form in the admin AI Training panel.",
+      "Fixed: Points Win Condition settings (target score, starting points, and points-based draw conditions) no longer disappear when editing an existing game — all five fields are now correctly reloaded into the wizard. Custom square control-point values are also correctly shown as active in the square editor when a saved points condition exists.",
     ],
   },
   {

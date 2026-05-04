@@ -541,6 +541,7 @@ app.post('/trainer/upload', async (req, res) => {
     const gameTypeId = parseInt(req.query.gameTypeId, 10);
     const kind = String(req.query.kind || '').toLowerCase();
     const userId = req.query.userId ? parseInt(req.query.userId, 10) : null;
+    const mctsIters = req.query.mctsIters ? parseInt(req.query.mctsIters, 10) : 0;
     if (!Number.isFinite(gameTypeId)) {
       return res.status(400).json({ message: 'Missing or invalid gameTypeId query param' });
     }
@@ -551,7 +552,7 @@ app.post('/trainer/upload', async (req, res) => {
       return res.status(400).json({ message: 'Empty upload body' });
     }
     const { importUpload } = require('./artifact-uploader');
-    const result = await importUpload(gameTypeId, { kind, buffer: req.body }, { userId });
+    const result = await importUpload(gameTypeId, { kind, buffer: req.body }, { userId, mctsIters });
     res.json(result);
   } catch (err) {
     res.status(400).json({ message: err.message });
