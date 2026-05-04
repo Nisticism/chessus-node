@@ -150,7 +150,13 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
         });
         setJobDetail(res.data);
       } catch (err) {
-        /* keep stale detail */
+        if (err?.response?.status === 404) {
+          // Job was deleted — stop polling and deselect it.
+          if (pollRef.current) clearInterval(pollRef.current);
+          setSelectedJobId(null);
+          setJobDetail(null);
+        }
+        /* otherwise keep stale detail */
       }
     };
     fetchDetail();
@@ -238,6 +244,10 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
         `${API_URL}admin/ai-training/jobs/${jobId}`,
         { headers: authHeader() },
       );
+      if (selectedJobId === jobId) {
+        setSelectedJobId(null);
+        setJobDetail(null);
+      }
       await fetchStatus();
     } catch (err) {
       alert(err?.response?.data?.message || err.message || "Failed to delete job");
