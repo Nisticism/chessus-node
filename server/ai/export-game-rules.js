@@ -9,6 +9,15 @@ const fs = require('fs');
 const path = require('path');
 const db_pool = require('../../configs/db');
 
+// This must match Cargo.toml [package] version in ai-engine-rs/.
+// Bump both together whenever a protocol.rs change breaks compatibility.
+const TRAINER_VERSION = '1.0.0';
+// Minimum binary version that can still train and upload. Bump this only when
+// a protocol-breaking change requires users to get a new binary. As long as
+// you only add optional fields, leave this at 1.0.0 so existing binaries keep
+// working and just auto-update in the background.
+const TRAINER_MIN_VERSION = '1.0.0';
+
 const REPO_ROOT = path.resolve(__dirname, '../..');
 // Allow the training data directory to live outside the repo so that git
 // operations (fresh clone, clean, etc.) can never touch it.  Set
@@ -308,6 +317,7 @@ async function exportGameRules(gameTypeId) {
     game: {
       id: g.id,
       game_name: g.game_name || '',
+      trainer_min_version: TRAINER_VERSION,
       board_width: intOr(g.board_width, 8),
       board_height: intOr(g.board_height, 8),
       player_count: intOr(g.player_count, 2),
@@ -525,6 +535,20 @@ async function exportGameRules(gameTypeId) {
 
   fs.mkdirSync(trainingDirFor(id), { recursive: true });
   const outPath = rulesPathFor(id);
+
+  // Guard: never overwrite an existing valid rules.json with empty data.
+  // This protects production-downloaded rule files from being silently wiped
+  // when a game type's settings are edited on a local server that has no
+  // game_type_pieces rows for that game (e.g. a "remote training only" game
+  // that was imported by name but whose pieces only exist on production).
+  if (positions.length === 0) {
+    throw new Error(
+      `exportGameRules: game ${id} has no game_type_pieces rows — ` +
+      `refusing to overwrite existing rules.json with empty data. ` +
+      `Add pieces to the game in the wizard, or re-import from production.`,
+    );
+  }
+
   fs.writeFileSync(outPath, JSON.stringify(doc, null, 2));
   return { path: outPath, pieceCount: pieces.length, positionCount: positions.length };
 }
@@ -535,4 +559,6 @@ module.exports = {
   trainingDirFor,
   trainingRootDir,
   TRAINING_ROOT,
+  TRAINER_VERSION,
+  TRAINER_MIN_VERSION,
 };

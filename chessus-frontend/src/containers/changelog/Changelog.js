@@ -5,8 +5,13 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 4, 2026",
-    title: "Storage metrics, default starting positions, AI training improvements, and trainer env config",
+    title: "Global AI Trainer, trainer API keys, live training output, and MCTS configuration",
     items: [
+      "Global AI Trainer: the standalone trainer is now a single universal download that works with any game you own. Download it once from the 'Train AI Locally' section on any of your game pages, then run the train script with a game ID to train any game — no separate per-game download needed.",
+      "Trainer API Keys: generate personal API keys on your Edit Account page (under 'Trainer API Keys'). Keys authenticate the trainer scripts when they fetch game rules and upload results. Keys are shown once at creation — copy them before closing.",
+      "Live training output: the trainer now prints a progress line after every completed game (result, reason, move count, time), plus checkpoint and completion summaries, so you can watch training progress in real time.",
+      "MCTS configuration: the train script now prompts for MCTS iterations before starting. A CPU tier guide (50 / 200 / 400 / 800+) is shown in the trainer UI and on the game detail page to help you choose an appropriate setting.",
+      "Auto-detected MCTS on upload: when uploading a .zip produced by the new trainer, MCTS iterations are detected automatically from the included metadata file — no manual entry required. The upload form now says 'Leave blank to auto-detect'.",
       "Admin Server Stats: new 'Load storage metrics' section shows partition disk usage (used/free/total with a visual bar), folder sizes for uploads/, pieces/, profile-pictures/, and ai-training/, plus DB table row counts for key tables.",
       "Game Wizard Step 4: each allowed starting position mode now has a 'Set as default' button. The chosen default is pre-selected when any player opens the Host Game modal for that game type.",
       "Game detail page: if more than one starting position mode is available, all allowed modes are now listed under 'Starting Position Modes', with the default marked.",

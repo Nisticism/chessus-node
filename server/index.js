@@ -3012,7 +3012,1065 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
   }
 });
 
-// Uniqueness checker � compares a game's full configuration against all other games
+// =====================================================================
+//   STANDALONE TRAINER — user-facing trainer pack + upload endpoints
+// =====================================================================
+
+// ---- Trainer API key management (requires JWT — web session only) --------
+
+// POST /api/trainer/keys — generate a new trainer API key for the current user.
+app.post('/api/trainer/keys', authenticateToken, async (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const rawKey = 'gridgrove_' + crypto.randomBytes(20).toString('hex'); // 50 chars total
+    const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+    const keyPrefix = rawKey.slice(0, 18);
+    const name = (req.body?.name || 'Default').toString().slice(0, 100);
+    // Limit to 5 keys per user
+    const [[{ keyCount }]] = await db_pool.query(
+      'SELECT COUNT(*) as keyCount FROM trainer_api_keys WHERE user_id = ?',
+      [req.user.id],
+    );
+    if (keyCount >= 5) {
+      return res.status(400).json({ message: 'You can have at most 5 trainer API keys. Please revoke an old one first.' });
+    }
+    await db_pool.query(
+      'INSERT INTO trainer_api_keys (user_id, key_hash, key_prefix, name) VALUES (?, ?, ?, ?)',
+      [req.user.id, keyHash, keyPrefix, name],
+    );
+    // Return the raw key once — it is never stored and cannot be recovered
+    res.json({ key: rawKey, prefix: keyPrefix, name, message: 'Save this key — it will not be shown again.' });
+  } catch (err) {
+    console.error('Error in POST /api/trainer/keys:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/trainer/keys — list the current user's trainer API keys (no raw key, only metadata).
+app.get('/api/trainer/keys', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await db_pool.query(
+      'SELECT id, key_prefix, name, created_at, last_used_at FROM trainer_api_keys WHERE user_id = ? ORDER BY created_at DESC',
+      [req.user.id],
+    );
+    res.json({ keys: rows });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/trainer/keys/:keyId — revoke a trainer API key (owner or admin only).
+app.delete('/api/trainer/keys/:keyId', authenticateToken, async (req, res) => {
+  try {
+    const keyId = parseInt(req.params.keyId, 10);
+    if (!Number.isFinite(keyId)) return res.status(400).json({ message: 'Invalid key ID' });
+    const [[row]] = await db_pool.query(
+      'SELECT user_id FROM trainer_api_keys WHERE id = ? LIMIT 1', [keyId]
+    );
+    if (!row) return res.status(404).json({ message: 'Key not found' });
+    const userRole = (req.user.role || '').toLowerCase();
+    const isAdmin = userRole === 'admin' || userRole === 'owner';
+    if (Number(row.user_id) !== Number(req.user.id) && !isAdmin) {
+      return res.status(403).json({ message: 'Not authorized to revoke this key' });
+    }
+    await db_pool.query('DELETE FROM trainer_api_keys WHERE id = ?', [keyId]);
+    res.json({ message: 'Key revoked successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ---- Global trainer game/rules endpoints (accept JWT or TrainerToken) ----
+
+// GET /api/trainer/my-games — list games the current user can train.
+// Admins/owners get all published non-draft games.
+app.get('/api/trainer/my-games', authenticateTokenOrTrainerKey, async (req, res) => {
+  try {
+    const userRole = (req.user.role || '').toLowerCase();
+    const isAdmin = userRole === 'admin' || userRole === 'owner';
+    let rows;
+    if (isAdmin) {
+      [rows] = await db_pool.query(
+        `SELECT id, game_name, created_at FROM game_types
+          WHERE COALESCE(is_draft,0) = 0
+          ORDER BY game_name ASC LIMIT 200`,
+      );
+    } else {
+      [rows] = await db_pool.query(
+        `SELECT id, game_name, created_at FROM game_types
+          WHERE creator_id = ? AND COALESCE(is_draft,0) = 0
+          ORDER BY game_name ASC LIMIT 100`,
+        [req.user.id],
+      );
+    }
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/trainer/game-rules/:gameId — export and return rules.json for a game.
+// Creator or admin only.
+app.get('/api/trainer/game-rules/:gameId', authenticateTokenOrTrainerKey, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId, 10);
+    if (!Number.isFinite(gameId) || gameId <= 0) {
+      return res.status(400).json({ message: 'Invalid game ID' });
+    }
+    const [[game]] = await db_pool.query(
+      'SELECT id, creator_id, COALESCE(is_draft,0) as is_draft FROM game_types WHERE id = ? LIMIT 1',
+      [gameId],
+    );
+    if (!game) return res.status(404).json({ message: 'Game not found' });
+    const userRole = (req.user.role || '').toLowerCase();
+    const isAdmin = userRole === 'admin' || userRole === 'owner';
+    const isCreator = Number(game.creator_id) === Number(req.user.id);
+    if (!isCreator && !isAdmin) {
+      return res.status(403).json({ message: 'Only the game creator can access training rules for this game.' });
+    }
+    const { exportGameRules, rulesPathFor } = require('./ai/export-game-rules');
+    const fs = require('fs');
+    // Regenerate from DB so the trainer always gets the latest rules.
+    // If the game has no pieces in the local DB (e.g. a "remote training only"
+    // game imported by name only), exportGameRules throws rather than writing
+    // an empty file. In that case, fall back to the cached rules.json on disk
+    // so a previously-downloaded production file is still served correctly.
+    try {
+      await exportGameRules(gameId);
+    } catch (exportErr) {
+      const cachedPath = rulesPathFor(gameId);
+      if (!fs.existsSync(cachedPath)) {
+        console.error('GET /api/trainer/game-rules: export failed and no cached file:', exportErr.message);
+        return res.status(500).json({ message: exportErr.message });
+      }
+      console.warn(`GET /api/trainer/game-rules/${gameId}: export failed (${exportErr.message}); serving cached rules.json`);
+    }
+    const rulesJson = fs.readFileSync(rulesPathFor(gameId), 'utf8');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(rulesJson);
+  } catch (err) {
+    console.error('Error in GET /api/trainer/game-rules/:gameId:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/trainer/global-pack?platform=win32|linux — JWT auth (web session).
+// Returns a ZIP with the binary + setup + train scripts + README. No rules.json.
+app.get('/api/trainer/global-pack', authenticateToken, async (req, res) => {
+  try {
+    const platform = req.query.platform || 'win32';
+    if (!['win32', 'linux'].includes(platform)) {
+      return res.status(400).json({ message: 'platform must be "win32" or "linux"' });
+    }
+    const fs = require('fs');
+    const path = require('path');
+    const binName = platform === 'win32' ? 'ai-engine.exe' : 'ai-engine';
+    const binPath = path.join(__dirname, '..', 'trainer-binaries', platform, binName);
+    if (!fs.existsSync(binPath)) {
+      return res.status(503).json({
+        message: `The trainer binary for ${platform} is not available yet. Please try again later or contact the site administrator.`,
+      });
+    }
+    const { TRAINER_VERSION } = require('./ai/export-game-rules');
+    const siteUrl = process.env.SITE_URL || 'https://gridgrove.gg';
+    const setupBat = _buildSetupBat({ siteUrl, version: TRAINER_VERSION });
+    const setupSh = _buildSetupSh({ siteUrl, version: TRAINER_VERSION });
+    const trainBat = _buildTrainBat({ siteUrl, version: TRAINER_VERSION });
+    const trainSh = _buildTrainSh({ siteUrl, version: TRAINER_VERSION });
+    const readmeTxt = _buildGlobalReadme({ platform, siteUrl, version: TRAINER_VERSION });
+    const configExample = JSON.stringify({ siteUrl, apiKey: 'gridgrove_your_key_here' }, null, 2);
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip();
+    zip.addFile(binName, fs.readFileSync(binPath));
+    zip.addFile('setup.bat', Buffer.from(setupBat, 'utf8'));
+    zip.addFile('setup.sh', Buffer.from(setupSh, 'utf8'));
+    zip.addFile('train.bat', Buffer.from(trainBat, 'utf8'));
+    zip.addFile('train.sh', Buffer.from(trainSh, 'utf8'));
+    zip.addFile('README.txt', Buffer.from(readmeTxt, 'utf8'));
+    zip.addFile('trainer-config.example.json', Buffer.from(configExample, 'utf8'));
+    zip.addFile('rules/.gitkeep', Buffer.alloc(0));
+    zip.addFile('output/.gitkeep', Buffer.alloc(0));
+    const zipBuf = zip.toBuffer();
+    const zipName = `gridgrove-trainer-${platform}.zip`;
+    // Log the download event (game_type_id NULL = global pack)
+    await db_pool.query(
+      `INSERT INTO trainer_user_events (user_id, game_type_id, event_type, platform, trainer_version, ip_address)
+       VALUES (?, NULL, 'download', ?, ?, ?)`,
+      [req.user.id, platform, TRAINER_VERSION, req.ip || null],
+    ).catch((e) => console.warn('[global-pack] event log failed:', e.message));
+    res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+    res.setHeader('Content-Type', 'application/zip');
+    res.send(zipBuf);
+  } catch (err) {
+    console.error('Error in GET /api/trainer/global-pack:', err);
+    res.status(500).json({ message: err.message || 'Failed to generate trainer pack' });
+  }
+});
+
+// Rate limiter for user training uploads (5 per 24h per user).
+const trainerUploadLimiter = (() => {
+  const counts = new Map(); // userId -> { count, windowStart }
+  const WINDOW_MS = 24 * 60 * 60 * 1000;
+  const MAX_PER_WINDOW = 5;
+  return (req, res, next) => {
+    const userId = req.user?.id;
+    if (!userId) return next();
+    const now = Date.now();
+    const entry = counts.get(userId);
+    if (!entry || now - entry.windowStart > WINDOW_MS) {
+      counts.set(userId, { count: 1, windowStart: now });
+      return next();
+    }
+    if (entry.count >= MAX_PER_WINDOW) {
+      return res.status(429).json({
+        message: `You have uploaded ${MAX_PER_WINDOW} training artifacts in the last 24 hours. Please wait before uploading more.`,
+      });
+    }
+    entry.count++;
+    return next();
+  };
+})();
+
+// GET /api/trainer/version — public, no auth.
+// Returns the current trainer binary version and which platforms are available.
+app.get('/api/trainer/version', async (_req, res) => {
+  try {
+    const { TRAINER_VERSION, TRAINER_MIN_VERSION } = require('./ai/export-game-rules');
+    const fs = require('fs');
+    const path = require('path');
+    const binRoot = path.join(__dirname, '..', 'trainer-binaries');
+    const platforms = ['win32', 'linux'].filter((p) => {
+      const name = p === 'win32' ? 'ai-engine.exe' : 'ai-engine';
+      return fs.existsSync(path.join(binRoot, p, name));
+    });
+    res.json({ version: TRAINER_VERSION, min_version: TRAINER_MIN_VERSION, platforms });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/trainer/download/:platform — public, no auth.
+// Streams the compiled Rust binary for the requested platform.
+app.get('/api/trainer/download/:platform', async (req, res) => {
+  try {
+    const { platform } = req.params;
+    if (!['win32', 'linux'].includes(platform)) {
+      return res.status(400).json({
+        message: 'Unsupported platform. Only "win32" and "linux" are available at this time. Mac support is planned for a future update.',
+      });
+    }
+    const fs = require('fs');
+    const path = require('path');
+    const binName = platform === 'win32' ? 'ai-engine.exe' : 'ai-engine';
+    const binPath = path.join(__dirname, '..', 'trainer-binaries', platform, binName);
+    if (!fs.existsSync(binPath)) {
+      return res.status(404).json({
+        message: `No binary available for platform "${platform}" yet. Check back soon or contact the site administrator.`,
+      });
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="${binName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    fs.createReadStream(binPath).pipe(res);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/games/:gameId/trainer-pack — DEPRECATED. Returns 410 Gone.
+// Per-game packs are replaced by the global trainer pack.
+app.get('/api/games/:gameId/trainer-pack', authenticateToken, (req, res) => {
+  const siteUrl = process.env.SITE_URL || 'https://gridgrove.gg';
+  res.status(410).json({
+    message: 'Per-game trainer packs have been replaced by the Global Trainer. Download the global trainer from the "Train Locally" section on any of your game pages.',
+    globalPackUrl: `${siteUrl}/profile`,
+  });
+});
+
+// POST /api/games/:gameId/training/upload — game creator, admin, or trainer token holder.
+const _userArtifactUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 },
+});
+app.post(
+  '/api/games/:gameId/training/upload',
+  authenticateTokenOrTrainerKey,
+  trainerUploadLimiter,
+  multerWrap(_userArtifactUpload.single('artifact'), '500 MB'),
+  async (req, res) => {
+    try {
+      const gameId = parseInt(req.params.gameId, 10);
+      if (!Number.isFinite(gameId) || gameId <= 0) {
+        return res.status(400).json({ message: 'Invalid game ID' });
+      }
+
+      const [[game]] = await db_pool.query(
+        `SELECT id, creator_id FROM game_types WHERE id = ? LIMIT 1`,
+        [gameId],
+      );
+      if (!game) return res.status(404).json({ message: 'Game not found' });
+
+      const userRole = (req.user.role || '').toLowerCase();
+      const isCreator = Number(game.creator_id) === Number(req.user.id);
+      const isAdmin = userRole === 'admin' || userRole === 'owner';
+      if (!isCreator && !isAdmin) {
+        return res.status(403).json({ message: 'Only the game creator can upload training data for this game.' });
+      }
+
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ message: 'Missing file (form field "artifact")' });
+      }
+
+      const lower = (req.file.originalname || '').toLowerCase();
+      let kind = (req.body?.kind || '').toLowerCase();
+      if (!kind) {
+        if (lower.endsWith('.jsonl')) kind = 'jsonl';
+        else if (lower.endsWith('.zip')) kind = 'zip';
+      }
+      if (kind !== 'jsonl' && kind !== 'zip') {
+        return res.status(400).json({
+          message: 'Could not determine file type. Please upload a .jsonl or .zip file.',
+        });
+      }
+
+      // Auto-read mctsIters from meta.json inside a ZIP if not explicitly provided.
+      let mctsIters = parseInt(req.body?.mctsIters || req.query?.mctsIters, 10) || 0;
+      if (kind === 'zip' && !mctsIters) {
+        try {
+          const AdmZipMeta = require('adm-zip');
+          const zipMeta = new AdmZipMeta(req.file.buffer);
+          // meta.json may be at the root or inside an output subfolder
+          const metaEntry = zipMeta.getEntry('meta.json')
+            || zipMeta.getEntries().find((e) => e.entryName.endsWith('/meta.json'));
+          if (metaEntry) {
+            const metaObj = JSON.parse(metaEntry.getData().toString('utf8'));
+            if (metaObj.gameId && Number(metaObj.gameId) !== gameId) {
+              return res.status(400).json({
+                message: `The meta.json in this ZIP was generated for game ${metaObj.gameId}, but you are uploading to game ${gameId}. Please upload to the correct game.`,
+              });
+            }
+            if (Number.isFinite(Number(metaObj.mctsIters)) && Number(metaObj.mctsIters) > 0) {
+              mctsIters = Number(metaObj.mctsIters);
+            }
+          }
+        } catch (_e) {
+          // Non-fatal — meta.json is optional
+        }
+      }
+
+      const { TRAINER_VERSION } = require('./ai/export-game-rules');
+
+      let result;
+      if (require('./ai/training-manager').REMOTE_MODE) {
+        const trainerClient = require('./ai/trainer-client');
+        result = await trainerClient.uploadArtifact({
+          gameTypeId: gameId, kind, buffer: req.file.buffer,
+          userId: req.user.id, mctsIters,
+        });
+      } else {
+        const { importUpload } = require('./ai/artifact-uploader');
+        result = await importUpload(gameId, { kind, buffer: req.file.buffer }, {
+          userId: req.user.id, mctsIters,
+        });
+      }
+
+      // Log the upload event.
+      await db_pool.query(
+        `INSERT INTO trainer_user_events
+           (user_id, game_type_id, event_type, platform, trainer_version, ip_address)
+         VALUES (?, ?, 'upload', NULL, ?, ?)`,
+        [req.user.id, gameId, TRAINER_VERSION, req.ip || null],
+      ).catch((e) => console.warn('[trainer-upload] event log failed:', e.message));
+
+      res.json(result);
+    } catch (err) {
+      console.error('Error in POST /api/games/:gameId/training/upload:', err);
+      res.status(400).json({ message: err.message || 'Failed to import training artifacts' });
+    }
+  },
+);
+
+// ---- Global trainer script builder helpers -------------------------------
+
+function _buildSetupBat({ siteUrl, version }) {
+  return `@echo off
+setlocal EnableDelayedExpansion
+title GridGrove Trainer Setup
+
+echo.
+echo ======================================================================
+echo   GridGrove AI Trainer  --  First-Time Setup
+echo   Version: ${version}
+echo ======================================================================
+echo.
+echo This is a one-time setup. Your settings will be saved to
+echo trainer-config.json so you don't have to enter them again.
+echo.
+
+if exist trainer-config.json (
+  set /p RECONFIGURE="A config file already exists. Reconfigure? (y/n): "
+  if /i "!RECONFIGURE!" neq "y" (
+    echo Keeping existing config. Run train.bat to start training.
+    pause
+    exit /b 0
+  )
+  echo.
+)
+
+echo Which server do you want to train against?
+echo   1. Production         ^(https://gridgrove.gg^)
+echo   2. Local development  ^(http://localhost:3001^)
+echo.
+set /p SERVER_CHOICE="Enter 1 or 2 (default: 1): "
+if "!SERVER_CHOICE!" == "" set SERVER_CHOICE=1
+if "!SERVER_CHOICE!" == "1" (
+  set SITE_URL=https://gridgrove.gg
+) else if "!SERVER_CHOICE!" == "2" (
+  set SITE_URL=http://localhost:3001
+) else (
+  echo [ERROR] Invalid choice. Enter 1 or 2.
+  pause
+  exit /b 1
+)
+echo.
+echo To get a Trainer API Key:
+echo   Go to !SITE_URL!/profile/edit  ^(your Edit Account page^)
+echo   Find the "Trainer API Keys" section and click "Generate New Key"
+echo.
+set /p API_KEY="Paste your Trainer API Key: "
+if "!API_KEY!" == "" (
+  echo [ERROR] API key cannot be empty.
+  pause
+  exit /b 1
+)
+echo.
+echo Testing connection...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "try { $r = Invoke-WebRequest -Uri '!SITE_URL!/api/trainer/my-games' -Headers @{Authorization='TrainerToken !API_KEY!'} -UseBasicParsing -TimeoutSec 10; Write-Output 'OK' } catch { Write-Output ('ERR:' + $_.Exception.Message) }" > _setup_test.tmp 2>&1
+set /p _TEST=<_setup_test.tmp
+del _setup_test.tmp 2>nul
+
+if "!_TEST!" neq "OK" (
+  echo [ERROR] Connection test failed: !_TEST!
+  echo   Check that the server choice and API key are correct.
+  echo   You can generate a key at: !SITE_URL!/profile/edit
+  echo.
+  pause
+  exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "@{siteUrl='!SITE_URL!'; apiKey='!API_KEY!'} | ConvertTo-Json | Set-Content trainer-config.json -Encoding UTF8"
+
+echo [OK] Config saved to trainer-config.json
+echo.
+echo Setup complete! Run train.bat to start training any of your games.
+echo.
+pause
+`;
+}
+
+function _buildSetupSh({ siteUrl, version }) {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+echo ""
+echo "======================================================================"
+echo "  GridGrove AI Trainer  --  First-Time Setup"
+echo "  Version: ${version}"
+echo "======================================================================"
+echo ""
+echo "This is a one-time setup. Your settings will be saved to"
+echo "trainer-config.json so you don't have to enter them again."
+echo ""
+
+chmod +x ./ai-engine 2>/dev/null || true
+
+if [ -f trainer-config.json ]; then
+  read -rp "A config file already exists. Reconfigure? (y/n): " RECONFIGURE
+  if [ "\${RECONFIGURE,,}" != "y" ]; then
+    echo "Keeping existing config. Run ./train.sh to start training."
+    exit 0
+  fi
+  echo ""
+fi
+
+echo "Which server do you want to train against?"
+echo "  1. Production         (https://gridgrove.gg)"
+echo "  2. Local development  (http://localhost:3001)"
+echo ""
+read -rp "Enter 1 or 2 (default: 1): " SERVER_CHOICE
+SERVER_CHOICE="\${SERVER_CHOICE:-1}"
+if [ "\${SERVER_CHOICE}" = "1" ]; then
+  SITE_URL="https://gridgrove.gg"
+elif [ "\${SERVER_CHOICE}" = "2" ]; then
+  SITE_URL="http://localhost:3001"
+else
+  echo "[ERROR] Invalid choice. Enter 1 or 2."
+  exit 1
+fi
+echo ""
+echo "To get a Trainer API Key:"
+echo "  Go to \${SITE_URL}/profile/edit  (your Edit Account page)"
+echo "  Find the 'Trainer API Keys' section and click 'Generate New Key'"
+echo ""
+read -rp "Paste your Trainer API Key: " API_KEY
+if [ -z "\${API_KEY}" ]; then
+  echo "[ERROR] API key cannot be empty."
+  exit 1
+fi
+echo ""
+echo "Testing connection..."
+_TEST=\$(curl -sf --max-time 10 -H "Authorization: TrainerToken \${API_KEY}" "\${SITE_URL}/api/trainer/my-games" 2>/dev/null && echo "OK" || echo "ERR")
+if [ "\${_TEST}" != "OK" ]; then
+  echo "[ERROR] Connection test failed. Check your server choice and API key."
+  echo "  Generate a key at: \${SITE_URL}/profile/edit"
+  exit 1
+fi
+
+cat > trainer-config.json << EOCONFIG
+{
+  "siteUrl": "\${SITE_URL}",
+  "apiKey": "\${API_KEY}"
+}
+EOCONFIG
+
+echo "[OK] Config saved to trainer-config.json"
+echo ""
+echo "Setup complete! Run ./train.sh to start training any of your games."
+echo ""
+`;
+}
+
+function _buildTrainBat({ siteUrl, version }) {
+  return `@echo off
+setlocal EnableDelayedExpansion
+title GridGrove AI Trainer
+
+echo.
+echo ======================================================================
+echo   GridGrove AI Trainer  v${version}
+echo ======================================================================
+echo.
+
+:: ---- Load config ----
+if not exist trainer-config.json (
+  echo [ERROR] trainer-config.json not found.
+  echo         Run setup.bat first to configure the trainer.
+  echo.
+  pause
+  exit /b 1
+)
+for /f "delims=" %%s in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Content trainer-config.json | ConvertFrom-Json).siteUrl"') do set SITE_URL=%%s
+for /f "delims=" %%k in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Content trainer-config.json | ConvertFrom-Json).apiKey"') do set API_KEY=%%k
+if "!SITE_URL!" == "" ( echo [ERROR] Invalid trainer-config.json. Run setup.bat. & pause & exit /b 1 )
+
+:: ---- Binary version ----
+set BIN_VER=unknown
+for /f "tokens=2" %%v in ('"ai-engine.exe --version" 2^>^&1') do set BIN_VER=%%v
+
+:: ---- Check for updates ----
+echo [1/4] Checking for updates...
+set SERVER_VER=
+set MIN_VER=
+for /f "delims=" %%j in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -Uri '!SITE_URL!/api/trainer/version' -UseBasicParsing -TimeoutSec 10 | ConvertFrom-Json; Write-Output ($r.version + '|' + $r.min_version) } catch { Write-Output '' }"') do set _INFO=%%j
+if "!_INFO!" neq "" (
+  for /f "tokens=1 delims=|" %%a in ("!_INFO!") do set SERVER_VER=%%a
+  for /f "tokens=2 delims=|" %%b in ("!_INFO!") do set MIN_VER=%%b
+)
+if "!BIN_VER!" == "!SERVER_VER!" (
+  echo   Version !BIN_VER! is up to date.
+) else if "!SERVER_VER!" neq "" (
+  echo   New version: !SERVER_VER! ^(you have !BIN_VER!^). Downloading...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "try { Invoke-WebRequest -Uri '!SITE_URL!/api/trainer/download/win32' -OutFile 'ai-engine.exe.new' -UseBasicParsing -TimeoutSec 120; Write-Output 'OK' } catch { Write-Output 'FAIL' }" > _upd.tmp 2>&1
+  set /p _UPD=<_upd.tmp & del _upd.tmp 2>nul
+  if "!_UPD!" == "OK" (
+    move /y ai-engine.exe.new ai-engine.exe >nul
+    for /f "tokens=2" %%v in ('"ai-engine.exe --version" 2^>^&1') do set BIN_VER=%%v
+    echo   Updated to !BIN_VER!.
+  ) else (
+    echo [WARN] Auto-update failed.
+    if "!MIN_VER!" neq "" (
+      for /f "delims=" %%r in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "function cmp($a,$b){$x=$a-split'\\.';$y=$b-split'\\.';for($i=0;$i-lt3;$i++){$xi=[int]$x[$i];$yi=[int]$y[$i];if($xi-lt$yi){return -1}if($xi-gt$yi){return 1}}0};if((cmp '!BIN_VER!' '!MIN_VER!')-lt 0){'BLOCKED'}else{'OK'}"') do set _BLK=%%r
+      if "!_BLK!" == "BLOCKED" (
+        echo [ERROR] Your version ^(!BIN_VER!^) is too old. Re-download from !SITE_URL!
+        pause & exit /b 1
+      )
+    )
+    echo   Continuing with !BIN_VER!.
+  )
+) else (
+  echo [WARN] Could not reach server. Continuing with !BIN_VER!.
+)
+echo.
+
+:: ---- Select game ----
+echo [2/4] Select a game to train...
+echo.
+set GAME_ID=%1
+if "!GAME_ID!" neq "" goto :got_game_id
+
+:: Fetch game list
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "try { $r = Invoke-WebRequest -Uri '!SITE_URL!/api/trainer/my-games' -Headers @{Authorization='TrainerToken !API_KEY!'} -UseBasicParsing -TimeoutSec 15; $r.Content | Set-Content _games.json -Encoding UTF8; Write-Output 'OK' } catch { Write-Output ('ERR:'+$_.Exception.Message) }" > _gfetch.tmp
+set /p _GF=<_gfetch.tmp & del _gfetch.tmp 2>nul
+if "!_GF!" neq "OK" (
+  echo [ERROR] Could not fetch game list: !_GF!
+  echo   Check your internet connection or run setup.bat again.
+  pause & exit /b 1
+)
+echo   Your games:
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$g=Get-Content _games.json|ConvertFrom-Json;$i=1;foreach($x in $g){Write-Host ('  '+$i+'. '+$x.game_name+' (ID: '+$x.id+')');$i++}"
+echo.
+set /p GAME_NUM="Enter the number of the game you want to train: "
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$g=Get-Content _games.json|ConvertFrom-Json;$n=[int]!GAME_NUM!-1;if($n-ge 0 -and $n-lt $g.Count){Set-Content _gid.tmp ([string]$g[$n].id) -Encoding ASCII;Set-Content _gnm.tmp $g[$n].game_name -Encoding ASCII}"
+set GAME_ID=
+set GAME_NAME=
+set /p GAME_ID=<_gid.tmp
+set /p GAME_NAME=<_gnm.tmp
+del _gid.tmp _gnm.tmp 2>nul
+del _games.json 2>nul
+if "!GAME_ID!" == "" ( echo [ERROR] Invalid selection. & pause & exit /b 1 )
+goto :got_game_id
+
+:got_game_id
+if "!GAME_NAME!" == "" set GAME_NAME=Game-!GAME_ID!
+:: Sanitize game name for filesystem use (replace spaces and colons)
+set "GAME_NAME_SAFE=!GAME_NAME: =_!"
+set "GAME_NAME_SAFE=!GAME_NAME_SAFE:/=_!"
+set "GAME_NAME_SAFE=!GAME_NAME_SAFE::=_!"
+
+:: ---- MCTS setting ----
+echo [3/4] Configure training...
+echo.
+echo   MCTS sets how many simulations the AI runs per move.
+echo   Higher = stronger AI, but slower training.
+echo.
+echo    MCTS  ^|  Quality          ^|  CPU Impact
+echo   -------+-------------------+----------------------------
+echo      50  ^|  Low              ^|  Very light - barely noticeable
+echo     200  ^|  Good (default)   ^|  Moderate  - may be noticeable
+echo     400  ^|  High             ^|  Heavy     - best when dedicated
+echo     800+ ^|  Excellent        ^|  Very heavy - run overnight
+echo.
+set MCTS_ITERS=200
+set /p MCTS_INPUT="MCTS iterations [10-4000, press Enter for 200]: "
+if "!MCTS_INPUT!" neq "" (
+  set MCTS_ITERS=!MCTS_INPUT!
+  if !MCTS_ITERS! lss 10 ( echo [WARN] Minimum is 10. Using 10. & set MCTS_ITERS=10 )
+  if !MCTS_ITERS! gtr 4000 ( echo [WARN] Maximum is 4000. Using 4000. & set MCTS_ITERS=4000 )
+)
+
+set GAMES_COUNT=500
+set /p GAMES_INPUT="Number of games to train (press Enter for 500): "
+if "!GAMES_INPUT!" neq "" set GAMES_COUNT=!GAMES_INPUT!
+
+:: ---- Fetch rules ----
+echo.
+echo [4/4] Fetching latest game rules...
+if not exist rules mkdir rules
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "try { $r = Invoke-WebRequest -Uri '!SITE_URL!/api/trainer/game-rules/!GAME_ID!' -Headers @{Authorization='TrainerToken !API_KEY!'} -UseBasicParsing -TimeoutSec 30; [System.IO.File]::WriteAllText((Join-Path(Get-Location).Path 'rules\\!GAME_NAME_SAFE!-!GAME_ID!.json'),$r.Content); Write-Output 'OK' } catch { Write-Output ('ERR:'+$_.Exception.Message) }" > _rfetch.tmp
+set /p _RF=<_rfetch.tmp & del _rfetch.tmp 2>nul
+if "!_RF!" neq "OK" ( echo [ERROR] Could not fetch rules: !_RF! & pause & exit /b 1 )
+echo   Rules saved to rules\\!GAME_NAME_SAFE!-!GAME_ID!.json
+echo.
+
+:: ---- Prepare output dir and meta.json ----
+set OUT_DIR=output\\!GAME_NAME_SAFE!-!GAME_ID!
+if not exist "!OUT_DIR!" mkdir "!OUT_DIR!"
+for /f "delims=" %%t in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "[DateTime]::UtcNow.ToString('o')"') do set STARTED_AT=%%t
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$j=@{gameId=[int]!GAME_ID!;gameName='!GAME_NAME!';mctsIters=[int]!MCTS_ITERS!;games=[int]!GAMES_COUNT!;startedAt='!STARTED_AT!';binVersion='!BIN_VER!';site='!SITE_URL!'} | ConvertTo-Json;[System.IO.File]::WriteAllText((Join-Path(Get-Location).Path '!OUT_DIR!\\meta.json'),$j)"
+
+echo Starting training for: !GAME_NAME! (ID !GAME_ID!)
+echo Output folder: !OUT_DIR!
+echo.
+echo The trainer will print one line per game as it runs.
+echo Press Ctrl+C at any time to stop. Progress is saved continuously.
+echo.
+
+ai-engine.exe train --rules "rules\\!GAME_NAME_SAFE!-!GAME_ID!.json" --out "!OUT_DIR!" --games !GAMES_COUNT! --mcts-iters !MCTS_ITERS!
+
+if errorlevel 1 (
+  echo.
+  echo [ERROR] Training stopped. See the message above for details.
+  pause & exit /b 1
+)
+
+echo.
+echo ======================================================================
+echo   Training complete!
+echo ======================================================================
+echo.
+echo   Output saved to: !OUT_DIR!
+echo.
+echo   To upload your results, go to:
+echo     !SITE_URL!/games/!GAME_ID!
+echo   and find the "Train Locally" section.
+echo.
+echo   You can upload:
+echo     - !OUT_DIR!\\book.jsonl     (recommended - just the training data)
+echo     - !OUT_DIR! folder as .zip (full results)
+echo.
+echo   The MCTS setting (!MCTS_ITERS!) is saved in meta.json and will be
+echo   detected automatically when you upload a .zip file.
+echo.
+pause
+`;
+}
+
+function _buildTrainSh({ siteUrl, version }) {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\\n\\t'
+
+echo ""
+echo "======================================================================"
+echo "  GridGrove AI Trainer  v${version}"
+echo "======================================================================"
+echo ""
+
+chmod +x ./ai-engine 2>/dev/null || true
+
+# ---- Load config ----
+if [ ! -f trainer-config.json ]; then
+  echo "[ERROR] trainer-config.json not found. Run ./setup.sh first."
+  exit 1
+fi
+_jq() { python3 -c "import sys,json;d=json.load(open('trainer-config.json'));print(d.get('$1',''))" 2>/dev/null || grep -o "\"$1\": *\"[^\"]*\"" trainer-config.json | head -1 | cut -d'"' -f4; }
+SITE_URL=\$(_jq siteUrl)
+API_KEY=\$(_jq apiKey)
+if [ -z "\${SITE_URL}" ] || [ -z "\${API_KEY}" ]; then
+  echo "[ERROR] Invalid trainer-config.json. Run ./setup.sh again."
+  exit 1
+fi
+
+# ---- Binary version ----
+BIN_VER=\$(./ai-engine --version 2>/dev/null | awk '{print $NF}' || echo "unknown")
+
+# ---- Check for updates ----
+echo "[1/4] Checking for updates..."
+_INFO=\$(curl -sf --max-time 10 "\${SITE_URL}/api/trainer/version" 2>/dev/null || true)
+SERVER_VER=\$(echo "\${_INFO}" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('version',''))" 2>/dev/null || true)
+MIN_VER=\$(echo "\${_INFO}" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('min_version',''))" 2>/dev/null || true)
+if [ -z "\${SERVER_VER}" ]; then
+  echo "[WARN] Could not reach server. Continuing with \${BIN_VER}."
+elif [ "\${BIN_VER}" = "\${SERVER_VER}" ]; then
+  echo "  Version \${BIN_VER} is up to date."
+else
+  echo "  New version: \${SERVER_VER} (you have \${BIN_VER}). Downloading..."
+  if curl -fsSL --max-time 120 "\${SITE_URL}/api/trainer/download/linux" -o ./ai-engine.new 2>/dev/null; then
+    chmod +x ./ai-engine.new
+    mv ./ai-engine.new ./ai-engine
+    BIN_VER=\$(./ai-engine --version 2>/dev/null | awk '{print $NF}' || echo "unknown")
+    echo "  Updated to \${BIN_VER}."
+  else
+    echo "[WARN] Auto-update failed. Continuing with \${BIN_VER}."
+    _ver_lt() { python3 -c "import sys;a=list(map(int,sys.argv[1].split('.')));b=list(map(int,sys.argv[2].split('.')));print('LT' if a<b else 'OK')" "\$1" "\$2" 2>/dev/null || echo "OK"; }
+    if [ -n "\${MIN_VER}" ] && [ "\$(_ver_lt "\${BIN_VER}" "\${MIN_VER}")" = "LT" ]; then
+      echo "[ERROR] Version \${BIN_VER} is too old (min: \${MIN_VER}). Re-download from \${SITE_URL}."
+      exit 1
+    fi
+  fi
+fi
+echo ""
+
+# ---- Select game ----
+echo "[2/4] Select a game to train..."
+echo ""
+GAME_ID="\${1:-}"
+GAME_NAME=""
+
+if [ -z "\${GAME_ID}" ]; then
+  _GAMES=\$(curl -sf --max-time 15 -H "Authorization: TrainerToken \${API_KEY}" "\${SITE_URL}/api/trainer/my-games" 2>/dev/null || echo "ERR")
+  if [ "\${_GAMES}" = "ERR" ] || [ -z "\${_GAMES}" ]; then
+    echo "[ERROR] Could not fetch game list. Check internet and run ./setup.sh."
+    exit 1
+  fi
+  echo "\${_GAMES}" > _games.json
+  echo "  Your games:"
+  echo ""
+  python3 -c "
+import json, sys
+games = json.load(open('_games.json'))
+for i, g in enumerate(games, 1):
+    print(f'  {i}. {g[\"game_name\"]} (ID: {g[\"id\"]})')
+"
+  echo ""
+  read -rp "Enter the number of the game you want to train: " GAME_NUM
+  GAME_ID=\$(python3 -c "import json;g=json.load(open('_games.json'));n=int('\${GAME_NUM:-0}')-1;print(g[n]['id']) if 0<=n<len(g) else print('')" 2>/dev/null || echo "")
+  GAME_NAME=\$(python3 -c "import json;g=json.load(open('_games.json'));n=int('\${GAME_NUM:-0}')-1;print(g[n]['game_name']) if 0<=n<len(g) else print('')" 2>/dev/null || echo "")
+  rm -f _games.json
+  if [ -z "\${GAME_ID}" ]; then
+    echo "[ERROR] Invalid selection."
+    exit 1
+  fi
+fi
+[ -z "\${GAME_NAME}" ] && GAME_NAME="Game-\${GAME_ID}"
+# Sanitize game name for filesystem use
+GAME_NAME_SAFE=\$(echo "\${GAME_NAME}" | tr -cs 'a-zA-Z0-9_-' '_' | sed 's/_\\+/_/g;s/^_//;s/_$//')
+
+# ---- MCTS setting ----
+echo "[3/4] Configure training..."
+echo ""
+echo "  MCTS sets how many simulations the AI runs per move."
+echo "  Higher = stronger AI, but slower training."
+echo ""
+echo "   MCTS |  Quality          |  CPU Impact"
+echo "  ------+-------------------+----------------------------"
+echo "     50 |  Low              |  Very light - barely noticeable"
+echo "    200 |  Good (default)   |  Moderate  - may be noticeable"
+echo "    400 |  High             |  Heavy     - best when dedicated"
+echo "    800+ |  Excellent       |  Very heavy - run overnight"
+echo ""
+read -rp "MCTS iterations [10-4000, press Enter for 200]: " MCTS_INPUT
+MCTS_ITERS="\${MCTS_INPUT:-200}"
+if [ "\${MCTS_ITERS}" -lt 10 ] 2>/dev/null; then echo "[WARN] Minimum is 10. Using 10."; MCTS_ITERS=10; fi
+if [ "\${MCTS_ITERS}" -gt 4000 ] 2>/dev/null; then echo "[WARN] Maximum is 4000. Using 4000."; MCTS_ITERS=4000; fi
+read -rp "Number of games to train (press Enter for 500): " GAMES_INPUT
+GAMES_COUNT="\${GAMES_INPUT:-500}"
+
+# ---- Fetch rules ----
+echo ""
+echo "[4/4] Fetching latest game rules..."
+mkdir -p rules
+_RULES=\$(curl -sf --max-time 30 -H "Authorization: TrainerToken \${API_KEY}" "\${SITE_URL}/api/trainer/game-rules/\${GAME_ID}" 2>/dev/null || echo "ERR")
+if [ "\${_RULES}" = "ERR" ] || [ -z "\${_RULES}" ]; then
+  echo "[ERROR] Could not fetch game rules. Check your permissions for game \${GAME_ID}."
+  exit 1
+fi
+echo "\${_RULES}" > "rules/\${GAME_NAME_SAFE}-\${GAME_ID}.json"
+echo "  Rules saved to rules/\${GAME_NAME_SAFE}-\${GAME_ID}.json"
+echo ""
+
+# ---- Prepare output dir and meta.json ----
+OUT_DIR="output/\${GAME_NAME_SAFE}-\${GAME_ID}"
+mkdir -p "\${OUT_DIR}"
+STARTED_AT=\$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
+python3 -c "
+import json
+meta = {
+  'gameId': int('\${GAME_ID}'),
+  'gameName': '\${GAME_NAME}',
+  'mctsIters': int('\${MCTS_ITERS}'),
+  'games': int('\${GAMES_COUNT}'),
+  'startedAt': '\${STARTED_AT}',
+  'binVersion': '\${BIN_VER}',
+  'site': '\${SITE_URL}'
+}
+open('\${OUT_DIR}/meta.json', 'w').write(json.dumps(meta, indent=2))
+" 2>/dev/null || true
+
+echo "Starting training for: \${GAME_NAME} (ID \${GAME_ID})"
+echo "Output folder: \${OUT_DIR}"
+echo ""
+echo "The trainer will print one line per game as it runs."
+echo "Press Ctrl+C at any time to stop. Progress is saved continuously."
+echo ""
+
+./ai-engine train \\
+  --rules "rules/\${GAME_NAME_SAFE}-\${GAME_ID}.json" \\
+  --out "\${OUT_DIR}" \\
+  --games "\${GAMES_COUNT}" \\
+  --mcts-iters "\${MCTS_ITERS}"
+
+echo ""
+echo "======================================================================"
+echo "  Training complete!"
+echo "======================================================================"
+echo ""
+echo "  Output saved to: \${OUT_DIR}"
+echo ""
+echo "  To upload, go to: \${SITE_URL}/games/\${GAME_ID}"
+echo "  Find the 'Train Locally' section and upload:"
+echo "    - \${OUT_DIR}/book.jsonl  (recommended)"
+echo "    - or zip the \${OUT_DIR} folder and upload that"
+echo ""
+echo "  The MCTS setting (\${MCTS_ITERS}) is saved in meta.json and will be"
+echo "  detected automatically when you upload a .zip file."
+echo ""
+`;
+}
+
+function _buildGlobalReadme({ platform, siteUrl, version }) {
+  const isWindows = platform === 'win32';
+  const setupCmd = isWindows ? 'setup.bat' : './setup.sh';
+  const trainCmd = isWindows ? 'train.bat' : './train.sh';
+  const binName = isWindows ? 'ai-engine.exe' : 'ai-engine';
+  return `======================================================================
+  GridGrove AI Trainer  --  Global Pack
+  Trainer version : ${version}
+  Platform        : ${isWindows ? 'Windows (64-bit)' : 'Linux (64-bit)'}
+  Site            : ${siteUrl}
+======================================================================
+
+WHAT IS THIS?
+-------------
+This is the GridGrove AI Trainer. It lets you train AI bots for any of
+your games, all from a single download. No re-downloading needed when
+you create new games.
+
+It runs entirely on your computer using your CPU. No internet connection
+is needed while training is in progress. The AI plays thousands of games
+against itself to learn which moves tend to win. When you upload your
+results, the in-game AI for your game gets smarter for everyone.
+
+
+SYSTEM REQUIREMENTS
+-------------------
+  OS    : ${isWindows ? 'Windows 10 or later (64-bit)' : 'Linux (64-bit)'}
+  CPU   : Any modern processor (faster CPU = faster training)
+  RAM   : 1 GB free minimum
+  Disk  : 500 MB free minimum
+  Net   : Required only at startup and for uploading results
+
+
+FILES IN THIS PACKAGE
+---------------------
+  ${binName.padEnd(16)}: The trainer binary. Do not rename it.
+  setup${isWindows ? '.bat' : '.sh  '} ${' '.repeat(11)}: Run this ONCE to configure the trainer.
+  train${isWindows ? '.bat' : '.sh  '} ${' '.repeat(11)}: Run this to train a game.
+  trainer-config.example.json : Example config (DO NOT edit this file).
+  rules/          : Game rules are downloaded here automatically.
+  output/         : Training results are saved here per game.
+  README.txt      : This file.
+
+
+QUICK START
+-----------
+1. Unzip this file:
+${isWindows
+  ? `   Right-click the .zip -> "Extract All..." -> Extract.
+   Open the extracted folder.`
+  : `   unzip gridgrove-trainer-linux.zip
+   cd gridgrove-trainer-linux/`}
+${isWindows ? '' : '2. Make scripts executable:\n   chmod +x ai-engine setup.sh train.sh\n'}
+${isWindows ? '2' : '3'}. Run ${setupCmd}
+   Enter your site URL and Trainer API Key.
+   (Generate a key at ${siteUrl}/profile/edit under "Trainer API Keys".)
+
+${isWindows ? '3' : '4'}. Run ${trainCmd}
+   - It will show a numbered list of your games.
+   - Select a game, choose MCTS strength, and let it run.
+   - Results go to output/<GameName>-<GameID>/
+
+${isWindows ? '4' : '5'}. Upload when done
+   - Go to ${siteUrl}/games/<GameID>
+   - Find the "Train Locally" section
+   - Upload output/<GameName>-<GameID>/book.jsonl
+     OR zip the output folder and upload that
+
+
+TRAINING MULTIPLE GAMES AT ONCE
+--------------------------------
+You can run ${trainCmd} in multiple terminal windows at the same time,
+each training a different game. Results are saved in separate folders
+(output/GameA-67/ and output/GameB-89/) so they don't interfere.
+
+On Windows: open multiple Command Prompt windows and run train.bat in each.
+On Linux: open multiple terminal tabs and run ./train.sh in each.
+
+
+PASSING A GAME ID DIRECTLY
+---------------------------
+Skip the interactive menu by passing the game ID as an argument:
+
+  ${isWindows ? 'train.bat 67' : './train.sh 67'}
+
+Useful when training a specific game repeatedly or in scripts.
+
+
+MCTS SETTING GUIDE
+------------------
+MCTS controls how many simulations the AI runs per move:
+
+   MCTS |  Quality          |  CPU Impact
+  ------+-------------------+----------------------------
+     50 |  Low              |  Very light - barely noticeable
+    200 |  Good (default)   |  Moderate  - may be noticeable
+    400 |  High             |  Heavy     - best when dedicated
+    800+ |  Excellent        |  Very heavy - run overnight
+
+Note: actual speed depends on board size and number of pieces.
+Start with 200 if you're unsure. Use 400+ for overnight sessions.
+
+
+WHAT FILES TO UPLOAD
+--------------------
+After training, go to ${siteUrl}/games/<GameID> and upload either:
+
+  output/<GameName>-<GameID>/book.jsonl
+    Just the training data. Small and quick to upload.
+
+  output/<GameName>-<GameID>/ folder zipped as .zip
+    Includes the meta.json with your MCTS setting, which will be
+    detected automatically by the uploader. Recommended.
+
+
+ADMIN MODE
+----------
+If your account has admin privileges, the game selection menu will
+show ALL published games on the site, not just your own. This lets you
+train AI for games created by other users.
+
+
+UPDATING THE TRAINER
+--------------------
+The trainer checks for updates automatically each time you run train${isWindows ? '.bat' : '.sh'}.
+If a newer version is available and you're online, it downloads itself.
+
+If auto-update fails and your version is too old:
+  1. Go to ${siteUrl}/profile/edit
+  2. Find "Download Trainer" (or use the global pack download button)
+  3. Unzip into a new folder
+  4. Copy your trainer-config.json into the new folder
+  5. Run ${setupCmd} to verify your config still works
+
+
+TROUBLESHOOTING
+---------------
+"trainer-config.json not found"
+  Run ${setupCmd} first.
+
+"Could not fetch game list"
+  Check your internet connection and make sure your API key is valid.
+  Re-run ${setupCmd} to test your connection.
+
+"Could not fetch game rules" or "Not authorized"
+  Make sure you are the creator of the game you're trying to train,
+  or that your account has admin privileges.
+
+"UPDATE REQUIRED"
+  Your version is too old. Follow the manual update steps above.
+
+"Training stopped with an error"
+  Read the error message. The data in output/ up to that point is safe
+  and can be uploaded. Common causes: disk full, corrupted rules file
+  (re-run ${trainCmd} to refetch rules).
+
+Still stuck? Visit ${siteUrl} and use the contact or feedback option.
+
+
+PRIVACY NOTE
+------------
+This trainer runs entirely on your computer. It does NOT send anything
+to the internet while training. When you upload your results, ONLY the
+training data (move statistics) is transmitted -- no personal files or
+system information.
+
+The site records that you downloaded and uploaded a trainer pack
+(your username, date) for quality and abuse prevention purposes,
+consistent with the site's privacy policy.
+
+======================================================================
+`;
+}
+
+// Uniqueness checker — compares a game's full configuration against all other games
 app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, res) => {
   try {
     const { gameId } = req.params;
@@ -8731,19 +9789,20 @@ app.post(
         });
       }
       const userId = req.user?.id || null;
+      const mctsIters = parseInt(req.body?.mctsIters || req.query?.mctsIters, 10) || 0;
 
       let result;
       if (trainingManager.REMOTE_MODE) {
         const trainerClient = require('./ai/trainer-client');
         result = await trainerClient.uploadArtifact({
-          gameTypeId, kind, buffer: req.file.buffer, userId,
+          gameTypeId, kind, buffer: req.file.buffer, userId, mctsIters,
         });
       } else {
         const { importUpload } = require('./ai/artifact-uploader');
         result = await importUpload(
           gameTypeId,
           { kind, buffer: req.file.buffer },
-          { userId },
+          { userId, mctsIters },
         );
       }
       res.json(result);
@@ -8839,7 +9898,7 @@ app.get(
         return res.status(400).send({ message: 'Invalid gameTypeId' });
       }
       const meta = await trainingAnalysis.getAnalysisExistence(gameTypeId);
-      if (!meta) return res.status(404).send({ exists: false });
+      if (!meta) return res.json({ exists: false });
 
       const isAdmin = req.user?.role === 'admin' || req.user?.role === 'owner';
       let allowed = false;
@@ -8852,7 +9911,7 @@ app.get(
         );
         if (gt && gt.creator_id === req.user.id) allowed = true;
       }
-      if (!allowed) return res.status(404).send({ exists: false });
+      if (!allowed) return res.json({ exists: false });
       res.json({ exists: true, visibility: meta.visibility, slug: meta.slug });
     } catch (err) {
       console.error('AI analysis exists probe error:', err);
@@ -9003,6 +10062,55 @@ app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, 
   } catch (err) {
     console.error('Request AI analysis error:', err);
     res.status(500).send({ message: 'Failed to send analysis request' });
+  }
+});
+
+// ----------------------- Standalone Trainer User Events (Admin) ----------
+//
+//   GET /api/admin/ai-training/user-events?page=&limit=&eventType=&gameTypeId=
+
+app.get('/api/admin/ai-training/user-events', authenticateAdmin, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+    const eventType = req.query.eventType || null;
+    const gameTypeId = req.query.gameTypeId ? parseInt(req.query.gameTypeId, 10) : null;
+
+    const conditions = [];
+    const params = [];
+    if (eventType && ['download', 'upload'].includes(eventType)) {
+      conditions.push('e.event_type = ?');
+      params.push(eventType);
+    }
+    if (gameTypeId) {
+      conditions.push('e.game_type_id = ?');
+      params.push(gameTypeId);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const [[{ total }]] = await db_pool.query(
+      `SELECT COUNT(*) as total FROM trainer_user_events e ${where}`,
+      params,
+    );
+
+    const [rows] = await db_pool.query(
+      `SELECT e.id, e.event_type, e.platform, e.trainer_version, e.ip_address,
+              e.created_at, e.game_type_id, g.game_name,
+              e.user_id, u.username
+         FROM trainer_user_events e
+         LEFT JOIN game_types g ON e.game_type_id = g.id
+         LEFT JOIN users u ON e.user_id = u.id
+         ${where}
+         ORDER BY e.created_at DESC
+         LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
+    );
+
+    res.json({ total, page, limit, events: rows });
+  } catch (err) {
+    console.error('User events fetch error:', err);
+    res.status(500).json({ message: err.message });
   }
 });
 
@@ -9334,6 +10442,55 @@ function optionalAuthenticate(req, res, next) {
     }
     next(); // Continue regardless of token validity
   })
+}
+
+// Trainer API key authentication.
+// Reads "Authorization: TrainerToken <raw_key>", hashes it with SHA-256,
+// looks up trainer_api_keys, and populates req.user from the associated user row.
+async function authenticateTrainerToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('TrainerToken ')) {
+    return res.status(401).json({ message: 'Trainer token required' });
+  }
+  const rawKey = authHeader.slice('TrainerToken '.length).trim();
+  if (!rawKey) return res.status(401).json({ message: 'Trainer token required' });
+  const crypto = require('crypto');
+  const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+  try {
+    const [[keyRow]] = await db_pool.query(
+      `SELECT tak.id, tak.user_id,
+              u.id as uid, u.first_name, u.last_name, u.username, u.email, u.role, u.admin_level
+         FROM trainer_api_keys tak
+         JOIN users u ON u.id = tak.user_id
+        WHERE tak.key_hash = ? LIMIT 1`,
+      [keyHash],
+    );
+    if (!keyRow) return res.status(403).json({ message: 'Invalid or revoked trainer token' });
+    req.user = {
+      id: keyRow.uid,
+      first_name: keyRow.first_name,
+      last_name: keyRow.last_name,
+      username: keyRow.username,
+      email: keyRow.email,
+      role: keyRow.role,
+      admin_level: keyRow.admin_level,
+    };
+    // Update last_used_at asynchronously (non-blocking)
+    db_pool.query('UPDATE trainer_api_keys SET last_used_at = NOW() WHERE id = ?', [keyRow.id]).catch(() => {});
+    next();
+  } catch (err) {
+    console.error('[authenticateTrainerToken]', err.message);
+    return res.status(500).json({ message: 'Token verification failed' });
+  }
+}
+
+// Accepts either a standard JWT Bearer token OR a TrainerToken.
+function authenticateTokenOrTrainerKey(req, res, next) {
+  const authHeader = req.headers['authorization'] || '';
+  if (authHeader.startsWith('TrainerToken ')) {
+    return authenticateTrainerToken(req, res, next);
+  }
+  return authenticateToken(req, res, next);
 }
 
 function authenticateAdmin(req, res, next) {

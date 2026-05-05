@@ -50,6 +50,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
   // Artifact upload state
   const [uploadGameTypeId, setUploadGameTypeId] = useState("");
   const [uploadFile, setUploadFile] = useState(null);
+  const [uploadMctsIters, setUploadMctsIters] = useState("");
   const [uploadingArtifact, setUploadingArtifact] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [uploadError, setUploadError] = useState(null);
@@ -58,6 +59,33 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
   // AI engine error log state
   const [aiErrors, setAiErrors] = useState([]);
   const [aiErrorsCollapsed, setAiErrorsCollapsed] = useState(true);
+
+  // User trainer activity log state
+  const [trainerEvents, setTrainerEvents] = useState([]);
+  const [trainerEventsLoading, setTrainerEventsLoading] = useState(false);
+  const [trainerEventsError, setTrainerEventsError] = useState(null);
+  const [trainerEventsPage, setTrainerEventsPage] = useState(1);
+  const [trainerEventsTotal, setTrainerEventsTotal] = useState(0);
+  const [trainerEventsCollapsed, setTrainerEventsCollapsed] = useState(true);
+  const TRAINER_EVENTS_LIMIT = 50;
+
+  const fetchTrainerEvents = useCallback(async (page = 1) => {
+    setTrainerEventsLoading(true);
+    setTrainerEventsError(null);
+    try {
+      const res = await axios.get(`${API_URL}admin/ai-training/user-events`, {
+        headers: authHeader(),
+        params: { page, limit: TRAINER_EVENTS_LIMIT },
+      });
+      setTrainerEvents(res.data.events || []);
+      setTrainerEventsTotal(res.data.total || 0);
+      setTrainerEventsPage(page);
+    } catch (e) {
+      setTrainerEventsError(e?.response?.data?.message || e.message);
+    } finally {
+      setTrainerEventsLoading(false);
+    }
+  }, []);
 
   const fetchAiErrors = useCallback(async () => {
     try {
@@ -530,6 +558,10 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
       const fd = new FormData();
       fd.append('artifact', uploadFile);
       fd.append('gameTypeId', String(gtid));
+      const mctsItersVal = parseInt(uploadMctsIters, 10);
+      if (Number.isFinite(mctsItersVal) && mctsItersVal > 0) {
+        fd.append('mctsIters', String(mctsItersVal));
+      }
       const res = await axios.post(
         `${API_URL}admin/ai-training/upload-artifacts`,
         fd,
@@ -539,6 +571,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
       );
       setUploadResult(res.data);
       setUploadFile(null);
+      setUploadMctsIters("");
       if (uploadInputRef.current) uploadInputRef.current.value = '';
       await fetchStatus();
     } catch (err) {
@@ -839,6 +872,20 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
               accept=".jsonl,.zip,application/zip,application/x-zip-compressed"
               onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
             />
+          </label>
+          <label>
+            MCTS iterations (optional)
+            <input
+              type="number"
+              min="1"
+              step="1"
+              placeholder="e.g. 200"
+              value={uploadMctsIters}
+              onChange={(e) => setUploadMctsIters(e.target.value)}
+            />
+            <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: 2 }}>
+              The --mcts-iters value used when training this artifact. Leave blank if unknown.
+            </small>
           </label>
           <button
             type="submit"
@@ -1413,6 +1460,113 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
           onClose={() => setReplayJobId(null)}
         />
       )}
+
+      {/* ---- User Trainer Activity ---- */}
+      <div className={styles.section}>
+        <div
+          className={styles.sectionHeader}
+          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          onClick={() => {
+            const next = !trainerEventsCollapsed;
+            setTrainerEventsCollapsed(next);
+            if (!next && trainerEvents.length === 0) fetchTrainerEvents(1);
+          }}
+        >
+          <h4 style={{ margin: 0 }}>User Trainer Activity</h4>
+          <span style={{ fontSize: '0.82em', color: '#888' }}>
+            {trainerEventsCollapsed ? 'Show' : 'Hide'}
+          </span>
+        </div>
+        {!trainerEventsCollapsed && (
+          <div style={{ marginTop: 10 }}>
+            <p className={styles.intro} style={{ marginBottom: 8 }}>
+              Downloads and uploads of the standalone trainer pack by game creators.
+            </p>
+            <button
+              type="button"
+              className={styles.actionBtn}
+              style={{ padding: '3px 12px', fontSize: '0.82em', marginBottom: 10 }}
+              disabled={trainerEventsLoading}
+              onClick={() => fetchTrainerEvents(trainerEventsPage)}
+            >
+              {trainerEventsLoading ? 'Loading...' : 'Refresh'}
+            </button>
+            {trainerEventsError && (
+              <div className={styles.errorMsg}>{trainerEventsError}</div>
+            )}
+            {!trainerEventsLoading && trainerEvents.length === 0 && !trainerEventsError && (
+              <div className={styles.emptyNote}>No trainer activity recorded yet.</div>
+            )}
+            {trainerEvents.length > 0 && (
+              <>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className={styles.table} style={{ fontSize: '0.84em', minWidth: 600 }}>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>User</th>
+                        <th>Game</th>
+                        <th>Event</th>
+                        <th>Platform</th>
+                        <th>Version</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trainerEvents.map((ev) => (
+                        <tr key={ev.id}>
+                          <td>{ev.created_at ? new Date(ev.created_at).toLocaleString() : '—'}</td>
+                          <td>{ev.username || <span style={{ color: '#aaa' }}>deleted</span>}</td>
+                          <td>
+                            {ev.game_name
+                              ? <a href={`/games/${ev.game_type_id}`} target="_blank" rel="noreferrer">{ev.game_name}</a>
+                              : `#${ev.game_type_id}`}
+                          </td>
+                          <td>
+                            <span style={{
+                              padding: '1px 7px',
+                              borderRadius: 4,
+                              fontSize: '0.9em',
+                              background: ev.event_type === 'upload' ? '#1a4a1a' : '#1a2d4a',
+                              color: ev.event_type === 'upload' ? '#6fcf6f' : '#6aacf5',
+                            }}>
+                              {ev.event_type}
+                            </span>
+                          </td>
+                          <td>{ev.platform || '—'}</td>
+                          <td>{ev.trainer_version || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className={styles.actionBtn}
+                    style={{ padding: '2px 10px', fontSize: '0.82em' }}
+                    disabled={trainerEventsPage <= 1 || trainerEventsLoading}
+                    onClick={() => fetchTrainerEvents(trainerEventsPage - 1)}
+                  >
+                    Prev
+                  </button>
+                  <span style={{ fontSize: '0.82em' }}>
+                    Page {trainerEventsPage} — showing {trainerEvents.length} of {trainerEventsTotal}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.actionBtn}
+                    style={{ padding: '2px 10px', fontSize: '0.82em' }}
+                    disabled={trainerEventsPage * TRAINER_EVENTS_LIMIT >= trainerEventsTotal || trainerEventsLoading}
+                    onClick={() => fetchTrainerEvents(trainerEventsPage + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

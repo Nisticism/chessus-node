@@ -36,6 +36,10 @@ pub struct GameType {
     pub board_height: i32,
     pub player_count: i32,
     pub actions_per_turn: i32,
+    /// Minimum trainer binary version required for this rules file.
+    /// If set and the running binary's version is older, training is aborted
+    /// with a clear message directing the user to re-download the trainer pack.
+    pub trainer_min_version: String,
 
     // Win conditions
     pub mate_condition: bool,

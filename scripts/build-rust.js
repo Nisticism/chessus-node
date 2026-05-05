@@ -45,6 +45,22 @@ child.on('error', (err) => {
 child.on('exit', (code) => {
   if (code === 0) {
     console.log('[build-rust] OK');
+    // Copy the compiled binary into trainer-binaries/<platform>/ so the
+    // "Download Trainer Pack" endpoint can serve it without any manual step.
+    try {
+      const platform = isWin ? 'win32' : 'linux';
+      const binName = isWin ? 'ai-engine.exe' : 'ai-engine';
+      const src = path.join(RS_DIR, 'target', 'release', binName);
+      const destDir = path.join(__dirname, '..', 'trainer-binaries', platform);
+      const dest = path.join(destDir, binName);
+      if (fs.existsSync(src)) {
+        fs.mkdirSync(destDir, { recursive: true });
+        fs.copyFileSync(src, dest);
+        console.log(`[build-rust] Binary copied to trainer-binaries/${platform}/${binName}`);
+      }
+    } catch (copyErr) {
+      console.warn('[build-rust] Could not copy binary to trainer-binaries/:', copyErr.message);
+    }
     process.exit(0);
   }
   console.warn(`[build-rust] cargo exited with code ${code} — continuing without rebuild.`);

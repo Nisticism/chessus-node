@@ -412,6 +412,40 @@ const tableMigrations = [
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`,
     description: "Create comment_emotes table for emoji reactions on forum comments"
+  },
+  {
+    table: 'trainer_user_events',
+    sql: `CREATE TABLE IF NOT EXISTS trainer_user_events (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED,
+      game_type_id INT UNSIGNED NULL,
+      event_type ENUM('download','upload') NOT NULL,
+      platform VARCHAR(20),
+      trainer_version VARCHAR(20),
+      ip_address VARCHAR(45),
+      created_at DATETIME NOT NULL DEFAULT NOW(),
+      INDEX idx_tue_user (user_id),
+      INDEX idx_tue_game (game_type_id),
+      INDEX idx_tue_created (created_at),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )`,
+    description: "Create trainer_user_events table for standalone trainer download/upload audit log"
+  },
+  {
+    table: 'trainer_api_keys',
+    sql: `CREATE TABLE IF NOT EXISTS trainer_api_keys (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      key_hash VARCHAR(64) NOT NULL,
+      key_prefix VARCHAR(20) NOT NULL,
+      name VARCHAR(100) NOT NULL DEFAULT 'Default',
+      created_at DATETIME NOT NULL DEFAULT NOW(),
+      last_used_at DATETIME NULL,
+      UNIQUE INDEX idx_tak_hash (key_hash),
+      INDEX idx_tak_user (user_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    description: "Create trainer_api_keys table for standalone trainer CLI authentication"
   }
 ];
 
@@ -808,6 +842,25 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error checking/modifying nullable columns:', err.message);
+  }
+
+  // Fix trainer_user_events.game_type_id — originally created NOT NULL, needs to be nullable
+  // so global-pack downloads (not tied to a specific game) can be logged.
+  try {
+    const [tueRows] = await db_pool.query(
+      `SELECT IS_NULLABLE FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'trainer_user_events' AND COLUMN_NAME = 'game_type_id'`,
+      [process.env.DB_NAME || 'chessusnode']
+    );
+    if (tueRows[0] && tueRows[0].IS_NULLABLE === 'NO') {
+      await runMigration(
+        "ALTER TABLE trainer_user_events MODIFY COLUMN game_type_id INT UNSIGNED NULL",
+        "Make trainer_user_events.game_type_id nullable for global-pack downloads"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error making trainer_user_events.game_type_id nullable:', err.message);
   }
 
   // Ensure pieces.image_location is TEXT type

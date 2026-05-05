@@ -432,6 +432,67 @@ const GameTypeView = () => {
   const [requestingAnalysis, setRequestingAnalysis] = useState(false);
   const [analysisRequestSent, setAnalysisRequestSent] = useState(false);
 
+  // "Train Locally" section state (visible to creator + admins only)
+  const [trainerLocalOpen, setTrainerLocalOpen] = useState(false);
+  const [trainerPlatform, setTrainerPlatform] = useState('win32');
+  const [trainerDownloading, setTrainerDownloading] = useState(false);
+  const [trainerDownloadError, setTrainerDownloadError] = useState(null);
+  const [trainerUploadFile, setTrainerUploadFile] = useState(null);
+  const [trainerMctsIters, setTrainerMctsIters] = useState('');
+  const [trainerUploading, setTrainerUploading] = useState(false);
+  const [trainerUploadResult, setTrainerUploadResult] = useState(null);
+  const [trainerUploadError, setTrainerUploadError] = useState(null);
+
+  const handleTrainerPackDownload = async () => {
+    setTrainerDownloading(true);
+    setTrainerDownloadError(null);
+    try {
+      const res = await axios.get(
+        `${API_URL}trainer/global-pack?platform=${trainerPlatform}`,
+        { headers: authHeader(), responseType: 'blob' },
+      );
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const cd = res.headers['content-disposition'] || '';
+      const match = cd.match(/filename="?([^";\n]+)"?/);
+      link.setAttribute('download', match ? match[1] : `gridgrove-trainer-${trainerPlatform}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      const msg = e?.response?.data?.message || e.message;
+      setTrainerDownloadError(msg);
+    } finally {
+      setTrainerDownloading(false);
+    }
+  };
+
+  const handleTrainerUpload = async () => {
+    if (!trainerUploadFile) return;
+    setTrainerUploading(true);
+    setTrainerUploadResult(null);
+    setTrainerUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.append('artifact', trainerUploadFile);
+      if (trainerMctsIters) fd.append('mctsIters', String(parseInt(trainerMctsIters, 10) || 0));
+      const res = await axios.post(
+        `${API_URL}games/${gameId}/training/upload`,
+        fd,
+        { headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' } },
+      );
+      setTrainerUploadResult(res.data?.message || 'Upload successful! Thank you for contributing training data.');
+      setTrainerUploadFile(null);
+      setTrainerMctsIters('');
+    } catch (e) {
+      setTrainerUploadError(e?.response?.data?.message || e.message);
+    } finally {
+      setTrainerUploading(false);
+    }
+  };
+
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
   const darkSquareColor = localStorage.getItem('boardDarkColor') || '#08234d';
@@ -576,7 +637,6 @@ const GameTypeView = () => {
     axios
       .get(`${API_URL}ai-training/analysis/${gameId}/exists`, {
         headers: authHeader(),
-        validateStatus: () => true, // treat 404 as a non-error so browsers don't log a network error
       })
       .then((res) => { if (!cancelled) setAiAnalysisAvailable(res.status === 200 && !!res.data?.exists); })
       .catch(() => { if (!cancelled) setAiAnalysisAvailable(false); });
@@ -2096,6 +2156,169 @@ const GameTypeView = () => {
             </>
           )}
         </div>
+
+        {/* ---- Train Locally (creator / admin only) ---- */}
+        {canEdit() && (
+          <div style={{
+            margin: '12px 0 0',
+            border: '1px solid rgba(120,160,255,0.25)',
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}>
+            <button
+              type="button"
+              onClick={() => setTrainerLocalOpen((v) => !v)}
+              style={{
+                width: '100%',
+                background: 'rgba(40,60,100,0.5)',
+                border: 'none',
+                padding: '10px 16px',
+                textAlign: 'left',
+                color: '#c8d8ff',
+                cursor: 'pointer',
+                fontWeight: 600,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <span>🖥️ Train AI Locally</span>
+              <span style={{ fontSize: '0.8em', fontWeight: 400 }}>
+                {trainerLocalOpen ? 'Hide ▲' : 'Show ▼'}
+              </span>
+            </button>
+
+            {trainerLocalOpen && (
+              <div style={{ padding: '14px 16px', background: 'rgba(20,30,55,0.6)' }}>
+                <p style={{ margin: '0 0 10px', fontSize: '0.9em', lineHeight: 1.6, color: '#b8c8e8' }}>
+                  Download the <strong>Global AI Trainer</strong> to run training on your own computer.
+                  After setup, run the train script whenever you want — it fetches your game's rules,
+                  plays self-play games until you stop it, and saves the results locally.
+                  Upload when you're done to improve the AI bot for everyone.
+                </p>
+                <p style={{ margin: '0 0 14px', fontSize: '0.85em', color: '#8a9abf' }}>
+                  <strong>Supported platforms:</strong> Windows 10+ (64-bit) and Linux (64-bit).
+                  You will need a <strong>Trainer API Key</strong> from your{' '}
+                  <a href="/profile/edit" style={{ color: '#7ab0ff' }}>Edit Account page</a>{' '}
+                  to use the trainer.
+                </p>
+
+                {/* Download section */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.9em' }}>
+                    Step 1 — Download the Global Trainer
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                    <label style={{ fontSize: '0.88em', color: '#9aaace' }}>Platform:</label>
+                    <select
+                      value={trainerPlatform}
+                      onChange={(e) => setTrainerPlatform(e.target.value)}
+                      style={{ background: '#1a2540', border: '1px solid #3a5080', color: '#c8d8ff', borderRadius: 4, padding: '3px 8px' }}
+                    >
+                      <option value="win32">Windows (64-bit)</option>
+                      <option value="linux">Linux (64-bit)</option>
+                    </select>
+                    <button
+                      type="button"
+                      className={styles["play-button"]}
+                      onClick={handleTrainerPackDownload}
+                      disabled={trainerDownloading}
+                      style={{ padding: '5px 16px', fontSize: '0.88em' }}
+                    >
+                      {trainerDownloading ? 'Preparing download…' : '⬇ Download Global Trainer'}
+                    </button>
+                  </div>
+                  {trainerDownloadError && (
+                    <div style={{ color: '#ff8080', fontSize: '0.85em', marginTop: 4 }}>
+                      {trainerDownloadError}
+                    </div>
+                  )}
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82em', color: '#7a8aac' }}>
+                    The ZIP contains the trainer binary and setup/train scripts. Run <code>setup.bat</code> (Windows)
+                    or <code>./setup.sh</code> (Linux) once to configure your API key, then run{' '}
+                    <code>train.bat {gameId}</code> / <code>./train.sh {gameId}</code> to start training this game.
+                    The script will prompt you for MCTS settings before it begins.
+                  </p>
+                </div>
+
+                {/* CPU / MCTS tier guide */}
+                <div style={{ marginBottom: 16, background: 'rgba(10,20,45,0.5)', border: '1px solid rgba(80,120,200,0.2)', borderRadius: 6, padding: '10px 14px' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.85em' }}>MCTS Iterations — CPU tier guide</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em', color: '#9aaace' }}>
+                    <tbody>
+                      {[['50', 'Very light — laptops/background use'], ['200', 'Moderate (default) — any modern desktop'], ['400', 'Heavy — gaming PC / workstation'], ['800+', 'Very heavy — overnight / server']].map(([iter, desc]) => (
+                        <tr key={iter}>
+                          <td style={{ padding: '2px 10px 2px 0', fontFamily: 'monospace', color: '#c8d8ff', whiteSpace: 'nowrap' }}>{iter}</td>
+                          <td style={{ padding: '2px 0' }}>{desc}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <hr style={{ border: 'none', borderTop: '1px solid rgba(120,160,255,0.15)', margin: '12px 0' }} />
+
+                {/* Upload section */}
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.9em' }}>
+                    Step 2 — Upload Your Training Results
+                  </div>
+                  <p style={{ margin: '0 0 8px', fontSize: '0.85em', color: '#8a9abf' }}>
+                    After training, upload the <code>book.jsonl</code> file from the output folder, or upload
+                    the entire output folder as a <code>.zip</code> (the train script shows you exactly where it is).
+                    When uploading a ZIP, MCTS iterations are detected automatically from the included metadata file.
+                    Uploads are limited to 5 per day.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 420 }}>
+                    <label style={{ fontSize: '0.88em', color: '#9aaace' }}>
+                      Training file (.jsonl or .zip):
+                      <input
+                        type="file"
+                        accept=".jsonl,.zip"
+                        style={{ display: 'block', marginTop: 4, color: '#c8d8ff' }}
+                        onChange={(e) => { setTrainerUploadFile(e.target.files[0] || null); setTrainerUploadResult(null); setTrainerUploadError(null); }}
+                      />
+                    </label>
+                    <label style={{ fontSize: '0.88em', color: '#9aaace' }}>
+                      MCTS iterations used (auto-detected from meta.json if uploading a .zip):
+                      <input
+                        type="number"
+                        min="1"
+                        value={trainerMctsIters}
+                        onChange={(e) => setTrainerMctsIters(e.target.value)}
+                        placeholder="Leave blank to auto-detect from .zip"
+                        style={{
+                          display: 'block', marginTop: 4, width: '100%',
+                          background: '#1a2540', border: '1px solid #3a5080',
+                          color: '#c8d8ff', borderRadius: 4, padding: '4px 8px',
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={styles["play-button"]}
+                      onClick={handleTrainerUpload}
+                      disabled={trainerUploading || !trainerUploadFile}
+                      style={{ padding: '6px 18px', fontSize: '0.88em', alignSelf: 'flex-start' }}
+                    >
+                      {trainerUploading ? 'Uploading…' : '⬆ Submit Training Results'}
+                    </button>
+                  </div>
+                  {trainerUploadResult && (
+                    <div style={{ color: '#6fcf6f', fontSize: '0.88em', marginTop: 8 }}>
+                      {trainerUploadResult}
+                    </div>
+                  )}
+                  {trainerUploadError && (
+                    <div style={{ color: '#ff8080', fontSize: '0.88em', marginTop: 8 }}>
+                      {trainerUploadError}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className={styles["game-info"]}>

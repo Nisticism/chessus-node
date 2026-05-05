@@ -22,3 +22,6 @@ ai-training/
 # Rust build output
 ai-engine-rs/target/
 ai-engine-rs/Cargo.lock
+
+# Compiled trainer binaries (copy manually to server; do not commit large binaries)
+trainer-binaries/

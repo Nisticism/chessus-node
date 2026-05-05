@@ -68,6 +68,36 @@ pub struct PlayArgs {
 
 pub fn run_training(args: TrainArgs) -> Result<()> {
     let rules = Rules::load(&args.rules)?;
+
+    // Version gate: if the rules file requires a minimum binary version and
+    // our version is older, abort with a helpful message instead of producing
+    // potentially incompatible training data.
+    let min_ver = rules.game.trainer_min_version.trim();
+    if !min_ver.is_empty() {
+        let own_ver = env!("CARGO_PKG_VERSION");
+        if !version_satisfies(own_ver, min_ver) {
+            eprintln!();
+            eprintln!("=====================================================");
+            eprintln!(" TRAINER VERSION OUTDATED — TRAINING BLOCKED");
+            eprintln!("=====================================================");
+            eprintln!(" Your trainer version : {}", own_ver);
+            eprintln!(" Required version     : {}", min_ver);
+            eprintln!();
+            eprintln!(" Your trainer is out of date and cannot train this");
+            eprintln!(" game without risking incompatible data.");
+            eprintln!();
+            eprintln!(" HOW TO UPDATE:");
+            eprintln!("   1. Go to your game's page on the website");
+            eprintln!("   2. Click the 'Train Locally' section");
+            eprintln!("   3. Download a fresh trainer pack");
+            eprintln!("   4. Copy your 'output/' folder into the new pack");
+            eprintln!("   5. Run the trainer script again");
+            eprintln!("=====================================================");
+            eprintln!();
+            std::process::exit(1);
+        }
+    }
+
     fs::create_dir_all(&args.out)
         .with_context(|| format!("creating output dir {}", args.out.display()))?;
     let log_path = args.out.join("log.ndjson");
@@ -111,6 +141,51 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
     )?;
 
     let mcts = Mcts::new(args.mcts_iters);
+
+    // Pre-flight: verify the initial position has at least one legal move for
+    // player 1. If not, the game will trivially stalemate every single game,
+    // producing 0 useful training data. Exit with a clear diagnostic rather
+    // than silently burning all game slots.
+    {
+        let test_board = Board::from_rules(&rules);
+        let initial_moves = legal_moves(&test_board, &rules);
+        let p1_pieces: Vec<_> = test_board.pieces.iter().filter(|p| p.player == 1).collect();
+        let neutral_pieces: Vec<_> = test_board.pieces.iter().filter(|p| p.is_neutral).collect();
+        if initial_moves.is_empty() {
+            eprintln!();
+            eprintln!("=============================================================");
+            eprintln!(" INITIAL POSITION HAS NO LEGAL MOVES FOR PLAYER 1 -- ABORTED");
+            eprintln!("=============================================================");
+            eprintln!(" Player 1 pieces in starting position : {}", p1_pieces.len());
+            eprintln!(" Neutral pieces in starting position  : {}", neutral_pieces.len());
+            eprintln!(" Total pieces on board                 : {}", test_board.pieces.len());
+            eprintln!();
+            if p1_pieces.is_empty() && neutral_pieces.is_empty() {
+                eprintln!(" CAUSE: No player 1 pieces (or neutral pieces) exist in the");
+                eprintln!("        starting position. Check that the game has pieces");
+                eprintln!("        assigned to player 1 in the wizard (Step 3).");
+            } else if p1_pieces.is_empty() {
+                eprintln!(" CAUSE: All pieces are neutral (player=0). If this game uses");
+                eprintln!("        neutral pieces exclusively, the game may not be");
+                eprintln!("        trainable in the current configuration.");
+            } else {
+                eprintln!(" CAUSE: Player 1 has {} piece(s) but none can move from the", p1_pieces.len());
+                eprintln!("        starting position. Check movement values, board size,");
+                eprintln!("        and any zone/restriction square configurations.");
+            }
+            eprintln!();
+            eprintln!(" Re-export the game rules from the site and try again.");
+            eprintln!("=============================================================");
+            eprintln!();
+            std::process::exit(1);
+        }
+    }
+
+    // Per-run tallies for the end-of-run summary.
+    let mut tally_p1_wins: u32 = 0;
+    let mut tally_p2_wins: u32 = 0;
+    let mut tally_draws: u32 = 0;
+    let mut reason_counts: HashMap<String, u32> = HashMap::new();
 
     for game_idx in 0..args.games {
         if let Some(rss_mb) = current_rss_mb() {
@@ -468,6 +543,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             eprintln!("[book] write_pending failed: {e}");
         }
         let absolute_index = args.start_index + game_idx + 1;
+        let game_elapsed_ms = game_started.elapsed().as_millis();
         write_event(
             &mut log,
             &ProgressEvent::GameComplete {
@@ -475,10 +551,29 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                 moves: moves_played,
                 winner,
                 end_reason,
-                elapsed_ms: game_started.elapsed().as_millis(),
+                elapsed_ms: game_elapsed_ms,
             },
         )?;
         log.flush().ok();
+        // Print a compact human-readable progress line to stdout so that
+        // anyone watching the terminal (local trainer script) can see
+        // per-game results as they happen.
+        let total = args.games + args.start_index;
+        let outcome_str = match winner {
+            Some(1) => "P1 wins",
+            Some(2) => "P2 wins",
+            _ => "Draw   ",
+        };
+        let reason_label = end_reason_label(end_reason);
+        println!("[{:>5}/{:<5}] {} ({}, {} moves, {}ms)",
+            absolute_index, total, outcome_str, reason_label, moves_played, game_elapsed_ms);
+        // Update run tallies for the end-of-run summary.
+        match winner {
+            Some(1) => tally_p1_wins += 1,
+            Some(2) => tally_p2_wins += 1,
+            _ => tally_draws += 1,
+        }
+        *reason_counts.entry(reason_label.to_string()).or_insert(0) += 1;
         // Append this game's plain-text section to games.txt (if the log is enabled).
         if let Some(ref mut glog) = games_log {
             let outcome_str = match winner {
@@ -515,6 +610,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                     games_played: absolute_index,
                 },
             )?;
+            println!("Checkpoint saved: {} ({} games done)", path_str, absolute_index);
             prune_old_checkpoints(&args.out, 10).ok();
         }
     }
@@ -527,6 +623,24 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         },
     )?;
     log.flush().ok();
+    let total_elapsed = started.elapsed();
+    let secs = total_elapsed.as_secs_f64();
+    let total_games = tally_p1_wins + tally_p2_wins + tally_draws;
+    println!("Training complete: {} games in {:.1}s", args.start_index + args.games, secs);
+    // Print a results summary so it's easy to spot suspicious draw rates.
+    if total_games > 0 {
+        println!("  Results : P1 wins {}/{} ({:.0}%)  P2 wins {}/{} ({:.0}%)  Draws {}/{} ({:.0}%)",
+            tally_p1_wins, total_games, 100.0 * tally_p1_wins as f64 / total_games as f64,
+            tally_p2_wins, total_games, 100.0 * tally_p2_wins as f64 / total_games as f64,
+            tally_draws,   total_games, 100.0 * tally_draws   as f64 / total_games as f64);
+        // Sort reasons by count descending.
+        let mut reasons: Vec<(String, u32)> = reason_counts.into_iter().collect();
+        reasons.sort_by(|a, b| b.1.cmp(&a.1));
+        let reason_parts: Vec<String> = reasons.iter()
+            .map(|(r, n)| format!("{} x{}", r, n))
+            .collect();
+        println!("  End reasons : {}", reason_parts.join(", "));
+    }
     // Final book aggregation in case the run ended between checkpoint
     // boundaries (e.g. the games_target was not a multiple of
     // checkpoint_every).
@@ -534,6 +648,44 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         eprintln!("[book] final aggregate_book failed: {e}");
     }
     Ok(())
+}
+
+/// Returns a compact human-readable label for an end reason (shown in terminal progress lines).
+fn end_reason_label(reason: crate::protocol::EndReason) -> &'static str {
+    use crate::protocol::EndReason::*;
+    match reason {
+        Checkmate => "checkmate",
+        Stalemate => "stalemate",
+        StalemateWin => "stalemate win",
+        NoMovesLoss => "no moves",
+        CaptureCondition => "capture",
+        LoseAllPieces => "lost all pieces",
+        SquaresCondition => "squares held",
+        MoveLimit => "move limit",
+        MoveCapRollout => "move cap",
+        RolloutCap => "rollout cap",
+        NoMove => "no move",
+        RoyalCapture => "royal capture",
+        Repetition => "repetition",
+        InsufficientMaterial => "insuf. material",
+        Promotion => "promotion",
+        SimultaneousCaptureDraw => "simul capture draw",
+        SimultaneousCheckmateDraw => "simul checkmate draw",
+        CancellationDraw => "cancellation draw",
+        PointsWin => "points win",
+        PointsDraw => "points draw",
+        BurnKill => "burn kill",
+    }
+}
+
+/// Returns true if `own_ver` is >= `required_ver`, using simple numeric
+/// major.minor.patch comparison. Both strings must be "X.Y.Z" form.
+fn version_satisfies(own_ver: &str, required_ver: &str) -> bool {
+    fn parse(v: &str) -> (u32, u32, u32) {
+        let parts: Vec<u32> = v.split('.').map(|s| s.parse().unwrap_or(0)).collect();
+        (parts.first().copied().unwrap_or(0), parts.get(1).copied().unwrap_or(0), parts.get(2).copied().unwrap_or(0))
+    }
+    parse(own_ver) >= parse(required_ver)
 }
 
 pub fn run_inference(args: PlayArgs) -> Result<()> {

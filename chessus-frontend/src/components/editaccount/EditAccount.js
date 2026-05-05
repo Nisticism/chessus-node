@@ -11,6 +11,7 @@ import BioSection from "../biosection/BioSection";
 import AuthService from "../../services/auth.service";
 import ValidationWarningModal from "../common/ValidationWarningModal";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
+import authHeader from "../../services/auth-header";
 
 const USERNAME_MAX = 20;
 const EMAIL_MAX = 50;
@@ -59,6 +60,15 @@ const EditAccount = (props) => {
 
   const [firstRender, setFirstRender] = useState(false);
   const { profileUsername } = useParams();
+
+  // Trainer API key state
+  const [trainerKeys, setTrainerKeys] = useState(null); // null = not loaded
+  const [trainerKeysLoading, setTrainerKeysLoading] = useState(false);
+  const [trainerKeyName, setTrainerKeyName] = useState('');
+  const [trainerKeyGenerating, setTrainerKeyGenerating] = useState(false);
+  const [trainerNewKey, setTrainerNewKey] = useState(null); // shown once after creation
+  const [trainerKeyError, setTrainerKeyError] = useState(null);
+  const [trainerKeysCopied, setTrainerKeysCopied] = useState(false);
   
   // Initialize editAuth based on initial permissions to prevent NotFound flash
   const isAdminOrOwner = ['admin', 'owner'].includes(currentUser.role?.toLowerCase());
@@ -252,6 +262,47 @@ const EditAccount = (props) => {
     } catch {
       setBannerMessage("Failed to delete account.");
       setBannerType("error");
+    }
+  };
+
+  const loadTrainerKeys = async () => {
+    setTrainerKeysLoading(true);
+    setTrainerKeyError(null);
+    try {
+      const res = await axios.get(`${API_URL}trainer/keys`, { headers: authHeader() });
+      setTrainerKeys(res.data.keys || []);
+    } catch (e) {
+      setTrainerKeyError(e?.response?.data?.message || e.message);
+    } finally {
+      setTrainerKeysLoading(false);
+    }
+  };
+
+  const handleGenerateTrainerKey = async () => {
+    setTrainerKeyGenerating(true);
+    setTrainerKeyError(null);
+    setTrainerNewKey(null);
+    try {
+      const res = await axios.post(`${API_URL}trainer/keys`, { name: trainerKeyName || 'Default' }, { headers: authHeader() });
+      setTrainerNewKey(res.data.key);
+      setTrainerKeyName('');
+      // Reload key list
+      const listRes = await axios.get(`${API_URL}trainer/keys`, { headers: authHeader() });
+      setTrainerKeys(listRes.data.keys || []);
+    } catch (e) {
+      setTrainerKeyError(e?.response?.data?.message || e.message);
+    } finally {
+      setTrainerKeyGenerating(false);
+    }
+  };
+
+  const handleRevokeTrainerKey = async (keyId) => {
+    setTrainerKeyError(null);
+    try {
+      await axios.delete(`${API_URL}trainer/keys/${keyId}`, { headers: authHeader() });
+      setTrainerKeys(prev => (prev || []).filter(k => k.id !== keyId));
+    } catch (e) {
+      setTrainerKeyError(e?.response?.data?.message || e.message);
     }
   };
 
@@ -522,6 +573,112 @@ const EditAccount = (props) => {
                   </button>
                 </div>
               </div>
+
+              {/* Only show trainer keys section for the user's own profile (not admin editing others) */}
+              {(!profileUsername || profileUsername === currentUser.username) && (
+                <div className={styles["form-card"]}>
+                  <h2 className={styles["card-title"]}>Trainer API Keys</h2>
+                  <p style={{ color: 'var(--text-dim, #888)', fontSize: '0.875em', marginTop: 0, marginBottom: 12 }}>
+                    Trainer API keys allow the standalone AI trainer scripts to authenticate when fetching
+                    game rules and uploading training results. Keys are shown only once when generated — save them securely.
+                  </p>
+                  {trainerKeys === null ? (
+                    <button
+                      type="button"
+                      onClick={loadTrainerKeys}
+                      disabled={trainerKeysLoading}
+                      className={styles["show-password-section-button"]}
+                    >
+                      {trainerKeysLoading ? 'Loading…' : 'Show API Keys'}
+                    </button>
+                  ) : (
+                    <>
+                      {trainerKeys.length === 0 ? (
+                        <p style={{ color: 'var(--text-dim, #888)', fontSize: '0.875em' }}>No trainer API keys yet.</p>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12, fontSize: '0.875em' }}>
+                          <thead>
+                            <tr style={{ color: 'var(--text-dim, #888)', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                              <th style={{ padding: '4px 8px 4px 0' }}>Name</th>
+                              <th style={{ padding: '4px 8px' }}>Prefix</th>
+                              <th style={{ padding: '4px 8px' }}>Created</th>
+                              <th style={{ padding: '4px 8px' }}>Last used</th>
+                              <th style={{ padding: '4px 0' }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {trainerKeys.map(k => (
+                              <tr key={k.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                <td style={{ padding: '5px 8px 5px 0' }}>{k.name}</td>
+                                <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontSize: '0.95em' }}>{k.key_prefix}…</td>
+                                <td style={{ padding: '5px 8px', color: 'var(--text-dim, #888)' }}>
+                                  {new Date(k.created_at).toLocaleDateString()}
+                                </td>
+                                <td style={{ padding: '5px 8px', color: 'var(--text-dim, #888)' }}>
+                                  {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'Never'}
+                                </td>
+                                <td style={{ padding: '5px 0' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRevokeTrainerKey(k.id)}
+                                    style={{ background: 'none', border: '1px solid #c0392b', color: '#e74c3c', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.85em' }}
+                                  >
+                                    Revoke
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+
+                      {/* New key shown once */}
+                      {trainerNewKey && (
+                        <div style={{ background: 'rgba(0,100,40,0.15)', border: '1px solid #27ae60', borderRadius: 6, padding: '10px 14px', marginBottom: 12 }}>
+                          <p style={{ margin: '0 0 6px', fontWeight: 600, color: '#27ae60', fontSize: '0.9em' }}>
+                            New key generated — copy it now. It will NOT be shown again.
+                          </p>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <code style={{ background: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: 4, wordBreak: 'break-all', flex: 1, fontSize: '0.85em' }}>
+                              {trainerNewKey}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={() => { navigator.clipboard.writeText(trainerNewKey); setTrainerKeysCopied(true); setTimeout(() => setTrainerKeysCopied(false), 2000); }}
+                              style={{ background: '#27ae60', border: 'none', color: '#fff', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontSize: '0.85em', whiteSpace: 'nowrap' }}
+                            >
+                              {trainerKeysCopied ? 'Copied!' : 'Copy'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Generate new key form */}
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          value={trainerKeyName}
+                          onChange={(e) => setTrainerKeyName(e.target.value)}
+                          placeholder="Key name (optional)"
+                          maxLength={100}
+                          style={{ flex: 1, minWidth: 140, maxWidth: 220 }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleGenerateTrainerKey}
+                          disabled={trainerKeyGenerating}
+                          className={styles["update-password-button"]}
+                        >
+                          {trainerKeyGenerating ? 'Generating…' : 'Generate New Key'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {trainerKeyError && (
+                    <p style={{ color: '#e74c3c', fontSize: '0.875em', marginTop: 8 }}>{trainerKeyError}</p>
+                  )}
+                </div>
+              )}
 
               <div className={styles["form-card"]}>
                 <h2 className={styles["card-title"]}>Profile Picture Upload</h2>
