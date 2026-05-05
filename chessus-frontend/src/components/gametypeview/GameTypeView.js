@@ -462,7 +462,16 @@ const GameTypeView = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
-      const msg = e?.response?.data?.message || e.message;
+      let msg = e.message;
+      if (e?.response?.data instanceof Blob) {
+        try {
+          const text = await e.response.data.text();
+          const json = JSON.parse(text);
+          msg = json.message || msg;
+        } catch (_) {}
+      } else {
+        msg = e?.response?.data?.message || msg;
+      }
       setTrainerDownloadError(msg);
     } finally {
       setTrainerDownloading(false);
