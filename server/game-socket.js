@@ -4924,7 +4924,8 @@ function initializeSocket(server) {
             options: moveResult.promotionEligible.options,
             userId: userId,
             capturedPiece: moveResult.captured,
-            allCapturedPieces: moveResult.allCaptured
+            allCapturedPieces: moveResult.allCaptured,
+            hoppedCaptures: moveResult.hoppedCaptures,
           };
 
           // Auto-promote if only 1 option (skip the modal)
@@ -4955,8 +4956,11 @@ function initializeSocket(server) {
                 gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn }
               });
 
-              // Check win conditions
-              const promoWinResult = checkWinCondition(gameState, moveResult.allCaptured || moveResult.captured);
+              // Check win conditions (include hoppedCaptures for die_on_capture self-kills)
+              const promoWinResult = checkWinCondition(gameState, [
+                ...(moveResult.allCaptured || (moveResult.captured ? [moveResult.captured] : [])),
+                ...(moveResult.hoppedCaptures || []),
+              ]);
               if (promoWinResult.gameOver) {
                 stopGameTimer(gameId);
                 gameState.status = 'completed';
@@ -5417,8 +5421,11 @@ function initializeSocket(server) {
                     gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn }
                   });
 
-                  // Check win conditions after promotion
-                  const promoWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+                  // Check win conditions after promotion (include hoppedCaptures for die_on_capture self-kills)
+                  const promoWinResult = checkWinCondition(gameState, [
+                    ...(premoveResult.allCaptured || (premoveResult.captured ? [premoveResult.captured] : [])),
+                    ...(premoveResult.hoppedCaptures || []),
+                  ]);
                   if (promoWinResult.gameOver) {
                     stopGameTimer(gameId);
                     gameState.status = 'completed';
@@ -5574,8 +5581,11 @@ function initializeSocket(server) {
             
             // If multi-action turn and player has actions remaining, just update DB and return
             if (!premoveTurnSwitched) {
-              // Win condition check still needed (capture win, etc.)
-              const premoveWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+              // Win condition check still needed (capture win, etc.) — include hoppedCaptures
+              const premoveWinResult = checkWinCondition(gameState, [
+                ...(premoveResult.allCaptured || (premoveResult.captured ? [premoveResult.captured] : [])),
+                ...(premoveResult.hoppedCaptures || []),
+              ]);
               if (premoveWinResult.gameOver) {
                 stopGameTimer(gameId);
                 gameState.status = 'completed';
@@ -5648,8 +5658,11 @@ function initializeSocket(server) {
               return; // Exit early since game is over
             }
 
-            // Check for win conditions after premove (use premove's captured pieces)
-            const premoveWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+            // Check for win conditions after premove (include hoppedCaptures for die_on_capture self-kills)
+            const premoveWinResult = checkWinCondition(gameState, [
+              ...(premoveResult.allCaptured || (premoveResult.captured ? [premoveResult.captured] : [])),
+              ...(premoveResult.hoppedCaptures || []),
+            ]);
             if (premoveWinResult.gameOver) {
               // Stop the timer
               stopGameTimer(gameId);
@@ -6022,8 +6035,13 @@ function initializeSocket(server) {
           return; // Exit early since game is over
         }
 
-        // Check for win conditions (pass all captured pieces for ends_game_on_capture check)
-        const winResult = checkWinCondition(gameState, moveResult.allCaptured || moveResult.captured);
+        // Check for win conditions (pass all captured pieces for ends_game_on_capture check,
+        // including hoppedCaptures which contains die_on_capture self-kills and trample kills)
+        const _winCheckCaptured = [
+          ...(moveResult.allCaptured || (moveResult.captured ? [moveResult.captured] : [])),
+          ...(moveResult.hoppedCaptures || []),
+        ];
+        const winResult = checkWinCondition(gameState, _winCheckCaptured);
         if (winResult.gameOver) {
           // Stop the timer
           stopGameTimer(gameId);
@@ -6926,8 +6944,11 @@ function initializeSocket(server) {
           return;
         }
 
-        // Check for win conditions after promotion
-        const winResult = checkWinCondition(gameState, pendingPromotion.allCapturedPieces || pendingPromotion.capturedPiece);
+        // Check for win conditions after promotion (include hoppedCaptures for die_on_capture self-kills)
+        const winResult = checkWinCondition(gameState, [
+          ...(pendingPromotion.allCapturedPieces || (pendingPromotion.capturedPiece ? [pendingPromotion.capturedPiece] : [])),
+          ...(pendingPromotion.hoppedCaptures || []),
+        ]);
         if (winResult.gameOver) {
           stopGameTimer(gameId);
           gameState.status = 'completed';
@@ -13479,28 +13500,43 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
     ? capturedPieceOrArray
     : (capturedPieceOrArray ? [capturedPieceOrArray] : []);
 
-  // FIRST: Check if any captured piece had ends_game_on_capture flag
-  for (const capturedPiece of capturedPieces) {
-    if (capturedPiece.ends_game_on_capture) {
+  // FIRST: Check if any captured piece had ends_game_on_capture flag.
+  // Collect all eliminated sides before deciding the outcome so we can
+  // detect a simultaneous draw (both sides lose their last flagged piece
+  // in the same turn — e.g. one captured normally and the other via
+  // die_on_capture).
+  {
+    const eliminatedPositions = new Set();
+    for (const capturedPiece of capturedPieces) {
+      if (!capturedPiece.ends_game_on_capture) continue;
       const loserPosition = capturedPiece.team || capturedPiece.player_id;
+      if (eliminatedPositions.has(loserPosition)) continue; // already decided
 
       // If the game type requires ALL ends_game_on_capture pieces to be
-      // captured, only end the game once none remain on the loser's side.
+      // captured, only mark the side as eliminated once none remain.
       if (gameType.capture_condition_requires_all) {
         const remaining = pieces.some(p => {
           if (!p.ends_game_on_capture) return false;
           const owner = p.team || p.player_id || p.player;
           return owner === loserPosition;
         });
-        if (remaining) {
-          continue; // some flagged pieces still alive; don't end yet
-        }
+        if (remaining) continue; // some flagged pieces still alive; don't end yet
       }
 
-      const winner = players.find(p => p.position !== loserPosition);
+      eliminatedPositions.add(loserPosition);
+    }
+
+    if (eliminatedPositions.size > 0) {
+      // Check if ALL players are eliminated — that's a draw.
+      const allEliminated = players.every(p => eliminatedPositions.has(p.position));
+      if (allEliminated) {
+        return { gameOver: true, winner: null, reason: 'capture' };
+      }
+      // Otherwise the surviving player wins.
+      const survivor = players.find(p => !eliminatedPositions.has(p.position));
       return {
         gameOver: true,
-        winner: winner?.id,
+        winner: survivor?.id,
         reason: 'capture'
       };
     }
@@ -14093,8 +14129,11 @@ async function processBotTurn(io, gameId, gameState) {
         return await finishBotGame(io, gameId, gameState, controlWinResult, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
       }
 
-      // 10. Win condition check (capture-based)
-      const winResult = checkWinCondition(gameState, moveResult.allCaptured || moveResult.captured);
+      // 10. Win condition check (capture-based, include hoppedCaptures for die_on_capture self-kills)
+      const winResult = checkWinCondition(gameState, [
+        ...(moveResult.allCaptured || (moveResult.captured ? [moveResult.captured] : [])),
+        ...(moveResult.hoppedCaptures || []),
+      ]);
       if (winResult.gameOver) {
         return await finishBotGame(io, gameId, gameState, winResult, moveRecord, { burnPieces, burnKilledPieces, regenPieces });
       }
@@ -14354,6 +14393,7 @@ async function processBotTurn(io, gameId, gameState) {
                 userId: humanPlayer.id,
                 capturedPiece: premoveResult.captured,
                 allCapturedPieces: premoveResult.allCaptured,
+                hoppedCaptures: premoveResult.hoppedCaptures,
                 isPremove: true
               };
 
@@ -14392,8 +14432,11 @@ async function processBotTurn(io, gameId, gameState) {
                     gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn }
                   });
 
-                  // Check win conditions after promotion
-                  const pmPromoWin = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+                  // Check win conditions after promotion (include hoppedCaptures for die_on_capture self-kills)
+                  const pmPromoWin = checkWinCondition(gameState, [
+                    ...(premoveResult.allCaptured || (premoveResult.captured ? [premoveResult.captured] : [])),
+                    ...(premoveResult.hoppedCaptures || []),
+                  ]);
                   if (pmPromoWin.gameOver) {
                     return await finishBotGame(io, gameId, gameState, pmPromoWin, pmRecord, {});
                   }
@@ -14473,8 +14516,11 @@ async function processBotTurn(io, gameId, gameState) {
               gameState.actionsThisTurn = 0;
             }
 
-            // Check capture win condition (needed even without turn switch)
-            const pmWinResult = checkWinCondition(gameState, premoveResult.allCaptured || premoveResult.captured);
+            // Check capture win condition (include hoppedCaptures for die_on_capture self-kills)
+            const pmWinResult = checkWinCondition(gameState, [
+              ...(premoveResult.allCaptured || (premoveResult.captured ? [premoveResult.captured] : [])),
+              ...(premoveResult.hoppedCaptures || []),
+            ]);
             if (pmWinResult.gameOver) {
               return await finishBotGame(io, gameId, gameState, pmWinResult, pmRecord, {});
             }

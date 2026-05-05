@@ -2,7 +2,11 @@
  * Importer for externally-trained AI artifacts.
  *
  * Accepts either:
- *   - a raw book.jsonl file (the only required artifact; the bot's
+ *   - a .chessbook file (the recommended single-file format produced by the
+ *     downloadable trainer). Contains book.jsonl records followed by a final
+ *     JSON line with `"type":"job_summary"` carrying mcts_iters, win/draw
+ *     breakdown, and other training stats.
+ *   - a raw book.jsonl file (legacy; the only required artifact; the bot's
  *     opening book derives entirely from this)
  *   - a .zip of an entire job directory (book.jsonl required inside;
  *     log.ndjson + model-NNNNNN.bin optional, kept for auditability)
@@ -32,9 +36,38 @@ const ZIP_TOTAL_BYTE_LIMIT = 500 * 1024 * 1024;
 function _ensureDir(p) { fs.mkdirSync(p, { recursive: true }); }
 
 /**
- * Validate a buffer of book.jsonl content. Returns { valid, recordCount,
- * gamesEstimate, error }. We require every line to be JSON with at least
- * `s`, `m`, and `r` fields and `r` ∈ {W,L,D}.
+ * Parse a .chessbook buffer. Returns
+ * `{ bookJsonl: Buffer, summary: Object|null }`.
+ *
+ * Format: all lines are standard book.jsonl records EXCEPT the final line
+ * which is a JSON object with `"type":"job_summary"`. If no summary line
+ * is present (e.g. user uploaded a renamed .jsonl), we still accept it.
+ */
+function parseChessbook(buffer) {
+  if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
+  const text = buffer.toString('utf8');
+  const lines = text.split(/\r?\n/);
+  // Strip trailing blank lines.
+  while (lines.length > 0 && !lines[lines.length - 1].trim()) lines.pop();
+  if (lines.length === 0) return { bookJsonl: buffer, summary: null };
+
+  let summary = null;
+  const lastLine = lines[lines.length - 1].trim();
+  if (lastLine.startsWith('{')) {
+    try {
+      const obj = JSON.parse(lastLine);
+      if (obj && obj.type === 'job_summary') {
+        summary = obj;
+        lines.pop(); // Remove summary line from book content.
+      }
+    } catch (_) { /* not a summary line — treat as normal book record */ }
+  }
+
+  const bookText = lines.join('\n') + (lines.length > 0 ? '\n' : '');
+  return { bookJsonl: Buffer.from(bookText, 'utf8'), summary };
+}
+
+
  */
 function validateBookJsonl(buffer) {
   if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
@@ -135,7 +168,12 @@ async function importUpload(gameTypeId, payload, opts = {}) {
 
   let bookJsonl = null;
   let extras = [];
-  if (payload.kind === 'jsonl') {
+  let chessbookSummary = null;
+  if (payload.kind === 'chessbook') {
+    const parsed = parseChessbook(payload.buffer);
+    bookJsonl = parsed.bookJsonl;
+    chessbookSummary = parsed.summary;
+  } else if (payload.kind === 'jsonl') {
     bookJsonl = payload.buffer;
   } else if (payload.kind === 'zip') {
     const unpacked = unpackJobZip(payload.buffer);
@@ -159,8 +197,15 @@ async function importUpload(gameTypeId, payload, opts = {}) {
   if (!gameType) throw new Error(`Game type ${gtid} not found`);
 
   // Create the job row. games_target = games_played so the UI shows 100%.
-  const games = validation.gamesEstimate;
-  const mctsIters = Number.isFinite(opts.mctsIters) && opts.mctsIters > 0 ? Math.round(opts.mctsIters) : 0;
+  // Prefer stats from the .chessbook summary if available; fall back to
+  // counting ply-1 records from book.jsonl.
+  const games = chessbookSummary?.total_games ?? validation.gamesEstimate;
+  const mctsIters = (() => {
+    // Prefer explicit caller-supplied value, then .chessbook summary, then 0.
+    if (Number.isFinite(opts.mctsIters) && opts.mctsIters > 0) return Math.round(opts.mctsIters);
+    if (chessbookSummary?.mcts_iters > 0) return Math.round(chessbookSummary.mcts_iters);
+    return 0;
+  })();
   const [result] = await db_pool.query(
     `INSERT INTO ai_training_jobs
        (game_type_id, status, games_target, games_played, mcts_iters,
@@ -178,6 +223,24 @@ async function importUpload(gameTypeId, payload, opts = {}) {
   fs.writeFileSync(path.join(jobDir, 'book.jsonl'), bookJsonl);
   for (const e of extras) {
     fs.writeFileSync(path.join(jobDir, e.name), e.buffer);
+  }
+
+  // If a .chessbook summary was included, synthesize a log.ndjson from it so
+  // the training-analysis engine can read win/draw/loss breakdown without
+  // relying on per-game book.jsonl parsing (which doesn't have move counts or
+  // elapsed times). Each synthetic game_complete event uses the aggregate
+  // averages and distributes outcomes proportionally.
+  if (chessbookSummary && chessbookSummary.total_games > 0) {
+    try {
+      const logLines = _synthesizeLogFromSummary(chessbookSummary);
+      fs.writeFileSync(path.join(jobDir, 'log.ndjson'), logLines.join('\n') + '\n');
+    } catch (e) {
+      console.warn(`[upload] failed to synthesize log.ndjson for job ${jobId}: ${e.message}`);
+    }
+    // Also store the raw summary for later reference.
+    try {
+      fs.writeFileSync(path.join(jobDir, 'job_summary.json'), JSON.stringify(chessbookSummary, null, 2));
+    } catch (_) { /* non-fatal */ }
   }
 
   // Re-aggregate to produce book.json for this job. Lazy-require to
@@ -204,8 +267,64 @@ async function importUpload(gameTypeId, payload, opts = {}) {
   };
 }
 
+/**
+ * Build synthetic game_complete log.ndjson lines from a job_summary object.
+ * Distributes wins/draws/losses proportionally. Uses avg_moves_per_game
+ * and avg_elapsed_ms if available; otherwise uses 0.
+ *
+ * We emit a Started event first, then individual GameComplete events,
+ * then a Finished event — matching the real log format so training-analysis
+ * reads them correctly.
+ */
+function _synthesizeLogFromSummary(summary) {
+  const total = summary.total_games || 0;
+  if (total === 0) return [];
+
+  const p1Wins = summary.p1_wins || 0;
+  const p2Wins = summary.p2_wins || 0;
+  const draws = summary.draws || 0;
+  const mctsIters = summary.mcts_iters || 0;
+  const totalElapsedMs = summary.total_elapsed_ms || 0;
+  const avgElapsedMs = total > 0 ? Math.round(totalElapsedMs / total) : 0;
+
+  // Determine the dominant end reason for decisive/draw games from reason_counts.
+  const reasonCounts = summary.end_reason_counts || {};
+  const pickReason = (fallback) => {
+    let best = fallback;
+    let bestCount = 0;
+    for (const [k, v] of Object.entries(reasonCounts)) {
+      if (v > bestCount) { bestCount = v; best = k; }
+    }
+    return best;
+  };
+  const decisiveReason = pickReason('capture_condition');
+  const drawReason = pickReason('move_limit');
+
+  const lines = [];
+  lines.push(JSON.stringify({ type: 'started', games_target: total, seed: 0 }));
+
+  // Emit outcomes in order: p1 wins, p2 wins, draws.
+  let idx = 0;
+  for (let i = 0; i < p1Wins; i++) {
+    idx++;
+    lines.push(JSON.stringify({ type: 'game_complete', index: idx, moves: 0, winner: 1, end_reason: decisiveReason, elapsed_ms: avgElapsedMs }));
+  }
+  for (let i = 0; i < p2Wins; i++) {
+    idx++;
+    lines.push(JSON.stringify({ type: 'game_complete', index: idx, moves: 0, winner: 2, end_reason: decisiveReason, elapsed_ms: avgElapsedMs }));
+  }
+  for (let i = 0; i < draws; i++) {
+    idx++;
+    lines.push(JSON.stringify({ type: 'game_complete', index: idx, moves: 0, winner: null, end_reason: drawReason, elapsed_ms: avgElapsedMs }));
+  }
+
+  lines.push(JSON.stringify({ type: 'finished', games_played: total, elapsed_ms: totalElapsedMs }));
+  return lines;
+}
+
 module.exports = {
   importUpload,
   validateBookJsonl,
   unpackJobZip,
+  parseChessbook,
 };

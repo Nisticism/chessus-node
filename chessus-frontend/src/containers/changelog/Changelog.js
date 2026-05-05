@@ -4,6 +4,17 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 5, 2026",
+    title: "Dies on capture bug fixes, .chessbook upload format, average MCTS in analysis",
+    items: [
+      "Fixed: when both players lost their last 'ends game on capture' piece in the same turn (e.g. an attacker with 'dies on capture' killed the last enemy king and was removed in the same move), the game now correctly ends in a draw instead of awarding a win to the wrong side.",
+      "Fixed: if a piece with 'dies on capture' killed an enemy piece and was then removed from the board, the game now correctly detects the attacker's own side as eliminated. Previously the self-kill was not checked and the game could continue past a game-over state.",
+      "New upload format: the standalone trainer now produces an 'output.chessbook' file after training completes. This single file contains all training data plus statistics (MCTS setting, win/draw/loss breakdown, total games). Upload this one file instead of a .jsonl or .zip.",
+      "Average MCTS / move is now shown in the AI Training Analysis section on the game detail page and on the generated analysis pages.",
+      "AI trainer updated to version 1.1.0.",
+    ],
+  },
+  {
     date: "May 4, 2026",
     title: "Global AI Trainer, trainer API keys, live training output, and MCTS configuration",
     items: [

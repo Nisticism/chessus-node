@@ -2300,34 +2300,19 @@ const GameTypeView = () => {
                     Step 2 — Upload Your Training Results
                   </div>
                   <p style={{ margin: '0 0 8px', fontSize: '0.85em', color: '#8a9abf' }}>
-                    After training, upload the <code>book.jsonl</code> file from the output folder, or upload
-                    the entire output folder as a <code>.zip</code> (the train script shows you exactly where it is).
-                    When uploading a ZIP, MCTS iterations are detected automatically from the included metadata file.
-                    Uploads are limited to 5 per day.
+                    After training, upload the <code>output.chessbook</code> file from the output folder
+                    (the train script shows you where it is). This single file contains your training data
+                    plus statistics like MCTS setting and win/draw breakdown — everything needed for the
+                    site to display accurate analysis. Uploads are limited to 5 per day.
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 420 }}>
                     <label style={{ fontSize: '0.88em', color: '#9aaace' }}>
-                      Training file (.jsonl or .zip):
+                      Training file (.chessbook):
                       <input
                         type="file"
-                        accept=".jsonl,.zip"
+                        accept=".chessbook,.jsonl,.zip"
                         style={{ display: 'block', marginTop: 4, color: '#c8d8ff' }}
                         onChange={(e) => { setTrainerUploadFile(e.target.files[0] || null); setTrainerUploadResult(null); setTrainerUploadError(null); }}
-                      />
-                    </label>
-                    <label style={{ fontSize: '0.88em', color: '#9aaace' }}>
-                      MCTS iterations used (auto-detected from meta.json if uploading a .zip):
-                      <input
-                        type="number"
-                        min="1"
-                        value={trainerMctsIters}
-                        onChange={(e) => setTrainerMctsIters(e.target.value)}
-                        placeholder="Leave blank to auto-detect from .zip"
-                        style={{
-                          display: 'block', marginTop: 4, width: '100%',
-                          background: '#1a2540', border: '1px solid #3a5080',
-                          color: '#c8d8ff', borderRadius: 4, padding: '4px 8px',
-                        }}
                       />
                     </label>
                     <button

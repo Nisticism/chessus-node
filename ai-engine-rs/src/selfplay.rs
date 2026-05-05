@@ -634,7 +634,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             tally_p2_wins, total_games, 100.0 * tally_p2_wins as f64 / total_games as f64,
             tally_draws,   total_games, 100.0 * tally_draws   as f64 / total_games as f64);
         // Sort reasons by count descending.
-        let mut reasons: Vec<(String, u32)> = reason_counts.into_iter().collect();
+        let mut reasons: Vec<(String, u32)> = reason_counts.clone().into_iter().collect();
         reasons.sort_by(|a, b| b.1.cmp(&a.1));
         let reason_parts: Vec<String> = reasons.iter()
             .map(|(r, n)| format!("{} x{}", r, n))
@@ -647,6 +647,102 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
     if let Err(e) = aggregate_book(&args.out) {
         eprintln!("[book] final aggregate_book failed: {e}");
     }
+
+    // Write job_summary.json and emit the combined .chessbook file.
+    if total_games > 0 {
+        if let Err(e) = write_job_summary(&args, total_games, tally_p1_wins, tally_p2_wins, tally_draws, &reason_counts, total_elapsed.as_millis()) {
+            eprintln!("[summary] Failed to write job_summary.json: {e}");
+        }
+        if let Err(e) = write_chessbook(&args.out) {
+            eprintln!("[chessbook] Failed to write .chessbook file: {e}");
+        }
+    }
+
+    Ok(())
+}
+
+/// Write job_summary.json into the output directory with aggregate training stats.
+/// Also appends a `{"type":"job_summary",...}` line to book.jsonl so the
+/// .chessbook combined format carries the stats inline.
+fn write_job_summary(
+    args: &TrainArgs,
+    total_games: u32,
+    p1_wins: u32,
+    p2_wins: u32,
+    draws: u32,
+    reason_counts: &HashMap<String, u32>,
+    elapsed_ms: u128,
+) -> Result<()> {
+    let version = env!("CARGO_PKG_VERSION");
+    // Build a JSON object for reason_counts.
+    let reasons_json: String = {
+        let mut parts: Vec<(String, u32)> = reason_counts.iter().map(|(k,v)| (k.clone(), *v)).collect();
+        parts.sort_by(|a, b| b.1.cmp(&a.1));
+        let inner: Vec<String> = parts.iter()
+            .map(|(k, v)| format!("\"{}\":{}", k, v))
+            .collect();
+        format!("{{{}}}", inner.join(","))
+    };
+    let avg_moves_per_game = 0u32; // Not tracked at run level; per-game in log.ndjson
+    let _ = avg_moves_per_game;
+    let json = format!(
+        "{{\
+\"type\":\"job_summary\",\
+\"trainer_version\":\"{version}\",\
+\"total_games\":{total_games},\
+\"p1_wins\":{p1_wins},\
+\"p2_wins\":{p2_wins},\
+\"draws\":{draws},\
+\"mcts_iters\":{mcts_iters},\
+\"total_elapsed_ms\":{elapsed_ms},\
+\"end_reason_counts\":{reasons_json}\
+}}",
+        version = version,
+        total_games = total_games,
+        p1_wins = p1_wins,
+        p2_wins = p2_wins,
+        draws = draws,
+        mcts_iters = args.mcts_iters,
+        elapsed_ms = elapsed_ms,
+        reasons_json = reasons_json,
+    );
+    // Write standalone job_summary.json.
+    let summary_path = args.out.join("job_summary.json");
+    std::fs::write(&summary_path, &json)
+        .with_context(|| format!("writing {}", summary_path.display()))?;
+    println!("Summary written to: {}", summary_path.display());
+    Ok(())
+}
+
+/// Produce a combined `.chessbook` file in the output directory.
+/// Format: all lines from book.jsonl followed by the job_summary JSON line.
+/// The final line has `"type":"job_summary"` so parsers can detect it.
+fn write_chessbook(out_dir: &std::path::Path) -> Result<()> {
+    let book_path = out_dir.join("book.jsonl");
+    let summary_path = out_dir.join("job_summary.json");
+    if !book_path.exists() {
+        return Ok(()); // No book data — skip.
+    }
+    let book_content = std::fs::read(&book_path)
+        .with_context(|| format!("reading {}", book_path.display()))?;
+    let chessbook_path = out_dir.join("output.chessbook");
+    let mut f = BufWriter::new(
+        std::fs::File::create(&chessbook_path)
+            .with_context(|| format!("creating {}", chessbook_path.display()))?,
+    );
+    f.write_all(&book_content)?;
+    // Ensure the book section ends with a newline before appending the summary.
+    if !book_content.ends_with(b"\n") {
+        writeln!(f)?;
+    }
+    // Append the summary line (if the file was written successfully).
+    if summary_path.exists() {
+        let summary_line = std::fs::read_to_string(&summary_path)
+            .with_context(|| format!("reading {}", summary_path.display()))?;
+        writeln!(f, "{}", summary_line.trim())?;
+    }
+    f.flush()?;
+    println!("Chessbook written to: {}", chessbook_path.display());
     Ok(())
 }
 

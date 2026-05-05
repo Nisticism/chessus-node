@@ -283,13 +283,16 @@ async function computeAnalysis(gameTypeId, opts = {}) {
   // and surface them as context so the analysis doesn't silently show 0.
   let dbOnlyGames = 0;
   let dbOnlyJobCount = 0;
+  // Also collect mcts_iters per job for weighted-average MCTS calculation.
+  const mctsItersByJobId = {};
   try {
     const [rows] = await db_pool.query(
-      `SELECT id, games_played FROM ai_training_jobs
+      `SELECT id, games_played, mcts_iters FROM ai_training_jobs
        WHERE game_type_id = ? AND games_played > 0 AND status != 'failed'`,
       [gameTypeId],
     );
     for (const r of rows) {
+      if (r.mcts_iters > 0) mctsItersByJobId[r.id] = r.mcts_iters;
       if (!diskJobIds.has(r.id)) {
         const gp = r.games_played || 0;
         dbOnlyGames += gp;
@@ -307,6 +310,22 @@ async function computeAnalysis(gameTypeId, opts = {}) {
     summary.dbOnlyGames = dbOnlyGames;
     summary.dbOnlyJobCount = dbOnlyJobCount;
   }
+
+  // Compute game-weighted average MCTS across all jobs that have an mcts_iters value.
+  let totalMctsWeight = 0;
+  let totalMctsWeighted = 0;
+  for (const jm of jobMeta) {
+    const iters = mctsItersByJobId[jm.jobId];
+    if (iters && iters > 0) {
+      const games = jm.games || 0;
+      totalMctsWeight += games;
+      totalMctsWeighted += iters * games;
+    }
+  }
+  if (totalMctsWeight > 0) {
+    summary.avgMcts = Math.round(totalMctsWeighted / totalMctsWeight);
+  }
+
   return summary;
 }
 

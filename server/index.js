@@ -3339,12 +3339,13 @@ app.post(
       const lower = (req.file.originalname || '').toLowerCase();
       let kind = (req.body?.kind || '').toLowerCase();
       if (!kind) {
-        if (lower.endsWith('.jsonl')) kind = 'jsonl';
+        if (lower.endsWith('.chessbook')) kind = 'chessbook';
+        else if (lower.endsWith('.jsonl')) kind = 'jsonl';
         else if (lower.endsWith('.zip')) kind = 'zip';
       }
-      if (kind !== 'jsonl' && kind !== 'zip') {
+      if (kind !== 'chessbook' && kind !== 'jsonl' && kind !== 'zip') {
         return res.status(400).json({
-          message: 'Could not determine file type. Please upload a .jsonl or .zip file.',
+          message: 'Could not determine file type. Please upload a .chessbook file (recommended), or a .jsonl or .zip file.',
         });
       }
 
@@ -3728,12 +3729,8 @@ echo   To upload your results, go to:
 echo     !SITE_URL!/games/!GAME_ID!
 echo   and find the "Train Locally" section.
 echo.
-echo   You can upload:
-echo     - !OUT_DIR!\\book.jsonl     (recommended - just the training data)
-echo     - !OUT_DIR! folder as .zip (full results)
-echo.
-echo   The MCTS setting (!MCTS_ITERS!) is saved in meta.json and will be
-echo   detected automatically when you upload a .zip file.
+echo   Upload the file: !OUT_DIR!\\output.chessbook
+echo   This single file contains your training data and statistics.
 echo.
 pause
 `;
@@ -3903,11 +3900,8 @@ echo "  Output saved to: \${OUT_DIR}"
 echo ""
 echo "  To upload, go to: \${SITE_URL}/games/\${GAME_ID}"
 echo "  Find the 'Train Locally' section and upload:"
-echo "    - \${OUT_DIR}/book.jsonl  (recommended)"
-echo "    - or zip the \${OUT_DIR} folder and upload that"
-echo ""
-echo "  The MCTS setting (\${MCTS_ITERS}) is saved in meta.json and will be"
-echo "  detected automatically when you upload a .zip file."
+echo "    \${OUT_DIR}/output.chessbook"
+echo "  This single file contains your training data and statistics."
 echo ""
 `;
 }
@@ -4017,14 +4011,12 @@ Start with 200 if you're unsure. Use 400+ for overnight sessions.
 
 WHAT FILES TO UPLOAD
 --------------------
-After training, go to ${siteUrl}/games/<GameID> and upload either:
+After training, go to ${siteUrl}/games/<GameID> and upload:
 
-  output/<GameName>-<GameID>/book.jsonl
-    Just the training data. Small and quick to upload.
-
-  output/<GameName>-<GameID>/ folder zipped as .zip
-    Includes the meta.json with your MCTS setting, which will be
-    detected automatically by the uploader. Recommended.
+  output/<GameName>-<GameID>/output.chessbook
+    The recommended single-file format. Contains training data plus
+    statistics (MCTS setting, win/draw breakdown) so the site can
+    display accurate AI training analysis automatically.
 
 
 ADMIN MODE

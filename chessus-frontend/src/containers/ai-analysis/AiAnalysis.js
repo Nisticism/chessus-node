@@ -68,6 +68,7 @@ const AiAnalysis = () => {
         <Stat label="Decisive" value={`${s.decisive} (${pct(s.decisive, s.totalGames)})`} />
         <Stat label="Draws" value={`${s.draws} (${pct(s.draws, s.totalGames)})`} />
         <Stat label="Avg moves / game" value={(s.avgMoves ?? 0).toFixed(1)} />
+        {s.avgMcts != null && <Stat label="Avg MCTS / move" value={s.avgMcts} />}
       </div>
 
       <div className={styles.section}>

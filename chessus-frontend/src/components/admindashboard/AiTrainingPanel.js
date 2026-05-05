@@ -1829,6 +1829,9 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
               <div style={{ fontStyle: 'italic', color: '#888' }}>Balance data not available — regenerate analysis to compute it.</div>
             )}
             <div><strong>Avg game length:</strong> {(summary.avgMoves ?? 0).toFixed(1)} moves (range {summary.minMoves ?? 0}–{summary.maxMoves ?? 0})</div>
+            {summary.avgMcts != null && (
+              <div><strong>Avg MCTS / move:</strong> {summary.avgMcts}</div>
+            )}
             <details>
               <summary>Win breakdown</summary>
               <ul>
