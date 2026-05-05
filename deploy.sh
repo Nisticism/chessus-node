@@ -23,9 +23,6 @@ node scripts/build-rust.js
 echo "[deploy] Restarting trainer service..."
 pm2 restart trainer-service --update-env
 
-echo "[deploy] Restarting main API server..."
-pm2 restart chessus-node --update-env
-
 echo "[deploy] Building frontend..."
 cd chessus-frontend
 npm run build || { echo "[deploy] Frontend build failed, aborting"; exit 1; }

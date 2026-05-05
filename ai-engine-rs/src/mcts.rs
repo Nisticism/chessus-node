@@ -35,6 +35,7 @@ struct Node {
     untried: Vec<Move>,
     /// (move_used_to_reach_child, child_index)
     children: Vec<(Move, usize)>,
+    #[allow(dead_code)]
     parent: Option<usize>,
     /// Side to move at this node (1 or 2).
     side_to_move: i32,

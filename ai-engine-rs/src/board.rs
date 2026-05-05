@@ -172,14 +172,17 @@ impl Board {
         b
     }
 
+    #[allow(dead_code)]
     pub fn in_bounds(&self, x: i32, y: i32) -> bool {
         x >= 0 && y >= 0 && x < self.width && y < self.height
     }
 
+    #[allow(dead_code)]
     pub fn at(&self, x: i32, y: i32) -> Option<&PieceOnBoard> {
         self.pieces.iter().find(|p| p.x == x && p.y == y)
     }
 
+    #[allow(dead_code)]
     pub fn at_idx(&self, x: i32, y: i32) -> Option<usize> {
         self.pieces.iter().position(|p| p.x == x && p.y == y)
     }

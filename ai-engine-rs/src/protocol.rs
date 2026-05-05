@@ -511,6 +511,7 @@ pub enum ProgressEvent<'a> {
         elapsed_ms: u128,
     },
     Checkpoint { path: &'a str, games_played: u32 },
+    #[allow(dead_code)]
     Warning { msg: &'a str },
     Finished { games_played: u32, elapsed_ms: u128 },
     Aborted { reason: &'a str },
