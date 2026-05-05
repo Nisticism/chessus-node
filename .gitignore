@@ -24,7 +24,10 @@ ai-engine-rs/target/
 ai-engine-rs/Cargo.lock
 
 # Compiled trainer binaries — tracked via Git LFS (not regular git)
-trainer-binaries/
-# Allow the actual binaries to be tracked (LFS handles storage)
+# Ignore everything inside trainer-binaries EXCEPT the actual binaries.
+trainer-binaries/**
+!trainer-binaries/
+!trainer-binaries/win32/
 !trainer-binaries/win32/ai-engine.exe
+!trainer-binaries/linux/
 !trainer-binaries/linux/ai-engine

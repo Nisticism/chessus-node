@@ -421,7 +421,8 @@ export const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, pl
                                    pieceData.ratio_capture_1 || pieceData.ratio_capture_2 ||
                                    pieceData.ratio_one_capture || pieceData.ratio_two_capture ||
                                    pieceData.step_capture_style || pieceData.step_by_step_capture ||
-                                   (specialCaptures.additionalCaptures && Object.keys(specialCaptures.additionalCaptures).length > 0);
+                                   (specialCaptures.additionalCaptures && Object.keys(specialCaptures.additionalCaptures).length > 0) ||
+                                   !!(pieceData.custom_attack_squares);
 
   // If no separate capture fields, use movement logic
   if (!hasSeparateCaptureFields) {

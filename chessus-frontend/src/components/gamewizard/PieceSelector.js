@@ -837,7 +837,7 @@ const PieceSelector = ({
               <ToggleSwitch
                 checked={dieOnCapture}
                 onChange={(v) => setDieOnCapture(v)}
-                label="Die on Capture"
+                label="Dies on Capture"
                 tooltip={<InfoTooltip text="This piece is also removed from the board when it captures another piece. Useful for explosive or kamikaze-style pieces." />}
               />
             </div>

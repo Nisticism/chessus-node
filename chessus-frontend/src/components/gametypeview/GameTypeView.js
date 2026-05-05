@@ -2268,6 +2268,13 @@ const GameTypeView = () => {
                     <code>train.bat {gameId}</code> / <code>./train.sh {gameId}</code> to start training this game.
                     The script will prompt you for MCTS settings before it begins.
                   </p>
+                  {trainerPlatform === 'win32' && (
+                    <p style={{ margin: '6px 0 0', fontSize: '0.82em', color: '#a89060' }}>
+                      <strong>Windows note:</strong> Your browser or Windows SmartScreen may flag the download as
+                      unrecognized. This is expected for unsigned executables — click &quot;Keep&quot; in the browser
+                      and &quot;Run anyway&quot; in SmartScreen to proceed.
+                    </p>
+                  )}
                 </div>
 
                 {/* CPU / MCTS tier guide */}
