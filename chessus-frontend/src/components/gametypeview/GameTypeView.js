@@ -434,7 +434,8 @@ const GameTypeView = () => {
 
   // "Train Locally" section state (visible to creator + admins only)
   const [trainerLocalOpen, setTrainerLocalOpen] = useState(false);
-  const [trainerPlatform, setTrainerPlatform] = useState('win32');
+  const [trainerPlatform, setTrainerPlatform] = useState('linux');
+  const [trainerAvailablePlatforms, setTrainerAvailablePlatforms] = useState(null);
   const [trainerDownloading, setTrainerDownloading] = useState(false);
   const [trainerDownloadError, setTrainerDownloadError] = useState(null);
   const [trainerUploadFile, setTrainerUploadFile] = useState(null);
@@ -442,6 +443,21 @@ const GameTypeView = () => {
   const [trainerUploading, setTrainerUploading] = useState(false);
   const [trainerUploadResult, setTrainerUploadResult] = useState(null);
   const [trainerUploadError, setTrainerUploadError] = useState(null);
+
+  // Fetch available trainer platforms when the local-train panel opens.
+  React.useEffect(() => {
+    if (!trainerLocalOpen || trainerAvailablePlatforms !== null) return;
+    axios.get(`${API_URL}trainer/available-platforms`)
+      .then((r) => {
+        const list = r.data?.available || [];
+        setTrainerAvailablePlatforms(list);
+        // Auto-select the first available platform, preferring what was already selected.
+        if (list.length > 0 && !list.includes(trainerPlatform)) {
+          setTrainerPlatform(list[0]);
+        }
+      })
+      .catch(() => setTrainerAvailablePlatforms([]));
+  }, [trainerLocalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTrainerPackDownload = async () => {
     setTrainerDownloading(true);
@@ -2224,8 +2240,12 @@ const GameTypeView = () => {
                       onChange={(e) => setTrainerPlatform(e.target.value)}
                       style={{ background: '#1a2540', border: '1px solid #3a5080', color: '#c8d8ff', borderRadius: 4, padding: '3px 8px' }}
                     >
-                      <option value="win32">Windows (64-bit)</option>
-                      <option value="linux">Linux (64-bit)</option>
+                      <option value="win32" disabled={trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('win32')}>
+                        Windows (64-bit){trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('win32') ? ' — unavailable' : ''}
+                      </option>
+                      <option value="linux" disabled={trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('linux')}>
+                        Linux (64-bit){trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('linux') ? ' — unavailable' : ''}
+                      </option>
                     </select>
                     <button
                       type="button"

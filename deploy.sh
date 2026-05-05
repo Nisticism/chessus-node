@@ -11,10 +11,13 @@ set -e
 
 echo "[deploy] Pulling latest code..."
 git pull
+git lfs pull
 
 echo "[deploy] Building Rust AI engine and copying binary..."
 # Using build-rust.js (not cargo directly) so the binary is automatically
 # copied to trainer-binaries/linux/ where the download endpoint expects it.
+# NOTE: The win32 binary must be built locally on Windows and rsync'd manually:
+#   rsync -avz trainer-binaries/win32/ai-engine.exe ec2-user@<host>:/home/ec2-user/chessus-node/trainer-binaries/win32/
 node scripts/build-rust.js
 
 echo "[deploy] Restarting trainer service..."

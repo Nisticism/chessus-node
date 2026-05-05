@@ -3154,11 +3154,27 @@ app.get('/api/trainer/game-rules/:gameId', authenticateTokenOrTrainerKey, async 
   }
 });
 
+// GET /api/trainer/available-platforms — returns which platforms have a built binary.
+// No auth required — safe to call from the download UI before login check.
+app.get('/api/trainer/available-platforms', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const checks = [
+    { platform: 'win32', bin: 'ai-engine.exe' },
+    { platform: 'linux', bin: 'ai-engine' },
+  ];
+  const available = checks
+    .filter(({ platform, bin }) =>
+      fs.existsSync(path.join(__dirname, '..', 'trainer-binaries', platform, bin)))
+    .map(({ platform }) => platform);
+  res.json({ available });
+});
+
 // GET /api/trainer/global-pack?platform=win32|linux — JWT auth (web session).
 // Returns a ZIP with the binary + setup + train scripts + README. No rules.json.
 app.get('/api/trainer/global-pack', authenticateToken, async (req, res) => {
   try {
-    const platform = req.query.platform || 'win32';
+    const platform = req.query.platform || 'linux';
     if (!['win32', 'linux'].includes(platform)) {
       return res.status(400).json({ message: 'platform must be "win32" or "linux"' });
     }
