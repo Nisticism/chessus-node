@@ -3677,6 +3677,25 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error creating idx_games_status_start_time:', err.message);
   }
+
+  // Add has_game_log column to ai_training_jobs so REMOTE_MODE servers can
+  // determine whether a job's games.txt exists (without checking the remote
+  // filesystem) and enable the Board Replay button accordingly.
+  try {
+    if (await tableExists('ai_training_jobs')) {
+      if (!(await columnExists('ai_training_jobs', 'has_game_log'))) {
+        await runMigration(
+          `ALTER TABLE ai_training_jobs
+           ADD COLUMN has_game_log TINYINT(1) NOT NULL DEFAULT 0
+             COMMENT '1 if a games.txt game log was written for this job'`,
+          'Add has_game_log column to ai_training_jobs'
+        );
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error adding has_game_log column to ai_training_jobs:', err.message);
+  }
 };
 
 module.exports = { runMigrations };

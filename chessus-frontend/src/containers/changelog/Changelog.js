@@ -23,6 +23,8 @@ const changelogData = [
       "Fixed: uploading a .stratbook file via the 'Train AI Locally' section on a game detail page was being rejected by the trainer service. Stratbook uploads now work correctly.",
       "Fixed: uploading a .stratbook file via the admin AI Training panel was being blocked by client-side validation. Stratbook and .strat files can now be uploaded from both locations.",
       "Fixed: after uploading a .stratbook, the Generated Analysis for that job showed incorrect game length (0\u20130 moves) and incorrect draw type breakdown. Game stats are now parsed from the stratbook's embedded game log for accurate per-game move counts and end reasons.",
+      "Fixed: the 'Board Replay' button in the admin AI Training panel was always disabled for uploaded stratbook jobs on servers using a remote trainer. The upload's game log availability is now stored in the database and used correctly regardless of where the trainer runs.",
+      "Correspondence games: the 'Confirm your move?' component is now centered below the board and capped to the board's width, rather than stretching across the full page.",
     ],
   },
   {

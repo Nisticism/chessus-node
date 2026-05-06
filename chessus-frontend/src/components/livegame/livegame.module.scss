@@ -1744,8 +1744,15 @@
   background: var(--bg-dark);
   border-radius: 10px;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: center;
+  gap: 14px;
+  // Sit inside board-column which already has align-items: center and
+  // flex-direction: column, so we use align-self to be as narrow as possible
+  // (no wider than the board) while centering horizontally.
+  align-self: center;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
 
   // The move-history-column (which holds the sidebar confirm section) is
   // hidden at ≤1200px, so show this below-board row instead for the full

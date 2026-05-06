@@ -145,7 +145,7 @@ async function listJobs(limit = 200) {
   const [rows] = await db_pool.query(
     `SELECT j.id, j.game_type_id, j.status, j.games_target, j.games_played, j.mcts_iters,
             j.max_rss_mb, j.started_at, j.ended_at, j.error_message, j.created_by_user_id,
-            j.source, gt.game_name, gt.is_training_only
+            j.source, j.has_game_log, gt.game_name, gt.is_training_only
      FROM ai_training_jobs j
      LEFT JOIN game_types gt ON gt.id = j.game_type_id
      ORDER BY j.id DESC
@@ -179,8 +179,12 @@ async function listJobs(limit = 200) {
       row.has_game_log = fs.existsSync(gamesLogPath);
     }
   } else {
+    // In remote mode we can't check the trainer host's filesystem, so use the
+    // has_game_log flag stored in the DB. It is set to 1 at job creation time
+    // for jobs started with --game-log and for uploaded stratbooks that contained
+    // an embedded game log. Convert from the raw DB value (0/1) to boolean.
     for (const row of rows) {
-      row.has_game_log = false;
+      row.has_game_log = row.has_game_log === 1 || row.has_game_log === true;
     }
   }
   return rows;
@@ -516,8 +520,9 @@ async function startJob({
   const [insertRes] = await db_pool.query(
     `INSERT INTO ai_training_jobs
        (game_type_id, status, games_target, games_played, mcts_iters,
-        max_rss_mb, checkpoint_every, seed, started_at, created_by_user_id, rules_path)
-     VALUES (?, 'running', ?, 0, ?, ?, ?, ?, NOW(), ?, ?)`,
+        max_rss_mb, checkpoint_every, seed, started_at, created_by_user_id, rules_path,
+        has_game_log)
+     VALUES (?, 'running', ?, 0, ?, ?, ?, ?, NOW(), ?, ?, ?)`,
     [
       gameTypeId,
       games,
@@ -527,6 +532,7 @@ async function startJob({
       seed,
       userId,
       rulesPathFor(gameTypeId),
+      noGameLog ? 0 : 1,
     ],
   );
   const jobId = insertRes.insertId;

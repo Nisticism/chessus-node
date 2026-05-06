@@ -232,14 +232,15 @@ async function importUpload(gameTypeId, payload, opts = {}) {
     if (stratbookSummary?.mcts_iters > 0) return Math.round(stratbookSummary.mcts_iters);
     return 0;
   })();
+  const hasGameLog = !!(stratbookGamesLog && stratbookGamesLog.length > 0);
   const [result] = await db_pool.query(
     `INSERT INTO ai_training_jobs
        (game_type_id, status, games_target, games_played, mcts_iters,
         max_rss_mb, checkpoint_every, seed, rules_path,
-        created_by_user_id, started_at, ended_at, source)
+        created_by_user_id, started_at, ended_at, source, has_game_log)
      VALUES (?, 'completed', ?, ?, ?, 0, 0, 0, '',
-             ?, NOW(), NOW(), 'uploaded')`,
-    [gtid, games, games, mctsIters, opts.userId || null],
+             ?, NOW(), NOW(), 'uploaded', ?)`,
+    [gtid, games, games, mctsIters, opts.userId || null, hasGameLog ? 1 : 0],
   );
   const jobId = result.insertId;
 

@@ -5385,6 +5385,23 @@ const LiveGame = () => {
             <div className={styles["game-board-wrapper"]}>
               {renderBoard()}
             </div>
+
+            {/* Turn Confirmation - below board. Always visible on all screen sizes for
+                correspondence games; on smaller screens for all other game types. Lives inside
+                board-column so it is naturally centered under the board and capped to
+                the board column's width. */}
+            {pendingMove && (
+              <div
+                className={styles["layout-row-move-confirm"]}
+                style={(gameState?.isCorrespondence && !gameState?.timeControl) ? { display: 'flex' } : undefined}
+              >
+                <span className={styles["move-confirm-label"]}>Confirm your move?</span>
+                <div className={styles["move-confirm-buttons"]}>
+                  <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
+                  <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Move History Column */}
@@ -5597,21 +5614,6 @@ const LiveGame = () => {
           {/* Running Piece Count - moved out of grid, positioned after layout-row-middle */}
         </div>
       </div>
-
-      {/* Turn Confirmation - below board. Always visible on all screen sizes for correspondence games;
-          on smaller screens for all other game types (hidden via CSS on large screens). */}
-      {pendingMove && (
-        <div
-          className={styles["layout-row-move-confirm"]}
-          style={(gameState?.isCorrespondence && !gameState?.timeControl) ? { display: 'flex' } : undefined}
-        >
-          <span className={styles["move-confirm-label"]}>Confirm your move?</span>
-          <div className={styles["move-confirm-buttons"]}>
-            <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
-            <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
-          </div>
-        </div>
-      )}
 
       {/* Special Squares Legend Row - below board and clocks */}
       {hasSpecialSquares && (
