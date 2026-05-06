@@ -148,14 +148,16 @@ const USERNAME_OFFENSIVE_SUBSTRINGS = [
   'rape', 'rapist',
 ];
 
-// URL/link detection pattern
-const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?/gi;
+// URL/link detection pattern — only matches URLs with explicit protocol or www. prefix.
+// Bare-domain detection (no protocol) is handled separately by BARE_DOMAIN_PATTERN below
+// to avoid false-positives on filenames like "script.bat" or "module.js".
+const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s]+/gi;
 
 // Common TLD check for bare domains (no protocol)
 const BARE_DOMAIN_PATTERN = /\b[a-zA-Z0-9][-a-zA-Z0-9]*\.(?:com|net|org|io|co|dev|gg|me|tv|cc|xyz|info|biz|us|uk|ca|au|de|fr|ru|cn|jp|app|site|online|store|shop|tech|live|pro|club|link|click|win|top|work|space|fun|website|stream|download|review|party|trade|bid|date|racing|science|faith|accountant|cricket|loan|zip|mov|nexus)\b/gi;
 
-// Default allowed hosts for whitelist mode (gridgrove.gg only for general site content)
-const DEFAULT_ALLOWED_HOSTS = ['gridgrove.gg'];
+// Default allowed hosts for whitelist mode
+const DEFAULT_ALLOWED_HOSTS = ['gridgrove.gg', 'chess.com', 'lichess.org'];
 // Default cap on number of allowed links per piece of content
 const DEFAULT_MAX_LINKS = 3;
 
@@ -169,7 +171,8 @@ function extractHost(linkText) {
   // Strip protocol if present, then take everything up to the first slash, space, or query/hash
   const m = linkText.match(/^(?:https?:\/\/)?(?:www\.)?([^\/\s?#]+)/i);
   if (!m) return null;
-  return m[1].toLowerCase();
+  // Strip trailing punctuation that may have been captured from surrounding markup (e.g. ) from markdown)
+  return m[1].replace(/[)\]>.,;:!?]+$/, '').toLowerCase();
 }
 
 /**
@@ -238,21 +241,36 @@ function checkUsername(username) {
  */
 function checkForLinks(text) {
   if (!text || typeof text !== 'string') return { hasLinks: false, links: [] };
-  
+
   const links = [];
-  
-  // Check for URLs with protocol
-  const urlMatches = text.match(URL_PATTERN);
+
+  // First extract URLs from markdown-style links [label](url).
+  // This is the canonical form produced by the link-insert button and avoids
+  // the trailing-')' problem where URL_PATTERN captures the closing paren as
+  // part of the URL, making extractHost() return "gridgrove.gg)" instead of
+  // "gridgrove.gg" for bare-domain links like [test](https://gridgrove.gg).
+  const MARKDOWN_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)\s]*)\)/g;
+  let mdMatch;
+  while ((mdMatch = MARKDOWN_LINK_RE.exec(text)) !== null) {
+    links.push(mdMatch[2]); // just the URL, no surrounding punctuation
+  }
+
+  // Remove already-parsed markdown links before scanning for plain URLs
+  // so the same URL is not counted twice.
+  const textWithoutMarkdown = text.replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]*)\)/g, '');
+
+  // Check for plain URLs with protocol (http:// or www.)
+  const urlMatches = textWithoutMarkdown.match(URL_PATTERN);
   if (urlMatches) {
     links.push(...urlMatches);
   }
-  
+
   // Check for bare domain names
-  const domainMatches = text.match(BARE_DOMAIN_PATTERN);
+  const domainMatches = textWithoutMarkdown.match(BARE_DOMAIN_PATTERN);
   if (domainMatches) {
     links.push(...domainMatches);
   }
-  
+
   return {
     hasLinks: links.length > 0,
     links: [...new Set(links)]
