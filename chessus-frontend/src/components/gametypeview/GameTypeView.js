@@ -2342,7 +2342,8 @@ const GameTypeView = () => {
                     After training, upload the <code>output.stratbook</code> file from the output folder
                     (the train script shows you where it is). This single file contains your training data
                     plus statistics like MCTS setting and win/draw breakdown — everything needed for the
-                    site to display accurate analysis. Uploads are limited to 5 per day.
+                    site to display accurate analysis. Files must be under 30 MB; you have a 30 MB total
+                    cap per game. Uploads are limited to 5 per day.
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 420 }}>
                     <div

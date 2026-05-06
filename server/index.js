@@ -3335,15 +3335,17 @@ app.get('/api/games/:gameId/trainer-pack', authenticateToken, (req, res) => {
 });
 
 // POST /api/games/:gameId/training/upload — game creator, admin, or trainer token holder.
+const USER_UPLOAD_MAX_BYTES = 30 * 1024 * 1024; // 30 MB per-file limit for non-admin uploads
+const USER_UPLOAD_GAME_CAP_BYTES = 30 * 1024 * 1024; // 30 MB total per user per game
 const _userArtifactUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 * 1024 },
+  limits: { fileSize: USER_UPLOAD_MAX_BYTES },
 });
 app.post(
   '/api/games/:gameId/training/upload',
   authenticateTokenOrTrainerKey,
   trainerUploadLimiter,
-  multerWrap(_userArtifactUpload.single('artifact'), '500 MB'),
+  multerWrap(_userArtifactUpload.single('artifact'), '30 MB'),
   async (req, res) => {
     try {
       const gameId = parseInt(req.params.gameId, 10);
@@ -3408,6 +3410,26 @@ app.post(
 
       const { TRAINER_VERSION } = require('./ai/export-game-rules');
 
+      // Enforce per-game-per-user cumulative upload cap (admins are exempt).
+      if (!isAdmin) {
+        const [[capRow]] = await db_pool.query(
+          `SELECT COALESCE(SUM(file_size_bytes), 0) AS usedBytes
+           FROM ai_training_jobs
+           WHERE game_type_id = ? AND created_by_user_id = ? AND source = 'uploaded'`,
+          [gameId, req.user.id],
+        );
+        const usedBytes = Number(capRow.usedBytes);
+        const newFileBytes = req.file.size;
+        if (usedBytes + newFileBytes > USER_UPLOAD_GAME_CAP_BYTES) {
+          const usedMb = (usedBytes / (1024 * 1024)).toFixed(1);
+          const remainMb = Math.max(0, (USER_UPLOAD_GAME_CAP_BYTES - usedBytes) / (1024 * 1024)).toFixed(1);
+          return res.status(400).json({
+            message: `You have used ${usedMb} MB of your 30 MB training data cap for this game (${remainMb} MB remaining). Delete existing uploads to free space, then try again.`,
+          });
+        }
+      }
+
+      const fileSizeBytes = req.file.size;
       let result;
       if (require('./ai/training-manager').REMOTE_MODE) {
         const trainerClient = require('./ai/trainer-client');
@@ -3415,10 +3437,17 @@ app.post(
           gameTypeId: gameId, kind, buffer: req.file.buffer,
           userId: req.user.id, mctsIters,
         });
+        // Backfill file size onto the job row created by the remote trainer service.
+        if (result?.jobId) {
+          await db_pool.query(
+            'UPDATE ai_training_jobs SET file_size_bytes = ? WHERE id = ?',
+            [fileSizeBytes, result.jobId],
+          ).catch((e) => console.warn('[trainer-upload] file_size_bytes backfill failed:', e.message));
+        }
       } else {
         const { importUpload } = require('./ai/artifact-uploader');
         result = await importUpload(gameId, { kind, buffer: req.file.buffer }, {
-          userId: req.user.id, mctsIters,
+          userId: req.user.id, mctsIters, fileSizeBytes,
         });
       }
 

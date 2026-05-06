@@ -5,8 +5,9 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 6, 2026",
-    title: "Chat fix, match history fix, piece wizard limits, training warnings, starting positions display, points system fixes, UI improvements, FAQ, Terms, Privacy, forum styling, admin future goals editor, notifications",
+    title: "Chat fix, match history fix, piece wizard limits, training warnings, starting positions display, points system fixes, UI improvements, FAQ, Terms, Privacy, forum styling, admin future goals editor, notifications, training upload cap",
     items: [
+      "Training artifact uploads are now limited to 30 MB per file and 30 MB total per game per user. Admins are exempt from the per-game cap.",
       "Fixed: in-game chat messages from the sender could fail to appear until the page was refreshed if the socket connection had been re-established.",
       "Fixed: match history replay for games with randomized starting positions was showing incorrect boards because the template position was saved instead of the actual randomized position.",
       "Community Pieces browser now excludes piece images that were originally sourced from the built-in piece library.",

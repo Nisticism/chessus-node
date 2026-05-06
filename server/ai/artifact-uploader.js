@@ -237,10 +237,12 @@ async function importUpload(gameTypeId, payload, opts = {}) {
     `INSERT INTO ai_training_jobs
        (game_type_id, status, games_target, games_played, mcts_iters,
         max_rss_mb, checkpoint_every, seed, rules_path,
-        created_by_user_id, started_at, ended_at, source, has_game_log)
+        created_by_user_id, started_at, ended_at, source, has_game_log,
+        file_size_bytes)
      VALUES (?, 'completed', ?, ?, ?, 0, 0, 0, '',
-             ?, NOW(), NOW(), 'uploaded', ?)`,
-    [gtid, games, games, mctsIters, opts.userId || null, hasGameLog ? 1 : 0],
+             ?, NOW(), NOW(), 'uploaded', ?, ?)`,
+    [gtid, games, games, mctsIters, opts.userId || null, hasGameLog ? 1 : 0,
+     opts.fileSizeBytes != null ? opts.fileSizeBytes : null],
   );
   const jobId = result.insertId;
 

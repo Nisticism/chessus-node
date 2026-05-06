@@ -3720,6 +3720,24 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error adding restriction_reason column to game_types:', err.message);
   }
+
+  // Add file_size_bytes column to ai_training_jobs so uploaded-artifact
+  // sizes can be tracked and per-game per-user upload caps enforced.
+  try {
+    if (await tableExists('ai_training_jobs')) {
+      if (!(await columnExists('ai_training_jobs', 'file_size_bytes'))) {
+        await runMigration(
+          `ALTER TABLE ai_training_jobs
+           ADD COLUMN file_size_bytes BIGINT NULL DEFAULT NULL
+             COMMENT 'Raw byte size of the uploaded file (NULL for cloud-trained jobs)'`,
+          'Add file_size_bytes column to ai_training_jobs'
+        );
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error adding file_size_bytes column to ai_training_jobs:', err.message);
+  }
 };
 
 module.exports = { runMigrations };
