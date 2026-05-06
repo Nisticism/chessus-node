@@ -129,6 +129,9 @@ pub struct ApplyResult {
     /// Board-instance IDs of all pieces removed this move (capture target if
     /// killed, attacker if die_on_capture, trample kills, AoE kills).
     pub killed: Vec<u32>,
+    /// For each killed piece, the piece_id (template id) and player, so callers
+    /// can inspect template flags like die_on_capture_grants_win.
+    pub killed_info: Vec<(i64 /* piece_id */, i32 /* player */)>,
 }
 
 impl ApplyResult {
@@ -283,6 +286,7 @@ impl Board {
                     let dead = self.pieces.remove(idx);
                     award_points(&mut self.points, attacker_player, &dead, rules);
                     result.killed.push(dead.id);
+                    result.killed_info.push((dead.piece_id as i64, dead.player));
                     target_killed = true;
                     any_capture_happened = true;
                 } else {
@@ -443,6 +447,7 @@ impl Board {
             if let Some(idx) = self.pieces.iter().position(|p| p.id == mv.piece_id) {
                 let dead = self.pieces.remove(idx);
                 result.killed.push(dead.id);
+                result.killed_info.push((dead.piece_id as i64, dead.player));
                 any_capture_happened = true;
             }
         }

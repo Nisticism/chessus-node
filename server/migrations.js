@@ -2566,6 +2566,32 @@ const runMigrations = async () => {
     console.error('Error adding attack_radius to game_type_pieces:', err.message);
   }
 
+  // Add die_on_capture_grants_win to pieces and game_type_pieces
+  try {
+    const piecesDocgw = await columnExists('pieces', 'die_on_capture_grants_win');
+    if (!piecesDocgw) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN die_on_capture_grants_win TINYINT(1) DEFAULT 0 COMMENT 'If true, attacker wins (instead of draw) when its die_on_capture kill removes the opponent last ends_game_on_capture piece'`,
+        "Add die_on_capture_grants_win column to pieces"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding die_on_capture_grants_win to pieces:', err.message);
+  }
+  try {
+    const gtpDocgw = await columnExists('game_type_pieces', 'die_on_capture_grants_win');
+    if (!gtpDocgw) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN die_on_capture_grants_win TINYINT(1) DEFAULT 0 COMMENT 'Per-placement die_on_capture_grants_win override'`,
+        "Add die_on_capture_grants_win column to game_type_pieces"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding die_on_capture_grants_win to game_type_pieces:', err.message);
+  }
+
   // ===================== MESSAGING SYSTEM MIGRATIONS =====================
   
     // Create direct_messages table for private messaging

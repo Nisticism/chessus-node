@@ -443,6 +443,7 @@ const GameTypeView = () => {
   const [trainerUploading, setTrainerUploading] = useState(false);
   const [trainerUploadResult, setTrainerUploadResult] = useState(null);
   const [trainerUploadError, setTrainerUploadError] = useState(null);
+  const [isDraggingTrainer, setIsDraggingTrainer] = useState(false);
 
   // Fetch available trainer platforms when the local-train panel opens.
   React.useEffect(() => {
@@ -1264,10 +1265,13 @@ const GameTypeView = () => {
       const dieDesc = dieOnCapturePieces.map(piece => {
         const pieceData = pieceDataMap[piece.id] || piece;
         const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
-        return `• **${pieceName}**`;
+        const grantsWin = pieceData.die_on_capture_grants_win;
+        return `• **${pieceName}**${grantsWin ? ' *(Attacker Wins on Final Capture)*' : ''}`;
       }).join('\n');
+      const anyGrantsWin = dieOnCapturePieces.some(piece => (pieceDataMap[piece.id] || piece).die_on_capture_grants_win);
+      const grantsWinNote = anyGrantsWin ? '\n• Pieces marked *Attacker Wins on Final Capture* — if such a piece kills the opponent\'s last required piece while dying in the process, the attacking player wins instead of drawing' : '';
 
-      specialRulesContent.push(`**Die on Capture**\nSome pieces are destroyed when they capture another piece.\n\n${dieDesc}\n\n**Die on Capture Rules:**\n• When this piece captures an enemy, it is also removed from the board\n• Both the captured piece and the capturing piece are eliminated`);
+      specialRulesContent.push(`**Die on Capture**\nSome pieces are destroyed when they capture another piece.\n\n${dieDesc}\n\n**Die on Capture Rules:**\n• When this piece captures an enemy, it is also removed from the board\n• Both the captured piece and the capturing piece are eliminated\n• Normally if both sides lose their last required piece simultaneously, the game is a draw${grantsWinNote}`);
     }
 
     // Attack Radius ability
@@ -2300,21 +2304,42 @@ const GameTypeView = () => {
                     Step 2 — Upload Your Training Results
                   </div>
                   <p style={{ margin: '0 0 8px', fontSize: '0.85em', color: '#8a9abf' }}>
-                    After training, upload the <code>output.chessbook</code> file from the output folder
+                    After training, upload the <code>output.stratbook</code> file from the output folder
                     (the train script shows you where it is). This single file contains your training data
                     plus statistics like MCTS setting and win/draw breakdown — everything needed for the
                     site to display accurate analysis. Uploads are limited to 5 per day.
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 420 }}>
-                    <label style={{ fontSize: '0.88em', color: '#9aaace' }}>
-                      Training file (.chessbook):
-                      <input
-                        type="file"
-                        accept=".chessbook,.jsonl,.zip"
-                        style={{ display: 'block', marginTop: 4, color: '#c8d8ff' }}
-                        onChange={(e) => { setTrainerUploadFile(e.target.files[0] || null); setTrainerUploadResult(null); setTrainerUploadError(null); }}
-                      />
-                    </label>
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingTrainer(true); }}
+                      onDragEnter={(e) => { e.preventDefault(); setIsDraggingTrainer(true); }}
+                      onDragLeave={() => setIsDraggingTrainer(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingTrainer(false);
+                        const f = e.dataTransfer.files[0];
+                        if (f) { setTrainerUploadFile(f); setTrainerUploadResult(null); setTrainerUploadError(null); }
+                      }}
+                      style={{
+                        border: `2px dashed ${isDraggingTrainer ? '#6ba0ff' : '#3a5080'}`,
+                        borderRadius: 6,
+                        padding: '12px 14px',
+                        background: isDraggingTrainer ? 'rgba(107,160,255,0.08)' : 'transparent',
+                        transition: 'border-color 0.15s, background 0.15s',
+                      }}
+                    >
+                      <label style={{ fontSize: '0.88em', color: '#9aaace', cursor: 'pointer', display: 'block' }}>
+                        {trainerUploadFile
+                          ? <span style={{ color: '#6fcf6f' }}>{trainerUploadFile.name}</span>
+                          : <span>Drop <code>.stratbook</code> file here or click to browse</span>}
+                        <input
+                          type="file"
+                          accept=".stratbook,.jsonl,.zip"
+                          style={{ display: 'none' }}
+                          onChange={(e) => { setTrainerUploadFile(e.target.files[0] || null); setTrainerUploadResult(null); setTrainerUploadError(null); }}
+                        />
+                      </label>
+                    </div>
                     <button
                       type="button"
                       className={styles["play-button"]}

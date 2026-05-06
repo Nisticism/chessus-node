@@ -2,7 +2,7 @@
  * Importer for externally-trained AI artifacts.
  *
  * Accepts either:
- *   - a .chessbook file (the recommended single-file format produced by the
+ *   - a .stratbook file (the recommended single-file format produced by the
  *     downloadable trainer). Contains book.jsonl records followed by a final
  *     JSON line with `"type":"job_summary"` carrying mcts_iters, win/draw
  *     breakdown, and other training stats.
@@ -36,14 +36,14 @@ const ZIP_TOTAL_BYTE_LIMIT = 500 * 1024 * 1024;
 function _ensureDir(p) { fs.mkdirSync(p, { recursive: true }); }
 
 /**
- * Parse a .chessbook buffer. Returns
+ * Parse a .stratbook buffer. Returns
  * `{ bookJsonl: Buffer, summary: Object|null }`.
  *
  * Format: all lines are standard book.jsonl records EXCEPT the final line
  * which is a JSON object with `"type":"job_summary"`. If no summary line
  * is present (e.g. user uploaded a renamed .jsonl), we still accept it.
  */
-function parseChessbook(buffer) {
+function parseStratbook(buffer) {
   if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
   const text = buffer.toString('utf8');
   const lines = text.split(/\r?\n/);
@@ -168,11 +168,11 @@ async function importUpload(gameTypeId, payload, opts = {}) {
 
   let bookJsonl = null;
   let extras = [];
-  let chessbookSummary = null;
-  if (payload.kind === 'chessbook') {
-    const parsed = parseChessbook(payload.buffer);
+  let stratbookSummary = null;
+  if (payload.kind === 'stratbook') {
+    const parsed = parseStratbook(payload.buffer);
     bookJsonl = parsed.bookJsonl;
-    chessbookSummary = parsed.summary;
+    stratbookSummary = parsed.summary;
   } else if (payload.kind === 'jsonl') {
     bookJsonl = payload.buffer;
   } else if (payload.kind === 'zip') {
@@ -197,13 +197,13 @@ async function importUpload(gameTypeId, payload, opts = {}) {
   if (!gameType) throw new Error(`Game type ${gtid} not found`);
 
   // Create the job row. games_target = games_played so the UI shows 100%.
-  // Prefer stats from the .chessbook summary if available; fall back to
+  // Prefer stats from the .stratbook summary if available; fall back to
   // counting ply-1 records from book.jsonl.
-  const games = chessbookSummary?.total_games ?? validation.gamesEstimate;
+  const games = stratbookSummary?.total_games ?? validation.gamesEstimate;
   const mctsIters = (() => {
-    // Prefer explicit caller-supplied value, then .chessbook summary, then 0.
+    // Prefer explicit caller-supplied value, then .stratbook summary, then 0.
     if (Number.isFinite(opts.mctsIters) && opts.mctsIters > 0) return Math.round(opts.mctsIters);
-    if (chessbookSummary?.mcts_iters > 0) return Math.round(chessbookSummary.mcts_iters);
+    if (stratbookSummary?.mcts_iters > 0) return Math.round(stratbookSummary.mcts_iters);
     return 0;
   })();
   const [result] = await db_pool.query(
@@ -225,21 +225,21 @@ async function importUpload(gameTypeId, payload, opts = {}) {
     fs.writeFileSync(path.join(jobDir, e.name), e.buffer);
   }
 
-  // If a .chessbook summary was included, synthesize a log.ndjson from it so
+  // If a .stratbook summary was included, synthesize a log.ndjson from it so
   // the training-analysis engine can read win/draw/loss breakdown without
   // relying on per-game book.jsonl parsing (which doesn't have move counts or
   // elapsed times). Each synthetic game_complete event uses the aggregate
   // averages and distributes outcomes proportionally.
-  if (chessbookSummary && chessbookSummary.total_games > 0) {
+  if (stratbookSummary && stratbookSummary.total_games > 0) {
     try {
-      const logLines = _synthesizeLogFromSummary(chessbookSummary);
+      const logLines = _synthesizeLogFromSummary(stratbookSummary);
       fs.writeFileSync(path.join(jobDir, 'log.ndjson'), logLines.join('\n') + '\n');
     } catch (e) {
       console.warn(`[upload] failed to synthesize log.ndjson for job ${jobId}: ${e.message}`);
     }
     // Also store the raw summary for later reference.
     try {
-      fs.writeFileSync(path.join(jobDir, 'job_summary.json'), JSON.stringify(chessbookSummary, null, 2));
+      fs.writeFileSync(path.join(jobDir, 'job_summary.json'), JSON.stringify(stratbookSummary, null, 2));
     } catch (_) { /* non-fatal */ }
   }
 
@@ -326,5 +326,5 @@ module.exports = {
   importUpload,
   validateBookJsonl,
   unpackJobZip,
-  parseChessbook,
+  parseStratbook,
 };

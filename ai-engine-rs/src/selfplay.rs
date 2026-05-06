@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::time::Instant;
 
 use crate::board::Board;
@@ -186,6 +187,18 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
     let mut tally_p2_wins: u32 = 0;
     let mut tally_draws: u32 = 0;
     let mut reason_counts: HashMap<String, u32> = HashMap::new();
+
+    // Graceful Ctrl+C: set this flag rather than killing the process so the
+    // end-of-run cleanup (write_stratbook, write_job_summary) always runs.
+    let interrupted = Arc::new(AtomicBool::new(false));
+    {
+        let flag = Arc::clone(&interrupted);
+        if let Err(e) = ctrlc::set_handler(move || {
+            flag.store(true, Ordering::SeqCst);
+        }) {
+            eprintln!("[warn] Could not register Ctrl+C handler: {e}");
+        }
+    }
 
     for game_idx in 0..args.games {
         if let Some(rss_mb) = current_rss_mb() {
@@ -500,6 +513,19 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                     }
                 };
                 if check_side_gone(1) && check_side_gone(2) {
+                    // Simultaneous capture — check die_on_capture_grants_win
+                    let grants_win_attacker = apply_result.killed_info.iter().find_map(|(pid, player)| {
+                        rules.piece((*pid).into()).and_then(|t| {
+                            if t.die_on_capture && t.die_on_capture_grants_win {
+                                Some(*player)
+                            } else {
+                                None
+                            }
+                        })
+                    });
+                    if let Some(winner) = grants_win_attacker {
+                        break (GameResult::Win(winner), crate::protocol::EndReason::CaptureCondition);
+                    }
                     break (GameResult::Draw, crate::protocol::EndReason::CaptureCondition);
                 } else if check_side_gone(1) {
                     break (GameResult::Win(2), crate::protocol::EndReason::CaptureCondition);
@@ -574,6 +600,12 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             _ => tally_draws += 1,
         }
         *reason_counts.entry(reason_label.to_string()).or_insert(0) += 1;
+        // Graceful early exit: if Ctrl+C was pressed, break here so the
+        // end-of-run block below writes output.stratbook with partial data.
+        if interrupted.load(Ordering::SeqCst) {
+            println!("\nTraining interrupted — saving progress to output.stratbook...");
+            break;
+        }
         // Append this game's plain-text section to games.txt (if the log is enabled).
         if let Some(ref mut glog) = games_log {
             let outcome_str = match winner {
@@ -601,6 +633,18 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             // so book.json is always consistent with the latest model.
             if let Err(e) = aggregate_book(&args.out) {
                 eprintln!("[book] aggregate_book failed: {e}");
+            }
+            // Write an up-to-date stratbook at every checkpoint so the user
+            // always has a usable output.stratbook, even if training is
+            // stopped early (Ctrl+C). Partial data is valid for uploading.
+            let checkpoint_games = tally_p1_wins + tally_p2_wins + tally_draws;
+            if checkpoint_games > 0 {
+                if let Err(e) = write_job_summary(&args, checkpoint_games, tally_p1_wins, tally_p2_wins, tally_draws, &reason_counts, started.elapsed().as_millis()) {
+                    eprintln!("[summary] checkpoint write_job_summary failed: {e}");
+                }
+                if let Err(e) = write_stratbook(&args.out) {
+                    eprintln!("[stratbook] checkpoint write_stratbook failed: {e}");
+                }
             }
             let path_str = path.to_string_lossy().to_string();
             write_event(
@@ -648,13 +692,13 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         eprintln!("[book] final aggregate_book failed: {e}");
     }
 
-    // Write job_summary.json and emit the combined .chessbook file.
+    // Write job_summary.json and emit the combined .stratbook file.
     if total_games > 0 {
         if let Err(e) = write_job_summary(&args, total_games, tally_p1_wins, tally_p2_wins, tally_draws, &reason_counts, total_elapsed.as_millis()) {
             eprintln!("[summary] Failed to write job_summary.json: {e}");
         }
-        if let Err(e) = write_chessbook(&args.out) {
-            eprintln!("[chessbook] Failed to write .chessbook file: {e}");
+        if let Err(e) = write_stratbook(&args.out) {
+            eprintln!("[stratbook] Failed to write .stratbook file: {e}");
         }
     }
 
@@ -714,10 +758,10 @@ fn write_job_summary(
     Ok(())
 }
 
-/// Produce a combined `.chessbook` file in the output directory.
+/// Produce a combined `.stratbook` file in the output directory.
 /// Format: all lines from book.jsonl followed by the job_summary JSON line.
 /// The final line has `"type":"job_summary"` so parsers can detect it.
-fn write_chessbook(out_dir: &std::path::Path) -> Result<()> {
+fn write_stratbook(out_dir: &std::path::Path) -> Result<()> {
     let book_path = out_dir.join("book.jsonl");
     let summary_path = out_dir.join("job_summary.json");
     if !book_path.exists() {
@@ -725,10 +769,10 @@ fn write_chessbook(out_dir: &std::path::Path) -> Result<()> {
     }
     let book_content = std::fs::read(&book_path)
         .with_context(|| format!("reading {}", book_path.display()))?;
-    let chessbook_path = out_dir.join("output.chessbook");
+    let stratbook_path = out_dir.join("output.stratbook");
     let mut f = BufWriter::new(
-        std::fs::File::create(&chessbook_path)
-            .with_context(|| format!("creating {}", chessbook_path.display()))?,
+        std::fs::File::create(&stratbook_path)
+            .with_context(|| format!("creating {}", stratbook_path.display()))?,
     );
     f.write_all(&book_content)?;
     // Ensure the book section ends with a newline before appending the summary.
@@ -742,7 +786,7 @@ fn write_chessbook(out_dir: &std::path::Path) -> Result<()> {
         writeln!(f, "{}", summary_line.trim())?;
     }
     f.flush()?;
-    println!("Chessbook written to: {}", chessbook_path.display());
+    println!("Stratbook written to: {}", stratbook_path.display());
     Ok(())
 }
 

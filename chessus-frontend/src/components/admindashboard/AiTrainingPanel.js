@@ -835,7 +835,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
               <pre className={styles.code}>{`./ai-engine-rs/target/release/ai-engine train --rules rules.json --out ./local-job --games 200 --mcts-iters 200`}</pre>
             </li>
             <li>
-              Upload the resulting <code>book.jsonl</code> directly, OR zip
+              Upload the resulting <code>output.stratbook</code> directly, OR zip
               the entire <code>local-job/</code> directory and upload that.
               A zip may also include <code>log.ndjson</code> and{' '}
               <code>model-*.bin</code> checkpoints — they will be preserved.

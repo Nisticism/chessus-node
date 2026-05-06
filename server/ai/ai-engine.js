@@ -258,13 +258,31 @@ function checkTerminal(state, captured = []) {
   const { gameType, players } = state;
   if (!gameType || !players || players.length < 2) return { over: false };
 
-  // Check captured piece flags
+  // Check captured piece flags — collect eliminations first to detect simultaneous draws
+  const eliminatedPositions = new Set();
   for (const cp of captured) {
     if (cp.ends_game_on_capture || cp.ends_game_on_checkmate) {
       const loserPos = cp.team || cp.player_id;
-      const winnerPos = loserPos === 1 ? 2 : 1;
-      return { over: true, winner: winnerPos, reason: 'capture' };
+      eliminatedPositions.add(loserPos);
     }
+  }
+  if (eliminatedPositions.size > 0) {
+    const allElim = players.every(p => eliminatedPositions.has(p.position));
+    if (allElim) {
+      // Simultaneous — check die_on_capture_grants_win
+      const grantsWin = captured.find(p =>
+        (p.die_on_capture === true || p.die_on_capture === 1) &&
+        (p.die_on_capture_grants_win === true || p.die_on_capture_grants_win === 1)
+      );
+      if (grantsWin) {
+        const attackerPos = grantsWin.team || grantsWin.player_id;
+        return { over: true, winner: attackerPos, reason: 'capture' };
+      }
+      return { over: true, winner: null, reason: 'draw' };
+    }
+    const loserPos = [...eliminatedPositions][0];
+    const winnerPos = loserPos === 1 ? 2 : 1;
+    return { over: true, winner: winnerPos, reason: 'capture' };
   }
 
   // Check if either player has no pieces (elimination)

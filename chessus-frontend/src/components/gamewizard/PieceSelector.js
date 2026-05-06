@@ -73,6 +73,7 @@ const PieceSelector = ({
   const [trampleRadius, setTrampleRadius] = useState(currentPlacement?.trample_radius ?? 0);
   const [ghostwalk, setGhostwalk] = useState(currentPlacement?.ghostwalk || false);
   const [dieOnCapture, setDieOnCapture] = useState(currentPlacement?.die_on_capture || false);
+  const [dieOnCaptureGrantsWin, setDieOnCaptureGrantsWin] = useState(currentPlacement?.die_on_capture_grants_win || false);
   const [attackRadius, setAttackRadius] = useState(currentPlacement?.attack_radius ?? 0);
   const [cannotMoveOutsideZone, setCannotMoveOutsideZone] = useState(currentPlacement?.cannot_move_outside_zone || false);
   const [isNeutral, setIsNeutral] = useState(currentPlacement?.is_neutral || false);
@@ -323,6 +324,7 @@ const PieceSelector = ({
       ghostwalk: ghostwalk,
       // Die on capture & Attack radius
       die_on_capture: dieOnCapture,
+      die_on_capture_grants_win: dieOnCaptureGrantsWin,
       attack_radius: attackRadius,
       // Restriction zone
       cannot_move_outside_zone: cannotMoveOutsideZone,
@@ -836,11 +838,21 @@ const PieceSelector = ({
             <div className={styles["control-config-row"]}>
               <ToggleSwitch
                 checked={dieOnCapture}
-                onChange={(v) => setDieOnCapture(v)}
+                onChange={(v) => { setDieOnCapture(v); if (!v) setDieOnCaptureGrantsWin(false); }}
                 label="Dies on Capture"
                 tooltip={<InfoTooltip text="This piece is also removed from the board when it captures another piece. Useful for explosive or kamikaze-style pieces." />}
               />
             </div>
+            {dieOnCapture && (
+              <div className={styles["control-config-row"]} style={{ paddingLeft: '24px' }}>
+                <ToggleSwitch
+                  checked={dieOnCaptureGrantsWin}
+                  onChange={(v) => setDieOnCaptureGrantsWin(v)}
+                  label="Attacker Wins on Final Capture"
+                  tooltip={<InfoTooltip text="If this piece kills the opponent's last required-to-win piece while dying in the process (normally a draw), the attacking player wins instead." />}
+                />
+              </div>
+            )}
             <div style={{ marginTop: '8px' }}>
               <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 Attack Radius:

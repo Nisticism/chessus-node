@@ -2902,7 +2902,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.capture_points_gain ?? 0,
               piece.capture_points_loss ?? 0,
               piece.cannot_move_outside_zone || false,
-              piece.is_neutral || false
+              piece.is_neutral || false,
+              piece.die_on_capture_grants_win || false
             );
           }
         }
@@ -3339,13 +3340,13 @@ app.post(
       const lower = (req.file.originalname || '').toLowerCase();
       let kind = (req.body?.kind || '').toLowerCase();
       if (!kind) {
-        if (lower.endsWith('.chessbook')) kind = 'chessbook';
+        if (lower.endsWith('.stratbook')) kind = 'stratbook';
         else if (lower.endsWith('.jsonl')) kind = 'jsonl';
         else if (lower.endsWith('.zip')) kind = 'zip';
       }
-      if (kind !== 'chessbook' && kind !== 'jsonl' && kind !== 'zip') {
+      if (kind !== 'stratbook' && kind !== 'jsonl' && kind !== 'zip') {
         return res.status(400).json({
-          message: 'Could not determine file type. Please upload a .chessbook file (recommended), or a .jsonl or .zip file.',
+          message: 'Could not determine file type. Please upload a .stratbook file (recommended), or a .jsonl or .zip file.',
         });
       }
 
@@ -3729,7 +3730,7 @@ echo   To upload your results, go to:
 echo     !SITE_URL!/games/!GAME_ID!
 echo   and find the "Train Locally" section.
 echo.
-echo   Upload the file: !OUT_DIR!\\output.chessbook
+echo   Upload the file: !OUT_DIR!\\output.stratbook
 echo   This single file contains your training data and statistics.
 echo.
 pause
@@ -3900,7 +3901,7 @@ echo "  Output saved to: \${OUT_DIR}"
 echo ""
 echo "  To upload, go to: \${SITE_URL}/games/\${GAME_ID}"
 echo "  Find the 'Train Locally' section and upload:"
-echo "    \${OUT_DIR}/output.chessbook"
+echo "    \${OUT_DIR}/output.stratbook"
 echo "  This single file contains your training data and statistics."
 echo ""
 `;
@@ -3971,8 +3972,7 @@ ${isWindows ? '3' : '4'}. Run ${trainCmd}
 ${isWindows ? '4' : '5'}. Upload when done
    - Go to ${siteUrl}/games/<GameID>
    - Find the "Train Locally" section
-   - Upload output/<GameName>-<GameID>/book.jsonl
-     OR zip the output folder and upload that
+   - Upload output/<GameName>-<GameID>/output.stratbook
 
 
 TRAINING MULTIPLE GAMES AT ONCE
@@ -4013,7 +4013,7 @@ WHAT FILES TO UPLOAD
 --------------------
 After training, go to ${siteUrl}/games/<GameID> and upload:
 
-  output/<GameName>-<GameID>/output.chessbook
+  output/<GameName>-<GameID>/output.stratbook
     The recommended single-file format. Contains training data plus
     statistics (MCTS setting, win/draw breakdown) so the site can
     display accurate AI training analysis automatically.
@@ -5893,7 +5893,10 @@ app.post("/api/forums/new", async (req, res) => {
       if (!titleCheck.isValid) return res.status(400).send({ message: titleCheck.errors[0] });
     }
     if (content) {
-      const contentCheck = validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: 'whitelist' });
+      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'owner';
+      const contentCheck = isAdmin
+        ? validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: true })
+        : validateContent(content, { fieldName: 'Content', maxLength: 50000, allowLinks: 'whitelist', maxLinks: 10 });
       if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
     }
     
@@ -6215,7 +6218,10 @@ app.post("/api/comments/new", async (req, res) => {
 
     // Content moderation
     if (content) {
-      const contentCheck = validateContent(content, { fieldName: 'Comment', maxLength: 10000, allowLinks: 'whitelist' });
+      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'owner';
+      const contentCheck = isAdmin
+        ? validateContent(content, { fieldName: 'Comment', maxLength: 10000, allowLinks: true })
+        : validateContent(content, { fieldName: 'Comment', maxLength: 10000, allowLinks: 'whitelist', maxLinks: 3 });
       if (!contentCheck.isValid) return res.status(400).send({ message: contentCheck.errors[0] });
     }
     
@@ -7120,7 +7126,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.capture_points_gain ?? 0,
               piece.capture_points_loss ?? 0,
               piece.cannot_move_outside_zone || false,
-              piece.is_neutral || false
+              piece.is_neutral || false,
+              piece.die_on_capture_grants_win || false
             );
           }
         }

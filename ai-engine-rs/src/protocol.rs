@@ -310,6 +310,10 @@ pub struct PieceTemplate {
     /// When true, the moving piece is also removed from the board after it kills an enemy.
     #[serde(default)]
     pub die_on_capture: bool,
+    /// When true and die_on_capture fires on the opponent's last ends_game_on_capture piece,
+    /// the attacker wins instead of drawing.
+    #[serde(default)]
+    pub die_on_capture_grants_win: bool,
 
     // ---- Burn / DOT ----
     /// Damage-over-time inflicted on enemies this piece hits (applied at the start of the
@@ -422,6 +426,7 @@ impl Default for PieceTemplate {
             attack_damage: 1,
             hp_regen: 0,
             die_on_capture: false,
+            die_on_capture_grants_win: false,
             burn_damage: 0,
             burn_duration: 0,
             trample: false,

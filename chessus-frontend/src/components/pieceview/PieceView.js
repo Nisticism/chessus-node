@@ -948,7 +948,7 @@ const PieceView = () => {
             {pieceToDisplay.min_turns_per_move != null && pieceToDisplay.min_turns_per_move > 0 && (
               <div className={styles["modifier-badge"]}>
                 <span className={styles["modifier-icon"]}>⏱️</span>
-                Min {pieceToDisplay.min_turns_per_move} turn{pieceToDisplay.min_turns_per_move !== 1 ? 's' : ''} per move
+                Inactive for first {pieceToDisplay.min_turns_per_move} turn{pieceToDisplay.min_turns_per_move !== 1 ? 's' : ''}
               </div>
             )}
             {pieceToDisplay.max_turns_per_move != null && (
@@ -1028,10 +1028,23 @@ const PieceView = () => {
                 <span className={styles["special-name"]}>Must Move If Able <InfoTooltip text={`On its owner's turn, this piece is forced to move if it has any legal move available.${pieceToDisplay.must_move_uses_action ? ' The forced move consumes one of the player\u2019s actions per turn.' : ' The forced move does NOT consume an action per turn.'}`} /></span>
               </div>
             )}
+            {pieceToDisplay.die_on_capture && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>💥</span>
+                <span className={styles["special-name"]}>Dies on Capture <InfoTooltip text="This piece is also removed from the board when it captures another piece." /></span>
+              </div>
+            )}
+            {pieceToDisplay.die_on_capture && pieceToDisplay.die_on_capture_grants_win && (
+              <div className={styles["special-ability-card"]}>
+                <span className={styles["special-icon"]}>🏆</span>
+                <span className={styles["special-name"]}>Attacker Wins on Final Capture <InfoTooltip text="If this piece kills the opponent's last required-to-win piece while dying in the process, the attacker wins instead of drawing." /></span>
+              </div>
+            )}
             {!pieceToDisplay.can_promote && !pieceToDisplay.can_castle && !pieceToDisplay.has_checkmate_rule && 
              !pieceToDisplay.has_check_rule && !pieceToDisplay.has_lose_on_capture_rule && !pieceToDisplay.can_en_passant &&
              !pieceToDisplay.capture_on_hop && !pieceToDisplay.chain_capture_enabled &&
-             !pieceToDisplay.can_capture_allies && !pieceToDisplay.must_move_if_able && (
+             !pieceToDisplay.can_capture_allies && !pieceToDisplay.must_move_if_able &&
+             !pieceToDisplay.die_on_capture && (
               <div className={styles["no-abilities"]}>
                 <span className={styles["no-abilities-icon"]}>✨</span>
                 <span>No special abilities</span>

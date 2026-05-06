@@ -2906,6 +2906,7 @@ function initializeSocket(server) {
               ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
               // Die on capture & attack radius
               die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
+              die_on_capture_grants_win: piece.die_on_capture_grants_win || fullPieceData.die_on_capture_grants_win,
               attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
               custom_movement_squares: fullPieceData.custom_movement_squares,
               custom_attack_squares: fullPieceData.custom_attack_squares,
@@ -3414,6 +3415,7 @@ function initializeSocket(server) {
               trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
               ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
               die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
+              die_on_capture_grants_win: piece.die_on_capture_grants_win || fullPieceData.die_on_capture_grants_win,
               attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
               custom_movement_squares: fullPieceData.custom_movement_squares,
               custom_attack_squares: fullPieceData.custom_attack_squares,
@@ -4179,6 +4181,7 @@ function initializeSocket(server) {
                   trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
                   ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
                   die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
+                  die_on_capture_grants_win: piece.die_on_capture_grants_win || fullPieceData.die_on_capture_grants_win,
                   attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
                   custom_movement_squares: fullPieceData.custom_movement_squares,
                   custom_attack_squares: fullPieceData.custom_attack_squares
@@ -7590,6 +7593,7 @@ function initializeSocket(server) {
                     trample_radius: piece.trample_radius ?? fullPieceData.trample_radius,
                     ghostwalk: piece.ghostwalk || fullPieceData.ghostwalk,
                     die_on_capture: piece.die_on_capture || fullPieceData.die_on_capture,
+                    die_on_capture_grants_win: piece.die_on_capture_grants_win || fullPieceData.die_on_capture_grants_win,
                     attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
                     custom_movement_squares: fullPieceData.custom_movement_squares,
                     custom_attack_squares: fullPieceData.custom_attack_squares,
@@ -13527,10 +13531,22 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
     }
 
     if (eliminatedPositions.size > 0) {
-      // Check if ALL players are eliminated — that's a draw.
+      // Check if ALL players are eliminated — normally a draw (simultaneous capture).
       const allEliminated = players.every(p => eliminatedPositions.has(p.position));
       if (allEliminated) {
-        return { gameOver: true, winner: null, reason: 'capture' };
+        // Check if any die_on_capture piece with die_on_capture_grants_win caused
+        // the simultaneous elimination. If exactly one side's die_on_capture piece
+        // has that flag set, that attacker wins instead of a draw.
+        const grantsWinPiece = capturedPieces.find(p =>
+          (p.die_on_capture === true || p.die_on_capture === 1) &&
+          (p.die_on_capture_grants_win === true || p.die_on_capture_grants_win === 1)
+        );
+        if (grantsWinPiece) {
+          const attackerPosition = grantsWinPiece.team || grantsWinPiece.player_id;
+          const winner = players.find(p => p.position === attackerPosition);
+          return { gameOver: true, winner: winner?.id ?? null, reason: 'capture' };
+        }
+        return { gameOver: true, winner: null, reason: 'simultaneous_capture_draw' };
       }
       // Otherwise the surviving player wins.
       const survivor = players.find(p => !eliminatedPositions.has(p.position));

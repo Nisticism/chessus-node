@@ -11,7 +11,7 @@ const db_pool = require('../../configs/db');
 
 // This must match Cargo.toml [package] version in ai-engine-rs/.
 // Bump both together whenever a protocol.rs change breaks compatibility.
-const TRAINER_VERSION = '1.1.0';
+const TRAINER_VERSION = '1.2.2';
 // Minimum binary version that can still train and upload. Bump this only when
 // a protocol-breaking change requires users to get a new binary. As long as
 // you only add optional fields, leave this at 1.0.0 so existing binaries keep
@@ -89,6 +89,7 @@ async function exportGameRules(gameTypeId) {
         gtp.cannot_be_captured AS placement_cannot_be_captured,
         gtp.ghostwalk          AS placement_ghostwalk,
         gtp.die_on_capture     AS placement_die_on_capture,
+        gtp.die_on_capture_grants_win AS placement_die_on_capture_grants_win,
         gtp.cannot_move_outside_zone AS placement_cannot_move_outside_zone,
         gtp.can_en_passant,
         gtp.can_control_squares,
@@ -205,6 +206,7 @@ async function exportGameRules(gameTypeId) {
       // default. Currently informational for the trainer (no special
       // logic in moves.rs yet) but exported so future ports can read it.
       die_on_capture: toBool(tpl.die_on_capture) || toBool(pos.placement_die_on_capture),
+      die_on_capture_grants_win: toBool(tpl.die_on_capture_grants_win) || toBool(pos.placement_die_on_capture_grants_win),
       // Per-placement restriction zone: this piece can only move to squares marked asRestrictionZone.
       cannot_move_outside_zone: toBool(pos.placement_cannot_move_outside_zone),
       // En passant: placement-level flag (from game_type_pieces.can_en_passant).
@@ -292,6 +294,7 @@ async function exportGameRules(gameTypeId) {
         cannot_be_captured: toBool(tpl.cannot_be_captured),
         ghostwalk: toBool(tpl.ghostwalk),
         die_on_capture: toBool(tpl.die_on_capture),
+        die_on_capture_grants_win: toBool(tpl.die_on_capture_grants_win),
         cannot_move_outside_zone: false,
         can_en_passant: toBool(tpl.can_en_passant),
         can_control_squares: false,
@@ -502,6 +505,7 @@ async function exportGameRules(gameTypeId) {
       can_en_passant: toBool(p.can_en_passant),
 
       die_on_capture: toBool(p.die_on_capture),
+      die_on_capture_grants_win: toBool(p.die_on_capture_grants_win),
       cannot_move_outside_zone: toBool(p.cannot_move_outside_zone),
       can_control_squares: toBool(p.can_control_squares),
       hit_points: intOr(p.hit_points, 1) || 1,
