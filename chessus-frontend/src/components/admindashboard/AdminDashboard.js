@@ -167,6 +167,12 @@ const AdminDashboard = () => {
   const [userGrowthError, setUserGrowthError] = useState(null);
   const [userGrowthHover, setUserGrowthHover] = useState(null);
 
+  // Restriction modal state
+  const [showRestrictModal, setShowRestrictModal] = useState(false);
+  const [restrictTarget, setRestrictTarget] = useState(null);
+  const [restrictReason, setRestrictReason] = useState('');
+  const [savingRestrict, setSavingRestrict] = useState(false);
+
   // Auto-hide alert after 2 seconds
   useEffect(() => {
     let timer;
@@ -1170,6 +1176,64 @@ const AdminDashboard = () => {
     </div>
   );
 
+  const handleRestrictGame = (game) => {
+    setRestrictTarget(game);
+    setRestrictReason(game.restriction_reason || '');
+    setShowRestrictModal(true);
+  };
+
+  const RESTRICT_PRESETS = [
+    'Unbalanced gameplay',
+    'Broken starting position',
+    'Duplicate of existing game',
+    'Causes significant lag',
+    'Intentionally disruptive design',
+  ];
+
+  const handleSaveRestriction = async () => {
+    if (!restrictTarget) return;
+    setSavingRestrict(true);
+    try {
+      await axios.put(
+        `${API_URL}admin/games/${restrictTarget.id}/restrict`,
+        { restricted: true, reason: restrictReason.trim() || null },
+        { headers: authHeader() }
+      );
+      setAlertMessage(`"${restrictTarget.game_name}" has been restricted`);
+      setAlertType('success');
+      setShowAlert(true);
+      setShowRestrictModal(false);
+      fetchData('games', pagination.page);
+    } catch (err) {
+      console.error('Error restricting game:', err);
+      setAlertMessage(`Failed to restrict game: ${err.response?.data?.message || err.message}`);
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setSavingRestrict(false);
+    }
+  };
+
+  const handleUnrestrictGame = async (game) => {
+    if (!window.confirm(`Remove restriction from "${game.game_name}"? It will become publicly playable again.`)) return;
+    try {
+      await axios.put(
+        `${API_URL}admin/games/${game.id}/restrict`,
+        { restricted: false },
+        { headers: authHeader() }
+      );
+      setAlertMessage(`"${game.game_name}" restriction removed`);
+      setAlertType('success');
+      setShowAlert(true);
+      fetchData('games', pagination.page);
+    } catch (err) {
+      console.error('Error unrestricting game:', err);
+      setAlertMessage(`Failed to unrestrict game: ${err.response?.data?.message || err.message}`);
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
   const renderGamesTable = () => (
     <div className={styles["table-container"]}>
       <table className={styles["data-table"]}>
@@ -1196,7 +1260,7 @@ const AdminDashboard = () => {
             data.map(game => (
             <tr key={game.id}>
               <td>{game.id}</td>
-              <td><Link to={`/games/${game.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{game.game_name}</Link></td>
+              <td><Link to={`/games/${game.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{game.game_name}</Link>{game.is_restricted ? <span style={{ marginLeft: 6, fontSize: '0.75rem', background: 'rgba(255,150,0,0.2)', color: '#ffb347', border: '1px solid rgba(255,150,0,0.4)', borderRadius: 4, padding: '1px 5px' }}>Restricted</span> : null}</td>
               <td>{game.creator_name ? (game.real_creator_name ? <Link to={`/profile/${game.real_creator_name}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>{game.creator_name}</Link> : <span>{game.creator_name}</span>) : 'N/A'}</td>
               <td>{game.board_width}x{game.board_height}</td>
               <td>{game.player_count || 2}</td>
@@ -1205,6 +1269,10 @@ const AdminDashboard = () => {
               <td>
                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                   <button className={styles["edit-btn"]} onClick={() => handleEdit(game)}>Edit</button>
+                  {game.is_restricted
+                    ? <button style={{ background: 'rgba(255,150,0,0.15)', color: '#ffb347', border: '1px solid rgba(255,150,0,0.4)', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', fontSize: '0.82rem' }} onClick={() => handleUnrestrictGame(game)}>Unrestrict</button>
+                    : <button style={{ background: 'rgba(255,150,0,0.1)', color: '#ffd699', border: '1px solid rgba(255,150,0,0.3)', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', fontSize: '0.82rem' }} onClick={() => handleRestrictGame(game)}>Restrict</button>
+                  }
                   {!isAdmin2 && <button className={styles["ban-btn"]} onClick={() => handleDeleteItem(game, 'games')}>Delete</button>}
                 </div>
               </td>
@@ -3925,6 +3993,56 @@ const AdminDashboard = () => {
               <button className={styles["edit-btn"]} onClick={() => setShowPromoteModal(false)}>Cancel</button>
               <button className={styles["promote-btn"]} onClick={handlePromoteConfirm}>
                 Promote to Admin {promoteLevel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showRestrictModal && restrictTarget && (
+        <div className={styles["modal-overlay"]} onClick={() => setShowRestrictModal(false)}>
+          <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <div className={styles["modal-header"]}>
+              <h2>Restrict Game</h2>
+              <button className={styles["close-btn"]} onClick={() => setShowRestrictModal(false)}>×</button>
+            </div>
+            <div className={styles["modal-body"]}>
+              <p style={{ marginBottom: '12px', color: 'var(--text-dim)', fontSize: '0.9rem' }}>
+                Restricting <strong style={{ color: 'var(--text-primary)' }}>{restrictTarget.game_name}</strong> will prevent public matchmaking. Only the creator can play it against the computer.
+              </p>
+              <p style={{ marginBottom: '8px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Select a reason:</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                {RESTRICT_PRESETS.map(preset => (
+                  <button
+                    key={preset}
+                    onClick={() => setRestrictReason(preset)}
+                    style={{
+                      textAlign: 'left', padding: '7px 12px', borderRadius: 6, cursor: 'pointer',
+                      background: restrictReason === preset ? 'rgba(255,150,0,0.18)' : 'var(--panel-bg)',
+                      border: restrictReason === preset ? '1px solid rgba(255,150,0,0.55)' : '1px solid var(--panel-border)',
+                      color: restrictReason === preset ? '#ffb347' : 'var(--text-primary)',
+                      fontSize: '0.88rem', transition: 'background 0.15s',
+                    }}
+                  >{preset}</button>
+                ))}
+              </div>
+              <p style={{ marginBottom: '4px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Or type a custom reason:</p>
+              <textarea
+                value={restrictReason}
+                onChange={(e) => setRestrictReason(e.target.value)}
+                maxLength={500}
+                rows={2}
+                placeholder="Enter restriction reason..."
+                style={{ width: '100%', resize: 'vertical', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--panel-border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: '0.875rem', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div className={styles["modal-footer"]} style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', padding: '16px' }}>
+              <button className={styles["edit-btn"]} onClick={() => setShowRestrictModal(false)}>Cancel</button>
+              <button
+                disabled={savingRestrict || !restrictReason.trim()}
+                onClick={handleSaveRestriction}
+                style={{ background: 'rgba(255,150,0,0.2)', color: '#ffb347', border: '1px solid rgba(255,150,0,0.5)', borderRadius: 4, padding: '6px 16px', cursor: savingRestrict || !restrictReason.trim() ? 'not-allowed' : 'pointer', opacity: savingRestrict || !restrictReason.trim() ? 0.6 : 1 }}
+              >
+                {savingRestrict ? 'Saving...' : 'Restrict Game'}
               </button>
             </div>
           </div>

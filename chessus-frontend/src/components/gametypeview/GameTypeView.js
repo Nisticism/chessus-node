@@ -2442,6 +2442,25 @@ const GameTypeView = () => {
             {game.initial_state_warning} The game's creator should edit this game so the starting position is not already decided.
           </div>
         )}
+
+        {game.is_restricted && (
+          <div
+            style={{
+              background: 'rgba(255, 150, 0, 0.12)',
+              border: '1px solid rgba(255, 150, 0, 0.4)',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              margin: '12px 0',
+              color: '#ffd699',
+              fontSize: '0.9rem',
+              lineHeight: 1.5,
+            }}
+          >
+            <strong style={{ color: '#ffb347' }}>⚠ Restricted by moderator:</strong>{' '}
+            {game.restriction_reason || 'This game is currently restricted from public play.'}{' '}
+            Only the creator can play this game against computer opponents.
+          </div>
+        )}
         
         {game.article_id ? (
           <div className={styles["forum-link"]}>

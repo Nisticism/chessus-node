@@ -3627,9 +3627,13 @@ function _buildTrainBat({ siteUrl, version }) {
 setlocal EnableDelayedExpansion
 title GridGrove AI Trainer
 
+:: ---- Binary version (read before banner so header always shows current version) ----
+set BIN_VER=unknown
+for /f "tokens=2" %%v in ('"ai-engine.exe --version" 2^>^&1') do set BIN_VER=%%v
+
 echo.
 echo ======================================================================
-echo   GridGrove AI Trainer  v${version}
+echo   GridGrove AI Trainer  v!BIN_VER!
 echo ======================================================================
 echo.
 
@@ -3644,10 +3648,6 @@ if not exist trainer-config.json (
 for /f "delims=" %%s in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Content trainer-config.json | ConvertFrom-Json).siteUrl"') do set SITE_URL=%%s
 for /f "delims=" %%k in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Content trainer-config.json | ConvertFrom-Json).apiKey"') do set API_KEY=%%k
 if "!SITE_URL!" == "" ( echo [ERROR] Invalid trainer-config.json. Run setup.bat. & pause & exit /b 1 )
-
-:: ---- Binary version ----
-set BIN_VER=unknown
-for /f "tokens=2" %%v in ('"ai-engine.exe --version" 2^>^&1') do set BIN_VER=%%v
 
 :: ---- Check for updates ----
 echo [1/4] Checking for updates...
@@ -3805,13 +3805,16 @@ function _buildTrainSh({ siteUrl, version }) {
 set -euo pipefail
 IFS=$'\\n\\t'
 
-echo ""
-echo "======================================================================"
-echo "  GridGrove AI Trainer  v${version}"
-echo "======================================================================"
-echo ""
-
 chmod +x ./ai-engine 2>/dev/null || true
+
+# ---- Binary version (read before banner so header always shows current version) ----
+BIN_VER=\$(./ai-engine --version 2>/dev/null | awk '{print $NF}' || echo "unknown")
+
+echo ""
+echo "======================================================================"
+echo "  GridGrove AI Trainer  v\${BIN_VER}"
+echo "======================================================================"
+echo ""
 
 # ---- Load config ----
 if [ ! -f trainer-config.json ]; then
@@ -3825,9 +3828,6 @@ if [ -z "\${SITE_URL}" ] || [ -z "\${API_KEY}" ]; then
   echo "[ERROR] Invalid trainer-config.json. Run ./setup.sh again."
   exit 1
 fi
-
-# ---- Binary version ----
-BIN_VER=\$(./ai-engine --version 2>/dev/null | awk '{print $NF}' || echo "unknown")
 
 # ---- Check for updates ----
 echo "[1/4] Checking for updates..."
@@ -7913,6 +7913,25 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
     imagesJSON = JSON.stringify(allImagePaths);
 
     const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
+
+    // Reconstruct image_sources_json for the updated image set.
+    // Kept images carry over their original source (e.g. 'library') so the
+    // community-images filter continues to exclude them after an edit.
+    let originalSources = [];
+    try {
+      originalSources = JSON.parse(existingPiece.image_sources_json || '[]');
+    } catch (_) {}
+    const combinedSources = [
+      ...keptImagePaths.map((p) => {
+        const origIdx = originalImagePaths.indexOf(p);
+        return origIdx >= 0 ? (originalSources[origIdx] || null) : null;
+      }),
+      ...imageSources,
+    ].slice(0, 8);
+    // Only store the array when at least one source is known (non-null).
+    const combinedSourcesJson = combinedSources.some(s => s != null)
+      ? JSON.stringify(combinedSources.map(s => s || 'unknown'))
+      : null;
     
     // Update consolidated pieces table (all fields in one table now)
     const pieceSql = `
@@ -8219,8 +8238,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       // Must-move-if-able
       parseBooleanField(pieceData.must_move_if_able),
       parseBooleanField(pieceData.must_move_uses_action),
-      // Image sources (library|community|upload per image slot)
-      imageSources.length > 0 ? JSON.stringify(imageSources) : null,
+      // Image sources — combined from kept images (preserving original sources) + new images
+      combinedSourcesJson,
       pieceId
     ];
 
@@ -10788,6 +10807,7 @@ app.get("/api/admin/games", authenticateAdmin, async (req, res) => {
     const [games] = await db_pool.query(
       `SELECT g.id, g.game_name, g.descript, g.board_width, g.board_height, 
        g.player_count, g.last_played_at, g.is_anonymous_creator, g.is_training_only,
+       g.is_restricted, g.restriction_reason, g.creator_id,
        u.username as real_creator_name,
        CASE 
          WHEN g.creator_id IS NULL THEN 'Anonymous (not logged in)'
@@ -11419,6 +11439,24 @@ app.put("/api/admin/games/:gameId", authenticateAdmin, async (req, res) => {
   } catch (err) {
     console.error("Error in /api/admin/games/:gameId (PUT):", err);
     res.status(500).send({ message: "Failed to update game", err: err.message });
+  }
+});
+
+// Restrict / unrestrict a game type (admin only)
+app.put("/api/admin/games/:gameId/restrict", authenticateAdmin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId, 10);
+    const { restricted, reason } = req.body;
+    if (isNaN(gameId)) return res.status(400).json({ message: 'Invalid game id' });
+    const reasonVal = restricted ? (typeof reason === 'string' ? reason.slice(0, 500).trim() || null : null) : null;
+    await db_pool.query(
+      'UPDATE game_types SET is_restricted = ?, restriction_reason = ? WHERE id = ?',
+      [restricted ? 1 : 0, reasonVal, gameId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in PUT /api/admin/games/:gameId/restrict:', err);
+    res.status(500).json({ message: 'Failed to update restriction', err: err.message });
   }
 });
 

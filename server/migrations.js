@@ -3696,6 +3696,30 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error adding has_game_log column to ai_training_jobs:', err.message);
   }
+
+  // Add is_restricted / restriction_reason columns to game_types for admin moderation.
+  try {
+    if (!(await columnExists('game_types', 'is_restricted'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN is_restricted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = restricted by admin; only creator can play against computer'`,
+        'Add is_restricted column to game_types'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding is_restricted column to game_types:', err.message);
+  }
+  try {
+    if (!(await columnExists('game_types', 'restriction_reason'))) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN restriction_reason VARCHAR(500) DEFAULT NULL COMMENT 'Human-readable reason shown to players when game is restricted'`,
+        'Add restriction_reason column to game_types'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding restriction_reason column to game_types:', err.message);
+  }
 };
 
 module.exports = { runMigrations };

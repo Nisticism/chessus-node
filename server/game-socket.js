@@ -2619,6 +2619,33 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Game type not found" });
         }
 
+        // --- Restricted game enforcement ---
+        if (gameType.is_restricted) {
+          const numericHost = parseInt(hostId, 10);
+          const isCreator = Number.isFinite(numericHost) && numericHost === Number(gameType.creator_id);
+          let isAdminOrOwner = false;
+          if (!isCreator && Number.isFinite(numericHost) && numericHost > 0) {
+            try {
+              const [[hostUser]] = await db_pool.query('SELECT role FROM users WHERE id = ? LIMIT 1', [numericHost]);
+              const role = (hostUser?.role || '').toLowerCase();
+              isAdminOrOwner = role === 'admin' || role === 'owner';
+            } catch (_) {}
+          }
+          if (!isCreator && !isAdminOrOwner) {
+            return socket.emit("error", {
+              code: 'GAME_RESTRICTED',
+              message: 'This game has been restricted by a moderator and is not available for public play.'
+            });
+          }
+          // Even creator/admin: only allow vs-computer when restricted
+          if (!vsComputer && !isAdminOrOwner) {
+            return socket.emit("error", {
+              code: 'GAME_RESTRICTED',
+              message: 'This game has been restricted by a moderator. You may only play against the computer.'
+            });
+          }
+        }
+
         // --- Game session limit enforcement ---
         const numericHostId = parseInt(hostId, 10);
         const hostIsLoggedIn = !vsComputer && Number.isFinite(numericHostId) && numericHostId > 0;

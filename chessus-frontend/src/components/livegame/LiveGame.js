@@ -484,7 +484,7 @@ const LiveGame = () => {
       const totalMoves = gameState.moveHistory.length;
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        setGhostMoveIndex(prev => prev > 0 ? prev - 1 : prev);
+        setGhostMoveIndex(prev => prev > -1 ? prev - 1 : prev);
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         setGhostMoveIndex(prev => prev < totalMoves - 1 ? prev + 1 : null);
@@ -5451,13 +5451,13 @@ const LiveGame = () => {
                 <>
                   {ghostMoveIndex !== null && (
                     <div className={styles["ghost-banner"]}>
-                      <span>Reviewing move {ghostMoveIndex + 1} of {gameState.moveHistory.length}</span>
+                      <span>{ghostMoveIndex < 0 ? 'Starting position' : `Reviewing move ${ghostMoveIndex + 1} of ${gameState.moveHistory.length}`}</span>
                       <button onClick={() => setGhostMoveIndex(null)}>&#x2715; Exit Review</button>
                     </div>
                   )}
                   <div className={styles["move-nav-arrows"]}>
-                  <button onClick={() => setGhostMoveIndex(0)} disabled={ghostMoveIndex === 0} title="First move">⏮</button>
-                  <button onClick={() => setGhostMoveIndex(prev => prev === null ? (gameState.moveHistory.length - 1) : Math.max(0, prev - 1))} disabled={ghostMoveIndex === 0} title="Previous move">◀</button>
+                  <button onClick={() => setGhostMoveIndex(-1)} disabled={ghostMoveIndex === -1} title="Starting position">⏮</button>
+                  <button onClick={() => setGhostMoveIndex(prev => prev === null ? (gameState.moveHistory.length - 1) : Math.max(-1, prev - 1))} disabled={ghostMoveIndex === -1} title="Previous move">◀</button>
                   <button onClick={() => setGhostMoveIndex(prev => prev === null ? 0 : (prev >= gameState.moveHistory.length - 1 ? null : prev + 1))} disabled={ghostMoveIndex === null || ghostMoveIndex >= gameState.moveHistory.length - 1} title="Next move">▶</button>
                   <button onClick={() => setGhostMoveIndex(null)} disabled={ghostMoveIndex === null} title="Live board">⏭</button>
                 </div>

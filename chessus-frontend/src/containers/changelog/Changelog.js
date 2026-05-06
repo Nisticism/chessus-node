@@ -33,6 +33,11 @@ const changelogData = [
       "Terms and Conditions: added a dedicated section explaining that piece images uploaded to GridGrove are shared with the community, and that users must confirm uploaded images are legally free to use.",
       "Privacy Policy: added a note clarifying that piece images uploaded by users are stored and made available to all GridGrove users.",
       "FAQ: added a new 'About GridGrove' category with answers about the site's purpose, free status, AI usage in development, long-term goals, and more.",
+      "Fixed: editing a community piece image was causing the piece to disappear from the Community Pieces browser because the image source tracking was being reset on save. Edited pieces now correctly retain their community or upload source.",
+      "Move history replay now supports navigating all the way back to the starting position (before any moves). Use the ⏮ button or left-arrow key to reach it.",
+      "Forum reply threads have their indent border-left line restored for cleaner visual nesting.",
+      "Admins can now restrict a game from public play directly from the admin dashboard Games tab. Restricted games can only be hosted by their creator against the computer. A reason (chosen from presets or custom) is shown as a banner on the game's detail page.",
+      "Trainer v1.2.5: the header banner now shows the actual binary version instead of the script version, so the version displayed is always accurate even with an older downloaded pack. Previously the banner always showed the version from when the pack was originally downloaded.",
     ],
   },
   {
