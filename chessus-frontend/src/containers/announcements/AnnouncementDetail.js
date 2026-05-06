@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
@@ -21,6 +21,7 @@ const AnnouncementDetail = () => {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ title: '', content: '' });
   const [saving, setSaving] = useState(false);
+  const editContentRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,12 +84,13 @@ const AnnouncementDetail = () => {
             <textarea
               rows={8} maxLength={5000} required
               value={editForm.content}
+              ref={editContentRef}
               onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
             />
             <div className={`${styles.charCounter} ${editForm.content.length > 4500 ? styles.charCounterWarn : ''}`}>{editForm.content.length.toLocaleString()} / 5,000</div>
           </label>
           <div style={{ marginBottom: '10px' }}>
-            <LinkInsertButton onInsert={(text) => setEditForm((f) => ({ ...f, content: f.content + text }))} />
+            <LinkInsertButton textareaRef={editContentRef} onChange={(newVal) => setEditForm((f) => ({ ...f, content: newVal }))} />
           </div>
           <div className={styles.editFormButtons}>
             <button type="submit" disabled={saving}>

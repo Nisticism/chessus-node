@@ -7,7 +7,9 @@ import StandardButton from "../standardbutton/StandardButton";
 import { getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 import EmojiPickerButton from "../common/EmojiPickerButton";
 import LinkInsertButton from "../common/LinkInsertButton";
+import BulletInsertButton, { handleBulletKeyDown } from "../common/BulletInsertButton";
 import ValidationWarningModal from "../common/ValidationWarningModal";
+import { renderContent } from "../../helpers/render-content";
 import { FORUM_CATEGORIES } from "../../helpers/forum-categories";
 
 import { forums } from "../../actions/forums";
@@ -21,6 +23,7 @@ const CreateForum = () => {
   const gameTypeId = searchParams.get('game_type_id');
   
   const form = useRef();
+  const contentRef = useRef(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("general");
@@ -127,16 +130,25 @@ const CreateForum = () => {
                   id="content-field"
                   className={styles["create-form-control"]}
                   name="content"
+                  ref={contentRef}
                   value={content}
                   onChange={onChangeContent}
+                  onKeyDown={(e) => { handleBulletKeyDown(e, content, setContent); }}
                   maxLength={CONTENT_MAX}
                   placeholder="Share your thoughts…"
                 />
                 <div className={styles["emoji-row"]}>
-                  <EmojiPickerButton onEmojiSelect={(emoji) => setContent(prev => prev + emoji)} />
-                  <LinkInsertButton onInsert={(text) => setContent(prev => prev + text)} />
+                  <EmojiPickerButton textareaRef={contentRef} onChange={setContent} />
+                  <LinkInsertButton textareaRef={contentRef} onChange={setContent} />
+                  <BulletInsertButton textareaRef={contentRef} value={content} onChange={setContent} />
                   <div className={`${styles["char-counter"]} ${content.length > CONTENT_MAX * 0.9 ? styles["char-counter-warn"] : ""}`}>{content.length.toLocaleString()}/{CONTENT_MAX.toLocaleString()}</div>
                 </div>
+                {content && /\[|\u2022/.test(content) && (
+                  <div className={styles["content-preview"]}>
+                    <div className={styles["content-preview-label"]}>Preview</div>
+                    {renderContent(content)}
+                  </div>
+                )}
               </div>
 
               <div className={styles["button-row"]}>

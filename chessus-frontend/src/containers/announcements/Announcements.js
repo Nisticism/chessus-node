@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
@@ -23,6 +23,8 @@ const Announcements = () => {
 
   // Admin compose form state
   const [composing, setComposing] = useState(false);
+  const composeContentRef = useRef(null);
+  const editContentRef = useRef(null);
   const [form, setForm] = useState({ title: '', content: '' });
   const [posting, setPosting] = useState(false);
 
@@ -135,12 +137,13 @@ const Announcements = () => {
             <textarea
               rows={6} maxLength={5000} required
               value={form.content}
+              ref={composeContentRef}
               onChange={(e) => setForm({ ...form, content: e.target.value })}
             />
             <div className={`${styles.charCounter} ${form.content.length > 4500 ? styles.charCounterWarn : ''}`}>{form.content.length.toLocaleString()} / 5,000</div>
           </label>
           <div style={{ marginBottom: '10px' }}>
-            <LinkInsertButton onInsert={(text) => setForm((f) => ({ ...f, content: f.content + text }))} />
+            <LinkInsertButton textareaRef={composeContentRef} onChange={(newVal) => setForm((f) => ({ ...f, content: newVal }))} />
           </div>
           <button type="submit" disabled={posting}>
             {posting ? 'Posting…' : 'Post announcement to all users'}
@@ -179,12 +182,13 @@ const Announcements = () => {
                     <textarea
                       rows={6} maxLength={5000} required
                       value={editForm.content}
+                      ref={editContentRef}
                       onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
                     />
                     <div className={`${styles.charCounter} ${editForm.content.length > 4500 ? styles.charCounterWarn : ''}`}>{editForm.content.length.toLocaleString()} / 5,000</div>
                   </label>
                   <div style={{ marginBottom: '10px' }}>
-                    <LinkInsertButton onInsert={(text) => setEditForm((f) => ({ ...f, content: f.content + text }))} />
+                    <LinkInsertButton textareaRef={editContentRef} onChange={(newVal) => setEditForm((f) => ({ ...f, content: newVal }))} />
                   </div>
                   <div className={styles.editFormButtons}>
                     <button type="submit" disabled={saving}>

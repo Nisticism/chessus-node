@@ -4,14 +4,28 @@ import styles from "./link-insert-button.module.scss";
 const isValidUrl = (url) => {
   if (!url) return false;
   if (url.startsWith('/')) return true;
-  return /^https?:\/\/(?:www\.)?gridgrove\.gg(?:\/|$)/i.test(url);
+  // Allow gridgrove.gg, chess.com, and lichess.org links
+  return /^https?:\/\/(?:www\.)?(?:gridgrove\.gg|chess\.com|lichess\.org)(?:\/|$)/i.test(url);
 };
 
-const LinkInsertButton = ({ onInsert }) => {
+/**
+ * Props:
+ *   onInsert(text)    – legacy callback; called with the formatted [label](url) string.
+ *   textareaRef       – optional React ref to the target <textarea>.
+ *   onChange(newVal)  – optional setter for controlled textareas.
+ *
+ * When textareaRef + onChange are provided the button:
+ *   1. Saves the cursor position when the form opens.
+ *   2. Inserts the link text at that position on confirm.
+ *   3. Restores focus and advances the cursor past the inserted text.
+ */
+const LinkInsertButton = ({ onInsert, textareaRef, onChange }) => {
   const [showForm, setShowForm] = useState(false);
   const [displayText, setDisplayText] = useState('');
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
+  // Saved cursor coords captured when the link form is opened.
+  const savedCursor = useRef({ start: null, end: null });
   const wrapperRef = useRef(null);
 
   useEffect(() => {
@@ -31,6 +45,13 @@ const LinkInsertButton = ({ onInsert }) => {
       setError('');
       setDisplayText('');
       setUrl('');
+      // Snapshot cursor position so we can insert at the right place.
+      if (textareaRef?.current) {
+        savedCursor.current = {
+          start: textareaRef.current.selectionStart ?? textareaRef.current.value.length,
+          end:   textareaRef.current.selectionEnd   ?? textareaRef.current.value.length,
+        };
+      }
     }
     setShowForm((prev) => !prev);
   };
@@ -41,11 +62,28 @@ const LinkInsertButton = ({ onInsert }) => {
       return;
     }
     if (!isValidUrl(url.trim())) {
-      setError('Only gridgrove.gg links or site paths starting with / are supported.');
+      setError('Only gridgrove.gg, chess.com, lichess.org links or site paths starting with / are supported.');
       return;
     }
     const label = displayText.trim() || url.trim();
-    onInsert(`[${label}](${url.trim()})`);
+    const linkText = `[${label}](${url.trim()})`;
+
+    if (textareaRef?.current && onChange) {
+      const ta = textareaRef.current;
+      const start = savedCursor.current.start ?? ta.value.length;
+      const end   = savedCursor.current.end   ?? ta.value.length;
+      const newVal = ta.value.substring(0, start) + linkText + ta.value.substring(end);
+      onChange(newVal);
+      requestAnimationFrame(() => {
+        const newPos = start + linkText.length;
+        ta.selectionStart = newPos;
+        ta.selectionEnd   = newPos;
+        ta.focus();
+      });
+    } else if (onInsert) {
+      onInsert(linkText);
+    }
+
     setShowForm(false);
     setDisplayText('');
     setUrl('');
@@ -75,7 +113,7 @@ const LinkInsertButton = ({ onInsert }) => {
       {showForm && (
         <div className={styles["link-form-dropdown"]}>
           <p className={styles["link-note"]}>
-            Only gridgrove.gg links are supported at this time.
+            Supported links: gridgrove.gg, chess.com, lichess.org, or relative site paths.
           </p>
           <label className={styles["link-label"]}>
             Display text <span className={styles["optional"]}>(optional)</span>

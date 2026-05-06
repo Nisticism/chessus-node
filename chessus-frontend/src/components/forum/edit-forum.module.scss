@@ -109,6 +109,25 @@ select.edit-forum-title-input {
   flex-wrap: wrap;
 }
 
+.content-preview {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: rgba(var(--panel-bg-start-rgb), 0.5);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 0.92rem;
+  color: var(--text-bright);
+  text-align: left;
+}
+
+.content-preview-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
 .button-row {
   display: flex;
   gap: 12px;

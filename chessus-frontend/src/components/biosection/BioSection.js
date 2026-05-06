@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import styles from "./bio-section.module.scss";
 import ValidationWarningModal from "../common/ValidationWarningModal";
 import LinkInsertButton from "../common/LinkInsertButton";
@@ -16,6 +16,7 @@ const BioSection = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(bio || "");
   const [validationWarnings, setValidationWarnings] = useState(null);
+  const bioRef = useRef(null);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -64,12 +65,13 @@ const BioSection = ({
             className={styles["bio-textarea"]}
             maxLength={BIO_MAX}
             autoFocus
+            ref={bioRef}
           />
           <div style={{ textAlign: 'right', fontSize: '0.8rem', color: editValue.length > BIO_MAX * 0.9 ? '#e74c3c' : '#999', marginTop: '4px' }}>
             {editValue.length}/{BIO_MAX}
           </div>
           <div style={{ marginTop: '6px', marginBottom: '6px' }}>
-            <LinkInsertButton onInsert={(text) => setEditValue(prev => prev + text)} />
+            <LinkInsertButton textareaRef={bioRef} onChange={setEditValue} />
           </div>
           <div className={styles["edit-actions"]}>
             <button 

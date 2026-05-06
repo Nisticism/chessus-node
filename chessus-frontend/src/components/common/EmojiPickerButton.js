@@ -2,7 +2,17 @@ import React, { useState, useRef, useEffect } from "react";
 import EmojiPicker from "emoji-picker-react";
 import styles from "./emoji-picker-button.module.scss";
 
-const EmojiPickerButton = ({ onEmojiSelect }) => {
+/**
+ * Props:
+ *   onEmojiSelect(emoji)  – legacy callback; called with the emoji char.
+ *   textareaRef           – optional React ref to the target <textarea>.
+ *   onChange(newValue)    – optional setter for controlled textareas.
+ *
+ * When textareaRef + onChange are provided the button inserts the emoji at
+ * the current cursor position and restores focus.  When only onEmojiSelect
+ * is provided the original append behaviour is kept.
+ */
+const EmojiPickerButton = ({ onEmojiSelect, textareaRef, onChange }) => {
   const [showPicker, setShowPicker] = useState(false);
   const pickerRef = useRef(null);
 
@@ -19,8 +29,23 @@ const EmojiPickerButton = ({ onEmojiSelect }) => {
   }, [showPicker]);
 
   const handleEmojiClick = (emojiData) => {
-    onEmojiSelect(emojiData.emoji);
+    const emoji = emojiData.emoji;
     setShowPicker(false);
+
+    if (textareaRef?.current && onChange) {
+      const ta = textareaRef.current;
+      const start = ta.selectionStart ?? ta.value.length;
+      const end   = ta.selectionEnd   ?? ta.value.length;
+      const newVal = ta.value.substring(0, start) + emoji + ta.value.substring(end);
+      onChange(newVal);
+      requestAnimationFrame(() => {
+        ta.selectionStart = start + emoji.length;
+        ta.selectionEnd   = start + emoji.length;
+        ta.focus();
+      });
+    } else if (onEmojiSelect) {
+      onEmojiSelect(emoji);
+    }
   };
 
   return (

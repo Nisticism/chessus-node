@@ -14,8 +14,10 @@ import { FaArrowLeft } from "react-icons/fa";
 import LikesModule from "./LikesModule";
 import EmojiPickerButton from "../common/EmojiPickerButton";
 import LinkInsertButton from "../common/LinkInsertButton";
+import BulletInsertButton, { handleBulletKeyDown } from "../common/BulletInsertButton";
 import ValidationWarningModal from "../common/ValidationWarningModal";
 import { renderContent } from "../../helpers/render-content";
+import { getErrorMessage } from "../../helpers/error-handler";
 import CommentEmoteBar from "./CommentEmoteBar";
 
 const COMMENT_MAX = 10000;
@@ -37,6 +39,11 @@ const Forum = () => {
   // both work without imperative DOM manipulation.
   const [editingCommentId, setEditingCommentId] = useState(null);
   const editingContainerRef = useRef(null);
+  const editTextareaRef = useRef(null);
+
+  // Refs for the new-comment and reply textareas (cursor-position inserts).
+  const newCommentRef = useRef(null);
+  const replyRef = useRef(null);
 
   // Track which comment the mouse is hovering over (for emote picker visibility)
   const [hoveredCommentId, setHoveredCommentId] = useState(null);
@@ -121,8 +128,9 @@ const Forum = () => {
     }
     const currentTime = getCurrentMySQLDateTime();
     console.log(newCommentText);
-    dispatch(newComment(currentUser.id, currentForum.id, newCommentText, currentTime, currentUser.username));
-    setNewCommentText("");
+    dispatch(newComment(currentUser.id, currentForum.id, newCommentText, currentTime, currentUser.username))
+      .then(() => setNewCommentText(""))
+      .catch((err) => setValidationWarnings([getErrorMessage(err)]));
   }
 
   const handleReply = (e, parentCommentId) => {
@@ -137,9 +145,9 @@ const Forum = () => {
       return;
     }
     const currentTime = getCurrentMySQLDateTime();
-    dispatch(newComment(currentUser.id, currentForum.id, replyContent, currentTime, currentUser.username, parentCommentId));
-    setReplyingTo(null);
-    setReplyContent("");
+    dispatch(newComment(currentUser.id, currentForum.id, replyContent, currentTime, currentUser.username, parentCommentId))
+      .then(() => { setReplyingTo(null); setReplyContent(""); })
+      .catch((err) => setValidationWarnings([getErrorMessage(err)]));
   }
 
   const handleEditComment = (e, elementId, id) => {
@@ -159,7 +167,8 @@ const Forum = () => {
     setCommentContent(null);
 
     const currentTime = getCurrentMySQLDateTime();
-    dispatch(editComment(id, commentContentSubmit, currentTime));
+    dispatch(editComment(id, commentContentSubmit, currentTime))
+      .catch((err) => setValidationWarnings([getErrorMessage(err)]));
   }
 
   // const getForum = (id) => {
@@ -331,25 +340,46 @@ const Forum = () => {
                       >
                         <textarea
                           id={comment.id + "edit-field"}
+                          ref={editTextareaRef}
                           onChange={onChangeCommentContent}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditComment(e, comment.id + "edit-field", comment.id); } }}
+                          onKeyDown={(e) => {
+                            const ta = e.target;
+                            if (handleBulletKeyDown(e, ta.value, (newVal) => {
+                              ta.value = newVal;
+                              onChangeCommentContent({ target: { value: newVal } });
+                            })) return;
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditComment(e, comment.id + "edit-field", comment.id); }
+                          }}
                           defaultValue={comment.content}
                           maxLength={COMMENT_MAX}
                           autoFocus
                         ></textarea>
-                        <div className={styles["submit-comment-button"]} style={{ display: 'flex', gap: '8px' }}>
-                          <LinkInsertButton onInsert={(text) => {
-                            const ta = document.getElementById(comment.id + "edit-field");
-                            if (ta) {
-                              const start = ta.selectionStart;
-                              const end = ta.selectionEnd;
-                              const val = ta.value;
-                              ta.value = val.substring(0, start) + text + val.substring(end);
-                              const ev = new Event('input', { bubbles: true });
-                              ta.dispatchEvent(ev);
-                              onChangeCommentContent({ target: { value: ta.value } });
-                            }
+                        <div className={styles["emoji-row"]}>
+                          <EmojiPickerButton textareaRef={editTextareaRef} onChange={(newVal) => {
+                            if (editTextareaRef.current) editTextareaRef.current.value = newVal;
+                            setCommentContent(newVal);
                           }} />
+                          <LinkInsertButton textareaRef={editTextareaRef} onChange={(newVal) => {
+                            if (editTextareaRef.current) editTextareaRef.current.value = newVal;
+                            setCommentContent(newVal);
+                          }} />
+                          <BulletInsertButton
+                            textareaRef={editTextareaRef}
+                            value={commentContent ?? comment.content}
+                            onChange={(newVal) => {
+                              const ta = editTextareaRef.current;
+                              if (ta) ta.value = newVal;
+                              onChangeCommentContent({ target: { value: newVal } });
+                            }}
+                          />
+                        </div>
+                        {(commentContent ?? comment.content) && /\[|\u2022/.test(commentContent ?? comment.content) && (
+                          <div className={styles["content-preview"]}>
+                            <div className={styles["content-preview-label"]}>Preview</div>
+                            {renderContent(commentContent ?? comment.content)}
+                          </div>
+                        )}
+                        <div className={styles["submit-comment-button"]} style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                           <StandardButton buttonText={"Update Comment"} onClick={(event) => handleEditComment(event, comment.id + "edit-field", comment.id)}/>
                           <StandardButton buttonText={"Cancel"} onClick={cancelCommentEdit}/>
                         </div>
@@ -359,14 +389,24 @@ const Forum = () => {
                       <div className={styles["reply-form"]}>
                         <textarea 
                           className={styles["reply-field"]} 
+                          ref={replyRef}
                           placeholder={`Reply to ${comment.author_name}...`}
                           value={replyContent}
                           onChange={(e) => setReplyContent(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(e, comment.id); } }}                            maxLength={COMMENT_MAX}                        />
+                          onKeyDown={(e) => { if (handleBulletKeyDown(e, replyContent, setReplyContent)) return; if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(e, comment.id); } }}
+                          maxLength={COMMENT_MAX}
+                        />
                         <div className={styles["emoji-row"]}>
-                          <EmojiPickerButton onEmojiSelect={(emoji) => setReplyContent(prev => prev + emoji)} />
-                          <LinkInsertButton onInsert={(text) => setReplyContent(prev => prev + text)} />
+                          <EmojiPickerButton textareaRef={replyRef} onChange={setReplyContent} />
+                          <LinkInsertButton textareaRef={replyRef} onChange={setReplyContent} />
+                          <BulletInsertButton textareaRef={replyRef} value={replyContent} onChange={setReplyContent} />
                         </div>
+                        {replyContent && /\[|\u2022/.test(replyContent) && (
+                          <div className={styles["content-preview"]}>
+                            <div className={styles["content-preview-label"]}>Preview</div>
+                            {renderContent(replyContent)}
+                          </div>
+                        )}
                         <div className={styles["reply-form-buttons"]}>
                           <StandardButton buttonText={"Reply"} onClick={(e) => handleReply(e, comment.id)}/>
                           <StandardButton buttonText={"Cancel"} onClick={() => { setReplyingTo(null); setReplyContent(""); }}/>
@@ -386,12 +426,30 @@ const Forum = () => {
             })() : "No comments so far"
           }
           <div className={styles["new-comment"]}>
-            <textarea className={styles["comment-field"]} id="comment-field" disabled={!currentUser} value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleNewComment(e); } }} maxLength={COMMENT_MAX}></textarea>
+            <textarea
+              className={styles["comment-field"]}
+              id="comment-field"
+              ref={newCommentRef}
+              disabled={!currentUser}
+              value={newCommentText}
+              onChange={(e) => setNewCommentText(e.target.value)}
+              onKeyDown={(e) => { if (handleBulletKeyDown(e, newCommentText, setNewCommentText)) return; if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleNewComment(e); } }}
+              maxLength={COMMENT_MAX}
+            />
             {currentUser && (
-              <div className={styles["emoji-row"]}>
-                <EmojiPickerButton onEmojiSelect={(emoji) => setNewCommentText(prev => prev + emoji)} />
-                <LinkInsertButton onInsert={(text) => setNewCommentText(prev => prev + text)} />
-              </div>
+              <>
+                <div className={styles["emoji-row"]}>
+                  <EmojiPickerButton textareaRef={newCommentRef} onChange={setNewCommentText} />
+                  <LinkInsertButton textareaRef={newCommentRef} onChange={setNewCommentText} />
+                  <BulletInsertButton textareaRef={newCommentRef} value={newCommentText} onChange={setNewCommentText} />
+                </div>
+                {newCommentText && /\[|\u2022/.test(newCommentText) && (
+                  <div className={styles["content-preview"]}>
+                    <div className={styles["content-preview-label"]}>Preview</div>
+                    {renderContent(newCommentText)}
+                  </div>
+                )}
+              </>
             )}
           </div>
           <div className={styles["submit-comment-button"]}>

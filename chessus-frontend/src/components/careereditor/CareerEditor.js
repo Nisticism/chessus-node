@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate, useParams, Navigate } from "react-router-dom";
 import styles from "./career-editor.module.scss";
@@ -15,6 +15,7 @@ const CareerEditor = () => {
   const [description, setDescription] = useState("");
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
+  const contentRef = useRef(null);
   const [fetchLoading, setFetchLoading] = useState(isEditMode);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
@@ -175,6 +176,7 @@ const CareerEditor = () => {
               className={styles.contentInput}
               name="content"
               value={content}
+              ref={contentRef}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Enter the full job description, responsibilities, requirements, etc."
               disabled={loading}
@@ -183,7 +185,7 @@ const CareerEditor = () => {
               Supports basic markdown: **bold**, *italic*, new lines, and [link text](url)
             </p>
             <div style={{ marginTop: '6px' }}>
-              <LinkInsertButton onInsert={(text) => setContent(prev => prev + text)} />
+              <LinkInsertButton textareaRef={contentRef} onChange={setContent} />
             </div>
           </div>
 

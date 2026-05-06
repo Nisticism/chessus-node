@@ -138,7 +138,7 @@ export const newComment = (author_id, article_id, content, created_at, author_na
       type: SET_MESSAGE,
       payload: message,
     });
-    return Promise.reject();
+    return Promise.reject(error);
   }
 }
 
@@ -159,7 +159,7 @@ export const editComment = (id, content, last_updated_at) => async (dispatch) =>
       type: SET_MESSAGE,
       payload: message,
     });
-    return Promise.reject();
+    return Promise.reject(error);
   }
 }
 

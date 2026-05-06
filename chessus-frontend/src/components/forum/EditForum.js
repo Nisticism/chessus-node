@@ -7,7 +7,9 @@ import { getForum, editForum } from "../../actions/forums";
 import { formatDateLegacy, getCurrentMySQLDateTime } from "../../helpers/date-formatter";
 import EmojiPickerButton from "../common/EmojiPickerButton";
 import LinkInsertButton from "../common/LinkInsertButton";
+import BulletInsertButton, { handleBulletKeyDown } from "../common/BulletInsertButton";
 import ValidationWarningModal from "../common/ValidationWarningModal";
+import { renderContent } from "../../helpers/render-content";
 
 const TITLE_MAX = 200;
 const CONTENT_MAX = 50000;
@@ -15,6 +17,7 @@ const CONTENT_MAX = 50000;
 const EditForum = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const form = useRef();
+  const contentRef = useRef(null);
   const [title, setTitle] = useState(null);
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -136,37 +139,38 @@ const EditForum = () => {
                   id="content-field"
                   className={styles["edit-form-control"]}
                   name="content"
+                  ref={contentRef}
                   defaultValue={currentForum ? currentForum.content : content}
                   onChange={onChangeContent}
+                  onKeyDown={(e) => {
+                    handleBulletKeyDown(e, e.target.value, (newVal) => {
+                      e.target.value = newVal;
+                      onChangeContent({ target: { value: newVal } });
+                    });
+                  }}
                   maxLength={CONTENT_MAX}
                 />
                 <div className={styles["emoji-row"]}>
-                  <EmojiPickerButton onEmojiSelect={(emoji) => {
-                    const textarea = document.querySelector(`textarea[name="content"]`);
-                    if (textarea) {
-                      const start = textarea.selectionStart;
-                      const end = textarea.selectionEnd;
-                      const val = textarea.value;
-                      textarea.value = val.substring(0, start) + emoji + val.substring(end);
-                      const event = new Event('input', { bubbles: true });
-                      textarea.dispatchEvent(event);
-                      onChangeContent({ target: { value: textarea.value } });
-                    }
+                  <EmojiPickerButton textareaRef={contentRef} onChange={(newVal) => {
+                    if (contentRef.current) contentRef.current.value = newVal;
+                    setContent(newVal);
                   }} />
-                  <LinkInsertButton onInsert={(text) => {
-                    const textarea = document.querySelector(`textarea[name="content"]`);
-                    if (textarea) {
-                      const start = textarea.selectionStart;
-                      const end = textarea.selectionEnd;
-                      const val = textarea.value;
-                      textarea.value = val.substring(0, start) + text + val.substring(end);
-                      const event = new Event('input', { bubbles: true });
-                      textarea.dispatchEvent(event);
-                      onChangeContent({ target: { value: textarea.value } });
-                    }
+                  <LinkInsertButton textareaRef={contentRef} onChange={(newVal) => {
+                    if (contentRef.current) contentRef.current.value = newVal;
+                    setContent(newVal);
+                  }} />
+                  <BulletInsertButton textareaRef={contentRef} value={liveContent} onChange={(newVal) => {
+                    if (contentRef.current) contentRef.current.value = newVal;
+                    onChangeContent({ target: { value: newVal } });
                   }} />
                   <div className={`${styles["char-counter"]} ${liveContent.length > CONTENT_MAX * 0.9 ? styles["char-counter-warn"] : ""}`}>{liveContent.length.toLocaleString()}/{CONTENT_MAX.toLocaleString()}</div>
                 </div>
+                {liveContent && /\[|\u2022/.test(liveContent) && (
+                  <div className={styles["content-preview"]}>
+                    <div className={styles["content-preview-label"]}>Preview</div>
+                    {renderContent(liveContent)}
+                  </div>
+                )}
               </div>
 
               <div className={styles["button-row"]}>
