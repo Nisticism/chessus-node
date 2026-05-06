@@ -34,16 +34,26 @@ function resolvePicture(url) {
   return url;
 }
 
+const DEFAULT_GOALS = [
+  { icon: '🏆', title: 'Global Tournaments', description: 'Expand our tournament system to support large-scale competitive events with prizes and rankings across multiple game variants.' },
+  { icon: '🤖', title: 'AI Opponents', description: 'Develop AI that can learn and play any custom game variant, giving players practice partners and solo play options.' },
+  { icon: '📱', title: 'Mobile App', description: 'Bring GridGrove to iOS and Android so players can create, share, and play on the go.' },
+  { icon: '📚', title: 'Educational Tools', description: 'Build resources for educators to use GridGrove as a teaching tool for logic, strategy, and game design.' },
+  { icon: '♟️', title: 'More Games', description: 'Add support for Shogi, Go, Duck Chess, Bughouse, Othello, and other grid-based board games.' },
+  { icon: '🌍', title: 'Community Growth', description: 'Grow the GridGrove community worldwide with events, leaderboards, and creator spotlights.' },
+];
+
 const About = () => {
   const [mission, setMission] = useState(DEFAULT_MISSION);
   const [team, setTeam] = useState([]);
+  const [goals, setGoals] = useState(DEFAULT_GOALS);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const res = await axios.get(
-          `${API_URL}site-settings?keys=about_mission_text,about_team_members`,
+          `${API_URL}site-settings?keys=about_mission_text,about_team_members,about_future_goals`,
         );
         if (!alive) return;
         const settings = res.data?.settings || {};
@@ -55,6 +65,12 @@ const About = () => {
             const parsed = JSON.parse(settings.about_team_members);
             if (Array.isArray(parsed)) setTeam(parsed.slice(0, 20));
           } catch (_) { /* ignore malformed JSON, render empty */ }
+        }
+        if (typeof settings.about_future_goals === "string") {
+          try {
+            const parsed = JSON.parse(settings.about_future_goals);
+            if (Array.isArray(parsed) && parsed.length > 0) setGoals(parsed.slice(0, 6));
+          } catch (_) { /* keep defaults */ }
         }
       } catch (_) { /* fall back to defaults */ }
     })();
@@ -130,31 +146,13 @@ const About = () => {
       <div className={styles["about-panel"]}>
         <h2>Future Goals</h2>
         <div className={styles["goals-grid"]}>
-          <div className={styles["goal-card"]}>
-            <div className={styles["goal-icon"]}>🏆</div>
-            <h3>Global Tournaments</h3>
-            <p>Expand our tournament system to support large-scale competitive events with prizes and rankings across multiple game variants.</p>
-          </div>
-          <div className={styles["goal-card"]}>
-            <div className={styles["goal-icon"]}>🤖</div>
-            <h3>AI Opponents</h3>
-            <p>Develop AI that can learn and play any custom game variant, giving players practice partners and solo play options.</p>
-          </div>
-          <div className={styles["goal-card"]}>
-            <div className={styles["goal-icon"]}>📱</div>
-            <h3>Mobile App</h3>
-            <p>Bring GridGrove to iOS and Android so players can create, share, and play on the go.</p>
-          </div>
-          <div className={styles["goal-card"]}>
-            <div className={styles["goal-icon"]}>📚</div>
-            <h3>Educational Tools</h3>
-            <p>Build resources for educators to use GridGrove as a teaching tool for logic, strategy, and game design.</p>
-          </div>
-          <div className={styles["goal-card"]}>
-            <div className={styles["goal-icon"]}>♟️</div>
-            <h3>More Games</h3>
-            <p>Add support for Shogi, Go, Duck Chess, Bughouse, Othello, and other grid-based board games.</p>
-          </div>
+          {goals.map((goal, i) => (
+            <div className={styles["goal-card"]} key={i}>
+              <div className={styles["goal-icon"]}>{goal.icon}</div>
+              <h3>{goal.title}</h3>
+              <p>{goal.description}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

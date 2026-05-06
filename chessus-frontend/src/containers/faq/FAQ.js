@@ -4,6 +4,35 @@ import styles from "./faq.module.scss";
 
 const faqData = [
   {
+    category: "About GridGrove",
+    questions: [
+      {
+        q: "What is GridGrove?",
+        a: "GridGrove is a community-driven platform where players can design, share, and play custom strategy board games. Think of it as a chess variant studio — you can create pieces with unique movement patterns, build games with custom rules, and challenge others online."
+      },
+      {
+        q: "Is GridGrove free to use?",
+        a: "Yes, GridGrove is completely free. You can create an account, design pieces and games, play matches, and participate in the community at no cost. We accept voluntary donations to help cover hosting costs, but there is no paywall or premium tier."
+      },
+      {
+        q: "Was AI used to build GridGrove?",
+        a: "Yes, AI coding tools were used as part of the development process — primarily as a programming assistant to help write, review, and refactor code. All design decisions, game logic, and creative direction were made by humans. The on-site AI training system is also a core feature, letting users train bots for their own custom games."
+      },
+      {
+        q: "What are GridGrove's long-term goals?",
+        a: "Our goals include expanding the tournament system for large-scale competitive events, building smarter AI opponents for any custom game, launching a mobile app, adding support for more board game formats like Shogi and Go, and growing a global community of strategy game designers. See the About page for more details."
+      },
+      {
+        q: "Who created GridGrove?",
+        a: "GridGrove was founded in 2025 with the goal of making chess variant design accessible to everyone. You can learn more about the team on the About page."
+      },
+      {
+        q: "Can I use piece images or games from GridGrove commercially?",
+        a: "Piece images uploaded by users are shared under community use terms — you may use them within GridGrove. For commercial or external use, check the image's original source and the uploader's intent. Game designs belong to their creators. See our Terms and Conditions for full details."
+      },
+    ]
+  },
+  {
     category: "Creating Pieces",
     questions: [
       {

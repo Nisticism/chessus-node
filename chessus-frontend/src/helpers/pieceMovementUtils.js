@@ -977,6 +977,29 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
     // Place-mode moves (Othello-style) — skip, can't fully reconstruct
     if (move.type === 'place') continue;
 
+    // Simul-turn meta records — skip entirely or handle specifically
+    if (move.type === 'cancelled' || move.type === 'ranged_noop') continue;
+
+    // Standalone simul promotion record — apply piece transformation, no positional change
+    if (move.type === 'promotion') {
+      const promotedPiece = pieces.find(p => p.id === move.pieceId);
+      if (promotedPiece) {
+        // Use embedded promoteToPiece data if present; otherwise find a
+        // template piece with matching piece_id from the current board.
+        const template = move.promoteToPiece || pieces.find(p => p.piece_id === move.promoteToPieceId);
+        if (template) {
+          if (template.piece_id != null) promotedPiece.piece_id = template.piece_id;
+          if (template.piece_name) promotedPiece.piece_name = template.piece_name;
+          if (template.image_url) {
+            promotedPiece.image_url = template.image_url;
+            promotedPiece.image = template.image_url;
+          }
+          if (template.image_location) promotedPiece.image_location = template.image_location;
+        }
+      }
+      continue;
+    }
+
     // Remove directly-captured pieces (destination kills)
     if (move.allCaptured && move.allCaptured.length > 0) {
       const capturedIds = new Set(move.allCaptured.map(c => c.id));
@@ -1006,7 +1029,7 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
 
     // Move the piece (unless move was cancelled or ranged attack)
     const movingPiece = pieces.find(p => p.id === move.pieceId);
-    if (movingPiece && !move.moveCancelled && !move.isRangedAttack) {
+    if (movingPiece && !move.moveCancelled && !move.isRangedAttack && move.type !== 'ranged') {
       movingPiece.x = move.to.x;
       movingPiece.y = move.to.y;
     }

@@ -3220,6 +3220,32 @@ app.get('/api/trainer/global-pack', authenticateToken, async (req, res) => {
        VALUES (?, NULL, 'download', ?, ?, ?)`,
       [req.user.id, platform, TRAINER_VERSION, req.ip || null],
     ).catch((e) => console.warn('[global-pack] event log failed:', e.message));
+
+    // Notify owner that a user downloaded the trainer (non-blocking)
+    dbHelpers.getOwnerUserId().then(async (ownerId) => {
+      if (ownerId && ownerId !== req.user.id) {
+        try {
+          const username = req.user.username || `User #${req.user.id}`;
+          await dbHelpers.createNotification({
+            user_id: ownerId,
+            sender_id: req.user.id,
+            type: 'system',
+            title: `Trainer downloaded: ${username}`,
+            content: `${username} downloaded the AI trainer (${platform}, v${TRAINER_VERSION}).`,
+            related_id: req.user.id,
+            action_url: `/admin?tab=ai-training`,
+          });
+          const gameSocket = require('./game-socket');
+          const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
+          if (ownerSocketId && gameSocket.getIO()) {
+            const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
+            gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `Trainer downloaded: ${username}` });
+            gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
+          }
+        } catch (err) { console.error('[global-pack] owner notification failed:', err.message); }
+      }
+    }).catch(() => {});
+
     res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
     res.setHeader('Content-Type', 'application/zip');
     res.send(zipBuf);
@@ -3403,6 +3429,38 @@ app.post(
          VALUES (?, ?, 'upload', NULL, ?, ?)`,
         [req.user.id, gameId, TRAINER_VERSION, req.ip || null],
       ).catch((e) => console.warn('[trainer-upload] event log failed:', e.message));
+
+      // Notify owner (and game creator if different) that an artifact was uploaded (non-blocking)
+      ;(async () => {
+        try {
+          const username = req.user.username || `User #${req.user.id}`;
+          const ownerId = await dbHelpers.getOwnerUserId();
+          const gameSocket = require('./game-socket');
+          const notifyUser = async (userId, title, content) => {
+            if (!userId || userId === req.user.id) return;
+            await dbHelpers.createNotification({
+              user_id: userId,
+              sender_id: req.user.id,
+              type: 'system',
+              title,
+              content,
+              related_id: gameId,
+              action_url: `/admin?tab=ai-training`,
+            });
+            const socketId = gameSocket.userSockets.get(userId.toString());
+            if (socketId && gameSocket.getIO()) {
+              const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
+              gameSocket.getIO().to(socketId).emit('newNotification', { type: 'system', title });
+              gameSocket.getIO().to(socketId).emit('unreadNotificationCount', { unreadCount });
+            }
+          };
+          await notifyUser(ownerId, `Training artifact uploaded: ${username}`, `${username} uploaded a training artifact for game #${gameId} (${kind}).`);
+          // Also notify game creator if they are not the uploader and not the owner
+          if (game.creator_id && game.creator_id !== ownerId) {
+            await notifyUser(game.creator_id, `Training artifact uploaded to your game`, `${username} uploaded a training artifact for your game #${gameId} (${kind}).`);
+          }
+        } catch (err) { console.error('[trainer-upload] notification failed:', err.message); }
+      })();
 
       res.json(result);
     } catch (err) {

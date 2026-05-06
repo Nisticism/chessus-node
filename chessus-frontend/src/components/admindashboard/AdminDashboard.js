@@ -92,10 +92,21 @@ const AdminDashboard = () => {
   // a JSON array of { username, profile_link, role, contribution,
   // picture_url } capped at 20 entries.
   const ABOUT_TEAM_MAX = 20;
+  const ABOUT_GOALS_MAX = 6;
+  const DEFAULT_ABOUT_GOALS = [
+    { icon: '🏆', title: 'Global Tournaments', description: 'Expand our tournament system to support large-scale competitive events with prizes and rankings across multiple game variants.' },
+    { icon: '🤖', title: 'AI Opponents', description: 'Develop AI that can learn and play any custom game variant, giving players practice partners and solo play options.' },
+    { icon: '📱', title: 'Mobile App', description: 'Bring GridGrove to iOS and Android so players can create, share, and play on the go.' },
+    { icon: '📚', title: 'Educational Tools', description: 'Build resources for educators to use GridGrove as a teaching tool for logic, strategy, and game design.' },
+    { icon: '♟️', title: 'More Games', description: 'Add support for Shogi, Go, Duck Chess, Bughouse, Othello, and other grid-based board games.' },
+    { icon: '🌍', title: 'Community Growth', description: 'Grow the GridGrove community worldwide with events, leaderboards, and creator spotlights.' },
+  ];
   const [aboutMissionDraft, setAboutMissionDraft] = useState('');
   const [aboutTeamDraft, setAboutTeamDraft] = useState([]);
+  const [aboutGoalsDraft, setAboutGoalsDraft] = useState(DEFAULT_ABOUT_GOALS);
   const [savingAboutMission, setSavingAboutMission] = useState(false);
   const [savingAboutTeam, setSavingAboutTeam] = useState(false);
+  const [savingAboutGoals, setSavingAboutGoals] = useState(false);
   const [aboutTeamUploadingIdx, setAboutTeamUploadingIdx] = useState(null);
 
   // Initial-state scan tool: lists game types whose starting position is
@@ -319,6 +330,12 @@ const AdminDashboard = () => {
           const parsed = JSON.parse(map.about_team_members);
           if (Array.isArray(parsed)) setAboutTeamDraft(parsed.slice(0, ABOUT_TEAM_MAX));
         } catch (_) { setAboutTeamDraft([]); }
+      }
+      if (map.about_future_goals !== undefined) {
+        try {
+          const parsed = JSON.parse(map.about_future_goals);
+          if (Array.isArray(parsed) && parsed.length > 0) setAboutGoalsDraft(parsed.slice(0, ABOUT_GOALS_MAX));
+        } catch (_) { /* keep defaults */ }
       }
     } catch (error) {
       console.error("Error fetching site settings:", error);
@@ -3761,6 +3778,84 @@ const AdminDashboard = () => {
                     }}
                   >
                     {savingAboutTeam ? 'Saving...' : 'Save Team'}
+                  </button>
+                </div>
+
+                {/* Future Goals editor */}
+                <div className={styles["settings-section"]} style={{ marginTop: '32px' }}>
+                  <h3>Future Goals</h3>
+                  <p style={{ color: 'var(--text-dim)', marginBottom: '16px', fontSize: '0.9rem' }}>
+                    Edit up to {ABOUT_GOALS_MAX} goals shown on the About page. Choose an icon from the picker or type any emoji.
+                  </p>
+                  {aboutGoalsDraft.map((goal, idx) => (
+                    <div key={idx} style={{ background: 'var(--bg-deep)', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
+                        <label style={{ color: 'var(--text-dim)', fontSize: '0.85rem', minWidth: '40px' }}>Icon</label>
+                        <select
+                          value={goal.icon}
+                          onChange={(e) => {
+                            const updated = [...aboutGoalsDraft];
+                            updated[idx] = { ...updated[idx], icon: e.target.value };
+                            setAboutGoalsDraft(updated);
+                          }}
+                          style={{ padding: '4px 8px', borderRadius: '4px', background: 'var(--panel-bg)', color: 'var(--text-primary)', border: '1px solid var(--panel-border)', fontSize: '1.1rem' }}
+                        >
+                          {['🏆','🤖','📱','📚','♟️','🌍','🎮','⚡','🏅','🎯','🔬','🤝','🏗️','💻','🧩','🌐'].map(em => (
+                            <option key={em} value={em}>{em}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={goal.icon}
+                          maxLength={4}
+                          placeholder="or type emoji"
+                          onChange={(e) => {
+                            const updated = [...aboutGoalsDraft];
+                            updated[idx] = { ...updated[idx], icon: e.target.value };
+                            setAboutGoalsDraft(updated);
+                          }}
+                          style={{ width: '80px', padding: '4px 8px', borderRadius: '4px', background: 'var(--panel-bg)', color: 'var(--text-primary)', border: '1px solid var(--panel-border)' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <input
+                          type="text"
+                          value={goal.title}
+                          maxLength={60}
+                          placeholder="Goal title"
+                          onChange={(e) => {
+                            const updated = [...aboutGoalsDraft];
+                            updated[idx] = { ...updated[idx], title: e.target.value };
+                            setAboutGoalsDraft(updated);
+                          }}
+                          style={{ padding: '6px 10px', borderRadius: '4px', background: 'var(--panel-bg)', color: 'var(--text-primary)', border: '1px solid var(--panel-border)', fontWeight: '600' }}
+                        />
+                        <textarea
+                          value={goal.description}
+                          maxLength={300}
+                          placeholder="Goal description"
+                          rows={3}
+                          onChange={(e) => {
+                            const updated = [...aboutGoalsDraft];
+                            updated[idx] = { ...updated[idx], description: e.target.value };
+                            setAboutGoalsDraft(updated);
+                          }}
+                          style={{ padding: '6px 10px', borderRadius: '4px', background: 'var(--panel-bg)', color: 'var(--text-primary)', border: '1px solid var(--panel-border)', resize: 'vertical' }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className={styles["setting-save-button"]}
+                    disabled={savingAboutGoals}
+                    onClick={async () => {
+                      setSavingAboutGoals(true);
+                      await updateSiteSetting('about_future_goals', JSON.stringify(aboutGoalsDraft));
+                      setSavingAboutGoals(false);
+                    }}
+                  >
+                    {savingAboutGoals ? 'Saving...' : 'Save Goals'}
                   </button>
                 </div>
               </div>

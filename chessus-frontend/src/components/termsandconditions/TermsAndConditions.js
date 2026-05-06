@@ -200,7 +200,33 @@ const TermsAndConditions = () => {
         </section>
 
         <section className={styles.section}>
-          <h2>9. Enforcement and Moderation</h2>
+          <h2>9. Piece Images and Community Use</h2>
+          <p>
+            GridGrove allows users to upload images for use as custom piece artwork. By uploading an
+            image to the Platform, you acknowledge and agree to the following:
+          </p>
+          <ul>
+            <li>
+              Uploaded piece images are made available to the GridGrove community. Other users may
+              use your uploaded images when creating their own piece designs on the Platform.
+            </li>
+            <li>
+              <strong>You confirm that any image you upload is legally free to use</strong> — meaning
+              you own it, it is in the public domain, or it is licensed under terms that permit
+              redistribution and use by others (such as Creative Commons licenses). Do not upload
+              images that are subject to copyright restrictions, licensed for personal use only, or
+              otherwise encumbered by third-party rights.
+            </li>
+            <li>
+              GridGrove is not responsible for images uploaded in violation of third-party rights.
+              If you believe an uploaded image infringes your copyright, please contact us through the{" "}
+              <a href="/contact" className={styles.link}>Contact</a> page.
+            </li>
+          </ul>
+        </section>
+
+        <section className={styles.section}>
+          <h2>10. Enforcement and Moderation</h2>
           <p>
             GridGrove reserves the right to remove content, issue warnings, suspend, or permanently
             ban any account that violates these Terms and Conditions. The severity of enforcement
@@ -214,7 +240,7 @@ const TermsAndConditions = () => {
         </section>
 
         <section className={styles.section}>
-          <h2>10. Changes to These Terms</h2>
+          <h2>11. Changes to These Terms</h2>
           <p>
             GridGrove may update these Terms and Conditions from time to time. When we do, we will
             update the "Last Updated" date at the top of this page. Continued use of the Platform
@@ -223,7 +249,7 @@ const TermsAndConditions = () => {
         </section>
 
         <section className={styles.section}>
-          <h2>11. Limitation of Liability</h2>
+          <h2>12. Limitation of Liability</h2>
           <p>
             GridGrove is provided "as is" without warranties of any kind. We are not liable for
             damages arising from your use of the Platform, including but not limited to loss of data,
@@ -232,7 +258,7 @@ const TermsAndConditions = () => {
         </section>
 
         <section className={styles.section}>
-          <h2>12. Contact</h2>
+          <h2>13. Contact</h2>
           <p>
             If you have questions about these Terms and Conditions or wish to report a violation,
             please use the <a href="/contact" className={styles.link}>Contact</a> page.

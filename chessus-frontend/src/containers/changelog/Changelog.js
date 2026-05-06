@@ -5,7 +5,7 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 6, 2026",
-    title: "Chat fix, match history fix, piece wizard limits, training warnings, starting positions display, points system fixes, UI improvements",
+    title: "Chat fix, match history fix, piece wizard limits, training warnings, starting positions display, points system fixes, UI improvements, FAQ, Terms, Privacy, forum styling, admin future goals editor, notifications",
     items: [
       "Fixed: in-game chat messages from the sender could fail to appear until the page was refreshed if the socket connection had been re-established.",
       "Fixed: match history replay for games with randomized starting positions was showing incorrect boards because the template position was saved instead of the actual randomized position.",
@@ -25,6 +25,14 @@ const changelogData = [
       "Fixed: after uploading a .stratbook, the Generated Analysis for that job showed incorrect game length (0\u20130 moves) and incorrect draw type breakdown. Game stats are now parsed from the stratbook's embedded game log for accurate per-game move counts and end reasons.",
       "Fixed: the 'Board Replay' button in the admin AI Training panel was always disabled for uploaded stratbook jobs on servers using a remote trainer. The upload's game log availability is now stored in the database and used correctly regardless of where the trainer runs.",
       "Correspondence games: the 'Confirm your move?' component is now centered below the board and capped to the board's width, rather than stretching across the full page.",
+      "The owner now receives an in-app notification when a user downloads the AI trainer or uploads a training artifact.",
+      "Fixed: on mobile, the admin dashboard could cut off content in some tabs because of an overflow setting. Wide content now scrolls horizontally as expected.",
+      "Fixed: in match history replay, certain simul-mode move types (ranged attacks, cancellations, standalone promotions) were not handled correctly, causing the replay board to show wrong piece positions or miss piece transformations.",
+      "Forum reply cards no longer have a left accent border or outer border; the reply indent is now tighter for a cleaner look.",
+      "The 'Future Goals' section on the About page is now editable by the site owner via the admin Settings tab, including custom icons and descriptions. A sixth goal card has been added.",
+      "Terms and Conditions: added a dedicated section explaining that piece images uploaded to GridGrove are shared with the community, and that users must confirm uploaded images are legally free to use.",
+      "Privacy Policy: added a note clarifying that piece images uploaded by users are stored and made available to all GridGrove users.",
+      "FAQ: added a new 'About GridGrove' category with answers about the site's purpose, free status, AI usage in development, long-term goals, and more.",
     ],
   },
   {

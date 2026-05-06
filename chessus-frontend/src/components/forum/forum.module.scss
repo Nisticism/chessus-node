@@ -293,21 +293,17 @@
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 15px;
-  border: 1px solid var(--panel-border);
-  border-left: 3px solid var(--accent-primary);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   
   &:hover {
-    border-color: var(--accent-primary-text);
     box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.15);
   }
 }
 
 .replies {
-  margin-top: 15px;
-  margin-left: 20px;
+  margin-top: 5px;
+  margin-left: 10px;
   padding-left: 15px;
-  border-left: 2px solid var(--panel-border);
 }
 
 .comment-reply-button {

@@ -39,6 +39,12 @@ const PrivacyPolicy = () => {
             Your username, public profile information, game creations, and forum posts are visible to other users.
           </p>
           <p>
+            <strong>Piece images you upload are shared with the community.</strong> When you upload an
+            image for use as a piece, that image is stored on our servers and made available to all
+            GridGrove users for their own piece designs. Do not upload images you do not have the right
+            to share publicly.
+          </p>
+          <p>
             <strong>We will never sell your personal information.</strong> We do not sell, trade, or otherwise 
             transfer your personal data to third parties for marketing or any other purpose. We may share 
             information only when required by law or to protect the rights and safety of GridGrove and its users.
