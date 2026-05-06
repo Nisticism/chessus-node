@@ -1033,6 +1033,7 @@ const LiveGame = () => {
         clearOptimisticMoveSnapshot();
         setGameState(state);
         setLoading(false);
+        if (state.playerScores) setPlayerScores(state.playerScores);
       }
     });
 
@@ -4247,6 +4248,11 @@ const LiveGame = () => {
 
     const squares = [];
 
+    // Whether this game has any points-based win or draw condition (controls points-square overlay visibility)
+    const hasPointsCondition = gameState.gameType?.points_to_win != null ||
+      gameState.gameType?.draw_equal_points_at_turn != null ||
+      gameState.gameType?.draw_equal_points_consecutive != null;
+
     // Pre-compute attack radius splash squares for the hovered piece
     const attackRadiusSplashSquares = new Set();
     if (hoveredPiece && (hoveredPiece.attack_radius || 0) > 0 && hoveredMoves.length > 0) {
@@ -4364,6 +4370,10 @@ const LiveGame = () => {
           && canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, gameY, gameX, rangedSelectedPiece, rangedSelectedPiece.player_id || rangedSelectedPiece.team);
         const isRangedSelectedSource = rangedSelectedPiece && rangedSelectedPiece.x === gameX && rangedSelectedPiece.y === gameY;
 
+        // Points-square overlay: always show for custom squares with control points when a points condition is active
+        const squareCfgForPoints = specialSquares.special[`${gameY},${gameX}`];
+        const squareControlPoints = hasPointsCondition ? (squareCfgForPoints?.controlPoints || 0) : 0;
+
         squares.push(
           <div
             key={`${displayX}-${displayY}`}
@@ -4441,6 +4451,14 @@ const LiveGame = () => {
                   );
                 })()}
               </div>
+            )}
+            {/* Points-square background tint: always visible when square awards control points and game has points condition */}
+            {squareControlPoints > 0 && (
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 2,
+                backgroundColor: 'rgba(100, 180, 255, 0.18)',
+                pointerEvents: 'none'
+              }} />
             )}
             {isAnchor && (() => {
               const pieceTeam = piece.player_id || piece.team;
@@ -4567,6 +4585,19 @@ const LiveGame = () => {
             {damageAnimations.filter(a => a.x === gameX && a.y === gameY).map(anim => (
               <div key={anim.id} className={styles["damage-float"]} style={{ fontSize: `${Math.max(12, squareSize * 0.3)}px`, left: '35%' }}>-{anim.damage}</div>
             ))}
+            {/* Points-square value label: displayed above pieces with 65% opacity */}
+            {squareControlPoints > 0 && (
+              <div style={{
+                position: 'absolute', top: 2, right: 3, zIndex: 8,
+                opacity: 0.65, pointerEvents: 'none',
+                fontSize: `${Math.max(8, Math.round(squareSize * 0.22))}px`,
+                fontWeight: 'bold', color: '#1a6fb5',
+                textShadow: '0 0 3px rgba(255,255,255,0.9)',
+                lineHeight: 1
+              }}>
+                {squareControlPoints}
+              </div>
+            )}
             {/* HP/AD: Floating regen numbers */}
             {regenAnimations.filter(a => a.x === gameX && a.y === gameY).map(anim => (
               <div key={anim.id} className={styles["regen-float"]} style={{ fontSize: `${Math.max(12, squareSize * 0.3)}px`, left: '65%' }}>+{anim.healed}</div>
@@ -5351,12 +5382,6 @@ const LiveGame = () => {
               </div>
             )}
             
-            {ghostMoveIndex !== null && (
-              <div className={styles["ghost-banner"]}>
-                <span>Reviewing move {ghostMoveIndex + 1} of {gameState.moveHistory.length}</span>
-                <button onClick={() => setGhostMoveIndex(null)}>✕ Exit Review</button>
-              </div>
-            )}
             <div className={styles["game-board-wrapper"]}>
               {renderBoard()}
             </div>
@@ -5406,12 +5431,20 @@ const LiveGame = () => {
                 )}
               </div>
               {initialPiecesRef.current && gameState.moveHistory && gameState.moveHistory.length > 0 && (
-                <div className={styles["move-nav-arrows"]}>
+                <>
+                  {ghostMoveIndex !== null && (
+                    <div className={styles["ghost-banner"]}>
+                      <span>Reviewing move {ghostMoveIndex + 1} of {gameState.moveHistory.length}</span>
+                      <button onClick={() => setGhostMoveIndex(null)}>&#x2715; Exit Review</button>
+                    </div>
+                  )}
+                  <div className={styles["move-nav-arrows"]}>
                   <button onClick={() => setGhostMoveIndex(0)} disabled={ghostMoveIndex === 0} title="First move">⏮</button>
                   <button onClick={() => setGhostMoveIndex(prev => prev === null ? (gameState.moveHistory.length - 1) : Math.max(0, prev - 1))} disabled={ghostMoveIndex === 0} title="Previous move">◀</button>
                   <button onClick={() => setGhostMoveIndex(prev => prev === null ? 0 : (prev >= gameState.moveHistory.length - 1 ? null : prev + 1))} disabled={ghostMoveIndex === null || ghostMoveIndex >= gameState.moveHistory.length - 1} title="Next move">▶</button>
                   <button onClick={() => setGhostMoveIndex(null)} disabled={ghostMoveIndex === null} title="Live board">⏭</button>
                 </div>
+                </>
               )}
             </div>
 
@@ -5525,8 +5558,9 @@ const LiveGame = () => {
             )}
             </>)}
 
-            {/* Turn Confirmation — hidden in simul-stage mode since the Submit button serves this role */}
-            {pendingMove && !(gameState?.gameType?.simultaneous_turns && gameState?.gameType?.simul_turns_submit_mode === 'stage') && (
+            {/* Turn Confirmation — hidden in simul-stage mode since the Submit button serves this role.
+                Also hidden for correspondence games — it's shown directly below the board instead. */}
+            {pendingMove && !(gameState?.gameType?.simultaneous_turns && gameState?.gameType?.simul_turns_submit_mode === 'stage') && !(gameState?.isCorrespondence && !gameState?.timeControl) && (
               <div className={styles["move-confirm-section"]}>
                 <span className={styles["move-confirm-label"]}>Confirm your move?</span>
                 <div className={styles["move-confirm-buttons"]}>
@@ -5564,9 +5598,13 @@ const LiveGame = () => {
         </div>
       </div>
 
-      {/* Mobile Turn Confirmation - directly below board on small screens */}
+      {/* Turn Confirmation - below board. Always visible on all screen sizes for correspondence games;
+          on smaller screens for all other game types (hidden via CSS on large screens). */}
       {pendingMove && (
-        <div className={styles["layout-row-move-confirm"]}>
+        <div
+          className={styles["layout-row-move-confirm"]}
+          style={(gameState?.isCorrespondence && !gameState?.timeControl) ? { display: 'flex' } : undefined}
+        >
           <span className={styles["move-confirm-label"]}>Confirm your move?</span>
           <div className={styles["move-confirm-buttons"]}>
             <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>

@@ -4,6 +4,26 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 6, 2026",
+    title: "Chat fix, match history fix, piece wizard limits, training warnings, starting positions display, points system fixes, UI improvements",
+    items: [
+      "Fixed: in-game chat messages from the sender could fail to appear until the page was refreshed if the socket connection had been re-established.",
+      "Fixed: match history replay for games with randomized starting positions was showing incorrect boards because the template position was saved instead of the actual randomized position.",
+      "Community Pieces browser now excludes piece images that were originally sourced from the built-in piece library.",
+      "Piece wizard: directional movements (Step 2) and directional captures (Step 3) now allow a maximum of 2 alternate movements per direction.",
+      "All game detail pages now show an 'Allowed Starting Position Modes' entry, including fixed-position games which now read 'Fixed Starting Positions (default)'.",
+      "A warning is shown on the Train Locally section of game detail pages and in the admin AI Training panel when the selected game uses a non-fixed default starting position, since book data from randomized seeds may not transfer between seeds.",
+      "Fixed: in points-based win condition games, the AI bot was not receiving capture points. Both human and AI players now correctly gain/lose points on capture.",
+      "Fixed: games using only draw-by-equal-points conditions (without a points-to-win threshold) also now correctly track capture scores for all players.",
+      "Fixed: returning to a correspondence game mid-turn now correctly shows both players' accumulated scores instead of resetting to zero.",
+      "Custom squares that award control points now always appear with a light blue tint and their point value (in the upper-right corner) on the board in live games, when the game has a points-based win or draw condition. This overlay is visible beneath pieces and shows the value above pieces at reduced opacity.",
+      "The 'Confirm Move' button for correspondence games now always appears directly below the board on all screen sizes, instead of only on small screens.",
+      "The 'Reviewing move N of N' board replay indicator has been moved into the Move History panel. The board no longer shifts when entering or exiting move review.",
+      "Admin AI Training: the 'Upload pre-trained artifacts' section now accepts .strat files in addition to .jsonl and .zip files.",
+      "Fixed: uploading a .stratbook file via the 'Train AI Locally' section on a game detail page was being rejected by the trainer service. Stratbook uploads now work correctly.",
+    ],
+  },
+  {
     date: "May 5, 2026",
     title: "Text editor overhaul, dies-on-capture fixes, stratbook trainer format, link validation fixes",
     items: [

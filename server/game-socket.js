@@ -2991,7 +2991,11 @@ function initializeSocket(server) {
           hostUsername,
           players: [{ id: hostId, username: hostUsername, position: null }],
           pieces: piecesArray,
-          initialPieces: JSON.parse(JSON.stringify(piecesArray)),
+          // For randomized games, initialPieces will be set after randomization runs
+          // on game start. For fixed-position games set it now from the template.
+          initialPieces: (startingMode && startingMode !== 'none')
+            ? null
+            : JSON.parse(JSON.stringify(piecesArray)),
           currentTurn: 1,
           moveHistory: [],
           movesWithoutCapture: 0, // Track for draw by move limit
@@ -3063,6 +3067,8 @@ function initializeSocket(server) {
                   reason: 'The randomized starting position would have decided the game immediately. Re-rolling…',
                 });
               }
+              // Snapshot the randomized position so match history replay is correct.
+              gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
               await db_pool.query(
                 "UPDATE games SET pieces = ? WHERE id = ?",
                 [JSON.stringify(gameState.pieces), gameId]
@@ -3920,6 +3926,8 @@ function initializeSocket(server) {
               reason: 'The randomized starting position would have decided the game immediately. Re-rolling…',
             });
           }
+          // Snapshot the randomized position so match history replay is correct.
+          gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
         }
 
         gameState.status = 'ready';
@@ -4345,6 +4353,8 @@ function initializeSocket(server) {
               reason: 'The randomized starting position would have decided the game immediately. Re-rolling…',
             });
           }
+          // Snapshot the randomized position so match history replay is correct.
+          gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
 
           // Update the database with randomized pieces
           await db_pool.query(
@@ -4853,8 +4863,10 @@ function initializeSocket(server) {
           gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
         }
 
-        // Apply capture-based point changes (for Points win condition)
-        if (moveResult.captured && gameState.gameType?.points_to_win != null) {
+        // Apply capture-based point changes (for Points win condition and equal-points draw)
+        if (moveResult.captured && (gameState.gameType?.points_to_win != null ||
+            gameState.gameType?.draw_equal_points_at_turn != null ||
+            gameState.gameType?.draw_equal_points_consecutive != null)) {
           const capturedPieces = moveResult.allCaptured || (moveResult.captured ? [moveResult.captured] : []);
           for (const cap of capturedPieces) {
             const gain = cap.capture_points_gain || 0;
@@ -5308,7 +5320,9 @@ function initializeSocket(server) {
             }
 
             // Apply capture-based point changes (for Points win condition)
-            if (premoveResult.captured && gameState.gameType?.points_to_win != null) {
+            if (premoveResult.captured && (gameState.gameType?.points_to_win != null ||
+                gameState.gameType?.draw_equal_points_at_turn != null ||
+                gameState.gameType?.draw_equal_points_consecutive != null)) {
               const capturedPieces = premoveResult.allCaptured || (premoveResult.captured ? [premoveResult.captured] : []);
               const premoveMoverPos = gameState.players.find(p => p.id === premove.move.playerId)?.position;
               for (const cap of capturedPieces) {
@@ -6636,7 +6650,7 @@ function initializeSocket(server) {
               actionsThisTurn: gameState.actionsThisTurn || 0,
               actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
               ...(gameState.isCorrespondence ? { moveDeadline: gameState.moveDeadline } : {}),
-              ...(gameState.gameType?.points_to_win != null ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {})
+              ...((gameState.gameType?.points_to_win != null || gameState.gameType?.draw_equal_points_at_turn != null || gameState.gameType?.draw_equal_points_consecutive != null) ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {})
             },
             ...(moveClockMultipliers && Object.keys(moveClockMultipliers).length > 0 ? { clockMultipliers: moveClockMultipliers } : { clockMultipliers: {} }),
             ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
@@ -7354,7 +7368,12 @@ function initializeSocket(server) {
             clearDisconnectForfeitTimer(String(gameId), sameSocketAnonId, { broadcast: true, io, reason: 'reconnected' });
           }
         }
-        socket.emit("gameState", gameState);
+        const hasPointsCond = gameState.gameType?.points_to_win != null ||
+          gameState.gameType?.draw_equal_points_at_turn != null ||
+          gameState.gameType?.draw_equal_points_consecutive != null;
+        socket.emit("gameState", hasPointsCond
+          ? Object.assign({}, gameState, { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } })
+          : gameState);
         // Restore the simul-turns ready state for the reconnecting player.
         // simulReadyPlayers is an in-memory Set that doesn't serialize — emit
         // a simulReadyUpdate so the client knows who has already clicked Ready.
@@ -7849,7 +7868,12 @@ function initializeSocket(server) {
               }
             }
           }
-          socket.emit("gameState", gameState);
+          const hasPointsCondDb = gameState.gameType?.points_to_win != null ||
+            gameState.gameType?.draw_equal_points_at_turn != null ||
+            gameState.gameType?.draw_equal_points_consecutive != null;
+          socket.emit("gameState", hasPointsCondDb
+            ? Object.assign({}, gameState, { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } })
+            : gameState);
           // Restore simul-turns ready state for reconnecting player (DB path).
           if (isSimulTurns(gameState) && gameState.status === 'ready' && gameState.simulReadyPlayers?.size > 0) {
             socket.emit('simulReadyUpdate', {
@@ -8172,9 +8196,15 @@ function initializeSocket(server) {
         } else {
           // Send only to player sockets
           for (const p of gameState.players) {
-            const pSocketId = userSockets.get(p.id?.toString?.() || p.id);
-            if (pSocketId) {
-              io.to(pSocketId).emit("gameChatMessage", chatMessage);
+            if (p.id === socket.userId) {
+              // For the sender, use the current socket directly so the message
+              // always arrives even if userSockets has a stale entry.
+              socket.emit("gameChatMessage", chatMessage);
+            } else {
+              const pSocketId = userSockets.get(p.id?.toString?.() || p.id);
+              if (pSocketId) {
+                io.to(pSocketId).emit("gameChatMessage", chatMessage);
+              }
             }
           }
         }
@@ -14011,6 +14041,26 @@ async function processBotTurn(io, gameId, gameState) {
         gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
       }
 
+      // 3b. Apply capture-based point changes (for Points win condition and equal-points draw).
+      // Must run BEFORE the points win-condition check below.
+      if (moveResult.captured && (gameState.gameType?.points_to_win != null ||
+          gameState.gameType?.draw_equal_points_at_turn != null ||
+          gameState.gameType?.draw_equal_points_consecutive != null)) {
+        const capturedPieces = moveResult.allCaptured || (moveResult.captured ? [moveResult.captured] : []);
+        const capturerPos = botPlayer.position;
+        for (const cap of capturedPieces) {
+          const gain = cap.capture_points_gain || 0;
+          const loss = cap.capture_points_loss || 0;
+          const ownerPos = cap.player_id || cap.player_number;
+          if (gain > 0 && (capturerPos === 1 || capturerPos === 2)) {
+            gameState.captureScores[capturerPos] = (gameState.captureScores[capturerPos] || 0) + gain;
+          }
+          if (loss > 0 && (ownerPos === 1 || ownerPos === 2)) {
+            gameState.captureScores[ownerPos] = Math.max(0, (gameState.captureScores[ownerPos] || 0) - loss);
+          }
+        }
+      }
+
       // 4. Handle promotion (auto-select best option)
       // Win on promotion: if enabled, reaching a promotion square instantly wins for the bot (even with no valid promotion pieces)
       if (moveResult.promotionEligible && gameState.gameType?.promotion_condition) {
@@ -14112,6 +14162,23 @@ async function processBotTurn(io, gameId, gameState) {
       for (const killed of burnKilledPieces) {
         const idx = gameState.pieces.findIndex(p => p.id === killed.id);
         if (idx !== -1) gameState.pieces.splice(idx, 1);
+        // Award points for burn kills if a points-based condition is active.
+        // The attacker who applied the burn was the player who moved last, i.e.
+        // the player whose turn just ended (not the one about to start).
+        if (gameState.gameType?.points_to_win != null ||
+            gameState.gameType?.draw_equal_points_at_turn != null ||
+            gameState.gameType?.draw_equal_points_consecutive != null) {
+          const capturerPos = newTurnPlayer === 1 ? 2 : 1; // burn triggers on next turn start
+          const gain = killed.capture_points_gain || 0;
+          const loss = killed.capture_points_loss || 0;
+          const ownerPos = killed.player_id || killed.player_number;
+          if (gain > 0 && (capturerPos === 1 || capturerPos === 2)) {
+            gameState.captureScores[capturerPos] = (gameState.captureScores[capturerPos] || 0) + gain;
+          }
+          if (loss > 0 && (ownerPos === 1 || ownerPos === 2)) {
+            gameState.captureScores[ownerPos] = Math.max(0, (gameState.captureScores[ownerPos] || 0) - loss);
+          }
+        }
       }
       }
 
@@ -14318,7 +14385,7 @@ async function processBotTurn(io, gameId, gameState) {
           controlSquareTracking: gameState.controlSquareTracking,
           actionsThisTurn: gameState.actionsThisTurn || 0,
           actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
-          ...(gameState.gameType?.points_to_win != null ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {})
+          ...(gameState.gameType?.points_to_win != null || gameState.gameType?.draw_equal_points_at_turn != null || gameState.gameType?.draw_equal_points_consecutive != null ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {})
         },
         ...(botMoveClockMultipliers && Object.keys(botMoveClockMultipliers).length > 0 ? { clockMultipliers: botMoveClockMultipliers } : { clockMultipliers: {} }),
         ...(regenPieces.length > 0 ? { regenPieces } : {}),

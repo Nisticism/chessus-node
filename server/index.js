@@ -2110,6 +2110,11 @@ app.get("/api/pieces/community-images", async (req, res) => {
       "p.image_location IS NOT NULL",
       "p.image_location != '[]'",
       "(p.name_review_status IS NULL OR p.name_review_status != 'pending_review')",
+      // Exclude pieces whose first image came from the built-in library.
+      // image_sources_json is NULL for pieces created before this column was added
+      // (backward-compatible: those pieces remain visible). When the column is set
+      // and the first source is 'library', the piece is excluded.
+      "(p.image_sources_json IS NULL OR JSON_UNQUOTE(JSON_EXTRACT(p.image_sources_json, '$[0]')) != 'library')",
     ];
     const params = [];
 
@@ -7425,8 +7430,9 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         can_capture_allies, cannot_be_captured, max_chain_hops,
         custom_movement_squares, custom_attack_squares,
         must_move_if_able, must_move_uses_action,
+        image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -7595,6 +7601,8 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       // Must-move-if-able (e.g., Duck Chess)
       parseBooleanField(pieceData.must_move_if_able),
       parseBooleanField(pieceData.must_move_uses_action),
+      // Image sources (library|community|upload per image slot)
+      imageSources.length > 0 ? JSON.stringify(imageSources) : null,
       // Created at
       new Date().toISOString().slice(0, 19).replace('T', ' ')
     ];
@@ -7985,7 +7993,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         custom_movement_squares = ?,
         custom_attack_squares = ?,
         must_move_if_able = ?,
-        must_move_uses_action = ?
+        must_move_uses_action = ?,
+        image_sources_json = ?
       WHERE id = ?
     `;
 
@@ -8152,6 +8161,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       // Must-move-if-able
       parseBooleanField(pieceData.must_move_if_able),
       parseBooleanField(pieceData.must_move_uses_action),
+      // Image sources (library|community|upload per image slot)
+      imageSources.length > 0 ? JSON.stringify(imageSources) : null,
       pieceId
     ];
 
@@ -9797,10 +9808,11 @@ app.post(
       if (!kind) {
         if (lower.endsWith('.jsonl')) kind = 'jsonl';
         else if (lower.endsWith('.zip')) kind = 'zip';
+        else if (lower.endsWith('.strat') || lower.endsWith('.stratbook')) kind = 'stratbook';
       }
-      if (kind !== 'jsonl' && kind !== 'zip') {
+      if (kind !== 'jsonl' && kind !== 'zip' && kind !== 'stratbook') {
         return res.status(400).send({
-          message: 'Could not determine upload kind. Use a .jsonl or .zip file.',
+          message: 'Could not determine upload kind. Use a .jsonl, .zip, or .strat file.',
         });
       }
       const userId = req.user?.id || null;

@@ -545,8 +545,8 @@ app.post('/trainer/upload', async (req, res) => {
     if (!Number.isFinite(gameTypeId)) {
       return res.status(400).json({ message: 'Missing or invalid gameTypeId query param' });
     }
-    if (kind !== 'jsonl' && kind !== 'zip') {
-      return res.status(400).json({ message: 'kind must be "jsonl" or "zip"' });
+    if (kind !== 'jsonl' && kind !== 'zip' && kind !== 'stratbook') {
+      return res.status(400).json({ message: 'kind must be "jsonl", "zip", or "stratbook"' });
     }
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       return res.status(400).json({ message: 'Empty upload body' });

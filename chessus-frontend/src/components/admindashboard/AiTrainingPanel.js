@@ -735,6 +735,30 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
               ))}
             </select>
           </label>
+          {/* Warn when the selected game has a non-fixed default starting position */}
+          {form.gameTypeId && (() => {
+            const selected = gameTypes.find((g) => String(g.id) === String(form.gameTypeId));
+            if (!selected) return null;
+            const defaultMode = selected.default_starting_mode;
+            if (!defaultMode || defaultMode === 'none') return null;
+            return (
+              <div style={{
+                background: 'rgba(200,100,0,0.15)',
+                border: '1px solid rgba(220,140,30,0.5)',
+                borderRadius: 5,
+                padding: '8px 12px',
+                fontSize: '0.85em',
+                color: '#f0c060',
+                lineHeight: 1.55,
+                marginTop: 4,
+              }}>
+                <strong>Warning:</strong> This game type uses a non-fixed default starting position
+                ({defaultMode}). Book data from one random seed may be useless for another, making
+                self-play training largely ineffective. Use <strong>Fixed Positions</strong> mode in
+                the trainer config for meaningful results.
+              </div>
+            );
+          })()}
           <label>
             Self-play games
             <input
@@ -865,11 +889,11 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
             </select>
           </label>
           <label>
-            Artifact file (.jsonl or .zip)
+            Artifact file (.jsonl, .zip, or .strat)
             <input
               ref={uploadInputRef}
               type="file"
-              accept=".jsonl,.zip,application/zip,application/x-zip-compressed"
+              accept=".jsonl,.zip,.strat,.stratbook,application/zip,application/x-zip-compressed"
               onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
             />
           </label>
