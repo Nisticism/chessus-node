@@ -230,6 +230,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
         // consecutive skips means BOTH sides are stuck — break out as a
         // non-decisive draw to avoid an infinite loop.
         let mut consecutive_skips: u32 = 0;
+        let mut game_interrupted = false;
         let (result, end_reason) = if rules.game.simultaneous_turns {
             // Simul-turns games run in their own loop. Opening-book and
             // repetition tracking are owned by the simul module since
@@ -322,6 +323,12 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
                     other => (rr, other),
                 };
                 break (rr_final, reason);
+            }
+            // Check for early exit before the (potentially expensive) MCTS call.
+            // This limits the Ctrl+C wait to at most one MCTS iteration.
+            if interrupted.load(Ordering::SeqCst) {
+                game_interrupted = true;
+                break (GameResult::Draw, crate::protocol::EndReason::MoveCapRollout);
             }
             let mv = match mcts.choose(&mut rng, &board, &rules) {
                 Some(m) => m,
@@ -563,6 +570,12 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             GameResult::Win(p) => Some(p),
             GameResult::Draw | GameResult::Value(_) => None,
         };
+        // If interrupted mid-game, discard the partial game and save immediately.
+        // Do this BEFORE write_pending so the incomplete game is not committed.
+        if game_interrupted {
+            println!("\nTraining interrupted — saving progress to output.stratbook...");
+            break;
+        }
         // Persist the per-move book records for this game now that we
         // know the winner. Failures are non-fatal — book is optional.
         if let Err(e) = write_pending(&args.out, &book_buffer, winner) {
@@ -600,8 +613,8 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             _ => tally_draws += 1,
         }
         *reason_counts.entry(reason_label.to_string()).or_insert(0) += 1;
-        // Graceful early exit: if Ctrl+C was pressed, break here so the
-        // end-of-run block below writes output.stratbook with partial data.
+        // Graceful early exit for simul-turns games (where game_interrupted
+        // is not set mid-game): check after the game completes.
         if interrupted.load(Ordering::SeqCst) {
             println!("\nTraining interrupted — saving progress to output.stratbook...");
             break;
@@ -759,8 +772,16 @@ fn write_job_summary(
 }
 
 /// Produce a combined `.stratbook` file in the output directory.
-/// Format: all lines from book.jsonl followed by the job_summary JSON line.
-/// The final line has `"type":"job_summary"` so parsers can detect it.
+///
+/// Format (each section is optional but order is fixed):
+///   1. book.jsonl lines  — one JSON record per line
+///   2. `{"type":"job_summary", ...}` — aggregate training stats
+///   3. `{"type":"games_log_start"}` — present only when games.txt exists
+///      <verbatim games.txt content>
+///   4. `{"type":"games_log_end"}`
+///
+/// The games_log section lets admins replay individual training games from an
+/// uploaded .stratbook without needing access to the original training machine.
 fn write_stratbook(out_dir: &std::path::Path) -> Result<()> {
     let book_path = out_dir.join("book.jsonl");
     let summary_path = out_dir.join("job_summary.json");
@@ -784,6 +805,19 @@ fn write_stratbook(out_dir: &std::path::Path) -> Result<()> {
         let summary_line = std::fs::read_to_string(&summary_path)
             .with_context(|| format!("reading {}", summary_path.display()))?;
         writeln!(f, "{}", summary_line.trim())?;
+    }
+    // Embed the game log (games.txt) between marker lines so uploaded stratbooks
+    // support board replay analysis on the admin panel.
+    let games_path = out_dir.join("games.txt");
+    if games_path.exists() {
+        let games_content = std::fs::read_to_string(&games_path)
+            .with_context(|| format!("reading {}", games_path.display()))?;
+        writeln!(f, "{{\"type\":\"games_log_start\"}}")?;
+        f.write_all(games_content.as_bytes())?;
+        if !games_content.ends_with('\n') {
+            writeln!(f)?;
+        }
+        writeln!(f, "{{\"type\":\"games_log_end\"}}")?;
     }
     f.flush()?;
     println!("Stratbook written to: {}", stratbook_path.display());

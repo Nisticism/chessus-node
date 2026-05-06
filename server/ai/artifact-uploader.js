@@ -37,11 +37,16 @@ function _ensureDir(p) { fs.mkdirSync(p, { recursive: true }); }
 
 /**
  * Parse a .stratbook buffer. Returns
- * `{ bookJsonl: Buffer, summary: Object|null }`.
+ * `{ bookJsonl: Buffer, summary: Object|null, gamesLog: Buffer|null }`.
  *
- * Format: all lines are standard book.jsonl records EXCEPT the final line
- * which is a JSON object with `"type":"job_summary"`. If no summary line
- * is present (e.g. user uploaded a renamed .jsonl), we still accept it.
+ * Format (each section is optional):
+ *   1. book.jsonl lines
+ *   2. `{"type":"job_summary", ...}` — aggregate stats (final book line)
+ *   3. `{"type":"games_log_start"}` … `{"type":"games_log_end"}` — raw
+ *      games.txt content embedded so board replay works on uploaded jobs.
+ *
+ * If no summary line is present (e.g. user uploaded a renamed .jsonl), we
+ * still accept it. If no games_log section is present, gamesLog is null.
  */
 function parseStratbook(buffer) {
   if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
@@ -49,10 +54,31 @@ function parseStratbook(buffer) {
   const lines = text.split(/\r?\n/);
   // Strip trailing blank lines.
   while (lines.length > 0 && !lines[lines.length - 1].trim()) lines.pop();
-  if (lines.length === 0) return { bookJsonl: buffer, summary: null };
+  if (lines.length === 0) return { bookJsonl: buffer, summary: null, gamesLog: null };
 
+  // --- Extract embedded games_log section (between marker lines) if present ---
+  let gamesLog = null;
+  const _isMarker = (line, typeName) => {
+    const t = line.trim();
+    if (!t.startsWith('{')) return false;
+    try { return JSON.parse(t)?.type === typeName; } catch { return false; }
+  };
+  const startIdx = lines.findIndex((l) => _isMarker(l, 'games_log_start'));
+  if (startIdx !== -1) {
+    const endIdx = lines.findIndex((l, i) => i > startIdx && _isMarker(l, 'games_log_end'));
+    if (endIdx !== -1) {
+      const logLines = lines.slice(startIdx + 1, endIdx);
+      gamesLog = Buffer.from(logLines.join('\n') + (logLines.length > 0 ? '\n' : ''), 'utf8');
+      // Remove the marker + content lines from the main array.
+      lines.splice(startIdx, endIdx - startIdx + 1);
+      // Re-strip trailing blank lines after removal.
+      while (lines.length > 0 && !lines[lines.length - 1].trim()) lines.pop();
+    }
+  }
+
+  // --- Extract job_summary line (must be last remaining line) ---
   let summary = null;
-  const lastLine = lines[lines.length - 1].trim();
+  const lastLine = lines.length > 0 ? lines[lines.length - 1].trim() : '';
   if (lastLine.startsWith('{')) {
     try {
       const obj = JSON.parse(lastLine);
@@ -64,11 +90,9 @@ function parseStratbook(buffer) {
   }
 
   const bookText = lines.join('\n') + (lines.length > 0 ? '\n' : '');
-  return { bookJsonl: Buffer.from(bookText, 'utf8'), summary };
+  return { bookJsonl: Buffer.from(bookText, 'utf8'), summary, gamesLog };
 }
 
-
- */
 function validateBookJsonl(buffer) {
   if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
   if (buffer.length === 0) return { valid: false, error: 'book.jsonl is empty' };
@@ -169,10 +193,12 @@ async function importUpload(gameTypeId, payload, opts = {}) {
   let bookJsonl = null;
   let extras = [];
   let stratbookSummary = null;
+  let stratbookGamesLog = null;
   if (payload.kind === 'stratbook') {
     const parsed = parseStratbook(payload.buffer);
     bookJsonl = parsed.bookJsonl;
     stratbookSummary = parsed.summary;
+    stratbookGamesLog = parsed.gamesLog;
   } else if (payload.kind === 'jsonl') {
     bookJsonl = payload.buffer;
   } else if (payload.kind === 'zip') {
@@ -225,6 +251,16 @@ async function importUpload(gameTypeId, payload, opts = {}) {
     fs.writeFileSync(path.join(jobDir, e.name), e.buffer);
   }
 
+  // If the stratbook contained an embedded games log, write it to games.txt
+  // so the board replay analysis endpoint can serve it to the admin UI.
+  if (stratbookGamesLog && stratbookGamesLog.length > 0) {
+    try {
+      fs.writeFileSync(path.join(jobDir, 'games.txt'), stratbookGamesLog);
+    } catch (e) {
+      console.warn(`[upload] failed to write games.txt for job ${jobId}: ${e.message}`);
+    }
+  }
+
   // If a .stratbook summary was included, synthesize a log.ndjson from it so
   // the training-analysis engine can read win/draw/loss breakdown without
   // relying on per-game book.jsonl parsing (which doesn't have move counts or
@@ -264,6 +300,7 @@ async function importUpload(gameTypeId, payload, opts = {}) {
     gamesEstimate: games,
     recordCount: validation.recordCount,
     extrasImported: extras.map((e) => e.name),
+    hasGameLog: !!(stratbookGamesLog && stratbookGamesLog.length > 0),
   };
 }
 

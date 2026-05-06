@@ -2318,7 +2318,13 @@ const GameTypeView = () => {
                         e.preventDefault();
                         setIsDraggingTrainer(false);
                         const f = e.dataTransfer.files[0];
-                        if (f) { setTrainerUploadFile(f); setTrainerUploadResult(null); setTrainerUploadError(null); }
+                        if (f) {
+                          if (!f.name.toLowerCase().endsWith('.stratbook')) {
+                            setTrainerUploadError('Please upload a .stratbook file.');
+                            return;
+                          }
+                          setTrainerUploadFile(f); setTrainerUploadResult(null); setTrainerUploadError(null);
+                        }
                       }}
                       style={{
                         border: `2px dashed ${isDraggingTrainer ? '#6ba0ff' : '#3a5080'}`,
@@ -2334,9 +2340,17 @@ const GameTypeView = () => {
                           : <span>Drop <code>.stratbook</code> file here or click to browse</span>}
                         <input
                           type="file"
-                          accept=".stratbook,.jsonl,.zip"
+                          accept=".stratbook"
                           style={{ display: 'none' }}
-                          onChange={(e) => { setTrainerUploadFile(e.target.files[0] || null); setTrainerUploadResult(null); setTrainerUploadError(null); }}
+                          onChange={(e) => {
+                            const f = e.target.files[0] || null;
+                            if (f && !f.name.toLowerCase().endsWith('.stratbook')) {
+                              setTrainerUploadError('Please upload a .stratbook file.');
+                              e.target.value = '';
+                              return;
+                            }
+                            setTrainerUploadFile(f); setTrainerUploadResult(null); setTrainerUploadError(null);
+                          }}
                         />
                       </label>
                     </div>

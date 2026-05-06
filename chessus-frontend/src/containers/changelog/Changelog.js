@@ -25,7 +25,10 @@ const changelogData = [
       "Drag-and-drop upload: the Train AI Locally section now has a drop zone — drag a .stratbook file directly onto it to upload, or click the zone to browse.",
       "Trainer Ctrl+C: pressing Ctrl+C while training now saves all progress to output.stratbook before exiting, instead of leaving only a partial book.jsonl.",
       "Piece detail page label fixed: 'Min N turns per move' is now correctly labelled 'Inactive for first N turns'.",
-      "AI trainer updated to version 1.2.2.",
+      "AI trainer updated to version 1.2.4.",
+      "Board replay from uploaded stratbooks: game logs are now embedded in the output.stratbook file. When an admin uploads a stratbook trained on another computer, the board replay analysis feature can step through individual training games just like locally-trained jobs.",
+      "Ctrl+C during training now discards the current in-progress game immediately and saves output.stratbook, instead of waiting for the current game to finish before exiting.",
+      "Upload form now exclusively accepts .stratbook files — dragging or selecting a .jsonl, .zip, or any other format shows an error instead.",
     ],
   },
   {
