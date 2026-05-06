@@ -3648,6 +3648,20 @@ const runMigrations = async () => {
     console.log(`\n[DB] Applied ${migrationsRun} migration(s)\n`);
   }
 
+  // Add image_sources_json column to pieces so the community-images browser can exclude
+  // pieces whose primary image was chosen from the built-in library (source = 'library').
+  try {
+    if (!(await columnExists('pieces', 'image_sources_json'))) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN image_sources_json TEXT DEFAULT NULL COMMENT 'JSON array of image source strings (library|community|upload) matching image_location order'`,
+        "Add image_sources_json column to pieces table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding image_sources_json column to pieces:', err.message);
+  }
+
   // Add composite index on games(status, start_time) for the ongoing-games query
   // (WHERE status IN ('active','ready') ORDER BY start_time DESC)
   try {

@@ -146,6 +146,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
     if (!additionalCaptures[direction]) {
       additionalCaptures[direction] = [];
     }
+    if (additionalCaptures[direction].length >= 2) return; // Max 2 alternates per direction
     additionalCaptures[direction].push({
       value: 1,
       exact: false,
@@ -276,8 +277,10 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
           type="button"
           className={styles["add-movement-btn"]}
           onClick={() => addAdditionalCapture(direction)}
+          disabled={captures.length >= 2}
+          title={captures.length >= 2 ? "Maximum of 2 alternate captures per direction" : undefined}
         >
-          + Add Alternative Capture
+          + Add Alternative Capture{captures.length >= 2 ? " (max reached)" : ""}
         </button>
       </div>
     );

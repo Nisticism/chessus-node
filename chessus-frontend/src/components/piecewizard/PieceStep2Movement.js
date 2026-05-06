@@ -66,6 +66,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
     if (!additionalMovements[direction]) {
       additionalMovements[direction] = [];
     }
+    if (additionalMovements[direction].length >= 2) return; // Max 2 alternates per direction
     additionalMovements[direction].push({
       value: 1,
       exact: false,
@@ -202,8 +203,10 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
           type="button"
           className={styles["add-movement-btn"]}
           onClick={() => addAdditionalMovement(direction)}
+          disabled={movements.length >= 2}
+          title={movements.length >= 2 ? "Maximum of 2 alternate movements per direction" : undefined}
         >
-          + Add Alternative Movement
+          + Add Alternative Movement{movements.length >= 2 ? " (max reached)" : ""}
         </button>
       </div>
     );

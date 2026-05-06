@@ -919,6 +919,9 @@ const GameTypeView = () => {
           })
           .join(', ');
         rules.push({ title: "Starting Position Modes", content: modeList });
+      } else {
+        // Always show starting position info even when non-randomized
+        rules.push({ title: "Starting Position Modes", content: "Fixed Starting Positions (default)" });
       }
     }
 
@@ -2219,6 +2222,38 @@ const GameTypeView = () => {
 
             {trainerLocalOpen && (
               <div style={{ padding: '14px 16px', background: 'rgba(20,30,55,0.6)' }}>
+                {/* Warning for non-fixed default starting positions */}
+                {(() => {
+                  let defaultMode = null;
+                  try {
+                    if (game.randomized_starting_positions) {
+                      const parsed = JSON.parse(game.randomized_starting_positions);
+                      defaultMode = game.default_starting_mode || parsed?.defaultMode || null;
+                    } else {
+                      defaultMode = game.default_starting_mode || null;
+                    }
+                  } catch (_) {}
+                  if (defaultMode && defaultMode !== 'none') {
+                    return (
+                      <div style={{
+                        background: 'rgba(200,100,0,0.18)',
+                        border: '1px solid rgba(220,140,30,0.5)',
+                        borderRadius: 6,
+                        padding: '10px 14px',
+                        marginBottom: 12,
+                        fontSize: '0.88em',
+                        color: '#f0c060',
+                        lineHeight: 1.55,
+                      }}>
+                        <strong>Warning:</strong> This game uses a non-fixed default starting position ({defaultMode}).
+                        Book data trained from one random seed may be useless for a different seed, making
+                        self-play training largely ineffective. For meaningful training results, configure the
+                        trainer to use <strong>Fixed Positions</strong> mode only.
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 <p style={{ margin: '0 0 10px', fontSize: '0.9em', lineHeight: 1.6, color: '#b8c8e8' }}>
                   Download the <strong>Global AI Trainer</strong> to run training on your own computer.
                   After setup, run the train script whenever you want — it fetches your game's rules,
