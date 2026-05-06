@@ -259,7 +259,30 @@ async function computeAnalysis(gameTypeId, opts = {}) {
 
       if (fs.existsSync(logPath)) {
         // Primary: real game_complete events from the progress log.
-        const evs = readGameEvents(logPath);
+        let evs = readGameEvents(logPath);
+        // Auto-repair: if log.ndjson exists but every event has moves=0 (a sign
+        // it was synthesised from a job_summary before games.txt parsing was
+        // added), AND a games.txt is present in the job dir, rebuild log.ndjson
+        // from games.txt so game-length and draw-reason stats are accurate.
+        const gamesPath = path.join(j.dir, 'games.txt');
+        if (evs.length > 0 && evs.every((e) => (e.moves || 0) === 0) && fs.existsSync(gamesPath)) {
+          try {
+            const { _buildLogFromGamesText } = require('./artifact-uploader');
+            let summary = null;
+            const summaryPath = path.join(j.dir, 'job_summary.json');
+            if (fs.existsSync(summaryPath)) {
+              try { summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8')); } catch (_) {}
+            }
+            const gamesText = fs.readFileSync(gamesPath, 'utf8');
+            const rebuilt = _buildLogFromGamesText(gamesText, summary);
+            if (rebuilt.length > 2) {
+              fs.writeFileSync(logPath, rebuilt.join('\n') + '\n');
+              evs = readGameEvents(logPath);
+            }
+          } catch (repairErr) {
+            console.warn(`[analysis] auto-repair job ${j.jobId}: ${repairErr.message}`);
+          }
+        }
         if (evs.length === 0) continue; // log exists but no events (crashed immediately)
         allEvents.push(...evs);
         jobMeta.push({ jobId: j.jobId, games: evs.length, source: 'log' });

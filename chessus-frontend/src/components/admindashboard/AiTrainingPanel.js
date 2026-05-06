@@ -540,7 +540,7 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
     setUploadError(null);
     setUploadResult(null);
     if (!uploadFile) {
-      setUploadError("Choose a .jsonl or .zip file first.");
+      setUploadError("Choose a .jsonl, .zip, or .strat file first.");
       return;
     }
     const gtid = parseInt(uploadGameTypeId, 10);
@@ -549,8 +549,8 @@ const AiTrainingPanel = ({ initialAnalysisGameTypeId } = {}) => {
       return;
     }
     const lower = uploadFile.name.toLowerCase();
-    if (!lower.endsWith('.jsonl') && !lower.endsWith('.zip')) {
-      setUploadError("File must be a .jsonl (raw book) or .zip (full job dir).");
+    if (!lower.endsWith('.jsonl') && !lower.endsWith('.zip') && !lower.endsWith('.strat') && !lower.endsWith('.stratbook')) {
+      setUploadError("File must be a .jsonl, .zip, or .strat file.");
       return;
     }
     setUploadingArtifact(true);

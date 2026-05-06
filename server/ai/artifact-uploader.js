@@ -261,19 +261,31 @@ async function importUpload(gameTypeId, payload, opts = {}) {
     }
   }
 
-  // If a .stratbook summary was included, synthesize a log.ndjson from it so
-  // the training-analysis engine can read win/draw/loss breakdown without
-  // relying on per-game book.jsonl parsing (which doesn't have move counts or
-  // elapsed times). Each synthetic game_complete event uses the aggregate
-  // averages and distributes outcomes proportionally.
-  if (stratbookSummary && stratbookSummary.total_games > 0) {
+  // Build log.ndjson from the embedded games log if available (most accurate
+  // — it has per-game move counts and exact end reasons). Fall back to
+  // synthesising from the aggregate job summary if games.txt is absent.
+  let logNdjsonWritten = false;
+  if (stratbookGamesLog && stratbookGamesLog.length > 0 && stratbookSummary) {
+    try {
+      const logLines = _buildLogFromGamesText(stratbookGamesLog.toString('utf8'), stratbookSummary);
+      if (logLines.length > 2) { // started + at least one game_complete + finished
+        fs.writeFileSync(path.join(jobDir, 'log.ndjson'), logLines.join('\n') + '\n');
+        logNdjsonWritten = true;
+      }
+    } catch (e) {
+      console.warn(`[upload] failed to build log.ndjson from games.txt for job ${jobId}: ${e.message}`);
+    }
+  }
+  if (!logNdjsonWritten && stratbookSummary && stratbookSummary.total_games > 0) {
     try {
       const logLines = _synthesizeLogFromSummary(stratbookSummary);
       fs.writeFileSync(path.join(jobDir, 'log.ndjson'), logLines.join('\n') + '\n');
     } catch (e) {
       console.warn(`[upload] failed to synthesize log.ndjson for job ${jobId}: ${e.message}`);
     }
-    // Also store the raw summary for later reference.
+  }
+  // Store the raw summary for later reference (used by auto-repair in training-analysis).
+  if (stratbookSummary) {
     try {
       fs.writeFileSync(path.join(jobDir, 'job_summary.json'), JSON.stringify(stratbookSummary, null, 2));
     } catch (_) { /* non-fatal */ }
@@ -305,6 +317,105 @@ async function importUpload(gameTypeId, payload, opts = {}) {
 }
 
 /**
+ * Maps the human-readable labels emitted by end_reason_label() in the Rust
+ * trainer (stored in job_summary.end_reason_counts) to the serde snake_case
+ * keys emitted in log.ndjson game_complete events. These must match the
+ * strings expected by training-analysis.js.
+ */
+const REASON_LABEL_TO_SERDE = {
+  'checkmate':            'checkmate',
+  'stalemate':            'stalemate',
+  'stalemate win':        'stalemate_win',
+  'no moves':             'no_moves_loss',
+  'no move':              'no_move',
+  'capture':              'capture_condition',
+  'lost all pieces':      'lose_all_pieces',
+  'squares held':         'squares_condition',
+  'move limit':           'move_limit',
+  'move cap':             'move_cap_rollout',
+  'rollout cap':          'rollout_cap',
+  'royal capture':        'royal_capture',
+  'repetition':           'repetition',
+  'insuf. material':      'insufficient_material',
+  'promotion':            'promotion',
+  'simul capture draw':   'simultaneous_capture_draw',
+  'simul checkmate draw': 'simultaneous_checkmate_draw',
+  'cancellation draw':    'cancellation_draw',
+  'points win':           'points_win',
+  'points draw':          'points_draw',
+  'burn kill':            'burn_kill',
+};
+
+// Serde-key reasons that represent draws (not decisive outcomes).
+const DRAW_REASON_KEYS = new Set([
+  'stalemate', 'move_limit', 'move_cap_rollout', 'rollout_cap', 'no_move',
+  'repetition', 'insufficient_material', 'simultaneous_capture_draw',
+  'simultaneous_checkmate_draw', 'cancellation_draw', 'points_draw',
+]);
+
+/**
+ * Parse the embedded games.txt (plain-text game transcripts written by the
+ * Rust trainer) and produce log.ndjson-compatible game_complete event lines.
+ *
+ * games.txt header format (from the Rust trainer):
+ *   \n=== Game #N \u2014 <outcome> (<reason>) \u2014 M moves ===
+ *
+ * <outcome>: "Player 1 wins" | "Player 2 wins" | "Draw"
+ * <reason>:  serde EndReason snake_case with underscores replaced by spaces,
+ *            e.g. "checkmate", "no moves loss", "move limit"
+ *
+ * Reversing the underscore-to-space substitution gives the exact serde key
+ * expected by training-analysis.js.
+ */
+function _buildLogFromGamesText(gamesText, summary) {
+  const total = summary?.total_games || 0;
+  const totalElapsedMs = summary?.total_elapsed_ms || 0;
+  const lines = [];
+  lines.push(JSON.stringify({ type: 'started', games_target: total, seed: 0 }));
+
+  // em-dash is U+2014 (—)
+  const headerRe = /^=== Game #(\d+) \u2014 (Player 1 wins|Player 2 wins|Draw) \(([^)]+)\) \u2014 (\d+) moves ===/;
+  const gameEvents = [];
+  for (const line of gamesText.split(/\r?\n/)) {
+    const m = headerRe.exec(line);
+    if (!m) continue;
+    const index   = parseInt(m[1], 10);
+    const outcome = m[2];
+    const reason  = m[3]; // spaces instead of underscores
+    const moves   = parseInt(m[4], 10);
+    let winner = null;
+    if (outcome === 'Player 1 wins') winner = 1;
+    else if (outcome === 'Player 2 wins') winner = 2;
+    // The Rust trainer replaces '_' with ' ' in the reason string.
+    // Reverse it to recover the serde snake_case key.
+    const end_reason = reason.replace(/ /g, '_');
+    gameEvents.push({ index, winner, end_reason, moves });
+  }
+
+  gameEvents.sort((a, b) => a.index - b.index);
+  const count = gameEvents.length;
+  const avgElapsedMs = count > 0 ? Math.round(totalElapsedMs / count) : 0;
+
+  for (const g of gameEvents) {
+    lines.push(JSON.stringify({
+      type: 'game_complete',
+      index: g.index,
+      moves: g.moves,
+      winner: g.winner,
+      end_reason: g.end_reason,
+      elapsed_ms: avgElapsedMs,
+    }));
+  }
+
+  lines.push(JSON.stringify({
+    type: 'finished',
+    games_played: count || total,
+    elapsed_ms: totalElapsedMs,
+  }));
+  return lines;
+}
+
+/**
  * Build synthetic game_complete log.ndjson lines from a job_summary object.
  * Distributes wins/draws/losses proportionally. Uses avg_moves_per_game
  * and avg_elapsed_ms if available; otherwise uses 0.
@@ -312,6 +423,8 @@ async function importUpload(gameTypeId, payload, opts = {}) {
  * We emit a Started event first, then individual GameComplete events,
  * then a Finished event — matching the real log format so training-analysis
  * reads them correctly.
+ *
+ * Only used as a fallback when games.txt is not available in the stratbook.
  */
 function _synthesizeLogFromSummary(summary) {
   const total = summary.total_games || 0;
@@ -324,18 +437,22 @@ function _synthesizeLogFromSummary(summary) {
   const totalElapsedMs = summary.total_elapsed_ms || 0;
   const avgElapsedMs = total > 0 ? Math.round(totalElapsedMs / total) : 0;
 
-  // Determine the dominant end reason for decisive/draw games from reason_counts.
+  // Convert human-label reason keys (from end_reason_label() in the Rust
+  // trainer) to serde snake_case keys expected by training-analysis.js.
   const reasonCounts = summary.end_reason_counts || {};
-  const pickReason = (fallback) => {
-    let best = fallback;
-    let bestCount = 0;
-    for (const [k, v] of Object.entries(reasonCounts)) {
-      if (v > bestCount) { bestCount = v; best = k; }
-    }
-    return best;
-  };
-  const decisiveReason = pickReason('capture_condition');
-  const drawReason = pickReason('move_limit');
+  const serdeReasonCounts = {};
+  for (const [label, count] of Object.entries(reasonCounts)) {
+    const key = REASON_LABEL_TO_SERDE[label] || label;
+    serdeReasonCounts[key] = (serdeReasonCounts[key] || 0) + count;
+  }
+  // Pick the most common decisive (non-draw) reason.
+  const decisiveReason = Object.entries(serdeReasonCounts)
+    .filter(([k]) => !DRAW_REASON_KEYS.has(k))
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'capture_condition';
+  // Pick the most common draw reason.
+  const drawReason = Object.entries(serdeReasonCounts)
+    .filter(([k]) => DRAW_REASON_KEYS.has(k))
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'move_limit';
 
   const lines = [];
   lines.push(JSON.stringify({ type: 'started', games_target: total, seed: 0 }));
@@ -364,4 +481,5 @@ module.exports = {
   validateBookJsonl,
   unpackJobZip,
   parseStratbook,
+  _buildLogFromGamesText,
 };

@@ -21,6 +21,8 @@ const changelogData = [
       "The 'Reviewing move N of N' board replay indicator has been moved into the Move History panel. The board no longer shifts when entering or exiting move review.",
       "Admin AI Training: the 'Upload pre-trained artifacts' section now accepts .strat files in addition to .jsonl and .zip files.",
       "Fixed: uploading a .stratbook file via the 'Train AI Locally' section on a game detail page was being rejected by the trainer service. Stratbook uploads now work correctly.",
+      "Fixed: uploading a .stratbook file via the admin AI Training panel was being blocked by client-side validation. Stratbook and .strat files can now be uploaded from both locations.",
+      "Fixed: after uploading a .stratbook, the Generated Analysis for that job showed incorrect game length (0\u20130 moves) and incorrect draw type breakdown. Game stats are now parsed from the stratbook's embedded game log for accurate per-game move counts and end reasons.",
     ],
   },
   {
