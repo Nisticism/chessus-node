@@ -1037,37 +1037,30 @@
     }
   }
 
-  // React-rendered move indicator dots container
-  .move-dots-container {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    pointer-events: none;
-    z-index: 5;
-  }
-
-  .move-dot {
+  // Move indicator dot via CSS ::after (no React DOM node churn on hover)
+  &.has-move-dot::after {
+    content: '';
     position: absolute;
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    top: 0;
-    left: 0;
+    background: var(--move-dot-bg, rgba(33,150,243,0.55));
+    top: 50%;
+    left: 50%;
     margin-top: -7px;
     margin-left: -7px;
+    pointer-events: none;
+    z-index: 5;
   }
 
-  .move-emoji {
-    position: absolute;
-    font-size: 16px;
-    line-height: 1;
-    top: 0;
-    left: 0;
-    margin-top: -8px;
-    margin-left: -8px;
-    user-select: none;
+  // Offset the regular dot left when a ranged indicator is also present
+  &.has-move-dot.has-ranged-dot::after {
+    margin-left: -17px;
+  }
+
+  // Offset the ranged icon right when a regular dot is also present
+  &.has-move-dot .ranged-icon {
+    margin-left: 2px;
   }
 
   &:hover:not(.selected) {
@@ -1119,12 +1112,15 @@
 
 .ranged-icon {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
+  top: 50%;
+  left: 50%;
+  margin-top: -8px;
+  margin-left: -8px;
+  font-size: 16px;
   z-index: 5;
   pointer-events: none;
   line-height: 1;
+  user-select: none;
 }
 
 .ranged-arrow-overlay {

@@ -4538,25 +4538,17 @@ const LiveGame = () => {
         const squareCfgForPoints = specialSquares.special[`${gameY},${gameX}`];
         const squareControlPoints = hasPointsCondition ? (squareCfgForPoints?.controlPoints || 0) : 0;
 
-        // Compute move indicator dots (React-rendered, replaces CSS pseudo-elements)
+        // Move indicator — type drives a CSS custom property rendered via ::after pseudo-element.
+        // Using CSS avoids React DOM node creation/destruction on every hover, eliminating hover lag.
         const activeRegularMove = regularMove || hoveredRegularMove;
         const activeIsRanged = isRangedMove || isRangedHover || isRangedDragTarget || isRangedSelectedTarget;
-        const indicatorItems = [];
-        if (activeRegularMove) {
-          if (activeRegularMove.isCustomMove || activeRegularMove.isCustomAttack) indicatorItems.push('custom');
-          else if (activeRegularMove.isFirstMoveOnly) indicatorItems.push('first');
-          else if (activeRegularMove.isCapture) indicatorItems.push('capture');
-          else indicatorItems.push('move');
-        }
-        if (activeIsRanged) indicatorItems.push('ranged');
-        const getDotPos = (total, idx) => {
-          if (total === 1) return 'translate(0px, 0px)';
-          if (total === 2) return idx === 0 ? 'translate(-10px, 0px)' : 'translate(10px, 0px)';
-          if (total === 3) return idx === 0 ? 'translate(-10px, 7px)' : idx === 1 ? 'translate(10px, 7px)' : 'translate(0px, -10px)';
-          const row = Math.floor(idx / 2); const col = idx % 2;
-          return `translate(${col === 0 ? -10 : 10}px, ${row === 0 ? -10 : 10}px)`;
-        };
         const dotBg = { move: 'rgba(33,150,243,0.55)', capture: 'rgba(220,60,60,0.7)', first: 'rgba(255,215,0,0.65)', custom: 'rgba(0,188,150,0.55)' };
+        const dotType = activeRegularMove
+          ? (activeRegularMove.isCustomMove || activeRegularMove.isCustomAttack ? 'custom'
+            : activeRegularMove.isFirstMoveOnly ? 'first'
+            : activeRegularMove.isCapture ? 'capture'
+            : 'move')
+          : null;
 
         squares.push(
           <div
@@ -4595,6 +4587,8 @@ const LiveGame = () => {
               ${specialSquareType === 'special' ? styles["special-square"] : ''}
               ${isRestrictionZone && !hideRestrictionZones && specialSquareType !== 'special' ? styles["restriction-zone-square"] : ''}
               ${isImpassable ? styles["impassable-square"] : ''}
+              ${dotType ? styles["has-move-dot"] : ''}
+              ${activeIsRanged ? styles["has-ranged-dot"] : ''}
             `}
             onClick={() => handleSquareClick(gameX, gameY)}
             onDragOver={handleDragOver}
@@ -4606,29 +4600,12 @@ const LiveGame = () => {
                 ? (currentUser?.light_square_color || '#cad5e8')
                 : (currentUser?.dark_square_color || '#08234d'),
               position: 'relative',
+              ...(dotType ? { '--move-dot-bg': dotBg[dotType] } : {}),
               ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {})
             }}
           >
-            {/* Move indicator dots container */}
-            {indicatorItems.length > 0 && (
-              <div className={styles["move-dots-container"]}>
-                {indicatorItems.map((type, i) => (
-                  type === 'ranged' ? (
-                    <span
-                      key="ranged"
-                      className={styles["move-emoji"]}
-                      style={{ transform: getDotPos(indicatorItems.length, i) }}
-                    >{`\uD83D\uDCA5`}</span>
-                  ) : (
-                    <div
-                      key={type}
-                      className={styles["move-dot"]}
-                      style={{ backgroundColor: dotBg[type], transform: getDotPos(indicatorItems.length, i) }}
-                    />
-                  )
-                ))}
-              </div>
-            )}
+            {/* Ranged move indicator — single span, no container, avoids DOM churn */}
+            {activeIsRanged && <span className={styles["ranged-icon"]}>{`\uD83D\uDCA5`}</span>}
             {/* Directional arrow on last-move "from" square */}
             {arrowAngleDeg !== null && (
               <svg
