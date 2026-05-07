@@ -2294,6 +2294,62 @@ const LiveGame = () => {
     return false;
   }, [getStepMovementConfig]);
 
+  // BFS path-finding for step-by-step ranged attacks.
+  // Respects can_fire_over_allies / can_fire_over_enemies so walls of pieces
+  // correctly block the projectile.
+  const canReachStepByStepRanged = useCallback((piece, targetX, targetY, allPieces, boardWidth, boardHeight) => {
+    const stepAttackValue = piece.step_by_step_attack_range;
+    if (!stepAttackValue) return false;
+    const maxSteps = Math.abs(stepAttackValue);
+    const noDiagonal = stepAttackValue < 0;
+    const canFireOverAllies = piece.can_fire_over_allies === 1 || piece.can_fire_over_allies === true;
+    const canFireOverEnemies = piece.can_fire_over_enemies === 1 || piece.can_fire_over_enemies === true;
+    const pieceTeam = piece.player_id || piece.team;
+    const directions = noDiagonal
+      ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
+    const visited = new Set([`${piece.x},${piece.y}`]);
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current.steps >= maxSteps) continue;
+      for (const [dirX, dirY] of directions) {
+        const nx = current.x + dirX;
+        const ny = current.y + dirY;
+        if (nx < 0 || ny < 0 || nx >= boardWidth || ny >= boardHeight) continue;
+        const isTarget = nx === targetX && ny === targetY;
+        const nextKey = `${nx},${ny}`;
+        const pieceAtSquare = findPieceAtSquare(allPieces, nx, ny);
+        const squareTeam = pieceAtSquare?.player_id || pieceAtSquare?.team;
+        const isAlly = pieceAtSquare && squareTeam === pieceTeam;
+        const isEnemy = pieceAtSquare && squareTeam !== pieceTeam;
+        if (isAlly) {
+          // Ally blocks unless can fire over allies
+          if (canFireOverAllies && !visited.has(nextKey)) {
+            visited.add(nextKey);
+            queue.push({ x: nx, y: ny, steps: current.steps + 1 });
+          }
+          // Ally squares are never valid targets
+        } else if (isEnemy) {
+          // Enemy: always a valid target; can continue BFS only if can fire over enemies
+          if (isTarget) return true;
+          if (canFireOverEnemies && !visited.has(nextKey)) {
+            visited.add(nextKey);
+            queue.push({ x: nx, y: ny, steps: current.steps + 1 });
+          }
+        } else {
+          // Empty square: valid target (for hover/premove display); always traversable
+          if (isTarget) return true;
+          if (!visited.has(nextKey)) {
+            visited.add(nextKey);
+            queue.push({ x: nx, y: ny, steps: current.steps + 1 });
+          }
+        }
+      }
+    }
+    return false;
+  }, []);
+
   // Apply range square bonus to a piece: +1 to all non-infinite, non-zero movement/capture/attack values
   const applyRangeSquareBonus = useCallback((piece) => {
     const rangeSquares = specialSquares?.range;
@@ -3005,11 +3061,21 @@ const LiveGame = () => {
           if (targetPiece && (targetPiece.cannot_be_captured || targetPiece.ends_game_on_checkmate)) continue;
           // Already in moves as a regular capture? skip
           if (moves.some(m => m.x === toX && m.y === toY)) continue;
-          if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
+          const isStepByStepRanged = !!piece.step_by_step_attack_range;
+          if (isStepByStepRanged) {
+            // Use BFS path-finding for step-by-step ranged attacks so walls block correctly
+            if (!canReachStepByStepRanged(piece, toX, toY, pieces, boardWidth, boardHeight)) {
+              continue;
+            }
+          } else if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
             // Check if ranged path is clear (blocked by pieces unless can fire over)
             if (!isRangedPathClear(piece.x, piece.y, toX, toY, piece, pieces, pieceTeam)) {
               continue;
             }
+          } else {
+            continue;
+          }
+          {
             const hasTarget = !!targetPiece;
             // For premoves, include empty ranged squares as potential targets
             // For hover display, include all reachable ranged squares (even empty) to show the full threat zone
@@ -3040,7 +3106,7 @@ const LiveGame = () => {
     }
     
     return moves;
-  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep, gameState, currentPlayer, wouldMoveResolveCheck, applyRangeSquareBonus, specialSquares]);
+  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, checkRatioPathClear, isStepByStepTarget, canReachStepByStep, canReachStepByStepRanged, gameState, currentPlayer, wouldMoveResolveCheck, applyRangeSquareBonus, specialSquares]);
 
   // Handle square click
   /* eslint-disable react-hooks/exhaustive-deps */
@@ -3488,6 +3554,10 @@ const LiveGame = () => {
           moveData.isHopCapture = true;
           moveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
         }
+        // Include ranged attack flag
+        if (validMove.isRangedAttack) {
+          moveData.isRangedAttack = true;
+        }
         submitMove(parseInt(gameId), moveData);
       } else if (canMakePremove) {
         const premoveData = {
@@ -3822,17 +3892,22 @@ const LiveGame = () => {
     // Right-click-twice: if a ranged piece was previously selected, execute ranged attack or premove
     if (rangedSelectedPiece && (gameState?.status === 'active' || gameState?.status === 'ready')) {
       const pieces = parsePieces(gameState?.pieces || []);
-      const targetPiece = pieces.find(p => p.x === x && p.y === y);
+      const targetPiece = findPieceAtSquare(pieces, x, y);
       const sourceTeam = rangedSelectedPiece.player_id || rangedSelectedPiece.team;
       const targetTeam = targetPiece?.player_id || targetPiece?.team;
+      const bw = gameState?.gameType?.board_width || 8;
+      const bh = gameState?.gameType?.board_height || 8;
       
       // Check if this is a valid ranged attack target (or potential target for premoves)
-      const isValidTarget = canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam);
+      const isStepRanged = !!rangedSelectedPiece.step_by_step_attack_range;
+      const isValidTarget = isStepRanged
+        ? canReachStepByStepRanged(rangedSelectedPiece, x, y, pieces, bw, bh)
+        : canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam);
       const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
       const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
-      const isPathClear = isRangedPathClear(rangedSelectedPiece.x, rangedSelectedPiece.y, x, y, rangedSelectedPiece, pieces, sourceTeam);
+      const pathBlocked = !isStepRanged && !isRangedPathClear(rangedSelectedPiece.x, rangedSelectedPiece.y, x, y, rangedSelectedPiece, pieces, sourceTeam);
 
-      if (isValidTarget && !isPathClear && (isEnemyTarget || canPremoveRanged)) {
+      if (isValidTarget && pathBlocked && (isEnemyTarget || canPremoveRanged)) {
         showIllegalMoveWarning("Ranged attack is blocked by another piece");
         setRangedSelectedPiece(null);
         rightClickDataRef.current = null;
@@ -3952,29 +4027,36 @@ const LiveGame = () => {
         const target = getTargetSquare(e.clientX, e.clientY);
         if (target && gameState?.pieces) {
           const pieces = parsePieces(gameState.pieces);
-          const targetPiece = pieces.find(p => p.x === target.x && p.y === target.y);
+          const targetPiece = findPieceAtSquare(pieces, target.x, target.y);
           const sourceTeam = data.piece.player_id || data.piece.team;
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
-          const isValidTarget = canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
+          const bw = gameState?.gameType?.board_width || 8;
+          const bh = gameState?.gameType?.board_height || 8;
+          const isStepRangedDrag = !!data.piece.step_by_step_attack_range;
+          const isValidTarget = isStepRangedDrag
+            ? canReachStepByStepRanged(data.piece, target.x, target.y, pieces, bw, bh)
+            : canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
           const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
           const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
-          const isPathClear = isRangedPathClear(data.piece.x, data.piece.y, target.x, target.y, data.piece, pieces, sourceTeam);
+          const pathBlocked = !isStepRangedDrag && !isRangedPathClear(data.piece.x, data.piece.y, target.x, target.y, data.piece, pieces, sourceTeam);
 
-          if (isValidTarget && !isPathClear && (isEnemyTarget || canPremoveRanged)) {
+          if (isValidTarget && pathBlocked && (isEnemyTarget || canPremoveRanged)) {
             showIllegalMoveWarning("Ranged attack is blocked by another piece");
             cleanup();
             return;
           }
 
           if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
-            if (isMyTurn && isEnemyTarget) {
-              // Execute ranged attack immediately
-              submitMove(parseInt(gameId), {
-                from: { x: data.piece.x, y: data.piece.y },
-                to: { x: target.x, y: target.y },
-                pieceId: data.piece.id,
-                isRangedAttack: true
-              });
+            if (isMyTurn) {
+              // On player's turn: only fire if there's an actual enemy target
+              if (isEnemyTarget) {
+                submitMove(parseInt(gameId), {
+                  from: { x: data.piece.x, y: data.piece.y },
+                  to: { x: target.x, y: target.y },
+                  pieceId: data.piece.id,
+                  isRangedAttack: true
+                });
+              }
             } else if (canPremoveRanged) {
               // Set ranged premove
               const premoveData = {
@@ -4422,15 +4504,19 @@ const LiveGame = () => {
           && !(piece && ((piece.player_id || piece.team) === (rangedAttackSource.player_id || rangedAttackSource.team)))
           && !(piece?.cannot_be_captured)
           && !(piece?.ends_game_on_checkmate)
-          && canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, gameY, gameX, rangedAttackSource, rangedAttackSource.player_id || rangedAttackSource.team)
-          && isRangedPathClear(rangedAttackSource.x, rangedAttackSource.y, gameX, gameY, rangedAttackSource, pieces, rangedAttackSource.player_id || rangedAttackSource.team);
+          && (rangedAttackSource.step_by_step_attack_range
+            ? canReachStepByStepRanged(rangedAttackSource, gameX, gameY, pieces, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8)
+            : (canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, gameY, gameX, rangedAttackSource, rangedAttackSource.player_id || rangedAttackSource.team)
+              && isRangedPathClear(rangedAttackSource.x, rangedAttackSource.y, gameX, gameY, rangedAttackSource, pieces, rangedAttackSource.player_id || rangedAttackSource.team)));
         // Right-click-twice mode: highlight valid ranged squares (path-checked)
         const isRangedSelectedTarget = !rangedAttackSource && rangedSelectedPiece
           && !(piece && ((piece.player_id || piece.team) === (rangedSelectedPiece.player_id || rangedSelectedPiece.team)))
           && !(piece?.cannot_be_captured)
           && !(piece?.ends_game_on_checkmate)
-          && canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, gameY, gameX, rangedSelectedPiece, rangedSelectedPiece.player_id || rangedSelectedPiece.team)
-          && isRangedPathClear(rangedSelectedPiece.x, rangedSelectedPiece.y, gameX, gameY, rangedSelectedPiece, pieces, rangedSelectedPiece.player_id || rangedSelectedPiece.team);
+          && (rangedSelectedPiece.step_by_step_attack_range
+            ? canReachStepByStepRanged(rangedSelectedPiece, gameX, gameY, pieces, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8)
+            : (canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, gameY, gameX, rangedSelectedPiece, rangedSelectedPiece.player_id || rangedSelectedPiece.team)
+              && isRangedPathClear(rangedSelectedPiece.x, rangedSelectedPiece.y, gameX, gameY, rangedSelectedPiece, pieces, rangedSelectedPiece.player_id || rangedSelectedPiece.team)));
         const isRangedSelectedSource = rangedSelectedPiece && rangedSelectedPiece.x === gameX && rangedSelectedPiece.y === gameY;
 
         // Points-square overlay: always show for custom squares with control points when a points condition is active

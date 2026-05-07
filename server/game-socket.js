@@ -5168,6 +5168,28 @@ function initializeSocket(server) {
              buildOtherData(gameState, { captureActionsPieceId: gameState.captureActionsPieceId, captureActionsPlayerId: gameState.captureActionsPlayerId }), gameId]
           );
 
+          // Broadcast the capture move first so the board visually updates for all players
+          io.to(`game-${gameId}`).emit("moveMade", {
+            gameId,
+            move: moveRecord,
+            gameState: {
+              status: gameState.status,
+              pieces: gameState.pieces,
+              currentTurn: gameState.currentTurn,
+              playerTimes: gameState.playerTimes,
+              moveHistory: gameState.moveHistory,
+              inCheck: false,
+              checkedPieces: [],
+              allowPremoves: gameState.allowPremoves,
+              rated: gameState.rated,
+              enPassantTarget: gameState.enPassantTarget,
+              controlSquareTracking: gameState.controlSquareTracking,
+              actionsThisTurn: gameState.actionsThisTurn || 0,
+              actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+            },
+            clockMultipliers: {}
+          });
+
           io.to(`game-${gameId}`).emit("captureActionRequired", {
             gameId,
             pieceId: gameState.captureActionsPieceId,
@@ -5199,6 +5221,28 @@ function initializeSocket(server) {
             [JSON.stringify(gameState.pieces),
              buildOtherData(gameState, { rangedCaptureActionsPieceId: gameState.rangedCaptureActionsPieceId, rangedCaptureActionsPlayerId: gameState.rangedCaptureActionsPlayerId }), gameId]
           );
+
+          // Broadcast the ranged capture move first so the board visually updates for all players
+          io.to(`game-${gameId}`).emit("moveMade", {
+            gameId,
+            move: moveRecord,
+            gameState: {
+              status: gameState.status,
+              pieces: gameState.pieces,
+              currentTurn: gameState.currentTurn,
+              playerTimes: gameState.playerTimes,
+              moveHistory: gameState.moveHistory,
+              inCheck: false,
+              checkedPieces: [],
+              allowPremoves: gameState.allowPremoves,
+              rated: gameState.rated,
+              enPassantTarget: gameState.enPassantTarget,
+              controlSquareTracking: gameState.controlSquareTracking,
+              actionsThisTurn: gameState.actionsThisTurn || 0,
+              actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+            },
+            clockMultipliers: {}
+          });
 
           io.to(`game-${gameId}`).emit("rangedCaptureActionRequired", {
             gameId,
@@ -9707,9 +9751,23 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       return { valid: false, reason: "Cannot ranged attack your own piece" };
     }
     // Validate using ranged attack rules
-    const canRanged = canRangedAttackTo(piece.y, piece.x, to.y, to.x, piece, pieceOwnerPosition);
-    if (!canRanged) {
-      return { valid: false, reason: "Piece cannot ranged attack that square" };
+    const boardWidth = gameState.gameType?.board_width || 8;
+    const boardHeight = gameState.gameType?.board_height || 8;
+    const isStepByStepRanged = !!piece.step_by_step_attack_range;
+    if (isStepByStepRanged) {
+      if (!canReachStepByStepRanged(piece, to.x, to.y, pieces, boardWidth, boardHeight)) {
+        return { valid: false, reason: "Piece cannot ranged attack that square" };
+      }
+    } else {
+      const canRanged = canRangedAttackTo(piece.y, piece.x, to.y, to.x, piece, pieceOwnerPosition);
+      if (!canRanged) {
+        return { valid: false, reason: "Piece cannot ranged attack that square" };
+      }
+      // Check if path is clear for ranged attack (unless piece can fire over)
+      const pathClear = isRangedPathClear(piece.x, piece.y, to.x, to.y, piece, pieces, pieceOwnerPosition, gameState.gameType);
+      if (!pathClear) {
+        return { valid: false, reason: "Ranged attack is blocked by another piece" };
+      }
     }
 
     // Cannot capture pieces with cannot_be_captured flag
@@ -9719,12 +9777,6 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     // Prevent ranged-capturing checkmate pieces in checkmate-only games
     if (destPiece.ends_game_on_checkmate && gameState.gameType?.mate_condition && !gameState.gameType?.capture_condition) {
       return { valid: false, reason: "That piece must be checkmated, not captured. Put it in checkmate instead!" };
-    }
-    
-    // Check if path is clear for ranged attack (unless piece can fire over)
-    const pathClear = isRangedPathClear(piece.x, piece.y, to.x, to.y, piece, pieces, pieceOwnerPosition, gameState.gameType);
-    if (!pathClear) {
-      return { valid: false, reason: "Ranged attack is blocked by another piece" };
     }
     
     // HP/AD system: Apply damage to ranged attack target
@@ -11152,6 +11204,60 @@ function checkRangedMovement(value, distance, isExact) {
   if (isExact) return distance === Math.abs(value);
   if (value > 0) return distance <= value;
   if (value < 0) return distance === Math.abs(value);
+  return false;
+}
+
+/**
+ * BFS path-finding for step-by-step ranged attacks.
+ * Returns true if targetX/targetY is reachable from piece position within
+ * step_by_step_attack_range steps, respecting can_fire_over_allies/enemies.
+ */
+function canReachStepByStepRanged(piece, targetX, targetY, allPieces, boardWidth, boardHeight) {
+  const stepAttackValue = piece.step_by_step_attack_range;
+  if (!stepAttackValue) return false;
+  const maxSteps = Math.abs(stepAttackValue);
+  const noDiagonal = stepAttackValue < 0;
+  const canFireOverAllies = piece.can_fire_over_allies === 1 || piece.can_fire_over_allies === true;
+  const canFireOverEnemies = piece.can_fire_over_enemies === 1 || piece.can_fire_over_enemies === true;
+  const pieceTeam = piece.team || piece.player_id;
+  const directions = noDiagonal
+    ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
+    : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
+  const visited = new Set([`${piece.x},${piece.y}`]);
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current.steps >= maxSteps) continue;
+    for (const [dirX, dirY] of directions) {
+      const nx = current.x + dirX;
+      const ny = current.y + dirY;
+      if (nx < 0 || ny < 0 || nx >= boardWidth || ny >= boardHeight) continue;
+      const isTarget = nx === targetX && ny === targetY;
+      const nextKey = `${nx},${ny}`;
+      const pieceAtSquare = findPieceAtSquare(allPieces, nx, ny);
+      const squareTeam = pieceAtSquare?.team || pieceAtSquare?.player_id;
+      const isAlly = pieceAtSquare && squareTeam === pieceTeam;
+      const isEnemy = pieceAtSquare && squareTeam !== pieceTeam;
+      if (isAlly) {
+        if (canFireOverAllies && !visited.has(nextKey)) {
+          visited.add(nextKey);
+          queue.push({ x: nx, y: ny, steps: current.steps + 1 });
+        }
+      } else if (isEnemy) {
+        if (isTarget) return true;
+        if (canFireOverEnemies && !visited.has(nextKey)) {
+          visited.add(nextKey);
+          queue.push({ x: nx, y: ny, steps: current.steps + 1 });
+        }
+      } else {
+        if (isTarget) return true;
+        if (!visited.has(nextKey)) {
+          visited.add(nextKey);
+          queue.push({ x: nx, y: ny, steps: current.steps + 1 });
+        }
+      }
+    }
+  }
   return false;
 }
 

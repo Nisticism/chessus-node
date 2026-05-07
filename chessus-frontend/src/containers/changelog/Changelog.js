@@ -47,6 +47,10 @@ const changelogData = [
       "Fixed: ranged attack highlights in the game wizard's piece placement step (Step 4) were not appearing for step-by-step ranged pieces. All ranged attack styles now render correctly in the placement preview.",
       "Capture Actions Per Turn and Ranged Capture Actions Per Turn are now capped at 16 per turn (unlimited is still available via the toggle). Values above 16 are clamped on save.",
       "Fixed: the 'Check ALL targets' win condition option is now disabled in the wizard when any player has more than 4 checkmate-flagged pieces, preventing a configuration that could slow down the game engine.",
+      "Fixed: step-by-step ranged attacks now correctly follow pathfinding — highlights no longer appear on the other side of a wall of pieces, and blocked paths are properly rejected.",
+      "Fixed: 'can fire over allies' and 'can fire over enemies' flags now work correctly for step-by-step ranged pieces.",
+      "Fixed: multi-capture ranged actions now show the board updating between each capture, so the first kill is visually reflected before the second capture prompt appears.",
+      "Fixed: ranged attacks performed via drag-and-drop are now correctly processed as ranged attacks on the server.",
     ],
   },
   {
