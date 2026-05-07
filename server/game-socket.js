@@ -2908,6 +2908,7 @@ function initializeSocket(server) {
               ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
               ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
               step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+              capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
               ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
               can_fire_over_allies: fullPieceData.can_fire_over_allies,
               can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
@@ -3428,6 +3429,7 @@ function initializeSocket(server) {
               ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
               ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
               step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+              capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
               ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
               can_fire_over_allies: fullPieceData.can_fire_over_allies,
               can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
@@ -4197,6 +4199,7 @@ function initializeSocket(server) {
                   ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
                   ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
                   step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+                  capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
                   ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
                   can_fire_over_allies: fullPieceData.can_fire_over_allies,
                   can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
@@ -7916,6 +7919,7 @@ function initializeSocket(server) {
                     ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
                     ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
                     step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+                    capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
                     ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
                     can_fire_over_allies: fullPieceData.can_fire_over_allies,
                     can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
@@ -9743,6 +9747,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
   if (isRangedAttack) {
     // Ranged attack: validate target exists and is an enemy
     if (destinationPieceIndex === -1) {
+      console.log(`[RANGED_TARGET] No piece at to=(${to.x},${to.y}). isRangedAttack=${isRangedAttack}, pieceId=${pieceId}. Pieces on board: ${pieces.map(p => `${p.id}@(${p.x},${p.y})`).join(', ')}`);
       return { valid: false, reason: "No target for ranged attack" };
     }
     const destPiece = pieces[destinationPieceIndex];
@@ -9810,13 +9815,16 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     }
     
     // Check for ranged capture actions per turn (additional ranged fire actions)
+    let rangedCaptureActionsAvailable = false;
     const rangedActionsPerTurn = movingPiece ? (movingPiece.ranged_capture_actions_per_turn ?? 1) : 1;
+    console.log(`[RANGED_CAPTURE] piece=${movingPiece?.id}, to=(${to.x},${to.y}), capturedPiece=${capturedPiece?.id ?? null}, rangedActionsPerTurn=${rangedActionsPerTurn} (raw=${movingPiece?.ranged_capture_actions_per_turn}), rangedCaptureActionsUsed=${gameState.rangedCaptureActionsUsed}`);
     if (capturedPiece !== null && (rangedActionsPerTurn > 1 || rangedActionsPerTurn === -1)) {
       const rangedActionsUsed = (gameState.rangedCaptureActionsUsed || 0) + 1;
       const rangedUnlimited = rangedActionsPerTurn === -1;
       if (rangedUnlimited || rangedActionsUsed < rangedActionsPerTurn) {
         rangedCaptureActionsAvailable = true;
       }
+      console.log(`[RANGED_CAPTURE] -> rangedActionsUsed=${rangedActionsUsed}, rangedCaptureActionsAvailable=${rangedCaptureActionsAvailable}`);
     }
 
     return { valid: true, captured: capturedPiece, damagedPieces, promotionEligible: null, movingPiece, isRangedAttack: true, rangedCaptureActionsAvailable };
@@ -10369,12 +10377,14 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     // Only counts direct captures — hop captures (checkers-style) use chain_capture_enabled
     const captureActionsPerTurn = movingPiece.capture_actions_per_turn ?? 1;
     const isHopOnlyCapture = hoppedCaptures.length > 0 && capturedPiece === null;
+    console.log(`[CAPTURE_ACTIONS] piece=${movingPiece.id}, capture_actions_per_turn raw=${movingPiece.capture_actions_per_turn} resolved=${captureActionsPerTurn}, capturedPiece=${capturedPiece?.id ?? null}, isHopOnly=${isHopOnlyCapture}, gameState.captureActionsUsed=${gameState.captureActionsUsed}`);
     if (!isHopOnlyCapture && capturedPiece !== null && (captureActionsPerTurn > 1 || captureActionsPerTurn === -1)) {
       const captureActionsUsed = (gameState.captureActionsUsed || 0) + 1;
       const captureUnlimited = captureActionsPerTurn === -1;
       if (captureUnlimited || captureActionsUsed < captureActionsPerTurn) {
         captureActionsAvailable = true;
       }
+      console.log(`[CAPTURE_ACTIONS] -> captureActionsUsed=${captureActionsUsed}, captureActionsAvailable=${captureActionsAvailable}`);
     }
 
     // Check for promotion eligibility
@@ -10684,6 +10694,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
     ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
     step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+    capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
     ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
     can_fire_over_allies: fullPieceData.can_fire_over_allies,
     can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
