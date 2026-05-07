@@ -6018,12 +6018,8 @@ function initializeSocket(server) {
                 // Use !! coercion because the DB returns tinyint 1/0, not boolean true/false.
                 // win condition takes priority over draw condition when both are set.
                 const stalemateWinsForCurrent = !!gameState.gameType?.stalemate_win_condition;
-                // In capture-only games (capture_condition without mate_condition), stalemate never
-                // ends the game as a draw — the stuck player just skips their turn so the opponent
-                // can still win by capturing the remaining pieces.
-                const captureOnlyGame = !!gameState.gameType?.capture_condition && !gameState.gameType?.mate_condition;
                 // Default to true when undefined for backward compatibility
-                const stalemateDraws = !stalemateWinsForCurrent && !captureOnlyGame && gameState.gameType?.stalemate_draw_condition !== false;
+                const stalemateDraws = !stalemateWinsForCurrent && gameState.gameType?.stalemate_draw_condition !== false;
                 const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
                 const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
 
@@ -6425,12 +6421,8 @@ function initializeSocket(server) {
               // Use !! coercion because the DB returns tinyint 1/0, not boolean true/false.
               // win condition takes priority over draw condition when both are set.
               const stalemateWinsForCurrent = !!gameState.gameType?.stalemate_win_condition;
-              // In capture-only games (capture_condition without mate_condition), stalemate never
-              // ends the game as a draw — the stuck player just skips their turn so the opponent
-              // can still win by capturing the remaining pieces.
-              const captureOnlyGame = !!gameState.gameType?.capture_condition && !gameState.gameType?.mate_condition;
               // Default to true when undefined for backward compatibility
-              const stalemateDraws = !stalemateWinsForCurrent && !captureOnlyGame && gameState.gameType?.stalemate_draw_condition !== false;
+              const stalemateDraws = !stalemateWinsForCurrent && gameState.gameType?.stalemate_draw_condition !== false;
               const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
               const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
 
@@ -13420,7 +13412,86 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       }
     } catch (e) { /* ignore parse errors */ }
   }
-  
+
+  // Step-by-step movement — BFS through empty squares, collecting reachable destinations.
+  // This is a separate movement type from directional/ratio moves. A piece uses step-by-step
+  // movement when step_movement_style (or step_by_step_movement_style) is truthy.
+  // Positive step_movement_value → Chebyshev distance (includes diagonals).
+  // Negative step_movement_value → Manhattan distance (orthogonal only).
+  const stepMovStyle = piece.step_by_step_movement_style || piece.step_movement_style;
+  if (stepMovStyle) {
+    const stepValRaw = piece.step_by_step_movement_value ?? piece.step_movement_value;
+    const stepVal = Number(stepValRaw ?? 0);
+    if (!Number.isNaN(stepVal) && stepVal !== 0) {
+      const maxMoveSteps = Math.abs(stepVal);
+      const noDiagMove = stepVal < 0;
+      const moveDirs = noDiagMove
+        ? [[1,0],[-1,0],[0,1],[0,-1]]
+        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+      // Separate capture range (step_capture_value).
+      // Negative value means orthogonal-only captures.
+      const capValRaw = piece.step_capture_value ?? stepVal;
+      const capVal = Number(capValRaw);
+      const maxCapSteps = (!Number.isNaN(capVal) && capVal !== 0) ? Math.abs(capVal) : maxMoveSteps;
+      const noDiagCap = (!Number.isNaN(capVal) && capVal !== 0) ? capVal < 0 : noDiagMove;
+      const capDirs = noDiagCap
+        ? [[1,0],[-1,0],[0,1],[0,-1]]
+        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+      // Track already-added squares to avoid duplicates
+      const addedMoves = new Set(moves.map(m => `${m.x},${m.y}`));
+
+      // BFS: traverse through empty squares (any piece — ally or enemy — blocks traversal).
+      // At each BFS node, also check adjacent squares for capturable enemies.
+      const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
+      const bfsVisited = new Set([`${piece.x},${piece.y}`]);
+
+      while (queue.length > 0) {
+        const curr = queue.shift();
+
+        // Check adjacent squares for capture targets reachable in one more step
+        if (piece.can_capture_enemy_on_move && !hasGlobalFirstMoveOnlyCaptureRestriction &&
+            curr.steps + 1 <= maxCapSteps) {
+          for (const [cdx, cdy] of capDirs) {
+            const cx = curr.x + cdx;
+            const cy = curr.y + cdy;
+            if (!isValidSquare(cx, cy)) continue;
+            const capKey = `${cx},${cy}`;
+            if (addedMoves.has(capKey)) continue;
+            const tgt = findPieceAtSquare(allPieces, cx, cy);
+            if (tgt && tgt.id !== piece.id) {
+              const tgtOwner = tgt.team || tgt.player_id;
+              if (tgtOwner !== pieceOwner && !tgt.cannot_be_captured) {
+                moves.push({ x: cx, y: cy });
+                addedMoves.add(capKey);
+              }
+            }
+          }
+        }
+
+        if (curr.steps >= maxMoveSteps) continue;
+
+        // Step through empty squares
+        for (const [mdx, mdy] of moveDirs) {
+          const nx = curr.x + mdx;
+          const ny = curr.y + mdy;
+          const key = `${nx},${ny}`;
+          if (!isValidSquare(nx, ny)) continue;
+          if (bfsVisited.has(key)) continue;
+          // Any occupant (ally or enemy) blocks path through
+          if (findPieceAtSquare(allPieces, nx, ny)) continue;
+          bfsVisited.add(key);
+          if (!addedMoves.has(key)) {
+            moves.push({ x: nx, y: ny });
+            addedMoves.add(key);
+          }
+          queue.push({ x: nx, y: ny, steps: curr.steps + 1 });
+        }
+      }
+    }
+  }
+
   // Filter out moves where multi-tile piece doesn't fit or overlaps friendly pieces
   const pw = piece.piece_width || 1;
   const ph = piece.piece_height || 1;
@@ -14752,9 +14823,7 @@ async function processBotTurn(io, gameId, gameState) {
         const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
         if (legalMoves.length === 0) {
           const stalemateWinsForCurrent = !!gameState.gameType?.stalemate_win_condition;
-          // In capture-only games, stalemate skips the stuck player's turn instead of ending the game.
-          const captureOnlyGame = !!gameState.gameType?.capture_condition && !gameState.gameType?.mate_condition;
-          const stalemateDraws = !stalemateWinsForCurrent && !captureOnlyGame && gameState.gameType?.stalemate_draw_condition !== false;
+          const stalemateDraws = !stalemateWinsForCurrent && gameState.gameType?.stalemate_draw_condition !== false;
           const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
           if (stalemateWinsForCurrent || stalemateDraws) {
             const winnerObj = stalemateWinsForCurrent ? stalematedPlayerObj : null;
