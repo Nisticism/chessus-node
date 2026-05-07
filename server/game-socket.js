@@ -8997,11 +8997,7 @@ async function getOngoingGames() {
          WHERE g.status IN ('active', 'ready')
            AND (COALESCE(g.allow_spectators, 1) = 1 OR COALESCE(g.is_anonymous, 0) = 1)
          GROUP BY g.id
-         HAVING (
-           JSON_EXTRACT(g.other_data, '$.isBotGame') IS NULL
-           OR JSON_EXTRACT(g.other_data, '$.isBotGame') = false
-           OR MAX(CASE WHEN JSON_EXTRACT(g.other_data, '$.isBotGame') = true THEN COALESCE(u.show_computer_games_publicly, 0) ELSE 0 END) = 1
-         )
+         HAVING (is_bot_game = 0 OR host_show_bot_public = 1)
          ORDER BY g.start_time DESC, g.created_at DESC`
       );
       const result = games.map(g => {
