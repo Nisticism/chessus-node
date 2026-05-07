@@ -2501,7 +2501,7 @@ const LiveGame = () => {
 
   // Calculate valid moves for a piece using actual piece movement data
   // forPremove: when true, includes potential capture squares even when empty (for premove highlighting)
-  const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false) => {
+  const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false, forHoverDisplay = false) => {
     // Apply range square bonus
     piece = applyRangeSquareBonus(piece);
 
@@ -3012,14 +3012,15 @@ const LiveGame = () => {
             }
             const hasTarget = !!targetPiece;
             // For premoves, include empty ranged squares as potential targets
-            if (hasTarget || forPremove) {
+            // For hover display, include all reachable ranged squares (even empty) to show the full threat zone
+            if (hasTarget || forPremove || forHoverDisplay) {
               moves.push({
                 x: toX,
                 y: toY,
                 isCapture: hasTarget,
                 isFirstMoveOnly: false,
                 isRangedAttack: true,
-                isPotentialRangedTarget: !hasTarget && forPremove
+                isPotentialRangedTarget: !hasTarget && (forPremove || forHoverDisplay)
               });
             }
           }
@@ -3292,7 +3293,10 @@ const LiveGame = () => {
       piece, 
       pieces, 
       gameState.gameType?.board_width || 8, 
-      gameState.gameType?.board_height || 8
+      gameState.gameType?.board_height || 8,
+      false, // skipCheckFilter
+      false, // forPremove
+      true   // forHoverDisplay — include all reachable ranged squares (empty + occupied)
     );
     setHoveredPiece(piece);
     setHoveredMoves(moves);
@@ -4413,18 +4417,20 @@ const LiveGame = () => {
         // Ranged attack highlights
         const isRangedMove = !!rangedMove;
         const isRangedHover = !!hoveredRangedMove;
-        // During ranged drag, highlight all valid ranged target squares (including empty)
+        // During ranged drag, highlight valid ranged target squares (path-checked)
         const isRangedDragTarget = rangedAttackSource
           && !(piece && ((piece.player_id || piece.team) === (rangedAttackSource.player_id || rangedAttackSource.team)))
           && !(piece?.cannot_be_captured)
           && !(piece?.ends_game_on_checkmate)
-          && canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, gameY, gameX, rangedAttackSource, rangedAttackSource.player_id || rangedAttackSource.team);
-        // Right-click-twice mode: highlight all valid ranged squares (including empty)
+          && canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, gameY, gameX, rangedAttackSource, rangedAttackSource.player_id || rangedAttackSource.team)
+          && isRangedPathClear(rangedAttackSource.x, rangedAttackSource.y, gameX, gameY, rangedAttackSource, pieces, rangedAttackSource.player_id || rangedAttackSource.team);
+        // Right-click-twice mode: highlight valid ranged squares (path-checked)
         const isRangedSelectedTarget = !rangedAttackSource && rangedSelectedPiece
           && !(piece && ((piece.player_id || piece.team) === (rangedSelectedPiece.player_id || rangedSelectedPiece.team)))
           && !(piece?.cannot_be_captured)
           && !(piece?.ends_game_on_checkmate)
-          && canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, gameY, gameX, rangedSelectedPiece, rangedSelectedPiece.player_id || rangedSelectedPiece.team);
+          && canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, gameY, gameX, rangedSelectedPiece, rangedSelectedPiece.player_id || rangedSelectedPiece.team)
+          && isRangedPathClear(rangedSelectedPiece.x, rangedSelectedPiece.y, gameX, gameY, rangedSelectedPiece, pieces, rangedSelectedPiece.player_id || rangedSelectedPiece.team);
         const isRangedSelectedSource = rangedSelectedPiece && rangedSelectedPiece.x === gameX && rangedSelectedPiece.y === gameY;
 
         // Points-square overlay: always show for custom squares with control points when a points condition is active

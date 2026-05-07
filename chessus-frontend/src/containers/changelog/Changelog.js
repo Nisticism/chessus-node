@@ -42,6 +42,11 @@ const changelogData = [
       "New: Capture Actions Per Turn — pieces can now be configured to make one or more bonus capture-only move actions after successfully capturing an enemy piece. Each action lets the piece make an additional capture on the same turn. The feature can be set per piece via the piece wizard, and a prompt appears during live games when a bonus capture action is available.",
       "New: Ranged Attacks — pieces can now be configured to attack enemies at a distance without moving. Configure directional ranges, ratio (L-shape), or step-by-step attack range in the piece wizard. Pieces can optionally fire over allies and/or enemies. Ranged attacks are now fully supported in live games, match history replay, and by the easy/medium/hard computer players. The AI trainer also supports ranged attacks.",
       "Fixed: step-by-step ranged attack range now saves correctly when creating or editing a piece.",
+      "Fixed: hovering over a ranged piece in a live game now shows red dots on all squares the piece can shoot (including empty squares), matching the behavior of movement and capture highlights.",
+      "Fixed: right-click ranged attack highlights now correctly hide squares that are blocked by other pieces in the line of fire.",
+      "Fixed: ranged attack highlights in the game wizard's piece placement step (Step 4) were not appearing for step-by-step ranged pieces. All ranged attack styles now render correctly in the placement preview.",
+      "Capture Actions Per Turn and Ranged Capture Actions Per Turn are now capped at 16 per turn (unlimited is still available via the toggle). Values above 16 are clamped on save.",
+      "Fixed: the 'Check ALL targets' win condition option is now disabled in the wizard when any player has more than 4 checkmate-flagged pieces, preventing a configuration that could slow down the game engine.",
     ],
   },
   {

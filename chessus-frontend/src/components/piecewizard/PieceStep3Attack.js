@@ -415,7 +415,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
               <NumberInput
                 value={pieceData.capture_actions_per_turn === -1 ? "" : (pieceData.capture_actions_per_turn || 1)}
                 onChange={(val) => handleChange("capture_actions_per_turn", val)}
-                options={{ min: 1, disabled: pieceData.capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
+                options={{ min: 1, max: 16, disabled: pieceData.capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
               <ToggleSwitch inline size="small"
                 checked={pieceData.capture_actions_per_turn === -1}
@@ -938,7 +938,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
               <NumberInput
                 value={pieceData.ranged_capture_actions_per_turn === -1 ? "" : (pieceData.ranged_capture_actions_per_turn || 1)}
                 onChange={(val) => handleChange("ranged_capture_actions_per_turn", val)}
-                options={{ min: 1, disabled: pieceData.ranged_capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
+                options={{ min: 1, max: 16, disabled: pieceData.ranged_capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
               <ToggleSwitch inline size="small"
                 checked={pieceData.ranged_capture_actions_per_turn === -1}

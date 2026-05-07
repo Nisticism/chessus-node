@@ -7658,8 +7658,8 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseInt(pieceData.ratio_two_attack_range) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
-      parseInt(pieceData.capture_actions_per_turn) || 1,
-      hasRangedAttack ? (parseInt(pieceData.ranged_capture_actions_per_turn) || 1) : null,
+      (() => { const v = parseInt(pieceData.capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })(),
+      hasRangedAttack ? (() => { const v = parseInt(pieceData.ranged_capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })() : null,
       pieceData.special_scenario_captures || null,
       // Ranged firing over pieces
       parseBooleanField(pieceData.can_fire_over_allies),
@@ -8237,8 +8237,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseInt(pieceData.ratio_two_attack_range) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
-      parseInt(pieceData.capture_actions_per_turn) || 1,
-      hasRangedAttack ? (parseInt(pieceData.ranged_capture_actions_per_turn) || 1) : null,
+      (() => { const v = parseInt(pieceData.capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })(),
+      hasRangedAttack ? (() => { const v = parseInt(pieceData.ranged_capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })() : null,
       pieceData.special_scenario_captures || null,
       // Ranged firing over pieces
       parseBooleanField(pieceData.can_fire_over_allies),

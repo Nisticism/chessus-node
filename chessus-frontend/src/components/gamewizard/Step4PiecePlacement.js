@@ -235,7 +235,14 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         allPieces.forEach(piece => {
           // piece_id is returned from the full query, use it as the key
           const id = piece.piece_id || piece.id;
-          pieceMap[id] = piece;
+          pieceMap[id] = { ...piece };
+          // Compute combined step_by_step_attack_range from raw DB fields
+          // (negative = step-by-step style, positive = distance value)
+          if (piece.step_by_step_attack_value != null && piece.step_by_step_attack_value !== 0) {
+            pieceMap[id].step_by_step_attack_range = piece.step_by_step_attack_style
+              ? -Math.abs(piece.step_by_step_attack_value)
+              : piece.step_by_step_attack_value;
+          }
         });
         
         setPieceDataMap(pieceMap);

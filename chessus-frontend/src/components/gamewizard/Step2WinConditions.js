@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import styles from "./gamewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
@@ -41,6 +41,22 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
   const moveLimitEnabled = gameData.draw_move_limit !== null && gameData.draw_move_limit !== undefined;
   const repetitionEnabled = gameData.repetition_draw_count !== null && gameData.repetition_draw_count !== undefined;
 
+  // Count max checkmate-flagged pieces per player (for mate_condition_requires_all warning)
+  const maxCheckmatePerPlayer = useMemo(() => {
+    try {
+      const piecesObj = JSON.parse(gameData.pieces_string || '{}');
+      const piecesArr = Array.isArray(piecesObj) ? piecesObj : Object.values(piecesObj);
+      const perPlayer = {};
+      piecesArr.forEach(p => {
+        if (p && p.ends_game_on_checkmate && !p._occupied && !p._anchorKey) {
+          const pid = String(p.player_id ?? p.player_number ?? 1);
+          perPlayer[pid] = (perPlayer[pid] || 0) + 1;
+        }
+      });
+      return Math.max(0, ...Object.values(perPlayer), 0);
+    } catch { return 0; }
+  }, [gameData.pieces_string]);
+
   return (
     <div className={styles["step-container"]}>
       <h2>Win Conditions</h2>
@@ -58,6 +74,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           <ToggleSwitch
             checked={gameData.mate_condition_requires_all === true}
             onChange={(val) => handleChange("mate_condition_requires_all", val)}
+            disabled={maxCheckmatePerPlayer > 4}
             size="small"
             label={
               <span className={styles["condition-toggle-title"]}>
@@ -66,6 +83,11 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
               </span>
             }
           />
+          {maxCheckmatePerPlayer > 4 && (
+            <p className={styles["error-text"]} style={{ marginTop: 4, textAlign: 'left', padding: '4px 0' }}>
+              Disabled — a player has {maxCheckmatePerPlayer} checkmate pieces (max 4 allowed for this option). Reduce checkmate-flagged pieces in Step 4.
+            </p>
+          )}
         </div>
       </ToggleRow>
 

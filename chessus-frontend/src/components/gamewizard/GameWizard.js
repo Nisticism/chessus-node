@@ -410,6 +410,33 @@ const GameWizard = ({ editGameId }) => {
       }
     }
 
+    // Block publish if mate_condition_requires_all is enabled and any player has more than 4
+    // checkmate-flagged pieces (the simultaneous-check logic becomes too expensive to compute).
+    if (gameData.mate_condition_requires_all) {
+      try {
+        const piecesObj = JSON.parse(gameData.pieces_string || '{}');
+        const piecesArr = Array.isArray(piecesObj) ? piecesObj : Object.values(piecesObj);
+        const perPlayer = {};
+        piecesArr.forEach(p => {
+          if (p && p.ends_game_on_checkmate && !p._occupied && !p._anchorKey) {
+            const pid = String(p.player_id ?? p.player_number ?? 1);
+            perPlayer[pid] = (perPlayer[pid] || 0) + 1;
+          }
+        });
+        const maxCount = Math.max(0, ...Object.values(perPlayer));
+        if (maxCount > 4) {
+          setSaveError(
+            '"Check ALL targets" requires each player to have 4 or fewer checkmate pieces. ' +
+            `One or more players currently have ${maxCount}. Reduce the number of checkmate-flagged pieces, ` +
+            'or disable "Check ALL targets" in Win Conditions (Step 2).'
+          );
+          return;
+        }
+      } catch (e) {
+        // Parsing failure — silently allow, server will validate
+      }
+    }
+
     // Check for dark-on-player-1 / light-on-player-2 image mismatches.
     // Dismissible: skipWarning bypasses this check on the second submission.
     if (!skipWarning) {
