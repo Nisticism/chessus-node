@@ -18,9 +18,9 @@
 //!     in check (only enforced when at least one of our pieces has
 //!     `has_check_rule` or `is_royal`)
 //!
-//! Not yet ported (matches what the existing JS AI ignores):
-//!   * step-by-step movement (it's a predicate, not enumerated)
-//!   * standalone ranged attacks (HP/AD multi-strike combat)
+//! Not yet ported:
+//!   (none — step-by-step movement, step-by-step capture, ranged attacks,
+//!   multi-capture actions, and ranged multi-capture actions are all implemented)
 
 use crate::board::{Board, Coord, Move, PieceOnBoard};
 use crate::rules::{PieceTemplate, Rules};
@@ -1124,6 +1124,13 @@ fn ranged_path_clear(from_x: i32, from_y: i32, to_x: i32, to_y: i32,
     let adx = dx.abs();
     let ady = dy.abs();
 
+    // Step-by-step ranged attacks use BFS path-finding, not straight-line.
+    // Must be checked before the L-shape bypass below, because a non-straight
+    // path would otherwise always return true.
+    if tpl.step_by_step_attack_range != 0 {
+        return step_ranged_bfs_can_reach(from_x, from_y, to_x, to_y, tpl, board, attacker_player);
+    }
+
     // L-shape (ratio) attacks have no straight path — always unblocked.
     if adx != ady && dx != 0 && dy != 0 {
         return true;
@@ -1146,6 +1153,66 @@ fn ranged_path_clear(from_x: i32, from_y: i32, to_x: i32, to_y: i32,
         cy += step_y;
     }
     true
+}
+
+/// Mirrors `canReachStepByStepRanged` from game-socket.js.
+/// BFS from `(from_x, from_y)` toward `(to_x, to_y)`, one square at a time.
+/// Fire-over flags control whether pieces on intermediate squares are passable.
+fn step_ranged_bfs_can_reach(
+    from_x: i32, from_y: i32, to_x: i32, to_y: i32,
+    tpl: &PieceTemplate, board: &Board, attacker_player: i32,
+) -> bool {
+    use std::collections::{HashSet, VecDeque};
+    let max_steps = tpl.step_by_step_attack_range.abs();
+    let no_diagonal = tpl.step_by_step_attack_range < 0;
+    let dirs: &[(i32, i32)] = if no_diagonal {
+        &[(1, 0), (-1, 0), (0, 1), (0, -1)]
+    } else {
+        &[(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+    };
+    let bw = board.width;
+    let bh = board.height;
+    let mut visited: HashSet<(i32, i32)> = HashSet::new();
+    visited.insert((from_x, from_y));
+    let mut queue: VecDeque<(i32, i32, i32)> = VecDeque::new();
+    queue.push_back((from_x, from_y, 0));
+    while let Some((cx, cy, steps)) = queue.pop_front() {
+        if steps >= max_steps { continue; }
+        for &(dx, dy) in dirs {
+            let nx = cx + dx;
+            let ny = cy + dy;
+            if nx < 0 || ny < 0 || nx >= bw || ny >= bh { continue; }
+            let is_target = nx == to_x && ny == to_y;
+            let key = (nx, ny);
+            let occupant = board.pieces.iter().find(|p| p.x == nx && p.y == ny);
+            match occupant {
+                Some(p) if p.player == attacker_player => {
+                    // Ally square: not a valid attack target, but BFS may pass through it
+                    if tpl.can_fire_over_allies && !visited.contains(&key) {
+                        visited.insert(key);
+                        queue.push_back((nx, ny, steps + 1));
+                    }
+                }
+                Some(_) => {
+                    // Enemy square: valid attack destination
+                    if is_target { return true; }
+                    if tpl.can_fire_over_enemies && !visited.contains(&key) {
+                        visited.insert(key);
+                        queue.push_back((nx, ny, steps + 1));
+                    }
+                }
+                None => {
+                    // Empty square: always passable
+                    if is_target { return true; }
+                    if !visited.contains(&key) {
+                        visited.insert(key);
+                        queue.push_back((nx, ny, steps + 1));
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Compute a mobility-based power score for use when ranking promotion targets.

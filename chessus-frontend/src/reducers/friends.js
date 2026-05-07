@@ -14,6 +14,12 @@ export default function friendsReducer(state = initialState, action) {
   const { type, payload } = action;
 
   switch (type) {
+    case types.CLEAR_FRIENDS:
+      return {
+        ...state,
+        friends: [],
+      };
+
     case types.GET_FRIENDS_SUCCESS:
       return {
         ...state,

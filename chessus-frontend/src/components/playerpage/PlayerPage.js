@@ -15,7 +15,7 @@ import MatchHistory from "../matchhistory/MatchHistory";
 import OngoingGames from "../ongoinggames/OngoingGames";
 import { parseServerDate } from "../../helpers/date-formatter";
 import FriendsList from "../friendslist/FriendsList";
-import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests } from "../../actions/friends";
+import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests, clearFriends } from "../../actions/friends";
 import { useSocket } from "../../contexts/SocketContext";
 import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
@@ -86,6 +86,7 @@ const PlayerPage = (props) => {
       setLoading(true);
       setDisplayPictureUrl(null); // Clear display picture URL when loading new profile
       dispatch(clearPlayerPage()); // Clear previous player page data
+      dispatch(clearFriends()); // Clear stale friends list before fetching new profile's friends
       // Always fetch fresh data from server, even for own profile
       // This ensures admin updates are visible without logout/login
       checkIfRealUser(username);

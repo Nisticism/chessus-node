@@ -3,6 +3,9 @@ import * as types from "./types";
 import API_URL from "../global/global";
 import authHeader from "../services/auth-header";
 
+// Clear friends list (used when navigating to a new player profile)
+export const clearFriends = () => ({ type: types.CLEAR_FRIENDS });
+
 // Get user's friends list
 export const getFriends = (userId) => async (dispatch) => {
   try {

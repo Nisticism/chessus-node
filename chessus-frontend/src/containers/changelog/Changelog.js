@@ -57,6 +57,10 @@ const changelogData = [
       "Fixed: ranged premoves (set by right-click dragging during the opponent's turn) now correctly detect multi-tile pieces that span more than one square.",
       "Fixed: when a ranged premove executes and the piece has multiple Ranged Capture Actions Per Turn, the subsequent capture prompt is now shown correctly instead of being silently skipped.",
       "Fixed: pieces configured with step-by-step movement style were not included in the server's legal-move enumeration, causing false stalemates when those pieces still had reachable squares.",
+      "Fixed: step-by-step ranged attacks in the AI trainer (Rust engine) were not correctly checking whether the path to the target was blocked. Ranged attacks through walls are now properly rejected during training. Trainer updated to v1.2.7.",
+      "Fixed: navigating to another player's profile no longer briefly flashes your own friend list before loading theirs.",
+      "Fixed: forum thread titles with long names now wrap inside their container instead of overflowing.",
+      "Fixed: game titles with long names on game library cards now wrap instead of being cut off.",
     ],
   },
   {

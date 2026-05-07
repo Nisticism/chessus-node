@@ -11,7 +11,7 @@ const db_pool = require('../../configs/db');
 
 // This must match Cargo.toml [package] version in ai-engine-rs/.
 // Bump both together whenever a protocol.rs change breaks compatibility.
-const TRAINER_VERSION = '1.2.6';
+const TRAINER_VERSION = '1.2.7';
 // Minimum binary version that can still train and upload. Bump this only when
 // a protocol-breaking change requires users to get a new binary. As long as
 // you only add optional fields, leave this at 1.0.0 so existing binaries keep
