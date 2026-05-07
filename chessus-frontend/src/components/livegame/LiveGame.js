@@ -167,6 +167,8 @@ const LiveGame = () => {
     setPremove: sendPremove,
     clearPremove: sendClearPremove,
     promotePiece,
+    skipCaptureAction,
+    skipRangedCaptureAction,
     onGameEvent,
     spectateGame,
     pauseDisconnectTimer,
@@ -205,6 +207,9 @@ const LiveGame = () => {
   // Transient notice shown when the server re-rolls a randomized starting
   // position because the original roll resulted in an already-decided game.
   const [rerollNotice, setRerollNotice] = useState(null);
+  // Capture actions per turn: server signals that the piece can make a bonus capture
+  const [captureActionPieceId, setCaptureActionPieceId] = useState(null);
+  const [captureActionData, setCaptureActionData] = useState(null); // { actionsUsed, actionsTotal, isRanged }
   const [hoveredPiece, setHoveredPiece] = useState(null);
   const [hoveredMoves, setHoveredMoves] = useState([]);
   const [draggedPiece, setDraggedPiece] = useState(null);
@@ -759,6 +764,9 @@ const LiveGame = () => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
         clearOptimisticMoveSnapshot();
         setBotThinking(false);
+        // Clear any capture action state on a normal move broadcast
+        setCaptureActionPieceId(null);
+        setCaptureActionData(null);
 
         // Re-anchor the local clock interpolation to the new server-authoritative times so
         // the displayed clock doesn't "jump" the next time a timeUpdate arrives. Without
@@ -1409,6 +1417,40 @@ const LiveGame = () => {
       }
     });
 
+    // Capture actions per turn: bonus capture opportunity after a normal capture
+    const unsubscribeCaptureActionRequired = onGameEvent("captureActionRequired", ({ gameId: caGameId, pieceId, actionsUsed, actionsTotal, gameState: newState }) => {
+      if (parseInt(caGameId) !== parseInt(gameId)) return;
+      clearOptimisticMoveSnapshot();
+      setGameState(prev => ({ ...prev, ...newState, pieces: newState.pieces ? [...newState.pieces] : prev?.pieces }));
+      setCaptureActionPieceId(pieceId);
+      setCaptureActionData({ actionsUsed, actionsTotal, isRanged: false });
+      setSelectedPiece(null);
+      setValidMoves([]);
+    });
+
+    const unsubscribeRangedCaptureActionRequired = onGameEvent("rangedCaptureActionRequired", ({ gameId: caGameId, pieceId, actionsUsed, actionsTotal, gameState: newState }) => {
+      if (parseInt(caGameId) !== parseInt(gameId)) return;
+      clearOptimisticMoveSnapshot();
+      setGameState(prev => ({ ...prev, ...newState, pieces: newState.pieces ? [...newState.pieces] : prev?.pieces }));
+      setCaptureActionPieceId(pieceId);
+      setCaptureActionData({ actionsUsed, actionsTotal, isRanged: true });
+      setSelectedPiece(null);
+      setValidMoves([]);
+    });
+
+    // Capture action skipped (or last action used) — state clears, turn switched
+    const unsubscribeCaptureActionSkipped = onGameEvent("captureActionSkipped", ({ gameId: caGameId, gameState: newState }) => {
+      if (parseInt(caGameId) !== parseInt(gameId)) return;
+      clearOptimisticMoveSnapshot();
+      setGameState(prev => ({ ...prev, ...newState, pieces: newState.pieces ? [...newState.pieces] : prev?.pieces }));
+      setCaptureActionPieceId(null);
+      setCaptureActionData(null);
+      setSelectedPiece(null);
+      setValidMoves([]);
+      setInCheck(newState.inCheck || false);
+      setCheckedPieces(newState.checkedPieces || []);
+    });
+
     return () => {
       unsubscribeBotThinking();
       unsubscribeMove();
@@ -1418,6 +1460,9 @@ const LiveGame = () => {
       unsubscribeReroll();
       unsubscribeSimulSubmitted();
       unsubscribeSimulOpponentSubmitted();
+      unsubscribeCaptureActionRequired();
+      unsubscribeRangedCaptureActionRequired();
+      unsubscribeCaptureActionSkipped();
       unsubscribeSimulResolved();
       unsubscribeSimulReady();
       unsubscribePlayerListUpdated();
@@ -3063,6 +3108,11 @@ const LiveGame = () => {
       clickedPiece.id !== selectedPiece.id &&
       validMoves.some(m => m.isCapture && doesPieceOccupySquare(clickedPiece, m.x, m.y));
     if (clickedPiece && !hasAllyCaptureMove && (isPreviewMode || (isOwnPiece && isMyTurn) || canSelectForPremove)) {
+      // If a capture action is pending, only allow selecting the designated piece
+      if (captureActionPieceId != null && isMyTurn && clickedPiece.id !== captureActionPieceId) {
+        showIllegalMoveWarning("You must use the highlighted piece for your capture action, or skip.", 2500);
+        return;
+      }
       setSelectedPiece(clickedPiece);
       const actuallyPremoving = canSelectForPremove && !isMyTurn;
       const moves = calculateValidMoves(
@@ -3225,7 +3275,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Handle piece hover for movement helpers
@@ -3534,6 +3584,12 @@ const LiveGame = () => {
 
     if (!canDragForMove && !canDragForPremove) return;
 
+    // If a capture action is pending, only allow dragging the designated piece
+    if (captureActionPieceId != null && isMyTurn && piece.id !== captureActionPieceId) {
+      showIllegalMoveWarning("You must use the highlighted piece for your capture action, or skip.", 2500);
+      return;
+    }
+
     const touch = e.touches[0];
 
     // Calculate grab offset within the piece footprint for multi-tile pieces
@@ -3564,7 +3620,7 @@ const LiveGame = () => {
     touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
     setSelectedPiece(piece);
     setValidMoves(moves);
-  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove]);
+  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning]);
 
   const handleTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -4281,7 +4337,8 @@ const LiveGame = () => {
         const piece = findPieceAtSquare(pieces, gameX, gameY);
         // Is this the anchor square (top-left) of the piece? Only render image here.
         const isAnchor = piece && piece.x === gameX && piece.y === gameY;
-        const isSelected = selectedPiece && doesPieceOccupySquare(selectedPiece, gameX, gameY);
+        const isSelected = (selectedPiece && doesPieceOccupySquare(selectedPiece, gameX, gameY))
+          || (captureActionPieceId != null && piece?.id === captureActionPieceId && isMyTurn);
         // Find regular and ranged moves separately so both styles can overlap
         // Multi-tile aware: highlight all squares the piece would cover at each valid destination
         // But don't highlight squares within the selected piece's current footprint
@@ -5039,6 +5096,27 @@ const LiveGame = () => {
             )}
             {moveError && (
               <span className={styles["move-error"]}>❌ {moveError}</span>
+            )}
+            {captureActionPieceId != null && isMyTurn && (
+              <span className={styles["move-error"]} style={{ background: 'rgba(80, 220, 120, 0.18)', color: '#7fffb0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                {captureActionData?.isRanged
+                  ? `Ranged capture action available! Fire again with the same piece, or skip.`
+                  : `Capture action available! Move the highlighted piece to capture an enemy, or skip.`}
+                {captureActionData?.actionsTotal !== -1 && captureActionData?.actionsUsed != null && (
+                  <span style={{ opacity: 0.7, fontSize: '0.85em' }}>({captureActionData.actionsUsed}/{captureActionData.actionsTotal})</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (captureActionData?.isRanged) {
+                      skipRangedCaptureAction(gameId);
+                    } else {
+                      skipCaptureAction(gameId);
+                    }
+                  }}
+                  style={{ marginLeft: 4, padding: '2px 10px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 4, color: 'inherit', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9em' }}
+                >Skip</button>
+              </span>
             )}
             {stalemateNotice && (
               <span className={styles["move-error"]} style={{ background: 'rgba(255, 193, 7, 0.18)', color: '#ffc107' }}>

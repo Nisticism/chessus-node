@@ -11,7 +11,7 @@ const db_pool = require('../../configs/db');
 
 // This must match Cargo.toml [package] version in ai-engine-rs/.
 // Bump both together whenever a protocol.rs change breaks compatibility.
-const TRAINER_VERSION = '1.2.5';
+const TRAINER_VERSION = '1.2.6';
 // Minimum binary version that can still train and upload. Bump this only when
 // a protocol-breaking change requires users to get a new binary. As long as
 // you only add optional fields, leave this at 1.0.0 so existing binaries keep
@@ -515,6 +515,8 @@ async function exportGameRules(gameTypeId) {
       capture_points_loss: intOr(p.capture_points_loss, 0),
       burn_damage: intOr(p.burn_damage, 0),
       burn_duration: intOr(p.burn_duration, 0),
+      capture_actions_per_turn: intOr(p.capture_actions_per_turn, 1) || 1,
+      ranged_capture_actions_per_turn: intOr(p.ranged_capture_actions_per_turn, 1) || 1,
       trample: toBool(p.trample),
       trample_radius: intOr(p.trample_radius, 0),
       attack_radius: intOr(p.attack_radius, 0),
@@ -523,6 +525,34 @@ async function exportGameRules(gameTypeId) {
 
       special_scenario_moves: p.special_scenario_moves || null,
       special_scenario_captures: p.special_scenario_captures || null,
+
+      // Ranged attack fields
+      can_capture_enemy_via_range: toBool(p.can_capture_enemy_via_range),
+      up_attack_range: intOr(p.up_attack_range, 0),
+      down_attack_range: intOr(p.down_attack_range, 0),
+      left_attack_range: intOr(p.left_attack_range, 0),
+      right_attack_range: intOr(p.right_attack_range, 0),
+      up_left_attack_range: intOr(p.up_left_attack_range, 0),
+      up_right_attack_range: intOr(p.up_right_attack_range, 0),
+      down_left_attack_range: intOr(p.down_left_attack_range, 0),
+      down_right_attack_range: intOr(p.down_right_attack_range, 0),
+      up_attack_range_exact: toBool(p.up_attack_range_exact),
+      down_attack_range_exact: toBool(p.down_attack_range_exact),
+      left_attack_range_exact: toBool(p.left_attack_range_exact),
+      right_attack_range_exact: toBool(p.right_attack_range_exact),
+      up_left_attack_range_exact: toBool(p.up_left_attack_range_exact),
+      up_right_attack_range_exact: toBool(p.up_right_attack_range_exact),
+      down_left_attack_range_exact: toBool(p.down_left_attack_range_exact),
+      down_right_attack_range_exact: toBool(p.down_right_attack_range_exact),
+      ratio_one_attack_range: intOr(p.ratio_one_attack_range, 0),
+      ratio_two_attack_range: intOr(p.ratio_two_attack_range, 0),
+      // Combined step-by-step ranged attack: negative = orthogonal-only (Manhattan), positive = with diagonals (Chebyshev)
+      step_by_step_attack_range: (p.step_by_step_attack_value != null && p.step_by_step_attack_value !== 0)
+        ? (toBool(p.step_by_step_attack_style) ? -Math.abs(intOr(p.step_by_step_attack_value, 0)) : intOr(p.step_by_step_attack_value, 0))
+        : 0,
+      can_fire_over_allies: toBool(p.can_fire_over_allies),
+      can_fire_over_enemies: toBool(p.can_fire_over_enemies),
+
       custom_movement_squares: p.custom_movement_squares || null,
       custom_attack_squares: p.custom_attack_squares || null,
     })),

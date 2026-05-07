@@ -350,6 +350,71 @@ pub struct PieceTemplate {
     /// Same as above but for `ends_game_on_capture` promotion targets.
     #[serde(default)]
     pub limit_promote_capture_to_original: bool,
+
+    // ---- Capture actions per turn ----
+    /// Number of bonus direct-move captures this piece may take per turn after its
+    /// initial capture. 1 = default (no bonus). -1 = unlimited bonus captures.
+    /// Hop-only (checkers-style) captures do NOT trigger bonus actions.
+    /// Mirrors `capture_actions_per_turn` in the pieces DB table.
+    #[serde(default = "default_one_i32")]
+    pub capture_actions_per_turn: i32,
+    /// Same as `capture_actions_per_turn` but for ranged attacks.
+    #[serde(default = "default_one_i32")]
+    pub ranged_capture_actions_per_turn: i32,
+
+    // ---- Ranged attacks (piece stays in place, targets enemies at range) ----
+    /// Master enable flag: piece can target enemies without moving to their square.
+    #[serde(default)]
+    pub can_capture_enemy_via_range: bool,
+    /// Directional ranged attack ranges (0 = disabled for that direction).
+    #[serde(default)]
+    pub up_attack_range: i32,
+    #[serde(default)]
+    pub down_attack_range: i32,
+    #[serde(default)]
+    pub left_attack_range: i32,
+    #[serde(default)]
+    pub right_attack_range: i32,
+    #[serde(default)]
+    pub up_left_attack_range: i32,
+    #[serde(default)]
+    pub up_right_attack_range: i32,
+    #[serde(default)]
+    pub down_left_attack_range: i32,
+    #[serde(default)]
+    pub down_right_attack_range: i32,
+    /// When true for a direction, only the exact range distance counts (not 1..N).
+    #[serde(default)]
+    pub up_attack_range_exact: bool,
+    #[serde(default)]
+    pub down_attack_range_exact: bool,
+    #[serde(default)]
+    pub left_attack_range_exact: bool,
+    #[serde(default)]
+    pub right_attack_range_exact: bool,
+    #[serde(default)]
+    pub up_left_attack_range_exact: bool,
+    #[serde(default)]
+    pub up_right_attack_range_exact: bool,
+    #[serde(default)]
+    pub down_left_attack_range_exact: bool,
+    #[serde(default)]
+    pub down_right_attack_range_exact: bool,
+    /// L-shaped (knight-style) ranged attack ratio dimensions.
+    #[serde(default)]
+    pub ratio_one_attack_range: i32,
+    #[serde(default)]
+    pub ratio_two_attack_range: i32,
+    /// Step-by-step ranged attack budget. Negative = orthogonal-only (Manhattan),
+    /// positive = any direction (Chebyshev). 0 = disabled.
+    #[serde(default)]
+    pub step_by_step_attack_range: i32,
+    /// When true, ranged shots can pass through allied pieces.
+    #[serde(default)]
+    pub can_fire_over_allies: bool,
+    /// When true, ranged shots can pass through enemy pieces without stopping.
+    #[serde(default)]
+    pub can_fire_over_enemies: bool,
 }
 
 impl Default for PieceTemplate {
@@ -435,6 +500,22 @@ impl Default for PieceTemplate {
             can_control_squares: false,
             limit_promote_checkmate_to_original: false,
             limit_promote_capture_to_original: false,
+            capture_actions_per_turn: 1,
+            ranged_capture_actions_per_turn: 1,
+            can_capture_enemy_via_range: false,
+            up_attack_range: 0, down_attack_range: 0,
+            left_attack_range: 0, right_attack_range: 0,
+            up_left_attack_range: 0, up_right_attack_range: 0,
+            down_left_attack_range: 0, down_right_attack_range: 0,
+            up_attack_range_exact: false, down_attack_range_exact: false,
+            left_attack_range_exact: false, right_attack_range_exact: false,
+            up_left_attack_range_exact: false, up_right_attack_range_exact: false,
+            down_left_attack_range_exact: false, down_right_attack_range_exact: false,
+            ratio_one_attack_range: 0,
+            ratio_two_attack_range: 0,
+            step_by_step_attack_range: 0,
+            can_fire_over_allies: false,
+            can_fire_over_enemies: false,
         }
     }
 }

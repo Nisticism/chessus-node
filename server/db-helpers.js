@@ -1,4 +1,4 @@
-ï»¿const db = require("../configs/db");
+const db = require("../configs/db");
 
 /**
  * Database query wrapper (now using promise-based pool)
@@ -100,7 +100,7 @@ const updateUser = async (userData, id) => {
 };
 
 /**
- * Delete user by username â€” disables FK checks so that articles/comments
+ * Delete user by username — disables FK checks so that articles/comments
  * retain their author_id (server resolves missing users as "User Deleted").
  * Also writes a row to deleted_users so admins can audit deletions.
  * @param {string} username - Username
@@ -123,7 +123,7 @@ const deleteUser = async (username, options = {}) => {
       [userId, previousUsername, options.deletedByUserId || null, options.deletionType || 'self']
     );
   } catch (err) {
-    // Don't block the deletion if the audit insert fails â€” just log it.
+    // Don't block the deletion if the audit insert fails — just log it.
     if (err.code !== 'ER_NO_SUCH_TABLE') {
       console.error('deleteUser: failed to write deleted_users audit row:', err.message);
     }
@@ -324,8 +324,8 @@ const getAllPiecesWithMovement = async () => {
       p.ratio_two_attack_range,
       p.step_by_step_attack_style,
       p.step_by_step_attack_value,
-      p.max_piece_captures_per_move,
-      p.max_piece_captures_per_ranged_attack,
+      p.capture_actions_per_turn,
+      p.ranged_capture_actions_per_turn,
       p.special_scenario_captures,
       p.has_checkmate_rule,
       p.has_check_rule,
@@ -481,8 +481,8 @@ const getPieceById = async (pieceId) => {
       p.ratio_two_attack_range,
       p.step_by_step_attack_style,
       p.step_by_step_attack_value,
-      p.max_piece_captures_per_move,
-      p.max_piece_captures_per_ranged_attack,
+      p.capture_actions_per_turn,
+      p.ranged_capture_actions_per_turn,
       p.special_scenario_captures,
       p.has_checkmate_rule,
       p.has_check_rule,
@@ -571,7 +571,7 @@ const getGameById = async (gameId) => {
       const key = `${piece.y},${piece.x}`;
       
       // Use is_neutral from junction table as the authoritative source.
-      // player_number=0 means neutral; || 1 would coerce 0â†’1, so we check is_neutral first.
+      // player_number=0 means neutral; || 1 would coerce 0?1, so we check is_neutral first.
       const isNeutralPiece = Boolean(piece.is_neutral);
       let playerId = isNeutralPiece ? 0 : (piece.player_number != null ? piece.player_number : 1);
       // For non-neutral pieces, prefer the original pieces_string value if available
@@ -648,6 +648,9 @@ const getGameById = async (gameId) => {
         limit_promote_checkmate_to_original: Boolean(piece.limit_promote_checkmate_to_original),
         can_promote_to_capture: Boolean(piece.can_promote_to_capture),
         limit_promote_capture_to_original: Boolean(piece.limit_promote_capture_to_original),
+        // Points win condition — per-placement scoring values
+        capture_points_gain: piece.capture_points_gain ?? 0,
+        capture_points_loss: piece.capture_points_loss ?? 0,
         // Neutral piece
         is_neutral: isNeutralPiece,
         neutral_image_index: isNeutralPiece ? ((piece.image_index != null && piece.image_index >= 0) ? piece.image_index : 0) : null
@@ -908,7 +911,7 @@ const getEmotesByCommentIds = async (commentIds) => {
 };
 
 /**
- * Toggle a comment emote â€” adds if not present, removes if already present.
+ * Toggle a comment emote — adds if not present, removes if already present.
  * Returns { added: bool, emote_type, comment_id, user_id }
  * @param {Object} params
  * @param {number} params.comment_id
@@ -1025,7 +1028,7 @@ const updateNotification = async (notificationId, { sender_id, title, content })
 const getNotificationsByUserId = async (userId, page = 1, limit = 20, cursor = null) => {
   if (cursor) {
     // Keyset pagination: fetch notifications older than cursor (an id value).
-    // O(1) regardless of depth â€” use this for "load more" infinite scroll.
+    // O(1) regardless of depth — use this for "load more" infinite scroll.
     const notifications = await query(
       `SELECT n.*, u.username as sender_username, u.profile_picture as sender_profile_picture
          FROM notifications n
@@ -1037,7 +1040,7 @@ const getNotificationsByUserId = async (userId, page = 1, limit = 20, cursor = n
     );
     return notifications;
   }
-  // Legacy OFFSET path â€” still used for page=1 (initial load) and admin views.
+  // Legacy OFFSET path — still used for page=1 (initial load) and admin views.
   const offset = (page - 1) * limit;
   const notifications = await query(
     `SELECT n.*, u.username as sender_username, u.profile_picture as sender_profile_picture
@@ -1220,7 +1223,7 @@ const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, befo
     );
     return messages.reverse(); // return chronological order
   }
-  // Legacy OFFSET path â€” still used for initial load (page 1).
+  // Legacy OFFSET path — still used for initial load (page 1).
   const offset = (page - 1) * limit;
   const messages = await query(
     `SELECT dm.*, u.username as sender_username, u.profile_picture as sender_profile_picture

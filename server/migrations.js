@@ -1731,8 +1731,8 @@ const runMigrations = async () => {
         ['min_ratio_ranged_attack_iterations', 'INT DEFAULT NULL'],
         ['step_by_step_attack_style', 'TINYINT(1) DEFAULT NULL'],
         ['step_by_step_attack_value', 'TINYINT(1) DEFAULT NULL'],
-        ['max_piece_captures_per_move', 'INT DEFAULT NULL'],
-        ['max_piece_captures_per_ranged_attack', 'INT DEFAULT NULL'],
+        ['capture_actions_per_turn', 'INT DEFAULT NULL'],
+        ['ranged_capture_actions_per_turn', 'INT DEFAULT NULL'],
         ['special_scenario_captures', 'TEXT DEFAULT NULL'],
         ['up_left_capture_exact', 'TINYINT(1) DEFAULT 0'],
         ['up_capture_exact', 'TINYINT(1) DEFAULT 0'],
@@ -3737,6 +3737,36 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error adding file_size_bytes column to ai_training_jobs:', err.message);
+  }
+  // Rename max_piece_captures_per_move → capture_actions_per_turn (semantics changed to
+  // "extra capture-only actions per turn" rather than a per-single-move cap).
+  try {
+    const hasOld = await columnExists('pieces', 'max_piece_captures_per_move');
+    const hasNew = await columnExists('pieces', 'capture_actions_per_turn');
+    if (hasOld && !hasNew) {
+      await runMigration(
+        `ALTER TABLE pieces CHANGE COLUMN max_piece_captures_per_move capture_actions_per_turn INT DEFAULT NULL`,
+        'Rename pieces.max_piece_captures_per_move → capture_actions_per_turn'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error renaming max_piece_captures_per_move:', err.message);
+  }
+
+  // Rename max_piece_captures_per_ranged_attack → ranged_capture_actions_per_turn
+  try {
+    const hasOld = await columnExists('pieces', 'max_piece_captures_per_ranged_attack');
+    const hasNew = await columnExists('pieces', 'ranged_capture_actions_per_turn');
+    if (hasOld && !hasNew) {
+      await runMigration(
+        `ALTER TABLE pieces CHANGE COLUMN max_piece_captures_per_ranged_attack ranged_capture_actions_per_turn INT DEFAULT NULL`,
+        'Rename pieces.max_piece_captures_per_ranged_attack → ranged_capture_actions_per_turn'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error renaming max_piece_captures_per_ranged_attack:', err.message);
   }
 };
 

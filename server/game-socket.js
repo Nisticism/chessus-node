@@ -2907,8 +2907,8 @@ function initializeSocket(server) {
               down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
               ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
               ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
-              step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
-              max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+              step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+              ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
               can_fire_over_allies: fullPieceData.can_fire_over_allies,
               can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
               // En passant
@@ -3427,8 +3427,8 @@ function initializeSocket(server) {
               down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
               ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
               ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
-              step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
-              max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+              step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+              ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
               can_fire_over_allies: fullPieceData.can_fire_over_allies,
               can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
               can_en_passant: fullPieceData.can_en_passant,
@@ -4196,8 +4196,8 @@ function initializeSocket(server) {
                   down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
                   ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
                   ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
-                  step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
-                  max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+                  step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+                  ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
                   can_fire_over_allies: fullPieceData.can_fire_over_allies,
                   can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
                   // En passant
@@ -4490,6 +4490,14 @@ function initializeSocket(server) {
         // Enforce chain capture: if a chain capture is in progress, only the same piece can move
         if (gameState.chainCapturePieceId != null && move.pieceId !== gameState.chainCapturePieceId) {
           return socket.emit("error", { message: "You must complete the chain capture with the same piece" });
+        }
+
+        // Enforce capture actions: if a capture action sequence is in progress, only the same piece can move
+        if (gameState.captureActionsPieceId != null && move.pieceId !== gameState.captureActionsPieceId) {
+          return socket.emit("error", { message: "You must use the same piece for your capture action, or skip it" });
+        }
+        if (gameState.rangedCaptureActionsPieceId != null && move.pieceId !== gameState.rangedCaptureActionsPieceId) {
+          return socket.emit("error", { message: "You must use the same piece for your ranged capture action, or skip it" });
         }
 
         // Start the game if this is the first move
@@ -5148,10 +5156,82 @@ function initializeSocket(server) {
           return; // Wait for chain capture or skip
         }
 
+        // Check if capture actions are available (extra deliberate move-capture actions per turn)
+        if (moveResult.captureActionsAvailable && moveResult.movingPiece) {
+          gameState.captureActionsPieceId = moveResult.movingPiece.id;
+          gameState.captureActionsPlayerId = userId;
+          gameState.captureActionsUsed = (gameState.captureActionsUsed || 0) + 1;
+
+          await db_pool.query(
+            "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+            [JSON.stringify(gameState.pieces),
+             buildOtherData(gameState, { captureActionsPieceId: gameState.captureActionsPieceId, captureActionsPlayerId: gameState.captureActionsPlayerId }), gameId]
+          );
+
+          io.to(`game-${gameId}`).emit("captureActionRequired", {
+            gameId,
+            pieceId: gameState.captureActionsPieceId,
+            actionsUsed: gameState.captureActionsUsed,
+            actionsTotal: moveResult.movingPiece.capture_actions_per_turn,
+            move: moveRecord,
+            gameState: {
+              pieces: gameState.pieces,
+              currentTurn: gameState.currentTurn,
+              playerTimes: gameState.playerTimes,
+              moveHistory: gameState.moveHistory,
+              captureActionsPieceId: gameState.captureActionsPieceId,
+              controlSquareTracking: gameState.controlSquareTracking
+            }
+          });
+
+          console.log(`Capture action available in game ${gameId} for piece ${gameState.captureActionsPieceId} (${gameState.captureActionsUsed}/${moveResult.movingPiece.capture_actions_per_turn})`);
+          return; // Wait for capture action or skip
+        }
+
+        // Check if ranged capture actions are available
+        if (moveResult.rangedCaptureActionsAvailable && moveResult.movingPiece) {
+          gameState.rangedCaptureActionsPieceId = moveResult.movingPiece.id;
+          gameState.rangedCaptureActionsPlayerId = userId;
+          gameState.rangedCaptureActionsUsed = (gameState.rangedCaptureActionsUsed || 0) + 1;
+
+          await db_pool.query(
+            "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+            [JSON.stringify(gameState.pieces),
+             buildOtherData(gameState, { rangedCaptureActionsPieceId: gameState.rangedCaptureActionsPieceId, rangedCaptureActionsPlayerId: gameState.rangedCaptureActionsPlayerId }), gameId]
+          );
+
+          io.to(`game-${gameId}`).emit("rangedCaptureActionRequired", {
+            gameId,
+            pieceId: gameState.rangedCaptureActionsPieceId,
+            actionsUsed: gameState.rangedCaptureActionsUsed,
+            actionsTotal: moveResult.movingPiece.ranged_capture_actions_per_turn,
+            move: moveRecord,
+            gameState: {
+              pieces: gameState.pieces,
+              currentTurn: gameState.currentTurn,
+              playerTimes: gameState.playerTimes,
+              moveHistory: gameState.moveHistory,
+              rangedCaptureActionsPieceId: gameState.rangedCaptureActionsPieceId,
+              controlSquareTracking: gameState.controlSquareTracking
+            }
+          });
+
+          console.log(`Ranged capture action available in game ${gameId} for piece ${gameState.rangedCaptureActionsPieceId} (${gameState.rangedCaptureActionsUsed}/${moveResult.movingPiece.ranged_capture_actions_per_turn})`);
+          return; // Wait for ranged capture action or skip
+        }
+
         // Clear any chain capture state after a non-chain-capture move
         gameState.chainCapturePieceId = null;
         gameState.chainCapturePlayerId = null;
         gameState.chainCaptureHopCount = 0;
+
+        // Clear any capture action state after a move that didn't trigger more actions
+        gameState.captureActionsPieceId = null;
+        gameState.captureActionsPlayerId = null;
+        gameState.captureActionsUsed = 0;
+        gameState.rangedCaptureActionsPieceId = null;
+        gameState.rangedCaptureActionsPlayerId = null;
+        gameState.rangedCaptureActionsUsed = 0;
 
         // Track must_move_if_able pieces that were moved this turn
         if (moveResult.movingPiece?.must_move_if_able) {
@@ -7091,6 +7171,180 @@ function initializeSocket(server) {
       }
     });
 
+    // Skip a pending capture action (end the capture-actions sequence and switch turns)
+    socket.on("skipCaptureAction", async ({ gameId, userId }) => {
+      try {
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return socket.emit("error", { message: "Game not found" });
+        if (gameState.status !== 'active') return;
+
+        const currentPlayer = gameState.players.find(p => p.id === userId);
+        if (!currentPlayer || currentPlayer.id !== gameState.captureActionsPlayerId) {
+          return socket.emit("error", { message: "No capture action pending for you" });
+        }
+
+        // Clear capture action state
+        gameState.captureActionsPieceId = null;
+        gameState.captureActionsPlayerId = null;
+        gameState.captureActionsUsed = 0;
+        gameState.chainCapturePieceId = null;
+        gameState.chainCapturePlayerId = null;
+        gameState.chainCaptureHopCount = 0;
+
+        // Switch turns (capture action was a bonus; now end the turn)
+        gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+        gameState.actionsThisTurn = 0;
+
+        // Apply burn/DOT for the new player's turn
+        const newTurnPlayer = gameState.currentTurn;
+        gameState.pieces.forEach(p => {
+          const owner = p.team || p.player_id;
+          if (owner === newTurnPlayer && p.burn_active_turns > 0 && p.burn_active_damage > 0) {
+            p.current_hp = Math.max(0, (p.current_hp ?? p.hit_points ?? 1) - p.burn_active_damage);
+            p.burn_active_turns--;
+          }
+        });
+        gameState.pieces = gameState.pieces.filter(p => (p.current_hp ?? 1) > 0);
+
+        // HP regen for new player
+        gameState.pieces.forEach(p => {
+          const owner = p.team || p.player_id;
+          if (owner === newTurnPlayer && p.hp_regen > 0) {
+            const maxHp = p.hit_points || 1;
+            p.current_hp = Math.min(maxHp, (p.current_hp ?? maxHp) + p.hp_regen);
+          }
+        });
+
+        // Check win/check conditions
+        const checkResult = checkForCheck(gameState, gameState.currentTurn);
+        gameState.inCheck = checkResult.inCheck;
+        gameState.checkedPieces = checkResult.checkedPieces;
+
+        // Update DB
+        await db_pool.query(
+          "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+          [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+        );
+
+        io.to(`game-${gameId}`).emit("captureActionSkipped", {
+          gameId,
+          gameState: {
+            status: gameState.status,
+            pieces: gameState.pieces,
+            currentTurn: gameState.currentTurn,
+            playerTimes: gameState.playerTimes,
+            moveHistory: gameState.moveHistory,
+            inCheck: checkResult.inCheck,
+            checkedPieces: checkResult.checkedPieces,
+            allowPremoves: gameState.allowPremoves,
+            rated: gameState.rated,
+            controlSquareTracking: gameState.controlSquareTracking,
+            actionsThisTurn: 0,
+            actionsPerTurn: gameState.gameType?.actions_per_turn || 1
+          }
+        });
+
+        if (checkResult.inCheck) {
+          io.to(`game-${gameId}`).emit("check", {
+            gameId,
+            playerPosition: gameState.currentTurn,
+            checkedPieces: checkResult.checkedPieces
+          });
+        }
+
+        if (gameState.status !== 'completed' && gameState.botPlayer &&
+            gameState.currentTurn === gameState.botPlayer.position) {
+          processBotTurn(io, gameId, gameState);
+        }
+      } catch (err) {
+        console.error("Error in skipCaptureAction:", err);
+        socket.emit("error", { message: "Failed to skip capture action" });
+      }
+    });
+
+    // Skip a pending ranged capture action
+    socket.on("skipRangedCaptureAction", async ({ gameId, userId }) => {
+      try {
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return socket.emit("error", { message: "Game not found" });
+        if (gameState.status !== 'active') return;
+
+        const currentPlayer = gameState.players.find(p => p.id === userId);
+        if (!currentPlayer || currentPlayer.id !== gameState.rangedCaptureActionsPlayerId) {
+          return socket.emit("error", { message: "No ranged capture action pending for you" });
+        }
+
+        // Clear ranged capture action state
+        gameState.rangedCaptureActionsPieceId = null;
+        gameState.rangedCaptureActionsPlayerId = null;
+        gameState.rangedCaptureActionsUsed = 0;
+        gameState.chainCapturePieceId = null;
+        gameState.chainCapturePlayerId = null;
+        gameState.chainCaptureHopCount = 0;
+
+        // Switch turns
+        gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+        gameState.actionsThisTurn = 0;
+
+        // Apply burn/DOT for the new player's turn
+        const newTurnPlayerRanged = gameState.currentTurn;
+        gameState.pieces.forEach(p => {
+          const owner = p.team || p.player_id;
+          if (owner === newTurnPlayerRanged && p.burn_active_turns > 0 && p.burn_active_damage > 0) {
+            p.current_hp = Math.max(0, (p.current_hp ?? p.hit_points ?? 1) - p.burn_active_damage);
+            p.burn_active_turns--;
+          }
+        });
+        gameState.pieces = gameState.pieces.filter(p => (p.current_hp ?? 1) > 0);
+
+        // HP regen for new player
+        gameState.pieces.forEach(p => {
+          const owner = p.team || p.player_id;
+          if (owner === newTurnPlayerRanged && p.hp_regen > 0) {
+            const maxHp = p.hit_points || 1;
+            p.current_hp = Math.min(maxHp, (p.current_hp ?? maxHp) + p.hp_regen);
+          }
+        });
+
+        const checkResultRanged = checkForCheck(gameState, gameState.currentTurn);
+        gameState.inCheck = checkResultRanged.inCheck;
+        gameState.checkedPieces = checkResultRanged.checkedPieces;
+
+        await db_pool.query(
+          "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+          [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+        );
+
+        io.to(`game-${gameId}`).emit("captureActionSkipped", {
+          gameId,
+          gameState: {
+            status: gameState.status,
+            pieces: gameState.pieces,
+            currentTurn: gameState.currentTurn,
+            playerTimes: gameState.playerTimes,
+            moveHistory: gameState.moveHistory,
+            inCheck: checkResultRanged.inCheck,
+            checkedPieces: checkResultRanged.checkedPieces,
+            allowPremoves: gameState.allowPremoves,
+            rated: gameState.rated,
+            controlSquareTracking: gameState.controlSquareTracking,
+            actionsThisTurn: 0,
+            actionsPerTurn: gameState.gameType?.actions_per_turn || 1
+          }
+        });
+
+        if (gameState.status !== 'completed' && gameState.botPlayer &&
+            gameState.currentTurn === gameState.botPlayer.position) {
+          processBotTurn(io, gameId, gameState);
+        }
+      } catch (err) {
+        console.error("Error in skipRangedCaptureAction:", err);
+        socket.emit("error", { message: "Failed to skip ranged capture action" });
+      }
+    });
+
     // Set a premove
     socket.on("setPremove", async (data) => {
       try {
@@ -7617,8 +7871,8 @@ function initializeSocket(server) {
                     down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
                     ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
                     ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
-                    step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
-                    max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+                    step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+                    ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
                     can_fire_over_allies: fullPieceData.can_fire_over_allies,
                     can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
                     // En passant
@@ -9503,7 +9757,17 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       }
     }
     
-    return { valid: true, captured: capturedPiece, damagedPieces, promotionEligible: null, movingPiece, isRangedAttack: true };
+    // Check for ranged capture actions per turn (additional ranged fire actions)
+    const rangedActionsPerTurn = movingPiece ? (movingPiece.ranged_capture_actions_per_turn ?? 1) : 1;
+    if (capturedPiece !== null && (rangedActionsPerTurn > 1 || rangedActionsPerTurn === -1)) {
+      const rangedActionsUsed = (gameState.rangedCaptureActionsUsed || 0) + 1;
+      const rangedUnlimited = rangedActionsPerTurn === -1;
+      if (rangedUnlimited || rangedActionsUsed < rangedActionsPerTurn) {
+        rangedCaptureActionsAvailable = true;
+      }
+    }
+
+    return { valid: true, captured: capturedPiece, damagedPieces, promotionEligible: null, movingPiece, isRangedAttack: true, rangedCaptureActionsAvailable };
   }
   
   if (destinationPieceIndex !== -1) {
@@ -9790,6 +10054,8 @@ async function validateAndApplyMove(gameState, move, options = {}) {
   let promotionEligible = null;
   let hoppedCaptures = [];
   let chainCaptureAvailable = false;
+  let captureActionsAvailable = false;
+  let rangedCaptureActionsAvailable = false;
   
   if (movingPiece) {
     movingPiece.x = to.x;
@@ -10047,6 +10313,18 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       }
     }
 
+    // Check for capture actions per turn (extra deliberate move-capture actions per turn)
+    // Only counts direct captures — hop captures (checkers-style) use chain_capture_enabled
+    const captureActionsPerTurn = movingPiece.capture_actions_per_turn ?? 1;
+    const isHopOnlyCapture = hoppedCaptures.length > 0 && capturedPiece === null;
+    if (!isHopOnlyCapture && capturedPiece !== null && (captureActionsPerTurn > 1 || captureActionsPerTurn === -1)) {
+      const captureActionsUsed = (gameState.captureActionsUsed || 0) + 1;
+      const captureUnlimited = captureActionsPerTurn === -1;
+      if (captureUnlimited || captureActionsUsed < captureActionsPerTurn) {
+        captureActionsAvailable = true;
+      }
+    }
+
     // Check for promotion eligibility
     promotionEligible = await checkPromotionEligibility(movingPiece, to, gameState);
   }
@@ -10129,7 +10407,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     }
   }
 
-  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable };
+  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable, captureActionsAvailable };
 }
 
 /**
@@ -10353,8 +10631,8 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
     ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
     ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
-    step_by_step_attack_range: fullPieceData.step_by_step_attack_value,
-    max_piece_captures_per_ranged_attack: fullPieceData.max_piece_captures_per_ranged_attack,
+    step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
+    ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
     can_fire_over_allies: fullPieceData.can_fire_over_allies,
     can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
     can_en_passant: fullPieceData.can_en_passant,
@@ -14121,6 +14399,18 @@ async function processBotTurn(io, gameId, gameState) {
         gameState.chainCaptureHopCount = 0;
       }
 
+      // 5b. Handle capture actions (bot always skips extra capture actions)
+      if (moveResult.captureActionsAvailable && moveResult.movingPiece) {
+        gameState.captureActionsPieceId = null;
+        gameState.captureActionsPlayerId = null;
+        gameState.captureActionsUsed = 0;
+      }
+      if (moveResult.rangedCaptureActionsAvailable && moveResult.movingPiece) {
+        gameState.rangedCaptureActionsPieceId = null;
+        gameState.rangedCaptureActionsPlayerId = null;
+        gameState.rangedCaptureActionsUsed = 0;
+      }
+
       // 6. Actions per turn: increment counter and switch only if limit reached
       const botActionsPerTurn = gameState.gameType?.actions_per_turn || 1;
       // Track must_move_if_able pieces moved this turn (mirrors human path)
@@ -15508,6 +15798,8 @@ module.exports = {
   wouldMoveLeaveInCheck,
   findPieceAtSquare,
   doesPieceOccupySquare,
+  canRangedAttackTo,
+  isRangedPathClear,
   // Initial-state validation
   evaluateInitialPosition,
   buildSyntheticInitialState,

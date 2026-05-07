@@ -411,15 +411,15 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         {pieceData.can_capture_enemy_on_move && (
           <>
             <div className={styles["sub-field"]}>
-              <label>Max Captures Per Move</label>
+              <label>Capture Actions Per Turn <InfoTooltip text="Grants this piece additional capture-only move actions per turn. After capturing an enemy normally, the piece can move and capture again — up to this many times total per turn. The player may skip remaining actions at any time. Does not apply to ghostwalk/trample passthrough captures or hop captures (those use Chain Capture)." /></label>
               <NumberInput
-                value={pieceData.max_captures_per_move === -1 ? "" : (pieceData.max_captures_per_move || 1)}
-                onChange={(val) => handleChange("max_captures_per_move", val)}
-                options={{ min: 1, disabled: pieceData.max_captures_per_move === -1, placeholder: "1", className: styles["form-input-small"] }}
+                value={pieceData.capture_actions_per_turn === -1 ? "" : (pieceData.capture_actions_per_turn || 1)}
+                onChange={(val) => handleChange("capture_actions_per_turn", val)}
+                options={{ min: 1, disabled: pieceData.capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
               <ToggleSwitch inline size="small"
-                checked={pieceData.max_captures_per_move === -1}
-                onChange={(v) => handleChange("max_captures_per_move", v ? -1 : 1)}
+                checked={pieceData.capture_actions_per_turn === -1}
+                onChange={(v) => handleChange("capture_actions_per_turn", v ? -1 : 1)}
                 label="Unlimited"
               />
             </div>
@@ -437,13 +437,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Up-Left */}
                     <div className={styles["direction-input"]}>
                       <label>↖ Up-Left</label>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <NumberInput
+                      <NumberInput
                           value={pieceData.up_left_capture === 99 ? "∞" : (pieceData.up_left_capture || 0)}
                           onChange={(val) => handleChange("up_left_capture", val)}
                           options={{ disabled: pieceData.up_left_capture === 99 }}
                         />
-                      </div>
                       <ToggleSwitch inline size="small"
                         checked={!!pieceData.up_left_capture_exact}
                         onChange={(v) => handleChange("up_left_capture_exact", v)}
@@ -478,13 +476,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Up */}
                     <div className={styles["direction-input"]}>
                       <label>↑ Up</label>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <NumberInput
+                      <NumberInput
                           value={pieceData.up_capture === 99 ? "∞" : (pieceData.up_capture || 0)}
                           onChange={(val) => handleChange("up_capture", val)}
                           options={{ disabled: pieceData.up_capture === 99 }}
                         />
-                      </div>
                       <ToggleSwitch inline size="small"
                         checked={!!pieceData.up_capture_exact}
                         onChange={(v) => handleChange("up_capture_exact", v)}
@@ -519,13 +515,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Up-Right */}
                     <div className={styles["direction-input"]}>
                       <label>↗ Up-Right</label>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <NumberInput
+                      <NumberInput
                           value={pieceData.up_right_capture === 99 ? "∞" : (pieceData.up_right_capture || 0)}
                           onChange={(val) => handleChange("up_right_capture", val)}
                           options={{ disabled: pieceData.up_right_capture === 99 }}
                         />
-                      </div>
                       <ToggleSwitch inline size="small"
                         checked={!!pieceData.up_right_capture_exact}
                         onChange={(v) => handleChange("up_right_capture_exact", v)}
@@ -562,13 +556,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Left */}
                     <div className={styles["direction-input"]}>
                       <label>← Left</label>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <NumberInput
+                      <NumberInput
                           value={pieceData.left_capture === 99 ? "∞" : (pieceData.left_capture || 0)}
                           onChange={(val) => handleChange("left_capture", val)}
                           options={{ disabled: pieceData.left_capture === 99 }}
                         />
-                      </div>
                       <ToggleSwitch inline size="small"
                         checked={!!pieceData.left_capture_exact}
                         onChange={(v) => handleChange("left_capture_exact", v)}
@@ -614,13 +606,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Right */}
                     <div className={styles["direction-input"]}>
                       <label>→ Right</label>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <NumberInput
+                      <NumberInput
                           value={pieceData.right_capture === 99 ? "∞" : (pieceData.right_capture || 0)}
                           onChange={(val) => handleChange("right_capture", val)}
                           options={{ disabled: pieceData.right_capture === 99 }}
                         />
-                      </div>
                       <ToggleSwitch inline size="small"
                         checked={!!pieceData.right_capture_exact}
                         onChange={(v) => handleChange("right_capture_exact", v)}
@@ -657,13 +647,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Down-Left */}
                     <div className={styles["direction-input"]}>
                       <label>↙ Down-Left</label>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <NumberInput
+                      <NumberInput
                           value={pieceData.down_left_capture === 99 ? "∞" : (pieceData.down_left_capture || 0)}
                           onChange={(val) => handleChange("down_left_capture", val)}
                           options={{ disabled: pieceData.down_left_capture === 99 }}
                         />
-                      </div>
                       <ToggleSwitch inline size="small"
                         checked={!!pieceData.down_left_capture_exact}
                         onChange={(v) => handleChange("down_left_capture_exact", v)}
@@ -698,13 +686,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Down */}
                     <div className={styles["direction-input"]}>
                       <label>↓ Down</label>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <NumberInput
+                      <NumberInput
                           value={pieceData.down_capture === 99 ? "∞" : (pieceData.down_capture || 0)}
                           onChange={(val) => handleChange("down_capture", val)}
                           options={{ disabled: pieceData.down_capture === 99 }}
                         />
-                      </div>
                       <ToggleSwitch inline size="small"
                         checked={!!pieceData.down_capture_exact}
                         onChange={(v) => handleChange("down_capture_exact", v)}
@@ -739,13 +725,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                     {/* Down-Right */}
                     <div className={styles["direction-input"]}>
                       <label>↘ Down-Right</label>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <NumberInput
+                      <NumberInput
                           value={pieceData.down_right_capture === 99 ? "∞" : (pieceData.down_right_capture || 0)}
                           onChange={(val) => handleChange("down_right_capture", val)}
                           options={{ disabled: pieceData.down_right_capture === 99 }}
                         />
-                      </div>
                       <ToggleSwitch inline size="small"
                         checked={!!pieceData.down_right_capture_exact}
                         onChange={(v) => handleChange("down_right_capture_exact", v)}
@@ -924,7 +908,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                 tooltip={<InfoTooltip text="During chain capture sequences, this piece can also hop over allied pieces (not capturing them). Useful for variants where jumping over your own pieces is allowed during multi-jump moves." />}
               />
               <div style={{ marginTop: '10px' }}>
-                <label className={styles["field-label"]}>
+                <label className={styles["field-label"]} style={{ display: 'block', marginBottom: '6px' }}>
                   Max Chain Hops <InfoTooltip text="Maximum number of consecutive capture hops allowed in a single chain. Leave empty for unlimited. Useful to prevent infinite hop-back-and-forth exploits." />
                 </label>
                 <NumberInput
@@ -950,15 +934,15 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         {pieceData.can_capture_enemy_via_range && (
           <>
             <div className={styles["sub-field"]}>
-              <label>Max Ranged Captures Per Turn</label>
+              <label>Ranged Capture Actions Per Turn <InfoTooltip text="Grants this piece additional ranged attack actions per turn. After firing at an enemy, the piece can fire again from the same position — up to this many times total per turn. The player may skip remaining actions at any time." /></label>
               <NumberInput
-                value={pieceData.max_captures_via_ranged_attack === -1 ? "" : (pieceData.max_captures_via_ranged_attack || 1)}
-                onChange={(val) => handleChange("max_captures_via_ranged_attack", val)}
-                options={{ min: 1, disabled: pieceData.max_captures_via_ranged_attack === -1, placeholder: "1", className: styles["form-input-small"] }}
+                value={pieceData.ranged_capture_actions_per_turn === -1 ? "" : (pieceData.ranged_capture_actions_per_turn || 1)}
+                onChange={(val) => handleChange("ranged_capture_actions_per_turn", val)}
+                options={{ min: 1, disabled: pieceData.ranged_capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
               <ToggleSwitch inline size="small"
-                checked={pieceData.max_captures_via_ranged_attack === -1}
-                onChange={(v) => handleChange("max_captures_via_ranged_attack", v ? -1 : 1)}
+                checked={pieceData.ranged_capture_actions_per_turn === -1}
+                onChange={(v) => handleChange("ranged_capture_actions_per_turn", v ? -1 : 1)}
                 label="Unlimited"
               />
             </div>

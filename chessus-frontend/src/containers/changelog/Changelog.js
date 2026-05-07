@@ -5,7 +5,7 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 6, 2026",
-    title: "Chat fix, match history fix, piece wizard limits, training warnings, starting positions display, points system fixes, UI improvements, FAQ, Terms, Privacy, forum styling, admin future goals editor, notifications, training upload cap",
+    title: "Chat fix, match history fix, piece wizard limits, training warnings, starting positions display, points system fixes, UI improvements, FAQ, Terms, Privacy, forum styling, admin future goals editor, notifications, training upload cap, capture actions per turn",
     items: [
       "Training artifact uploads are now limited to 30 MB per file and 30 MB total per game per user. Admins are exempt from the per-game cap.",
       "Fixed: in-game chat messages from the sender could fail to appear until the page was refreshed if the socket connection had been re-established.",
@@ -39,6 +39,9 @@ const changelogData = [
       "Forum reply threads have their indent border-left line restored for cleaner visual nesting.",
       "Admins can now restrict a game from public play directly from the admin dashboard Games tab. Restricted games can only be hosted by their creator against the computer. A reason (chosen from presets or custom) is shown as a banner on the game's detail page.",
       "Trainer v1.2.5: the header banner now shows the actual binary version instead of the script version, so the version displayed is always accurate even with an older downloaded pack. Previously the banner always showed the version from when the pack was originally downloaded.",
+      "New: Capture Actions Per Turn — pieces can now be configured to make one or more bonus capture-only move actions after successfully capturing an enemy piece. Each action lets the piece make an additional capture on the same turn. The feature can be set per piece via the piece wizard, and a prompt appears during live games when a bonus capture action is available.",
+      "New: Ranged Attacks — pieces can now be configured to attack enemies at a distance without moving. Configure directional ranges, ratio (L-shape), or step-by-step attack range in the piece wizard. Pieces can optionally fire over allies and/or enemies. Ranged attacks are now fully supported in live games, match history replay, and by the easy/medium/hard computer players. The AI trainer also supports ranged attacks.",
+      "Fixed: step-by-step ranged attack range now saves correctly when creating or editing a piece.",
     ],
   },
   {

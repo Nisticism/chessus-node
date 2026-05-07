@@ -208,7 +208,9 @@ const Sandbox = () => {
           ratio_capture_1: fullPiece.ratio_capture_1 || fullPiece.ratio_one_capture,
           ratio_capture_2: fullPiece.ratio_capture_2 || fullPiece.ratio_two_capture,
           step_capture_value: fullPiece.step_capture_value || fullPiece.step_by_step_capture,
-          step_by_step_attack_range: fullPiece.step_by_step_attack_range || fullPiece.step_by_step_attack_value,
+          step_by_step_attack_range: (fullPiece.step_by_step_attack_value != null && fullPiece.step_by_step_attack_value !== 0)
+            ? (fullPiece.step_by_step_attack_style ? -Math.abs(fullPiece.step_by_step_attack_value) : fullPiece.step_by_step_attack_value)
+            : (fullPiece.step_by_step_attack_range || null),
           id: `piece-${Date.now()}-0`,
           piece_id: fullPiece.piece_id,
           x: pending.centerX,
@@ -338,7 +340,9 @@ const Sandbox = () => {
       ratio_capture_2: dbPiece.ratio_capture_2 || dbPiece.ratio_two_capture,
       step_capture_value: dbPiece.step_capture_value || dbPiece.step_by_step_capture,
       // Ranged attack properties - normalize field names
-      step_by_step_attack_range: dbPiece.step_by_step_attack_range || dbPiece.step_by_step_attack_value,
+      step_by_step_attack_range: (dbPiece.step_by_step_attack_value != null && dbPiece.step_by_step_attack_value !== 0)
+        ? (dbPiece.step_by_step_attack_style ? -Math.abs(dbPiece.step_by_step_attack_value) : dbPiece.step_by_step_attack_value)
+        : (dbPiece.step_by_step_attack_range || null),
     };
   }, []);
 
@@ -441,8 +445,10 @@ const Sandbox = () => {
             down_right_attack_range_exact: normalizedPiece?.down_right_attack_range_exact,
             ratio_one_attack_range: normalizedPiece?.ratio_one_attack_range,
             ratio_two_attack_range: normalizedPiece?.ratio_two_attack_range,
-            step_by_step_attack_range: normalizedPiece?.step_by_step_attack_range || normalizedPiece?.step_by_step_attack_value,
-            max_piece_captures_per_ranged_attack: normalizedPiece?.max_piece_captures_per_ranged_attack,
+            step_by_step_attack_range: (normalizedPiece?.step_by_step_attack_value != null && normalizedPiece?.step_by_step_attack_value !== 0)
+              ? (normalizedPiece?.step_by_step_attack_style ? -Math.abs(normalizedPiece.step_by_step_attack_value) : normalizedPiece.step_by_step_attack_value)
+              : (normalizedPiece?.step_by_step_attack_range || null),
+            ranged_capture_actions_per_turn: normalizedPiece?.ranged_capture_actions_per_turn,
             exact_ratio_hop_only: normalizedPiece?.exact_ratio_hop_only,
             directional_hop_disabled: normalizedPiece?.directional_hop_disabled,
             id: `piece-${Date.now()}-${index}`,
@@ -606,8 +612,10 @@ const Sandbox = () => {
       down_right_attack_range_exact: pieceData.down_right_attack_range_exact,
       ratio_one_attack_range: pieceData.ratio_one_attack_range,
       ratio_two_attack_range: pieceData.ratio_two_attack_range,
-      step_by_step_attack_range: pieceData.step_by_step_attack_range || pieceData.step_by_step_attack_value,
-      max_piece_captures_per_ranged_attack: pieceData.max_piece_captures_per_ranged_attack,
+      step_by_step_attack_range: (pieceData.step_by_step_attack_value != null && pieceData.step_by_step_attack_value !== 0)
+        ? (pieceData.step_by_step_attack_style ? -Math.abs(pieceData.step_by_step_attack_value) : pieceData.step_by_step_attack_value)
+        : (pieceData.step_by_step_attack_range || null),
+      ranged_capture_actions_per_turn: pieceData.ranged_capture_actions_per_turn,
       can_fire_over_allies: pieceData.can_fire_over_allies,
       can_fire_over_enemies: pieceData.can_fire_over_enemies,
       // Multi-tile dimensions

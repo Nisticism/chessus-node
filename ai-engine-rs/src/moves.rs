@@ -338,6 +338,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             area_radius: tpl.attack_radius,
             burn_damage: tpl.burn_damage,
             burn_duration: tpl.burn_duration,
+            is_ranged_attack: false,
         });
     };
 
@@ -658,6 +659,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                     area_radius: tpl.attack_radius,
                     burn_damage: 0,
                     burn_duration: 0,
+                    is_ranged_attack: false,
                 });
             }
         }
@@ -869,6 +871,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                         area_radius: tpl.attack_radius,
                         burn_damage: tpl.burn_damage,
                         burn_duration: tpl.burn_duration,
+                        is_ranged_attack: false,
                     });
                 }
             }
@@ -977,7 +980,172 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
         }
     }
 
+    // -------- ranged attacks --------
+    // Generate Move entries for ranged attacks (can_capture_enemy_via_range).
+    // The attacker does NOT move — only the target is damaged/killed.
+    if tpl.can_capture_enemy_via_range {
+        let is_p2 = effective_player == 2;
+        let atk_dmg = tpl.attack_damage.max(1);
+        let targets: Vec<(u32, i32, i32, i64, i32)> = board.pieces.iter()
+            .filter(|t| t.player != effective_player && t.id != mover.id)
+            .filter(|t| !rules.piece(t.piece_id).map(|r| r.cannot_be_captured).unwrap_or(false))
+            .map(|t| (t.id, t.x, t.y, t.piece_id, t.current_hp))
+            .collect();
+
+        for (tid, tx, ty, tpc, thp) in targets {
+            if !can_ranged_attack_to(mover.x, mover.y, tx, ty, &tpl, is_p2) {
+                continue;
+            }
+            if !ranged_path_clear(mover.x, mover.y, tx, ty, &tpl, board, effective_player) {
+                continue;
+            }
+            let dmg = atk_dmg;
+            let _ = (tpc, thp); // Available if needed for future HP-aware logic
+            out.push(Move {
+                piece_id: mover.id,
+                from: Coord { x: mover.x, y: mover.y },
+                to: Coord { x: tx, y: ty },
+                capture: Some(tid),
+                partner: None,
+                is_castling: false,
+                is_promotion: false,
+                promote_to: None,
+                creates_en_passant: false,
+                hp_damage: dmg,
+                attacker_dies: false,
+                has_trample: false,
+                trample_radius: 0,
+                area_radius: 0,
+                burn_damage: 0,
+                burn_duration: 0,
+                is_ranged_attack: true,
+            });
+        }
+    }
+
     out
+}
+
+// ---------- ranged attack helpers ----------
+
+/// Directional attack range for `dir` on a piece template (already player-flipped).
+fn directional_attack_range(tpl: &PieceTemplate, dir: &str) -> (i32, bool) {
+    match dir {
+        "up"         => (tpl.up_attack_range,         tpl.up_attack_range_exact),
+        "down"       => (tpl.down_attack_range,        tpl.down_attack_range_exact),
+        "left"       => (tpl.left_attack_range,        tpl.left_attack_range_exact),
+        "right"      => (tpl.right_attack_range,       tpl.right_attack_range_exact),
+        "up_left"    => (tpl.up_left_attack_range,     tpl.up_left_attack_range_exact),
+        "up_right"   => (tpl.up_right_attack_range,    tpl.up_right_attack_range_exact),
+        "down_left"  => (tpl.down_left_attack_range,   tpl.down_left_attack_range_exact),
+        "down_right" => (tpl.down_right_attack_range,  tpl.down_right_attack_range_exact),
+        _ => (0, false),
+    }
+}
+
+/// Mirrors `checkRangedMovement` from game-socket.js.
+fn check_ranged_movement(value: i32, distance: i32, is_exact: bool) -> bool {
+    if value == 99 { return true; }
+    if value == 0 { return false; }
+    if is_exact || value < 0 { return distance == value.abs(); }
+    distance <= value
+}
+
+/// Mirrors `canRangedAttackTo` from game-socket.js.
+/// `from_*` and `to_*` are absolute board coordinates (x = col, y = row).
+/// `is_p2` indicates whether the attacker is player 2 (flips row direction).
+fn can_ranged_attack_to(from_x: i32, from_y: i32, to_x: i32, to_y: i32,
+                         tpl: &PieceTemplate, is_p2: bool) -> bool {
+    if from_x == to_x && from_y == to_y { return false; }
+    // Apply player-2 perspective flip (only vertical axis).
+    let row_diff = if is_p2 { from_y - to_y } else { to_y - from_y };
+    let col_diff = if is_p2 { from_x - to_x } else { to_x - from_x };
+
+    // Directional attack ranges.
+    let dir = match (row_diff.signum(), col_diff.signum(),
+                     row_diff.abs() == col_diff.abs(),
+                     row_diff == 0, col_diff == 0) {
+        (r, c, true, _, _) if r != 0 && c != 0 => {
+            // Diagonal
+            match (r < 0, c < 0) {
+                (true,  true)  => Some("up_left"),
+                (true,  false) => Some("up_right"),
+                (false, true)  => Some("down_left"),
+                (false, false) => Some("down_right"),
+            }
+        }
+        (_, 0, _, _, true) if row_diff < 0 => Some("up"),
+        (_, 0, _, _, true) if row_diff > 0 => Some("down"),
+        (0, _, _, true, _) if col_diff < 0 => Some("left"),
+        (0, _, _, true, _) if col_diff > 0 => Some("right"),
+        _ => None,
+    };
+    if let Some(d) = dir {
+        let dist = if d == "up" || d == "down" { row_diff.abs() } else { col_diff.abs() };
+        let dist = if d.contains('_') { row_diff.abs() } else { dist };
+        let (range_val, exact) = directional_attack_range(tpl, d);
+        if check_ranged_movement(range_val, dist, exact) {
+            return true;
+        }
+    }
+
+    // Ratio (L-shape) attack range.
+    let r1 = tpl.ratio_one_attack_range;
+    let r2 = tpl.ratio_two_attack_range;
+    if r1 > 0 && r2 > 0 {
+        let ar = row_diff.abs();
+        let ac = col_diff.abs();
+        if (ar == r1 && ac == r2) || (ar == r2 && ac == r1) {
+            return true;
+        }
+    }
+
+    // Step-by-step attack range (negative = orthogonal/Manhattan only).
+    let step_val = tpl.step_by_step_attack_range;
+    if step_val != 0 {
+        let max_steps = step_val.abs();
+        let ar = row_diff.abs();
+        let ac = col_diff.abs();
+        if step_val < 0 {
+            if ar + ac <= max_steps { return true; }
+        } else if ar.max(ac) <= max_steps {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Mirrors `isRangedPathClear` from game-socket.js.
+fn ranged_path_clear(from_x: i32, from_y: i32, to_x: i32, to_y: i32,
+                      tpl: &PieceTemplate, board: &Board, attacker_player: i32) -> bool {
+    let dx = to_x - from_x;
+    let dy = to_y - from_y;
+    let adx = dx.abs();
+    let ady = dy.abs();
+
+    // L-shape (ratio) attacks have no straight path — always unblocked.
+    if adx != ady && dx != 0 && dy != 0 {
+        return true;
+    }
+
+    if tpl.can_fire_over_allies && tpl.can_fire_over_enemies { return true; }
+
+    let step_x = if dx == 0 { 0 } else { dx.signum() };
+    let step_y = if dy == 0 { 0 } else { dy.signum() };
+
+    let mut cx = from_x + step_x;
+    let mut cy = from_y + step_y;
+    while cx != to_x || cy != to_y {
+        if let Some(blocker) = board.pieces.iter().find(|p| p.x == cx && p.y == cy) {
+            let is_ally = blocker.player == attacker_player;
+            if is_ally && !tpl.can_fire_over_allies { return false; }
+            if !is_ally && !tpl.can_fire_over_enemies { return false; }
+        }
+        cx += step_x;
+        cy += step_y;
+    }
+    true
 }
 
 /// Compute a mobility-based power score for use when ranking promotion targets.

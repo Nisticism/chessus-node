@@ -211,6 +211,8 @@
 .game-name {
   font-size: 15px;
   font-weight: 500;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .no-game {

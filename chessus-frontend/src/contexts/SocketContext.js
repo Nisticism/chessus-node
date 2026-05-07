@@ -733,6 +733,24 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, getAnonPlayerId]);
 
+  // Skip a pending capture action (bonus extra-capture sequence)
+  const skipCaptureAction = useCallback((gameId) => {
+    if (!socket || !connected) return;
+    socket.emit('skipCaptureAction', {
+      gameId,
+      userId: getAnonPlayerId(gameId)
+    });
+  }, [socket, connected, getAnonPlayerId]);
+
+  // Skip a pending ranged capture action
+  const skipRangedCaptureAction = useCallback((gameId) => {
+    if (!socket || !connected) return;
+    socket.emit('skipRangedCaptureAction', {
+      gameId,
+      userId: getAnonPlayerId(gameId)
+    });
+  }, [socket, connected, getAnonPlayerId]);
+
   // Subscribe to game events
   const onGameEvent = useCallback((event, callback) => {
     if (!socket) return () => {};
@@ -768,6 +786,8 @@ export const SocketProvider = ({ children }) => {
     setPremove,
     clearPremove,
     promotePiece,
+    skipCaptureAction,
+    skipRangedCaptureAction,
     onGameEvent,
     pauseDisconnectTimer,
     resumeDisconnectTimer,

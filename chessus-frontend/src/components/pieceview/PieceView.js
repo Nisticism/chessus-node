@@ -218,6 +218,9 @@ const PieceView = () => {
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
+      step_by_step_attack_range: (piece.step_by_step_attack_value != null && piece.step_by_step_attack_value !== 0)
+        ? (piece.step_by_step_attack_style ? -Math.abs(piece.step_by_step_attack_value) : piece.step_by_step_attack_value)
+        : null,
       directional_ranged_attack_style: !!piece.directional_ranged_attack_style,
       ratio_ranged_attack_style: !!piece.ratio_ranged_attack_style,
       step_by_step_ranged_attack_style: !!piece.step_by_step_ranged_attack_style,
@@ -451,6 +454,9 @@ const PieceView = () => {
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
+      step_by_step_attack_range: (piece.step_by_step_attack_value != null && piece.step_by_step_attack_value !== 0)
+        ? (piece.step_by_step_attack_style ? -Math.abs(piece.step_by_step_attack_value) : piece.step_by_step_attack_value)
+        : null,
       directional_ranged_attack_style: !!piece.directional_ranged_attack_style,
       ratio_ranged_attack_style: !!piece.ratio_ranged_attack_style,
       step_by_step_ranged_attack_style: !!piece.step_by_step_ranged_attack_style,
@@ -520,7 +526,10 @@ const PieceView = () => {
     const ratioAttack = Math.abs(piece.ratio_one_attack_range || 0) + Math.abs(piece.ratio_two_attack_range || 0);
     const stepMovement = Math.abs(piece.step_by_step_movement_value || 0);
     const stepCapture = Math.abs(piece.step_by_step_capture || 0);
-    const stepAttack = Math.abs(piece.step_by_step_attack_range || 0);
+    const computedStepAttack = (piece.step_by_step_attack_value != null && piece.step_by_step_attack_value !== 0)
+      ? (piece.step_by_step_attack_style ? -Math.abs(piece.step_by_step_attack_value) : piece.step_by_step_attack_value)
+      : (piece.step_by_step_attack_range || 0);
+    const stepAttack = Math.abs(computedStepAttack);
     [...movements, ...captures, ...attacks].forEach(val => {
       if (val !== 99 && val !== null && val !== undefined) {
         const absVal = Math.abs(val);
@@ -1167,9 +1176,9 @@ const PieceView = () => {
                       ` (max ${piece.max_directional_capture_iterations}x)`}
                   </div>
                 )}
-                {pieceToDisplay.max_piece_captures_per_move != null && (
+                {pieceToDisplay.capture_actions_per_turn != null && pieceToDisplay.capture_actions_per_turn > 1 && (
                   <div className={styles["property-tag"]}>
-                    Max {pieceToDisplay.max_piece_captures_per_move} capture{pieceToDisplay.max_piece_captures_per_move !== 1 ? 's' : ''} per move
+                    {pieceToDisplay.capture_actions_per_turn === -1 ? 'Unlimited' : pieceToDisplay.capture_actions_per_turn} capture action{pieceToDisplay.capture_actions_per_turn !== 2 ? 's' : ''} per turn
                   </div>
                 )}
               </div>
@@ -1261,9 +1270,9 @@ const PieceView = () => {
                     Step Range: {Math.abs(pieceToDisplay.step_by_step_attack_range)} squares{pieceToDisplay.step_by_step_attack_range < 0 ? ' (Manhattan — orthogonal only)' : ' (Chebyshev — any direction)'}
                   </div>
                 )}
-                {pieceToDisplay.max_piece_captures_per_ranged_attack != null && (
+                {pieceToDisplay.ranged_capture_actions_per_turn != null && pieceToDisplay.ranged_capture_actions_per_turn > 1 && (
                   <div className={styles["property-tag"]}>
-                    Max {pieceToDisplay.max_piece_captures_per_ranged_attack} capture{pieceToDisplay.max_piece_captures_per_ranged_attack !== 1 ? 's' : ''} per attack
+                    {pieceToDisplay.ranged_capture_actions_per_turn === -1 ? 'Unlimited' : pieceToDisplay.ranged_capture_actions_per_turn} ranged capture action{pieceToDisplay.ranged_capture_actions_per_turn !== 2 ? 's' : ''} per turn
                   </div>
                 )}
                 {pieceToDisplay.repeating_directional_ranged_attack && (

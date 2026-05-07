@@ -2240,7 +2240,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'down_right_attack_range_available_for','down_attack_range_available_for','down_left_attack_range_available_for','left_attack_range_available_for',
       'ratio_one_attack_range','ratio_two_attack_range',
       'step_by_step_attack_value',
-      'max_piece_captures_per_move','max_piece_captures_per_ranged_attack',
+      'capture_actions_per_turn','ranged_capture_actions_per_turn',
       'max_chain_hops',
     ];
     // JSON / text columns — compare by canonical JSON (or trimmed string).
@@ -2307,7 +2307,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
         p.down_right_attack_range_available_for, p.down_attack_range_available_for, p.down_left_attack_range_available_for, p.left_attack_range_available_for,
         p.ratio_one_attack_range, p.ratio_two_attack_range,
         p.step_by_step_attack_style, p.step_by_step_attack_value,
-        p.max_piece_captures_per_move, p.max_piece_captures_per_ranged_attack,
+        p.capture_actions_per_turn, p.ranged_capture_actions_per_turn,
         p.special_scenario_captures,
         p.can_fire_over_allies, p.can_fire_over_enemies, p.can_en_passant,
         p.capture_on_hop, p.chain_capture_enabled, p.free_move_after_promotion, p.promotion_pieces_ids,
@@ -4285,7 +4285,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'repeating_ratio_ranged_attack', 'max_ratio_ranged_attack_iterations',
       'min_ratio_ranged_attack_iterations',
       'step_by_step_attack_style', 'step_by_step_attack_value',
-      'max_piece_captures_per_move', 'max_piece_captures_per_ranged_attack',
+      'capture_actions_per_turn', 'ranged_capture_actions_per_turn',
       'special_scenario_moves', 'special_scenario_captures',
       'has_checkmate_rule', 'has_check_rule', 'has_lose_on_capture_rule',
       'can_castle', 'can_promote',
@@ -7509,7 +7509,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         down_right_attack_range_available_for, down_attack_range_available_for, down_left_attack_range_available_for, left_attack_range_available_for,
         ratio_one_attack_range, ratio_two_attack_range,
         step_by_step_attack_style, step_by_step_attack_value,
-        max_piece_captures_per_move, max_piece_captures_per_ranged_attack,
+        capture_actions_per_turn, ranged_capture_actions_per_turn,
         special_scenario_captures,
         can_fire_over_allies, can_fire_over_enemies, can_en_passant,
         capture_on_hop, chain_capture_enabled, free_move_after_promotion, promotion_pieces_ids,
@@ -7658,8 +7658,8 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseInt(pieceData.ratio_two_attack_range) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
-      parseInt(pieceData.max_piece_captures_per_move) || 1,
-      hasRangedAttack ? (parseInt(pieceData.max_piece_captures_per_ranged_attack) || 1) : null,
+      parseInt(pieceData.capture_actions_per_turn) || 1,
+      hasRangedAttack ? (parseInt(pieceData.ranged_capture_actions_per_turn) || 1) : null,
       pieceData.special_scenario_captures || null,
       // Ranged firing over pieces
       parseBooleanField(pieceData.can_fire_over_allies),
@@ -8080,8 +8080,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         ratio_two_attack_range = ?,
         step_by_step_attack_style = ?,
         step_by_step_attack_value = ?,
-        max_piece_captures_per_move = ?,
-        max_piece_captures_per_ranged_attack = ?,
+        capture_actions_per_turn = ?,
+        ranged_capture_actions_per_turn = ?,
         special_scenario_captures = ?,
         can_fire_over_allies = ?,
         can_fire_over_enemies = ?,
@@ -8237,8 +8237,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseInt(pieceData.ratio_two_attack_range) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
-      parseInt(pieceData.max_piece_captures_per_move) || 1,
-      hasRangedAttack ? (parseInt(pieceData.max_piece_captures_per_ranged_attack) || 1) : null,
+      parseInt(pieceData.capture_actions_per_turn) || 1,
+      hasRangedAttack ? (parseInt(pieceData.ranged_capture_actions_per_turn) || 1) : null,
       pieceData.special_scenario_captures || null,
       // Ranged firing over pieces
       parseBooleanField(pieceData.can_fire_over_allies),
@@ -11495,7 +11495,9 @@ app.put("/api/admin/forums/:articleId", authenticateAdmin, async (req, res) => {
     const { articleId } = req.params;
     const updates = req.body;
     
-    const fields = Object.keys(updates).filter(key => key !== 'id');
+    // author_name and game_name come from JOINs in the GET query — not actual articles columns
+    const NON_ARTICLE_FIELDS = new Set(['author_name', 'game_name']);
+    const fields = Object.keys(updates).filter(key => key !== 'id' && !NON_ARTICLE_FIELDS.has(key));
     if (fields.length === 0) {
       return res.status(400).send({ message: "No fields to update" });
     }

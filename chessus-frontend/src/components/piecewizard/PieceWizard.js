@@ -155,11 +155,10 @@ const PieceWizard = ({ editPieceId = null }) => {
     
     step_by_step_attack_style: false,
     step_by_step_attack_value: null,
+    step_by_step_attack_range: null,
     
-    max_piece_captures_per_move: 1,
-    max_piece_captures_per_ranged_attack: 1,
-    
-    // Ranged attack firing over pieces (like hopping for movement)
+    capture_actions_per_turn: 1,
+    ranged_capture_actions_per_turn: 1,
     can_fire_over_allies: false,
     can_fire_over_enemies: false,
     
@@ -387,9 +386,12 @@ const PieceWizard = ({ editPieceId = null }) => {
             
             step_by_step_attack_style: !!piece.step_by_step_attack_style,
             step_by_step_attack_value: piece.step_by_step_attack_value,
+            step_by_step_attack_range: (piece.step_by_step_attack_value != null && piece.step_by_step_attack_value !== 0)
+              ? (piece.step_by_step_attack_style ? -Math.abs(piece.step_by_step_attack_value) : piece.step_by_step_attack_value)
+              : null,
             
-            max_piece_captures_per_move: piece.max_piece_captures_per_move || 1,
-            max_piece_captures_per_ranged_attack: piece.max_piece_captures_per_ranged_attack || 1,
+            capture_actions_per_turn: piece.capture_actions_per_turn || 1,
+            ranged_capture_actions_per_turn: piece.ranged_capture_actions_per_turn || 1,
             
             // Ranged attack firing over pieces
             can_fire_over_allies: !!piece.can_fire_over_allies,
@@ -704,7 +706,18 @@ const PieceWizard = ({ editPieceId = null }) => {
       
       // Skip database field names that should be mapped from form fields
       const skipFields = ['special_scenario_captures', 'has_checkmate_rule', 
-                          'has_check_rule', 'has_lose_on_capture_rule', 'min_turns_per_move'];
+                          'has_check_rule', 'has_lose_on_capture_rule', 'min_turns_per_move',
+                          'step_by_step_attack_range', 'step_by_step_attack_style', 'step_by_step_attack_value'];
+
+      // Compute step-by-step ranged attack DB columns from the combined field
+      const sarVal = pieceData.step_by_step_attack_range;
+      if (sarVal != null && sarVal !== 0) {
+        formData.append('step_by_step_attack_style', sarVal < 0 ? 'true' : 'false');
+        formData.append('step_by_step_attack_value', String(Math.abs(sarVal)));
+      } else {
+        formData.append('step_by_step_attack_style', 'false');
+        formData.append('step_by_step_attack_value', '');
+      }
       
       Object.keys(pieceData).forEach(key => {
         if (key !== 'piece_images' && key !== 'piece_image_previews' && key !== 'piece_image_sources' && key !== 'is_anonymous_creator' && !skipFields.includes(key)) {

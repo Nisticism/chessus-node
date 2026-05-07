@@ -80,6 +80,10 @@ pub struct Move {
     /// Turns the burn effect lasts on the target.
     #[serde(default)]
     pub burn_duration: i32,
+    /// When true, the piece attacks at range (to = target position) but does NOT
+    /// move from `from`. Mirrors `isRangedAttack` in the JS game engine.
+    #[serde(default)]
+    pub is_ranged_attack: bool,
 }
 
 /// En passant target — set after a piece makes a multi-square first-move
@@ -306,18 +310,26 @@ impl Board {
             }
         }
 
-        // --- Move the attacker to mv.to (if no capture OR target was killed) ---
-        if let Some(piece) = self.pieces.iter_mut().find(|p| p.id == mv.piece_id) {
-            piece.x = mv.to.x;
-            piece.y = mv.to.y;
-            piece.move_count += 1;
-            if mv.is_promotion {
-                if let Some(new_pid) = mv.promote_to {
-                    piece.piece_id = new_pid;
-                    // Re-initialise HP from the promoted piece's template.
-                    let new_hp = rules.piece(new_pid).map(|t| t.hit_points.max(1)).unwrap_or(1);
-                    piece.current_hp = new_hp;
+        // --- Move the attacker to mv.to (if no capture OR target was killed, and not a ranged attack) ---
+        if !mv.is_ranged_attack {
+            if let Some(piece) = self.pieces.iter_mut().find(|p| p.id == mv.piece_id) {
+                piece.x = mv.to.x;
+                piece.y = mv.to.y;
+                piece.move_count += 1;
+                if mv.is_promotion {
+                    if let Some(new_pid) = mv.promote_to {
+                        piece.piece_id = new_pid;
+                        // Re-initialise HP from the promoted piece's template.
+                        let new_hp = rules.piece(new_pid).map(|t| t.hit_points.max(1)).unwrap_or(1);
+                        piece.current_hp = new_hp;
+                    }
                 }
+            }
+        } else {
+            // Ranged attack: increment move_count on the attacker so first-N ability tracking
+            // stays correct, but leave position unchanged.
+            if let Some(piece) = self.pieces.iter_mut().find(|p| p.id == mv.piece_id) {
+                piece.move_count += 1;
             }
         }
 

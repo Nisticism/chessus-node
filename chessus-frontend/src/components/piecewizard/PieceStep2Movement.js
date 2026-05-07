@@ -233,13 +233,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             <div className={styles["direction-row"]}>
               <div className={styles["direction-input"]}>
                 <label>↖ Up-Left</label>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <NumberInput
+                <NumberInput
                     value={pieceData.up_left_movement === 99 ? "∞" : (pieceData.up_left_movement || 0)}
                     onChange={(val) => handleChange("up_left_movement", val)}
                     options={{ disabled: pieceData.up_left_movement === 99 }}
                   />
-                </div>
                 <ToggleSwitch inline size="small"
                   checked={!!pieceData.up_left_movement_exact}
                   onChange={(v) => handleChange("up_left_movement_exact", v)}
@@ -272,13 +270,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               </div>
               <div className={styles["direction-input"]}>
                 <label>↑ Up</label>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <NumberInput
+                <NumberInput
                     value={pieceData.up_movement === 99 ? "∞" : (pieceData.up_movement || 0)}
                     onChange={(val) => handleChange("up_movement", val)}
                     options={{ disabled: pieceData.up_movement === 99 }}
                   />
-                </div>
                 <ToggleSwitch inline size="small"
                   checked={!!pieceData.up_movement_exact}
                   onChange={(v) => handleChange("up_movement_exact", v)}
@@ -311,13 +307,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               </div>
               <div className={styles["direction-input"]}>
                 <label>↗ Up-Right</label>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <NumberInput
+                <NumberInput
                     value={pieceData.up_right_movement === 99 ? "∞" : (pieceData.up_right_movement || 0)}
                     onChange={(val) => handleChange("up_right_movement", val)}
                     options={{ disabled: pieceData.up_right_movement === 99 }}
                   />
-                </div>
                 <ToggleSwitch inline size="small"
                   checked={!!pieceData.up_right_movement_exact}
                   onChange={(v) => handleChange("up_right_movement_exact", v)}
@@ -352,13 +346,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             <div className={styles["direction-row"]}>
               <div className={styles["direction-input"]}>
                 <label>← Left</label>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <NumberInput
+                <NumberInput
                     value={pieceData.left_movement === 99 ? "∞" : (pieceData.left_movement || 0)}
                     onChange={(val) => handleChange("left_movement", val)}
                     options={{ disabled: pieceData.left_movement === 99 }}
                   />
-                </div>
                 <ToggleSwitch inline size="small"
                   checked={!!pieceData.left_movement_exact}
                   onChange={(v) => handleChange("left_movement_exact", v)}
@@ -400,13 +392,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               </div>
               <div className={styles["direction-input"]}>
                 <label>→ Right</label>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <NumberInput
+                <NumberInput
                     value={pieceData.right_movement === 99 ? "∞" : (pieceData.right_movement || 0)}
                     onChange={(val) => handleChange("right_movement", val)}
                     options={{ disabled: pieceData.right_movement === 99 }}
                   />
-                </div>
                 <ToggleSwitch inline size="small"
                   checked={!!pieceData.right_movement_exact}
                   onChange={(v) => handleChange("right_movement_exact", v)}
@@ -441,13 +431,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             <div className={styles["direction-row"]}>
               <div className={styles["direction-input"]}>
                 <label>↙ Down-Left</label>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <NumberInput
+                <NumberInput
                     value={pieceData.down_left_movement === 99 ? "∞" : (pieceData.down_left_movement || 0)}
                     onChange={(val) => handleChange("down_left_movement", val)}
                     options={{ disabled: pieceData.down_left_movement === 99 }}
                   />
-                </div>
                 <ToggleSwitch inline size="small"
                   checked={!!pieceData.down_left_movement_exact}
                   onChange={(v) => handleChange("down_left_movement_exact", v)}
@@ -480,13 +468,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               </div>
               <div className={styles["direction-input"]}>
                 <label>↓ Down</label>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <NumberInput
+                <NumberInput
                     value={pieceData.down_movement === 99 ? "∞" : (pieceData.down_movement || 0)}
                     onChange={(val) => handleChange("down_movement", val)}
                     options={{ disabled: pieceData.down_movement === 99 }}
                   />
-                </div>
                 <ToggleSwitch inline size="small"
                   checked={!!pieceData.down_movement_exact}
                   onChange={(v) => handleChange("down_movement_exact", v)}
@@ -519,13 +505,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               </div>
               <div className={styles["direction-input"]}>
                 <label>↘ Down-Right</label>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <NumberInput
+                <NumberInput
                     value={pieceData.down_right_movement === 99 ? "∞" : (pieceData.down_right_movement || 0)}
                     onChange={(val) => handleChange("down_right_movement", val)}
                     options={{ disabled: pieceData.down_right_movement === 99 }}
                   />
-                </div>
                 <ToggleSwitch inline size="small"
                   checked={!!pieceData.down_right_movement_exact}
                   onChange={(v) => handleChange("down_right_movement_exact", v)}

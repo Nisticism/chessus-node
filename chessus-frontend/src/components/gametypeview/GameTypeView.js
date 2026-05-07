@@ -174,6 +174,15 @@ const describePieceMovement = (pieceData) => {
 const describePieceRangedAttack = (pieceData) => {
   if (!pieceData.can_capture_enemy_via_range) return '';
 
+  // Normalize step_by_step_attack_range from split DB columns if needed
+  const normalizedPiece = { ...pieceData };
+  if (normalizedPiece.step_by_step_attack_range == null && normalizedPiece.step_by_step_attack_value != null && normalizedPiece.step_by_step_attack_value !== 0) {
+    normalizedPiece.step_by_step_attack_range = normalizedPiece.step_by_step_attack_style
+      ? -Math.abs(normalizedPiece.step_by_step_attack_value)
+      : normalizedPiece.step_by_step_attack_value;
+  }
+  pieceData = normalizedPiece;
+
   const parts = [];
 
   // Directional ranged attacks
@@ -246,9 +255,9 @@ const describePieceRangedAttack = (pieceData) => {
 
   // Suffixes
   const suffixes = [];
-  if (pieceData.max_piece_captures_per_ranged_attack != null && pieceData.max_piece_captures_per_ranged_attack > 0) {
-    const n = pieceData.max_piece_captures_per_ranged_attack;
-    suffixes.push(`max ${n} capture${n !== 1 ? 's' : ''} per attack`);
+  if (pieceData.ranged_capture_actions_per_turn != null && pieceData.ranged_capture_actions_per_turn > 1) {
+    const n = pieceData.ranged_capture_actions_per_turn;
+    suffixes.push(n === -1 ? 'unlimited ranged capture actions per turn' : `${n} ranged capture action${n !== 2 ? 's' : ''} per turn`);
   }
   suffixes.push(pieceData.can_fire_over_enemies ? 'can fire over enemies' : 'blocked by enemies');
   suffixes.push(pieceData.can_fire_over_allies ? 'can fire over allies' : 'blocked by allies');
@@ -1590,6 +1599,35 @@ const GameTypeView = () => {
       if (p1Start > 0 || p2Start > 0) {
         ptLine += `\n   ◦ **Starting Points**: Player 1 starts with ${p1Start} pts, Player 2 starts with ${p2Start} pts.`;
       }
+
+      // Per-piece capture point values: collect unique (piece_id, gain, loss) combos
+      const pointsByPiece = {};
+      Object.values(piecePlacements).forEach(placement => {
+        if (placement._occupied) return;
+        const pid = placement.piece_id;
+        if (!pid) return;
+        const gain = placement.capture_points_gain ?? 0;
+        const loss = placement.capture_points_loss ?? 0;
+        if (gain === 0 && loss === 0) return;
+        if (!pointsByPiece[pid]) {
+          pointsByPiece[pid] = { name: pieceDataMap[pid]?.piece_name || placement.piece_name || `Piece #${pid}`, gains: new Set(), losses: new Set() };
+        }
+        if (gain > 0) pointsByPiece[pid].gains.add(gain);
+        if (loss > 0) pointsByPiece[pid].losses.add(loss);
+      });
+      const pointPieceEntries = Object.values(pointsByPiece);
+      if (pointPieceEntries.length > 0) {
+        ptLine += `\n   ◦ **Point Values per Piece**:`;
+        pointPieceEntries.forEach(({ name, gains, losses }) => {
+          const gainArr = [...gains].sort((a, b) => a - b);
+          const lossArr = [...losses].sort((a, b) => a - b);
+          const gainStr = gainArr.length > 0 ? `+${gainArr.join('/')} pts to capturer` : null;
+          const lossStr = lossArr.length > 0 ? `−${lossArr.join('/')} pts from owner` : null;
+          const parts = [gainStr, lossStr].filter(Boolean).join(', ');
+          ptLine += `\n      ▸ **${name}**: ${parts}`;
+        });
+      }
+
       winConditions.push(ptLine);
     }
 

@@ -271,6 +271,8 @@
   font-size: 15px;
   font-weight: 500;
   color: var(--text-info);
+  word-break: break-word;
+  overflow-wrap: break-word;
 
   a {
     color: inherit;

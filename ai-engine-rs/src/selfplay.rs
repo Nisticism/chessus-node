@@ -7,6 +7,7 @@
 
 use anyhow::{Context, Result};
 use clap::Args;
+use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::collections::HashMap;
@@ -247,7 +248,7 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             moves_played = outcome.moves_played;
             move_lines = outcome.move_lines;
             (outcome.result, outcome.end_reason)
-        } else { loop {
+        } else { 'game: loop {
             let moves = legal_moves(&board, &rules);
             if moves.is_empty() {
                 if rules.game.mate_condition && in_check(&board, &rules, board.turn) {
@@ -397,6 +398,199 @@ pub fn run_training(args: TrainArgs) -> Result<()> {
             }
             let apply_result = board.apply(&mv, &rules);
             moves_played += 1;
+
+            // --- Capture actions: bonus captures by the same piece per turn ---
+            // Mirrors the captureActionRequired state machine in game-socket.js.
+            // When a piece has capture_actions_per_turn > 1 (or -1 = unlimited),
+            // it may make additional capture-only moves after its initial kill.
+            // The Rust AI picks captures randomly; the training signal comes from
+            // the MCTS tree that already evaluated the parent position.
+            {
+                let mover_side = if board.turn == 1 { 2 } else { 1 };
+                let cap_per_turn = board.pieces.iter()
+                    .find(|p| p.id == mv.piece_id)
+                    .and_then(|p| rules.piece(p.piece_id))
+                    .map(|t| t.capture_actions_per_turn)
+                    .unwrap_or(1);
+                if apply_result.any_killed() && (cap_per_turn > 1 || cap_per_turn == -1) {
+                    let unlimited = cap_per_turn == -1;
+                    let mut actions_used = 1i32; // initial capture already counted
+                    'capture_actions: loop {
+                        if !unlimited && actions_used >= cap_per_turn { break; }
+                        let piece_on_board = match board.pieces.iter().find(|p| p.id == mv.piece_id) {
+                            Some(p) => p.clone(),
+                            None => break,
+                        };
+                        // Set turn to mover_side so moves_for sees the correct
+                        // side (matters for edge cases like neutral pieces).
+                        board.turn = mover_side;
+                        let piece_captures: Vec<crate::board::Move> =
+                            crate::moves::moves_for(&board, &rules, &piece_on_board)
+                                .into_iter()
+                                .filter(|m| m.capture.is_some())
+                                .collect();
+                        // Restore to opponent before any break.
+                        board.turn = if mover_side == 1 { 2 } else { 1 };
+                        if piece_captures.is_empty() {
+                            break 'capture_actions;
+                        }
+                        // Pick a random capture for this bonus action.
+                        let bonus_mv = piece_captures.choose(&mut rng).unwrap().clone();
+                        // Log the bonus capture when the game transcript is enabled.
+                        if games_log.is_some() {
+                            let board_height = rules.board_height();
+                            let piece_name = rules.piece(piece_on_board.piece_id)
+                                .map(|t| t.piece_name.as_str())
+                                .unwrap_or("Piece");
+                            let captured_name: Option<String> = bonus_mv.capture
+                                .and_then(|cap_id| board.pieces.iter().find(|p| p.id == cap_id))
+                                .and_then(|cap_p| rules.piece(cap_p.piece_id))
+                                .map(|t| t.piece_name.clone());
+                            let from_sq = coord_to_notation(bonus_mv.from.x, bonus_mv.from.y, board_height);
+                            let to_sq   = coord_to_notation(bonus_mv.to.x,   bonus_mv.to.y,   board_height);
+                            let mut line = format!("  {:>4}. [P{} +capture] {} {}x{}",
+                                moves_played + 1, mover_side, piece_name, from_sq, to_sq);
+                            if let Some(ref cn) = captured_name {
+                                line.push_str(&format!(" (captures {})", cn));
+                            }
+                            move_lines.push(line);
+                        }
+                        // Apply the bonus capture (board.turn = mover_side → flips to opponent).
+                        board.turn = mover_side;
+                        let bonus_result = board.apply(&bonus_mv, &rules);
+                        // board.turn is now opponent after apply().
+                        moves_played += 1;
+                        actions_used += 1;
+                        // Check win conditions triggered by this bonus kill.
+                        if bonus_result.any_killed() {
+                            if rules.game.capture_condition {
+                                let requires_all = rules.game.capture_condition_requires_all;
+                                let check_side_gone = |player: i32| -> bool {
+                                    if let Some(cp_id) = rules.game.capture_piece {
+                                        !board.pieces.iter().any(|p| p.player == player && {
+                                            p.piece_id == cp_id
+                                            || rules.piece(p.piece_id)
+                                                .map(|t| t.real_piece_id == cp_id || t.id == cp_id)
+                                                .unwrap_or(false)
+                                        })
+                                    } else if requires_all {
+                                        !board.pieces.iter().any(|p| p.player == player
+                                            && rules.piece(p.piece_id)
+                                                .map(|t| t.ends_game_on_capture)
+                                                .unwrap_or(false))
+                                    } else {
+                                        !board.pieces.iter().any(|p| p.player == player)
+                                    }
+                                };
+                                let gone1 = check_side_gone(1);
+                                let gone2 = check_side_gone(2);
+                                if gone1 && gone2 {
+                                    break 'game (GameResult::Draw, crate::protocol::EndReason::CaptureCondition);
+                                } else if gone1 {
+                                    break 'game (GameResult::Win(2), crate::protocol::EndReason::CaptureCondition);
+                                } else if gone2 {
+                                    break 'game (GameResult::Win(1), crate::protocol::EndReason::CaptureCondition);
+                                }
+                            }
+                            if rules.game.lose_all_pieces_condition {
+                                let p1 = board.pieces.iter().filter(|p| p.player == 1).count();
+                                let p2 = board.pieces.iter().filter(|p| p.player == 2).count();
+                                if p1 == 0 && p2 == 0 {
+                                    break 'game (GameResult::Draw, crate::protocol::EndReason::LoseAllPieces);
+                                } else if p1 == 0 {
+                                    break 'game (GameResult::Win(1), crate::protocol::EndReason::LoseAllPieces);
+                                } else if p2 == 0 {
+                                    break 'game (GameResult::Win(2), crate::protocol::EndReason::LoseAllPieces);
+                                }
+                            }
+                        }
+                    }
+                    // Ensure board.turn is set to opponent after all capture actions.
+                    board.turn = if mover_side == 1 { 2 } else { 1 };
+                }
+            }
+
+            // --- Ranged capture actions: bonus ranged attacks by the same piece per turn ---
+            // Mirrors capture_actions_per_turn but for ranged attacks.
+            {
+                let mover_side = if board.turn == 1 { 2 } else { 1 };
+                let ranged_cap_per_turn = board.pieces.iter()
+                    .find(|p| p.id == mv.piece_id)
+                    .and_then(|p| rules.piece(p.piece_id))
+                    .map(|t| t.ranged_capture_actions_per_turn)
+                    .unwrap_or(1);
+                if apply_result.any_killed() && mv.is_ranged_attack
+                    && (ranged_cap_per_turn > 1 || ranged_cap_per_turn == -1)
+                {
+                    let unlimited = ranged_cap_per_turn == -1;
+                    let mut actions_used = 1i32;
+                    'ranged_capture_actions: loop {
+                        if !unlimited && actions_used >= ranged_cap_per_turn { break; }
+                        let piece_on_board = match board.pieces.iter().find(|p| p.id == mv.piece_id) {
+                            Some(p) => p.clone(),
+                            None => break,
+                        };
+                        board.turn = mover_side;
+                        let ranged_captures: Vec<crate::board::Move> =
+                            crate::moves::moves_for(&board, &rules, &piece_on_board)
+                                .into_iter()
+                                .filter(|m| m.is_ranged_attack && m.capture.is_some())
+                                .collect();
+                        board.turn = if mover_side == 1 { 2 } else { 1 };
+                        if ranged_captures.is_empty() {
+                            break 'ranged_capture_actions;
+                        }
+                        let bonus_mv = ranged_captures.choose(&mut rng).unwrap().clone();
+                        board.turn = mover_side;
+                        let bonus_result = board.apply(&bonus_mv, &rules);
+                        moves_played += 1;
+                        actions_used += 1;
+                        if bonus_result.any_killed() {
+                            if rules.game.capture_condition {
+                                let requires_all = rules.game.capture_condition_requires_all;
+                                let check_side_gone = |player: i32| -> bool {
+                                    if let Some(cp_id) = rules.game.capture_piece {
+                                        !board.pieces.iter().any(|p| p.player == player && {
+                                            p.piece_id == cp_id
+                                            || rules.piece(p.piece_id)
+                                                .map(|t| t.real_piece_id == cp_id || t.id == cp_id)
+                                                .unwrap_or(false)
+                                        })
+                                    } else if requires_all {
+                                        !board.pieces.iter().any(|p| p.player == player
+                                            && rules.piece(p.piece_id)
+                                                .map(|t| t.ends_game_on_capture)
+                                                .unwrap_or(false))
+                                    } else {
+                                        !board.pieces.iter().any(|p| p.player == player)
+                                    }
+                                };
+                                let gone1 = check_side_gone(1);
+                                let gone2 = check_side_gone(2);
+                                if gone1 && gone2 {
+                                    break 'game (GameResult::Draw, crate::protocol::EndReason::CaptureCondition);
+                                } else if gone1 {
+                                    break 'game (GameResult::Win(2), crate::protocol::EndReason::CaptureCondition);
+                                } else if gone2 {
+                                    break 'game (GameResult::Win(1), crate::protocol::EndReason::CaptureCondition);
+                                }
+                            }
+                            if rules.game.lose_all_pieces_condition {
+                                let p1 = board.pieces.iter().filter(|p| p.player == 1).count();
+                                let p2 = board.pieces.iter().filter(|p| p.player == 2).count();
+                                if p1 == 0 && p2 == 0 {
+                                    break 'game (GameResult::Draw, crate::protocol::EndReason::LoseAllPieces);
+                                } else if p1 == 0 {
+                                    break 'game (GameResult::Win(1), crate::protocol::EndReason::LoseAllPieces);
+                                } else if p2 == 0 {
+                                    break 'game (GameResult::Win(2), crate::protocol::EndReason::LoseAllPieces);
+                                }
+                            }
+                        }
+                    }
+                    board.turn = if mover_side == 1 { 2 } else { 1 };
+                }
+            }
 
             // --- Turn-start effects for the new active player ---
             // Apply burn DoT, then HP regen, mirroring game-socket.js order.

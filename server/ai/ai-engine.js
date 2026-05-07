@@ -170,9 +170,38 @@ function applyMove(state, move) {
   if (!piece) return [];
 
   const pieceOwner = piece.team || piece.player_id;
+  const captured = [];
+
+  // Ranged attack: deal damage to the target but do NOT move the attacker
+  if (move.isRangedAttack) {
+    const targetIdx = state.pieces.findIndex(p => p.x === move.to.x && p.y === move.to.y && p.id !== move.pieceId);
+    if (targetIdx !== -1) {
+      const target = state.pieces[targetIdx];
+      const targetOwner = target.team || target.player_id;
+      if (targetOwner !== pieceOwner && !target.cannot_be_captured) {
+        const targetHp = target.current_hp ?? target.hit_points ?? 1;
+        const attackDmg = piece.attack_damage || 1;
+        if (targetHp <= attackDmg) {
+          captured.push(state.pieces.splice(targetIdx, 1)[0]);
+        } else {
+          target.current_hp = targetHp - attackDmg;
+        }
+      }
+    }
+    // Attacker does not move; just switch turns
+    state.currentTurn = state.currentTurn === 1 ? 2 : 1;
+    state.moveCount = (state.moveCount || 0) + 1;
+    state.gamePly = (state.gamePly ?? 0) + 1;
+    if (captured.length > 0) {
+      state.movesWithoutCapture = 0;
+    } else {
+      state.movesWithoutCapture = (state.movesWithoutCapture || 0) + 1;
+    }
+    return captured;
+  }
+
   const pw = piece.piece_width || 1;
   const ph = piece.piece_height || 1;
-  const captured = [];
 
   // Find and handle enemy pieces at destination
   for (let i = state.pieces.length - 1; i >= 0; i--) {
@@ -236,6 +265,10 @@ function applyMove(state, move) {
   state.currentTurn = state.currentTurn === 1 ? 2 : 1;
   state.moveCount = (state.moveCount || 0) + 1;
   state.gamePly = (state.gamePly ?? 0) + 1;
+
+  // NOTE: capture_actions_per_turn (bonus extra-capture actions) are not modelled in the
+  // search tree — the AI skips them in live play (processBotTurn). A future improvement
+  // could extend the minimax tree to consider bonus captures.
 
   if (captured.length > 0) {
     state.movesWithoutCapture = 0;
@@ -347,7 +380,7 @@ function checkTerminalFull(state) {
  * Filters for check legality when mate_condition is enabled.
  */
 function getMovesForSearch(state, playerPosition) {
-  const { getPossibleMovesForPiece, wouldMoveLeaveInCheck } = getGameSocket();
+  const { getPossibleMovesForPiece, wouldMoveLeaveInCheck, canRangedAttackTo, isRangedPathClear } = getGameSocket();
   const playerPieces = state.pieces.filter(p =>
     (p.team || p.player_id) === playerPosition
   );
@@ -374,6 +407,38 @@ function getMovesForSearch(state, playerPosition) {
         }
       } else {
         moves.push(move);
+      }
+    }
+
+    // Also generate ranged attack moves (piece stays in place; targets enemies in range)
+    if (piece.can_capture_enemy_via_range && canRangedAttackTo && isRangedPathClear) {
+      for (const target of state.pieces) {
+        if (target.id === piece.id) continue;
+        const targetOwner = target.team || target.player_id;
+        if (targetOwner === playerPosition) continue;
+        if (target.cannot_be_captured) continue;
+        const inRange = silent(() =>
+          canRangedAttackTo(piece.y, piece.x, target.y, target.x, piece, playerPosition, state.gameType)
+        );
+        if (!inRange) continue;
+        const pathClear = silent(() =>
+          isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, state.pieces, playerPosition, state.gameType)
+        );
+        if (!pathClear) continue;
+        const rangedMove = {
+          pieceId: piece.id,
+          from: { x: piece.x, y: piece.y },
+          to: { x: target.x, y: target.y },
+          isRangedAttack: true
+        };
+        if (state.gameType?.mate_condition) {
+          const illegal = silent(() =>
+            wouldMoveLeaveInCheck(state, rangedMove, playerPosition)
+          );
+          if (!illegal) moves.push(rangedMove);
+        } else {
+          moves.push(rangedMove);
+        }
       }
     }
   }
