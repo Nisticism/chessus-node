@@ -2840,6 +2840,23 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     const values = [...Object.values(updateMap), gameId];
     await db_pool.query(sql, values);
 
+    // Auto-update the game's forum title when the game name changes.
+    // Only updates forums whose title still matches the auto-generated
+    // "${old_name} - Discussion" pattern, so manually customised titles
+    // are left untouched.
+    if (gameData.game_name !== existingGame.game_name) {
+      try {
+        const oldForumTitle = `${existingGame.game_name} - Discussion`;
+        const newForumTitle = `${gameData.game_name} - Discussion`;
+        await db_pool.query(
+          `UPDATE articles SET title = ? WHERE game_type_id = ? AND title = ?`,
+          [newForumTitle, gameId, oldForumTitle]
+        );
+      } catch (forumTitleErr) {
+        console.error('Error updating forum title on game rename:', forumTitleErr.message);
+      }
+    }
+
     // Update pieces in junction table if provided
     if (gameData.pieces_string) {
       try {

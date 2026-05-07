@@ -61,6 +61,10 @@ const changelogData = [
       "Fixed: navigating to another player's profile no longer briefly flashes your own friend list before loading theirs.",
       "Fixed: forum thread titles with long names now wrap inside their container instead of overflowing.",
       "Fixed: game titles with long names on game library cards now wrap instead of being cut off.",
+      "Fixed: long game names in match history no longer push the time control and date columns out of view.",
+      "Fixed: the game name column in the game forums list no longer expands to fit very long game names, pushing other columns (author, date) off screen.",
+      "Fixed: match replay view now correctly wraps long game names in the details panel.",
+      "Renaming a game now automatically updates the title of its associated discussion forum.",
     ],
   },
   {

@@ -134,7 +134,7 @@ const ForumsHub = () => {
         </td>
       )}
       {showGame && (
-        <td className={styles["clickable-cell"]}>
+        <td className={`${styles["clickable-cell"]} ${styles["game-name-td"]}`}>
           {forum.game_type_id && forum.game_name ? (
             <div className={styles["game-name"]}>
               <Link to={`/games/${forum.game_type_id}`} onClick={(e) => e.stopPropagation()}>
