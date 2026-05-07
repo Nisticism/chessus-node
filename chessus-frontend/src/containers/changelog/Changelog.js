@@ -51,6 +51,9 @@ const changelogData = [
       "Fixed: 'can fire over allies' and 'can fire over enemies' flags now work correctly for step-by-step ranged pieces.",
       "Fixed: multi-capture ranged actions now show the board updating between each capture, so the first kill is visually reflected before the second capture prompt appears.",
       "Fixed: ranged attacks performed via drag-and-drop are now correctly processed as ranged attacks on the server.",
+      "Fixed: Capture Actions Per Turn and Ranged Capture Actions Per Turn now correctly hydrate to in-game pieces. Previously the field was missing from game state, causing multi-capture sequences to end after one capture.",
+      "Fixed: after a ranged capture action, the piece can no longer be moved normally if no valid second target exists. The player must use the skip button to end their turn instead.",
+      "Fixed: same fix applied to regular Capture Actions Per Turn — after a bonus capture action, only a capture move is accepted; movement is blocked until the capture sequence is skipped or completed.",
     ],
   },
   {

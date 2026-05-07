@@ -4499,8 +4499,24 @@ function initializeSocket(server) {
         if (gameState.captureActionsPieceId != null && move.pieceId !== gameState.captureActionsPieceId) {
           return socket.emit("error", { message: "You must use the same piece for your capture action, or skip it" });
         }
+        // Capture actions must actually capture something: prevents using a free movement action after a capture action
+        if (gameState.captureActionsPieceId != null && move.pieceId === gameState.captureActionsPieceId && !move.isRangedAttack) {
+          const moverPiece = gameState.pieces.find(p => p.id === move.pieceId);
+          const moverPos = moverPiece ? (moverPiece.team || moverPiece.player_id) : null;
+          const hasEnemyAtDest = moverPos != null && gameState.pieces.some(p => {
+            const pOwner = p.team || p.player_id;
+            return p.id !== move.pieceId && pOwner !== moverPos && doesPieceOccupySquare(p, move.to.x, move.to.y);
+          });
+          if (!hasEnemyAtDest) {
+            return socket.emit("error", { message: "You must capture an enemy piece with this piece, or skip your remaining capture action" });
+          }
+        }
         if (gameState.rangedCaptureActionsPieceId != null && move.pieceId !== gameState.rangedCaptureActionsPieceId) {
           return socket.emit("error", { message: "You must use the same piece for your ranged capture action, or skip it" });
+        }
+        // Ranged capture actions must be ranged attacks: prevents using a free movement action after a ranged capture
+        if (gameState.rangedCaptureActionsPieceId != null && move.pieceId === gameState.rangedCaptureActionsPieceId && !move.isRangedAttack) {
+          return socket.emit("error", { message: "You must make a ranged attack with this piece, or skip your remaining ranged capture action" });
         }
 
         // Start the game if this is the first move
@@ -9747,7 +9763,6 @@ async function validateAndApplyMove(gameState, move, options = {}) {
   if (isRangedAttack) {
     // Ranged attack: validate target exists and is an enemy
     if (destinationPieceIndex === -1) {
-      console.log(`[RANGED_TARGET] No piece at to=(${to.x},${to.y}). isRangedAttack=${isRangedAttack}, pieceId=${pieceId}. Pieces on board: ${pieces.map(p => `${p.id}@(${p.x},${p.y})`).join(', ')}`);
       return { valid: false, reason: "No target for ranged attack" };
     }
     const destPiece = pieces[destinationPieceIndex];
@@ -9817,14 +9832,12 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     // Check for ranged capture actions per turn (additional ranged fire actions)
     let rangedCaptureActionsAvailable = false;
     const rangedActionsPerTurn = movingPiece ? (movingPiece.ranged_capture_actions_per_turn ?? 1) : 1;
-    console.log(`[RANGED_CAPTURE] piece=${movingPiece?.id}, to=(${to.x},${to.y}), capturedPiece=${capturedPiece?.id ?? null}, rangedActionsPerTurn=${rangedActionsPerTurn} (raw=${movingPiece?.ranged_capture_actions_per_turn}), rangedCaptureActionsUsed=${gameState.rangedCaptureActionsUsed}`);
     if (capturedPiece !== null && (rangedActionsPerTurn > 1 || rangedActionsPerTurn === -1)) {
       const rangedActionsUsed = (gameState.rangedCaptureActionsUsed || 0) + 1;
       const rangedUnlimited = rangedActionsPerTurn === -1;
       if (rangedUnlimited || rangedActionsUsed < rangedActionsPerTurn) {
         rangedCaptureActionsAvailable = true;
       }
-      console.log(`[RANGED_CAPTURE] -> rangedActionsUsed=${rangedActionsUsed}, rangedCaptureActionsAvailable=${rangedCaptureActionsAvailable}`);
     }
 
     return { valid: true, captured: capturedPiece, damagedPieces, promotionEligible: null, movingPiece, isRangedAttack: true, rangedCaptureActionsAvailable };
@@ -10377,14 +10390,12 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     // Only counts direct captures — hop captures (checkers-style) use chain_capture_enabled
     const captureActionsPerTurn = movingPiece.capture_actions_per_turn ?? 1;
     const isHopOnlyCapture = hoppedCaptures.length > 0 && capturedPiece === null;
-    console.log(`[CAPTURE_ACTIONS] piece=${movingPiece.id}, capture_actions_per_turn raw=${movingPiece.capture_actions_per_turn} resolved=${captureActionsPerTurn}, capturedPiece=${capturedPiece?.id ?? null}, isHopOnly=${isHopOnlyCapture}, gameState.captureActionsUsed=${gameState.captureActionsUsed}`);
     if (!isHopOnlyCapture && capturedPiece !== null && (captureActionsPerTurn > 1 || captureActionsPerTurn === -1)) {
       const captureActionsUsed = (gameState.captureActionsUsed || 0) + 1;
       const captureUnlimited = captureActionsPerTurn === -1;
       if (captureUnlimited || captureActionsUsed < captureActionsPerTurn) {
         captureActionsAvailable = true;
       }
-      console.log(`[CAPTURE_ACTIONS] -> captureActionsUsed=${captureActionsUsed}, captureActionsAvailable=${captureActionsAvailable}`);
     }
 
     // Check for promotion eligibility
