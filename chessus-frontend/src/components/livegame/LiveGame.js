@@ -338,7 +338,6 @@ const LiveGame = () => {
   const [, setRangedTargetSquare] = useState(null);
   const boardRef = useRef(null);
   const rightClickDataRef = useRef(null);
-  const [isRightClickActive, setIsRightClickActive] = useState(false);
   const [rangedSelectedPiece, setRangedSelectedPiece] = useState(null); // for right-click-twice mode
 
   // Touch drag state for mobile
@@ -3846,7 +3845,9 @@ const LiveGame = () => {
     }
   }, [gameState, shouldFlipBoard, isMyTurn, submitMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
 
-  // Handle right-click mousedown for ranged attack drag detection
+  // Handle right-click mousedown for ranged attack drag detection.
+  // Global listeners are added synchronously here (not via a state-gated useEffect)
+  // to ensure they are in place before the first mousemove fires, even for fast drags.
   const handleSquareMouseDown = useCallback((e, x, y) => {
     if (e.button !== 2) return;
     if (!gameState || gameState.status === 'completed') return;
@@ -3862,14 +3863,139 @@ const LiveGame = () => {
       isDrag: false, isOwnRangedPiece: !!(isOwnPiece && clickedPiece?.can_capture_enemy_via_range)
     };
 
-    // Activate right-click drag detection for own ranged pieces
-    // Works for both regular moves (isMyTurn) and premoves (!isMyTurn with allowPremoves)
     const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
-    if (isOwnPiece && clickedPiece?.can_capture_enemy_via_range && (isMyTurn || canPremoveRanged) &&
-        (gameState?.status === 'active' || gameState?.status === 'ready')) {
-      setIsRightClickActive(true);
+    if (!isOwnPiece || !clickedPiece?.can_capture_enemy_via_range ||
+        (!isMyTurn && !canPremoveRanged) ||
+        (gameState?.status !== 'active' && gameState?.status !== 'ready')) {
+      return;
     }
-  }, [gameState, currentPlayer, isMyTurn]);
+
+    // Add global drag listeners synchronously so fast drags are not missed
+    const DRAG_DISTANCE_THRESHOLD = 5;
+    const DRAG_TIME_THRESHOLD = 200;
+    const bw = gameState?.gameType?.board_width || 8;
+    const bh = gameState?.gameType?.board_height || 8;
+    const isFlipped = currentPlayer?.position === 2;
+
+    function getTargetSquare(clientX, clientY) {
+      if (!boardRef.current) return null;
+      const boardRect = boardRef.current.getBoundingClientRect();
+      const squareW = boardRect.width / bw;
+      const squareH = boardRect.height / bh;
+      const relX = clientX - boardRect.left;
+      const relY = clientY - boardRect.top;
+      if (relX >= 0 && relX < boardRect.width && relY >= 0 && relY < boardRect.height) {
+        const displayCol = Math.floor(relX / squareW);
+        const displayRow = Math.floor(relY / squareH);
+        const gameX = isFlipped ? (bw - 1 - displayCol) : displayCol;
+        const gameY = isFlipped ? (bh - 1 - displayRow) : displayRow;
+        return { x: gameX, y: gameY };
+      }
+      return null;
+    }
+
+    function cleanup() {
+      rightClickDataRef.current = null;
+      setRangedAttackSource(null);
+      setRangedMousePos(null);
+      setRangedTargetSquare(null);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
+      window.removeEventListener('resize', handleResize);
+    }
+
+    function handleMouseMove(ev) {
+      const data = rightClickDataRef.current;
+      if (!data || !data.isOwnRangedPiece) return;
+
+      const dx = ev.clientX - data.clientX;
+      const dy = ev.clientY - data.clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const elapsed = Date.now() - data.time;
+
+      if (!data.isDrag && (dist > DRAG_DISTANCE_THRESHOLD || elapsed > DRAG_TIME_THRESHOLD)) {
+        data.isDrag = true;
+        setRangedAttackSource(data.piece);
+      }
+
+      if (data.isDrag) {
+        setRangedMousePos({ x: ev.clientX, y: ev.clientY });
+        setRangedTargetSquare(getTargetSquare(ev.clientX, ev.clientY));
+      }
+    }
+
+    function handleMouseUp(ev) {
+      if (ev.button !== 2) return;
+      const data = rightClickDataRef.current;
+      if (!data) { cleanup(); return; }
+
+      if (data.isDrag) {
+        const target = getTargetSquare(ev.clientX, ev.clientY);
+        if (target && gameState?.pieces) {
+          const allPieces = parsePieces(gameState.pieces);
+          const targetPiece = findPieceAtSquare(allPieces, target.x, target.y);
+          const sourceTeam = data.piece.player_id || data.piece.team;
+          const targetTeam = targetPiece?.player_id || targetPiece?.team;
+          const isStepRangedDrag = !!data.piece.step_by_step_attack_range;
+          const isValidTarget = isStepRangedDrag
+            ? canReachStepByStepRanged(data.piece, target.x, target.y, allPieces, bw, bh)
+            : canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
+          const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
+          const pathBlocked = !isStepRangedDrag && !isRangedPathClear(data.piece.x, data.piece.y, target.x, target.y, data.piece, allPieces, sourceTeam);
+
+          if (isValidTarget && pathBlocked && (isEnemyTarget || canPremoveRanged)) {
+            showIllegalMoveWarning("Ranged attack is blocked by another piece");
+            cleanup();
+            return;
+          }
+
+          if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
+            if (isMyTurn) {
+              if (isEnemyTarget) {
+                submitMove(parseInt(gameId), {
+                  from: { x: data.piece.x, y: data.piece.y },
+                  to: { x: target.x, y: target.y },
+                  pieceId: data.piece.id,
+                  isRangedAttack: true
+                });
+              }
+            } else if (canPremoveRanged) {
+              const premoveData = {
+                from: { x: data.piece.x, y: data.piece.y },
+                to: { x: target.x, y: target.y },
+                pieceId: data.piece.id,
+                isRangedAttack: true,
+                pieceWidth: data.piece.piece_width || 1,
+                pieceHeight: data.piece.piece_height || 1
+              };
+              setPremove(premoveData);
+              sendPremove(parseInt(gameId), premoveData);
+            }
+          }
+        }
+      } else {
+        setRangedSelectedPiece(data.piece);
+      }
+      cleanup();
+    }
+
+    function handleContextMenu(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+
+    function handleResize() {
+      if (rightClickDataRef.current?.isDrag) {
+        setRangedMousePos(prev => prev ? { ...prev } : null);
+      }
+    }
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('contextmenu', handleContextMenu, { capture: true });
+    window.addEventListener('resize', handleResize);
+  }, [gameState, currentPlayer, isMyTurn, submitMove, gameId, sendPremove, setPremove, showIllegalMoveWarning, canReachStepByStepRanged]);
 
   // Handle contextmenu on square
   const handleSquareContextMenu = useCallback((e, x, y) => {
@@ -3969,147 +4095,6 @@ const LiveGame = () => {
     }
     rightClickDataRef.current = null;
   }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning]);
-
-  // Global listeners for ranged right-click drag detection
-  useEffect(() => {
-    if (!isRightClickActive) return;
-
-    const DRAG_DISTANCE_THRESHOLD = 5;
-    const DRAG_TIME_THRESHOLD = 200;
-    const bw = gameState?.gameType?.board_width || 8;
-    const bh = gameState?.gameType?.board_height || 8;
-    const isFlipped = currentPlayer?.position === 2;
-
-    const getTargetSquare = (clientX, clientY) => {
-      if (!boardRef.current) return null;
-      const boardRect = boardRef.current.getBoundingClientRect();
-      const squareW = boardRect.width / bw;
-      const squareH = boardRect.height / bh;
-      const relX = clientX - boardRect.left;
-      const relY = clientY - boardRect.top;
-      if (relX >= 0 && relX < boardRect.width && relY >= 0 && relY < boardRect.height) {
-        const displayCol = Math.floor(relX / squareW);
-        const displayRow = Math.floor(relY / squareH);
-        const gameX = isFlipped ? (bw - 1 - displayCol) : displayCol;
-        const gameY = isFlipped ? (bh - 1 - displayRow) : displayRow;
-        return { x: gameX, y: gameY };
-      }
-      return null;
-    };
-
-    const handleMouseMove = (e) => {
-      const data = rightClickDataRef.current;
-      if (!data || !data.isOwnRangedPiece) return;
-
-      const dx = e.clientX - data.clientX;
-      const dy = e.clientY - data.clientY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const elapsed = Date.now() - data.time;
-
-      if (!data.isDrag && (dist > DRAG_DISTANCE_THRESHOLD || elapsed > DRAG_TIME_THRESHOLD)) {
-        data.isDrag = true;
-        setRangedAttackSource(data.piece);
-      }
-
-      if (data.isDrag) {
-        setRangedMousePos({ x: e.clientX, y: e.clientY });
-        setRangedTargetSquare(getTargetSquare(e.clientX, e.clientY));
-      }
-    };
-
-    const handleMouseUp = (e) => {
-      if (e.button !== 2) return;
-      const data = rightClickDataRef.current;
-      if (!data) { cleanup(); return; }
-
-      if (data.isDrag) {
-        // Drag mode — execute ranged attack or set ranged premove
-        const target = getTargetSquare(e.clientX, e.clientY);
-        if (target && gameState?.pieces) {
-          const pieces = parsePieces(gameState.pieces);
-          const targetPiece = findPieceAtSquare(pieces, target.x, target.y);
-          const sourceTeam = data.piece.player_id || data.piece.team;
-          const targetTeam = targetPiece?.player_id || targetPiece?.team;
-          const bw = gameState?.gameType?.board_width || 8;
-          const bh = gameState?.gameType?.board_height || 8;
-          const isStepRangedDrag = !!data.piece.step_by_step_attack_range;
-          const isValidTarget = isStepRangedDrag
-            ? canReachStepByStepRanged(data.piece, target.x, target.y, pieces, bw, bh)
-            : canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
-          const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
-          const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
-          const pathBlocked = !isStepRangedDrag && !isRangedPathClear(data.piece.x, data.piece.y, target.x, target.y, data.piece, pieces, sourceTeam);
-
-          if (isValidTarget && pathBlocked && (isEnemyTarget || canPremoveRanged)) {
-            showIllegalMoveWarning("Ranged attack is blocked by another piece");
-            cleanup();
-            return;
-          }
-
-          if (isValidTarget && (isEnemyTarget || canPremoveRanged)) {
-            if (isMyTurn) {
-              // On player's turn: only fire if there's an actual enemy target
-              if (isEnemyTarget) {
-                submitMove(parseInt(gameId), {
-                  from: { x: data.piece.x, y: data.piece.y },
-                  to: { x: target.x, y: target.y },
-                  pieceId: data.piece.id,
-                  isRangedAttack: true
-                });
-              }
-            } else if (canPremoveRanged) {
-              // Set ranged premove
-              const premoveData = {
-                from: { x: data.piece.x, y: data.piece.y },
-                to: { x: target.x, y: target.y },
-                pieceId: data.piece.id,
-                isRangedAttack: true,
-                pieceWidth: data.piece.piece_width || 1,
-                pieceHeight: data.piece.piece_height || 1
-              };
-              setPremove(premoveData);
-              sendPremove(parseInt(gameId), premoveData);
-            }
-          }
-        }
-      } else {
-        // Quick click on own ranged piece — enter right-click-twice mode
-        setRangedSelectedPiece(data.piece);
-      }
-      cleanup();
-    };
-
-    const handleContextMenu = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const handleResize = () => {
-      if (rightClickDataRef.current?.isDrag) {
-        setRangedMousePos(prev => prev ? { ...prev } : null);
-      }
-    };
-
-    const cleanup = () => {
-      rightClickDataRef.current = null;
-      setIsRightClickActive(false);
-      setRangedAttackSource(null);
-      setRangedMousePos(null);
-      setRangedTargetSquare(null);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('contextmenu', handleContextMenu, { capture: true });
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [isRightClickActive, gameState, currentPlayer, submitMove, gameId, isMyTurn, sendPremove, setPremove, showIllegalMoveWarning]);
 
   // Handle resign
   const handleResign = () => {

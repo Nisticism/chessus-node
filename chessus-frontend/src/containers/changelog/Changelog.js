@@ -65,6 +65,9 @@ const changelogData = [
       "Fixed: the game name column in the game forums list no longer expands to fit very long game names, pushing other columns (author, date) off screen.",
       "Fixed: match replay view now correctly wraps long game names in the details panel.",
       "Renaming a game now automatically updates the title of its associated discussion forum.",
+      "Fixed: player 2's username in live games was appearing too dark against the dark background. It is now displayed in a bright color for readability.",
+      "Fixed: premove ranged attacks set by right-click dragging during the opponent's turn were not being registered due to a timing issue.",
+      "Fixed: when a piece has multiple Capture Actions Per Turn or Ranged Capture Actions Per Turn remaining but no valid targets are left, the turn now automatically advances without requiring the player to press Skip.",
     ],
   },
   {

@@ -445,6 +445,11 @@
   &.player-2-color {
     background: #1a1a1a;
     border-color: #1a1a1a;
+
+    .player-name,
+    .time-value {
+      color: var(--text-bright);
+    }
   }
 
   &.current-turn {

@@ -5177,6 +5177,18 @@ function initializeSocket(server) {
 
         // Check if capture actions are available (extra deliberate move-capture actions per turn)
         if (moveResult.captureActionsAvailable && moveResult.movingPiece) {
+          // Verify the piece actually has valid capture targets; if not, auto-skip
+          const capturePiece = gameState.pieces.find(p => p.id === moveResult.movingPiece.id);
+          const captureOwner = capturePiece ? (capturePiece.team || capturePiece.player_id) : null;
+          let captureMoves = [];
+          try {
+            if (capturePiece) captureMoves = getPossibleMovesForPiece(capturePiece, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0);
+          } catch (e) { /* ignore */ }
+          const hasCaptureTargets = capturePiece && captureMoves.some(sq =>
+            gameState.pieces.some(p => p.id !== capturePiece.id && doesPieceOccupySquare(p, sq.x, sq.y) && (p.team || p.player_id) !== captureOwner)
+          );
+
+          if (hasCaptureTargets) {
           gameState.captureActionsPieceId = moveResult.movingPiece.id;
           gameState.captureActionsPlayerId = userId;
           gameState.captureActionsUsed = (gameState.captureActionsUsed || 0) + 1;
@@ -5227,10 +5239,27 @@ function initializeSocket(server) {
 
           console.log(`Capture action available in game ${gameId} for piece ${gameState.captureActionsPieceId} (${gameState.captureActionsUsed}/${moveResult.movingPiece.capture_actions_per_turn})`);
           return; // Wait for capture action or skip
+          } // end if (hasCaptureTargets)
+          // No capture targets available — fall through to end-of-turn processing
         }
 
         // Check if ranged capture actions are available
         if (moveResult.rangedCaptureActionsAvailable && moveResult.movingPiece) {
+          // Verify the piece actually has valid ranged capture targets; if not, auto-skip
+          const rangedPiece = gameState.pieces.find(p => p.id === moveResult.movingPiece.id);
+          const rangedOwner = rangedPiece ? (rangedPiece.team || rangedPiece.player_id) : null;
+          const hasRangedCaptureTargets = rangedPiece && rangedPiece.can_capture_enemy_via_range &&
+            gameState.pieces.some(t => {
+              if (t.id === rangedPiece.id) return false;
+              const tOwner = t.team || t.player_id;
+              if (tOwner === rangedOwner) return false;
+              if (t.cannot_be_captured) return false;
+              if (!canRangedAttackTo(rangedPiece.y, rangedPiece.x, t.y, t.x, rangedPiece, rangedOwner, gameState.gameType)) return false;
+              if (!isRangedPathClear(rangedPiece.x, rangedPiece.y, t.x, t.y, rangedPiece, gameState.pieces, rangedOwner, gameState.gameType)) return false;
+              return true;
+            });
+
+          if (hasRangedCaptureTargets) {
           gameState.rangedCaptureActionsPieceId = moveResult.movingPiece.id;
           gameState.rangedCaptureActionsPlayerId = userId;
           gameState.rangedCaptureActionsUsed = (gameState.rangedCaptureActionsUsed || 0) + 1;
@@ -5281,6 +5310,8 @@ function initializeSocket(server) {
 
           console.log(`Ranged capture action available in game ${gameId} for piece ${gameState.rangedCaptureActionsPieceId} (${gameState.rangedCaptureActionsUsed}/${moveResult.movingPiece.ranged_capture_actions_per_turn})`);
           return; // Wait for ranged capture action or skip
+          } // end if (hasRangedCaptureTargets)
+          // No ranged capture targets available — fall through to end-of-turn processing
         }
 
         // Clear any chain capture state after a non-chain-capture move
