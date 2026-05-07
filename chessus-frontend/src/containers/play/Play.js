@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+﻿import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, useSearchParams, useLocation, Link } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
@@ -792,7 +792,7 @@ const Play = () => {
   const formatTimeControl = (game) => {
     if (game.is_correspondence) {
       const days = game.correspondence_days || 1;
-      return `📬 ${days} day${days !== 1 ? 's' : ''}/move`;
+      return `\uD83D\uDCEC ${days} day${days !== 1 ? 's' : ''}/move`;
     }
     const minutes = game.turn_length || game.timeControl;
     const inc = game.increment;
@@ -1125,7 +1125,7 @@ const Play = () => {
             onClick={() => setGameDeletedMessage(null)}
             aria-label="Dismiss"
           >
-            ×
+            {'\u00D7'}
           </button>
         </div>
       )}
@@ -1137,7 +1137,7 @@ const Play = () => {
             onClick={toggleGameTypes}
             style={{ cursor: 'pointer', userSelect: 'none' }}
           >
-            <span style={{ display: 'inline-block', width: '1em' }}>{gameTypesCollapsed ? '▶' : '▼'}</span>
+            <span style={{ display: 'inline-block', width: '1em' }}>{gameTypesCollapsed ? '\u25B6' : '\u25BC'}</span>
             Game Types
           </h2>
           {!gameTypesCollapsed && (<>
@@ -1169,7 +1169,7 @@ const Play = () => {
                   >
                     <div className={styles["game-type-name"]}>{game.game_name}</div>
                     <div className={styles["game-type-info"]}>
-                      {game.board_width}x{game.board_height} • {game.player_count || 2} players
+                      {game.board_width}x{game.board_height} {'\u2022'} {game.player_count || 2} players
                     </div>
                   </div>
                 </div>
@@ -1183,7 +1183,7 @@ const Play = () => {
                 onClick={() => setGameTypesPage((page) => page - 1)}
                 className={styles["pagination-btn"]}
               >
-                ← Prev
+                {'\u2190'} Prev
               </button>
               <span className={styles["pagination-info"]}>
                 {gameTypesPage} / {totalGameTypePages}
@@ -1193,7 +1193,7 @@ const Play = () => {
                 onClick={() => setGameTypesPage((page) => page + 1)}
                 className={styles["pagination-btn"]}
               >
-                Next →
+                Next {'\u2192'}
               </button>
             </div>
           )}
@@ -1209,7 +1209,7 @@ const Play = () => {
                 onClick={() => setIncomingChallengesCollapsed(prev => !prev)}
                 style={{ cursor: 'pointer', userSelect: 'none' }}
               >
-                <span style={{ display: 'inline-block', width: '1em' }}>{incomingChallengesCollapsed ? '▶' : '▼'}</span>
+                <span style={{ display: 'inline-block', width: '1em' }}>{incomingChallengesCollapsed ? '\u25B6' : '\u25BC'}</span>
                 Incoming Challenges
                 <span className={styles["match-count"]}>{pendingChallenges.length}</span>
               </h2>
@@ -1257,19 +1257,19 @@ const Play = () => {
                   <h3><Link to={`/games/${selectedGameType.id}`}>{selectedGameType.game_name}</Link></h3>
                   <div className={styles["game-stats"]}>
                     <span className={styles["stat-item"]}>
-                      <span className={styles["stat-icon"]}>⊞</span>
-                      {selectedGameType.board_width}×{selectedGameType.board_height}
+                      <span className={styles["stat-icon"]}>{'\u229E'}</span>
+                      {selectedGameType.board_width}{'\u00D7'}{selectedGameType.board_height}
                     </span>
-                    <span className={styles["stat-divider"]}>•</span>
+                    <span className={styles["stat-divider"]}>{'\u2022'}</span>
                     <span className={styles["stat-item"]}>
-                      <span className={styles["stat-icon"]}>⚔</span>
+                      <span className={styles["stat-icon"]}>{'\u2694'}</span>
                       {selectedGameType.player_count || 2} players
                     </span>
                     {formatPieceCount(selectedGameType) && (
                       <>
-                        <span className={styles["stat-divider"]}>•</span>
+                        <span className={styles["stat-divider"]}>{'\u2022'}</span>
                         <span className={styles["stat-item"]}>
-                          <span className={styles["stat-icon"]}>♟</span>
+                          <span className={styles["stat-icon"]}>{'\u265F'}</span>
                           {formatPieceCount(selectedGameType)}
                         </span>
                       </>
@@ -1281,7 +1281,7 @@ const Play = () => {
                     </span>
                     {selectedGameType.creator_username && (
                       <span className={styles["creator"]}>
-                        <span className={styles["stat-divider"]}>{' '}•{' '}</span>by{' '}
+                        <span className={styles["stat-divider"]}>{'\u2022'}</span>by{' '}
                         {selectedGameType.creator_username === 'Anonymous' ? (
                           <span>Anonymous</span>
                         ) : (
@@ -1315,7 +1315,7 @@ const Play = () => {
                 onClick={togglePrivateGames}
                 style={{ cursor: 'pointer', userSelect: 'none' }}
               >
-                <span style={{ display: 'inline-block', width: '1em' }}>{privateGamesCollapsed ? '▶' : '▼'}</span>
+                <span style={{ display: 'inline-block', width: '1em' }}>{privateGamesCollapsed ? '\u25B6' : '\u25BC'}</span>
                 Private Games
                 <span className={styles["match-count"]}>{privateGames.length}</span>
               </h2>
@@ -1330,9 +1330,9 @@ const Play = () => {
                       className={`${styles["open-match-card"]} ${styles["private-game"]}`}
                     >
                       <div className={styles["match-header"]}>
-                        <span className={styles["match-game-name"]}>
+                        <div className={styles["match-game-name"]}>
                           <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
-                        </span>
+                        </div>
                         <div className={styles["meta-column"]}>
                           <span className={styles["match-time-control"]}>
                             {formatTimeControl(game)}
@@ -1371,7 +1371,7 @@ const Play = () => {
                             disabled={deletingGameId === game.id}
                             title="Delete bugged game (admin only)"
                           >
-                            {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                            {deletingGameId === game.id ? "Deleting..." : '\uD83D\uDDD1\uFE0F'}
                           </button>
                         )}
                       </div>
@@ -1386,7 +1386,7 @@ const Play = () => {
                     onClick={() => setPrivateGamesPage(p => p - 1)}
                     className={styles["pagination-btn"]}
                   >
-                    ← Prev
+                    {'\u2190'} Prev
                   </button>
                   <span className={styles["pagination-info"]}>
                     {privateGamesPage} / {totalPrivateGamesPages}
@@ -1396,7 +1396,7 @@ const Play = () => {
                     onClick={() => setPrivateGamesPage(p => p + 1)}
                     className={styles["pagination-btn"]}
                   >
-                    Next →
+                    Next {'\u2192'}
                   </button>
                 </div>
               )}
@@ -1411,7 +1411,7 @@ const Play = () => {
                 onClick={toggleFriends}
                 style={{ cursor: 'pointer', userSelect: 'none' }}
               >
-                <span style={{ display: 'inline-block', width: '1em' }}>{friendsCollapsed ? '▶' : '▼'}</span>
+                <span style={{ display: 'inline-block', width: '1em' }}>{friendsCollapsed ? '\u25B6' : '\u25BC'}</span>
                 Online Friends
                 <span className={styles["match-count"]}>{onlineFriends.length}</span>
               </h2>
@@ -1432,7 +1432,7 @@ const Play = () => {
                     onClick={() => setFriendsPage(p => p - 1)}
                     className={styles["pagination-btn"]}
                   >
-                    ← Prev
+                    {'\u2190'} Prev
                   </button>
                   <span className={styles["pagination-info"]}>
                     {friendsPage} / {totalFriendsPages}
@@ -1442,7 +1442,7 @@ const Play = () => {
                     onClick={() => setFriendsPage(p => p + 1)}
                     className={styles["pagination-btn"]}
                   >
-                    Next →
+                    Next {'\u2192'}
                   </button>
                 </div>
               )}
@@ -1456,7 +1456,7 @@ const Play = () => {
               onClick={toggleOpenGames}
               style={{ cursor: 'pointer', userSelect: 'none' }}
             >
-              <span style={{ display: 'inline-block', width: '1em' }}>{openGamesCollapsed ? '▶' : '▼'}</span>
+              <span style={{ display: 'inline-block', width: '1em' }}>{openGamesCollapsed ? '\u25B6' : '\u25BC'}</span>
               Open Matches
               {openGames.length > 0 && (
                 <span className={styles["match-count"]}>{openGames.length}</span>
@@ -1488,9 +1488,9 @@ const Play = () => {
                         className={`${styles["open-match-card"]} ${isOwnGame ? styles["own-game"] : ''}`}
                       >
                         <div className={styles["match-header"]}>
-                          <span className={styles["match-game-name"]}>
+                          <div className={styles["match-game-name"]}>
                             <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name || game.gameTypeName}</Link>
-                          </span>
+                          </div>
                           <div className={styles["meta-column"]}>
                             <span className={styles["match-time-control"]}>
                               {formatTimeControl(game)}
@@ -1543,7 +1543,7 @@ const Play = () => {
                               disabled={deletingGameId === (game.id || game.gameId)}
                               title="Delete bugged game (admin only)"
                             >
-                              {deletingGameId === (game.id || game.gameId) ? "Deleting..." : "🗑️"}
+                              {deletingGameId === (game.id || game.gameId) ? "Deleting..." : '\uD83D\uDDD1\uFE0F'}
                             </button>
                           )}
                         </div>
@@ -1558,7 +1558,7 @@ const Play = () => {
                       onClick={() => setOpenGamesPage(p => p - 1)}
                       className={styles["pagination-btn"]}
                     >
-                      ← Prev
+                      {'\u2190'} Prev
                     </button>
                     <span className={styles["pagination-info"]}>
                       {openGamesPage} / {totalOpenGamesPages}
@@ -1568,7 +1568,7 @@ const Play = () => {
                       onClick={() => setOpenGamesPage(p => p + 1)}
                       className={styles["pagination-btn"]}
                     >
-                      Next →
+                      Next {'\u2192'}
                     </button>
                   </div>
                 )}
@@ -1583,14 +1583,14 @@ const Play = () => {
               onClick={toggleLiveGames}
               style={{ cursor: 'pointer', userSelect: 'none' }}
             >
-              <span style={{ display: 'inline-block', width: '1em' }}>{liveGamesCollapsed ? '▶' : '▼'}</span>
+              <span style={{ display: 'inline-block', width: '1em' }}>{liveGamesCollapsed ? '\u25B6' : '\u25BC'}</span>
               Live Games
               {ongoingLiveGames.length > 0 && (
                 <span className={styles["match-count"]}>{ongoingLiveGames.length}</span>
               )}
             </h2>
             <p className={styles["section-note"]}>
-              While we grow our player base, consider hosting a <strong>Correspondence game</strong> instead of Live — unless you know both you and your opponent can start and finish the game in one sitting. Live games where both players have joined but haven't made a move will be automatically cancelled after 24 hours.
+              While we grow our player base, consider hosting a <strong>Correspondence game</strong> instead of Live {'\u2014'} unless you know both you and your opponent can start and finish the game in one sitting. Live games where both players have joined but haven't made a move will be automatically cancelled after 24 hours.
             </p>
 
             {!liveGamesCollapsed && (
@@ -1607,9 +1607,9 @@ const Play = () => {
                       className={styles["ongoing-game-card"]}
                     >
                       <div className={styles["match-header"]}>
-                        <span className={styles["match-game-name"]}>
+                        <div className={styles["match-game-name"]}>
                           <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
-                        </span>
+                        </div>
                         <div className={styles["meta-column"]}>
                           <span className={styles["match-time-control"]}>
                             {formatTimeControl(game)}
@@ -1653,7 +1653,7 @@ const Play = () => {
                             disabled={deletingGameId === game.id}
                             title="Delete bugged game (admin only)"
                           >
-                            {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                            {deletingGameId === game.id ? "Deleting..." : '\uD83D\uDDD1\uFE0F'}
                           </button>
                         )}
                       </div>
@@ -1667,7 +1667,7 @@ const Play = () => {
                       onClick={() => setOngoingLiveGamesPage(p => p - 1)}
                       className={styles["pagination-btn"]}
                     >
-                      ← Prev
+                      {'\u2190'} Prev
                     </button>
                     <span className={styles["pagination-info"]}>
                       {ongoingLiveGamesPage} / {totalOngoingLiveGamesPages}
@@ -1677,7 +1677,7 @@ const Play = () => {
                       onClick={() => setOngoingLiveGamesPage(p => p + 1)}
                       className={styles["pagination-btn"]}
                     >
-                      Next →
+                      Next {'\u2192'}
                     </button>
                   </div>
                 )}
@@ -1692,7 +1692,7 @@ const Play = () => {
               onClick={toggleCorrespondenceGames}
               style={{ cursor: 'pointer', userSelect: 'none' }}
             >
-              <span style={{ display: 'inline-block', width: '1em' }}>{correspondenceGamesCollapsed ? '▶' : '▼'}</span>
+              <span style={{ display: 'inline-block', width: '1em' }}>{correspondenceGamesCollapsed ? '\u25B6' : '\u25BC'}</span>
               Correspondence Games
               {ongoingCorrespondenceGames.length > 0 && (
                 <span className={styles["match-count"]}>{ongoingCorrespondenceGames.length}</span>
@@ -1713,9 +1713,9 @@ const Play = () => {
                       className={styles["ongoing-game-card"]}
                     >
                       <div className={styles["match-header"]}>
-                        <span className={styles["match-game-name"]}>
+                        <div className={styles["match-game-name"]}>
                           <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
-                        </span>
+                        </div>
                         <div className={styles["meta-column"]}>
                           <span className={styles["match-time-control"]}>
                             {formatTimeControl(game)}
@@ -1759,7 +1759,7 @@ const Play = () => {
                             disabled={deletingGameId === game.id}
                             title="Delete bugged game (admin only)"
                           >
-                            {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                            {deletingGameId === game.id ? "Deleting..." : '\uD83D\uDDD1\uFE0F'}
                           </button>
                         )}
                       </div>
@@ -1773,7 +1773,7 @@ const Play = () => {
                       onClick={() => setOngoingCorrespondenceGamesPage(p => p - 1)}
                       className={styles["pagination-btn"]}
                     >
-                      ← Prev
+                      {'\u2190'} Prev
                     </button>
                     <span className={styles["pagination-info"]}>
                       {ongoingCorrespondenceGamesPage} / {totalOngoingCorrespondenceGamesPages}
@@ -1783,7 +1783,7 @@ const Play = () => {
                       onClick={() => setOngoingCorrespondenceGamesPage(p => p + 1)}
                       className={styles["pagination-btn"]}
                     >
-                      Next →
+                      Next {'\u2192'}
                     </button>
                   </div>
                 )}
@@ -1798,7 +1798,7 @@ const Play = () => {
               onClick={togglePublicBotGames}
               style={{ cursor: 'pointer', userSelect: 'none' }}
             >
-              <span style={{ display: 'inline-block', width: '1em' }}>{publicBotGamesCollapsed ? '▶' : '▼'}</span>
+              <span style={{ display: 'inline-block', width: '1em' }}>{publicBotGamesCollapsed ? '\u25B6' : '\u25BC'}</span>
               Computer Games
               {publicBotGames.length > 0 && (
                 <span className={styles["match-count"]}>{publicBotGames.length}</span>
@@ -1814,9 +1814,9 @@ const Play = () => {
                     {paginatedPublicBotGames.map((game) => (
                       <div key={game.id} className={styles["ongoing-game-card"]}>
                         <div className={styles["match-header"]}>
-                          <span className={styles["match-game-name"]}>
+                          <div className={styles["match-game-name"]}>
                             <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
-                          </span>
+                          </div>
                           <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
                         </div>
                         <div className={styles["match-players"]}>{renderPlayerStack(game)}</div>
@@ -1854,7 +1854,7 @@ const Play = () => {
                               disabled={deletingGameId === game.id}
                               title="Delete bugged game (admin only)"
                             >
-                              {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                              {deletingGameId === game.id ? "Deleting..." : '\uD83D\uDDD1\uFE0F'}
                             </button>
                           )}
                         </div>
@@ -1863,9 +1863,9 @@ const Play = () => {
                   </div>
                   {totalPublicBotGamesPages > 1 && (
                     <div className={styles["pagination"]}>
-                      <button disabled={publicBotGamesPage === 1} onClick={() => setPublicBotGamesPage(p => p - 1)} className={styles["pagination-btn"]}>← Prev</button>
+                      <button disabled={publicBotGamesPage === 1} onClick={() => setPublicBotGamesPage(p => p - 1)} className={styles["pagination-btn"]}>{'\u2190'} Prev</button>
                       <span className={styles["pagination-info"]}>{publicBotGamesPage} / {totalPublicBotGamesPages}</span>
-                      <button disabled={publicBotGamesPage >= totalPublicBotGamesPages} onClick={() => setPublicBotGamesPage(p => p + 1)} className={styles["pagination-btn"]}>Next →</button>
+                      <button disabled={publicBotGamesPage >= totalPublicBotGamesPages} onClick={() => setPublicBotGamesPage(p => p + 1)} className={styles["pagination-btn"]}>Next {'\u2192'}</button>
                     </div>
                   )}
                 </>
@@ -1880,7 +1880,7 @@ const Play = () => {
                 onClick={toggleComputerGames}
                 style={{ cursor: 'pointer', userSelect: 'none' }}
               >
-                <span style={{ display: 'inline-block', width: '1em' }}>{computerGamesCollapsed ? '▶' : '▼'}</span>
+                <span style={{ display: 'inline-block', width: '1em' }}>{computerGamesCollapsed ? '\u25B6' : '\u25BC'}</span>
                 My Computer Games
                 {(myBotGames || []).length > 0 && (
                   <span className={styles["match-count"]}>{(myBotGames || []).length}</span>
@@ -1898,9 +1898,9 @@ const Play = () => {
                       {paginatedComputerGames.map((game) => (
                         <div key={game.id} className={styles["ongoing-game-card"]}>
                           <div className={styles["match-header"]}>
-                            <span className={styles["match-game-name"]}>
+                            <div className={styles["match-game-name"]}>
                               <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
-                            </span>
+                            </div>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                               <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
                               <span className={styles["unrated-badge"]}>Unrated</span>
@@ -1927,7 +1927,7 @@ const Play = () => {
                                 disabled={deletingGameId === game.id}
                                 title="Delete bugged game (admin only)"
                               >
-                                {deletingGameId === game.id ? "Deleting..." : "🗑️"}
+                                {deletingGameId === game.id ? "Deleting..." : '\uD83D\uDDD1\uFE0F'}
                               </button>
                             )}
                           </div>
@@ -1941,7 +1941,7 @@ const Play = () => {
                           onClick={() => setComputerGamesPage(p => p - 1)}
                           className={styles["pagination-btn"]}
                         >
-                          ← Prev
+                          {'\u2190'} Prev
                         </button>
                         <span className={styles["pagination-info"]}>
                           {computerGamesPage} / {totalComputerGamesPages}
@@ -1951,7 +1951,7 @@ const Play = () => {
                           onClick={() => setComputerGamesPage(p => p + 1)}
                           className={styles["pagination-btn"]}
                         >
-                          Next →
+                          Next {'\u2192'}
                         </button>
                       </div>
                     )}
@@ -1978,7 +1978,7 @@ const Play = () => {
             {/* Challenge indicator */}
             {challengedUserId && (
               <div className={styles["challenge-indicator"]}>
-                <span>⚔️ Private challenge - only {challengedUsername} can join</span>
+                <span>{'\u2694\uFE0F'} Private challenge - only {challengedUsername} can join</span>
                 <button
                   className={styles["clear-challenge"]}
                   onClick={() => {
@@ -1988,7 +1988,7 @@ const Play = () => {
                   }}
                   title="Remove challenge target"
                 >
-                  ✕
+                  {'\u2715'}
                 </button>
               </div>
             )}
@@ -2084,14 +2084,14 @@ const Play = () => {
                 className={`${styles["game-mode-tab"]} ${gameMode === "live" ? styles["game-mode-tab-active"] : ""}`}
                 onClick={() => setGameMode("live")}
               >
-                ⚡ Live
+                {'\u26A1'} Live
               </button>
               <button
                 type="button"
                 className={`${styles["game-mode-tab"]} ${gameMode === "correspondence" ? styles["game-mode-tab-active"] : ""}`}
                 onClick={() => setGameMode("correspondence")}
               >
-                📬 Correspondence
+                {'\uD83D\uDCEC'} Correspondence
               </button>
             </div>
 
@@ -2104,7 +2104,7 @@ const Play = () => {
                     <>
                       <span className={styles["game-name"]}>{selectedGameType.game_name}</span>
                       <span className={styles["game-size"]}>
-                        {selectedGameType.board_width}×{selectedGameType.board_height}
+                        {selectedGameType.board_width}{'\u00D7'}{selectedGameType.board_height}
                       </span>
                     </>
                   ) : (
@@ -2132,7 +2132,7 @@ const Play = () => {
                         >
                           <span className={styles["game-name"]}>{game.game_name}</span>
                           <span className={styles["game-size"]}>
-                            {game.board_width}×{game.board_height}
+                            {game.board_width}{'\u00D7'}{game.board_height}
                           </span>
                         </div>
                       ))}
@@ -2239,7 +2239,7 @@ const Play = () => {
                 onClick={() => setShowAdditionalOptions(!showAdditionalOptions)}
               >
                 <span>Additional Options</span>
-                <span className={`${styles["toggle-arrow"]} ${showAdditionalOptions ? styles["open"] : ''}`}>▼</span>
+                <span className={`${styles["toggle-arrow"]} ${showAdditionalOptions ? styles["open"] : ''}`}>{'\u25BC'}</span>
               </button>
               {showAdditionalOptions && (
                 <div className={styles["additional-options-content"]}>
@@ -2513,8 +2513,8 @@ const Play = () => {
           <div className={styles["limit-modal"]} onClick={(e) => e.stopPropagation()}>
             <div className={styles["limit-modal-header"]}>
               <span className={styles["limit-modal-icon"]}>
-                {limitError.limitType === 'correspondence' ? '📬' :
-                 limitError.limitType === 'open' ? '🕐' : '⚡'}
+                {limitError.limitType === 'correspondence' ? '\uD83D\uDCEC' :
+                 limitError.limitType === 'open' ? '\uD83D\uDD50' : '\u26A1'}
               </span>
               <h2>
                 {limitError.limitType === 'correspondence' && 'Correspondence Game Limit Reached'}

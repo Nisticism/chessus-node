@@ -4472,6 +4472,7 @@ function initializeSocket(server) {
         const { gameId, userId, move } = data;
         const gameIdStr = gameId.toString();
         const gameState = activeGames.get(gameIdStr);
+        console.log(`[makeMove] gameId=${gameId} userId=${userId} currentTurn=${gameState?.currentTurn} move=${JSON.stringify(move)?.slice(0,80)}`);
 
         if (!gameState) {
           return socket.emit("error", { message: "Game not found" });
@@ -5474,9 +5475,13 @@ function initializeSocket(server) {
         // Check if opponent has a premove queued
         const nextPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
         let premoveExecuted = false;
-        if (gameState.allowPremoves && gameState.premove && gameState.premove.playerId === nextPlayer?.id) {
+        if (gameState.allowPremoves && gameState.premove) {
+          console.log(`[Premove check (regular)] premove.playerId=${gameState.premove.playerId} (${typeof gameState.premove.playerId}), nextPlayer.id=${nextPlayer?.id} (${typeof nextPlayer?.id})`);
+        }
+        if (gameState.allowPremoves && gameState.premove && gameState.premove.playerId == nextPlayer?.id) {
           // Try to execute the premove
           const premove = gameState.premove;
+          console.log(`[PREMOVE-CLEAR] Path: makeMove-execute gameId=${gameId}`);
           gameState.premove = null; // Clear premove
           
           // Validate that the premove is still valid after opponent's move
@@ -6257,6 +6262,7 @@ function initializeSocket(server) {
             return;
           } else {
             // Premove is no longer valid, notify player
+            console.log(`[Premove] Cancelled (regular handler): ${premoveResult.reason}`, premove.move);
             const nextPlayerSocketId = userSockets.get(nextPlayer.id.toString());
             if (nextPlayerSocketId) {
               io.to(nextPlayerSocketId).emit("premoveCancelled", {
@@ -7555,6 +7561,7 @@ function initializeSocket(server) {
 
         // Clear the premove if it belongs to this player
         if (gameState.premove && gameState.premove.playerId === userId) {
+          console.log(`[PREMOVE-CLEAR] Path: clearPremove-socket gameId=${gameId}`);
           gameState.premove = null;
           socket.emit("premoveCleared", { gameId });
         }
@@ -8581,6 +8588,11 @@ function initializeSocket(server) {
         const player = gameState.players.find(p => p.id === socket.userId);
         if (!player) {
           return; // Only players can send chat messages
+        }
+
+        // Disable chat in bot games entirely
+        if (gameState.botPlayer) {
+          return socket.emit("gameChatError", { message: "Chat is not available in games against the computer" });
         }
 
         // Check game-level chat disabled (stored in other_data)
@@ -11932,8 +11944,13 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     }
   }
   
-  // Step-by-step capture - use sign-based diagonal exclusion
-  const stepCaptureValueRaw = piece.step_capture_value ?? (useMovementForCapture ? (piece.step_by_step_movement_value ?? piece.step_movement_value) : null);
+  // Step-by-step capture - use sign-based diagonal exclusion.
+  // step_capture_value is only honoured when the piece is allowed to capture on movement
+  // (can_capture_enemy_on_move or attacks_like_movement). If neither is true the piece
+  // cannot capture by moving, so skip this block entirely regardless of the DB value.
+  const stepCaptureValueRaw = useMovementForCapture
+    ? (piece.step_capture_value ?? (piece.step_by_step_movement_value ?? piece.step_movement_value))
+    : null;
   const stepCaptureValue = Number(stepCaptureValueRaw);
   if (!Number.isNaN(stepCaptureValue) && stepCaptureValue !== 0) {
     const maxSteps = Math.abs(stepCaptureValue);
@@ -13461,11 +13478,13 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
 
       // Separate capture range (step_capture_value).
-      // Negative value means orthogonal-only captures.
-      const capValRaw = piece.step_capture_value ?? stepVal;
-      const capVal = Number(capValRaw);
-      const maxCapSteps = (!Number.isNaN(capVal) && capVal !== 0) ? Math.abs(capVal) : maxMoveSteps;
-      const noDiagCap = (!Number.isNaN(capVal) && capVal !== 0) ? capVal < 0 : noDiagMove;
+      // No fallback to movement range — piece must have an explicit step_capture_value
+      // to be able to capture via step-by-step movement.
+      const capValRaw = piece.step_capture_value;
+      const capVal = Number(capValRaw ?? 0);
+      const hasExplicitStepCapture = capValRaw != null && capValRaw !== 0 && !Number.isNaN(capVal);
+      const maxCapSteps = hasExplicitStepCapture ? Math.abs(capVal) : 0;
+      const noDiagCap = hasExplicitStepCapture ? capVal < 0 : noDiagMove;
       const capDirs = noDiagCap
         ? [[1,0],[-1,0],[0,1],[0,-1]]
         : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
@@ -14626,6 +14645,7 @@ async function processBotTurn(io, gameId, gameState) {
         timestamp: Date.now(),
         isBot: true,
         ...(movingPw > 1 || movingPh > 1 ? { piece_width: movingPw, piece_height: movingPh } : {}),
+        ...(moveResult.isRangedAttack || bestMove.isRangedAttack ? { isRangedAttack: true } : {}),
         ...(bestMove.to.isCastling ? { isCastling: true, castlingWith: bestMove.to.castlingWith, castlingDirection: bestMove.to.castlingDirection } : {})
       };
       gameState.moveHistory.push(moveRecord);
@@ -14690,13 +14710,90 @@ async function processBotTurn(io, gameId, gameState) {
         gameState.chainCaptureHopCount = 0;
       }
 
-      // 5b. Handle capture actions (bot always skips extra capture actions)
+      // 5b. Handle capture actions — bot executes them all (up to the limit)
       if (moveResult.captureActionsAvailable && moveResult.movingPiece) {
+        gameState.captureActionsPieceId = moveResult.movingPiece.id;
+        gameState.captureActionsPlayerId = botPlayer.id;
+        gameState.captureActionsUsed = (gameState.captureActionsUsed || 0) + 1;
+        let capLoopResult = moveResult;
+        while (capLoopResult.captureActionsAvailable && gameState.captureActionsPieceId != null) {
+          const capPiece = gameState.pieces.find(p => p.id === gameState.captureActionsPieceId);
+          if (!capPiece) break;
+          const capOwner = capPiece.team || capPiece.player_id;
+          let capMoves = [];
+          try { capMoves = getPossibleMovesForPiece(capPiece, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0); } catch (e) { /* ignore */ }
+          const capCaptures = capMoves.filter(m => m.isCapture && !m.isRangedAttack);
+          if (capCaptures.length === 0) break;
+          const capTarget = capCaptures[Math.floor(Math.random() * capCaptures.length)];
+          const capMoveData = { from: { x: capPiece.x, y: capPiece.y }, to: { x: capTarget.x, y: capTarget.y }, pieceId: capPiece.id,
+            ...(capTarget.isHopCapture ? { isHopCapture: true, hopCapturedPieceIds: capTarget.hopCapturedPieceIds } : {}) };
+          const capResult = await validateAndApplyMove(gameState, capMoveData);
+          if (!capResult.valid) break;
+          const capRecord = {
+            from: capMoveData.from, to: capMoveData.to, pieceId: capPiece.id,
+            captured: capResult.captured,
+            ...(capResult.allCaptured && capResult.allCaptured.length > 1 ? { allCaptured: capResult.allCaptured } : {}),
+            ...(capResult.damagedPieces && capResult.damagedPieces.length > 0 ? { damagedPieces: capResult.damagedPieces } : {}),
+            ...(capResult.moveCancelled ? { moveCancelled: true } : {}),
+            player: botPlayer.id, position: botPlayer.position, timestamp: Date.now()
+          };
+          gameState.moveHistory.push(capRecord);
+          if (capResult.captureActionsAvailable) {
+            gameState.captureActionsUsed++;
+          } else {
+            gameState.captureActionsPieceId = null;
+            gameState.captureActionsPlayerId = null;
+            gameState.captureActionsUsed = 0;
+          }
+          capLoopResult = capResult;
+        }
+        // Ensure state is cleared after loop
         gameState.captureActionsPieceId = null;
         gameState.captureActionsPlayerId = null;
         gameState.captureActionsUsed = 0;
       }
       if (moveResult.rangedCaptureActionsAvailable && moveResult.movingPiece) {
+        gameState.rangedCaptureActionsPieceId = moveResult.movingPiece.id;
+        gameState.rangedCaptureActionsPlayerId = botPlayer.id;
+        gameState.rangedCaptureActionsUsed = (gameState.rangedCaptureActionsUsed || 0) + 1;
+        let rangedCapLoopResult = moveResult;
+        while (rangedCapLoopResult.rangedCaptureActionsAvailable && gameState.rangedCaptureActionsPieceId != null) {
+          const rcPiece = gameState.pieces.find(p => p.id === gameState.rangedCaptureActionsPieceId);
+          if (!rcPiece) break;
+          const rcOwner = rcPiece.team || rcPiece.player_id;
+          // Find valid ranged targets
+          const rcTargets = gameState.pieces.filter(t => {
+            if (t.id === rcPiece.id) return false;
+            const tOwner = t.team || t.player_id;
+            if (tOwner === rcOwner) return false;
+            if (t.cannot_be_captured) return false;
+            if (!canRangedAttackTo(rcPiece.y, rcPiece.x, t.y, t.x, rcPiece, rcOwner, gameState.gameType)) return false;
+            if (!isRangedPathClear(rcPiece.x, rcPiece.y, t.x, t.y, rcPiece, gameState.pieces, rcOwner, gameState.gameType)) return false;
+            return true;
+          });
+          if (rcTargets.length === 0) break;
+          const rcTarget = rcTargets[Math.floor(Math.random() * rcTargets.length)];
+          const rcMoveData = { from: { x: rcPiece.x, y: rcPiece.y }, to: { x: rcTarget.x, y: rcTarget.y }, pieceId: rcPiece.id, isRangedAttack: true };
+          const rcResult = await validateAndApplyMove(gameState, rcMoveData);
+          if (!rcResult.valid) break;
+          const rcRecord = {
+            from: rcMoveData.from, to: rcMoveData.to, pieceId: rcPiece.id,
+            captured: rcResult.captured,
+            ...(rcResult.damagedPieces && rcResult.damagedPieces.length > 0 ? { damagedPieces: rcResult.damagedPieces } : {}),
+            isRangedAttack: true,
+            player: botPlayer.id, position: botPlayer.position, timestamp: Date.now()
+          };
+          gameState.moveHistory.push(rcRecord);
+          if (rcResult.rangedCaptureActionsAvailable) {
+            gameState.rangedCaptureActionsUsed++;
+          } else {
+            gameState.rangedCaptureActionsPieceId = null;
+            gameState.rangedCaptureActionsPlayerId = null;
+            gameState.rangedCaptureActionsUsed = 0;
+          }
+          rangedCapLoopResult = rcResult;
+        }
+        // Ensure state is cleared after loop
         gameState.rangedCaptureActionsPieceId = null;
         gameState.rangedCaptureActionsPlayerId = null;
         gameState.rangedCaptureActionsUsed = 0;
@@ -15021,10 +15118,14 @@ async function processBotTurn(io, gameId, gameState) {
         return processBotTurn(io, gameId, gameState);
       }
 
+      // Debug: log premove state before checking
+      console.log(`[Bot] Premove state: allowPremoves=${gameState.allowPremoves}, premove=${JSON.stringify(gameState.premove)}, status=${gameState.status}, currentTurn=${gameState.currentTurn}`);
+
       // Check if human has a premove queued after bot's move
       if (gameState.allowPremoves && gameState.premove && gameState.status !== 'completed') {
         const humanPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
-        if (gameState.premove.playerId === humanPlayer?.id) {
+        console.log(`[Premove check (bot)] premove.playerId=${gameState.premove.playerId} (${typeof gameState.premove.playerId}), humanPlayer.id=${humanPlayer?.id} (${typeof humanPlayer?.id})`);
+        if (gameState.premove.playerId == humanPlayer?.id) {
           const premove = gameState.premove;
           gameState.premove = null;
           const premoveResult = await validateAndApplyMove(gameState, premove.move, { isPremove: true });
@@ -15196,9 +15297,35 @@ async function processBotTurn(io, gameId, gameState) {
 
             // If the premove triggered a multi-capture chain, set up the capture action state
             // instead of switching turns — the human player needs to make another capture.
+            // Mirror the non-premove path: verify there are actually valid targets first;
+            // if not, fall through to normal turn-end processing.
             if ((premoveResult.captureActionsAvailable || premoveResult.rangedCaptureActionsAvailable) && premoveResult.movingPiece) {
               const pmIsRanged = !!premoveResult.rangedCaptureActionsAvailable;
-              const pmCapPiece = premoveResult.movingPiece;
+              const pmCapPiece = gameState.pieces.find(p => p.id === premoveResult.movingPiece.id) || premoveResult.movingPiece;
+              const pmCapOwner = pmCapPiece.team || pmCapPiece.player_id;
+
+              // Check if there are actually valid targets before setting up the action state
+              let pmHasTargets = false;
+              if (pmIsRanged) {
+                pmHasTargets = !!(pmCapPiece && pmCapPiece.can_capture_enemy_via_range &&
+                  gameState.pieces.some(t => {
+                    if (t.id === pmCapPiece.id) return false;
+                    const tOwner = t.team || t.player_id;
+                    if (tOwner === pmCapOwner) return false;
+                    if (t.cannot_be_captured) return false;
+                    if (!canRangedAttackTo(pmCapPiece.y, pmCapPiece.x, t.y, t.x, pmCapPiece, pmCapOwner, gameState.gameType)) return false;
+                    if (!isRangedPathClear(pmCapPiece.x, pmCapPiece.y, t.x, t.y, pmCapPiece, gameState.pieces, pmCapOwner, gameState.gameType)) return false;
+                    return true;
+                  }));
+              } else {
+                let pmCapMoves = [];
+                try { if (pmCapPiece) pmCapMoves = getPossibleMovesForPiece(pmCapPiece, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0); } catch (e) {}
+                pmHasTargets = pmCapMoves.some(sq =>
+                  gameState.pieces.some(p => p.id !== pmCapPiece.id && doesPieceOccupySquare(p, sq.x, sq.y) && (p.team || p.player_id) !== pmCapOwner)
+                );
+              }
+
+              if (pmHasTargets) {
               const pmCapUsed = 1;
               const pmCapTotal = pmIsRanged
                 ? (pmCapPiece.ranged_capture_actions_per_turn || pmCapPiece.capture_actions_per_turn || 1)
@@ -15242,6 +15369,8 @@ async function processBotTurn(io, gameId, gameState) {
                 }
               });
               return;
+              } // end if (pmHasTargets)
+              // No valid targets — fall through to end-of-turn processing
             }
 
             // Respect actions_per_turn for premoves
@@ -15385,6 +15514,7 @@ async function processBotTurn(io, gameId, gameState) {
               processBotTurn(io, gameId, gameState);
             }
           } else {
+            console.log(`[Premove] Cancelled (bot handler): ${premoveResult.reason}`, premove.move);
             io.to(`game-${gameId}`).emit("premoveCancelled", { gameId, reason: 'Premove is no longer valid' });
           }
         }

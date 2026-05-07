@@ -274,7 +274,7 @@ const LiveGame = () => {
 
   const boardAnimationsEnabled = typeof window !== 'undefined' && localStorage.getItem('boardAnimations') !== 'false';
   const pieceShadowEnabled = typeof window !== 'undefined' && localStorage.getItem('pieceShadow') === 'true';
-  const persistLastMoveHighlight = typeof window !== 'undefined' && localStorage.getItem('persistLastMoveHighlight') !== 'false';
+  const persistLastMoveHighlight = typeof window !== 'undefined' && localStorage.getItem('persistLastMoveHighlight') === 'true';
 
   // Track previous lastMove so we can fade out the prior move's highlight for ~1s
   // after a new move is made.
@@ -516,7 +516,7 @@ const LiveGame = () => {
     if (prevLastMovesRef.current && prevLastMovesRef.current.length > 0) {
       setFadingLastMoves(prevLastMovesRef.current);
       if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
-      fadeTimeoutRef.current = setTimeout(() => setFadingLastMoves([]), 1000);
+      fadeTimeoutRef.current = setTimeout(() => setFadingLastMoves([]), 2000);
     }
     // Compute current lastMoves (including multi-action turn pieces) for next snapshot
     const actionsPerTurn = gameState?.gameType?.actions_per_turn || 1;
@@ -1532,6 +1532,15 @@ const LiveGame = () => {
       setPremove(null);
     }
   }, [isMyTurn, premove, gameState?.botPlayer]);
+
+  // Replay any sound missed while the browser tab was hidden
+  const prevIsMyTurnRef = useRef(false);
+  useEffect(() => {
+    if (isMyTurn && !prevIsMyTurnRef.current && soundEnabledRef.current) {
+      soundManager.onTurnStart();
+    }
+    prevIsMyTurnRef.current = isMyTurn;
+  }, [isMyTurn]);
 
   // Format time display (supports fractional seconds)
   const formatTime = (seconds) => {
@@ -3058,8 +3067,10 @@ const LiveGame = () => {
           if (targetPiece && targetTeam === pieceTeam && !isSimulGame) continue;
           // Skip pieces that cannot be captured or are checkmate pieces
           if (targetPiece && (targetPiece.cannot_be_captured || targetPiece.ends_game_on_checkmate)) continue;
-          // Already in moves as a regular capture? skip
-          if (moves.some(m => m.x === toX && m.y === toY)) continue;
+          // Skip if a ranged entry already exists for this square (avoid duplicates).
+          // Do NOT skip when only a regular move exists — a piece can both move to a square
+          // and ranged-attack it, and both indicators should be shown simultaneously.
+          if (moves.some(m => m.x === toX && m.y === toY && m.isRangedAttack)) continue;
           const isStepByStepRanged = !!piece.step_by_step_attack_range;
           if (isStepByStepRanged) {
             // Use BFS path-finding for step-by-step ranged attacks so walls block correctly
@@ -3976,8 +3987,13 @@ const LiveGame = () => {
         }
       } else {
         setRangedSelectedPiece(data.piece);
+        cleanup();
+        return;
       }
-      cleanup();
+      // Defer cleanup so the contextmenu capture listener survives long enough
+      // to suppress the browser's post-mouseup contextmenu event. Without this,
+      // handleSquareContextMenu fires with a stale truthy premove and cancels it.
+      setTimeout(cleanup, 0);
     }
 
     function handleContextMenu(ev) {
@@ -4427,6 +4443,7 @@ const LiveGame = () => {
             && gameY >= lm.from.y && gameY < lm.from.y + lmph;
         });
         const isLastMoveTo = lastMoves.some(lm => {
+          if (lm.isRangedAttack) return false; // ranged attacker doesn't move — don't highlight target as "moved to"
           const lmpw = lm.piece_width || 1;
           const lmph = lm.piece_height || 1;
           return lm.to && gameX >= lm.to.x && gameX < lm.to.x + lmpw
@@ -4441,6 +4458,7 @@ const LiveGame = () => {
             && gameY >= lm.from.y && gameY < lm.from.y + lmph;
         });
         const isFadingLastMoveTo = !isLastMoveFrom && !isLastMoveTo && fadingLastMoves.some(lm => {
+          if (lm.isRangedAttack) return false; // ranged attacker doesn't move — don't highlight target as "moved to"
           const lmpw = lm.piece_width || 1;
           const lmph = lm.piece_height || 1;
           return lm.to && gameX >= lm.to.x && gameX < lm.to.x + lmpw
@@ -4472,6 +4490,18 @@ const LiveGame = () => {
           && gameY >= premove.from.y && gameY < premove.from.y + pmPh;
         const isPremoveTo = premove && gameX >= premove.to.x && gameX < premove.to.x + pmPw
           && gameY >= premove.to.y && gameY < premove.to.y + pmPh;
+
+        // Directional arrow for last-move "from" square (skip for ranged attacks and for moves where piece didn't change position)
+        const arrowMoveData = isLastMoveFrom
+          ? lastMoves.find(lm => lm.from && lm.from.x === gameX && lm.from.y === gameY && !lm.isRangedAttack && lm.type !== 'ranged' && !(lm.from.x === lm.to?.x && lm.from.y === lm.to?.y))
+          : isFadingLastMoveFrom
+            ? fadingLastMoves.find(lm => lm.from && lm.from.x === gameX && lm.from.y === gameY && !lm.isRangedAttack && lm.type !== 'ranged' && !(lm.from.x === lm.to?.x && lm.from.y === lm.to?.y))
+            : null;
+        const arrowAngleDeg = arrowMoveData ? (() => {
+          const dx = shouldFlipBoard ? (arrowMoveData.from.x - arrowMoveData.to.x) : (arrowMoveData.to.x - arrowMoveData.from.x);
+          const dy = shouldFlipBoard ? (arrowMoveData.from.y - arrowMoveData.to.y) : (arrowMoveData.to.y - arrowMoveData.from.y);
+          return Math.atan2(dy, dx) * 180 / Math.PI;
+        })() : null;
 
         // Check for special square type
         const specialSquareType = getSpecialSquareType(gameY, gameX);
@@ -4507,6 +4537,26 @@ const LiveGame = () => {
         // Points-square overlay: always show for custom squares with control points when a points condition is active
         const squareCfgForPoints = specialSquares.special[`${gameY},${gameX}`];
         const squareControlPoints = hasPointsCondition ? (squareCfgForPoints?.controlPoints || 0) : 0;
+
+        // Compute move indicator dots (React-rendered, replaces CSS pseudo-elements)
+        const activeRegularMove = regularMove || hoveredRegularMove;
+        const activeIsRanged = isRangedMove || isRangedHover || isRangedDragTarget || isRangedSelectedTarget;
+        const indicatorItems = [];
+        if (activeRegularMove) {
+          if (activeRegularMove.isCustomMove || activeRegularMove.isCustomAttack) indicatorItems.push('custom');
+          else if (activeRegularMove.isFirstMoveOnly) indicatorItems.push('first');
+          else if (activeRegularMove.isCapture) indicatorItems.push('capture');
+          else indicatorItems.push('move');
+        }
+        if (activeIsRanged) indicatorItems.push('ranged');
+        const getDotPos = (total, idx) => {
+          if (total === 1) return 'translate(0px, 0px)';
+          if (total === 2) return idx === 0 ? 'translate(-10px, 0px)' : 'translate(10px, 0px)';
+          if (total === 3) return idx === 0 ? 'translate(-10px, 7px)' : idx === 1 ? 'translate(10px, 7px)' : 'translate(0px, -10px)';
+          const row = Math.floor(idx / 2); const col = idx % 2;
+          return `translate(${col === 0 ? -10 : 10}px, ${row === 0 ? -10 : 10}px)`;
+        };
+        const dotBg = { move: 'rgba(33,150,243,0.55)', capture: 'rgba(220,60,60,0.7)', first: 'rgba(255,215,0,0.65)', custom: 'rgba(0,188,150,0.55)' };
 
         squares.push(
           <div
@@ -4559,8 +4609,37 @@ const LiveGame = () => {
               ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {})
             }}
           >
-            {((isRangedMove && rangedMove?.isCapture) || (isRangedHover && hoveredRangedMove?.isCapture) || ((isRangedDragTarget || isRangedSelectedTarget) && piece)) && (
-              <span className={styles["ranged-icon"]}>💥</span>
+            {/* Move indicator dots container */}
+            {indicatorItems.length > 0 && (
+              <div className={styles["move-dots-container"]}>
+                {indicatorItems.map((type, i) => (
+                  type === 'ranged' ? (
+                    <span
+                      key="ranged"
+                      className={styles["move-emoji"]}
+                      style={{ transform: getDotPos(indicatorItems.length, i) }}
+                    >{`\uD83D\uDCA5`}</span>
+                  ) : (
+                    <div
+                      key={type}
+                      className={styles["move-dot"]}
+                      style={{ backgroundColor: dotBg[type], transform: getDotPos(indicatorItems.length, i) }}
+                    />
+                  )
+                ))}
+              </div>
+            )}
+            {/* Directional arrow on last-move "from" square */}
+            {arrowAngleDeg !== null && (
+              <svg
+                className={`${styles["last-move-arrow"]}${isFadingLastMoveFrom ? ` ${styles["last-move-arrow-fading"]}` : ''}`}
+                style={{ transform: `rotate(${arrowAngleDeg}deg)` }}
+                viewBox="0 0 40 12"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <line x1="2" y1="6" x2="33" y2="6" stroke={isLight ? 'rgba(120,100,60,0.75)' : 'rgba(200,180,120,0.7)'} strokeWidth="2.5" strokeLinecap="round" />
+                <polygon points="33,2 40,6 33,10" fill={isLight ? 'rgba(120,100,60,0.75)' : 'rgba(200,180,120,0.7)'} />
+              </svg>
             )}
             {/* Special square indicator (letter overlay) */}
             {specialSquareType && (
@@ -5393,7 +5472,7 @@ const LiveGame = () => {
                   onClick={() => setShowSpectators(!showSpectators)}
                 >
                   <span className={styles["spectator-title"]}>👁 Spectators ({spectators.length})</span>
-                  <span className={`${styles["spectator-toggle"]} ${showSpectators ? styles.expanded : ''}`}>▼</span>
+                  <span className={`${styles["spectator-toggle"]} ${showSpectators ? styles.expanded : ''}`}>{`\u25BC`}</span>
                 </div>
                 {showSpectators && (
                   <div className={styles["spectator-list"]}>
@@ -5642,7 +5721,7 @@ const LiveGame = () => {
                     onClick={() => setOptionsCollapsed(!optionsCollapsed)}
                     title={optionsCollapsed ? 'Show options' : 'Hide options'}
                   >
-                    {optionsCollapsed ? '▶' : '▼'}
+                    {optionsCollapsed ? '\u25B6' : '\u25BC'}
                   </button>
                 </div>
               </div>
@@ -5900,7 +5979,7 @@ const LiveGame = () => {
               onClick={() => setShowSpectators(!showSpectators)}
             >
               <span className={styles["spectator-title"]}>👁 Spectators ({spectators.length})</span>
-              <span className={`${styles["spectator-toggle"]} ${showSpectators ? styles.expanded : ''}`}>▼</span>
+              <span className={`${styles["spectator-toggle"]} ${showSpectators ? styles.expanded : ''}`}>{`\u25BC`}</span>
             </div>
             {showSpectators && (
               <div className={styles["spectator-list-horizontal"]}>
@@ -5946,7 +6025,7 @@ const LiveGame = () => {
             >
               <span className={styles["captured-title"]}>Captured Pieces</span>
               <span className={`${styles["captured-toggle"]} ${showCapturedPieces ? styles.expanded : ''}`}>
-                ▼
+                {`\u25BC`}
               </span>
             </div>
             {showCapturedPieces && (
@@ -6381,7 +6460,7 @@ const LiveGame = () => {
                   className={styles["upvote-prompt-btn"]}
                   onClick={handleGameOverUpvote}
                 >
-                  ▲ Upvote
+                  {`\u25B2`} Upvote
                 </button>
               </div>
             )}

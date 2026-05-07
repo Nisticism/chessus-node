@@ -49,7 +49,7 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
       <div className="nav-item-wrapper">
         <Link as="div" className="nav-item-inner" to="/play">Play</Link>
         <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'play')} aria-label="Toggle Play submenu">
-          <span className={`chevron ${openSubmenu === 'play' ? 'open' : ''}`}>▼</span>
+          <span className={`chevron ${openSubmenu === 'play' ? 'open' : ''}`}>{`\u25BC`}</span>
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'play' ? 'mobile-open' : ''}`}>
@@ -77,7 +77,7 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
       <div className="nav-item-wrapper">
         <Link as="div" className="nav-item-inner" to="/create">Create</Link>
         <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'create')} aria-label="Toggle Create submenu">
-          <span className={`chevron ${openSubmenu === 'create' ? 'open' : ''}`}>▼</span>
+          <span className={`chevron ${openSubmenu === 'create' ? 'open' : ''}`}>{`\u25BC`}</span>
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'create' ? 'mobile-open' : ''}`}>
@@ -103,7 +103,7 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
       <div className="nav-item-wrapper">
         <Link as="div" className="nav-item-inner" to="/community">Community</Link>
         <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'community')} aria-label="Toggle Community submenu">
-          <span className={`chevron ${openSubmenu === 'community' ? 'open' : ''}`}>▼</span>
+          <span className={`chevron ${openSubmenu === 'community' ? 'open' : ''}`}>{`\u25BC`}</span>
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'community' ? 'mobile-open' : ''}`}>
@@ -126,7 +126,7 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
       <div className="nav-item-wrapper">
         <Link as="div" className="nav-item-inner" to="/info">Info</Link>
         <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'info')} aria-label="Toggle Info submenu">
-          <span className={`chevron ${openSubmenu === 'info' ? 'open' : ''}`}>▼</span>
+          <span className={`chevron ${openSubmenu === 'info' ? 'open' : ''}`}>{`\u25BC`}</span>
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'info' ? 'mobile-open' : ''}`}>

@@ -4,6 +4,31 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 7, 2026",
+    title: "Premove fix, step-by-step capture, move indicators, encoding, arrows, sound, UI tweaks",
+    items: [
+      "Fixed: premoves in games against the computer now correctly execute after the bot makes its move.",
+      "Fixed: pieces with step-by-step movement but no step-by-step capture range can no longer capture enemies. The AI trainer has also been updated to enforce this rule correctly (trainer v1.2.8).",
+      "Fixed: ranged attack last-move highlight no longer marks the target square as 'moved to' — the piece didn't move, so only the 'from' square is highlighted.",
+      "Fixed: if a piece can both move and ranged-attack the same square, both indicators (dot + \uD83D\uDCA5) now appear simultaneously. 2 indicators appear in a horizontal row, 3 in a triangle, 4 in a square — each spaced 20 px apart.",
+      "Fixed: when a premove ranged attack fires on a piece with multi-ranged-capture actions but no valid targets remain, the turn now correctly ends instead of waiting indefinitely.",
+      "Fixed: the AI bot's ranged attacks now correctly include the isRangedAttack flag in the move record, so the directional arrow no longer appears on the bot's piece after a ranged attack.",
+      "Fixed: pieces saved without 'can capture on move' now have all movement-capture fields (directional captures, step-by-step capture, ratio captures) automatically cleared.",
+      "Move indicator dots are now rendered as colored circles (blue = move, red = capture, gold = first-move-only, teal = custom). Multiple types on the same square are displayed in a spaced geometric arrangement. Ranged targets now show a \uD83D\uDCA5 symbol.",
+      "Fixed: the directional last-move arrow no longer appears on ranged attacks or when a piece attacked in place without moving.",
+      "Fixed: sounds missed while the browser tab was hidden now replay at the start of your next turn.",
+      "Fixed: move history notation symbols and special characters (\u25BC, \u2192, \u00D7, \u2694) now display correctly across the site.",
+      "The last-move dashed outline is now slightly thicker (4px) with more space from the square edge.",
+      "The last-move fade animation is now enabled by default for new users.",
+      "Long game names are now truncated with an ellipsis in notifications, the selected-game section, and the host game modal.",
+      "Small spacing added around move notation symbols (\u2192, x, -).",
+      "Fixed: sounds were skipped when making a move while the browser tab was in the background. Sounds now attempt to play regardless of tab visibility.",
+      "Chat is no longer available in games against the computer.",
+      "Fixed: the AI bot now correctly performs additional capture actions when it has pieces with multiple captures per turn.",
+      "Game names on match cards are now clamped to 3 lines with an ellipsis instead of overflowing.",
+    ],
+  },
+  {
     date: "May 6, 2026",
     title: "Chat fix, match history fix, piece wizard limits, training warnings, starting positions display, points system fixes, UI improvements, FAQ, Terms, Privacy, forum styling, admin future goals editor, notifications, training upload cap, capture actions per turn",
     items: [

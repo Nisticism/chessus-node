@@ -205,12 +205,30 @@ const MatchView = () => {
         const isLastMoveFrom = lastMove && lastMove.from && lastMove.from.x === x && lastMove.from.y === y;
         const isLastMoveTo = lastMove && lastMove.to && lastMove.to.x === x && lastMove.to.y === y;
 
+        // Directional arrow on last-move "from" square (skip for ranged attacks and same-square moves)
+        const arrowAngleDeg = (isLastMoveFrom && lastMove && !lastMove.isRangedAttack && lastMove.type !== 'ranged' && !(lastMove.from.x === lastMove.to?.x && lastMove.from.y === lastMove.to?.y)) ? (() => {
+          const dx = shouldFlip ? (lastMove.from.x - lastMove.to.x) : (lastMove.to.x - lastMove.from.x);
+          const dy = shouldFlip ? (lastMove.from.y - lastMove.to.y) : (lastMove.to.y - lastMove.from.y);
+          return Math.atan2(dy, dx) * 180 / Math.PI;
+        })() : null;
+
         squares.push(
           <div
             key={`${x}-${y}`}
             className={`${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}${isLastMoveFrom ? ` ${isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]}` : ''}${isLastMoveTo ? ` ${styles["last-move-to"]}` : ''}`}
-            style={isAnchor && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : undefined}
+            style={{ position: 'relative', ...(isAnchor && ((piece?.piece_width || 1) > 1 || (piece?.piece_height || 1) > 1) ? { zIndex: 10 } : undefined) }}
           >
+            {arrowAngleDeg !== null && (
+              <svg
+                className={styles["last-move-arrow"]}
+                style={{ transform: `rotate(${arrowAngleDeg}deg)` }}
+                viewBox="0 0 40 12"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <line x1="2" y1="6" x2="33" y2="6" stroke={isLight ? 'rgba(120,100,60,0.75)' : 'rgba(200,180,120,0.7)'} strokeWidth="2.5" strokeLinecap="round" />
+                <polygon points="33,2 40,6 33,10" fill={isLight ? 'rgba(120,100,60,0.75)' : 'rgba(200,180,120,0.7)'} />
+              </svg>
+            )}
             {isAnchor && (() => {
               const pw = piece.piece_width || 1;
               const ph = piece.piece_height || 1;

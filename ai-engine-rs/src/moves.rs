@@ -734,8 +734,11 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
     }
 
     // -------- step-by-step CAPTURE (separate range, capture only) --------
+    // Only honoured when the piece is allowed to capture on movement.
+    // Mirrors the server-side fix in canPieceAttackSquare (game-socket.js):
+    // if can_capture_enemy_on_move is false, step_by_step_capture is ignored.
     let step_capture_raw = tpl.step_by_step_capture;
-    if step_capture_raw != 0 && !global_first_move_capture_block {
+    if step_capture_raw != 0 && tpl.can_capture_enemy_on_move && !global_first_move_capture_block {
         let max_steps = step_capture_raw.abs();
         let no_diagonal = step_capture_raw < 0;
         let step_dirs: &[(i32, i32)] = if no_diagonal {

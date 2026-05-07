@@ -161,6 +161,9 @@
   color: var(--text-muted, #a0d0b8);
   line-height: 1.4;
   margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .notification-content {
@@ -168,6 +171,9 @@
   color: var(--text-dim, #6ba88b);
   line-height: 1.4;
   margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .notification-time {

@@ -933,13 +933,13 @@ export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) =>
   // Ranged attack notation
   if (move.isRangedAttack) {
     if (move.captured) {
-      return `${fromSquare}→${toSquare}×` + selfSuffix + suffix;
+      return `${fromSquare}\u2009\u2192\u2009${toSquare}\u00D7` + selfSuffix + suffix;
     }
     // Ranged attack that dealt damage but didn't kill
     if (move.damagedPieces && move.damagedPieces.length > 0) {
-      return `${fromSquare}→${toSquare}⚔` + selfSuffix + suffix;
+      return `${fromSquare}\u2009\u2192\u2009${toSquare}\u2694` + selfSuffix + suffix;
     }
-    return `${fromSquare}→${toSquare}` + selfSuffix + suffix;
+    return `${fromSquare}\u2009\u2192\u2009${toSquare}` + selfSuffix + suffix;
   }
 
   const captureSymbol = move.captured ? 'x' : '-';
@@ -955,10 +955,10 @@ export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) =>
   }
 
   if (includeFrom) {
-    return `${fromSquare}${captureSymbol}${toSquare}${promoSuffix}` + selfSuffix + suffix;
+    return `${fromSquare}\u2009${captureSymbol}\u2009${toSquare}${promoSuffix}` + selfSuffix + suffix;
   }
 
-  return `${move.captured ? 'x' : ''}${toSquare}${promoSuffix}` + selfSuffix + suffix;
+  return `${move.captured ? 'x\u2009' : ''}${toSquare}${promoSuffix}` + selfSuffix + suffix;
 };
 
 /**

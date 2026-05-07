@@ -7442,6 +7442,24 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
     const imagesJSON = JSON.stringify(imagePaths);
     const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
 
+    // If capture-on-move is disabled, zero out all movement-capture fields so stale
+    // values from a previous config cannot slip through to the game logic.
+    if (pieceData.can_capture_enemy_on_move !== 'true') {
+      const captureOnMoveFields = [
+        'up_left_capture', 'up_capture', 'up_right_capture', 'right_capture',
+        'down_right_capture', 'down_capture', 'down_left_capture', 'left_capture',
+        'up_left_capture_exact', 'up_capture_exact', 'up_right_capture_exact', 'right_capture_exact',
+        'down_right_capture_exact', 'down_capture_exact', 'down_left_capture_exact', 'left_capture_exact',
+        'up_left_capture_available_for', 'up_capture_available_for', 'up_right_capture_available_for',
+        'right_capture_available_for', 'down_right_capture_available_for', 'down_capture_available_for',
+        'down_left_capture_available_for', 'left_capture_available_for',
+        'ratio_one_capture', 'ratio_two_capture', 'repeating_capture', 'repeating_ratio_capture',
+        'max_ratio_capture_iterations', 'step_by_step_capture',
+        'first_move_only_capture', 'available_for_captures',
+      ];
+      for (const f of captureOnMoveFields) pieceData[f] = null;
+    }
+
     // Image moderation: Determine which images are custom uploads vs library images
     let imageSources = [];
     try {
@@ -7959,6 +7977,24 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
     imagesJSON = JSON.stringify(allImagePaths);
 
     const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
+
+    // If capture-on-move is disabled, zero out all movement-capture fields so stale
+    // values from a previous config cannot slip through to the game logic.
+    if (pieceData.can_capture_enemy_on_move !== 'true') {
+      const captureOnMoveFields = [
+        'up_left_capture', 'up_capture', 'up_right_capture', 'right_capture',
+        'down_right_capture', 'down_capture', 'down_left_capture', 'left_capture',
+        'up_left_capture_exact', 'up_capture_exact', 'up_right_capture_exact', 'right_capture_exact',
+        'down_right_capture_exact', 'down_capture_exact', 'down_left_capture_exact', 'left_capture_exact',
+        'up_left_capture_available_for', 'up_capture_available_for', 'up_right_capture_available_for',
+        'right_capture_available_for', 'down_right_capture_available_for', 'down_capture_available_for',
+        'down_left_capture_available_for', 'left_capture_available_for',
+        'ratio_one_capture', 'ratio_two_capture', 'repeating_capture', 'repeating_ratio_capture',
+        'max_ratio_capture_iterations', 'step_by_step_capture',
+        'first_move_only_capture', 'available_for_captures',
+      ];
+      for (const f of captureOnMoveFields) pieceData[f] = null;
+    }
 
     // Reconstruct image_sources_json for the updated image set.
     // Kept images carry over their original source (e.g. 'library') so the

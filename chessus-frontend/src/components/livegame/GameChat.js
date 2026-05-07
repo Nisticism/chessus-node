@@ -158,6 +158,9 @@ const GameChat = ({ gameId, currentUser, gameState, isPlayer, onUpdatePreference
     );
   }
 
+  // Hide chat entirely in bot games — no bot to chat with
+  if (gameState?.botPlayer) return null;
+
   return (
     <div className={styles["game-chat"]} onClick={handleChatClick}>
       <div

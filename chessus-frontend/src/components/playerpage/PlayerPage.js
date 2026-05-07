@@ -790,7 +790,7 @@ const PlayerPage = (props) => {
                 <div className={styles["info-card"]}>
                   <h2 className={styles["card-title"]} onClick={() => setGamesCollapsed(!gamesCollapsed)} style={{ cursor: 'pointer' }}>
                     My Games
-                    <span className={`${styles["collapse-arrow"]} ${gamesCollapsed ? styles["collapsed"] : ''}`}>▼</span>
+                    <span className={`${styles["collapse-arrow"]} ${gamesCollapsed ? styles["collapsed"] : ''}`}>{`\u25BC`}</span>
                   </h2>
                   {!gamesCollapsed && (
                     <div className={styles["created-content-list"]}>
@@ -823,7 +823,7 @@ const PlayerPage = (props) => {
                 <div className={styles["info-card"]}>
                   <h2 className={styles["card-title"]} onClick={() => setPiecesCollapsed(!piecesCollapsed)} style={{ cursor: 'pointer' }}>
                     My Pieces
-                    <span className={`${styles["collapse-arrow"]} ${piecesCollapsed ? styles["collapsed"] : ''}`}>▼</span>
+                    <span className={`${styles["collapse-arrow"]} ${piecesCollapsed ? styles["collapsed"] : ''}`}>{`\u25BC`}</span>
                   </h2>
                   {!piecesCollapsed && (
                     <div className={styles["created-content-list"]}>

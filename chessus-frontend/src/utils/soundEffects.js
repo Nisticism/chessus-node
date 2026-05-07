@@ -85,8 +85,9 @@ class SoundManager {
   play(soundName) {
     if (!this.enabled || !this.sounds[soundName]) return;
 
-    // Tab is hidden — queue the sound so it fires when the user returns.
-    if (document.visibilityState === 'hidden') {
+    // Audio hasn't been unlocked yet by a user interaction — queue the sound
+    // so it fires as soon as the first click/key/touch unlocks the context.
+    if (!this.unlocked) {
       this.pendingSound = soundName;
       return;
     }
@@ -127,6 +128,10 @@ class SoundManager {
       sound.play().catch(err => {
         clearTimeout(stopTimer);
         onDone();
+        // If the tab was hidden, store for replay on next turn start
+        if (document.visibilityState === 'hidden') {
+          this.pendingSound = soundName;
+        }
         console.debug('Sound play prevented:', err.message);
       });
     } catch (err) {
@@ -136,6 +141,14 @@ class SoundManager {
 
   playMove() {
     this.play('move');
+  }
+
+  onTurnStart() {
+    if (this.pendingSound) {
+      const queued = this.pendingSound;
+      this.pendingSound = null;
+      setTimeout(() => this.play(queued), 80);
+    }
   }
 
   playCapture() {

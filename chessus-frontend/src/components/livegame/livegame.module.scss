@@ -405,6 +405,7 @@
 .move-black {
   color: var(--text-heading);
   font-family: 'Courier New', monospace;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
 }
 
 // Board column with player clocks
@@ -918,124 +919,46 @@
     box-shadow: inset 0 0 0 3px rgba(33, 150, 243, 0.7);
   }
 
-  &.valid-move {
-    &::after {
-      content: '';
-      position: absolute;
-      width: 16px;
-      height: 16px;
-      background: rgba(33, 150, 243, 0.4);
-      border-radius: 50%;
-      z-index: 2;
-      pointer-events: none;
-    }
-  }
+  &.valid-move {}
   
   // First-move-only moves have a different color (gold/yellow)
-  &.valid-move-first-only {
-    &::after {
-      content: '';
-      position: absolute;
-      width: 16px;
-      height: 16px;
-      background: rgba(255, 215, 0, 0.6);
-      border-radius: 50%;
-      z-index: 2;
-      pointer-events: none;
-    }
-  }
+  &.valid-move-first-only {}
 
-  &.valid-capture {
-    box-shadow: inset 0 0 0 3px rgba(255, 68, 68, 0.6);
-  }
+  &.valid-capture {}
   
   // First-move-only captures have a different color (orange)
-  &.valid-capture-first-only {
-    box-shadow: inset 0 0 0 3px rgba(255, 140, 0, 0.7);
-  }
+  &.valid-capture-first-only {}
 
   // Custom movement squares (teal)
-  &.valid-move-custom {
-    &::after {
-      content: '';
-      position: absolute;
-      width: 16px;
-      height: 16px;
-      background: rgba(0, 188, 150, 0.5);
-      border-radius: 50%;
-      z-index: 2;
-      pointer-events: none;
-    }
-  }
+  &.valid-move-custom {}
 
-  // Custom attack squares (warm orange)
-  &.valid-capture-custom {
-    box-shadow: inset 0 0 0 3px rgba(255, 183, 77, 0.6);
-  }
+  // Custom attack squares
+  &.valid-capture-custom {}
 
-  &.hover-move {
-    &::after {
-      content: '';
-      position: absolute;
-      width: 16px;
-      height: 16px;
-      background: rgba(78, 205, 196, 0.5);
-      border-radius: 50%;
-      z-index: 2;
-      pointer-events: none;
-    }
-  }
+  &.hover-move {}
   
   // First-move-only hover moves
-  &.hover-move-first-only {
-    &::after {
-      content: '';
-      position: absolute;
-      width: 16px;
-      height: 16px;
-      background: rgba(255, 215, 0, 0.5);
-      border-radius: 50%;
-      z-index: 2;
-      pointer-events: none;
-    }
-  }
+  &.hover-move-first-only {}
 
-  &.hover-capture {
-    box-shadow: inset 0 0 0 3px rgba(255, 107, 107, 0.5);
-  }
+  &.hover-capture {}
   
   // First-move-only hover captures
-  &.hover-capture-first-only {
-    box-shadow: inset 0 0 0 3px rgba(255, 140, 0, 0.6);
-  }
+  &.hover-capture-first-only {}
 
   // Custom movement hover (teal)
-  &.hover-move-custom {
-    &::after {
-      content: '';
-      position: absolute;
-      width: 16px;
-      height: 16px;
-      background: rgba(0, 188, 150, 0.4);
-      border-radius: 50%;
-      z-index: 2;
-      pointer-events: none;
-    }
-  }
+  &.hover-move-custom {}
 
-  // Custom attack hover (warm orange)
-  &.hover-capture-custom {
-    box-shadow: inset 0 0 0 3px rgba(255, 183, 77, 0.5);
-  }
+  // Custom attack hover
+  &.hover-capture-custom {}
 
   &.last-move-from-light {
-    outline: 2px dashed rgba(120, 100, 60, 0.7);
-    outline-offset: -4px;
+    outline: 4px dashed rgba(120, 100, 60, 0.7);
+    outline-offset: -6px;
   }
 
   &.last-move-from-dark {
-    outline: 2px dashed rgba(200, 180, 120, 0.65);
-    outline-offset: -4px;
+    outline: 4px dashed rgba(200, 180, 120, 0.65);
+    outline-offset: -6px;
   }
 
   &.last-move-to {
@@ -1055,13 +978,13 @@
   // to square) fade — the piece itself and the underlying square colors are
   // untouched.
   &.last-move-from-light.last-move-fading {
-    animation: lastMoveFromLightFadeOut 1s ease-out forwards;
+    animation: lastMoveFromLightFadeOut 2s ease-out forwards;
   }
   &.last-move-from-dark.last-move-fading {
-    animation: lastMoveFromDarkFadeOut 1s ease-out forwards;
+    animation: lastMoveFromDarkFadeOut 2s ease-out forwards;
   }
   &.last-move-to.last-move-fading::before {
-    animation: lastMoveOverlayFadeOut 1s ease-out forwards;
+    animation: lastMoveOverlayFadeOut 2s ease-out forwards;
   }
 
   // Highlight pieces that can move (only shown when it's your turn and piece has valid moves)
@@ -1082,31 +1005,11 @@
     box-shadow: inset 0 0 0 3px #ffa500;
   }
 
-  // Ranged attack highlights (selected piece) - uses ::before overlay so it stacks with move/capture styles
-  &.ranged-attack {
-    &::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: rgba(255, 34, 34, 0.15);
-      border: 2px solid rgba(255, 34, 34, 0.5);
-      pointer-events: none;
-      z-index: 1;
-    }
-  }
+  // Ranged attack highlights (selected piece)
+  &.ranged-attack {}
 
-  // Ranged hover highlights - lighter overlay
-  &.hover-ranged {
-    &::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: rgba(255, 34, 34, 0.1);
-      border: 2px solid rgba(255, 34, 34, 0.35);
-      pointer-events: none;
-      z-index: 1;
-    }
-  }
+  // Ranged hover highlights
+  &.hover-ranged {}
 
   // Attack radius splash zone highlight
   &.hover-attack-radius {
@@ -1121,18 +1024,50 @@
     }
   }
 
-  // Ranged drag target highlights
+  // Ranged drag target: keep animated border for active drag-over feedback
   &.ranged-drag-target {
     &::before {
       content: '';
       position: absolute;
       inset: 0;
-      background: rgba(255, 34, 34, 0.18);
       border: 2px solid rgba(255, 34, 34, 0.6);
       pointer-events: none;
       z-index: 1;
       animation: ranged-border-pulse 0.8s ease-in-out infinite alternate;
     }
+  }
+
+  // React-rendered move indicator dots container
+  .move-dots-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .move-dot {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    top: 0;
+    left: 0;
+    margin-top: -7px;
+    margin-left: -7px;
+  }
+
+  .move-emoji {
+    position: absolute;
+    font-size: 16px;
+    line-height: 1;
+    top: 0;
+    left: 0;
+    margin-top: -8px;
+    margin-left: -8px;
+    user-select: none;
   }
 
   &:hover:not(.selected) {
@@ -1158,6 +1093,28 @@
 @keyframes lastMoveOverlayFadeOut {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+
+@keyframes lastMoveArrowFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.last-move-arrow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 12px;
+  margin-top: -6px;
+  margin-left: -20px;
+  pointer-events: none;
+  z-index: 4;
+  overflow: visible;
+}
+
+.last-move-arrow-fading {
+  animation: lastMoveArrowFadeOut 2s ease-out forwards;
 }
 
 .ranged-icon {

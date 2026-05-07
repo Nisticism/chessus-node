@@ -2254,7 +2254,7 @@ const GameTypeView = () => {
             >
               <span>🖥️ Train AI Locally</span>
               <span style={{ fontSize: '0.8em', fontWeight: 400 }}>
-                {trainerLocalOpen ? 'Hide ▲' : 'Show ▼'}
+                {trainerLocalOpen ? `Hide \u25B2` : `Show \u25BC`}
               </span>
             </button>
 
