@@ -8978,7 +8978,7 @@ async function getOngoingGames() {
                 g.allow_spectators, g.show_piece_helpers, g.is_anonymous,
                 g.is_correspondence, g.correspondence_days, g.player_turn,
                 CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
-                CAST(JSON_EXTRACT(g.other_data, '$.isBotGame') AS UNSIGNED) as is_bot_game,
+                CASE WHEN JSON_EXTRACT(g.other_data, '$.isBotGame') = true THEN 1 ELSE 0 END as is_bot_game,
                 JSON_UNQUOTE(JSON_EXTRACT(g.other_data, '$.botDifficulty')) as bot_difficulty,
                 CAST(JSON_EXTRACT(g.other_data, '$.botPosition') AS SIGNED) as bot_position,
                 JSON_UNQUOTE(JSON_EXTRACT(g.other_data, '$.guestName')) as guest_name,
@@ -9057,13 +9057,14 @@ async function getOngoingGames() {
           player_names: playerNames,
           player_ids: g.player_ids ? g.player_ids.split(',').map(id => parseInt(id)) : [],
           simulSubmittedPlayerIds,
+          host_show_bot_public: g.host_show_bot_public,
         };
       });
       cache.data = result;
       cache.ts = Date.now();
       return result;
     } catch (error) {
-      console.error("Error getting ongoing games:", error);
+      console.error("Error getting ongoing games:", error.message, error.code || '');
       return cache.data || [];
     } finally {
       cache.pending = null;
