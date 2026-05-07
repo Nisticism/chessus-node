@@ -54,6 +54,9 @@ const changelogData = [
       "Fixed: Capture Actions Per Turn and Ranged Capture Actions Per Turn now correctly hydrate to in-game pieces. Previously the field was missing from game state, causing multi-capture sequences to end after one capture.",
       "Fixed: after a ranged capture action, the piece can no longer be moved normally if no valid second target exists. The player must use the skip button to end their turn instead.",
       "Fixed: same fix applied to regular Capture Actions Per Turn — after a bonus capture action, only a capture move is accepted; movement is blocked until the capture sequence is skipped or completed.",
+      "Fixed: ranged premoves (set by right-click dragging during the opponent's turn) now correctly detect multi-tile pieces that span more than one square.",
+      "Fixed: when a ranged premove executes and the piece has multiple Ranged Capture Actions Per Turn, the subsequent capture prompt is now shown correctly instead of being silently skipped.",
+      "Fixed: in games where the only win condition is capturing all pieces (no checkmate), a player with no legal moves now has their turn skipped instead of the game incorrectly ending in a draw.",
     ],
   },
   {

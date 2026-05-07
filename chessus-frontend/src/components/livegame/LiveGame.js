@@ -3852,7 +3852,7 @@ const LiveGame = () => {
     if (!gameState || gameState.status === 'completed') return;
 
     const pieces = parsePieces(gameState.pieces || []);
-    const clickedPiece = pieces.find(p => p.x === x && p.y === y);
+    const clickedPiece = findPieceAtSquare(pieces, x, y);
     const isOwnPiece = clickedPiece && currentPlayer &&
       (clickedPiece.player_id === currentPlayer.position || clickedPiece.team === currentPlayer.position);
 

@@ -5727,6 +5727,59 @@ function initializeSocket(server) {
               gameState.playerTimes[nextPlayer.id] = Math.max(0, gameState.playerTimes[nextPlayer.id] - gameState.premoveTimeCost);
             }
 
+            // If the premove triggered a multi-capture chain, set up the capture action state
+            // instead of switching turns — the player needs to make another capture.
+            if ((premoveResult.captureActionsAvailable || premoveResult.rangedCaptureActionsAvailable) && premoveResult.movingPiece) {
+              const pmIsRanged = !!premoveResult.rangedCaptureActionsAvailable;
+              const pmCapPiece = premoveResult.movingPiece;
+              const pmCapUsed = 1;
+              const pmCapTotal = pmIsRanged
+                ? (pmCapPiece.ranged_capture_actions_per_turn || pmCapPiece.capture_actions_per_turn || 1)
+                : (pmCapPiece.capture_actions_per_turn || 1);
+              if (pmIsRanged) {
+                gameState.rangedCaptureActionsPieceId = pmCapPiece.id;
+                gameState.rangedCaptureActionsPlayerId = nextPlayer.id;
+                gameState.rangedCaptureActionsUsed = pmCapUsed;
+              } else {
+                gameState.captureActionsPieceId = pmCapPiece.id;
+                gameState.captureActionsPlayerId = nextPlayer.id;
+                gameState.captureActionsUsed = pmCapUsed;
+              }
+              premoveExecuted = true;
+              // Update board state in DB (turn stays with the premover)
+              await db_pool.query(
+                "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+                [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+              );
+              // Notify room of board update
+              io.to(`game-${gameId}`).emit("premoveExecuted", {
+                gameId,
+                move: premoveRecord,
+                gameState: {
+                  pieces: gameState.pieces,
+                  currentTurn: gameState.currentTurn,
+                  playerTimes: gameState.playerTimes,
+                  moveHistory: gameState.moveHistory,
+                  actionsThisTurn: gameState.actionsThisTurn || 0,
+                  actionsPerTurn: gameState.gameType?.actions_per_turn || 1
+                }
+              });
+              // Tell the player they need another capture
+              const pmCaptureEvent = pmIsRanged ? "rangedCaptureActionRequired" : "captureActionRequired";
+              io.to(`game-${gameId}`).emit(pmCaptureEvent, {
+                gameId,
+                pieceId: pmCapPiece.id,
+                actionsUsed: pmCapUsed,
+                actionsTotal: pmCapTotal,
+                gameState: {
+                  pieces: gameState.pieces,
+                  currentTurn: gameState.currentTurn,
+                  playerTimes: gameState.playerTimes
+                }
+              });
+              return;
+            }
+
             // Apply increment to player's time (only on turn switch)
             const premoveActionsPerTurn = gameState.gameType?.actions_per_turn || 1;
             gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
@@ -5965,8 +6018,12 @@ function initializeSocket(server) {
                 // Use !! coercion because the DB returns tinyint 1/0, not boolean true/false.
                 // win condition takes priority over draw condition when both are set.
                 const stalemateWinsForCurrent = !!gameState.gameType?.stalemate_win_condition;
+                // In capture-only games (capture_condition without mate_condition), stalemate never
+                // ends the game as a draw — the stuck player just skips their turn so the opponent
+                // can still win by capturing the remaining pieces.
+                const captureOnlyGame = !!gameState.gameType?.capture_condition && !gameState.gameType?.mate_condition;
                 // Default to true when undefined for backward compatibility
-                const stalemateDraws = !stalemateWinsForCurrent && gameState.gameType?.stalemate_draw_condition !== false;
+                const stalemateDraws = !stalemateWinsForCurrent && !captureOnlyGame && gameState.gameType?.stalemate_draw_condition !== false;
                 const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
                 const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
 
@@ -6368,8 +6425,12 @@ function initializeSocket(server) {
               // Use !! coercion because the DB returns tinyint 1/0, not boolean true/false.
               // win condition takes priority over draw condition when both are set.
               const stalemateWinsForCurrent = !!gameState.gameType?.stalemate_win_condition;
+              // In capture-only games (capture_condition without mate_condition), stalemate never
+              // ends the game as a draw — the stuck player just skips their turn so the opponent
+              // can still win by capturing the remaining pieces.
+              const captureOnlyGame = !!gameState.gameType?.capture_condition && !gameState.gameType?.mate_condition;
               // Default to true when undefined for backward compatibility
-              const stalemateDraws = !stalemateWinsForCurrent && gameState.gameType?.stalemate_draw_condition !== false;
+              const stalemateDraws = !stalemateWinsForCurrent && !captureOnlyGame && gameState.gameType?.stalemate_draw_condition !== false;
               const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
               const opponentObj = gameState.players.find(p => p.position !== gameState.currentTurn);
 
@@ -14691,7 +14752,9 @@ async function processBotTurn(io, gameId, gameState) {
         const legalMoves = getAllLegalMovesForPlayer(gameState, gameState.currentTurn);
         if (legalMoves.length === 0) {
           const stalemateWinsForCurrent = !!gameState.gameType?.stalemate_win_condition;
-          const stalemateDraws = !stalemateWinsForCurrent && gameState.gameType?.stalemate_draw_condition !== false;
+          // In capture-only games, stalemate skips the stuck player's turn instead of ending the game.
+          const captureOnlyGame = !!gameState.gameType?.capture_condition && !gameState.gameType?.mate_condition;
+          const stalemateDraws = !stalemateWinsForCurrent && !captureOnlyGame && gameState.gameType?.stalemate_draw_condition !== false;
           const stalematedPlayerObj = gameState.players.find(p => p.position === gameState.currentTurn);
           if (stalemateWinsForCurrent || stalemateDraws) {
             const winnerObj = stalemateWinsForCurrent ? stalematedPlayerObj : null;
@@ -15029,6 +15092,56 @@ async function processBotTurn(io, gameId, gameState) {
             // Deduct premove time cost (if configured)
             if (gameState.premoveTimeCost && gameState.playerTimes[humanPlayer.id] != null) {
               gameState.playerTimes[humanPlayer.id] = Math.max(0, gameState.playerTimes[humanPlayer.id] - gameState.premoveTimeCost);
+            }
+
+            // If the premove triggered a multi-capture chain, set up the capture action state
+            // instead of switching turns — the human player needs to make another capture.
+            if ((premoveResult.captureActionsAvailable || premoveResult.rangedCaptureActionsAvailable) && premoveResult.movingPiece) {
+              const pmIsRanged = !!premoveResult.rangedCaptureActionsAvailable;
+              const pmCapPiece = premoveResult.movingPiece;
+              const pmCapUsed = 1;
+              const pmCapTotal = pmIsRanged
+                ? (pmCapPiece.ranged_capture_actions_per_turn || pmCapPiece.capture_actions_per_turn || 1)
+                : (pmCapPiece.capture_actions_per_turn || 1);
+              if (pmIsRanged) {
+                gameState.rangedCaptureActionsPieceId = pmCapPiece.id;
+                gameState.rangedCaptureActionsPlayerId = humanPlayer.id;
+                gameState.rangedCaptureActionsUsed = pmCapUsed;
+              } else {
+                gameState.captureActionsPieceId = pmCapPiece.id;
+                gameState.captureActionsPlayerId = humanPlayer.id;
+                gameState.captureActionsUsed = pmCapUsed;
+              }
+              // Update board state in DB (turn stays with the human player)
+              await db_pool.query(
+                "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+                [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+              );
+              io.to(`game-${gameId}`).emit("premoveExecuted", {
+                gameId,
+                move: pmRecord,
+                gameState: {
+                  pieces: gameState.pieces,
+                  currentTurn: gameState.currentTurn,
+                  playerTimes: gameState.playerTimes,
+                  moveHistory: gameState.moveHistory,
+                  actionsThisTurn: gameState.actionsThisTurn || 0,
+                  actionsPerTurn: gameState.gameType?.actions_per_turn || 1
+                }
+              });
+              const pmCaptureEvent = pmIsRanged ? "rangedCaptureActionRequired" : "captureActionRequired";
+              io.to(`game-${gameId}`).emit(pmCaptureEvent, {
+                gameId,
+                pieceId: pmCapPiece.id,
+                actionsUsed: pmCapUsed,
+                actionsTotal: pmCapTotal,
+                gameState: {
+                  pieces: gameState.pieces,
+                  currentTurn: gameState.currentTurn,
+                  playerTimes: gameState.playerTimes
+                }
+              });
+              return;
             }
 
             // Respect actions_per_turn for premoves
