@@ -222,11 +222,11 @@ const MatchView = () => {
               <svg
                 className={styles["last-move-arrow"]}
                 style={{ transform: `rotate(${arrowAngleDeg}deg)` }}
-                viewBox="0 0 40 12"
+                viewBox="0 0 30 12"
                 xmlns="http://www.w3.org/2000/svg"
               >
-                <line x1="2" y1="6" x2="33" y2="6" stroke={isLight ? 'rgba(120,100,60,0.75)' : 'rgba(200,180,120,0.7)'} strokeWidth="2.5" strokeLinecap="round" />
-                <polygon points="33,2 40,6 33,10" fill={isLight ? 'rgba(120,100,60,0.75)' : 'rgba(200,180,120,0.7)'} />
+                <line x1="2" y1="6" x2="22" y2="6" stroke={isLight ? 'rgba(120,100,60,0.75)' : 'rgba(200,180,120,0.7)'} strokeWidth="3.5" strokeLinecap="round" />
+                <polygon points="22,1.5 30,6 22,10.5" fill={isLight ? 'rgba(120,100,60,0.75)' : 'rgba(200,180,120,0.7)'} />
               </svg>
             )}
             {isAnchor && (() => {

@@ -12817,6 +12817,18 @@ process.on('SIGTERM', () => {
   });
 });
 
+// Log unhandled promise rejections instead of crashing the process.
+// In Node.js 15+ an unhandled rejection terminates the process by default;
+// this handler prevents that while still surfacing the error for diagnosis.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[unhandledRejection] Unhandled promise rejection:', reason);
+});
+
+// Log uncaught synchronous exceptions — don't let them silently kill the server.
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException] Uncaught exception:', err);
+});
+
 // Weekly notification email digest - runs every hour, checks if users have >10 notifications this week
 const checkWeeklyNotificationDigest = async () => {
   try {

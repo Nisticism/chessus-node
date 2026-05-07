@@ -8976,8 +8976,15 @@ async function getOngoingGames() {
       const [games] = await db_pool.query(
         `SELECT g.id, g.game_type_id, g.turn_length, g.increment, g.status, g.created_at, g.start_time,
                 g.allow_spectators, g.show_piece_helpers, g.is_anonymous,
-                g.is_correspondence, g.correspondence_days, g.other_data, g.player_turn,
+                g.is_correspondence, g.correspondence_days, g.player_turn,
                 CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
+                CAST(JSON_EXTRACT(g.other_data, '$.isBotGame') AS UNSIGNED) as is_bot_game,
+                JSON_UNQUOTE(JSON_EXTRACT(g.other_data, '$.botDifficulty')) as bot_difficulty,
+                CAST(JSON_EXTRACT(g.other_data, '$.botPosition') AS SIGNED) as bot_position,
+                JSON_UNQUOTE(JSON_EXTRACT(g.other_data, '$.guestName')) as guest_name,
+                JSON_EXTRACT(g.other_data, '$.anonLivePlayers') as anon_live_players_json,
+                JSON_EXTRACT(g.other_data, '$.anonCorresPlayers') as anon_corres_players_json,
+                JSON_EXTRACT(g.other_data, '$.simulSubmittedPlayerIds') as simul_submitted_json,
                 gt.game_name, gt.board_width, gt.board_height, gt.simultaneous_turns,
                 GROUP_CONCAT(COALESCE(u.username, 'Guest') ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
                 GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
@@ -8998,33 +9005,58 @@ async function getOngoingGames() {
          ORDER BY g.start_time DESC, g.created_at DESC`
       );
       const result = games.map(g => {
-        let otherData = {};
-        try { otherData = JSON.parse(g.other_data || '{}'); } catch (e) {}
+        const isBotGame = !!g.is_bot_game;
+        const botDifficulty = g.bot_difficulty;
+        const botPosition = g.bot_position;
+        const guestName = g.guest_name;
+        let anonLivePlayers = null;
+        let anonCorresPlayers = null;
+        let simulSubmittedPlayerIds = [];
+        try { anonLivePlayers = g.anon_live_players_json ? JSON.parse(g.anon_live_players_json) : null; } catch (_) {}
+        try { anonCorresPlayers = g.anon_corres_players_json ? JSON.parse(g.anon_corres_players_json) : null; } catch (_) {}
+        try { simulSubmittedPlayerIds = g.simul_submitted_json ? JSON.parse(g.simul_submitted_json) : []; } catch (_) {}
+
         let playerNames = g.player_names;
-        if (otherData.isBotGame && otherData.botDifficulty) {
-          const botUsername = `Computer (${otherData.botDifficulty.charAt(0).toUpperCase() + otherData.botDifficulty.slice(1)})`;
-          playerNames = otherData.botPosition === 1
+        if (isBotGame && botDifficulty) {
+          const botUsername = `Computer (${botDifficulty.charAt(0).toUpperCase() + botDifficulty.slice(1)})`;
+          playerNames = botPosition === 1
             ? `${botUsername} vs ${g.player_names}`
             : `${g.player_names} vs ${botUsername}`;
         }
         // For anonymous games, substitute actual guest names stored in other_data
-        if (g.is_anonymous && (otherData.anonLivePlayers || otherData.anonCorresPlayers || otherData.guestName)) {
-          const anonLive = otherData.anonLivePlayers;
-          const anonCorres = otherData.anonCorresPlayers;
+        if (g.is_anonymous && (anonLivePlayers || anonCorresPlayers || guestName)) {
           const parts = (playerNames || '').split(' vs ').map(s => s.trim());
           const newParts = parts.map((name, idx) => {
             const pos = idx + 1; // player_position is 1-indexed
-            const realName = anonLive?.[pos]?.username || anonCorres?.[pos]?.username || (pos === 1 ? otherData.guestName : null);
+            const realName = anonLivePlayers?.[pos]?.username || anonCorresPlayers?.[pos]?.username || (pos === 1 ? guestName : null);
             if (realName && name === 'Guest') return `Guest: ${realName}`;
             return name;
           });
           playerNames = newParts.join(' vs ');
         }
         return {
-          ...g,
+          id: g.id,
+          game_type_id: g.game_type_id,
+          turn_length: g.turn_length,
+          increment: g.increment,
+          status: g.status,
+          created_at: g.created_at,
+          start_time: g.start_time,
+          allow_spectators: g.allow_spectators,
+          show_piece_helpers: g.show_piece_helpers,
+          is_anonymous: g.is_anonymous,
+          is_correspondence: g.is_correspondence,
+          correspondence_days: g.correspondence_days,
+          player_turn: g.player_turn,
+          rated: g.rated,
+          game_name: g.game_name,
+          board_width: g.board_width,
+          board_height: g.board_height,
+          simultaneous_turns: g.simultaneous_turns,
+          move_count: g.move_count,
           player_names: playerNames,
           player_ids: g.player_ids ? g.player_ids.split(',').map(id => parseInt(id)) : [],
-          simulSubmittedPlayerIds: otherData.simulSubmittedPlayerIds || []
+          simulSubmittedPlayerIds,
         };
       });
       cache.data = result;
