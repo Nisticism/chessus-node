@@ -5,11 +5,66 @@ import styles from "./forumshub.module.scss";
 import StandardButton from "../../components/standardbutton/StandardButton";
 import { forums, firstForumsRender } from "../../actions/forums";
 import { formatDateLegacy } from "../../helpers/date-formatter";
-import { categoryLabel } from "../../helpers/forum-categories";
+import { categoryLabel, FORUM_CATEGORIES } from "../../helpers/forum-categories";
 import Pagination from "../../components/pagination/Pagination";
 import ForumsService from "../../services/forums.service";
 
 const SECTION_PAGE_SIZE = 10;
+
+const SORT_OPTIONS = [
+  { value: 'activity', label: 'Activity' },
+  { value: 'created', label: 'Date Created' },
+  { value: 'author', label: 'Author' },
+  { value: 'replies', label: 'Replies' },
+  { value: 'likes', label: 'Likes' },
+];
+
+// Client-side sort comparator
+// searchTerm is optional: when provided and sortBy is a text field ('author'/'game'),
+// results where that field directly matches the search term are bubbled to the top.
+function sortForums(list, sortBy, sortOrder, searchTerm) {
+  const dir = sortOrder === 'asc' ? 1 : -1;
+  const term = searchTerm ? searchTerm.toLowerCase() : null;
+  return [...list].sort((a, b) => {
+    // Relevance prefix: if the active sort field can directly match the search
+    // term, results where it does match rank above those where only a different
+    // field matched.
+    if (term && sortBy === 'author') {
+      const aMatch = (a.author_name || '').toLowerCase().includes(term) ? 1 : 0;
+      const bMatch = (b.author_name || '').toLowerCase().includes(term) ? 1 : 0;
+      if (aMatch !== bMatch) return bMatch - aMatch;
+    }
+    if (term && sortBy === 'game') {
+      const aMatch = (a.game_name || '').toLowerCase().includes(term) ? 1 : 0;
+      const bMatch = (b.game_name || '').toLowerCase().includes(term) ? 1 : 0;
+      if (aMatch !== bMatch) return bMatch - aMatch;
+    }
+
+    let aVal, bVal;
+    switch (sortBy) {
+      case 'created':
+        aVal = new Date(a.created_at).getTime();
+        bVal = new Date(b.created_at).getTime();
+        break;
+      case 'author':
+        aVal = (a.author_name || '').toLowerCase();
+        bVal = (b.author_name || '').toLowerCase();
+        return dir * aVal.localeCompare(bVal);
+      case 'replies':
+        aVal = a.comment_count || 0;
+        bVal = b.comment_count || 0;
+        break;
+      case 'likes':
+        aVal = a.like_count || 0;
+        bVal = b.like_count || 0;
+        break;
+      default: // activity
+        aVal = new Date(a.last_comment_at || a.created_at).getTime();
+        bVal = new Date(b.last_comment_at || b.created_at).getTime();
+    }
+    return dir * (aVal < bVal ? -1 : aVal > bVal ? 1 : 0);
+  });
+}
 
 const ForumsHub = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -17,6 +72,9 @@ const ForumsHub = () => {
   const navigate = useNavigate();
   const firstRender = useSelector((state) => state.forums.first_forums_render);
   const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("activity");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [generalOpen, setGeneralOpen] = useState(true);
   const [gameOpen, setGameOpen] = useState(true);
   const [generalPage, setGeneralPage] = useState(1);
@@ -81,21 +139,52 @@ const ForumsHub = () => {
     navigate(`/forums/${forumId}`);
   }
 
-  const generalForums = allForumsList.filter(forum => forum.game_type_id === null);
-  const gameForums = allForumsList.filter(forum => forum.game_type_id !== null);
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    setGeneralPage(1);
+    setGamePage(1);
+  };
 
+  const handleSortChange = (value) => {
+    setSortBy(value);
+    setGeneralPage(1);
+    setGamePage(1);
+  };
+
+  const toggleSortOrder = () => {
+    setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    setGeneralPage(1);
+    setGamePage(1);
+  };
+
+  const handleCategoryChange = (e) => {
+    setCategoryFilter(e.target.value);
+    setGeneralPage(1);
+  };
+
+  // Search: title and author only — not content
   const filterBySearch = (list) => {
-    if (!searchTerm) return list;
     const term = searchTerm.toLowerCase();
     return list.filter(forum =>
       forum.title.toLowerCase().includes(term) ||
-      (forum.content && forum.content.toLowerCase().includes(term)) ||
-      (forum.author_name && forum.author_name.toLowerCase().includes(term))
+      (forum.author_name && forum.author_name.toLowerCase().includes(term)) ||
+      (forum.game_name && forum.game_name.toLowerCase().includes(term))
     );
   };
 
-  const filteredGeneral = filterBySearch(generalForums);
-  const filteredGame = filterBySearch(gameForums);
+  const rawGeneral = allForumsList.filter(f => f.game_type_id === null);
+  const rawGame = allForumsList.filter(f => f.game_type_id !== null);
+
+  const applyFilters = (list, isGame) => {
+    let result = searchTerm ? filterBySearch(list) : list;
+    if (!isGame && categoryFilter) {
+      result = result.filter(f => f.category === categoryFilter);
+    }
+    return sortForums(result, sortBy, sortOrder, searchTerm || null);
+  };
+
+  const filteredGeneral = applyFilters(rawGeneral, false);
+  const filteredGame = applyFilters(rawGame, true);
 
   const generalTotalPages = Math.ceil(filteredGeneral.length / SECTION_PAGE_SIZE);
   const gameTotalPages = Math.ceil(filteredGame.length / SECTION_PAGE_SIZE);
@@ -109,13 +198,8 @@ const ForumsHub = () => {
     gamePage * SECTION_PAGE_SIZE
   );
 
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value);
-    setGeneralPage(1);
-    setGamePage(1);
-  };
-
   const hasValidAuthor = (name) => name && name !== 'Anonymous' && name !== 'User Deleted';
+  const isFiltered = searchTerm || categoryFilter;
 
   const renderForumRow = (forum, showGame, showCategory) => (
     <tr
@@ -205,14 +289,56 @@ const ForumsHub = () => {
         </p>
       </div>
 
-      <div className={styles["search-container"]}>
-        <input
-          type="text"
-          placeholder="Search all forums..."
-          value={searchTerm}
-          onChange={handleSearchChange}
-          className={styles["search-input"]}
-        />
+      <div className={styles["filter-bar"]}>
+        <div className={styles["search-wrapper"]}>
+          <span className={styles["search-icon"]}>&#128269;</span>
+          <input
+            type="text"
+            placeholder="Search by subject, author, or game..."
+            value={searchTerm}
+            onChange={handleSearchChange}
+            className={styles["search-input"]}
+          />
+          {searchTerm && (
+            <button className={styles["search-clear"]} onClick={() => { setSearchTerm(""); setGeneralPage(1); setGamePage(1); }} aria-label="Clear search">&#215;</button>
+          )}
+        </div>
+        <div className={styles["filter-controls"]}>
+          <div className={styles["filter-group"]}>
+            <span className={styles["filter-label"]}>Category</span>
+            <select
+              className={styles["filter-select"]}
+              value={categoryFilter}
+              onChange={handleCategoryChange}
+            >
+              <option value="">All Categories</option>
+              {FORUM_CATEGORIES.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className={styles["filter-group"]}>
+            <span className={styles["filter-label"]}>Sort by</span>
+            <div className={styles["sort-pills"]}>
+              {SORT_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  className={`${styles["sort-pill"]} ${sortBy === opt.value ? styles["sort-pill-active"] : ''}`}
+                  onClick={() => handleSortChange(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            className={styles["order-btn"]}
+            onClick={toggleSortOrder}
+            title={sortOrder === 'desc' ? 'Descending — click to switch' : 'Ascending — click to switch'}
+          >
+            {sortOrder === 'desc' ? '↓ Newest' : '↑ Oldest'}
+          </button>
+        </div>
       </div>
 
       {/* General Forums Section */}
@@ -261,7 +387,7 @@ const ForumsHub = () => {
               </>
             ) : (
               <div className={styles["empty-section"]}>
-                {searchTerm ? "No general forums matching your search" : "No general forum posts yet"}
+                {isFiltered ? "No general forums matching your filters" : "No general forum posts yet"}
               </div>
             )}
           </div>
@@ -314,7 +440,7 @@ const ForumsHub = () => {
               </>
             ) : (
               <div className={styles["empty-section"]}>
-                {searchTerm ? "No game forums matching your search" : "No game forum posts yet"}
+                {isFiltered ? "No game forums matching your filters" : "No game forum posts yet"}
               </div>
             )}
           </div>

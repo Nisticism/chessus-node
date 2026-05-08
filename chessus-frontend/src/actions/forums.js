@@ -74,9 +74,9 @@ export const editForum = (title, content, last_updated_at, id) => async (dispatc
   }
 };
 
-export const forums = (page = 1, limit = 20, gameTypeId = null, scope = null, category = null) => async (dispatch) => {
+export const forums = (page = 1, limit = 20, gameTypeId = null, scope = null, category = null, search = null, sortBy = null, sortOrder = null) => async (dispatch) => {
   try {
-    const response = await ForumsService.getForums(page, limit, gameTypeId, scope, category);
+    const response = await ForumsService.getForums(page, limit, gameTypeId, scope, category, search, sortBy, sortOrder);
     dispatch({
       type: ALL_FORUMS,
       payload: response.data,

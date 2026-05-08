@@ -5,9 +5,18 @@ import styles from "./forums.module.scss";
 import StandardButton from "../../components/standardbutton/StandardButton";
 import { forums, firstForumsRender } from "../../actions/forums";
 import { formatDateLegacy } from "../../helpers/date-formatter";
-import { categoryLabel } from "../../helpers/forum-categories";
+import { categoryLabel, FORUM_CATEGORIES } from "../../helpers/forum-categories";
 import Pagination from "../../components/pagination/Pagination";
 import ForumsService from "../../services/forums.service";
+
+const SORT_OPTIONS = [
+  { value: 'activity', label: 'Activity' },
+  { value: 'created', label: 'Date Created' },
+  { value: 'author', label: 'Author' },
+  { value: 'category', label: 'Category' },
+  { value: 'replies', label: 'Replies' },
+  { value: 'likes', label: 'Likes' },
+];
 
 const Forums = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -15,17 +24,30 @@ const Forums = () => {
   const navigate = useNavigate();
   const firstRender = useSelector((state) => state.forums.first_forums_render);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [sortBy, setSortBy] = useState("activity");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [likedForums, setLikedForums] = useState({});
   const [likeCounts, setLikeCounts] = useState({});
   const dispatch = useDispatch();
 
+  // Debounce search input — resets to page 1 when the debounced value fires
   useEffect(() => {
-    dispatch(forums(currentPage, 20, null, 'general'));
-    if (!firstRender) {
-      dispatch(firstForumsRender());
-    }
-  }, [currentPage, firstRender, dispatch]);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Fetch from server whenever page, search, sort, or category changes
+  useEffect(() => {
+    dispatch(forums(currentPage, 20, null, 'general', categoryFilter || null, debouncedSearch || null, sortBy, sortOrder));
+    if (!firstRender) dispatch(firstForumsRender());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, debouncedSearch, sortBy, sortOrder, categoryFilter]);
 
   // Sync liked state from server data whenever forums list refreshes
   const forumsData = allForums.forums || [];
@@ -45,6 +67,21 @@ const Forums = () => {
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSortChange = (value) => {
+    setSortBy(value);
+    setCurrentPage(1);
+  };
+
+  const toggleSortOrder = () => {
+    setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    setCurrentPage(1);
+  };
+
+  const handleCategoryChange = (e) => {
+    setCategoryFilter(e.target.value);
+    setCurrentPage(1);
   };
 
   function createNewPost() {
@@ -68,7 +105,6 @@ const Forums = () => {
       return;
     }
     const wasLiked = likedForums[forumId];
-    // Optimistic update
     setLikedForums(prev => ({ ...prev, [forumId]: !wasLiked }));
     setLikeCounts(prev => ({ ...prev, [forumId]: (prev[forumId] || 0) + (wasLiked ? -1 : 1) }));
     try {
@@ -76,19 +112,13 @@ const Forums = () => {
       setLikedForums(prev => ({ ...prev, [forumId]: result.liked }));
       setLikeCounts(prev => ({ ...prev, [forumId]: result.like_count }));
     } catch (err) {
-      // Revert on error
       setLikedForums(prev => ({ ...prev, [forumId]: wasLiked }));
       setLikeCounts(prev => ({ ...prev, [forumId]: (prev[forumId] || 0) + (wasLiked ? 1 : -1) }));
     }
   }
 
-  const filteredForums = forumsData.filter(forum =>
-    forum.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (forum.content && forum.content.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (forum.author_name && forum.author_name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
   const hasValidAuthor = (name) => name && name !== 'Anonymous' && name !== 'User Deleted';
+  const isFiltered = debouncedSearch || categoryFilter;
 
   return (
     <div className="container">
@@ -96,20 +126,62 @@ const Forums = () => {
         <h3 className={styles["forum-page-title"]}>General Forums</h3>
       </header>
 
-      <div className={styles["search-container"]}>
-        <input
-          type="text"
-          placeholder="Search forums..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className={styles["search-input"]}
-        />
+      <div className={styles["filter-bar"]}>
+        <div className={styles["search-wrapper"]}>
+          <span className={styles["search-icon"]}>&#128269;</span>
+          <input
+            type="text"
+            placeholder="Search by subject or author..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className={styles["search-input"]}
+          />
+          {searchTerm && (
+            <button className={styles["search-clear"]} onClick={() => setSearchTerm("")} aria-label="Clear search">&#215;</button>
+          )}
+        </div>
+        <div className={styles["filter-controls"]}>
+          <div className={styles["filter-group"]}>
+            <span className={styles["filter-label"]}>Category</span>
+            <select
+              className={styles["filter-select"]}
+              value={categoryFilter}
+              onChange={handleCategoryChange}
+            >
+              <option value="">All Categories</option>
+              {FORUM_CATEGORIES.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className={styles["filter-group"]}>
+            <span className={styles["filter-label"]}>Sort by</span>
+            <div className={styles["sort-pills"]}>
+              {SORT_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  className={`${styles["sort-pill"]} ${sortBy === opt.value ? styles["sort-pill-active"] : ''}`}
+                  onClick={() => handleSortChange(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            className={styles["order-btn"]}
+            onClick={toggleSortOrder}
+            title={sortOrder === 'desc' ? 'Descending — click to switch' : 'Ascending — click to switch'}
+          >
+            {sortOrder === 'desc' ? '↓ Newest' : '↑ Oldest'}
+          </button>
+        </div>
       </div>
 
       <div className={styles["forums"]}>
-        {filteredForums && filteredForums.length > 0 ? (
+        {forumsData && forumsData.length > 0 ? (
           <table className={styles["forums-table"]}>
-            <tbody>
+            <thead>
               <tr>
                 <th>Subject</th>
                 <th>Category</th>
@@ -119,7 +191,9 @@ const Forums = () => {
                 <th>Content</th>
                 <th>Last Comment</th>
               </tr>
-              {filteredForums.map(forum => (
+            </thead>
+            <tbody>
+              {forumsData.map(forum => (
                 <tr
                   key={forum.id}
                   className={styles["forum-row"]}
@@ -185,11 +259,11 @@ const Forums = () => {
             </tbody>
           </table>
         ) : (
-          <h1>{searchTerm ? "No forums found matching your search" : "No Forums Found"}</h1>
+          <h1>{isFiltered ? "No forums found matching your filters" : "No Forums Found"}</h1>
         )}
       </div>
 
-      {allForums.pagination && !searchTerm && (
+      {allForums.pagination && (
         <Pagination
           currentPage={allForums.pagination.page}
           totalPages={allForums.pagination.totalPages}

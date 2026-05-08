@@ -3,20 +3,17 @@ import authHeader from "./auth-header";
 
 import API_URL from "../global/global.js";
 
-const getForums = async (page = 1, limit = 20, gameTypeId = null, scope = null, category = null) => {
+const getForums = async (page = 1, limit = 20, gameTypeId = null, scope = null, category = null, search = null, sortBy = null, sortOrder = null) => {
   const params = { page, limit };
-  if (gameTypeId) {
-    params.gameTypeId = gameTypeId;
-  }
-  if (scope) {
-    params.scope = scope;
-  }
-  if (category) {
-    params.category = category;
-  }
-  const response = await axios.get(API_URL + "forums", { 
+  if (gameTypeId) params.gameTypeId = gameTypeId;
+  if (scope) params.scope = scope;
+  if (category) params.category = category;
+  if (search) params.search = search;
+  if (sortBy) params.sortBy = sortBy;
+  if (sortOrder) params.sortOrder = sortOrder;
+  const response = await axios.get(API_URL + "forums", {
     params,
-    headers: authHeader() 
+    headers: authHeader()
   });
   return response;
 };
