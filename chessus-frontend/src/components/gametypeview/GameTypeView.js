@@ -665,6 +665,20 @@ const GameTypeView = () => {
         } catch (e) {
           // Upvote status non-critical
         }
+
+        // Check if the current user has already requested AI analysis for this game
+        // so the button persists its "already requested" state across page loads.
+        if (currentUser) {
+          try {
+            const statusRes = await axios.get(
+              `${API_URL}game-types/${gameId}/analysis-request-status`,
+              { headers: authHeader() }
+            );
+            if (statusRes.data?.requested) setAnalysisRequestSent(true);
+          } catch (e) {
+            // Non-critical — button state just defaults to unsent
+          }
+        }
       } catch (err) {
         console.error("Error loading game:", err);
         setError("Failed to load game");
