@@ -4,6 +4,19 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 8, 2026",
+    title: "Forum filters, match history game link, physical board improvements, AI analysis persistence",
+    items: [
+      "Forums (all three pages) now support searching and filtering: sort by Activity, Date Created, Author, Category (general forums), Game (game forums), Replies, or Likes, with ascending/descending toggle. Search queries subject and author name — not post content. Game forum search also matches the game name.",
+      "When searching forums with a filter active (e.g. Author), results where the filter field directly matches the search term are shown first.",
+      "Forum tables now scroll horizontally on mobile so no columns are cut off.",
+      "Match history detail page now shows a link to the game type inside the Victory / Draw / Defeat banner.",
+      "Requesting AI analysis for a game now persists across page reloads — the 'Request AI Analysis' button stays in its confirmed state when you return to the page.",
+      "Physical board request form: dropdowns (wood type, dimension unit) are now styled to match the site's dark theme.",
+      "Physical board request form: the site owner now receives an in-app notification whenever someone submits a request.",
+    ],
+  },
+  {
     date: "May 7, 2026",
     title: "Premove fix, step-by-step capture, move indicators, encoding, arrows, sound, UI tweaks",
     items: [
