@@ -1946,6 +1946,7 @@ app.get("/api/match/:gameId", async (req, res) => {
       reason: otherData.reason || 'unknown',
       eloChanges: otherData.eloChanges || null,
       gameTypeName: game.game_type_name,
+      gameTypeId: game.game_type_id || null,
       gameDescription: game.game_description,
       boardWidth: game.board_width || 8,
       boardHeight: game.board_height || 8,
@@ -6098,6 +6099,9 @@ app.get("/api/forums", optionalAuthenticate, async (req, res) => {
     const gameTypeId = req.query.gameTypeId;
     const scope = req.query.scope; // 'general' | 'game' | undefined (all)
     const category = req.query.category;
+    const search = req.query.search ? req.query.search.trim() : null;
+    const sortBy = req.query.sortBy || 'activity'; // activity | created | author | category | game | likes | replies
+    const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC';
     const userId = req.user?.id || null;
 
     // Build query with optional gameTypeId / scope / category filter.
@@ -6115,12 +6119,55 @@ app.get("/api/forums", optionalAuthenticate, async (req, res) => {
     if (category) {
       whereConditions.push(`a.category = ${db_pool.escape(category)}`);
     }
+    // Search queries subject (title), author username, and game name — NOT post content.
+    if (search) {
+      const term = db_pool.escape(`%${search}%`);
+      whereConditions.push(`(a.title LIKE ${term} OR ua.username LIKE ${term} OR gt.game_name LIKE ${term})`);
+    }
 
     const whereClause = whereConditions.length > 0 ? ` WHERE ${whereConditions.join(" AND ")}` : "";
 
-    // Single query: sort by most-recent comment, pull comment/like counts and
-    // author/game names via aggregation subqueries and JOINs so there are zero
-    // per-forum round trips. Previously this was 4 queries × N forums.
+    // Dynamic ORDER BY based on sortBy / sortOrder params.
+    // When a search term is active and the sort field is a text field that can
+    // directly match the search term (author username or game name), add a
+    // relevance prefix so exact-field matches bubble to the top before the
+    // normal sort takes over.
+    let relevancePrefix = '';
+    if (search) {
+      const relevanceTerm = db_pool.escape(`%${search}%`);
+      if (sortBy === 'author') {
+        relevancePrefix = `(ua.username LIKE ${relevanceTerm}) DESC, `;
+      } else if (sortBy === 'game') {
+        relevancePrefix = `(gt.game_name LIKE ${relevanceTerm}) DESC, `;
+      }
+    }
+
+    let orderClause;
+    switch (sortBy) {
+      case 'created':
+        orderClause = `ORDER BY a.created_at ${sortOrder}`;
+        break;
+      case 'author':
+        orderClause = `ORDER BY ${relevancePrefix}ua.username ${sortOrder}`;
+        break;
+      case 'category':
+        orderClause = `ORDER BY a.category ${sortOrder}`;
+        break;
+      case 'game':
+        orderClause = `ORDER BY ${relevancePrefix}gt.game_name ${sortOrder}`;
+        break;
+      case 'likes':
+        orderClause = `ORDER BY COALESCE(lk.like_count, 0) ${sortOrder}`;
+        break;
+      case 'replies':
+        orderClause = `ORDER BY COALESCE(cc.comment_count, 0) ${sortOrder}`;
+        break;
+      default: // 'activity'
+        orderClause = `ORDER BY COALESCE(lc.last_comment_at, a.created_at) ${sortOrder}`;
+    }
+
+    // Single query: pull comment/like counts and author/game names via aggregation
+    // subqueries and JOINs so there are zero per-forum round trips.
     const likedByUserExpr = userId
       ? `(SELECT COUNT(*) FROM likes WHERE article_id = a.id AND user_id = ${db_pool.escape(userId)}) > 0`
       : '0';
@@ -6162,10 +6209,14 @@ app.get("/api/forums", optionalAuthenticate, async (req, res) => {
         LEFT JOIN users ua ON ua.id = a.author_id
         LEFT JOIN game_types gt ON gt.id = a.game_type_id
         ${whereClause}
-        ORDER BY COALESCE(lc.last_comment_at, a.created_at) DESC
+        ${orderClause}
         LIMIT ${limit} OFFSET ${offset}
     `;
-    const countQuery = `SELECT COUNT(*) as total FROM articles a ${whereClause}`;
+    // Count query includes ua/gt joins when the search condition references those tables.
+    const countJoins = search
+      ? `LEFT JOIN users ua ON ua.id = a.author_id LEFT JOIN game_types gt ON gt.id = a.game_type_id`
+      : '';
+    const countQuery = `SELECT COUNT(*) as total FROM articles a ${countJoins} ${whereClause}`;
 
     // Run both queries in parallel
     const [[countResult], [forums]] = await Promise.all([
@@ -10173,6 +10224,25 @@ app.get('/api/ai-training/analysis/by-slug/:slug', async (req, res) => {
   }
 });
 
+// GET /api/game-types/:id/analysis-request-status — returns whether the
+// authenticated user has already submitted an analysis request for this game.
+app.get('/api/game-types/:id/analysis-request-status', authenticateToken, async (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(gameTypeId)) return res.status(400).send({ message: 'Invalid game id' });
+    const [[row]] = await db_pool.query(
+      `SELECT id FROM ai_analysis_requests
+         WHERE game_type_id = ? AND requester_user_id = ?
+         ORDER BY id DESC LIMIT 1`,
+      [gameTypeId, req.user.id]
+    );
+    return res.json({ requested: !!row });
+  } catch (err) {
+    console.error('analysis-request-status error:', err);
+    res.status(500).send({ message: 'Failed to check analysis request status' });
+  }
+});
+
 // POST /api/game-types/:id/request-analysis  (must be logged in + creator or admin)
 // Sends a notification to the site owner requesting AI analysis for the game.
 // If the requester is already an admin/owner the notification is still sent so
@@ -11942,6 +12012,58 @@ app.put("/api/users/:userId/notifications/:notificationId/action", authenticateT
   } catch (err) {
     console.error("Error actioning notification:", err);
     res.status(500).json({ error: "Failed to action notification" });
+  }
+});
+
+// POST /api/physical-board-request — submits the "Request a Physical Board" form.
+// Sends the contact email AND creates an in-app notification for the site owner.
+app.post("/api/physical-board-request", async (req, res) => {
+  try {
+    const { name, email, subject, message } = req.body;
+    if (!name || !email || !subject || !message) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // Send contact email (non-blocking)
+    const result = await sendContactEmail(name, email, subject, message);
+    if (!result.success) {
+      return res.status(500).json({ error: 'Failed to send message', details: result.message });
+    }
+
+    // Notify the owner with an in-app notification
+    try {
+      const [[owner]] = await db_pool.query(
+        "SELECT id, username FROM users WHERE role = 'owner' LIMIT 1"
+      );
+      if (owner) {
+        await dbHelpers.createNotification({
+          user_id: owner.id,
+          sender_id: null,
+          type: 'physical_board_request',
+          title: `Physical board request from ${name}`,
+          content: `${name} (${email}) submitted a physical board request: "${subject}".`,
+          action_url: null,
+        });
+
+        // Real-time push if owner is online
+        const io = app.get('io');
+        if (io) {
+          const { userSockets } = require('./game-socket');
+          const ownerSocket = userSockets?.get(owner.id);
+          if (ownerSocket) {
+            io.to(ownerSocket).emit('newNotification', { type: 'physical_board_request', title: `Physical board request from ${name}` });
+          }
+        }
+      }
+    } catch (notifyErr) {
+      // Non-critical — email was sent successfully
+      console.error('physical-board-request notification error:', notifyErr.message);
+    }
+
+    res.json({ message: 'Message sent successfully' });
+  } catch (error) {
+    console.error('Physical board request error:', error);
+    res.status(500).json({ error: 'Failed to send message' });
   }
 });
 
