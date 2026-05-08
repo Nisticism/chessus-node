@@ -100,7 +100,7 @@ const updateUser = async (userData, id) => {
 };
 
 /**
- * Delete user by username — disables FK checks so that articles/comments
+ * Delete user by username ï¿½ disables FK checks so that articles/comments
  * retain their author_id (server resolves missing users as "User Deleted").
  * Also writes a row to deleted_users so admins can audit deletions.
  * @param {string} username - Username
@@ -123,7 +123,7 @@ const deleteUser = async (username, options = {}) => {
       [userId, previousUsername, options.deletedByUserId || null, options.deletionType || 'self']
     );
   } catch (err) {
-    // Don't block the deletion if the audit insert fails — just log it.
+    // Don't block the deletion if the audit insert fails ï¿½ just log it.
     if (err.code !== 'ER_NO_SUCH_TABLE') {
       console.error('deleteUser: failed to write deleted_users audit row:', err.message);
     }
@@ -340,6 +340,7 @@ const getAllPiecesWithMovement = async () => {
       p.can_fire_over_enemies,
       p.can_capture_allies,
       p.cannot_be_captured,
+      p.max_chain_hops,
       p.custom_movement_squares,
       p.custom_attack_squares
     FROM chessusnode.pieces p
@@ -500,10 +501,16 @@ const getPieceById = async (pieceId) => {
       p.promotion_pieces_ids,
       p.can_capture_allies,
       p.cannot_be_captured,
+      p.max_chain_hops,
       p.custom_movement_squares,
       p.custom_attack_squares,
       p.must_move_if_able,
       p.must_move_uses_action,
+      p.can_capture_ally_via_range,
+      p.can_capture_ally_on_range,
+      p.can_attack_on_iteration,
+      p.repeating_directional_ranged_attack,
+      p.repeating_ratio_ranged_attack,
       p.moderation_status,
       p.created_at
     FROM chessusnode.pieces p
@@ -648,7 +655,7 @@ const getGameById = async (gameId) => {
         limit_promote_checkmate_to_original: Boolean(piece.limit_promote_checkmate_to_original),
         can_promote_to_capture: Boolean(piece.can_promote_to_capture),
         limit_promote_capture_to_original: Boolean(piece.limit_promote_capture_to_original),
-        // Points win condition — per-placement scoring values
+        // Points win condition ï¿½ per-placement scoring values
         capture_points_gain: piece.capture_points_gain ?? 0,
         capture_points_loss: piece.capture_points_loss ?? 0,
         // Neutral piece
@@ -911,7 +918,7 @@ const getEmotesByCommentIds = async (commentIds) => {
 };
 
 /**
- * Toggle a comment emote — adds if not present, removes if already present.
+ * Toggle a comment emote ï¿½ adds if not present, removes if already present.
  * Returns { added: bool, emote_type, comment_id, user_id }
  * @param {Object} params
  * @param {number} params.comment_id
@@ -1028,7 +1035,7 @@ const updateNotification = async (notificationId, { sender_id, title, content })
 const getNotificationsByUserId = async (userId, page = 1, limit = 20, cursor = null) => {
   if (cursor) {
     // Keyset pagination: fetch notifications older than cursor (an id value).
-    // O(1) regardless of depth — use this for "load more" infinite scroll.
+    // O(1) regardless of depth ï¿½ use this for "load more" infinite scroll.
     const notifications = await query(
       `SELECT n.*, u.username as sender_username, u.profile_picture as sender_profile_picture
          FROM notifications n
@@ -1040,7 +1047,7 @@ const getNotificationsByUserId = async (userId, page = 1, limit = 20, cursor = n
     );
     return notifications;
   }
-  // Legacy OFFSET path — still used for page=1 (initial load) and admin views.
+  // Legacy OFFSET path ï¿½ still used for page=1 (initial load) and admin views.
   const offset = (page - 1) * limit;
   const notifications = await query(
     `SELECT n.*, u.username as sender_username, u.profile_picture as sender_profile_picture
@@ -1223,7 +1230,7 @@ const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, befo
     );
     return messages.reverse(); // return chronological order
   }
-  // Legacy OFFSET path — still used for initial load (page 1).
+  // Legacy OFFSET path ï¿½ still used for initial load (page 1).
   const offset = (page - 1) * limit;
   const messages = await query(
     `SELECT dm.*, u.username as sender_username, u.profile_picture as sender_profile_picture

@@ -54,6 +54,141 @@
   }
 }
 
+/* ---- Creator Options dropdown (mirrors gametypeview) ---- */
+.creator-menu-wrapper {
+  position: relative;
+}
+
+.creator-menu-btn {
+  padding: 10px 18px;
+  background: rgba(120, 80, 200, 0.25);
+  border: 2px solid rgba(160, 100, 255, 0.5);
+  border-radius: 5px;
+  color: var(--text-heading);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+  white-space: nowrap;
+
+  &:hover {
+    background: rgba(120, 80, 200, 0.4);
+    transform: translateY(-1px);
+  }
+}
+
+.creator-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  background: var(--panel-bg-end, #1a1e2e);
+  border: 1px solid rgba(160, 100, 255, 0.4);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.creator-menu-item {
+  display: block;
+  width: 100%;
+  padding: 11px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--light-gray, #ccc);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(160, 100, 255, 0.15);
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+/* ---- Uniqueness Check modal ---- */
+.uniqueness-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.uniqueness-modal {
+  background: var(--panel-bg-end, #1a1e2e);
+  border: 1px solid rgba(160, 100, 255, 0.4);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.uniqueness-modal-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin-bottom: 14px;
+  margin-top: 0;
+}
+
+.uniqueness-match-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+
+  li {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    a {
+      color: var(--link-text-light, #508fcd);
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}
+
+.uniqueness-modal-close {
+  padding: 8px 20px;
+  background: rgba(120, 80, 200, 0.25);
+  border: 2px solid rgba(160, 100, 255, 0.5);
+  border-radius: 5px;
+  color: var(--text-heading);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover {
+    background: rgba(120, 80, 200, 0.4);
+  }
+}
+
 .piece-info {
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-card-border);

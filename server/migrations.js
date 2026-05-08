@@ -3768,6 +3768,26 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error renaming max_piece_captures_per_ranged_attack:', err.message);
   }
+
+  // Clean up corrupted available_for_moves values from the legacy piece_movement table.
+  // The old piece_movement table had: available_for_moves TINYINT(1) DEFAULT 1
+  // (a boolean meaning "yes this movement type is available for regular moves").
+  // When tables were consolidated, that boolean 1 was copied into the new
+  // pieces.available_for_moves INT UNSIGNED NULL column, which in the new
+  // schema means "restrict this piece to the first N game-turns."
+  // The piece wizard never sets this field, so any non-null value is a data
+  // artifact from the migration. NULL it out so old pieces like rooks are not
+  // incorrectly restricted once the feature is implemented in game-socket.js.
+  try {
+    const [affected] = await db_pool.query(
+      `UPDATE pieces SET available_for_moves = NULL WHERE available_for_moves IS NOT NULL`
+    );
+    if (affected.affectedRows > 0) {
+      console.log(`[DB] Cleaned up available_for_moves: reset ${affected.affectedRows} pieces to NULL (legacy boolean artifact)`);
+    }
+  } catch (err) {
+    console.error('Error cleaning up available_for_moves:', err.message);
+  }
 };
 
 module.exports = { runMigrations };

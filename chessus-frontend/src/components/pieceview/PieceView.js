@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
-import { getPieceById, getGamesByPieceId, deletePiece } from "../../actions/pieces";
+import { getPieceById, getGamesByPieceId, deletePiece, checkPieceDuplicates } from "../../actions/pieces";
 import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import Pagination from "../pagination/Pagination";
@@ -27,6 +27,15 @@ const PieceView = () => {
   const [gamesPage, setGamesPage] = useState(1);
   const [selectedPreviewImageUrl, setSelectedPreviewImageUrl] = useState(null);
   const GAMES_PER_PAGE = 10;
+
+  // Creator options menu
+  const [creatorMenuOpen, setCreatorMenuOpen] = useState(false);
+  const creatorMenuRef = useRef(null);
+  // Uniqueness check
+  const [uniquenessCheckLoading, setUniquenessCheckLoading] = useState(false);
+  const [uniquenessModalOpen, setUniquenessModalOpen] = useState(false);
+  const [uniquenessMatches, setUniquenessMatches] = useState([]);
+  const [uniquenessError, setUniquenessError] = useState('');
 
   useEffect(() => {
     const loadPiece = async () => {
@@ -123,6 +132,17 @@ const PieceView = () => {
     };
   }, [piece]);
 
+  // Close creator menu on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (creatorMenuRef.current && !creatorMenuRef.current.contains(e.target)) {
+        setCreatorMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const getFirstImage = (imageLocation) => {
     if (!imageLocation) return null;
     
@@ -161,6 +181,45 @@ const PieceView = () => {
       navigate('/create/pieces');
     } catch (error) {
       alert('Failed to delete piece: ' + (error.message || error));
+    }
+  };
+
+  const handleUniquenessCheck = async () => {
+    if (!piece) return;
+    setUniquenessError('');
+
+    const role = (currentUser?.role || '').toLowerCase();
+    const isAdminUser = role === 'admin' || role === 'owner';
+
+    if (!isAdminUser) {
+      const storageKey = `uniqueness-checks-${pieceId}`;
+      const now = Date.now();
+      const stored = (() => {
+        try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch { return []; }
+      })();
+      const windowMs = 24 * 60 * 60 * 1000;
+      const recent = stored.filter((t) => now - t < windowMs);
+      if (recent.length >= 3) {
+        const oldest = Math.min(...recent);
+        const resetIn = Math.ceil((oldest + windowMs - now) / 60000);
+        setUniquenessError(`Limit reached — you can run 3 uniqueness checks per 24 hours. Try again in about ${resetIn} minute${resetIn !== 1 ? 's' : ''}.`);
+        setUniquenessModalOpen(true);
+        return;
+      }
+      recent.push(now);
+      localStorage.setItem(storageKey, JSON.stringify(recent));
+    }
+
+    setUniquenessCheckLoading(true);
+    try {
+      const result = await checkPieceDuplicates(piece, pieceId);
+      setUniquenessMatches(result.matches || []);
+      setUniquenessModalOpen(true);
+    } catch (err) {
+      setUniquenessError('Failed to run check. Please try again.');
+      setUniquenessModalOpen(true);
+    } finally {
+      setUniquenessCheckLoading(false);
     }
   };
 
@@ -595,20 +654,41 @@ const PieceView = () => {
             ⚔️ Try in Sandbox
           </button>
           {canEdit() && (
-            <>
-              <button 
-                onClick={() => navigate(`/create/piece/edit/${pieceId}`)} 
-                className={styles["edit-button"]}
+            <div className={styles["creator-menu-wrapper"]} ref={creatorMenuRef}>
+              <button
+                type="button"
+                className={styles["creator-menu-btn"]}
+                onClick={() => setCreatorMenuOpen((v) => !v)}
+                aria-haspopup="true"
+                aria-expanded={creatorMenuOpen}
               >
-                ✏️ Edit Piece
+                ⚙ Creator Options {creatorMenuOpen ? '▲' : '▼'}
               </button>
-              <button 
-                onClick={handleDeletePiece} 
-                className={styles["delete-button"]}
-              >
-                🗑️ Delete Piece
-              </button>
-            </>
+              {creatorMenuOpen && (
+                <div className={styles["creator-menu-dropdown"]}>
+                  <button
+                    className={styles["creator-menu-item"]}
+                    onClick={() => { setCreatorMenuOpen(false); navigate(`/create/piece/edit/${pieceId}`); }}
+                  >
+                    ✏️ Edit Piece
+                  </button>
+                  <button
+                    className={styles["creator-menu-item"]}
+                    onClick={() => { setCreatorMenuOpen(false); handleDeletePiece(); }}
+                  >
+                    🗑️ Delete Piece
+                  </button>
+                  <button
+                    type="button"
+                    className={styles["creator-menu-item"]}
+                    onClick={() => { setCreatorMenuOpen(false); handleUniquenessCheck(); }}
+                    disabled={uniquenessCheckLoading}
+                  >
+                    {uniquenessCheckLoading ? '🔍 Checking…' : '🔍 Run Uniqueness Check'}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1359,6 +1439,51 @@ const PieceView = () => {
           )}
         </div>
       </div>
+
+      {/* Uniqueness Check Modal */}
+      {uniquenessModalOpen && (
+        <div
+          className={styles["uniqueness-modal-overlay"]}
+          onClick={() => { setUniquenessModalOpen(false); setUniquenessError(''); }}
+        >
+          <div className={styles["uniqueness-modal"]} onClick={(e) => e.stopPropagation()}>
+            <h3 className={styles["uniqueness-modal-title"]}>🔍 Uniqueness Check</h3>
+            {uniquenessError ? (
+              <p style={{ color: '#ff9090', marginBottom: '16px' }}>{uniquenessError}</p>
+            ) : uniquenessMatches.length === 0 ? (
+              <p style={{ color: 'var(--text-light-gray)', marginBottom: '16px' }}>
+                This piece is unique! No other pieces in the database have the same ruleset.
+              </p>
+            ) : (
+              <>
+                <p style={{ color: 'var(--text-light-gray)', marginBottom: '10px' }}>
+                  {uniquenessMatches.length} piece{uniquenessMatches.length !== 1 ? 's have' : ' has'} an identical ruleset:
+                </p>
+                <ul className={styles["uniqueness-match-list"]}>
+                  {uniquenessMatches.map((m) => (
+                    <li key={m.id}>
+                      <Link to={`/pieces/${m.id}`} onClick={() => setUniquenessModalOpen(false)}>
+                        {m.piece_name}
+                      </Link>
+                      {' '}
+                      <span style={{ color: 'var(--text-light-gray)', fontSize: '0.85em' }}>
+                        by {m.creator_username || 'Anonymous'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <button
+              type="button"
+              className={styles["uniqueness-modal-close"]}
+              onClick={() => { setUniquenessModalOpen(false); setUniquenessError(''); }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

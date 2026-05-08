@@ -2217,9 +2217,18 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'can_castle','can_promote','can_en_passant',
       'capture_on_hop','chain_capture_enabled','free_move_after_promotion',
       'chain_hop_allies','must_move_if_able','must_move_uses_action',
+      'can_capture_ally_via_range','can_capture_ally_on_range','can_attack_on_iteration',
+      'repeating_directional_ranged_attack','repeating_ratio_ranged_attack',
     ];
-    // Integer columns — null-preserving (0 and null are semantically different
-    // for some of these; compare normalized integers so NULL==NULL and 0==0).
+    // Integer columns — coerce null/undefined to 0 so that an older piece
+    // (column was NULL from a migration default) and a newer piece (wizard sent 0)
+    // are still considered functionally identical for disabled/inapplicable fields.
+    // NOTE: available_for_moves is intentionally excluded from comparison.
+    // It is a future "first N game-turns" restriction (like a pawn's extended first move)
+    // that is NOT yet consumed by game-socket.js. Old pieces have their available_for_moves
+    // set to 1 as a data artifact from the legacy piece_movement boolean migration; a startup
+    // migration now cleans those values to NULL. Re-add this column once the feature is
+    // implemented in game-socket.js and the piece wizard exposes it.
     const INT_COLS = [
       'piece_width','piece_height',
       'up_left_movement','up_movement','up_right_movement','right_movement',
@@ -2228,7 +2237,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'down_right_movement_available_for','down_movement_available_for','down_left_movement_available_for','left_movement_available_for',
       'ratio_one_movement','ratio_two_movement','max_ratio_iterations',
       'step_by_step_movement_value',
-      'min_turns_per_move','max_turns_per_move','available_for_moves',
+      'min_turns_per_move','max_turns_per_move',
       'up_left_capture','up_capture','up_right_capture','right_capture',
       'down_right_capture','down_capture','down_left_capture','left_capture',
       'up_left_capture_available_for','up_capture_available_for','up_right_capture_available_for','right_capture_available_for',
@@ -2242,21 +2251,30 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'step_by_step_attack_value',
       'capture_actions_per_turn','ranged_capture_actions_per_turn',
       'max_chain_hops',
+      'available_for_captures',
     ];
     // JSON / text columns — compare by canonical JSON (or trimmed string).
+    // Empty arrays and empty objects are treated as null (= "not configured").
     const JSON_COLS = [
       'special_scenario_moves','special_scenario_captures',
       'custom_movement_squares','custom_attack_squares',
-      'promotion_pieces_ids','available_for_captures',
+      'promotion_pieces_ids',
     ];
 
     const normBool = (v) => (v === 1 || v === true || v === 'true' || v === '1') ? 1 : 0;
-    const normInt  = (v) => (v === null || v === undefined || v === '' || v === 'null') ? null : (parseInt(v, 10) || 0);
+    const normInt  = (v) => (v === null || v === undefined || v === '' || v === 'null') ? 0 : (parseInt(v, 10) || 0);
     const normJson = (v) => {
       if (v === null || v === undefined || v === '' || v === 'null') return null;
       if (typeof v === 'string') {
-        try { return JSON.stringify(JSON.parse(v)); } catch { return v.trim() || null; }
+        try {
+          const parsed = JSON.parse(v);
+          if (Array.isArray(parsed) && parsed.length === 0) return null;
+          if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length === 0) return null;
+          return JSON.stringify(parsed);
+        } catch { return v.trim() || null; }
       }
+      if (Array.isArray(v) && v.length === 0) return null;
+      if (v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) return null;
       try { return JSON.stringify(v); } catch { return null; }
     };
 
@@ -2288,7 +2306,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
         p.ratio_movement_style, p.ratio_one_movement, p.ratio_two_movement, p.repeating_ratio, p.max_ratio_iterations,
         p.step_by_step_movement_style, p.step_by_step_movement_value,
         p.can_hop_over_allies, p.can_hop_over_enemies, p.exact_ratio_hop_only, p.directional_hop_disabled,
-        p.min_turns_per_move, p.max_turns_per_move, p.available_for_moves,
+        p.min_turns_per_move, p.max_turns_per_move,
         p.special_scenario_moves,
         p.can_capture_enemy_via_range, p.can_capture_enemy_on_move,
         p.first_move_only_capture, p.available_for_captures,
@@ -2316,7 +2334,9 @@ app.post("/api/pieces/duplicates", async (req, res) => {
         p.custom_movement_squares, p.custom_attack_squares,
         p.must_move_if_able, p.must_move_uses_action,
         p.has_checkmate_rule, p.has_check_rule, p.has_lose_on_capture_rule,
-        p.can_castle, p.can_promote
+        p.can_castle, p.can_promote,
+        p.can_capture_ally_via_range, p.can_capture_ally_on_range, p.can_attack_on_iteration,
+        p.repeating_directional_ranged_attack, p.repeating_ratio_ranged_attack
       FROM chessusnode.pieces p
       LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     `);
