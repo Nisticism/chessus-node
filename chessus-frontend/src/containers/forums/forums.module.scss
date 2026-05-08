@@ -19,6 +19,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap;
     border-bottom: 2px solid var(--panel-card-border);
     
     &:first-child {
@@ -127,7 +128,22 @@
   }
 }
 
-.subject-cell,
+.subject-cell {
+  text-align: left;
+  max-width: 400px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+
+  .forums-link {
+    text-align: left;
+
+    > * {
+      width: 100%;
+      text-align: left;
+    }
+  }
+}
+
 .author-cell {
   text-align: left;
 

@@ -95,6 +95,70 @@
   }
 }
 
+.creator-menu-wrapper {
+  position: relative;
+}
+
+.creator-menu-btn {
+  padding: 10px 18px;
+  background: rgba(120, 80, 200, 0.25);
+  border: 2px solid rgba(160, 100, 255, 0.5);
+  border-radius: 5px;
+  color: var(--text-heading);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+  white-space: nowrap;
+
+  &:hover {
+    background: rgba(120, 80, 200, 0.4);
+    transform: translateY(-1px);
+  }
+}
+
+.creator-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 230px;
+  background: var(--panel-bg-end, #1a1e2e);
+  border: 1px solid rgba(160, 100, 255, 0.4);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.creator-menu-item {
+  display: block;
+  width: 100%;
+  padding: 11px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--light-gray, #ccc);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(160, 100, 255, 0.15);
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
 .game-info {
   h1 {
     font-size: 36px;

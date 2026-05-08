@@ -67,8 +67,7 @@ const About = lazy(() => import("./containers/about/About"));
 const Tutorial = lazy(() => import("./containers/tutorial/Tutorial"));
 const InfoHub = lazy(() => import("./containers/infohub/InfoHub"));
 const Announcements = lazy(() => import("./containers/announcements/Announcements"));
-const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));
-const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));
+const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));const PhysicalBoardRequest = lazy(() => import('./components/physicalboard/PhysicalBoardRequest'));const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));
 
 function App() {
 
@@ -186,6 +185,7 @@ function App() {
             <Route exact path="/create/pieces" element={<PieceList />} />
             <Route exact path="/create/games" element={<GameList />} />
             <Route exact path="/games/:gameId" element={<GameTypeView />} />
+            <Route exact path="/games/:gameId/physical-board" element={<PhysicalBoardRequest />} />
             <Route exact path="/pieces/:pieceId" element={<PieceView />} />
             <Route exact path="/community" element={<CommunityHub />} />
             <Route exact path="/community/players" element={<PlayerList />} />

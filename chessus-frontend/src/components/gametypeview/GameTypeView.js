@@ -441,6 +441,22 @@ const GameTypeView = () => {
   const [requestingAnalysis, setRequestingAnalysis] = useState(false);
   const [analysisRequestSent, setAnalysisRequestSent] = useState(false);
 
+  // "Creator Options" dropdown state
+  const [creatorMenuOpen, setCreatorMenuOpen] = useState(false);
+  const creatorMenuRef = useRef(null);
+
+  // Close creator menu on outside click
+  React.useEffect(() => {
+    if (!creatorMenuOpen) return;
+    const handler = (e) => {
+      if (creatorMenuRef.current && !creatorMenuRef.current.contains(e.target)) {
+        setCreatorMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [creatorMenuOpen]);
+
   // "Train Locally" section state (visible to creator + admins only)
   const [trainerLocalOpen, setTrainerLocalOpen] = useState(false);
   const [trainerPlatform, setTrainerPlatform] = useState('linux');
@@ -2195,265 +2211,283 @@ const GameTypeView = () => {
               📊 AI Analysis
             </button>
           )}
-          {canEdit() && !aiAnalysisAvailable && (
-            <button
-              type="button"
-              onClick={analysisRequestSent ? undefined : handleRequestAnalysis}
-              className={styles["play-button"]}
-              disabled={requestingAnalysis || analysisRequestSent}
-              title={analysisRequestSent
-                ? 'Analysis request sent — the site owner has been notified'
-                : 'Request AI analysis training for this game. Sends a notification to the site owner.'}
-              style={analysisRequestSent ? { opacity: 0.7, cursor: 'default' } : undefined}
-            >
-              {analysisRequestSent ? '✓ Analysis Requested' : requestingAnalysis ? 'Sending…' : '📊 Request AI Analysis'}
-            </button>
-          )}
           {canEdit() && (
-            <>
-              <button 
-                onClick={() => navigate(`/create/game/edit/${gameId}`)} 
-                className={styles["edit-button"]}
+            <div className={styles["creator-menu-wrapper"]} ref={creatorMenuRef}>
+              <button
+                type="button"
+                className={styles["creator-menu-btn"]}
+                onClick={() => setCreatorMenuOpen((v) => !v)}
+                aria-haspopup="true"
+                aria-expanded={creatorMenuOpen}
               >
-                ✏️ Edit Game
+                ⚙ Creator Options {creatorMenuOpen ? '▲' : '▼'}
               </button>
-              <button 
-                onClick={handleDeleteGame} 
-                className={styles["delete-button"]}
-              >
-                🗑️ Delete Game
-              </button>
-            </>
+              {creatorMenuOpen && (
+                <div className={styles["creator-menu-dropdown"]}>
+                  <button
+                    className={styles["creator-menu-item"]}
+                    onClick={() => { setCreatorMenuOpen(false); navigate(`/create/game/edit/${gameId}`); }}
+                  >
+                    ✏️ Edit Game
+                  </button>
+                  <button
+                    className={styles["creator-menu-item"]}
+                    onClick={() => { setCreatorMenuOpen(false); handleDeleteGame(); }}
+                  >
+                    🗑️ Delete Game
+                  </button>
+                  {!aiAnalysisAvailable && (
+                    <button
+                      type="button"
+                      className={styles["creator-menu-item"]}
+                      onClick={analysisRequestSent ? undefined : () => { setCreatorMenuOpen(false); handleRequestAnalysis(); }}
+                      disabled={requestingAnalysis || analysisRequestSent}
+                    >
+                      {analysisRequestSent ? '✓ Analysis Requested' : requestingAnalysis ? 'Sending…' : '📊 Request AI Analysis'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={styles["creator-menu-item"]}
+                    onClick={() => { setCreatorMenuOpen(false); setTrainerLocalOpen((v) => !v); }}
+                  >
+                    🖥️ Train AI Locally
+                  </button>
+                  <button
+                    type="button"
+                    className={styles["creator-menu-item"]}
+                    onClick={() => { setCreatorMenuOpen(false); navigate(`/games/${gameId}/physical-board`); }}
+                  >
+                    🪵 Request Physical Board
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        {/* ---- Train Locally (creator / admin only) ---- */}
-        {canEdit() && (
+      </div>
+
+      {/* ---- Train Locally panel (creator / admin only, toggled from Creator Options menu) ---- */}
+      {canEdit() && trainerLocalOpen && (
+        <div style={{
+          margin: '12px 0 0',
+          border: '1px solid rgba(120,160,255,0.25)',
+          borderRadius: 8,
+          overflow: 'hidden',
+        }}>
           <div style={{
-            margin: '12px 0 0',
-            border: '1px solid rgba(120,160,255,0.25)',
-            borderRadius: 8,
-            overflow: 'hidden',
+            width: '100%',
+            background: 'rgba(40,60,100,0.5)',
+            padding: '10px 16px',
+            color: '#c8d8ff',
+            fontWeight: 600,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
           }}>
+            <span>🖥️ Train AI Locally</span>
             <button
               type="button"
-              onClick={() => setTrainerLocalOpen((v) => !v)}
-              style={{
-                width: '100%',
-                background: 'rgba(40,60,100,0.5)',
-                border: 'none',
-                padding: '10px 16px',
-                textAlign: 'left',
-                color: '#c8d8ff',
-                cursor: 'pointer',
-                fontWeight: 600,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
+              onClick={() => setTrainerLocalOpen(false)}
+              style={{ background: 'none', border: 'none', color: '#9aaace', cursor: 'pointer', fontSize: '0.85em' }}
             >
-              <span>🖥️ Train AI Locally</span>
-              <span style={{ fontSize: '0.8em', fontWeight: 400 }}>
-                {trainerLocalOpen ? `Hide \u25B2` : `Show \u25BC`}
-              </span>
+              Close ✕
             </button>
-
-            {trainerLocalOpen && (
-              <div style={{ padding: '14px 16px', background: 'rgba(20,30,55,0.6)' }}>
-                {/* Warning for non-fixed default starting positions */}
-                {(() => {
-                  let defaultMode = null;
-                  try {
-                    if (game.randomized_starting_positions) {
-                      const parsed = JSON.parse(game.randomized_starting_positions);
-                      defaultMode = game.default_starting_mode || parsed?.defaultMode || null;
-                    } else {
-                      defaultMode = game.default_starting_mode || null;
-                    }
-                  } catch (_) {}
-                  if (defaultMode && defaultMode !== 'none') {
-                    return (
-                      <div style={{
-                        background: 'rgba(200,100,0,0.18)',
-                        border: '1px solid rgba(220,140,30,0.5)',
-                        borderRadius: 6,
-                        padding: '10px 14px',
-                        marginBottom: 12,
-                        fontSize: '0.88em',
-                        color: '#f0c060',
-                        lineHeight: 1.55,
-                      }}>
-                        <strong>Warning:</strong> This game uses a non-fixed default starting position ({defaultMode}).
-                        Book data trained from one random seed may be useless for a different seed, making
-                        self-play training largely ineffective. For meaningful training results, configure the
-                        trainer to use <strong>Fixed Positions</strong> mode only.
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-                <p style={{ margin: '0 0 10px', fontSize: '0.9em', lineHeight: 1.6, color: '#b8c8e8' }}>
-                  Download the <strong>Global AI Trainer</strong> to run training on your own computer.
-                  After setup, run the train script whenever you want — it fetches your game's rules,
-                  plays self-play games until you stop it, and saves the results locally.
-                  Upload when you're done to improve the AI bot for everyone.
-                </p>
-                <p style={{ margin: '0 0 14px', fontSize: '0.85em', color: '#8a9abf' }}>
-                  <strong>Supported platforms:</strong> Windows 10+ (64-bit) and Linux (64-bit).
-                  You will need a <strong>Trainer API Key</strong> from your{' '}
-                  <a href="/profile/edit" style={{ color: '#7ab0ff' }}>Edit Account page</a>{' '}
-                  to use the trainer.
-                </p>
-
-                {/* Download section */}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.9em' }}>
-                    Step 1 — Download the Global Trainer
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-                    <label style={{ fontSize: '0.88em', color: '#9aaace' }}>Platform:</label>
-                    <select
-                      value={trainerPlatform}
-                      onChange={(e) => setTrainerPlatform(e.target.value)}
-                      style={{ background: '#1a2540', border: '1px solid #3a5080', color: '#c8d8ff', borderRadius: 4, padding: '3px 8px' }}
-                    >
-                      <option value="win32" disabled={trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('win32')}>
-                        Windows (64-bit){trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('win32') ? ' — unavailable' : ''}
-                      </option>
-                      <option value="linux" disabled={trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('linux')}>
-                        Linux (64-bit){trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('linux') ? ' — unavailable' : ''}
-                      </option>
-                    </select>
-                    <button
-                      type="button"
-                      className={styles["play-button"]}
-                      onClick={handleTrainerPackDownload}
-                      disabled={trainerDownloading}
-                      style={{ padding: '5px 16px', fontSize: '0.88em' }}
-                    >
-                      {trainerDownloading ? 'Preparing download…' : '⬇ Download Global Trainer'}
-                    </button>
-                  </div>
-                  {trainerDownloadError && (
-                    <div style={{ color: '#ff8080', fontSize: '0.85em', marginTop: 4 }}>
-                      {trainerDownloadError}
-                    </div>
-                  )}
-                  <p style={{ margin: '4px 0 0', fontSize: '0.82em', color: '#7a8aac' }}>
-                    The ZIP contains the trainer binary and setup/train scripts. Run <code>setup.bat</code> (Windows)
-                    or <code>./setup.sh</code> (Linux) once to configure your API key, then run{' '}
-                    <code>train.bat {gameId}</code> / <code>./train.sh {gameId}</code> to start training this game.
-                    The script will prompt you for MCTS settings before it begins.
-                  </p>
-                  {trainerPlatform === 'win32' && (
-                    <p style={{ margin: '6px 0 0', fontSize: '0.82em', color: '#a89060' }}>
-                      <strong>Windows note:</strong> Your browser or Windows SmartScreen may flag the download as
-                      unrecognized. This is expected for unsigned executables — click &quot;Keep&quot; in the browser
-                      and &quot;Run anyway&quot; in SmartScreen to proceed.
-                    </p>
-                  )}
-                </div>
-
-                {/* CPU / MCTS tier guide */}
-                <div style={{ marginBottom: 16, background: 'rgba(10,20,45,0.5)', border: '1px solid rgba(80,120,200,0.2)', borderRadius: 6, padding: '10px 14px' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.85em' }}>MCTS Iterations — CPU tier guide</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em', color: '#9aaace' }}>
-                    <tbody>
-                      {[['50', 'Very light — laptops/background use'], ['200', 'Moderate (default) — any modern desktop'], ['400', 'Heavy — gaming PC / workstation'], ['800+', 'Very heavy — overnight / server']].map(([iter, desc]) => (
-                        <tr key={iter}>
-                          <td style={{ padding: '2px 10px 2px 0', fontFamily: 'monospace', color: '#c8d8ff', whiteSpace: 'nowrap' }}>{iter}</td>
-                          <td style={{ padding: '2px 0' }}>{desc}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <hr style={{ border: 'none', borderTop: '1px solid rgba(120,160,255,0.15)', margin: '12px 0' }} />
-
-                {/* Upload section */}
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.9em' }}>
-                    Step 2 — Upload Your Training Results
-                  </div>
-                  <p style={{ margin: '0 0 8px', fontSize: '0.85em', color: '#8a9abf' }}>
-                    After training, upload the <code>output.stratbook</code> file from the output folder
-                    (the train script shows you where it is). This single file contains your training data
-                    plus statistics like MCTS setting and win/draw breakdown — everything needed for the
-                    site to display accurate analysis. Files must be under 30 MB; you have a 30 MB total
-                    cap per game. Uploads are limited to 5 per day.
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 420 }}>
-                    <div
-                      onDragOver={(e) => { e.preventDefault(); setIsDraggingTrainer(true); }}
-                      onDragEnter={(e) => { e.preventDefault(); setIsDraggingTrainer(true); }}
-                      onDragLeave={() => setIsDraggingTrainer(false)}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        setIsDraggingTrainer(false);
-                        const f = e.dataTransfer.files[0];
-                        if (f) {
-                          if (!f.name.toLowerCase().endsWith('.stratbook')) {
-                            setTrainerUploadError('Please upload a .stratbook file.');
-                            return;
-                          }
-                          setTrainerUploadFile(f); setTrainerUploadResult(null); setTrainerUploadError(null);
-                        }
-                      }}
-                      style={{
-                        border: `2px dashed ${isDraggingTrainer ? '#6ba0ff' : '#3a5080'}`,
-                        borderRadius: 6,
-                        padding: '12px 14px',
-                        background: isDraggingTrainer ? 'rgba(107,160,255,0.08)' : 'transparent',
-                        transition: 'border-color 0.15s, background 0.15s',
-                      }}
-                    >
-                      <label style={{ fontSize: '0.88em', color: '#9aaace', cursor: 'pointer', display: 'block' }}>
-                        {trainerUploadFile
-                          ? <span style={{ color: '#6fcf6f' }}>{trainerUploadFile.name}</span>
-                          : <span>Drop <code>.stratbook</code> file here or click to browse</span>}
-                        <input
-                          type="file"
-                          accept=".stratbook"
-                          style={{ display: 'none' }}
-                          onChange={(e) => {
-                            const f = e.target.files[0] || null;
-                            if (f && !f.name.toLowerCase().endsWith('.stratbook')) {
-                              setTrainerUploadError('Please upload a .stratbook file.');
-                              e.target.value = '';
-                              return;
-                            }
-                            setTrainerUploadFile(f); setTrainerUploadResult(null); setTrainerUploadError(null);
-                          }}
-                        />
-                      </label>
-                    </div>
-                    <button
-                      type="button"
-                      className={styles["play-button"]}
-                      onClick={handleTrainerUpload}
-                      disabled={trainerUploading || !trainerUploadFile}
-                      style={{ padding: '6px 18px', fontSize: '0.88em', alignSelf: 'flex-start' }}
-                    >
-                      {trainerUploading ? 'Uploading…' : '⬆ Submit Training Results'}
-                    </button>
-                  </div>
-                  {trainerUploadResult && (
-                    <div style={{ color: '#6fcf6f', fontSize: '0.88em', marginTop: 8 }}>
-                      {trainerUploadResult}
-                    </div>
-                  )}
-                  {trainerUploadError && (
-                    <div style={{ color: '#ff8080', fontSize: '0.88em', marginTop: 8 }}>
-                      {trainerUploadError}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
-        )}
-      </div>
+          <div style={{ padding: '14px 16px', background: 'rgba(20,30,55,0.6)' }}>
+            {/* Warning for non-fixed default starting positions */}
+            {(() => {
+              let defaultMode = null;
+              try {
+                if (game.randomized_starting_positions) {
+                  const parsed = JSON.parse(game.randomized_starting_positions);
+                  defaultMode = game.default_starting_mode || parsed?.defaultMode || null;
+                } else {
+                  defaultMode = game.default_starting_mode || null;
+                }
+              } catch (_) {}
+              if (defaultMode && defaultMode !== 'none') {
+                return (
+                  <div style={{
+                    background: 'rgba(200,100,0,0.18)',
+                    border: '1px solid rgba(220,140,30,0.5)',
+                    borderRadius: 6,
+                    padding: '10px 14px',
+                    marginBottom: 12,
+                    fontSize: '0.88em',
+                    color: '#f0c060',
+                    lineHeight: 1.55,
+                  }}>
+                    <strong>Warning:</strong> This game uses a non-fixed default starting position ({defaultMode}).
+                    Book data trained from one random seed may be useless for a different seed, making
+                    self-play training largely ineffective. For meaningful training results, configure the
+                    trainer to use <strong>Fixed Positions</strong> mode only.
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            <p style={{ margin: '0 0 10px', fontSize: '0.9em', lineHeight: 1.6, color: '#b8c8e8' }}>
+              Download the <strong>Global AI Trainer</strong> to run training on your own computer.
+              After setup, run the train script whenever you want — it fetches your game's rules,
+              plays self-play games until you stop it, and saves the results locally.
+              Upload when you're done to improve the AI bot for everyone.
+            </p>
+            <p style={{ margin: '0 0 14px', fontSize: '0.85em', color: '#8a9abf' }}>
+              <strong>Supported platforms:</strong> Windows 10+ (64-bit) and Linux (64-bit).
+              You will need a <strong>Trainer API Key</strong> from your{' '}
+              <a href="/profile/edit" style={{ color: '#7ab0ff' }}>Edit Account page</a>{' '}
+              to use the trainer.
+            </p>
+
+            {/* Download section */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.9em' }}>
+                Step 1 — Download the Global Trainer
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                <label style={{ fontSize: '0.88em', color: '#9aaace' }}>Platform:</label>
+                <select
+                  value={trainerPlatform}
+                  onChange={(e) => setTrainerPlatform(e.target.value)}
+                  style={{ background: '#1a2540', border: '1px solid #3a5080', color: '#c8d8ff', borderRadius: 4, padding: '3px 8px' }}
+                >
+                  <option value="win32" disabled={trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('win32')}>
+                    Windows (64-bit){trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('win32') ? ' — unavailable' : ''}
+                  </option>
+                  <option value="linux" disabled={trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('linux')}>
+                    Linux (64-bit){trainerAvailablePlatforms !== null && !trainerAvailablePlatforms.includes('linux') ? ' — unavailable' : ''}
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  className={styles["play-button"]}
+                  onClick={handleTrainerPackDownload}
+                  disabled={trainerDownloading}
+                  style={{ padding: '5px 16px', fontSize: '0.88em' }}
+                >
+                  {trainerDownloading ? 'Preparing download…' : '⬇ Download Global Trainer'}
+                </button>
+              </div>
+              {trainerDownloadError && (
+                <div style={{ color: '#ff8080', fontSize: '0.85em', marginTop: 4 }}>
+                  {trainerDownloadError}
+                </div>
+              )}
+              <p style={{ margin: '4px 0 0', fontSize: '0.82em', color: '#7a8aac' }}>
+                The ZIP contains the trainer binary and setup/train scripts. Run <code>setup.bat</code> (Windows)
+                or <code>./setup.sh</code> (Linux) once to configure your API key, then run{' '}
+                <code>train.bat {gameId}</code> / <code>./train.sh {gameId}</code> to start training this game.
+                The script will prompt you for MCTS settings before it begins.
+              </p>
+              {trainerPlatform === 'win32' && (
+                <p style={{ margin: '6px 0 0', fontSize: '0.82em', color: '#a89060' }}>
+                  <strong>Windows note:</strong> Your browser or Windows SmartScreen may flag the download as
+                  unrecognized. This is expected for unsigned executables — click &quot;Keep&quot; in the browser
+                  and &quot;Run anyway&quot; in SmartScreen to proceed.
+                </p>
+              )}
+            </div>
+
+            {/* CPU / MCTS tier guide */}
+            <div style={{ marginBottom: 16, background: 'rgba(10,20,45,0.5)', border: '1px solid rgba(80,120,200,0.2)', borderRadius: 6, padding: '10px 14px' }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.85em' }}>MCTS Iterations — CPU tier guide</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em', color: '#9aaace' }}>
+                <tbody>
+                  {[['50', 'Very light — laptops/background use'], ['200', 'Moderate (default) — any modern desktop'], ['400', 'Heavy — gaming PC / workstation'], ['800+', 'Very heavy — overnight / server']].map(([iter, desc]) => (
+                    <tr key={iter}>
+                      <td style={{ padding: '2px 10px 2px 0', fontFamily: 'monospace', color: '#c8d8ff', whiteSpace: 'nowrap' }}>{iter}</td>
+                      <td style={{ padding: '2px 0' }}>{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid rgba(120,160,255,0.15)', margin: '12px 0' }} />
+
+            {/* Upload section */}
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.9em' }}>
+                Step 2 — Upload Your Training Results
+              </div>
+              <p style={{ margin: '0 0 8px', fontSize: '0.85em', color: '#8a9abf' }}>
+                After training, upload the <code>output.stratbook</code> file from the output folder
+                (the train script shows you where it is). This single file contains your training data
+                plus statistics like MCTS setting and win/draw breakdown — everything needed for the
+                site to display accurate analysis. Files must be under 30 MB; you have a 30 MB total
+                cap per game. Uploads are limited to 5 per day.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 420 }}>
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDraggingTrainer(true); }}
+                  onDragEnter={(e) => { e.preventDefault(); setIsDraggingTrainer(true); }}
+                  onDragLeave={() => setIsDraggingTrainer(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDraggingTrainer(false);
+                    const f = e.dataTransfer.files[0];
+                    if (f) {
+                      if (!f.name.toLowerCase().endsWith('.stratbook')) {
+                        setTrainerUploadError('Please upload a .stratbook file.');
+                        return;
+                      }
+                      setTrainerUploadFile(f); setTrainerUploadResult(null); setTrainerUploadError(null);
+                    }
+                  }}
+                  style={{
+                    border: `2px dashed ${isDraggingTrainer ? '#6ba0ff' : '#3a5080'}`,
+                    borderRadius: 6,
+                    padding: '12px 14px',
+                    background: isDraggingTrainer ? 'rgba(107,160,255,0.08)' : 'transparent',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                >
+                  <label style={{ fontSize: '0.88em', color: '#9aaace', cursor: 'pointer', display: 'block' }}>
+                    {trainerUploadFile
+                      ? <span style={{ color: '#6fcf6f' }}>{trainerUploadFile.name}</span>
+                      : <span>Drop <code>.stratbook</code> file here or click to browse</span>}
+                    <input
+                      type="file"
+                      accept=".stratbook"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const f = e.target.files[0] || null;
+                        if (f && !f.name.toLowerCase().endsWith('.stratbook')) {
+                          setTrainerUploadError('Please upload a .stratbook file.');
+                          e.target.value = '';
+                          return;
+                        }
+                        setTrainerUploadFile(f); setTrainerUploadResult(null); setTrainerUploadError(null);
+                      }}
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  className={styles["play-button"]}
+                  onClick={handleTrainerUpload}
+                  disabled={trainerUploading || !trainerUploadFile}
+                  style={{ padding: '6px 18px', fontSize: '0.88em', alignSelf: 'flex-start' }}
+                >
+                  {trainerUploading ? 'Uploading…' : '⬆ Submit Training Results'}
+                </button>
+              </div>
+              {trainerUploadResult && (
+                <div style={{ color: '#6fcf6f', fontSize: '0.88em', marginTop: 8 }}>
+                  {trainerUploadResult}
+                </div>
+              )}
+              {trainerUploadError && (
+                <div style={{ color: '#ff8080', fontSize: '0.88em', marginTop: 8 }}>
+                  {trainerUploadError}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className={styles["game-info"]}>
         <h1>{game.game_name}</h1>

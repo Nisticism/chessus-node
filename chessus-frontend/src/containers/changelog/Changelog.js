@@ -26,6 +26,13 @@ const changelogData = [
       "Chat is no longer available in games against the computer.",
       "Fixed: the AI bot now correctly performs additional capture actions when it has pieces with multiple captures per turn.",
       "Game names on match cards are now clamped to 3 lines with an ellipsis instead of overflowing.",
+      "Creator Options menu added to the game detail page — Edit, Delete, Request AI Analysis, and Train AI Locally are now grouped under a single ⚙ menu (visible to creators and admins only).",
+      "New page: Request a Physical Board — browse board photos, specify dimensions and wood preferences, and submit a request for a custom handcrafted board.",
+      "Forum table column headers (Written By, Replies, Likes, Category, etc.) no longer wrap to multiple lines.",
+      "Forum thread subject columns now cap at 400 px and wrap long text correctly, including single long words.",
+      "Long or unbreakable words in any text across the site now wrap to fit their container instead of overflowing.",
+      "Fixed: new-user sign-up notifications sent to admins via Google or Lichess now link to the correct profile even if the user later changes their username.",
+      "Fixed: the 'Can Control Squares' toggle in the game wizard Step 4 now also appears for pieces placed on custom squares that are configured as control squares.",
     ],
   },
   {

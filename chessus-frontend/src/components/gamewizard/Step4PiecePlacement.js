@@ -143,17 +143,29 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     return true;
   }, [piecePlacements, gameData.board_height, gameData.player_count]);
   
-  // Check if any control square requires specific pieces
+  // Check if any control square (direct or custom-acting-as-control) requires specific pieces
   const requireSpecificPieceControl = useMemo(() => {
     try {
-      if (!gameData.control_squares_string) return false;
-      const controlSquares = JSON.parse(gameData.control_squares_string);
-      return Object.values(controlSquares).some(config => config.requireSpecificPiece === true);
+      if (gameData.control_squares_string) {
+        const controlSquares = JSON.parse(gameData.control_squares_string);
+        if (Object.values(controlSquares).some(config => config.requireSpecificPiece === true)) return true;
+      }
     } catch (error) {
       console.error("Error parsing control_squares_string:", error);
-      return false;
     }
-  }, [gameData.control_squares_string]);
+    try {
+      if (gameData.special_squares_string) {
+        const customSquares = JSON.parse(gameData.special_squares_string);
+        if (Object.values(customSquares).some(config =>
+          config.asControl === true &&
+          config.controlConfig?.requireSpecificPiece === true
+        )) return true;
+      }
+    } catch (error) {
+      console.error("Error parsing special_squares_string:", error);
+    }
+    return false;
+  }, [gameData.control_squares_string, gameData.special_squares_string]);
 
   // Parse special squares from Step 3 for display
   const specialSquaresData = useMemo(() => {

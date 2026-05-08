@@ -1,1 +1,2 @@
 trainer-binaries/win32/ai-engine.exe filter=lfs diff=lfs merge=lfs -text
+trainer-binaries/linux/ai-engine filter=lfs diff=lfs merge=lfs -text

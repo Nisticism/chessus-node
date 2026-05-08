@@ -5146,7 +5146,8 @@ app.post("/api/auth/google", async (req, res) => {
                 type: 'system',
                 title: `New user registered: ${username}`,
                 content: `A new user "${username}" has joined via Google sign-in.`,
-                action_url: `/profile/${username}`
+                // Use ID-based URL so the link survives username changes.
+                action_url: `/profile/id/${user.id}`
               });
               const gameSocket = require("./game-socket");
               const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
@@ -5342,7 +5343,8 @@ app.post("/api/auth/lichess", async (req, res) => {
                 type: 'system',
                 title: `New user registered: ${username}`,
                 content: `A new user "${username}" has joined via Lichess sign-in.`,
-                action_url: `/profile/${username}`
+                // Use ID-based URL so the link survives username changes.
+                action_url: `/profile/id/${user.id}`
               });
               const gameSocket = require("./game-socket");
               const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
