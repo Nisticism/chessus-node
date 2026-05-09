@@ -2950,7 +2950,15 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.is_neutral || false,
               piece.die_on_capture_grants_win || false,
               piece.disable_promotion || false
-            ); (was draft, now not), create forum and notify owner
+            );
+          }
+        }
+      } catch (parseError) {
+        console.error('Error parsing pieces_string:', parseError);
+      }
+    }
+
+    // (was draft, now not), create forum and notify owner
     if (existingGame.is_draft && !isDraft) {
       try {
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
