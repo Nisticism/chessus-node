@@ -4893,6 +4893,12 @@ function initializeSocket(server) {
           }
         }
 
+        // Snapshot game state before the move so promotion cancel can fully revert it
+        const piecesBeforeMove = JSON.parse(JSON.stringify(gameState.pieces));
+        const moveHistoryLengthBeforeMove = gameState.moveHistory.length;
+        const captureScoresBeforeMove = JSON.parse(JSON.stringify(gameState.captureScores || {}));
+        const movesWithoutCaptureBeforeMove = gameState.movesWithoutCapture || 0;
+
         // Validate move (basic validation - full validation handled by game rules)
         const moveResult = await validateAndApplyMove(gameState, move);
         
@@ -5022,6 +5028,10 @@ function initializeSocket(server) {
             capturedPiece: moveResult.captured,
             allCapturedPieces: moveResult.allCaptured,
             hoppedCaptures: moveResult.hoppedCaptures,
+            piecesBeforeMove,
+            moveHistoryLengthBeforeMove,
+            captureScoresBeforeMove,
+            movesWithoutCaptureBeforeMove,
           };
 
           // Auto-promote if only 1 option (skip the modal)
@@ -7347,6 +7357,58 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error processing promotion:", error);
         socket.emit("error", { message: "Failed to promote piece" });
+      }
+    });
+
+    // Cancel a pending promotion — reverts the move that triggered it so the player can move again
+    socket.on("cancelPromotion", async (data) => {
+      try {
+        const { gameId, userId } = data;
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return;
+        if (!gameState.pendingPromotion) return;
+        if (gameState.pendingPromotion.userId !== userId) return;
+        // Cannot cancel premove-triggered promotions (the opponent already moved)
+        if (gameState.pendingPromotion.isPremove) return;
+
+        const {
+          piecesBeforeMove,
+          moveHistoryLengthBeforeMove,
+          captureScoresBeforeMove,
+          movesWithoutCaptureBeforeMove,
+        } = gameState.pendingPromotion;
+
+        // Restore game state to before the move
+        if (piecesBeforeMove) {
+          gameState.pieces = JSON.parse(JSON.stringify(piecesBeforeMove));
+        }
+        if (typeof moveHistoryLengthBeforeMove === 'number') {
+          gameState.moveHistory = gameState.moveHistory.slice(0, moveHistoryLengthBeforeMove);
+        }
+        if (captureScoresBeforeMove) {
+          gameState.captureScores = captureScoresBeforeMove;
+        }
+        if (typeof movesWithoutCaptureBeforeMove === 'number') {
+          gameState.movesWithoutCapture = movesWithoutCaptureBeforeMove;
+        }
+        gameState.pendingPromotion = null;
+
+        await db_pool.query(
+          "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+          [JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+        );
+
+        socket.emit("promotionCancelled", {
+          gameId,
+          gameState: {
+            pieces: gameState.pieces,
+            currentTurn: gameState.currentTurn,
+            moveHistory: gameState.moveHistory,
+          }
+        });
+      } catch (err) {
+        console.error("Error cancelling promotion:", err);
       }
     });
 

@@ -11,7 +11,7 @@ const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
  * @param {Function} props.onSelect - Callback when a piece is selected
  * @param {Function} props.onCancel - Callback when promotion is cancelled
  */
-const PromotionModal = ({ promotionOptions, promotingPiece, onSelect, onCancel }) => {
+const PromotionModal = ({ promotionOptions, promotingPiece, onSelect, onCancel, onMinimize }) => {
   // Helper to get image URL
   const getImageUrl = (piece) => {
     // Check if image is an array (from image_location)
@@ -49,21 +49,23 @@ const PromotionModal = ({ promotionOptions, promotingPiece, onSelect, onCancel }
   // Check if there are no valid promotion options
   if (!promotionOptions || promotionOptions.length === 0) {
     return (
-      <div className={styles["promotion-modal-overlay"]} onClick={onCancel}>
+      <div className={styles["promotion-modal-overlay"]}>
         <div className={styles["promotion-modal"]} onClick={(e) => e.stopPropagation()}>
           <h3>No Promotion Available</h3>
           <p>Your {promotingPiece?.piece_name || 'piece'} reached a promotion square, but there are no valid pieces to promote to.</p>
           <p className={styles["no-promotion-message"]}>All other piece types either match the promoting piece or have checkmate rules.</p>
-          <button className={styles["cancel-button"]} onClick={onCancel}>
-            Continue Without Promotion
-          </button>
+          <div className={styles["promotion-modal-actions"]}>
+            <button className={styles["cancel-button"]} onClick={onCancel}>
+              Cancel Move
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={styles["promotion-modal-overlay"]} onClick={onCancel}>
+    <div className={styles["promotion-modal-overlay"]}>
       <div className={styles["promotion-modal"]} onClick={(e) => e.stopPropagation()}>
         <h3>Choose Promotion</h3>
         <p>Select a piece to promote your {promotingPiece?.piece_name || 'piece'} to:</p>
@@ -93,9 +95,16 @@ const PromotionModal = ({ promotionOptions, promotingPiece, onSelect, onCancel }
           })}
         </div>
         
-        <button className={styles["cancel-button"]} onClick={onCancel}>
-          Cancel
-        </button>
+        <div className={styles["promotion-modal-actions"]}>
+          <button className={styles["cancel-button"]} onClick={onCancel}>
+            Cancel Move
+          </button>
+          {onMinimize && (
+            <button className={styles["minimize-button"]} onClick={onMinimize}>
+              Hide
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

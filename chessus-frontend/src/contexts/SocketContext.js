@@ -730,6 +730,15 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, getAnonPlayerId]);
 
+  // Cancel a pending promotion and revert the move
+  const cancelPromotion = useCallback((gameId) => {
+    if (!socket || !connected) return;
+    socket.emit('cancelPromotion', {
+      gameId,
+      userId: getAnonPlayerId(gameId)
+    });
+  }, [socket, connected, getAnonPlayerId]);
+
   // Promote a piece
   const promotePiece = useCallback((gameId, pieceId, promoteToPieceId) => {
     if (!socket || !connected) {
@@ -798,6 +807,7 @@ export const SocketProvider = ({ children }) => {
     spectateGame,
     setPremove,
     clearPremove,
+    cancelPromotion,
     promotePiece,
     skipCaptureAction,
     skipRangedCaptureAction,

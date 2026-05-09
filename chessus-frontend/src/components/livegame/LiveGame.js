@@ -167,6 +167,7 @@ const LiveGame = () => {
     cancelGame,
     setPremove: sendPremove,
     clearPremove: sendClearPremove,
+    cancelPromotion,
     promotePiece,
     skipCaptureAction,
     skipRangedCaptureAction,
@@ -236,6 +237,7 @@ const LiveGame = () => {
   const [premove, setPremove] = useState(null); // Store premove {from, to, pieceId}
   const [showPromotionModal, setShowPromotionModal] = useState(false);
   const [promotionData, setPromotionData] = useState(null); // {pieceId, options, promotingPiece}
+  const [promotionMinimized, setPromotionMinimized] = useState(false);
   // True when the active promotion modal belongs to a simul-turns submission
   // (so handlePromotionSelect routes to simulPromotionChoice instead of the
   // regular promotePiece handler).
@@ -1235,6 +1237,20 @@ const LiveGame = () => {
       }
     });
 
+    // Promotion cancelled — server reverted the move, let player move again
+    const unsubscribePromotionCancelled = onGameEvent("promotionCancelled", ({ gameId: cgid, gameState: restoredState }) => {
+      if (parseInt(cgid) !== parseInt(gameId)) return;
+      setGameState(prev => ({
+        ...prev,
+        pieces: restoredState.pieces,
+        currentTurn: restoredState.currentTurn,
+        moveHistory: restoredState.moveHistory,
+      }));
+      setShowPromotionModal(false);
+      setPromotionData(null);
+      setPromotionMinimized(false);
+    });
+
     // Simul-turns: server is asking us to pick a promotion target before
     // our buffered submission resolves. Same modal, just routed differently
     // on Select.
@@ -1513,6 +1529,7 @@ const LiveGame = () => {
       unsubscribePremoveCleared();
       unsubscribePromotionRequired();
       unsubscribePromotionSkipped();
+      unsubscribePromotionCancelled();
       unsubscribeSimulPromotionRequired();
       unsubscribePromotionAutoChosen();
       unsubscribeSimulFreeMove();
@@ -4215,10 +4232,18 @@ const LiveGame = () => {
     // Don't close modal yet - wait for piecePromoted event
   }, [gameId, promotePiece, promotionData, promotionIsSimul, simulPromotionChoice]);
 
-  // Handle promotion cancel (should not normally happen, but handle gracefully)
+  // Handle promotion cancel — reverts the move on the server so the player can choose again
   const handlePromotionCancel = useCallback(() => {
-    // Can't really cancel - just ignore
-    // The modal will stay until a selection is made
+    cancelPromotion(parseInt(gameId));
+    // Modal closes when the server responds with promotionCancelled
+  }, [gameId, cancelPromotion]);
+
+  const handlePromotionMinimize = useCallback(() => {
+    setPromotionMinimized(true);
+  }, []);
+
+  const handlePromotionRestore = useCallback(() => {
+    setPromotionMinimized(false);
   }, []);
 
   // Helper to get special square type at a position.
@@ -6541,13 +6566,22 @@ const LiveGame = () => {
       )}
 
       {/* Promotion Modal */}
-      {showPromotionModal && promotionData && (
+      {showPromotionModal && promotionData && !promotionMinimized && (
         <PromotionModal
           promotionOptions={promotionData.options}
           promotingPiece={promotionData.promotingPiece}
           onSelect={handlePromotionSelect}
           onCancel={handlePromotionCancel}
+          onMinimize={handlePromotionMinimize}
         />
+      )}
+      {showPromotionModal && promotionData && promotionMinimized && (
+        <button
+          className={styles["promotion-restore-btn"]}
+          onClick={handlePromotionRestore}
+        >
+          Choose Promotion ▲
+        </button>
       )}
 
       {/* Piece Placement Modal */}
