@@ -428,7 +428,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       setPromotionSquares(prev => {
         const newSquares = { ...prev };
         keysToUpdate.forEach(key => {
-          newSquares[key] = { type: 'promotion' };
+          newSquares[key] = {
+            type: 'promotion',
+            appliesToPlayer: options.promotionConfig?.appliesToPlayer || 'both',
+          };
         });
         return newSquares;
       });
@@ -627,7 +630,20 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
                 }}
               >
                 {squareType === 'range' && 'R'}
-                {squareType === 'promotion' && 'P'}
+                {squareType === 'promotion' && (() => {
+                  const cfg = promotionSquares[key];
+                  const r = cfg?.appliesToPlayer || 'all';
+                  let sub;
+                  if (r === 'neutral') sub = 'N';
+                  else if (r === 'all' || r === 'both') sub = 'A';
+                  else { const m = String(r).match(/^p(\d+)$/); sub = m ? `p${m[1]}` : 'A'; }
+                  return (
+                    <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1, gap: '1px' }}>
+                      <span>P</span>
+                      <span style={{ fontSize: `${squareSize * 0.2}px`, fontWeight: 'normal', lineHeight: 1 }}>{sub}</span>
+                    </span>
+                  );
+                })()}
                 {squareType === 'control' && 'C'}
                 {squareType === 'custom' && (() => {
                   const cfg = customSquares[key] || {};
@@ -865,11 +881,13 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
               if (t === 'custom') return customSquares[selectedSquare?.key];
               if (t === 'control') return controlSquares[selectedSquare?.key];
               if (t === 'range') return rangeSquares[selectedSquare?.key];
+              if (t === 'promotion') return promotionSquares[selectedSquare?.key];
               return null;
             })()
           }
           squarePosition={selectedSquare}
           boardWidth={gameData.board_width}
+          playerCount={gameData.player_count || 2}
           squaresConditionEnabled={gameData.squares_condition === true}
           pointsWinConditionEnabled={gameData.points_to_win != null}
         />

@@ -1176,13 +1176,36 @@ function simulMoveLandsOnPromotionSquare(gameType, piece, destX, destY) {
         : gameType.special_squares_string;
       if (cs && typeof cs === 'object') {
         for (const [k, cfg] of Object.entries(cs)) {
-          if (cfg && cfg.asPromotion && !promoSquares[k]) promoSquares[k] = true;
+          if (cfg && cfg.asPromotion && !promoSquares[k]) {
+            promoSquares[k] = { appliesToPlayer: cfg.promotionAppliesToPlayer || 'all' };
+          }
         }
       }
     }
   } catch (_) {}
   const key = `${destY},${destX}`;
   if (!promoSquares[key]) return false;
+  // Check player restriction on this promotion square
+  const squareCfg = promoSquares[key];
+  if (squareCfg && typeof squareCfg === 'object') {
+    const restriction = squareCfg.appliesToPlayer;
+    // 'all', 'both', null/undefined → no restriction
+    if (restriction && restriction !== 'all' && restriction !== 'both') {
+      const pieceOwner = piece.player_id || piece.team;
+      const isNeutralPiece = piece.is_neutral || pieceOwner === 0;
+      if (restriction === 'neutral') {
+        if (!isNeutralPiece) return false;
+      } else {
+        // Expect 'p1', 'p2', 'p3', … — extract the player number
+        // Neutral pieces cannot use player-specific promotion squares
+        const match = String(restriction).match(/^p(\d+)$/);
+        if (match) {
+          if (isNeutralPiece) return false;
+          if (pieceOwner !== parseInt(match[1], 10)) return false;
+        }
+      }
+    }
+  }
   // Exclude the piece's starting square — promotion squares only fire if the
   // piece reaches a NEW promotion square.
   const initialKey = `${piece.initial_y},${piece.initial_x}`;
@@ -11000,7 +11023,11 @@ async function checkPromotionEligibility(piece, targetSquare, gameState) {
       if (customSquares && typeof customSquares === 'object') {
         for (const [key, cfg] of Object.entries(customSquares)) {
           if (cfg && cfg.asPromotion && !promotionSquares[key]) {
-            promotionSquares[key] = { type: 'promotion', fromCustom: true };
+            promotionSquares[key] = {
+              type: 'promotion',
+              fromCustom: true,
+              appliesToPlayer: cfg.promotionAppliesToPlayer || 'all',
+            };
           }
         }
       }
@@ -11012,7 +11039,29 @@ async function checkPromotionEligibility(piece, targetSquare, gameState) {
   // Check if target square is a promotion square
   const squareKey = `${targetSquare.y},${targetSquare.x}`;
   if (!promotionSquares[squareKey]) return null;
-  
+
+  // Check player restriction on this promotion square
+  const squareCfg = promotionSquares[squareKey];
+  if (squareCfg && typeof squareCfg === 'object') {
+    const restriction = squareCfg.appliesToPlayer;
+    // 'all', 'both', null/undefined → no restriction
+    if (restriction && restriction !== 'all' && restriction !== 'both') {
+      const pieceOwner = piece.player_id || piece.team;
+      const isNeutralPiece = piece.is_neutral || pieceOwner === 0;
+      if (restriction === 'neutral') {
+        if (!isNeutralPiece) return null;
+      } else {
+        // Expect 'p1', 'p2', 'p3', … — extract the player number
+        // Neutral pieces cannot use player-specific promotion squares
+        const match = String(restriction).match(/^p(\d+)$/);
+        if (match) {
+          if (isNeutralPiece) return null;
+          if (pieceOwner !== parseInt(match[1], 10)) return null;
+        }
+      }
+    }
+  }
+
   // Check if the piece started on this promotion square
   const initialKey = `${piece.initial_y},${piece.initial_x}`;
   if (initialKey === squareKey) return null; // Can't promote on starting square
@@ -11156,11 +11205,25 @@ async function getPromotionOptions(gameState, promotingPiece) {
   }
 
   // Default logic: unique piece types the player started with.
+  // For neutral pieces (player_id = 0 / is_neutral), use the union of ALL
+  // non-neutral players' starting piece types so they can promote to anything
+  // any player started with.
   const sourcePieces = gameState.initialPieces || pieces;
-  const playerPieces = sourcePieces.filter(p => {
-    const owner = p.player_id || p.team;
-    return owner === pieceOwner;
-  });
+  const isNeutralPromoter = promotingPiece.is_neutral || pieceOwner === 0;
+
+  let playerPieces;
+  if (isNeutralPromoter) {
+    // Gather from every non-neutral starting piece
+    playerPieces = sourcePieces.filter(p => {
+      const owner = p.player_id != null ? p.player_id : (p.team ?? 0);
+      return owner > 0 && !p.is_neutral;
+    });
+  } else {
+    playerPieces = sourcePieces.filter(p => {
+      const owner = p.player_id || p.team;
+      return owner === pieceOwner;
+    });
+  }
 
   const pieceTypeMap = new Map();
   for (const p of playerPieces) {
@@ -11183,10 +11246,10 @@ async function getPromotionOptions(gameState, promotingPiece) {
   const allowCapture = !!promotingPiece.can_promote_to_capture;
   const limitCapture = !!promotingPiece.limit_promote_capture_to_original;
 
-  // For "limit to original" enforcement, count current owner's living pieces of each type
-  // versus the original count from gameState.initialPieces.
-  const countByPieceId = (collection, pid) =>
-    collection.filter(p => parseInt(p.piece_id) === parseInt(pid) && (p.player_id || p.team) === pieceOwner).length;
+  // For "limit to original" enforcement, count living pieces of each type per owner.
+  // Neutral promoters skip limit enforcement since they have no single owner to count against.
+  const countByPieceId = (collection, pid, ownerId) =>
+    collection.filter(p => parseInt(p.piece_id) === parseInt(pid) && (p.player_id || p.team) === ownerId).length;
 
   const eligiblePieces = [];
   for (const [, pieceData] of pieceTypeMap) {
@@ -11194,18 +11257,18 @@ async function getPromotionOptions(gameState, promotingPiece) {
 
     if (pieceData.hasCheckmateRule) {
       if (!allowCheckmate) continue;
-      if (limitCheckmate) {
-        const original = countByPieceId(sourcePieces, pieceData.piece_id);
-        const current = countByPieceId(pieces, pieceData.piece_id);
+      if (limitCheckmate && !isNeutralPromoter) {
+        const original = countByPieceId(sourcePieces, pieceData.piece_id, pieceOwner);
+        const current = countByPieceId(pieces, pieceData.piece_id, pieceOwner);
         if (current >= original) continue;
       }
     }
 
     if (pieceData.hasCaptureRule) {
       if (!allowCapture) continue;
-      if (limitCapture) {
-        const original = countByPieceId(sourcePieces, pieceData.piece_id);
-        const current = countByPieceId(pieces, pieceData.piece_id);
+      if (limitCapture && !isNeutralPromoter) {
+        const original = countByPieceId(sourcePieces, pieceData.piece_id, pieceOwner);
+        const current = countByPieceId(pieces, pieceData.piece_id, pieceOwner);
         if (current >= original) continue;
       }
     }

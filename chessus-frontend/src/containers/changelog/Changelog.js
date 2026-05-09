@@ -17,6 +17,8 @@ const changelogData = [
       "All text on the site is now selectable and copy-pasteable by default.",
       "Fixed: sorting and filtering on the Forums hub page now applies across all forums, not just the ones currently visible. The hub now queries the server with the active sort/filter instead of sorting a limited local cache.",
       "Draw offers in live games: pending offers are now visible after reconnecting or rejoining a game. The player who sent an offer can also cancel it at any time before the opponent responds.",
+      "Promotion squares on the wizard board and the game detail board (Show Details mode) now display a small sub-label under the P: A for All Players, N for Neutral only, p1/p2 for a specific player.",
+      "Neutral pieces can now promote on squares that are restricted to neutral or all players. Neutral pieces also get the full union of all players' starting piece types as promotion options — so a neutral pawn can promote to a rook, queen, etc. just like any other player's piece.",
     ],
   },
   {

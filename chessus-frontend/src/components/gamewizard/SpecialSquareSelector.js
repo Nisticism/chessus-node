@@ -13,6 +13,7 @@ const SpecialSquareSelector = ({
   currentConfig,
   squarePosition,
   boardWidth = 8,  // For fill row functionality
+  playerCount = 2,  // Number of players (for dynamic player buttons)
   squaresConditionEnabled = false,
   pointsWinConditionEnabled = false
 }) => {
@@ -27,12 +28,18 @@ const SpecialSquareSelector = ({
     appliesToPlayer: 'both' // 'p1', 'p2', or 'both'
   });
 
+  // Promotion square player-restriction config (applies to both plain
+  // promotion squares and custom squares acting as promotion squares).
+  // Values: 'all' (all players), 'neutral' (neutral pieces only), 'p1', 'p2', etc.
+  const [promotionConfig, setPromotionConfig] = useState({ appliesToPlayer: 'all' });
+
   // Custom square combination state — a custom square may simultaneously
   // act as any combination of range / promotion / control squares.
   const [customCombo, setCustomCombo] = useState({
     asRange: false,
     rangeBonus: 1,
     asPromotion: false,
+    promotionAppliesToPlayer: 'all',
     asControl: false,
     asRestrictionZone: false,
     restrictFirstMoveToCustom: false,
@@ -50,6 +57,15 @@ const SpecialSquareSelector = ({
   useEffect(() => {
     if (currentType === 'range' && currentConfig) {
       setRangeBonus(Math.min(8, Math.max(1, currentConfig.rangeBonus || 1)));
+    }
+  }, [currentType, currentConfig]);
+
+  // Initialize promotion config when editing an existing promotion square
+  useEffect(() => {
+    if (currentType === 'promotion' && currentConfig) {
+      // Normalize legacy 'both' value to 'all'
+      const raw = currentConfig.appliesToPlayer || 'all';
+      setPromotionConfig({ appliesToPlayer: raw === 'both' ? 'all' : raw });
     }
   }, [currentType, currentConfig]);
 
@@ -72,6 +88,7 @@ const SpecialSquareSelector = ({
         asRange: !!currentConfig.asRange,
         rangeBonus: Math.min(8, Math.max(1, currentConfig.rangeBonus || 1)),
         asPromotion: !!currentConfig.asPromotion,
+        promotionAppliesToPlayer: (() => { const raw = currentConfig.promotionAppliesToPlayer || 'all'; return raw === 'both' ? 'all' : raw; })(),
         asControl: !!currentConfig.asControl,
         asRestrictionZone: !!currentConfig.asRestrictionZone,
         restrictFirstMoveToCustom: !!currentConfig.restrictFirstMoveToCustom,
@@ -120,12 +137,18 @@ const SpecialSquareSelector = ({
       options.rangeBonus = Math.min(8, Math.max(1, rangeBonus || 1));
     }
 
+    // Include promotion config for plain promotion squares
+    if (selectedType === 'promotion') {
+      options.promotionConfig = { appliesToPlayer: promotionConfig.appliesToPlayer || 'all' };
+    }
+
     // Include combination config if selecting custom square
     if (selectedType === 'custom') {
       options.customConfig = {
         asRange: !!customCombo.asRange,
         rangeBonus: customCombo.asRange ? Math.min(8, Math.max(1, customCombo.rangeBonus || 1)) : 1,
         asPromotion: !!customCombo.asPromotion,
+        promotionAppliesToPlayer: customCombo.asPromotion ? (customCombo.promotionAppliesToPlayer || 'all') : 'all',
         asControl: !!customCombo.asControl,
         controlConfig: customCombo.asControl ? controlConfig : null,
         asRestrictionZone: !!customCombo.asRestrictionZone,
@@ -144,6 +167,10 @@ const SpecialSquareSelector = ({
       ...prev,
       [field]: value
     }));
+  };
+
+  const handlePromotionConfigChange = (field, value) => {
+    setPromotionConfig(prev => ({ ...prev, [field]: value }));
   };
 
   const handleCustomComboChange = (field, value) => {
@@ -234,6 +261,52 @@ const SpecialSquareSelector = ({
                 <span className={styles["control-config-hint"]}>
                   How many additional squares of range pieces gain on this square (min 1, max 8).
                 </span>
+              </div>
+            </div>
+          )}
+
+          {/* Promotion Square Configuration Panel */}
+          {selectedType === 'promotion' && (
+            <div className={styles["control-config-panel"]}>
+              <h4 style={{ marginBottom: '8px', color: 'var(--sq-promotion, #9b59b6)' }}>
+                Promotion Square Settings
+              </h4>
+              <div className={styles["player-selection"]}>
+                <label>Which players can promote on this square:</label>
+                <div className={styles["player-radio-group"]}>
+                  <label className={styles["player-radio-label"]}>
+                    <input
+                      type="radio"
+                      name="promoAppliesTo"
+                      value="all"
+                      checked={promotionConfig.appliesToPlayer === 'all' || !promotionConfig.appliesToPlayer}
+                      onChange={() => handlePromotionConfigChange('appliesToPlayer', 'all')}
+                    />
+                    <span>All Players</span>
+                  </label>
+                  {Array.from({ length: playerCount }, (_, i) => i + 1).map(pid => (
+                    <label key={pid} className={styles["player-radio-label"]}>
+                      <input
+                        type="radio"
+                        name="promoAppliesTo"
+                        value={`p${pid}`}
+                        checked={promotionConfig.appliesToPlayer === `p${pid}`}
+                        onChange={() => handlePromotionConfigChange('appliesToPlayer', `p${pid}`)}
+                      />
+                      <span>Player {pid} Only</span>
+                    </label>
+                  ))}
+                  <label className={styles["player-radio-label"]}>
+                    <input
+                      type="radio"
+                      name="promoAppliesTo"
+                      value="neutral"
+                      checked={promotionConfig.appliesToPlayer === 'neutral'}
+                      onChange={() => handlePromotionConfigChange('appliesToPlayer', 'neutral')}
+                    />
+                    <span>Neutral Only</span>
+                  </label>
+                </div>
               </div>
             </div>
           )}
@@ -365,6 +438,45 @@ const SpecialSquareSelector = ({
                   label={<span style={{ color: 'var(--sq-promotion, #9b59b6)' }}>Acts as Promotion Square</span>}
                   tooltip={<InfoTooltip text="Promotable pieces reaching this square can be promoted." />}
                 />
+                {customCombo.asPromotion && (
+                  <div className={styles["player-selection"]} style={{ marginTop: '8px', marginBottom: 0 }}>
+                    <label>Which players can promote on this square:</label>
+                    <div className={styles["player-radio-group"]}>
+                      <label className={styles["player-radio-label"]}>
+                        <input
+                          type="radio"
+                          name="customPromoAppliesTo"
+                          value="all"
+                          checked={customCombo.promotionAppliesToPlayer === 'all' || !customCombo.promotionAppliesToPlayer}
+                          onChange={() => handleCustomComboChange('promotionAppliesToPlayer', 'all')}
+                        />
+                        <span>All Players</span>
+                      </label>
+                      {Array.from({ length: playerCount }, (_, i) => i + 1).map(pid => (
+                        <label key={pid} className={styles["player-radio-label"]}>
+                          <input
+                            type="radio"
+                            name="customPromoAppliesTo"
+                            value={`p${pid}`}
+                            checked={customCombo.promotionAppliesToPlayer === `p${pid}`}
+                            onChange={() => handleCustomComboChange('promotionAppliesToPlayer', `p${pid}`)}
+                          />
+                          <span>Player {pid} Only</span>
+                        </label>
+                      ))}
+                      <label className={styles["player-radio-label"]}>
+                        <input
+                          type="radio"
+                          name="customPromoAppliesTo"
+                          value="neutral"
+                          checked={customCombo.promotionAppliesToPlayer === 'neutral'}
+                          onChange={() => handleCustomComboChange('promotionAppliesToPlayer', 'neutral')}
+                        />
+                        <span>Neutral Only</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* As Control */}

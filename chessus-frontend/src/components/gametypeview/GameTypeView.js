@@ -1819,16 +1819,44 @@ const GameTypeView = () => {
         return pieceData.can_promote;
       });
 
-      // List promotion square locations — sort alphabetically (a1, a2, b1, …)
-      // so order is consistent regardless of which order squares were selected.
-      const promoSquareDescs = Object.keys(specialSquares.promotion)
-        .map(key => {
-          const [row, col] = key.split(',').map(Number);
-          return `${String.fromCharCode(97 + col)}${row + 1}`;
-        })
-        .sort((a, b) => a.localeCompare(b));
+      // List promotion square locations grouped by player restriction.
+      // Order: All Players, Neutral, then Player 1, Player 2, … (ascending).
+      const promoByRestriction = {}; // key: restriction string → array of coord strings
+      Object.entries(specialSquares.promotion).forEach(([key, cfg]) => {
+        const [row, col] = key.split(',').map(Number);
+        const coord = `${String.fromCharCode(97 + col)}${row + 1}`;
+        const raw = (cfg && cfg.appliesToPlayer) || 'all';
+        // Normalize legacy 'both' value
+        const restriction = raw === 'both' ? 'all' : raw;
+        if (!promoByRestriction[restriction]) promoByRestriction[restriction] = [];
+        promoByRestriction[restriction].push(coord);
+      });
+      Object.values(promoByRestriction).forEach(arr => arr.sort((a, b) => a.localeCompare(b)));
 
-      let promoContent = `**Promotion**\nCertain squares on the board are promotion squares. When a promotable piece lands on a promotion square, it can transform into a different, more powerful piece.\n\n**Promotion Squares:** ${promoSquareDescs.join(', ')}`;
+      // Sort restriction keys: 'all' first, 'neutral' second, then 'p1', 'p2', … ascending
+      const sortedRestrictions = Object.keys(promoByRestriction).sort((a, b) => {
+        if (a === 'all') return -1;
+        if (b === 'all') return 1;
+        if (a === 'neutral') return -1;
+        if (b === 'neutral') return 1;
+        const ma = a.match(/^p(\d+)$/), mb = b.match(/^p(\d+)$/);
+        if (ma && mb) return parseInt(ma[1], 10) - parseInt(mb[1], 10);
+        return a.localeCompare(b);
+      });
+
+      const restrictionHeading = (r) => {
+        if (!r || r === 'all') return 'All Players';
+        if (r === 'neutral') return 'Neutral';
+        const m = r.match(/^p(\d+)$/);
+        if (m) return `Player ${m[1]}`;
+        return r;
+      };
+
+      const promoSquaresLines = sortedRestrictions.map(r =>
+        `${restrictionHeading(r)}: ${promoByRestriction[r].join(', ')}`
+      );
+
+      let promoContent = `**Promotion**\nCertain squares on the board are promotion squares. When a promotable piece lands on a promotion square, it can transform into a different, more powerful piece.\n\n**Promotion Squares:**\n${promoSquaresLines.join('\n')}`;
 
       // Track promotion-target piece names so they can be linked in the Special Rules section
       const promotionTargetLinks = new Map(); // name -> id
@@ -1987,7 +2015,17 @@ const GameTypeView = () => {
       const labelFor = (cfg) => {
         const parts = [];
         if (cfg?.asRange) parts.push(`Range Boost (+${cfg.rangeBonus || 1})`);
-        if (cfg?.asPromotion) parts.push('Promotion');
+        if (cfg?.asPromotion) {
+          const r = cfg?.promotionAppliesToPlayer;
+          if (!r || r === 'all' || r === 'both') {
+            parts.push('Promotion');
+          } else if (r === 'neutral') {
+            parts.push('Promotion (Neutral only)');
+          } else {
+            const m = r.match(/^p(\d+)$/);
+            parts.push(m ? `Promotion (Player ${m[1]} only)` : 'Promotion');
+          }
+        }
         if (cfg?.asControl) parts.push('Control');
         if (cfg?.asRestrictionZone) parts.push('Restriction Zone');
         if (cfg?.restrictFirstMoveToCustom) parts.push('First-move abilities allowed only on these squares');
@@ -2008,6 +2046,7 @@ const GameTypeView = () => {
           asRange: !!cfg?.asRange,
           rangeBonus: cfg?.asRange ? (cfg?.rangeBonus || 1) : 0,
           asPromotion: !!cfg?.asPromotion,
+          promotionAppliesToPlayer: cfg?.asPromotion ? (() => { const r = cfg?.promotionAppliesToPlayer || 'all'; return r === 'both' ? 'all' : r; })() : 'all',
           asControl: !!cfg?.asControl,
           asRestrictionZone: !!cfg?.asRestrictionZone,
           restrictFirstMoveToCustom: !!cfg?.restrictFirstMoveToCustom,
@@ -2506,7 +2545,20 @@ const GameTypeView = () => {
                   const bonus = specialSquares.range[`${row},${col}`]?.rangeBonus || 1;
                   return <span>R<span style={{ fontSize: `${squareSize * 0.22}px`, verticalAlign: 'super', lineHeight: 1 }}>+{bonus}</span></span>;
                 })()}
-                {squareType === 'promotion' && 'P'}
+                {squareType === 'promotion' && (() => {
+                  const cfg = specialSquares.promotion[`${row},${col}`];
+                  const r = cfg?.appliesToPlayer || 'all';
+                  let sub;
+                  if (r === 'neutral') sub = 'N';
+                  else if (r === 'all' || r === 'both') sub = 'A';
+                  else { const m = String(r).match(/^p(\d+)$/); sub = m ? `p${m[1]}` : 'A'; }
+                  return (
+                    <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1, gap: '1px' }}>
+                      <span>P</span>
+                      <span style={{ fontSize: `${squareSize * 0.22}px`, fontWeight: 'normal', lineHeight: 1 }}>{sub}</span>
+                    </span>
+                  );
+                })()}
                 {squareType === 'control' && 'C'}
                 {squareType === 'special' && (() => {
                   const cfg = specialSquares.special[`${row},${col}`] || {};
