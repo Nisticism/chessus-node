@@ -4,7 +4,20 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
-    date: "May 8, 2026",
+    date: "May 9, 2026",
+    title: "Impassable square move fix, admin Board Requests tab, piece wizard overhaul, text selectability",
+    items: [
+      "Fixed: when a game had 'restrict first move to custom square' enabled, trying to move a piece beyond an impassable square would show a misleading 'First-move ability not allowed from this square' error. The correct behavior (blocking the move as impassable) is now enforced with a clear error message.",
+      "Fixed: the server-side path-check for piece movement now properly blocks movement that slides through an impassable square, not just movement that lands on one.",
+      "Fixed: move indicator dots no longer appear on impassable squares or squares reachable only by crossing through an impassable square in live games.",
+      "Admin dashboard: new 'Board Requests' tab lists every physical board request submitted from game detail pages. Admins can filter by status (pending / fulfilled / dismissed), mark requests fulfilled or dismissed, reopen them, and delete entries when no longer needed.",
+      "Piece wizard overhaul: the 'Can attack how it moves' auto-copy toggle has been replaced with an explicit 'Copy movement settings to attack' button. Attack fields are no longer silently overwritten when revisiting Step 3 — what you save is exactly what gets stored.",
+      "Fixed: repeating ratio attack (and its max iterations) now correctly loads when editing an existing piece.",
+      "Piece wizard Step 2 and Step 3 now each have a 'Clear all' button to reset all movement or attack data at once.",
+      "All text on the site is now selectable and copy-pasteable by default.",
+    ],
+  },
+  {
     title: "Forum filters, match history game link, physical board improvements, AI analysis persistence, piece abilities",
     items: [
       "Forums (all three pages) now support searching and filtering: sort by Activity, Date Created, Author, Category (general forums), Game (game forums), Replies, or Likes, with ascending/descending toggle. Search queries subject and author name — not post content. Game forum search also matches the game name.",

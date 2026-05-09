@@ -167,6 +167,12 @@ const AdminDashboard = () => {
   const [userGrowthError, setUserGrowthError] = useState(null);
   const [userGrowthHover, setUserGrowthHover] = useState(null);
 
+  // Physical Board Requests state
+  const [physicalBoardRequests, setPhysicalBoardRequests] = useState([]);
+  const [physicalBoardRequestsLoading, setPhysicalBoardRequestsLoading] = useState(false);
+  const [physicalBoardRequestsFilter, setPhysicalBoardRequestsFilter] = useState('pending');
+  const [physicalBoardRequestsPagination, setPhysicalBoardRequestsPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 0 });
+
   // Restriction modal state
   const [showRestrictModal, setShowRestrictModal] = useState(false);
   const [restrictTarget, setRestrictTarget] = useState(null);
@@ -248,6 +254,9 @@ const AdminDashboard = () => {
     } else if (activeTab === 'user-growth') {
       setLoading(false);
       fetchUserGrowth(userGrowthView);
+    } else if (activeTab === 'physical-board-requests') {
+      setLoading(false);
+      fetchPhysicalBoardRequests(1, physicalBoardRequestsFilter);
     } else {
       fetchData(activeTab, 1);
     }
@@ -1936,6 +1945,58 @@ const AdminDashboard = () => {
     }
   };
 
+  // ── Physical Board Requests helpers ──────────────────────────────────────
+  const fetchPhysicalBoardRequests = useCallback(async (page = 1, statusFilter = physicalBoardRequestsFilter) => {
+    setPhysicalBoardRequestsLoading(true);
+    try {
+      const limit = physicalBoardRequestsPagination?.limit || 25;
+      const statusQs = statusFilter && statusFilter !== 'all' ? `&status=${encodeURIComponent(statusFilter)}` : '';
+      const res = await axios.get(
+        `${API_URL}admin/physical-board-requests?page=${page}&limit=${limit}${statusQs}`,
+        { headers: authHeader() }
+      );
+      setPhysicalBoardRequests(res.data?.data || []);
+      setPhysicalBoardRequestsPagination(res.data?.pagination || { page, limit, total: 0, totalPages: 0 });
+    } catch (err) {
+      console.error('fetchPhysicalBoardRequests failed', err);
+      setAlertMessage('Failed to load requests: ' + (err?.response?.data?.message || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setPhysicalBoardRequestsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [physicalBoardRequestsFilter, physicalBoardRequestsPagination?.limit]);
+
+  const setPhysicalBoardRequestStatus = async (id, newStatus) => {
+    try {
+      await axios.patch(
+        `${API_URL}admin/physical-board-requests/${id}`,
+        { status: newStatus },
+        { headers: authHeader() }
+      );
+      await fetchPhysicalBoardRequests(physicalBoardRequestsPagination.page, physicalBoardRequestsFilter);
+    } catch (err) {
+      console.error('setPhysicalBoardRequestStatus failed', err);
+      setAlertMessage('Failed to update status: ' + (err?.response?.data?.message || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const deletePhysicalBoardRequest = async (id) => {
+    if (!window.confirm('Delete this request record? This cannot be undone.')) return;
+    try {
+      await axios.delete(`${API_URL}admin/physical-board-requests/${id}`, { headers: authHeader() });
+      setPhysicalBoardRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      console.error('deletePhysicalBoardRequest failed', err);
+      setAlertMessage('Failed to delete: ' + (err?.response?.data?.message || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
   // ── Poll admin helpers ────────────────────────────────────────────────────
 
   const fetchPolls = async () => {
@@ -2371,6 +2432,147 @@ const AdminDashboard = () => {
     } finally {
       setUserGrowthLoading(false);
     }
+  };
+
+  const renderPhysicalBoardRequestsTab = () => {
+    const statusBadge = (status) => {
+      const colorMap = {
+        pending:   { bg: 'rgba(255, 200, 50, 0.15)',  border: 'rgba(255, 200, 50, 0.4)',  text: '#ffc832' },
+        fulfilled: { bg: 'rgba(80, 200, 120, 0.15)',  border: 'rgba(80, 200, 120, 0.4)',  text: '#50c878' },
+        dismissed: { bg: 'rgba(150, 150, 150, 0.15)', border: 'rgba(150, 150, 150, 0.4)', text: '#aaa' },
+      };
+      const c = colorMap[status] || colorMap.dismissed;
+      return (
+        <span style={{
+          display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
+          background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+          fontSize: '0.75em', fontWeight: 600, textTransform: 'uppercase',
+        }}>{status}</span>
+      );
+    };
+
+    return (
+      <div className={styles["table-container"]}>
+        <div className={styles["table-header"]} style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>Physical Board Requests</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginTop: '4px' }}>
+              Requests submitted from the game detail page asking for a custom handcrafted physical board.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <label style={{ fontSize: '0.85em', color: 'var(--text-dim)' }}>Status:</label>
+            <select
+              value={physicalBoardRequestsFilter}
+              onChange={(e) => {
+                setPhysicalBoardRequestsFilter(e.target.value);
+                fetchPhysicalBoardRequests(1, e.target.value);
+              }}
+              style={{ padding: '4px 8px' }}
+            >
+              <option value="pending">Pending</option>
+              <option value="fulfilled">Fulfilled</option>
+              <option value="dismissed">Dismissed</option>
+              <option value="all">All</option>
+            </select>
+            <StandardButton
+              onClick={() => fetchPhysicalBoardRequests(physicalBoardRequestsPagination.page, physicalBoardRequestsFilter)}
+              buttonText="Refresh"
+              disabled={physicalBoardRequestsLoading}
+            />
+          </div>
+        </div>
+        {physicalBoardRequestsLoading ? (
+          <div className={styles["loading"]}>Loading…</div>
+        ) : physicalBoardRequests.length === 0 ? (
+          <p style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '30px 0' }}>
+            No physical board requests in this view.
+          </p>
+        ) : (
+          <table className={styles["table"]}>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Requester</th>
+                <th>Game</th>
+                <th>Grid</th>
+                <th>Dimensions</th>
+                <th>Wood</th>
+                <th>Submitted</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {physicalBoardRequests.map((r) => (
+                <tr key={r.id}>
+                  <td>{statusBadge(r.status)}</td>
+                  <td>
+                    <div style={{ fontWeight: 500 }}>{r.name}</div>
+                    <div style={{ fontSize: '0.8em', color: 'var(--text-dim)' }}>{r.email}</div>
+                  </td>
+                  <td>
+                    {r.game_name ? (
+                      <a href={`/games/${r.game_id}`} target="_blank" rel="noreferrer">{r.game_name}</a>
+                    ) : (
+                      <span style={{ color: 'var(--text-dim)' }}>{r.game_id ? `Game #${r.game_id}` : '—'}</span>
+                    )}
+                  </td>
+                  <td style={{ fontSize: '0.85em', whiteSpace: 'nowrap' }}>
+                    {r.board_grid_width && r.board_grid_height ? `${r.board_grid_width}×${r.board_grid_height}` : '—'}
+                  </td>
+                  <td style={{ fontSize: '0.85em', whiteSpace: 'nowrap' }}>
+                    {r.board_length_dim && r.board_width_dim
+                      ? `${r.board_length_dim}×${r.board_width_dim} ${r.dimension_unit || ''}`
+                      : '—'}
+                  </td>
+                  <td style={{ fontSize: '0.8em' }}>
+                    {[
+                      r.border_wood && r.border_wood !== 'No preference' ? `Border: ${r.border_wood}` : null,
+                      r.light_square_wood && r.light_square_wood !== 'No preference' ? `Light: ${r.light_square_wood}` : null,
+                      r.dark_square_wood && r.dark_square_wood !== 'No preference' ? `Dark: ${r.dark_square_wood}` : null,
+                    ].filter(Boolean).join(' / ') || '—'}
+                  </td>
+                  <td style={{ fontSize: '0.85em', whiteSpace: 'nowrap' }}>
+                    {r.created_at ? formatDateTime(parseServerDate(r.created_at)) : '—'}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {r.status !== 'fulfilled' && (
+                        <StandardButton buttonText="Mark Fulfilled" onClick={() => setPhysicalBoardRequestStatus(r.id, 'fulfilled')} />
+                      )}
+                      {r.status !== 'dismissed' && r.status !== 'fulfilled' && (
+                        <StandardButton buttonText="Dismiss" onClick={() => setPhysicalBoardRequestStatus(r.id, 'dismissed')} />
+                      )}
+                      {r.status !== 'pending' && (
+                        <StandardButton buttonText="Reopen" onClick={() => setPhysicalBoardRequestStatus(r.id, 'pending')} />
+                      )}
+                      <StandardButton buttonText="Delete" onClick={() => deletePhysicalBoardRequest(r.id)} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {physicalBoardRequestsPagination.totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', padding: '15px 0' }}>
+            <StandardButton
+              buttonText="Previous"
+              onClick={() => fetchPhysicalBoardRequests(physicalBoardRequestsPagination.page - 1, physicalBoardRequestsFilter)}
+              disabled={physicalBoardRequestsPagination.page <= 1}
+            />
+            <span style={{ fontSize: '0.9em' }}>
+              Page {physicalBoardRequestsPagination.page} of {physicalBoardRequestsPagination.totalPages}
+            </span>
+            <StandardButton
+              buttonText="Next"
+              onClick={() => fetchPhysicalBoardRequests(physicalBoardRequestsPagination.page + 1, physicalBoardRequestsFilter)}
+              disabled={physicalBoardRequestsPagination.page >= physicalBoardRequestsPagination.totalPages}
+            />
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderUserGrowthTab = () => {
@@ -3497,10 +3699,16 @@ const AdminDashboard = () => {
         >
           User Growth
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "physical-board-requests" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("physical-board-requests")}
+        >
+          Board Requests
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -3524,6 +3732,7 @@ const AdminDashboard = () => {
             {activeTab === "initial-state" && renderInitialStateTab()}
             {activeTab === "poll" && renderPollTab()}
             {activeTab === "user-growth" && renderUserGrowthTab()}
+            {activeTab === "physical-board-requests" && renderPhysicalBoardRequestsTab()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>

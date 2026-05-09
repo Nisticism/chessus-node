@@ -9756,6 +9756,17 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     return { valid: false, reason: "Not your piece" };
   }
 
+  // Explicitly reject moves that land on an impassable square before any other check.
+  // Without this pre-check, the first-move restriction block below emits a misleading
+  // "First-move ability not allowed from this square" error when the real reason the
+  // destination is not in getPossibleMovesForPiece is an impassable square.
+  if (!(piece.ghostwalk === 1 || piece.ghostwalk === true) && gameState.gameType) {
+    const _impSet = collectImpassableSquares(gameState.gameType);
+    if (_impSet && _impSet.has(`${to.y},${to.x}`)) {
+      return { valid: false, reason: "That square is impassable" };
+    }
+  }
+
   // Custom-square first-move blockers (restrictFirstMoveToCustom / disableFirstMoveHere) are
   // authoritative on the server: if these flags would prevent the destination from being a
   // legal move, reject it here. We compare against the canonical list from
@@ -12163,11 +12174,11 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
 
   const hasGhostwalkMove = piece.ghostwalk === 1 || piece.ghostwalk === true;
 
+  // Collect impassable squares once — used for destination check AND path checks below.
+  const impassableSet = (!hasGhostwalkMove && gameType) ? collectImpassableSquares(gameType) : null;
+
   // Block movement to impassable squares (unless ghostwalk)
-  if (!hasGhostwalkMove && gameType) {
-    const impSet = collectImpassableSquares(gameType);
-    if (impSet && impSet.has(`${targetY},${targetX}`)) return false;
-  }
+  if (impassableSet && impassableSet.has(`${targetY},${targetX}`)) return false;
 
   // Check if piece needs direction flipping
   const pieceOwner = piece.team || piece.player_id;
@@ -12195,6 +12206,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
   // For multi-tile pieces, checks all sub-square parallel paths
   // allowHop: when true, pieces in the path that can be hopped are skipped
   // Ghostwalk: piece can pass through any piece
+  // Impassable squares always block the path regardless of hop/ghostwalk flags
   const isPathClear = (fromX, fromY, toX, toY, allowHop = false) => {
     if (hasGhostwalkMove) return true; // Ghostwalk ignores all blocking
     const pw = piece.piece_width || 1;
@@ -12206,6 +12218,8 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
         let x = fromX + sdx + stepX;
         let y = fromY + sdy + stepY;
         while (x !== toX + sdx || y !== toY + sdy) {
+          // Impassable squares always block the path (pieces cannot pass through walls)
+          if (impassableSet && impassableSet.has(`${y},${x}`)) return false;
           const blocking = findPieceAtSquare(allPieces, x, y);
           if (blocking && blocking.id !== piece.id) {
             if (!allowHop || !canHopOverPiece(blocking)) {
@@ -12236,6 +12250,16 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
             }
           }
         });
+      // Treat impassable squares as occupied so BFS cannot route through them.
+      // impassableSet keys are "row,col" (y,x); occupied uses "x,y".
+      if (impassableSet) {
+        impassableSet.forEach(key => {
+          const comma = key.indexOf(',');
+          const row = key.slice(0, comma);
+          const col = key.slice(comma + 1);
+          occupied.add(`${col},${row}`);
+        });
+      }
     }
 
     const queue = [{ x: fromX, y: fromY, steps: 0 }];
@@ -13292,7 +13316,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       const maxK = piece.max_ratio_iterations === -1 ? Math.max(boardWidth, boardHeight) : (piece.max_ratio_iterations || 1);
       // hop_stop_at_occupied: default true (1). Only relevant when the piece can hop over
       // both allies and enemies (ghostwalk pieces ignore this check entirely).
-      const hopStopAtOccupied = piece.hop_stop_at_occupied !== false && piece.hop_stop_at_occupied !== 0;
+      const hopStopAtOccupied = (piece.hop_stop_at_occupied !== false && piece.hop_stop_at_occupied !== 0);
       for (const [dx, dy] of ratioMoves) {
         for (let k = 2; k <= maxK; k++) {
           const targetX = piece.x + dx * k;
@@ -13306,7 +13330,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
               const intX = piece.x + dx * j;
               const intY = piece.y + dy * j;
               const blocking = findPieceAtSquare(allPieces, intX, intY);
-              if (blocking && blocking.id !== piece.id) {
+              if ((blocking && blocking.id !== piece.id) || (impassableSet && impassableSet.has(`${intY},${intX}`))) {
                 intermediatesClear = false;
                 break;
               }
@@ -13315,12 +13339,12 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           if (!intermediatesClear) break;
 
           // hop_stop_at_occupied: if the previous multiple (k-1) square is occupied by
-          // any piece, stop — the piece cannot hop past that occupied landable square.
+          // any piece or is impassable, stop — the piece cannot hop past it.
           if (hopStopAtOccupied && !hasGhostwalkGen && k > 2) {
             const prevX = piece.x + dx * (k - 1);
             const prevY = piece.y + dy * (k - 1);
             const prevOccupant = findPieceAtSquare(allPieces, prevX, prevY);
-            if (prevOccupant && prevOccupant.id !== piece.id) break;
+            if ((prevOccupant && prevOccupant.id !== piece.id) || (impassableSet && impassableSet.has(`${prevY},${prevX}`))) break;
           }
 
           const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);

@@ -4540,10 +4540,11 @@ const LiveGame = () => {
 
         // Move indicator — type drives a CSS custom property rendered via ::after pseudo-element.
         // Using CSS avoids React DOM node creation/destruction on every hover, eliminating hover lag.
+        // Suppress the dot on impassable squares: they cannot be valid destinations.
         const activeRegularMove = regularMove || hoveredRegularMove;
         const activeIsRanged = isRangedMove || isRangedHover || isRangedDragTarget || isRangedSelectedTarget;
         const dotBg = { move: 'rgba(33,150,243,0.55)', capture: 'rgba(220,60,60,0.7)', first: 'rgba(255,215,0,0.65)', custom: 'rgba(0,188,150,0.55)' };
-        const dotType = activeRegularMove
+        const dotType = activeRegularMove && !isImpassable
           ? (activeRegularMove.isCustomMove || activeRegularMove.isCustomAttack ? 'custom'
             : activeRegularMove.isFirstMoveOnly ? 'first'
             : activeRegularMove.isCapture ? 'capture'

@@ -784,6 +784,36 @@ const migrations = [
   }
 ];
 
+// Ensure physical_board_requests table exists (may have been created after tableMigrations ran)
+const ensurePhysicalBoardRequestsTable = async () => {
+  if (!(await tableExists('physical_board_requests'))) {
+    await runMigration(
+      `CREATE TABLE IF NOT EXISTS physical_board_requests (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        game_id INT NULL,
+        game_name VARCHAR(255) NULL,
+        board_grid_width INT NULL,
+        board_grid_height INT NULL,
+        border_wood VARCHAR(100) NULL,
+        light_square_wood VARCHAR(100) NULL,
+        dark_square_wood VARCHAR(100) NULL,
+        dimension_unit VARCHAR(10) NULL,
+        board_length_dim VARCHAR(20) NULL,
+        board_width_dim VARCHAR(20) NULL,
+        message TEXT NULL,
+        status ENUM('pending', 'fulfilled', 'dismissed') DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_pbr_status (status),
+        INDEX idx_pbr_created (created_at)
+      )`,
+      "Create physical_board_requests table"
+    );
+  }
+};
+
 /**
  * Run all pending migrations
  */
@@ -3816,6 +3846,38 @@ const runMigrations = async () => {
       migrationsRun++;
     }
   }
+
+  // hop_continue_past_occupied: explicit opt-in flag shown as a badge when a piece's
+  // repeating ratio hops are configured to continue past occupied intermediate squares.
+  // Default 0 = not set (no badge). When 1, the badge "Repeating hops continue past
+  // occupied intermediates" appears on the piece detail page and game engine treats
+  // hop_stop_at_occupied as false for this piece.
+  {
+    const exists = await columnExists('pieces', 'hop_continue_past_occupied');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN hop_continue_past_occupied TINYINT(1) DEFAULT 0`,
+        'Add pieces.hop_continue_past_occupied'
+      );
+      migrationsRun++;
+    }
+  }
+
+  // One-time cleanup: drop hop_continue_past_occupied if it still exists.
+  // This column was added then removed from all application code.
+  {
+    const hopContinueExists = await columnExists('pieces', 'hop_continue_past_occupied');
+    if (hopContinueExists) {
+      await runMigration(
+        `ALTER TABLE pieces DROP COLUMN hop_continue_past_occupied`,
+        'Drop pieces.hop_continue_past_occupied'
+      );
+      migrationsRun++;
+    }
+  }
+
+  // Physical board requests table (ad-hoc, outside the tableMigrations loop)
+  await ensurePhysicalBoardRequestsTable();
 };
 
 module.exports = { runMigrations };

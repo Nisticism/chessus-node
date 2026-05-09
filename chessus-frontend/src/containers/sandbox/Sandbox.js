@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { getGames, getGameById } from "../../actions/games";
+import { getGameById } from "../../actions/games";
+import axios from "../../services/axios-interceptor";
+import API_URL from "../../global/global";
+import authHeader from "../../services/auth-header";
 import PiecesService from "../../services/pieces.service";
 import PieceSelector from "../../components/gamewizard/PieceSelector";
 import { canRangedAttackTo, isRangedPathClear, isDestinationClear, doesPieceOccupySquare, getSquareHighlightStyle, canHopCaptureToUtil, canPieceMoveTo as canPieceMoveToUtil, canCaptureOnMoveTo as canCaptureOnMoveToUtil } from "../../helpers/pieceMovementUtils";
@@ -28,16 +31,64 @@ const SPECIAL_SQUARE_TYPES = {
 const Sandbox = () => {
   const dispatch = useDispatch();
   const { user: currentUser } = useSelector((state) => state.authReducer);
-  const { gamesList } = useSelector((state) => state.games);
-  
+
+  // Local game list loaded directly from server (not Redux) so search isn't limited to 20 items
+  const [gamesList, setGamesList] = useState([]);
+  const [gamesLoading, setGamesLoading] = useState(true);
+  const [gamesTotal, setGamesTotal] = useState(0);
+  const sandboxGamesPageRef = useRef(1);
+  const sandboxGamesSearchRef = useRef("");
+  const gamesAbortRef = useRef(null);
+  // Declare searchGameTerm here so the useEffect below can close over it
+  const [searchGameTerm, setSearchGameTerm] = useState("");
+
+  const loadSandboxGames = useCallback(async (search, page, replace) => {
+    if (gamesAbortRef.current) gamesAbortRef.current.abort();
+    const controller = new AbortController();
+    gamesAbortRef.current = controller;
+    if (replace) setGamesLoading(true);
+    try {
+      const params = { page, limit: 50, sort: 'alphabetical' };
+      if (search) params.search = search;
+      const response = await axios.get(API_URL + "games", {
+        params,
+        headers: authHeader(),
+        signal: controller.signal
+      });
+      const data = response.data;
+      const fetched = data.games || [];
+      setGamesTotal(data.pagination?.total || fetched.length);
+      setGamesList(prev => replace ? fetched : [...prev, ...fetched]);
+    } catch (err) {
+      if (err.name !== 'CanceledError' && err.name !== 'AbortError') {
+        console.error('Failed to load sandbox games:', err);
+      }
+    } finally {
+      setGamesLoading(false);
+    }
+  }, []);
+
+  // Initial load + debounced search: fires immediately on mount, debounced on subsequent searchGameTerm changes
+  const isFirstGameLoadRef = useRef(true);
+  useEffect(() => {
+    if (isFirstGameLoadRef.current) {
+      isFirstGameLoadRef.current = false;
+      sandboxGamesPageRef.current = 1;
+      sandboxGamesSearchRef.current = "";
+      loadSandboxGames("", 1, true);
+      return;
+    }
+    const timer = setTimeout(() => {
+      sandboxGamesPageRef.current = 1;
+      sandboxGamesSearchRef.current = searchGameTerm;
+      loadSandboxGames(searchGameTerm, 1, true);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchGameTerm, loadSandboxGames]);
+
   // Full pieces with movement data (loaded directly from API)
   const [fullPiecesList, setFullPiecesList] = useState([]);
   const [piecesLoading, setPiecesLoading] = useState(true);
-  
-  // Load game types on mount
-  useEffect(() => {
-    dispatch(getGames());
-  }, [dispatch]);
 
   // Load full pieces with movement data
   useEffect(() => {
@@ -77,7 +128,7 @@ const Sandbox = () => {
   const [hoveredHighlights, setHoveredHighlights] = useState({});
   const [showGameTypes, setShowGameTypes] = useState(true);
   const [showPieceLibrary, setShowPieceLibrary] = useState(true);
-  const [searchGameTerm, setSearchGameTerm] = useState("");
+  // searchGameTerm already declared near top of component — do not re-declare here
   const [searchPieceTerm, setSearchPieceTerm] = useState("");
   const [showHighlights, setShowHighlights] = useState(true);
   const [boardFlipped, setBoardFlipped] = useState(false);
@@ -89,7 +140,6 @@ const Sandbox = () => {
 
   // Pagination for sidebars
   const ITEMS_PER_PAGE = 20;
-  const [gameTypePage, setGameTypePage] = useState(1);
   const [piecePage, setPiecePage] = useState(1);
 
   // Game rules state (under construction)
@@ -2494,11 +2544,15 @@ const Sandbox = () => {
     return getPieceImage(piece.image_location, playerIndex);
   }, [getPieceImage]);
 
-  // Filter game types
-  const filteredGameTypes = gamesList.filter(game =>
-    game.game_name?.toLowerCase().includes(searchGameTerm.toLowerCase())
-  );
-  const pagedGameTypes = filteredGameTypes.slice(0, gameTypePage * ITEMS_PER_PAGE);
+  // Game list is already filtered server-side; expose as-is
+  const pagedGameTypes = gamesList;
+  const hasMoreGames = gamesList.length < gamesTotal;
+
+  const loadMoreGames = useCallback(() => {
+    const nextPage = sandboxGamesPageRef.current + 1;
+    sandboxGamesPageRef.current = nextPage;
+    loadSandboxGames(sandboxGamesSearchRef.current, nextPage, false);
+  }, [loadSandboxGames]);
 
   // Filter pieces
   const filteredPieces = fullPiecesList.filter(piece =>
@@ -3082,16 +3136,17 @@ const Sandbox = () => {
                   type="text"
                   placeholder="Search games..."
                   value={searchGameTerm}
-                  onChange={(e) => { setSearchGameTerm(e.target.value); setGameTypePage(1); }}
+                  onChange={(e) => setSearchGameTerm(e.target.value)}
                 />
               </div>
 
-              {filteredGameTypes.length > ITEMS_PER_PAGE && (
+              {gamesLoading && gamesList.length === 0 && (
+                <div style={{ padding: '8px', opacity: 0.6, fontSize: '0.85em' }}>Loading games...</div>
+              )}
+
+              {hasMoreGames && (
                 <div className={styles["pagination-bar"]}>
-                  <span>{pagedGameTypes.length} of {filteredGameTypes.length}</span>
-                  {pagedGameTypes.length < filteredGameTypes.length && (
-                    <button onClick={() => setGameTypePage(p => p + 1)}>Load More</button>
-                  )}
+                  <span>{pagedGameTypes.length} of {gamesTotal}</span>
                 </div>
               )}
               <div className={styles["item-list"]}>
@@ -3116,12 +3171,13 @@ const Sandbox = () => {
                   </button>
                 ))}
               </div>
-              {pagedGameTypes.length < filteredGameTypes.length && (
+              {hasMoreGames && (
                 <button
                   className={styles["load-more-btn"]}
-                  onClick={() => setGameTypePage(p => p + 1)}
+                  onClick={loadMoreGames}
+                  disabled={gamesLoading}
                 >
-                  Load More ({filteredGameTypes.length - pagedGameTypes.length} remaining)
+                  {gamesLoading ? 'Loading...' : `Load More (${gamesTotal - pagedGameTypes.length} remaining)`}
                 </button>
               )}
             </>

@@ -1,5 +1,6 @@
 * {
   overflow-wrap: anywhere;
+  user-select: text;
 }
 
 body {

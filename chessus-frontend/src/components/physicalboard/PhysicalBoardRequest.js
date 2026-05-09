@@ -148,6 +148,17 @@ ${formData.message || '(none)'}
           email: formData.email,
           subject,
           message: body,
+          // Extra fields persisted in the DB for admin review
+          game_id: gameId,
+          game_name: gameName,
+          board_grid_width: boardWidth,
+          board_grid_height: boardHeight,
+          border_wood: formData.borderWood,
+          light_square_wood: formData.lightSquareWood,
+          dark_square_wood: formData.darkSquareWood,
+          dimension_unit: formData.dimensionUnit || null,
+          board_length_dim: formData.boardLength || null,
+          board_width_dim: formData.boardWidth || null,
         }),
       });
 

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
 import CustomSquareSelector from "./CustomSquareSelector";
@@ -7,7 +7,7 @@ import InfoTooltip from "./InfoTooltip";
 import ToggleSwitch from "../common/ToggleSwitch";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
-const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyle }) => {
+const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
   
   // Helper to convert additionalMovements to additionalCaptures format
   const convertMovementsToCaptures = (specialScenarioMoves) => {
@@ -28,64 +28,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
       return null;
     }
   };
-  
-  // When component mounts, if attacks_like_movement is checked, import current movement values
-  useEffect(() => {
-    if (pieceData.attacks_like_movement) {
-      // Convert additional movements to additional captures
-      const convertedCaptures = convertMovementsToCaptures(pieceData.special_scenario_moves);
-      
-      updatePieceData({
-        can_capture_enemy_on_move: true,
-        // Copy directional movement to capture
-        up_left_capture: pieceData.up_left_movement,
-        up_capture: pieceData.up_movement,
-        up_right_capture: pieceData.up_right_movement,
-        left_capture: pieceData.left_movement,
-        right_capture: pieceData.right_movement,
-        down_left_capture: pieceData.down_left_movement,
-        down_capture: pieceData.down_movement,
-        down_right_capture: pieceData.down_right_movement,
-        // Copy exact flags for directional captures
-        up_left_capture_exact: pieceData.up_left_movement_exact,
-        up_capture_exact: pieceData.up_movement_exact,
-        up_right_capture_exact: pieceData.up_right_movement_exact,
-        left_capture_exact: pieceData.left_movement_exact,
-        right_capture_exact: pieceData.right_movement_exact,
-        down_left_capture_exact: pieceData.down_left_movement_exact,
-        down_capture_exact: pieceData.down_movement_exact,
-        down_right_capture_exact: pieceData.down_right_movement_exact,
-        // Copy available_for flags for directional captures
-        up_left_capture_available_for: pieceData.up_left_movement_available_for,
-        up_capture_available_for: pieceData.up_movement_available_for,
-        up_right_capture_available_for: pieceData.up_right_movement_available_for,
-        left_capture_available_for: pieceData.left_movement_available_for,
-        right_capture_available_for: pieceData.right_movement_available_for,
-        down_left_capture_available_for: pieceData.down_left_movement_available_for,
-        down_capture_available_for: pieceData.down_movement_available_for,
-        down_right_capture_available_for: pieceData.down_right_movement_available_for,
-        // Copy ratio movement (only if ratio movement is enabled)
-        ratio_one_capture: pieceData.ratio_movement_style ? pieceData.ratio_one_movement : 0,
-        ratio_two_capture: pieceData.ratio_movement_style ? pieceData.ratio_two_movement : 0,
-        // Copy step-by-step
-        step_by_step_capture: pieceData.step_by_step_movement_value,
-        // Copy repeating movement setting
-        repeating_capture: pieceData.repeating_movement,
-        // Copy ratio repeating settings
-        repeating_ratio_capture: pieceData.ratio_movement_style ? pieceData.repeating_ratio : false,
-        max_ratio_capture_iterations: pieceData.ratio_movement_style ? pieceData.max_ratio_iterations : 0,
-        // Copy additional movements to additional captures
-        ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
-        // Copy custom movement squares to custom attack squares
-        custom_attack_squares: pieceData.custom_movement_squares,
-        // Preserve existing ranged attack state (do not reset it just because
-        // attacks_like_movement is also enabled — a piece can both capture on
-        // move AND have a ranged attack).
-        can_capture_enemy_via_range: pieceData.can_capture_enemy_via_range,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount - intentionally using initial values only
   
   const handleChange = (field, value) => {
     const updates = { [field]: value };
@@ -286,100 +228,97 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
     );
   };
 
-  const handleAttackLikeMovement = (checked) => {
-    // Mark that user has manually set this
-    if (hasManuallySetAttackStyle) {
-      hasManuallySetAttackStyle.current = true;
-    }
-    
-    if (checked) {
-      // Convert additional movements to additional captures
-      const convertedCaptures = convertMovementsToCaptures(pieceData.special_scenario_moves);
-      
-      // Import all movement settings to capture settings
-      updatePieceData({
-        attacks_like_movement: true,
-        can_capture_enemy_on_move: true,
-        // Copy directional movement to capture
-        up_left_capture: pieceData.up_left_movement,
-        up_capture: pieceData.up_movement,
-        up_right_capture: pieceData.up_right_movement,
-        left_capture: pieceData.left_movement,
-        right_capture: pieceData.right_movement,
-        down_left_capture: pieceData.down_left_movement,
-        down_capture: pieceData.down_movement,
-        down_right_capture: pieceData.down_right_movement,
-        // Copy exact flags for directional captures
-        up_left_capture_exact: pieceData.up_left_movement_exact,
-        up_capture_exact: pieceData.up_movement_exact,
-        up_right_capture_exact: pieceData.up_right_movement_exact,
-        left_capture_exact: pieceData.left_movement_exact,
-        right_capture_exact: pieceData.right_movement_exact,
-        down_left_capture_exact: pieceData.down_left_movement_exact,
-        down_capture_exact: pieceData.down_movement_exact,
-        down_right_capture_exact: pieceData.down_right_movement_exact,
-        // Copy available_for flags for directional captures
-        up_left_capture_available_for: pieceData.up_left_movement_available_for,
-        up_capture_available_for: pieceData.up_movement_available_for,
-        up_right_capture_available_for: pieceData.up_right_movement_available_for,
-        left_capture_available_for: pieceData.left_movement_available_for,
-        right_capture_available_for: pieceData.right_movement_available_for,
-        down_left_capture_available_for: pieceData.down_left_movement_available_for,
-        down_capture_available_for: pieceData.down_movement_available_for,
-        down_right_capture_available_for: pieceData.down_right_movement_available_for,
-        // Copy ratio movement (only if ratio movement is enabled)
-        ratio_one_capture: pieceData.ratio_movement_style ? pieceData.ratio_one_movement : 0,
-        ratio_two_capture: pieceData.ratio_movement_style ? pieceData.ratio_two_movement : 0,
-        // Copy step-by-step
-        step_by_step_capture: pieceData.step_by_step_movement_value,
-        // Copy repeating movement setting
-        repeating_capture: pieceData.repeating_movement,
-        // Copy ratio repeating settings
-        repeating_ratio_capture: pieceData.ratio_movement_style ? pieceData.repeating_ratio : false,
-        max_ratio_capture_iterations: pieceData.ratio_movement_style ? pieceData.max_ratio_iterations : 0,
-        // Copy additional movements to additional captures
-        ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
-        // Copy custom movement squares to custom attack squares
-        custom_attack_squares: pieceData.custom_movement_squares,
-        // Disable ranged by default when capturing on move
-        can_capture_enemy_via_range: false
-      });
-    } else {
-      // Clear all carried-over capture styles so user starts with a blank slate
-      updatePieceData({
-        attacks_like_movement: false,
-        up_left_capture: 0,
-        up_capture: 0,
-        up_right_capture: 0,
-        left_capture: 0,
-        right_capture: 0,
-        down_left_capture: 0,
-        down_capture: 0,
-        down_right_capture: 0,
-        up_left_capture_exact: false,
-        up_capture_exact: false,
-        up_right_capture_exact: false,
-        left_capture_exact: false,
-        right_capture_exact: false,
-        down_left_capture_exact: false,
-        down_capture_exact: false,
-        down_right_capture_exact: false,
-        up_left_capture_available_for: null,
-        up_capture_available_for: null,
-        up_right_capture_available_for: null,
-        left_capture_available_for: null,
-        right_capture_available_for: null,
-        down_left_capture_available_for: null,
-        down_capture_available_for: null,
-        down_right_capture_available_for: null,
-        ratio_one_capture: null,
-        ratio_two_capture: null,
-        step_by_step_capture: null,
-        repeating_capture: false,
-        special_scenario_capture: null,
-        custom_attack_squares: null,
-      });
-    }
+  const handleClearAttack = () => {
+    updatePieceData({
+      can_capture_enemy_on_move: false,
+      repeating_capture: false,
+      up_left_capture: 0, up_capture: 0, up_right_capture: 0, right_capture: 0,
+      down_right_capture: 0, down_capture: 0, down_left_capture: 0, left_capture: 0,
+      up_left_capture_exact: false, up_capture_exact: false, up_right_capture_exact: false,
+      right_capture_exact: false, down_right_capture_exact: false, down_capture_exact: false,
+      down_left_capture_exact: false, left_capture_exact: false,
+      up_left_capture_available_for: null, up_capture_available_for: null,
+      up_right_capture_available_for: null, right_capture_available_for: null,
+      down_right_capture_available_for: null, down_capture_available_for: null,
+      down_left_capture_available_for: null, left_capture_available_for: null,
+      ratio_one_capture: null, ratio_two_capture: null,
+      repeating_ratio_capture: false, max_ratio_capture_iterations: null,
+      step_by_step_capture: null,
+      can_capture_enemy_via_range: false,
+      can_capture_ally_via_range: false,
+      can_capture_ally_on_range: false,
+      can_attack_on_iteration: false,
+      up_left_attack_range: 0, up_attack_range: 0, up_right_attack_range: 0, right_attack_range: 0,
+      down_right_attack_range: 0, down_attack_range: 0, down_left_attack_range: 0, left_attack_range: 0,
+      up_left_attack_range_exact: false, up_attack_range_exact: false, up_right_attack_range_exact: false,
+      right_attack_range_exact: false, down_right_attack_range_exact: false, down_attack_range_exact: false,
+      down_left_attack_range_exact: false, left_attack_range_exact: false,
+      up_left_attack_range_available_for: null, up_attack_range_available_for: null,
+      up_right_attack_range_available_for: null, right_attack_range_available_for: null,
+      down_right_attack_range_available_for: null, down_attack_range_available_for: null,
+      down_left_attack_range_available_for: null, left_attack_range_available_for: null,
+      ratio_one_attack_range: null, ratio_two_attack_range: null,
+      repeating_directional_ranged_attack: false,
+      max_directional_ranged_attack_iterations: null, min_directional_ranged_attack_iterations: null,
+      repeating_ratio_ranged_attack: false,
+      max_ratio_ranged_attack_iterations: null, min_ratio_ranged_attack_iterations: null,
+      step_by_step_attack_style: false, step_by_step_attack_value: null, step_by_step_attack_range: null,
+      capture_actions_per_turn: 1, ranged_capture_actions_per_turn: 1,
+      can_fire_over_allies: false, can_fire_over_enemies: false,
+      can_hop_attack_over_allies: false, can_hop_attack_over_enemies: false,
+      special_scenario_capture: "",
+      custom_attack_squares: null,
+    });
+  };
+
+  const handleCopyFromMovement = () => {
+    const convertedCaptures = convertMovementsToCaptures(pieceData.special_scenario_moves);
+    updatePieceData({
+      can_capture_enemy_on_move: true,
+      // Copy directional movement to capture
+      up_left_capture: pieceData.up_left_movement,
+      up_capture: pieceData.up_movement,
+      up_right_capture: pieceData.up_right_movement,
+      left_capture: pieceData.left_movement,
+      right_capture: pieceData.right_movement,
+      down_left_capture: pieceData.down_left_movement,
+      down_capture: pieceData.down_movement,
+      down_right_capture: pieceData.down_right_movement,
+      // Copy exact flags for directional captures
+      up_left_capture_exact: pieceData.up_left_movement_exact,
+      up_capture_exact: pieceData.up_movement_exact,
+      up_right_capture_exact: pieceData.up_right_movement_exact,
+      left_capture_exact: pieceData.left_movement_exact,
+      right_capture_exact: pieceData.right_movement_exact,
+      down_left_capture_exact: pieceData.down_left_movement_exact,
+      down_capture_exact: pieceData.down_movement_exact,
+      down_right_capture_exact: pieceData.down_right_movement_exact,
+      // Copy available_for flags for directional captures
+      up_left_capture_available_for: pieceData.up_left_movement_available_for,
+      up_capture_available_for: pieceData.up_movement_available_for,
+      up_right_capture_available_for: pieceData.up_right_movement_available_for,
+      left_capture_available_for: pieceData.left_movement_available_for,
+      right_capture_available_for: pieceData.right_movement_available_for,
+      down_left_capture_available_for: pieceData.down_left_movement_available_for,
+      down_capture_available_for: pieceData.down_movement_available_for,
+      down_right_capture_available_for: pieceData.down_right_movement_available_for,
+      // Copy ratio movement (only if ratio movement is enabled)
+      ratio_one_capture: pieceData.ratio_movement_style ? pieceData.ratio_one_movement : 0,
+      ratio_two_capture: pieceData.ratio_movement_style ? pieceData.ratio_two_movement : 0,
+      // Copy step-by-step
+      step_by_step_capture: pieceData.step_by_step_movement_value,
+      // Copy repeating movement setting
+      repeating_capture: pieceData.repeating_movement,
+      // Copy ratio repeating settings
+      repeating_ratio_capture: pieceData.ratio_movement_style ? pieceData.repeating_ratio : false,
+      max_ratio_capture_iterations: pieceData.ratio_movement_style ? pieceData.max_ratio_iterations : 0,
+      // Copy additional movements to additional captures
+      ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
+      // Copy custom movement squares to custom attack squares
+      custom_attack_squares: pieceData.custom_movement_squares,
+      // Preserve existing ranged attack state
+      can_capture_enemy_via_range: pieceData.can_capture_enemy_via_range,
+    });
   };
 
   return (
@@ -389,19 +328,30 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
         Define how your piece captures and attacks.
       </p>
 
-      {/* Attack Like Movement Checkbox */}
-      <div className={styles["form-group"]}>
-        <ToggleSwitch
-          checked={pieceData.attacks_like_movement || false}
-          onChange={(v) => handleAttackLikeMovement(v)}
-          label="Can attack how it moves"
-          tooltip={<InfoTooltip text="Automatically copies all your movement settings (Step 2) to the capture settings below. The piece will be able to capture enemies on any square it can move to. Toggle this off to configure capture patterns separately from movement." />}
-        />
+      {/* Action buttons */}
+      <div className={styles["wizard-action-row"]}>
+        <button
+          type="button"
+          className={styles["add-movement-btn"]}
+          onClick={handleCopyFromMovement}
+        >
+          Copy movement settings to attack
+        </button>
+        <button
+          type="button"
+          className={styles["clear-wizard-btn"]}
+          onClick={handleClearAttack}
+        >
+          Clear all attack data
+        </button>
       </div>
+      <p className={styles["field-hint"]} style={{ marginBottom: '1rem' }}>
+        "Copy" populates capture fields with your movement settings from Step 2.
+      </p>
 
       {/* Capture on Move */}
       <div className={styles["condition-section"]}>
-        <h3>Capture on Move <InfoTooltip text="'Capture on Move' means the piece moves to the enemy's square to capture it (like most chess pieces). This is different from 'Can attack how it moves' above — that checkbox auto-imports your movement settings. This section lets you manually configure capture-specific directions, distances, and patterns independently of how the piece moves." /></h3>
+        <h3>Capture on Move <InfoTooltip text="'Capture on Move' means the piece moves to the enemy's square to capture it (like most chess pieces). Configure capture-specific directions, distances, and patterns here." /></h3>
         <ToggleSwitch
           checked={pieceData.can_capture_enemy_on_move === true || pieceData.can_capture_enemy_on_move === 1}
           onChange={(v) => handleBooleanChange("can_capture_enemy_on_move", v ? "true" : "false")}

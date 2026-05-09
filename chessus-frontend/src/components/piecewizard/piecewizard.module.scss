@@ -718,8 +718,7 @@
 }
 
 .add-movement-btn {
-  width: 100%;
-  padding: 0.5rem;
+  padding: 0.5rem 1.2rem;
   background-color: rgba(var(--panel-border-rgb), 0.2);
   color: var(--text-accent-light);
   border: 1px solid rgba(var(--accent-highlight-rgb), 0.4);
@@ -756,6 +755,32 @@
     color: var(--light-gray);
     font-size: 0.95rem;
     margin: 0;
+  }
+}
+
+.wizard-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.clear-wizard-btn {
+  padding: 0.5rem 1.2rem;
+  background-color: rgba(200, 100, 0, 0.15);
+  color: #e8a04a;
+  border: 1px solid rgba(200, 120, 0, 0.5);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
+  font-weight: 500;
+  transition: transform 0.2s, box-shadow 0.2s;
+
+  &:hover {
+    background-color: rgba(200, 100, 0, 0.3);
+    border-color: rgba(220, 140, 0, 0.8);
+    color: #f5c070;
   }
 }
 

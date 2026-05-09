@@ -938,7 +938,9 @@ const GameTypeView = () => {
         shared: 'Shared Starting Squares',
         full: 'Full Board Randomization',
       };
-      let allowedModes = null;
+      // Mirror the same logic used by the host game modal (Play.js):
+      // When randomized_starting_positions is not set, all 6 modes are available by default.
+      let allowedModes = ['none', 'backrow', 'mirrored', 'independent', 'shared', 'full'];
       try {
         if (game.randomized_starting_positions) {
           const parsed = JSON.parse(game.randomized_starting_positions);
@@ -949,19 +951,19 @@ const GameTypeView = () => {
           }
         }
       } catch (_) {}
-      if (allowedModes && allowedModes.length > 0) {
-        const defaultMode = game.default_starting_mode;
-        const modeList = allowedModes
-          .map(m => {
-            const label = modeLabels[m] || m;
-            return defaultMode === m ? `${label} (default)` : label;
-          })
-          .join(', ');
-        rules.push({ title: "Starting Position Modes", content: modeList });
-      } else {
-        // Always show starting position info even when non-randomized
-        rules.push({ title: "Starting Position Modes", content: "Fixed Starting Positions (default)" });
-      }
+      const defaultMode = game.default_starting_mode || allowedModes[0];
+      // Sort: default mode first, rest in their natural order
+      const sortedModes = [
+        defaultMode,
+        ...allowedModes.filter(m => m !== defaultMode),
+      ];
+      const modeLines = sortedModes
+        .map(m => {
+          const label = modeLabels[m] || m;
+          return m === defaultMode ? `• ${label} (default)` : `• ${label}`;
+        })
+        .join('\n');
+      rules.push({ title: "Starting Position Modes", content: modeLines });
     }
 
     // Piece movements
@@ -976,6 +978,7 @@ const GameTypeView = () => {
       if (!pid) return;
       if (!hpAdByPiece[pid]) hpAdByPiece[pid] = [];
       hpAdByPiece[pid].push({
+        player_id: placement.player_id ?? 0,
         hit_points: placement.hit_points ?? 1,
         attack_damage: placement.attack_damage ?? 1,
         hp_regen: placement.hp_regen ?? 0,
@@ -990,6 +993,15 @@ const GameTypeView = () => {
         die_on_capture_grants_win: !!placement.die_on_capture_grants_win,
         attack_radius: placement.attack_radius ?? 0,
         cannot_move_outside_zone: !!placement.cannot_move_outside_zone,
+        ghostwalk: !!placement.ghostwalk,
+        trample: !!placement.trample,
+        trample_radius: placement.trample_radius ?? 0,
+        is_neutral: !!placement.is_neutral,
+        can_promote_to_checkmate: !!placement.can_promote_to_checkmate,
+        limit_promote_checkmate_to_original: !!placement.limit_promote_checkmate_to_original,
+        can_promote_to_capture: !!placement.can_promote_to_capture,
+        limit_promote_capture_to_original: !!placement.limit_promote_capture_to_original,
+        promotion_pieces_override: placement.promotion_pieces_override || null,
       });
     });
 
@@ -1065,52 +1077,7 @@ const GameTypeView = () => {
         description += `• **Must Move If Able**: On its owner's turn, this piece is forced to move if it has any legal move. ${actionNote}\n`;
       }
 
-      // Piece Stats line - show if any stat is non-default or show flags are enabled
-      let showGlobalStats = false;
-      try { showGlobalStats = JSON.parse(game.other_game_data || '{}').show_all_hp_ad || false; } catch {}
-      const showFlags = showGlobalStats || placements.some(p => p.show_hp_ad);
-      const hps = [...new Set(placements.map(p => p.hit_points))];
-      const ads = [...new Set(placements.map(p => p.attack_damage))];
-      const regens = [...new Set(placements.map(p => p.hp_regen))];
-      const hasNonDefaultHp = showFlags || hps.some(hp => hp > 1);
-      const hasNonDefaultAd = showFlags || ads.some(ad => ad > 1);
-      const hasRegen = regens.some(r => r > 0);
-      const burnDamages = [...new Set(placements.map(p => p.burn_damage))];
-      const burnDurations = [...new Set(placements.map(p => p.burn_duration))];
-      const hasBurn = burnDamages.some(d => d > 0) && burnDurations.some(d => d > 0);
-      const isInvincible = placements.some(p => p.cannot_be_captured);
-
-      if (hasNonDefaultHp || hasNonDefaultAd || hasRegen || hasBurn || isInvincible) {
-        const parts = [];
-        if (hasNonDefaultHp) {
-          parts.push(hps.length === 1 ? `${hps[0]} HP` : `${hps.join(', ')} HP (varies)`);
-        }
-        if (hasNonDefaultAd) {
-          parts.push(ads.length === 1 ? `${ads[0]} AD` : `${ads.join(', ')} AD (varies)`);
-        }
-        if (hasRegen) {
-          const nonZeroRegens = regens.filter(r => r > 0);
-          if (nonZeroRegens.length === 1) {
-            parts.push(`+${nonZeroRegens[0]} Regen/turn`);
-          } else {
-            parts.push(`+${nonZeroRegens.join(', +')} Regen/turn (varies)`);
-          }
-        }
-        if (hasBurn) {
-          const nonZeroBurnDmg = burnDamages.filter(d => d > 0);
-          const nonZeroBurnDur = burnDurations.filter(d => d > 0);
-          const dmgText = nonZeroBurnDmg.length === 1 ? `${nonZeroBurnDmg[0]}` : `${nonZeroBurnDmg.join(', ')}`;
-          const durText = nonZeroBurnDur.length === 1 ? `${nonZeroBurnDur[0]}` : `${nonZeroBurnDur.join(', ')}`;
-          const variesText = (nonZeroBurnDmg.length > 1 || nonZeroBurnDur.length > 1) ? ' (varies)' : '';
-          parts.push(`🔥 ${dmgText} dmg for ${durText} turn${nonZeroBurnDur.some(d => d > 1) ? 's' : ''} on attack${variesText}`);
-        }
-        if (isInvincible) {
-          parts.push('Immune to capture');
-        }
-        description += `• **Piece Stats**: ${parts.join(' · ')}.\n`;
-      }
-
-      // Hopping abilities
+      // Hopping abilities (template-level)
       const canHopAllies = pieceData.can_hop_over_allies === 1 || pieceData.can_hop_over_allies === true;
       const canHopEnemies = pieceData.can_hop_over_enemies === 1 || pieceData.can_hop_over_enemies === true;
       if (canHopAllies || canHopEnemies) {
@@ -1120,19 +1087,13 @@ const GameTypeView = () => {
         if (pieceData.directional_hop_disabled) extras.push('disabled for directional moves');
         const extrasStr = extras.length > 0 ? ` (${extras.join('; ')})` : '';
         description += `• **Hop**: Can jump over ${who} during movement${extrasStr}.\n`;
-        // Stop at occupied only relevant when BOTH ally and enemy hop are on and repeating_ratio
-        const hopStopEnabled = canHopAllies && canHopEnemies && pieceData.repeating_ratio && (pieceData.hop_stop_at_occupied !== false && pieceData.hop_stop_at_occupied !== 0);
-        if (hopStopEnabled) {
+        const hopStopAtOccupied = pieceData.repeating_ratio && (pieceData.max_ratio_iterations === -1 || (pieceData.max_ratio_iterations || 1) > 1) && (pieceData.hop_stop_at_occupied !== false && pieceData.hop_stop_at_occupied !== 0);
+        if (hopStopAtOccupied) {
           description += `• **Repeating Hop Limit**: Stops if an intermediate multiple square is occupied.\n`;
         }
       }
 
-      // Ghostwalk (also shown in Special Rules section, show brief note here too)
-      if (pieceData.ghostwalk) {
-        description += `• **Ghostwalk**: Passes through any piece.\n`;
-      }
-
-      // First-move-only movement
+      // First-move-only movement (template-level, not per-placement)
       if (pieceData.first_move_only) {
         description += `• **First-Move-Only**: Certain movement abilities are only available on this piece's very first move.\n`;
       }
@@ -1140,46 +1101,395 @@ const GameTypeView = () => {
         description += `• **First-Move-Only Capture**: Certain capture abilities are only available on this piece's very first move.\n`;
       }
 
-      // Die on capture (brief note here — full explanation in Special Rules)
-      const hasDieOnCapture = placements.some(p => p.die_on_capture);
-      if (hasDieOnCapture) {
-        const anyGrantsWin = placements.some(p => p.die_on_capture_grants_win);
-        description += `• **Die on Capture**: Removed from board when it captures${anyGrantsWin ? '; if this kills the opponent\'s last required piece, the attacker wins' : ''}.\n`;
+      // ── Per-placement abilities: group by configuration, count duplicates ──
+      // Build a config fingerprint for each placement's per-placement abilities.
+      // Placements sharing the same fingerprint are the "same configuration" and
+      // are shown once with an (N) count instead of duplicated lines.
+
+      if (placements.length > 0) {
+        // Helper: produce a stable string key for the per-placement ability config
+        const placementConfigKey = (p) => [
+          p.ghostwalk ? 'gw' : '',
+          p.trample ? `tr${p.trample_radius || 0}` : '',
+          p.die_on_capture ? (p.die_on_capture_grants_win ? 'docW' : 'doc') : '',
+          p.attack_radius > 0 ? `ar${p.attack_radius}` : '',
+          p.cannot_move_outside_zone ? 'zone' : '',
+          p.is_neutral ? 'neut' : '',
+          p.disable_promotion ? 'noprom' : '',
+          p.can_promote_to_checkmate ? (p.limit_promote_checkmate_to_original ? 'ptcO' : 'ptc') : '',
+          p.can_promote_to_capture ? (p.limit_promote_capture_to_original ? 'ptcapO' : 'ptcap') : '',
+          // HP/AD/stats
+          `hp${p.hit_points}`,
+          `ad${p.attack_damage}`,
+          p.hp_regen > 0 ? `regen${p.hp_regen}` : '',
+          p.burn_damage > 0 && p.burn_duration > 0 ? `burn${p.burn_damage}x${p.burn_duration}` : '',
+          p.cannot_be_captured ? 'inv' : '',
+          p.capture_points_gain > 0 ? `cpg${p.capture_points_gain}` : '',
+          p.capture_points_loss > 0 ? `cpl${p.capture_points_loss}` : '',
+        ].filter(Boolean).join('|') || 'default';
+
+        // Count placements per config key
+        // Group placements by (player_id, configKey) so each player gets their own config breakdown
+        const playerConfigMap = {}; // `${player_id}|${configKey}` -> { count, first, playerId, configKey }
+        const playerTotals = {};    // player_id -> total placement count for this piece type
+        for (const p of placements) {
+          const pid = p.player_id ?? 0;
+          const ck = placementConfigKey(p);
+          const gk = `${pid}|${ck}`;
+          if (!playerConfigMap[gk]) playerConfigMap[gk] = { count: 0, first: p, playerId: pid, configKey: ck };
+          playerConfigMap[gk].count++;
+          playerTotals[pid] = (playerTotals[pid] || 0) + 1;
+        }
+
+        const groups = Object.values(playerConfigMap);
+        const playerIds = Object.keys(playerTotals).map(Number);
+        const multiPlayer = playerIds.length > 1;
+
+        // Determine whether configs differ ACROSS players (if not, collapse player dimension)
+        const configKeysByPlayer = {};
+        for (const g of groups) {
+          if (!configKeysByPlayer[g.playerId]) configKeysByPlayer[g.playerId] = new Set();
+          configKeysByPlayer[g.playerId].add(g.configKey);
+        }
+        const playerConfigSignatures = Object.values(configKeysByPlayer).map(s => [...s].sort().join(','));
+        const allPlayersHaveSameConfigs = playerConfigSignatures.every(s => s === playerConfigSignatures[0]);
+
+        // Show player label only when configs actually differ between players
+        const showPlayerLabel = multiPlayer && !allPlayersHaveSameConfigs;
+
+        // When configs are the same across players, collapse into single configKey groups
+        const renderGroups = showPlayerLabel ? groups : (() => {
+          const collapsed = {};
+          for (const g of groups) {
+            if (!collapsed[g.configKey]) collapsed[g.configKey] = { count: 0, first: g.first, playerId: null, configKey: g.configKey, playerCounts: {} };
+            collapsed[g.configKey].count += g.count;
+            // Track how many placements per player land in this config group (for "per player" suffix)
+            const pid = g.playerId;
+            collapsed[g.configKey].playerCounts[pid] = (collapsed[g.configKey].playerCounts[pid] || 0) + g.count;
+          }
+          return Object.values(collapsed);
+        })();
+
+        const totalPlacements = placements.length;
+
+        // Within a player (or overall when collapsed), do configs vary?
+        const needsCount = showPlayerLabel
+          ? playerIds.some(pid => (configKeysByPlayer[pid]?.size || 0) > 1)
+          : renderGroups.length > 1;
+
+        // Helper: produce suffix like "(Player 1)", "(Player 1, 2 of 4)", "(2 of 4)", or "(1 piece per player)"
+        const countSuffix = (group) => {
+          const parts = [];
+          if (showPlayerLabel) {
+            const pid = group.playerId;
+            parts.push(pid === 0 || String(pid) === '0' ? 'Neutral' : `Player ${pid}`);
+          }
+          if (needsCount) {
+            const denominator = showPlayerLabel ? (playerTotals[group.playerId] || 1) : totalPlacements;
+            if (group.count < denominator) {
+              // Always show "X piece(s) of Y", then append per-player breakdown when relevant
+              const pieceWord = group.count === 1 ? 'piece' : 'pieces';
+              let countStr = `${group.count} ${pieceWord} of ${denominator}`;
+              if (!showPlayerLabel) {
+                const pcVals = Object.values(group.playerCounts || {}).filter(v => v > 0);
+                const ptVals = Object.values(playerTotals).filter(v => v > 0);
+                const isSymmetric = pcVals.length > 1 &&
+                  pcVals.every(v => v === pcVals[0]) &&
+                  ptVals.every(v => v === ptVals[0]) &&
+                  pcVals[0] < ptVals[0];
+                if (isSymmetric) {
+                  countStr += `, ${pcVals[0]} per player`;
+                } else if (pcVals.length > 1) {
+                  const breakdown = Object.entries(group.playerCounts || {})
+                    .filter(([, v]) => v > 0)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .map(([pid, cnt]) => `${cnt} for Player ${pid}`)
+                    .join(', ');
+                  countStr += `, ${breakdown}`;
+                } else if (pcVals.length === 1) {
+                  // Only one player owns this config group — name them first
+                  const soloPlayer = Object.keys(group.playerCounts || {}).find(k => (group.playerCounts[k] || 0) > 0);
+                  if (soloPlayer !== undefined) {
+                    parts.push(Number(soloPlayer) === 0 ? 'Neutral' : `Player ${soloPlayer}`);
+                  }
+                }
+              }
+              parts.push(countStr);
+            }
+          }
+          return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+        };
+
+        // Sort: by player_id ascending (neutral last), then by configKey
+        renderGroups.sort((a, b) => {
+          const pa = (a.playerId === 0 || a.playerId === null) ? 999 : (a.playerId || 0);
+          const pb = (b.playerId === 0 || b.playerId === null) ? 999 : (b.playerId || 0);
+          if (pa !== pb) return pa - pb;
+          return a.configKey.localeCompare(b.configKey);
+        });
+
+        // Pre-compute which abilities are uniform (same value in every group) so they
+        // can be rendered once without a group suffix.  Varying abilities are rendered
+        // per-group with the suffix so the user sees which sub-set they apply to.
+        const f0 = renderGroups[0].first;
+        let showGlobalStats = false;
+        try { showGlobalStats = JSON.parse(game.other_game_data || '{}').show_all_hp_ad || false; } catch {}
+        const uniformStats = renderGroups.every(g => {
+          const p = g.first;
+          return p.hit_points === f0.hit_points &&
+                 p.attack_damage === f0.attack_damage &&
+                 p.hp_regen === f0.hp_regen &&
+                 p.burn_damage === f0.burn_damage &&
+                 p.burn_duration === f0.burn_duration &&
+                 p.cannot_be_captured === f0.cannot_be_captured &&
+                 p.show_hp_ad === f0.show_hp_ad;
+        });
+        const uniformCapturePoints = renderGroups.every(g =>
+          g.first.capture_points_gain === f0.capture_points_gain &&
+          g.first.capture_points_loss === f0.capture_points_loss
+        );
+        const uniformGhostwalk = renderGroups.every(g => g.first.ghostwalk === f0.ghostwalk);
+        const uniformTrample = renderGroups.every(g =>
+          g.first.trample === f0.trample && g.first.trample_radius === f0.trample_radius
+        );
+        const uniformDieOnCapture = renderGroups.every(g =>
+          g.first.die_on_capture === f0.die_on_capture &&
+          g.first.die_on_capture_grants_win === f0.die_on_capture_grants_win
+        );
+        const uniformAttackRadius = renderGroups.every(g => g.first.attack_radius === f0.attack_radius);
+        const uniformZone = renderGroups.every(g => g.first.cannot_move_outside_zone === f0.cannot_move_outside_zone);
+        const uniformNeutral = renderGroups.every(g => g.first.is_neutral === f0.is_neutral);
+        const uniformPromotion = renderGroups.every(g => {
+          const p = g.first;
+          return p.disable_promotion === f0.disable_promotion &&
+                 p.can_promote_to_checkmate === f0.can_promote_to_checkmate &&
+                 p.limit_promote_checkmate_to_original === f0.limit_promote_checkmate_to_original &&
+                 p.can_promote_to_capture === f0.can_promote_to_capture &&
+                 p.limit_promote_capture_to_original === f0.limit_promote_capture_to_original;
+        });
+
+        // Per-group pass: only render abilities that actually vary between groups
+        for (const group of renderGroups) {
+          const p = group.first;
+          const sfx = countSuffix(group);
+          const placementWord = group.count === 1 ? 'this placement' : 'these placements';
+          const showStat = showGlobalStats || p.show_hp_ad;
+
+          // ── Stats (HP / AD / Regen / Burn) ──
+          if (!uniformStats) {
+            const hasNonDefaultHp = showStat || p.hit_points > 1;
+            const hasNonDefaultAd = showStat || p.attack_damage > 1;
+            const hasRegen = p.hp_regen > 0;
+            const hasBurn = p.burn_damage > 0 && p.burn_duration > 0;
+            const isInvincible = p.cannot_be_captured;
+            if (hasNonDefaultHp || hasNonDefaultAd || hasRegen || hasBurn || isInvincible) {
+              const statParts = [];
+              if (hasNonDefaultHp) statParts.push(`${p.hit_points} HP`);
+              if (hasNonDefaultAd) statParts.push(`${p.attack_damage} AD`);
+              if (hasRegen) statParts.push(`+${p.hp_regen} Regen/turn`);
+              if (hasBurn) statParts.push(`🔥 ${p.burn_damage} dmg for ${p.burn_duration} turn${p.burn_duration > 1 ? 's' : ''} on attack`);
+              if (isInvincible) statParts.push('Immune to capture');
+              description += `• **Piece Stats**${sfx}: ${statParts.join(' · ')}.\n`;
+            }
+          }
+
+          // ── Capture points ──
+          if (!uniformCapturePoints) {
+            if ((p.capture_points_gain || 0) > 0 || (p.capture_points_loss || 0) > 0) {
+              const cpParts = [];
+              if (p.capture_points_gain > 0) cpParts.push(`+${p.capture_points_gain} pts awarded when captured`);
+              if (p.capture_points_loss > 0) cpParts.push(`-${p.capture_points_loss} pts deducted from owner when captured`);
+              description += `• **Capture Points**${sfx}: ${cpParts.join('; ')}.\n`;
+            }
+          }
+
+          // ── Promotion status ──
+          if (!uniformPromotion) {
+            const pieceCanPromote = pieceData.can_promote === 1 || pieceData.can_promote === true;
+            if (pieceCanPromote) {
+              if (p.disable_promotion) {
+                description += `• **Cannot Promote**${sfx}: Promotion is disabled for ${placementWord}.\n`;
+              } else {
+                const promParts = [];
+                if (p.can_promote_to_checkmate) {
+                  promParts.push(`checkmate pieces${p.limit_promote_checkmate_to_original ? ' (capped at starting count)' : ''}`);
+                }
+                if (p.can_promote_to_capture) {
+                  promParts.push(`win-on-capture pieces${p.limit_promote_capture_to_original ? ' (capped at starting count)' : ''}`);
+                }
+                if (promParts.length > 0) {
+                  description += `• **Promotion Override**${sfx}: Can also promote into ${promParts.join('; ')}.\n`;
+                }
+              }
+            }
+          }
+        }
+
+        // ── Non-uniform abilities: rendered once with combined per-player counts ──
+        // Helper: sum counts across groups that share an ability, build one count suffix.
+        const buildAbilitySuffix = (abilityGroups) => {
+          const totalWithAbility = abilityGroups.reduce((sum, g) => sum + g.count, 0);
+          if (totalWithAbility >= totalPlacements) return '';
+          const pcMap = {};
+          for (const g of abilityGroups) {
+            if (showPlayerLabel) {
+              const _ap = g.playerId;
+              if (_ap !== null && _ap !== undefined) pcMap[String(_ap)] = (pcMap[String(_ap)] || 0) + g.count;
+            } else {
+              for (const [_ap, cnt] of Object.entries(g.playerCounts || {})) pcMap[_ap] = (pcMap[_ap] || 0) + (cnt || 0);
+            }
+          }
+          const _aw = totalWithAbility === 1 ? 'piece' : 'pieces';
+          let _as = `${totalWithAbility} ${_aw} of ${totalPlacements}`;
+          const _av = Object.values(pcMap).filter(v => v > 0);
+          const _at = Object.values(playerTotals).filter(v => v > 0);
+          const _sym = _av.length > 1 && _av.every(v => v === _av[0]) && _at.every(v => v === _at[0]) && _av[0] < _at[0];
+          if (_sym) {
+            _as += `, ${_av[0]} per player`;
+          } else if (_av.length > 1) {
+            _as += `, ${Object.entries(pcMap).filter(([, v]) => v > 0).sort(([a], [b]) => Number(a) - Number(b)).map(([pid, cnt]) => `${cnt} for Player ${pid}`).join(', ')}`;
+          } else if (_av.length === 1) {
+            const _sp = Object.keys(pcMap).find(k => (pcMap[k] || 0) > 0);
+            if (_sp !== undefined) return ` (${Number(_sp) === 0 ? 'Neutral' : `Player ${_sp}`}, ${_as})`;
+          }
+          return ` (${_as})`;
+        };
+        if (!uniformGhostwalk) {
+          const _gg = renderGroups.filter(g => g.first.ghostwalk);
+          if (_gg.length > 0) description += `• **Ghostwalk**${buildAbilitySuffix(_gg)}: Passes through any piece.\n`;
+        }
+        if (!uniformTrample) {
+          const _tg = renderGroups.filter(g => g.first.trample);
+          if (_tg.length > 0) {
+            const _tr = {};
+            for (const g of _tg) { const r = g.first.trample_radius || 0; (_tr[r] = _tr[r] || []).push(g); }
+            for (const [r, rg] of Object.entries(_tr).sort(([a], [b]) => Number(a) - Number(b)))
+              description += `• **Trample**${buildAbilitySuffix(rg)}: Damages all pieces along its movement path${Number(r) > 0 ? ` (radius ${r})` : ''}.\n`;
+          }
+        }
+        if (!uniformDieOnCapture) {
+          const _dg = renderGroups.filter(g => g.first.die_on_capture);
+          if (_dg.length > 0) {
+            const _dw = { yes: [], no: [] };
+            for (const g of _dg) _dw[g.first.die_on_capture_grants_win ? 'yes' : 'no'].push(g);
+            if (_dw.yes.length > 0) description += `• **Die on Capture**${buildAbilitySuffix(_dw.yes)}: Removed from board when it captures; attacker wins if this eliminates the last required enemy piece.\n`;
+            if (_dw.no.length > 0) description += `• **Die on Capture**${buildAbilitySuffix(_dw.no)}: Removed from board when it captures.\n`;
+          }
+        }
+        if (!uniformAttackRadius) {
+          const _ag = renderGroups.filter(g => (g.first.attack_radius || 0) > 0);
+          if (_ag.length > 0) {
+            const _ar = {};
+            for (const g of _ag) { const r = g.first.attack_radius || 0; (_ar[r] = _ar[r] || []).push(g); }
+            for (const [r, rg] of Object.entries(_ar).sort(([a], [b]) => Number(a) - Number(b)))
+              description += `• **Attack Radius**${buildAbilitySuffix(rg)}: Damages all enemies within ${r} square${Number(r) !== 1 ? 's' : ''} of the landing square on capture.\n`;
+          }
+        }
+        if (!uniformZone) {
+          const _zg = renderGroups.filter(g => g.first.cannot_move_outside_zone);
+          if (_zg.length > 0) description += `• **Zone Restriction**${buildAbilitySuffix(_zg)}: Can only move to squares marked as its restriction zone.\n`;
+        }
+        if (!uniformNeutral) {
+          const _ng = renderGroups.filter(g => g.first.is_neutral);
+          if (_ng.length > 0) description += `• **Neutral**${buildAbilitySuffix(_ng)}: Belongs to no player — acts independently.\n`;
+        }
+
+        // Uniform (shared) properties — render each once, no group suffix
+        {
+          const p = f0;
+          const showStat = showGlobalStats || p.show_hp_ad;
+
+          // ── Stats ──
+          if (uniformStats) {
+            const hasNonDefaultHp = showStat || p.hit_points > 1;
+            const hasNonDefaultAd = showStat || p.attack_damage > 1;
+            const hasRegen = p.hp_regen > 0;
+            const hasBurn = p.burn_damage > 0 && p.burn_duration > 0;
+            const isInvincible = p.cannot_be_captured;
+            if (hasNonDefaultHp || hasNonDefaultAd || hasRegen || hasBurn || isInvincible) {
+              const statParts = [];
+              if (hasNonDefaultHp) statParts.push(`${p.hit_points} HP`);
+              if (hasNonDefaultAd) statParts.push(`${p.attack_damage} AD`);
+              if (hasRegen) statParts.push(`+${p.hp_regen} Regen/turn`);
+              if (hasBurn) statParts.push(`🔥 ${p.burn_damage} dmg for ${p.burn_duration} turn${p.burn_duration > 1 ? 's' : ''} on attack`);
+              if (isInvincible) statParts.push('Immune to capture');
+              description += `• **Piece Stats**: ${statParts.join(' · ')}.\n`;
+            }
+          }
+
+          // ── Capture points ──
+          if (uniformCapturePoints) {
+            if ((p.capture_points_gain || 0) > 0 || (p.capture_points_loss || 0) > 0) {
+              const cpParts = [];
+              if (p.capture_points_gain > 0) cpParts.push(`+${p.capture_points_gain} pts awarded when captured`);
+              if (p.capture_points_loss > 0) cpParts.push(`-${p.capture_points_loss} pts deducted from owner when captured`);
+              description += `• **Capture Points**: ${cpParts.join('; ')}.\n`;
+            }
+          }
+
+          // ── Ghostwalk ──
+          if (uniformGhostwalk && (p.ghostwalk || pieceData.ghostwalk)) {
+            description += `• **Ghostwalk**: Passes through any piece.\n`;
+          }
+
+          // ── Trample ──
+          if (uniformTrample && p.trample) {
+            const radStr = p.trample_radius > 0 ? ` (radius ${p.trample_radius})` : '';
+            description += `• **Trample**: Damages all pieces along its movement path${radStr}.\n`;
+          }
+
+          // ── Die on capture ──
+          if (uniformDieOnCapture && p.die_on_capture) {
+            description += `• **Die on Capture**: Removed from board when it captures${p.die_on_capture_grants_win ? '; attacker wins if this eliminates the last required enemy piece' : ''}.\n`;
+          }
+
+          // ── Attack radius ──
+          if (uniformAttackRadius && p.attack_radius > 0) {
+            description += `• **Attack Radius**: Damages all enemies within ${p.attack_radius} square${p.attack_radius !== 1 ? 's' : ''} of the landing square on capture.\n`;
+          }
+
+          // ── Zone restriction ──
+          if (uniformZone && p.cannot_move_outside_zone) {
+            description += `• **Zone Restriction**: Can only move to squares marked as its restriction zone.\n`;
+          }
+
+          // ── Neutral ──
+          if (uniformNeutral && p.is_neutral) {
+            description += `• **Neutral**: Belongs to no player — acts independently.\n`;
+          }
+
+          // ── Promotion status ──
+          if (uniformPromotion) {
+            const pieceCanPromote = pieceData.can_promote === 1 || pieceData.can_promote === true;
+            if (pieceCanPromote) {
+              if (p.disable_promotion) {
+                description += `• **Cannot Promote**: Promotion is disabled for ${totalPlacements === 1 ? 'this placement' : 'these placements'}.\n`;
+              } else {
+                const promParts = [];
+                if (p.can_promote_to_checkmate) {
+                  promParts.push(`checkmate pieces${p.limit_promote_checkmate_to_original ? ' (capped at starting count)' : ''}`);
+                }
+                if (p.can_promote_to_capture) {
+                  promParts.push(`win-on-capture pieces${p.limit_promote_capture_to_original ? ' (capped at starting count)' : ''}`);
+                }
+                if (promParts.length > 0) {
+                  description += `• **Promotion Override**: Can also promote into ${promParts.join('; ')}.\n`;
+                }
+              }
+            }
+          }
+        }
       }
 
-      // Attack radius
-      const attackRadii = [...new Set(placements.map(p => p.attack_radius || 0).filter(r => r > 0))];
-      if (attackRadii.length > 0) {
-        const rText = attackRadii.length === 1 ? attackRadii[0] : attackRadii.join('/');
-        description += `• **Attack Radius**: Damages all enemies within ${rText} square${rText > 1 ? 's' : ''} of the landing square on capture.\n`;
-      }
+      // Deduplicate identical bullet lines (occurs when multiple groups share the same ability values)
+      const _seenLines = new Set();
+      description = description.split('\n').filter(line => {
+        if (!line.startsWith('\u2022')) return true;
+        if (_seenLines.has(line)) return false;
+        _seenLines.add(line);
+        return true;
+      }).join('\n');
 
-      // Cannot move outside zone
-      if (placements.some(p => p.cannot_move_outside_zone)) {
-        description += `• **Zone Restriction**: Can only move to squares marked as its restriction zone.\n`;
-      }
-
-      // Capture points
-      const hasCapturePointsGain = placements.some(p => (p.capture_points_gain || 0) > 0);
-      const hasCapturePointsLoss = placements.some(p => (p.capture_points_loss || 0) > 0);
-      if (hasCapturePointsGain || hasCapturePointsLoss) {
-        const gainVals = [...new Set(placements.map(p => p.capture_points_gain || 0).filter(v => v > 0))];
-        const lossVals = [...new Set(placements.map(p => p.capture_points_loss || 0).filter(v => v > 0))];
-        const parts2 = [];
-        if (gainVals.length > 0) parts2.push(`+${gainVals.join('/')} pts awarded when captured`);
-        if (lossVals.length > 0) parts2.push(`-${lossVals.join('/')} pts deducted when this piece captures`);
-        description += `• **Capture Points**: ${parts2.join('; ')}.\n`;
-      }
-
-      // Disable promotion (per-placement)
-      const allDisablePromotion = placements.length > 0 && placements.every(p => p.disable_promotion);
-      const someDisablePromotion = !allDisablePromotion && placements.some(p => p.disable_promotion);
-      if (allDisablePromotion) {
-        description += `• **Cannot Promote**: Promotion is disabled for this piece in this game.\n`;
-      } else if (someDisablePromotion) {
-        description += `• **Cannot Promote**: Promotion is disabled for some placements of this piece in this game.\n`;
-      }
-      
       pieceDescriptions.push(description);
     });
 
@@ -1190,6 +1500,93 @@ const GameTypeView = () => {
         pieceLinks: moveAttackPieceLinks
       });
     }
+
+    // Build per-placement ability lookup data — placements can have per-game overrides of template values
+    const _placementTramplers = new Set();
+    const _placementTrampleRadius = {}; // piece_id -> max radius
+    const _placementGhostwalkers = new Set();
+    const _placementDieOnCapture = new Set();
+    const _placementDieGrantsWin = new Set();
+    const _placementAttackRadius = {}; // piece_id -> max radius
+    // Count maps: piece_id -> number of placements that have the ability
+    const _totalPlacementsByPiece = {};              // pid -> total
+    const _totalByPieceAndPlayer = {};               // pid -> { playerId: count }
+    const _gwCountByPiece = {};
+    const _gwCountByPieceAndPlayer = {};             // pid -> { playerId: count }
+    const _trampleCountByPiece = {};
+    const _trampleCountByPieceAndPlayer = {};
+    const _docCountByPiece = {};
+    const _docCountByPieceAndPlayer = {};
+    const _atkCountByPiece = {};
+    const _atkCountByPieceAndPlayer = {};
+    Object.values(piecePlacements).forEach(p => {
+      if (p._occupied || !p.piece_id) return;
+      const _pid = p.piece_id;
+      const _plyr = p.player_id ?? 0;
+      _totalPlacementsByPiece[_pid] = (_totalPlacementsByPiece[_pid] || 0) + 1;
+      _totalByPieceAndPlayer[_pid] = _totalByPieceAndPlayer[_pid] || {};
+      _totalByPieceAndPlayer[_pid][_plyr] = (_totalByPieceAndPlayer[_pid][_plyr] || 0) + 1;
+      if (p.trample) {
+        _placementTramplers.add(_pid);
+        _placementTrampleRadius[_pid] = Math.max(_placementTrampleRadius[_pid] || 0, p.trample_radius || 0);
+        _trampleCountByPiece[_pid] = (_trampleCountByPiece[_pid] || 0) + 1;
+        _trampleCountByPieceAndPlayer[_pid] = _trampleCountByPieceAndPlayer[_pid] || {};
+        _trampleCountByPieceAndPlayer[_pid][_plyr] = (_trampleCountByPieceAndPlayer[_pid][_plyr] || 0) + 1;
+      }
+      if (p.ghostwalk) {
+        _placementGhostwalkers.add(_pid);
+        _gwCountByPiece[_pid] = (_gwCountByPiece[_pid] || 0) + 1;
+        _gwCountByPieceAndPlayer[_pid] = _gwCountByPieceAndPlayer[_pid] || {};
+        _gwCountByPieceAndPlayer[_pid][_plyr] = (_gwCountByPieceAndPlayer[_pid][_plyr] || 0) + 1;
+      }
+      if (p.die_on_capture) {
+        _placementDieOnCapture.add(_pid);
+        _docCountByPiece[_pid] = (_docCountByPiece[_pid] || 0) + 1;
+        _docCountByPieceAndPlayer[_pid] = _docCountByPieceAndPlayer[_pid] || {};
+        _docCountByPieceAndPlayer[_pid][_plyr] = (_docCountByPieceAndPlayer[_pid][_plyr] || 0) + 1;
+      }
+      if (p.die_on_capture_grants_win) _placementDieGrantsWin.add(_pid);
+      if ((p.attack_radius || 0) > 0) {
+        _placementAttackRadius[_pid] = Math.max(_placementAttackRadius[_pid] || 0, p.attack_radius);
+        _atkCountByPiece[_pid] = (_atkCountByPiece[_pid] || 0) + 1;
+        _atkCountByPieceAndPlayer[_pid] = _atkCountByPieceAndPlayer[_pid] || {};
+        _atkCountByPieceAndPlayer[_pid][_plyr] = (_atkCountByPieceAndPlayer[_pid][_plyr] || 0) + 1;
+      }
+    });
+    // Helper: returns " (N piece(s) of M)" or " (N piece(s) per player)" suffix when a per-placement
+    // ability applies to only some placements of a piece type.
+    const _abilitySfx = (pid, countByPiece, templateHasAbility, perPlayerCountMap) => {
+      if (templateHasAbility) return '';
+      const count = countByPiece[pid] || 0;
+      const total = _totalPlacementsByPiece[pid] || 0;
+      if (count > 0 && count < total) {
+        const pcVals = Object.values((perPlayerCountMap || {})[pid] || {}).filter(v => v > 0);
+        const ptVals = Object.values((_totalByPieceAndPlayer || {})[pid] || {}).filter(v => v > 0);
+        const isSymmetric = pcVals.length > 1 &&
+          pcVals.every(v => v === pcVals[0]) &&
+          ptVals.every(v => v === ptVals[0]) &&
+          pcVals[0] < ptVals[0];
+        if (isSymmetric) {
+          const cpp = pcVals[0];
+          const sfxStr = `${count} ${count === 1 ? 'piece' : 'pieces'} of ${total}, ${cpp} per player`;
+          return ` (${sfxStr})`;
+        }
+        if (pcVals.length > 1) {
+          const breakdown = Object.entries((perPlayerCountMap || {})[pid] || {})
+            .filter(([, v]) => v > 0)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([pId, cnt]) => `${cnt} for Player ${pId}`)
+            .join(', ');
+          return ` (${count} ${count === 1 ? 'piece' : 'pieces'} of ${total}, ${breakdown})`;
+        }
+        if (pcVals.length === 1) {
+          const _sp = Object.keys((perPlayerCountMap || {})[pid] || {}).find(k => ((perPlayerCountMap[pid] || {})[k] || 0) > 0);
+          if (_sp !== undefined) return ` (${Number(_sp) === 0 ? 'Neutral' : `Player ${_sp}`}, ${count} ${count === 1 ? 'piece' : 'pieces'} of ${total})`;
+        }
+        return ` (${count} ${count === 1 ? 'piece' : 'pieces'} of ${total})`;
+      }
+      return '';
+    };
 
     // ---- Special Rules Section (combines multi-tile, castling, en passant, capture on hop) ----
     const specialRulesContent = [];
@@ -1341,34 +1738,38 @@ const GameTypeView = () => {
 
     // Trample ability
     const tramplePieces = Object.values(uniquePieces).filter(piece => {
-      const pieceData = pieceDataMap[piece.id] || piece;
-      return pieceData.trample;
+      const pid = piece.id || piece.piece_id;
+      return _placementTramplers.has(pid) || (pieceDataMap[pid] || piece).trample;
     });
 
     if (tramplePieces.length > 0) {
       const trampleDesc = tramplePieces.map(piece => {
-        const pieceData = pieceDataMap[piece.id] || piece;
+        const pid = piece.id || piece.piece_id;
+        const pieceData = pieceDataMap[pid] || piece;
         const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
-        const radius = pieceData.trample_radius || 0;
-        const hasGhostwalk = pieceData.ghostwalk;
-        return `• **${pieceName}** tramples pieces in its path${radius > 0 ? ` (radius ${radius})` : ''}${hasGhostwalk ? ' + Ghostwalk' : ''}`;
+        const radius = _placementTrampleRadius[pid] ?? pieceData.trample_radius ?? 0;
+        const hasGhostwalk = _placementGhostwalkers.has(pid) || pieceData.ghostwalk;
+        const sfx = _abilitySfx(pid, _trampleCountByPiece, !!pieceData.trample, _trampleCountByPieceAndPlayer);
+        return `• **${pieceName}**${sfx} tramples pieces in its path${radius > 0 ? ` (radius ${radius})` : ''}${hasGhostwalk ? ' + Ghostwalk' : ''}`;
       }).join('\n');
 
-      specialRulesContent.push(`**Trample**\nSome pieces damage every piece in their straight-line path as they move.\n\n${trampleDesc}\n\n**Trample Rules:**\n• The piece damages all pieces along its movement path\n• Works with directional and exact movement (not L-shaped/ratio movement)\n• Trample can cause check — a piece with trample and hop abilities threatens squares along its path\n• The piece must still make a valid move — it can be blocked unless it has Ghostwalk or hop abilities\n${tramplePieces.some(p => (pieceDataMap[p.id] || p).trample_radius > 0) ? '• **Trample Radius**: Pieces with a radius also damage pieces on surrounding squares at each step along the path\n• Checkmateable pieces (e.g. kings) are immune to trample radius splash damage — they can only be harmed by direct path trample\n• Each piece can only be damaged once per trample, even if caught in multiple steps\n' : ''}`);
+      specialRulesContent.push(`**Trample**\nSome pieces damage every piece in their straight-line path as they move.\n\n${trampleDesc}\n\n**Trample Rules:**\n• The piece damages all pieces along its movement path\n• Works with directional and exact movement (not L-shaped/ratio movement)\n• Trample can cause check — a piece with trample and hop abilities threatens squares along its path\n• The piece must still make a valid move — it can be blocked unless it has Ghostwalk or hop abilities\n${tramplePieces.some(p => (_placementTrampleRadius[p.id || p.piece_id] || 0) > 0 || (pieceDataMap[p.id] || p).trample_radius > 0) ? '• **Trample Radius**: Pieces with a radius also damage pieces on surrounding squares at each step along the path\n• Checkmateable pieces (e.g. kings) are immune to trample radius splash damage — they can only be harmed by direct path trample\n• Each piece can only be damaged once per trample, even if caught in multiple steps\n' : ''}`);
     }
 
     // Ghostwalk ability
     const ghostwalkPieces = Object.values(uniquePieces).filter(piece => {
-      const pieceData = pieceDataMap[piece.id] || piece;
-      return pieceData.ghostwalk;
+      const pid = piece.id || piece.piece_id;
+      return _placementGhostwalkers.has(pid) || (pieceDataMap[pid] || piece).ghostwalk;
     });
 
     if (ghostwalkPieces.length > 0) {
       const ghostDesc = ghostwalkPieces.map(piece => {
-        const pieceData = pieceDataMap[piece.id] || piece;
+        const pid = piece.id || piece.piece_id;
+        const pieceData = pieceDataMap[pid] || piece;
         const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
-        const hasTrample = pieceData.trample;
-        return `• **${pieceName}** can pass through any piece${hasTrample ? ' (with Trample — damages pieces along the way)' : ''}`;
+        const hasTrample = _placementTramplers.has(pid) || pieceData.trample;
+        const sfx = _abilitySfx(pid, _gwCountByPiece, !!pieceData.ghostwalk, _gwCountByPieceAndPlayer);
+        return `• **${pieceName}**${sfx} can pass through any piece${hasTrample ? ' (with Trample — damages pieces along the way)' : ''}`;
       }).join('\n');
 
       specialRulesContent.push(`**Ghostwalk**\nSome pieces can pass through any other piece during movement.\n\n${ghostDesc}\n\n**Ghostwalk Rules:**\n• The piece ignores all pieces in its path — nothing can block it\n• The piece can still capture normally at its destination\n• Combined with Trample, the piece damages every piece it passes through`);
@@ -1376,18 +1777,20 @@ const GameTypeView = () => {
 
     // Die on Capture ability
     const dieOnCapturePieces = Object.values(uniquePieces).filter(piece => {
-      const pieceData = pieceDataMap[piece.id] || piece;
-      return pieceData.die_on_capture;
+      const pid = piece.id || piece.piece_id;
+      return _placementDieOnCapture.has(pid) || (pieceDataMap[pid] || piece).die_on_capture;
     });
 
     if (dieOnCapturePieces.length > 0) {
       const dieDesc = dieOnCapturePieces.map(piece => {
-        const pieceData = pieceDataMap[piece.id] || piece;
+        const pid = piece.id || piece.piece_id;
+        const pieceData = pieceDataMap[pid] || piece;
         const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
-        const grantsWin = pieceData.die_on_capture_grants_win;
-        return `• **${pieceName}**${grantsWin ? ' *(Attacker Wins on Final Capture)*' : ''}`;
+        const grantsWin = _placementDieGrantsWin.has(pid) || pieceData.die_on_capture_grants_win;
+        const sfx = _abilitySfx(pid, _docCountByPiece, !!pieceData.die_on_capture, _docCountByPieceAndPlayer);
+        return `• **${pieceName}**${sfx}${grantsWin ? ' *(Attacker Wins on Final Capture)*' : ''}`;
       }).join('\n');
-      const anyGrantsWin = dieOnCapturePieces.some(piece => (pieceDataMap[piece.id] || piece).die_on_capture_grants_win);
+      const anyGrantsWin = dieOnCapturePieces.some(piece => _placementDieGrantsWin.has(piece.id || piece.piece_id) || (pieceDataMap[piece.id] || piece).die_on_capture_grants_win);
       const grantsWinNote = anyGrantsWin ? '\n• Pieces marked *Attacker Wins on Final Capture* — if such a piece kills the opponent\'s last required piece while dying in the process, the attacking player wins instead of drawing' : '';
 
       specialRulesContent.push(`**Die on Capture**\nSome pieces are destroyed when they capture another piece.\n\n${dieDesc}\n\n**Die on Capture Rules:**\n• When this piece captures an enemy, it is also removed from the board\n• Both the captured piece and the capturing piece are eliminated\n• Normally if both sides lose their last required piece simultaneously, the game is a draw${grantsWinNote}`);
@@ -1395,16 +1798,18 @@ const GameTypeView = () => {
 
     // Attack Radius ability
     const attackRadiusPieces = Object.values(uniquePieces).filter(piece => {
-      const pieceData = pieceDataMap[piece.id] || piece;
-      return (pieceData.attack_radius || 0) > 0;
+      const pid = piece.id || piece.piece_id;
+      return (_placementAttackRadius[pid] || 0) > 0 || (pieceDataMap[pid] || piece).attack_radius > 0;
     });
 
     if (attackRadiusPieces.length > 0) {
       const atkDesc = attackRadiusPieces.map(piece => {
-        const pieceData = pieceDataMap[piece.id] || piece;
+        const pid = piece.id || piece.piece_id;
+        const pieceData = pieceDataMap[pid] || piece;
         const pieceName = pieceData.piece_name || piece.piece_name || 'Unknown Piece';
-        const radius = pieceData.attack_radius || 0;
-        return `• **${pieceName}** — radius ${radius}`;
+        const radius = _placementAttackRadius[pid] ?? pieceData.attack_radius ?? 0;
+        const sfx = _abilitySfx(pid, _atkCountByPiece, (pieceData.attack_radius || 0) > 0, _atkCountByPieceAndPlayer);
+        return `• **${pieceName}**${sfx} — radius ${radius}`;
       }).join('\n');
 
       specialRulesContent.push(`**Attack Radius**\nSome pieces deal area-of-effect damage around their landing square when they capture.\n\n${atkDesc}\n\n**Attack Radius Rules:**\n• When capturing, the piece also damages all enemy pieces within the radius of the landing square\n• Only triggers on capture — regular movement does not cause splash damage\n• Checkmate-immune pieces (e.g. kings) are immune to attack radius splash damage\n• Each piece can only be damaged once per attack\n• Unlike Trample Radius, does not require Trample and does not damage pieces along the movement path`);
@@ -1717,21 +2122,49 @@ const GameTypeView = () => {
         const loss = placement.capture_points_loss ?? 0;
         if (gain === 0 && loss === 0) return;
         if (!pointsByPiece[pid]) {
-          pointsByPiece[pid] = { name: pieceDataMap[pid]?.piece_name || placement.piece_name || `Piece #${pid}`, gains: new Set(), losses: new Set() };
+          pointsByPiece[pid] = { pid, name: pieceDataMap[pid]?.piece_name || placement.piece_name || `Piece #${pid}`, gains: new Set(), losses: new Set(), count: 0, playerCounts: {} };
         }
+        pointsByPiece[pid].count += 1;
+        const _ppPlayer = placement.player_id ?? 0;
+        pointsByPiece[pid].playerCounts[_ppPlayer] = (pointsByPiece[pid].playerCounts[_ppPlayer] || 0) + 1;
         if (gain > 0) pointsByPiece[pid].gains.add(gain);
         if (loss > 0) pointsByPiece[pid].losses.add(loss);
       });
       const pointPieceEntries = Object.values(pointsByPiece);
       if (pointPieceEntries.length > 0) {
         ptLine += `\n   ◦ **Point Values per Piece**:`;
-        pointPieceEntries.forEach(({ name, gains, losses }) => {
+        pointPieceEntries.forEach(({ pid, name, gains, losses, count, playerCounts }) => {
+          const total = _totalPlacementsByPiece[pid] || 0;
+          let sfx = '';
+          if (count > 0 && total > 0 && count < total) {
+            const pcVals = Object.values(playerCounts || {}).filter(v => v > 0);
+            const ptVals = Object.values((_totalByPieceAndPlayer || {})[pid] || {}).filter(v => v > 0);
+            const isSymmetric = pcVals.length > 1 && pcVals.every(v => v === pcVals[0]) && ptVals.every(v => v === ptVals[0]) && pcVals[0] < ptVals[0];
+            if (isSymmetric) {
+              const cpp = pcVals[0];
+              sfx = ` (${count} ${count === 1 ? 'piece' : 'pieces'} of ${total}, ${cpp} per player)`;
+            } else if (pcVals.length > 1) {
+              const breakdown = Object.entries(playerCounts || {})
+                .filter(([, v]) => v > 0)
+                .sort(([a], [b]) => Number(a) - Number(b))
+                .map(([pId, cnt]) => `${cnt} for Player ${pId}`)
+                .join(', ');
+              sfx = ` (${count} ${count === 1 ? 'piece' : 'pieces'} of ${total}, ${breakdown})`;
+            } else if (pcVals.length === 1) {
+              const _sp = Object.keys(playerCounts || {}).find(k => (playerCounts[k] || 0) > 0);
+              sfx = _sp !== undefined
+                ? ` (${Number(_sp) === 0 ? 'Neutral' : `Player ${_sp}`}, ${count} ${count === 1 ? 'piece' : 'pieces'} of ${total})`
+                : ` (${count} ${count === 1 ? 'piece' : 'pieces'} of ${total})`;
+            } else {
+              sfx = ` (${count} ${count === 1 ? 'piece' : 'pieces'} of ${total})`;
+            }
+          }
           const gainArr = [...gains].sort((a, b) => a - b);
           const lossArr = [...losses].sort((a, b) => a - b);
           const gainStr = gainArr.length > 0 ? `+${gainArr.join('/')} pts to capturer` : null;
           const lossStr = lossArr.length > 0 ? `−${lossArr.join('/')} pts from owner` : null;
           const parts = [gainStr, lossStr].filter(Boolean).join(', ');
-          ptLine += `\n      ▸ **${name}**: ${parts}`;
+          ptLine += `\n      ▸ **${name}**${sfx}: ${parts}`;
         });
       }
 

@@ -1,4 +1,4 @@
-const db = require("../configs/db");
+﻿const db = require("../configs/db");
 
 /**
  * Database query wrapper (now using promise-based pool)
@@ -252,6 +252,7 @@ const getAllPiecesWithMovement = async () => {
       p.can_hop_over_enemies,
       p.exact_ratio_hop_only,
       p.directional_hop_disabled,
+      p.hop_stop_at_occupied,
       p.min_turns_per_move,
       p.max_turns_per_move,
       p.available_for_moves,
@@ -410,6 +411,7 @@ const getPieceById = async (pieceId) => {
       p.can_hop_over_enemies,
       p.exact_ratio_hop_only,
       p.directional_hop_disabled,
+      p.hop_stop_at_occupied,
       p.min_turns_per_move,
       p.max_turns_per_move,
       p.available_for_moves,
@@ -725,7 +727,10 @@ const getPiecesForGameType = async (gameTypeId) => {
       gtp.trample as trample,
       gtp.trample_radius as trample_radius,
       gtp.ghostwalk as ghostwalk,
-      gtp.cannot_be_captured as cannot_be_captured
+      gtp.cannot_be_captured as cannot_be_captured,
+      gtp.attack_radius as attack_radius,
+      gtp.die_on_capture as die_on_capture,
+      gtp.die_on_capture_grants_win as die_on_capture_grants_win
     FROM chessusnode.game_type_pieces gtp
     INNER JOIN chessusnode.pieces p ON gtp.piece_id = p.id
     WHERE gtp.game_type_id = ?

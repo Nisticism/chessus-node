@@ -451,6 +451,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
               limit_promote_capture_to_original: pieceData.limit_promote_capture_to_original || false,
               capture_points_gain: pieceData.capture_points_gain ?? 0,
               capture_points_loss: pieceData.capture_points_loss ?? 0,
+              disable_promotion: pieceData.disable_promotion || false,
             };
           }
           return newPlacements;
@@ -543,6 +544,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
             limit_promote_capture_to_original: pieceData.limit_promote_capture_to_original || false,
             capture_points_gain: pieceData.capture_points_gain ?? 0,
             capture_points_loss: pieceData.capture_points_loss ?? 0,
+            disable_promotion: pieceData.disable_promotion || false,
           };
 
           // For multi-tile pieces, mark the other occupied squares with a reference to the anchor
@@ -606,6 +608,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         limit_promote_capture_to_original: pieceData.limit_promote_capture_to_original || false,
         capture_points_gain: pieceData.capture_points_gain ?? 0,
         capture_points_loss: pieceData.capture_points_loss ?? 0,
+        disable_promotion: pieceData.disable_promotion || false,
       });
     }
     setShowPieceSelector(false);
@@ -1480,6 +1483,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
       }
 
       // Copy the piece as anchor
+      // image_url and image_index are intentionally omitted so that getPlacementImageUrl
+      // falls through to the image_location + targetPlayerId branch, which selects the
+      // correct player-coloured image automatically.
       newPlacements[mirroredKey] = {
         piece_id: sourcePiece.piece_id,
         piece_name: sourcePiece.piece_name,
@@ -1508,10 +1514,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         die_on_capture_grants_win: sourcePiece.die_on_capture_grants_win ?? false,
         attack_radius: sourcePiece.attack_radius ?? 0,
         cannot_move_outside_zone: sourcePiece.cannot_move_outside_zone ?? false,
+        is_neutral: sourcePiece.is_neutral ?? false,
+        neutral_image_index: sourcePiece.neutral_image_index ?? null,
         piece_width: pw,
         piece_height: ph,
         player_id: targetPlayerId,
         // Promotion options mirror as-is (player-agnostic)
+        disable_promotion: sourcePiece.disable_promotion || false,
         promotion_pieces_override: sourcePiece.promotion_pieces_override ?? null,
         can_promote_to_checkmate: sourcePiece.can_promote_to_checkmate || false,
         limit_promote_checkmate_to_original: sourcePiece.limit_promote_checkmate_to_original || false,

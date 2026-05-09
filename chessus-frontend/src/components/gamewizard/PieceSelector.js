@@ -1087,7 +1087,7 @@ const PieceSelector = ({
                     <ToggleSwitch
                       checked={disablePromotion}
                       onChange={(v) => setDisablePromotion(v)}
-                      label="Cannot promote (disabled for this placement)"
+                      label="Disable promotion for this placement only"
                       tooltip={<InfoTooltip text="Prevent this specific piece from promoting, even though the piece template has promotion enabled. Useful when you want some copies of a piece to be unable to promote." />}
                     />
                   </div>

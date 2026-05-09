@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from 'react-router-dom';
 import { useSelector } from "react-redux";
 import styles from "./piecewizard.module.scss";
@@ -23,11 +23,9 @@ const PieceWizard = ({ editPieceId = null }) => {
   const [existingImages, setExistingImages] = useState([]);
   const [missingFields, setMissingFields] = useState(null);
   const [duplicateWarning, setDuplicateWarning] = useState(null); // { matches, nameSame }
+  const [ratioZeroWarning, setRatioZeroWarning] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   
-  // Track if user has manually interacted with attacks_like_movement checkbox
-  const hasManuallySetAttackStyle = useRef(false);
-
   // Scroll to top when step changes
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -91,6 +89,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     can_hop_over_enemies: false,
     exact_ratio_hop_only: false,
     directional_hop_disabled: false,
+    hop_stop_at_occupied: true,
     
     // Step 3: Attack/Capture Configuration
     repeating_capture: false,
@@ -299,6 +298,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             can_hop_over_enemies: !!piece.can_hop_over_enemies,
             exact_ratio_hop_only: !!piece.exact_ratio_hop_only,
             directional_hop_disabled: !!piece.directional_hop_disabled,
+            hop_stop_at_occupied: piece.hop_stop_at_occupied !== undefined ? !!piece.hop_stop_at_occupied : true,
             
             // Attack/Capture fields
             repeating_capture: !!piece.repeating_capture,
@@ -342,6 +342,8 @@ const PieceWizard = ({ editPieceId = null }) => {
             
             ratio_one_capture: piece.ratio_one_capture,
             ratio_two_capture: piece.ratio_two_capture,
+            repeating_ratio_capture: !!piece.repeating_ratio_capture,
+            max_ratio_capture_iterations: piece.max_ratio_capture_iterations ?? null,
             step_by_step_capture: piece.step_by_step_capture,
             
             // Ranged attack ranges
@@ -397,20 +399,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             can_fire_over_allies: !!piece.can_fire_over_allies,
             can_fire_over_enemies: !!piece.can_fire_over_enemies,
             
-            // Detect if attacks like movement (compare capture pattern to movement pattern)
-            // Check directional patterns match
-            attacks_like_movement: piece.can_capture_enemy_on_move && 
-              piece.up_left_capture === piece.up_left_movement &&
-              piece.up_capture === piece.up_movement &&
-              piece.up_right_capture === piece.up_right_movement &&
-              piece.left_capture === piece.left_movement &&
-              piece.right_capture === piece.right_movement &&
-              piece.down_left_capture === piece.down_left_movement &&
-              piece.down_capture === piece.down_movement &&
-              piece.down_right_capture === piece.down_right_movement &&
-              // Also check ratio patterns if they exist
-              (piece.ratio_one_movement == null || piece.ratio_one_capture === piece.ratio_one_movement) &&
-              (piece.ratio_two_movement == null || piece.ratio_two_capture === piece.ratio_two_movement),
+            attacks_like_movement: false,
             
             // Special rules - map database fields to form fields
             special_scenario_moves: piece.special_scenario_moves || "",
@@ -451,120 +440,6 @@ const PieceWizard = ({ editPieceId = null }) => {
     
     loadPieceData();
   }, [editPieceId, currentUser, navigate]);
-
-  // Auto-check "attacks_like_movement" when any movement is configured
-  // Skip this logic when in edit mode - the attacks_like_movement state is already set from loaded data
-  useEffect(() => {
-    // Only auto-set if user hasn't manually changed it and we're not in edit mode
-    if (hasManuallySetAttackStyle.current || isEditMode) {
-      return;
-    }
-    
-    // Check if any movement has been set
-    const hasDirectionalMovement = 
-      pieceData.up_left_movement !== 0 ||
-      pieceData.up_movement !== 0 ||
-      pieceData.up_right_movement !== 0 ||
-      pieceData.right_movement !== 0 ||
-      pieceData.down_right_movement !== 0 ||
-      pieceData.down_movement !== 0 ||
-      pieceData.down_left_movement !== 0 ||
-      pieceData.left_movement !== 0;
-    
-    const hasRatioMovement = 
-      pieceData.ratio_one_movement != null ||
-      pieceData.ratio_two_movement != null;
-    
-    const hasStepByStepMovement = pieceData.step_by_step_movement_value != null;
-
-    const hasCustomMovement = pieceData.custom_movement_squares != null && pieceData.custom_movement_squares !== '[]';
-    
-    const hasAnyMovement = hasDirectionalMovement || hasRatioMovement || hasStepByStepMovement || hasCustomMovement;
-    
-    // Helper to convert additionalMovements to additionalCaptures format
-    const convertMovementsToCaptures = (specialScenarioMoves) => {
-      if (!specialScenarioMoves) return null;
-      try {
-        const parsed = typeof specialScenarioMoves === 'string' 
-          ? JSON.parse(specialScenarioMoves)
-          : specialScenarioMoves;
-        
-        if (!parsed.additionalMovements) return null;
-        
-        return JSON.stringify({
-          additionalCaptures: parsed.additionalMovements
-        });
-      } catch {
-        return null;
-      }
-    };
-    
-    // Auto-check if movement exists and it's not already set
-    if (hasAnyMovement && !pieceData.attacks_like_movement) {
-      setPieceData(prev => {
-        const convertedCaptures = convertMovementsToCaptures(prev.special_scenario_moves);
-        return { 
-          ...prev, 
-          attacks_like_movement: true,
-          can_capture_enemy_on_move: true,
-          // Copy directional movement to capture
-          up_left_capture: prev.up_left_movement,
-          up_capture: prev.up_movement,
-          up_right_capture: prev.up_right_movement,
-          left_capture: prev.left_movement,
-          right_capture: prev.right_movement,
-          down_left_capture: prev.down_left_movement,
-          down_capture: prev.down_movement,
-          down_right_capture: prev.down_right_movement,
-          // Copy exact flags for directional captures
-          up_left_capture_exact: prev.up_left_movement_exact,
-          up_capture_exact: prev.up_movement_exact,
-          up_right_capture_exact: prev.up_right_movement_exact,
-          left_capture_exact: prev.left_movement_exact,
-          right_capture_exact: prev.right_movement_exact,
-          down_left_capture_exact: prev.down_left_movement_exact,
-          down_capture_exact: prev.down_movement_exact,
-          down_right_capture_exact: prev.down_right_movement_exact,
-          // Copy available_for flags for directional captures
-          up_left_capture_available_for: prev.up_left_movement_available_for,
-          up_capture_available_for: prev.up_movement_available_for,
-          up_right_capture_available_for: prev.up_right_movement_available_for,
-          left_capture_available_for: prev.left_movement_available_for,
-          right_capture_available_for: prev.right_movement_available_for,
-          down_left_capture_available_for: prev.down_left_movement_available_for,
-          down_capture_available_for: prev.down_movement_available_for,
-          down_right_capture_available_for: prev.down_right_movement_available_for,
-          // Copy ratio movement
-          ratio_one_capture: prev.ratio_one_movement,
-          ratio_two_capture: prev.ratio_two_movement,
-          // Copy step-by-step
-          step_by_step_capture: prev.step_by_step_movement_value,
-          // Copy repeating movement setting
-          repeating_capture: prev.repeating_movement,
-          // Copy additional movements to additional captures
-          ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
-          // Copy custom movement squares to custom attack squares
-          custom_attack_squares: prev.custom_movement_squares,
-        };
-      });
-    }
-  }, [
-    pieceData.up_left_movement,
-    pieceData.up_movement,
-    pieceData.up_right_movement,
-    pieceData.right_movement,
-    pieceData.down_right_movement,
-    pieceData.down_movement,
-    pieceData.down_left_movement,
-    pieceData.left_movement,
-    pieceData.ratio_one_movement,
-    pieceData.ratio_two_movement,
-    pieceData.step_by_step_movement_value,
-    pieceData.repeating_movement,
-    pieceData.custom_movement_squares,
-    pieceData.attacks_like_movement,
-    isEditMode
-  ]);
 
   const totalSteps = 4;
   
@@ -618,7 +493,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     return fields;
   };
 
-  const handleSubmit = async (bypassDuplicateCheck = false) => {
+  const handleSubmit = async (bypassDuplicateCheck = false, bypassRatioWarning = false) => {
     // Collect all missing required fields
     const missing = [];
     
@@ -640,9 +515,18 @@ const PieceWizard = ({ editPieceId = null }) => {
       return;
     }
 
+    // Warn if ratio movement style is on but both ratio values are 0
+    if (pieceData.ratio_movement_style && !bypassRatioWarning) {
+      const r1 = pieceData.ratio_one_movement || 0;
+      const r2 = pieceData.ratio_two_movement || 0;
+      if (r1 === 0 && r2 === 0) {
+        setRatioZeroWarning(true);
+        return;
+      }
+    }
+
     // Duplicate ruleset check — skip if user clicked "Save Anyway"
-    if (!bypassDuplicateCheck) {
-      const normalizedFields = buildDuplicateCheckFields();
+    if (!bypassDuplicateCheck) {      const normalizedFields = buildDuplicateCheckFields();
       const { matches } = await checkPieceDuplicates(
         normalizedFields,
         isEditMode ? editPieceId : null
@@ -763,7 +647,7 @@ const PieceWizard = ({ editPieceId = null }) => {
       case 2:
         return <PieceStep2Movement pieceData={pieceData} updatePieceData={updatePieceData} />;
       case 3:
-        return <PieceStep3Attack pieceData={pieceData} updatePieceData={updatePieceData} hasManuallySetAttackStyle={hasManuallySetAttackStyle} />;
+        return <PieceStep3Attack pieceData={pieceData} updatePieceData={updatePieceData} />;
       case 4:
         return <PieceStep4Special pieceData={pieceData} updatePieceData={updatePieceData} />;
       default:
@@ -864,6 +748,29 @@ const PieceWizard = ({ editPieceId = null }) => {
           )}
         </div>
       </div>
+
+      {ratioZeroWarning && (
+        <div className={styles["warning-overlay"]}>
+          <div className={styles["warning-modal"]}>
+            <h3>⚠️ Ratio Values Are Zero</h3>
+            <p>
+              Ratio movement is enabled but both <strong>Ratio One</strong> and <strong>Ratio Two</strong> values are 0.
+              This means the piece cannot make any ratio (L-shape) moves.
+            </p>
+            <p>Go back to Step 2 and set at least one ratio value, or disable ratio movement.</p>
+            <div className={styles["warning-buttons"]}>
+              <StandardButton
+                buttonText="Fix It"
+                onClick={() => setRatioZeroWarning(false)}
+              />
+              <StandardButton
+                buttonText="Save Anyway"
+                onClick={() => { setRatioZeroWarning(false); handleSubmit(false, true); }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {missingFields && (
         <div className={styles["warning-overlay"]}>

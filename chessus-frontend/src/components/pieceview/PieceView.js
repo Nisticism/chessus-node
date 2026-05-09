@@ -536,6 +536,8 @@ const PieceView = () => {
       cannot_be_captured: !!piece.cannot_be_captured,
       must_move_if_able: !!piece.must_move_if_able,
       must_move_uses_action: !!piece.must_move_uses_action,
+      repeating_ratio: !!piece.repeating_ratio,
+      hop_stop_at_occupied: piece.hop_stop_at_occupied !== undefined ? !!piece.hop_stop_at_occupied : true,
     };
   }, [piece]);
 
@@ -941,6 +943,19 @@ const PieceView = () => {
                   {pieceToDisplay.ratio_one_movement || '?'}:{pieceToDisplay.ratio_two_movement || '?'}
                 </span>
               </div>
+              {pieceToDisplay.repeating_ratio && (
+                <div className={styles["ability-properties"]}>
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🔄</span>
+                    Repeating ratio hops
+                    {piece.max_ratio_iterations === -1
+                      ? ' (infinite)'
+                      : piece.max_ratio_iterations != null && piece.max_ratio_iterations > 1
+                        ? ` (max ${piece.max_ratio_iterations}x)`
+                        : ''}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1044,6 +1059,12 @@ const PieceView = () => {
               <div className={styles["modifier-badge"]}>
                 <span className={styles["modifier-icon"]}>⏱️</span>
                 Max {pieceToDisplay.max_turns_per_move} turn{pieceToDisplay.max_turns_per_move !== 1 ? 's' : ''} per move
+              </div>
+            )}
+            {pieceToDisplay.repeating_ratio && (pieceToDisplay.max_ratio_iterations === -1 || (pieceToDisplay.max_ratio_iterations || 1) > 1) && pieceToDisplay.hop_stop_at_occupied && (
+              <div className={styles["modifier-badge"]}>
+                <span className={styles["modifier-icon"]}>⛔</span>
+                Repeating hops stop at occupied intermediates
               </div>
             )}
           </div>
