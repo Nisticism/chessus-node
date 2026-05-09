@@ -8534,6 +8534,43 @@ function initializeSocket(server) {
       }
     });
 
+    // Handle draw cancel (offerer withdraws their offer)
+    socket.on("cancelDraw", async ({ gameId }) => {
+      try {
+        const gameState = activeGames.get(gameId.toString());
+        if (!gameState) {
+          socket.emit("error", { message: "Game not found" });
+          return;
+        }
+
+        if (!gameState.pendingDrawOffer) {
+          socket.emit("error", { message: "No draw offer pending" });
+          return;
+        }
+
+        const userId = socket.userId;
+        // Only the one who offered can cancel
+        if (gameState.pendingDrawOffer.from !== userId) {
+          socket.emit("error", { message: "You cannot cancel an offer you did not make" });
+          return;
+        }
+
+        const playerIdx = gameState.players.findIndex(p => p.id === userId);
+        console.log(`Draw offer cancelled by ${gameState.players[playerIdx]?.username} in game ${gameId}`);
+
+        gameState.pendingDrawOffer = null;
+
+        io.to(`game-${gameId}`).emit("drawCancelled", {
+          gameId,
+          by: userId,
+          byUsername: gameState.players[playerIdx]?.username
+        });
+      } catch (error) {
+        console.error("Error cancelling draw:", error);
+        socket.emit("error", { message: "Failed to cancel draw offer" });
+      }
+    });
+
     // ===================== IN-GAME CHAT =====================
 
     // Toggle chat public visibility for spectators

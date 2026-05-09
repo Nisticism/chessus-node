@@ -649,6 +649,18 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected]);
 
+  // Cancel a draw offer you previously sent
+  const cancelDraw = useCallback((gameId) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+
+    socket.emit('cancelDraw', {
+      gameId
+    });
+  }, [socket, connected]);
+
   // Pause the opponent's disconnect-forfeit timer (give them more time)
   const pauseDisconnectTimer = useCallback((gameId) => {
     if (!socket || !connected) return;
@@ -781,6 +793,7 @@ export const SocketProvider = ({ children }) => {
     offerDraw,
     acceptDraw,
     declineDraw,
+    cancelDraw,
     cancelGame,
     spectateGame,
     setPremove,

@@ -163,6 +163,7 @@ const LiveGame = () => {
     offerDraw,
     acceptDraw,
     declineDraw,
+    cancelDraw,
     cancelGame,
     setPremove: sendPremove,
     clearPremove: sendClearPremove,
@@ -1308,8 +1309,15 @@ const LiveGame = () => {
     const unsubscribeDrawDeclined = onGameEvent("drawDeclined", ({ gameId: drawGameId, by, byUsername }) => {
       if (parseInt(drawGameId) === parseInt(gameId)) {
         setPendingDrawOffer(null);
-        setDrawOfferSent(false); // Clear the sent state when declined
+        setDrawOfferSent(false);
         console.log(`Draw declined by ${byUsername}`);
+      }
+    });
+
+    const unsubscribeDrawCancelled = onGameEvent("drawCancelled", ({ gameId: drawGameId }) => {
+      if (parseInt(drawGameId) === parseInt(gameId)) {
+        setPendingDrawOffer(null);
+        setDrawOfferSent(false);
       }
     });
 
@@ -1499,6 +1507,7 @@ const LiveGame = () => {
       unsubscribePiecePromoted();
       unsubscribeDrawOffered();
       unsubscribeDrawDeclined();
+      unsubscribeDrawCancelled();
       unsubscribeGameDeleted();
       unsubscribeSpectatorUpdate();
     };
@@ -4152,6 +4161,12 @@ const LiveGame = () => {
     setPendingDrawOffer(null);
   };
 
+  // Handle cancelling a draw offer you sent
+  const handleCancelDraw = () => {
+    cancelDraw(parseInt(gameId));
+    setDrawOfferSent(false);
+  };
+
   // Handle piece placement selection from modal
   const handlePlacementSelect = useCallback((piece) => {
     if (!placementTarget) return;
@@ -5820,14 +5835,24 @@ const LiveGame = () => {
               <div className={styles["game-controls-inline"]}>
                 <h4>Actions</h4>
                 <div className={styles["control-buttons"]}>
-                  <button 
-                    className={`${styles.btn} ${styles["btn-secondary"]}`}
-                    onClick={handleOfferDraw}
-                    disabled={drawOfferSent || pendingDrawOffer}
-                    title={drawOfferSent ? "Waiting for opponent's response" : "Offer a draw to your opponent"}
-                  >
-                    {drawOfferSent ? "Draw Offered..." : "Offer Draw"}
-                  </button>
+                  {drawOfferSent ? (
+                    <button
+                      className={`${styles.btn} ${styles["btn-warning"]}`}
+                      onClick={handleCancelDraw}
+                      title="Cancel your draw offer"
+                    >
+                      Cancel Draw
+                    </button>
+                  ) : (
+                    <button 
+                      className={`${styles.btn} ${styles["btn-secondary"]}`}
+                      onClick={handleOfferDraw}
+                      disabled={!!pendingDrawOffer}
+                      title="Offer a draw to your opponent"
+                    >
+                      Offer Draw
+                    </button>
+                  )}
                   <button 
                     className={`${styles.btn} ${styles["btn-danger"]}`}
                     onClick={handleResign}
@@ -6281,14 +6306,24 @@ const LiveGame = () => {
             <div className={styles["game-controls-inline"]}>
               <h4>Actions</h4>
               <div className={styles["control-buttons"]}>
-                <button 
-                  className={`${styles.btn} ${styles["btn-secondary"]}`}
-                  onClick={handleOfferDraw}
-                  disabled={drawOfferSent || pendingDrawOffer}
-                  title={drawOfferSent ? "Waiting for opponent's response" : "Offer a draw to your opponent"}
-                >
-                  {drawOfferSent ? "Draw Offered..." : "Offer Draw"}
-                </button>
+                {drawOfferSent ? (
+                  <button
+                    className={`${styles.btn} ${styles["btn-warning"]}`}
+                    onClick={handleCancelDraw}
+                    title="Cancel your draw offer"
+                  >
+                    Cancel Draw
+                  </button>
+                ) : (
+                  <button 
+                    className={`${styles.btn} ${styles["btn-secondary"]}`}
+                    onClick={handleOfferDraw}
+                    disabled={!!pendingDrawOffer}
+                    title="Offer a draw to your opponent"
+                  >
+                    Offer Draw
+                  </button>
+                )}
                 <button 
                   className={`${styles.btn} ${styles["btn-danger"]}`}
                   onClick={handleResign}

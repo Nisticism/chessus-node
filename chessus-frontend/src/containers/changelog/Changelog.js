@@ -16,6 +16,7 @@ const changelogData = [
       "Piece wizard Step 2 and Step 3 now each have a 'Clear all' button to reset all movement or attack data at once.",
       "All text on the site is now selectable and copy-pasteable by default.",
       "Fixed: sorting and filtering on the Forums hub page now applies across all forums, not just the ones currently visible. The hub now queries the server with the active sort/filter instead of sorting a limited local cache.",
+      "Draw offers in live games: pending offers are now visible after reconnecting or rejoining a game. The player who sent an offer can also cancel it at any time before the opponent responds.",
     ],
   },
   {
