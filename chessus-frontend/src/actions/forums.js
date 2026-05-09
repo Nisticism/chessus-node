@@ -4,6 +4,8 @@ import {
   SET_MESSAGE,
   ALL_FORUMS,
   ALL_FORUMS_FAILURE,
+  HUB_GENERAL_FORUMS,
+  HUB_GAME_FORUMS,
   GET_FORUM_SUCCESS,
   GET_FORUM_FAILURE,
   COMMENT_SUCCESS,
@@ -87,6 +89,28 @@ export const forums = (page = 1, limit = 20, gameTypeId = null, scope = null, ca
     dispatch({
       type: ALL_FORUMS_FAILURE,
     });
+    return Promise.reject();
+  }
+};
+
+export const hubGeneralForums = (page = 1, limit = 20, category = null, search = null, sortBy = null, sortOrder = null) => async (dispatch) => {
+  try {
+    const response = await ForumsService.getForums(page, limit, null, 'general', category, search, sortBy, sortOrder);
+    dispatch({ type: HUB_GENERAL_FORUMS, payload: response.data });
+    return Promise.resolve();
+  } catch (error) {
+    getErrorMessage(error);
+    return Promise.reject();
+  }
+};
+
+export const hubGameForums = (page = 1, limit = 20, search = null, sortBy = null, sortOrder = null) => async (dispatch) => {
+  try {
+    const response = await ForumsService.getForums(page, limit, null, 'game', null, search, sortBy, sortOrder);
+    dispatch({ type: HUB_GAME_FORUMS, payload: response.data });
+    return Promise.resolve();
+  } catch (error) {
+    getErrorMessage(error);
     return Promise.reject();
   }
 };

@@ -3,6 +3,8 @@ import {
   POST_FAILURE,
   ALL_FORUMS,
   ALL_FORUMS_FAILURE,
+  HUB_GENERAL_FORUMS,
+  HUB_GAME_FORUMS,
   GET_FORUM_SUCCESS,
   GET_FORUM_FAILURE,
   COMMENT_SUCCESS,
@@ -44,6 +46,18 @@ const forumsReducer = (state = initialState, action) => {
       return {
         ...state,
         message: "Get forums failed"
+      }
+    case HUB_GENERAL_FORUMS:
+      return {
+        ...state,
+        hubGeneralForums: payload.forums || [],
+        hubGeneralPagination: payload.pagination || null,
+      }
+    case HUB_GAME_FORUMS:
+      return {
+        ...state,
+        hubGameForums: payload.forums || [],
+        hubGamePagination: payload.pagination || null,
       }
     case GET_FORUM_SUCCESS:
       return {
