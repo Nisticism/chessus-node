@@ -1185,7 +1185,7 @@ const GameTypeView = () => {
             parts.push(pid === 0 || String(pid) === '0' ? 'Neutral' : `Player ${pid}`);
           }
           if (needsCount) {
-            const denominator = showPlayerLabel ? (playerTotals[group.playerId] || 1) : totalPlacements;
+            const denominator = totalPlacements;
             if (group.count < denominator) {
               // Always show "X piece(s) of Y", then append per-player breakdown when relevant
               const pieceWord = group.count === 1 ? 'piece' : 'pieces';
@@ -1234,20 +1234,6 @@ const GameTypeView = () => {
         const f0 = renderGroups[0].first;
         let showGlobalStats = false;
         try { showGlobalStats = JSON.parse(game.other_game_data || '{}').show_all_hp_ad || false; } catch {}
-        const uniformStats = renderGroups.every(g => {
-          const p = g.first;
-          return p.hit_points === f0.hit_points &&
-                 p.attack_damage === f0.attack_damage &&
-                 p.hp_regen === f0.hp_regen &&
-                 p.burn_damage === f0.burn_damage &&
-                 p.burn_duration === f0.burn_duration &&
-                 p.cannot_be_captured === f0.cannot_be_captured &&
-                 p.show_hp_ad === f0.show_hp_ad;
-        });
-        const uniformCapturePoints = renderGroups.every(g =>
-          g.first.capture_points_gain === f0.capture_points_gain &&
-          g.first.capture_points_loss === f0.capture_points_loss
-        );
         const uniformGhostwalk = renderGroups.every(g => g.first.ghostwalk === f0.ghostwalk);
         const uniformTrample = renderGroups.every(g =>
           g.first.trample === f0.trample && g.first.trample_radius === f0.trample_radius
@@ -1259,71 +1245,8 @@ const GameTypeView = () => {
         const uniformAttackRadius = renderGroups.every(g => g.first.attack_radius === f0.attack_radius);
         const uniformZone = renderGroups.every(g => g.first.cannot_move_outside_zone === f0.cannot_move_outside_zone);
         const uniformNeutral = renderGroups.every(g => g.first.is_neutral === f0.is_neutral);
-        const uniformPromotion = renderGroups.every(g => {
-          const p = g.first;
-          return p.disable_promotion === f0.disable_promotion &&
-                 p.can_promote_to_checkmate === f0.can_promote_to_checkmate &&
-                 p.limit_promote_checkmate_to_original === f0.limit_promote_checkmate_to_original &&
-                 p.can_promote_to_capture === f0.can_promote_to_capture &&
-                 p.limit_promote_capture_to_original === f0.limit_promote_capture_to_original;
-        });
 
-        // Per-group pass: only render abilities that actually vary between groups
-        for (const group of renderGroups) {
-          const p = group.first;
-          const sfx = countSuffix(group);
-          const placementWord = group.count === 1 ? 'this placement' : 'these placements';
-          const showStat = showGlobalStats || p.show_hp_ad;
-
-          // ── Stats (HP / AD / Regen / Burn) ──
-          if (!uniformStats) {
-            const hasNonDefaultHp = showStat || p.hit_points > 1;
-            const hasNonDefaultAd = showStat || p.attack_damage > 1;
-            const hasRegen = p.hp_regen > 0;
-            const hasBurn = p.burn_damage > 0 && p.burn_duration > 0;
-            const isInvincible = p.cannot_be_captured;
-            if (hasNonDefaultHp || hasNonDefaultAd || hasRegen || hasBurn || isInvincible) {
-              const statParts = [];
-              if (hasNonDefaultHp) statParts.push(`${p.hit_points} HP`);
-              if (hasNonDefaultAd) statParts.push(`${p.attack_damage} AD`);
-              if (hasRegen) statParts.push(`+${p.hp_regen} Regen/turn`);
-              if (hasBurn) statParts.push(`🔥 ${p.burn_damage} dmg for ${p.burn_duration} turn${p.burn_duration > 1 ? 's' : ''} on attack`);
-              if (isInvincible) statParts.push('Immune to capture');
-              description += `• **Piece Stats**${sfx}: ${statParts.join(' · ')}.\n`;
-            }
-          }
-
-          // ── Capture points ──
-          if (!uniformCapturePoints) {
-            if ((p.capture_points_gain || 0) > 0 || (p.capture_points_loss || 0) > 0) {
-              const cpParts = [];
-              if (p.capture_points_gain > 0) cpParts.push(`+${p.capture_points_gain} pts awarded when captured`);
-              if (p.capture_points_loss > 0) cpParts.push(`-${p.capture_points_loss} pts deducted from owner when captured`);
-              description += `• **Capture Points**${sfx}: ${cpParts.join('; ')}.\n`;
-            }
-          }
-
-          // ── Promotion status ──
-          if (!uniformPromotion) {
-            const pieceCanPromote = pieceData.can_promote === 1 || pieceData.can_promote === true;
-            if (pieceCanPromote) {
-              if (p.disable_promotion) {
-                description += `• **Cannot Promote**${sfx}: Promotion is disabled for ${placementWord}.\n`;
-              } else {
-                const promParts = [];
-                if (p.can_promote_to_checkmate) {
-                  promParts.push(`checkmate pieces${p.limit_promote_checkmate_to_original ? ' (capped at starting count)' : ''}`);
-                }
-                if (p.can_promote_to_capture) {
-                  promParts.push(`win-on-capture pieces${p.limit_promote_capture_to_original ? ' (capped at starting count)' : ''}`);
-                }
-                if (promParts.length > 0) {
-                  description += `• **Promotion Override**${sfx}: Can also promote into ${promParts.join('; ')}.\n`;
-                }
-              }
-            }
-          }
-        }
+        // (per-group loop removed — all remaining abilities use fingerprint grouping below)
 
         // ── Non-uniform abilities: rendered once with combined per-player counts ──
         // Helper: sum counts across groups that share an ability, build one count suffix.
@@ -1394,38 +1317,132 @@ const GameTypeView = () => {
           if (_ng.length > 0) description += `• **Neutral**${buildAbilitySuffix(_ng)}: Belongs to no player — acts independently.\n`;
         }
 
-        // Uniform (shared) properties — render each once, no group suffix
+        // ── Piece Stats — grouped by fingerprint, shared configs listed first ──
         {
-          const p = f0;
-          const showStat = showGlobalStats || p.show_hp_ad;
-
-          // ── Stats ──
-          if (uniformStats) {
+          const statsFpOf = (p) => [
+            `hp${p.hit_points}`,
+            `ad${p.attack_damage}`,
+            p.hp_regen > 0 ? `regen${p.hp_regen}` : '',
+            p.burn_damage > 0 && p.burn_duration > 0 ? `burn${p.burn_damage}x${p.burn_duration}` : '',
+            p.cannot_be_captured ? 'inv' : '',
+            (showGlobalStats || p.show_hp_ad) ? 'show' : '',
+          ].filter(Boolean).join('|');
+          const statsByFp = {};
+          for (const group of renderGroups) {
+            const fp = statsFpOf(group.first);
+            if (!statsByFp[fp]) statsByFp[fp] = [];
+            statsByFp[fp].push(group);
+          }
+          const _allPids = new Set(renderGroups.map(g => g.playerId).filter(pid => pid !== null && pid !== undefined));
+          const sortedStatsFps = Object.entries(statsByFp).sort(([, a], [, b]) => {
+            const pA = new Set(a.map(g => g.playerId));
+            const pB = new Set(b.map(g => g.playerId));
+            const shA = _allPids.size === 0 || [..._allPids].every(pid => pA.has(pid));
+            const shB = _allPids.size === 0 || [..._allPids].every(pid => pB.has(pid));
+            if (shA && !shB) return -1;
+            if (!shA && shB) return 1;
+            const mA = Math.min(...[...pA].map(Number).filter(n => n > 0).concat([Infinity]));
+            const mB = Math.min(...[...pB].map(Number).filter(n => n > 0).concat([Infinity]));
+            return mA - mB;
+          });
+          for (const [, fpGroups] of sortedStatsFps) {
+            const p = fpGroups[0].first;
+            const showStat = showGlobalStats || p.show_hp_ad;
             const hasNonDefaultHp = showStat || p.hit_points > 1;
             const hasNonDefaultAd = showStat || p.attack_damage > 1;
             const hasRegen = p.hp_regen > 0;
             const hasBurn = p.burn_damage > 0 && p.burn_duration > 0;
             const isInvincible = p.cannot_be_captured;
-            if (hasNonDefaultHp || hasNonDefaultAd || hasRegen || hasBurn || isInvincible) {
-              const statParts = [];
-              if (hasNonDefaultHp) statParts.push(`${p.hit_points} HP`);
-              if (hasNonDefaultAd) statParts.push(`${p.attack_damage} AD`);
-              if (hasRegen) statParts.push(`+${p.hp_regen} Regen/turn`);
-              if (hasBurn) statParts.push(`🔥 ${p.burn_damage} dmg for ${p.burn_duration} turn${p.burn_duration > 1 ? 's' : ''} on attack`);
-              if (isInvincible) statParts.push('Immune to capture');
-              description += `• **Piece Stats**: ${statParts.join(' · ')}.\n`;
-            }
+            if (!hasNonDefaultHp && !hasNonDefaultAd && !hasRegen && !hasBurn && !isInvincible) continue;
+            const statParts = [];
+            if (hasNonDefaultHp) statParts.push(`${p.hit_points} HP`);
+            if (hasNonDefaultAd) statParts.push(`${p.attack_damage} AD`);
+            if (hasRegen) statParts.push(`+${p.hp_regen} Regen/turn`);
+            if (hasBurn) statParts.push(`🔥 ${p.burn_damage} dmg for ${p.burn_duration} turn${p.burn_duration > 1 ? 's' : ''} on attack`);
+            if (isInvincible) statParts.push('Immune to capture');
+            description += `• **Piece Stats**${buildAbilitySuffix(fpGroups)}: ${statParts.join(' · ')}.\n`;
           }
+        }
 
-          // ── Capture points ──
-          if (uniformCapturePoints) {
-            if ((p.capture_points_gain || 0) > 0 || (p.capture_points_loss || 0) > 0) {
-              const cpParts = [];
-              if (p.capture_points_gain > 0) cpParts.push(`+${p.capture_points_gain} pts awarded when captured`);
-              if (p.capture_points_loss > 0) cpParts.push(`-${p.capture_points_loss} pts deducted from owner when captured`);
-              description += `• **Capture Points**: ${cpParts.join('; ')}.\n`;
+        // ── Capture Points — grouped by fingerprint, shared configs listed first ──
+        {
+          const cpFpOf = (p) => [
+            p.capture_points_gain > 0 ? `cpg${p.capture_points_gain}` : '',
+            p.capture_points_loss > 0 ? `cpl${p.capture_points_loss}` : '',
+          ].filter(Boolean).join('|');
+          const cpByFp = {};
+          for (const group of renderGroups) {
+            const p = group.first;
+            if ((p.capture_points_gain || 0) <= 0 && (p.capture_points_loss || 0) <= 0) continue;
+            const fp = cpFpOf(p);
+            if (!cpByFp[fp]) cpByFp[fp] = [];
+            cpByFp[fp].push(group);
+          }
+          const _allPids2 = new Set(renderGroups.map(g => g.playerId).filter(pid => pid !== null && pid !== undefined));
+          const sortedCpFps = Object.entries(cpByFp).sort(([, a], [, b]) => {
+            const pA = new Set(a.map(g => g.playerId));
+            const pB = new Set(b.map(g => g.playerId));
+            const shA = _allPids2.size === 0 || [..._allPids2].every(pid => pA.has(pid));
+            const shB = _allPids2.size === 0 || [..._allPids2].every(pid => pB.has(pid));
+            if (shA && !shB) return -1;
+            if (!shA && shB) return 1;
+            const mA = Math.min(...[...pA].map(Number).filter(n => n > 0).concat([Infinity]));
+            const mB = Math.min(...[...pB].map(Number).filter(n => n > 0).concat([Infinity]));
+            return mA - mB;
+          });
+          for (const [, fpGroups] of sortedCpFps) {
+            const p = fpGroups[0].first;
+            const cpParts = [];
+            if (p.capture_points_gain > 0) cpParts.push(`+${p.capture_points_gain} pts awarded when captured`);
+            if (p.capture_points_loss > 0) cpParts.push(`-${p.capture_points_loss} pts deducted from owner when captured`);
+            description += `• **Capture Points**${buildAbilitySuffix(fpGroups)}: ${cpParts.join('; ')}.\n`;
+          }
+        }
+
+        // ── Promotion — grouped by fingerprint, shared configs listed first ──
+        if (pieceData.can_promote === 1 || pieceData.can_promote === true) {
+          const promFpOf = (p) => [
+            p.disable_promotion ? 'dp' : '',
+            p.can_promote_to_checkmate ? (p.limit_promote_checkmate_to_original ? 'ptcO' : 'ptc') : '',
+            p.can_promote_to_capture ? (p.limit_promote_capture_to_original ? 'ptcapO' : 'ptcap') : '',
+          ].filter(Boolean).join('|') || 'default';
+          const promByFp = {};
+          for (const group of renderGroups) {
+            const fp = promFpOf(group.first);
+            if (!promByFp[fp]) promByFp[fp] = [];
+            promByFp[fp].push(group);
+          }
+          const _allPids3 = new Set(renderGroups.map(g => g.playerId).filter(pid => pid !== null && pid !== undefined));
+          const sortedPromFps = Object.entries(promByFp).sort(([, a], [, b]) => {
+            const pA = new Set(a.map(g => g.playerId));
+            const pB = new Set(b.map(g => g.playerId));
+            const shA = _allPids3.size === 0 || [..._allPids3].every(pid => pA.has(pid));
+            const shB = _allPids3.size === 0 || [..._allPids3].every(pid => pB.has(pid));
+            if (shA && !shB) return -1;
+            if (!shA && shB) return 1;
+            const mA = Math.min(...[...pA].map(Number).filter(n => n > 0).concat([Infinity]));
+            const mB = Math.min(...[...pB].map(Number).filter(n => n > 0).concat([Infinity]));
+            return mA - mB;
+          });
+          for (const [fp, fpGroups] of sortedPromFps) {
+            if (fp === 'default') continue; // no promotion override — skip
+            const p = fpGroups[0].first;
+            const sfx = buildAbilitySuffix(fpGroups);
+            const placementWord = fpGroups.reduce((s, g) => s + g.count, 0) === 1 ? 'this placement' : 'these placements';
+            if (p.disable_promotion) {
+              description += `• **Cannot Promote**${sfx}: Promotion is disabled for ${placementWord}.\n`;
+            } else {
+              const promParts = [];
+              if (p.can_promote_to_checkmate) promParts.push(`checkmate pieces${p.limit_promote_checkmate_to_original ? ' (capped at starting count)' : ''}`);
+              if (p.can_promote_to_capture) promParts.push(`win-on-capture pieces${p.limit_promote_capture_to_original ? ' (capped at starting count)' : ''}`);
+              if (promParts.length > 0) description += `• **Promotion Override**${sfx}: Can also promote into ${promParts.join('; ')}.\n`;
             }
           }
+        }
+
+        // Uniform (shared) properties — render each once, no group suffix
+        {
+          const p = f0;
 
           // ── Ghostwalk ──
           if (uniformGhostwalk && (p.ghostwalk || pieceData.ghostwalk)) {
@@ -1456,27 +1473,6 @@ const GameTypeView = () => {
           // ── Neutral ──
           if (uniformNeutral && p.is_neutral) {
             description += `• **Neutral**: Belongs to no player — acts independently.\n`;
-          }
-
-          // ── Promotion status ──
-          if (uniformPromotion) {
-            const pieceCanPromote = pieceData.can_promote === 1 || pieceData.can_promote === true;
-            if (pieceCanPromote) {
-              if (p.disable_promotion) {
-                description += `• **Cannot Promote**: Promotion is disabled for ${totalPlacements === 1 ? 'this placement' : 'these placements'}.\n`;
-              } else {
-                const promParts = [];
-                if (p.can_promote_to_checkmate) {
-                  promParts.push(`checkmate pieces${p.limit_promote_checkmate_to_original ? ' (capped at starting count)' : ''}`);
-                }
-                if (p.can_promote_to_capture) {
-                  promParts.push(`win-on-capture pieces${p.limit_promote_capture_to_original ? ' (capped at starting count)' : ''}`);
-                }
-                if (promParts.length > 0) {
-                  description += `• **Promotion Override**: Can also promote into ${promParts.join('; ')}.\n`;
-                }
-              }
-            }
           }
         }
       }
