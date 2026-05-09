@@ -2776,8 +2776,11 @@ const LiveGame = () => {
           pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture);
         }
 
-        // For repeating ratio moves, check intermediate landing positions are clear
-        if (pathClear && isRatioMove) {
+        // For repeating ratio moves, check intermediate landing positions are clear.
+        // Only applies when hop_stop_at_occupied is explicitly true (1).
+        // When false/null/undefined the piece hops past occupied intermediate multiples.
+        const hopStopAtOccupied = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
+        if (pathClear && isRatioMove && hopStopAtOccupied) {
           const rr1 = isCapture ? (rc1 || ratio1m) : ratio1m;
           const rr2 = isCapture ? (rc2 || ratio2m) : ratio2m;
           if (rr1 > 0 && rr2 > 0) {
