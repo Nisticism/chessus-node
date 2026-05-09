@@ -1041,6 +1041,19 @@ const LiveGame = () => {
         setGameState(state);
         setLoading(false);
         if (state.playerScores) setPlayerScores(state.playerScores);
+        // Restore pending draw offer state from server (handles reconnect/rejoin)
+        if (state.pendingDrawOffer) {
+          if (state.pendingDrawOffer.from === currentUser?.id) {
+            setDrawOfferSent(true);
+            setPendingDrawOffer(null);
+          } else {
+            setPendingDrawOffer({ from: state.pendingDrawOffer.from, fromUsername: state.pendingDrawOffer.fromUsername });
+            setDrawOfferSent(false);
+          }
+        } else {
+          setPendingDrawOffer(null);
+          setDrawOfferSent(false);
+        }
       }
     });
 
