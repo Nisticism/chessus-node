@@ -3850,18 +3850,11 @@ const runMigrations = async () => {
   // Reset hop_stop_at_occupied from the old default (1) to the new default (0).
   // The column was originally added with DEFAULT 1 (stop enabled), but the intended
   // default is 0 (allow hopping past occupied intermediates).
-  {
-    const [[row]] = await db_pool.query(
-      `SELECT COUNT(*) AS cnt FROM pieces WHERE hop_stop_at_occupied = 1`
-    );
-    if (row.cnt > 0) {
-      await runMigration(
-        `UPDATE pieces SET hop_stop_at_occupied = 0 WHERE hop_stop_at_occupied = 1`,
-        'Reset pieces.hop_stop_at_occupied default to 0'
-      );
-      migrationsRun++;
-    }
-  }
+  // Runs unconditionally — safe to run multiple times (no-op if already 0).
+  await runMigration(
+    `UPDATE pieces SET hop_stop_at_occupied = 0 WHERE hop_stop_at_occupied = 1`,
+    'Reset pieces.hop_stop_at_occupied default to 0'
+  );
 
   // Physical board requests table (ad-hoc, outside the tableMigrations loop)
   await ensurePhysicalBoardRequestsTable();

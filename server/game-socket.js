@@ -13317,6 +13317,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       // hop_stop_at_occupied: only true when explicitly set to 1/true.
       // NULL and 0 both mean "allow hopping past occupied intermediates".
       const hopStopAtOccupied = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
+      console.log(`[repeating-ratio] piece=${piece.piece_name} id=${piece.id} hop_stop_at_occupied_raw=${piece.hop_stop_at_occupied} hopStopAtOccupied=${hopStopAtOccupied} maxK=${maxK} max_ratio_iterations=${piece.max_ratio_iterations}`);
       for (const [dx, dy] of ratioMoves) {
         for (let k = 2; k <= maxK; k++) {
           const targetX = piece.x + dx * k;
