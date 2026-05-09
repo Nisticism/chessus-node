@@ -13314,9 +13314,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     // Repeating ratio: generate multiples of each L-jump direction
     if (piece.repeating_ratio) {
       const maxK = piece.max_ratio_iterations === -1 ? Math.max(boardWidth, boardHeight) : (piece.max_ratio_iterations || 1);
-      // hop_stop_at_occupied: default true (1). Only relevant when the piece can hop over
-      // both allies and enemies (ghostwalk pieces ignore this check entirely).
-      const hopStopAtOccupied = (piece.hop_stop_at_occupied !== false && piece.hop_stop_at_occupied !== 0);
+      // hop_stop_at_occupied: only true when explicitly set to 1/true.
+      // NULL and 0 both mean "allow hopping past occupied intermediates".
+      const hopStopAtOccupied = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
       for (const [dx, dy] of ratioMoves) {
         for (let k = 2; k <= maxK; k++) {
           const targetX = piece.x + dx * k;
