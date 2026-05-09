@@ -234,6 +234,10 @@ pub struct PieceTemplate {
     // ---- Hopping & blocking ----
     pub can_hop_over_allies: bool,
     pub can_hop_over_enemies: bool,
+    /// When both hop flags are on and repeating_ratio is used, stop at a
+    /// further multiple if any earlier multiple is occupied. Default true.
+    #[serde(default = "default_true")]
+    pub hop_stop_at_occupied: bool,
     pub directional_hop_disabled: bool,
     pub ghostwalk: bool,
 
@@ -272,6 +276,10 @@ pub struct PieceTemplate {
     /// Controlled per-placement in the game wizard. Default false.
     #[serde(default)]
     pub can_promote_to_capture: bool,
+    /// If true, this specific placement of the piece cannot promote even though
+    /// the piece template has `can_promote` set. Default false.
+    #[serde(default)]
+    pub disable_promotion: bool,
     /// Points the capturing player gains when this piece is captured.
     #[serde(default)]
     pub capture_points_gain: i32,
@@ -417,6 +425,8 @@ pub struct PieceTemplate {
     pub can_fire_over_enemies: bool,
 }
 
+fn default_true() -> bool { true }
+
 impl Default for PieceTemplate {
     fn default() -> Self {
         Self {
@@ -459,6 +469,7 @@ impl Default for PieceTemplate {
             step_by_step_capture: 0,
             can_hop_over_allies: false,
             can_hop_over_enemies: false,
+            hop_stop_at_occupied: true,
             directional_hop_disabled: false,
             ghostwalk: false,
             can_capture_enemy_on_move: true,
@@ -478,6 +489,7 @@ impl Default for PieceTemplate {
             ends_game_on_checkmate: false,
             can_promote_to_checkmate: false,
             can_promote_to_capture: false,
+            disable_promotion: false,
             capture_points_gain: 0,
             capture_points_loss: 0,
             cannot_be_captured: false,

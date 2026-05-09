@@ -3788,6 +3788,34 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error cleaning up available_for_moves:', err.message);
   }
+
+  // disable_promotion: per-placement flag to prevent a promotable piece from
+  // being able to promote on this specific placement.
+  {
+    const exists = await columnExists('game_type_pieces', 'disable_promotion');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE game_type_pieces ADD COLUMN disable_promotion TINYINT(1) DEFAULT 0`,
+        'Add game_type_pieces.disable_promotion'
+      );
+      migrationsRun++;
+    }
+  }
+
+  // hop_stop_at_occupied: when a ratio-moving piece with can_hop_over_allies AND
+  // can_hop_over_enemies repeats its L-jump, stop before an occupied landable square
+  // (k-1 multiple). Default 1 = enabled (matches old implicit behavior of "can't pass
+  // through an enemy you didn't hop over to a further square").
+  {
+    const exists = await columnExists('pieces', 'hop_stop_at_occupied');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN hop_stop_at_occupied TINYINT(1) DEFAULT 1`,
+        'Add pieces.hop_stop_at_occupied'
+      );
+      migrationsRun++;
+    }
+  }
 };
 
 module.exports = { runMigrations };

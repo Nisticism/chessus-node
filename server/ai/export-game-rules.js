@@ -158,6 +158,7 @@ async function exportGameRules(gameTypeId) {
     p.capture_points_loss ?? '',
     p.limit_promote_checkmate_to_original ? 1 : 0,
     p.limit_promote_capture_to_original ? 1 : 0,
+    p.disable_promotion ? 1 : 0,
     (() => {
       // Normalize promotion_pieces_override: sorted IDs so order doesn't
       // create spurious virtual template splits.
@@ -291,6 +292,7 @@ async function exportGameRules(gameTypeId) {
         ends_game_on_capture: false,
         can_promote_to_checkmate: false,
         can_promote_to_capture: false,
+        disable_promotion: false,
         cannot_be_captured: toBool(tpl.cannot_be_captured),
         ghostwalk: toBool(tpl.ghostwalk),
         die_on_capture: toBool(tpl.die_on_capture),
@@ -298,6 +300,7 @@ async function exportGameRules(gameTypeId) {
         cannot_move_outside_zone: false,
         can_en_passant: toBool(tpl.can_en_passant),
         can_control_squares: false,
+        hop_stop_at_occupied: tpl.hop_stop_at_occupied != null ? toBool(tpl.hop_stop_at_occupied) : true,
         capture_points_gain: 0,
         capture_points_loss: 0,
         hit_points: intOr(tpl.hit_points, 1) || 1,
@@ -310,6 +313,7 @@ async function exportGameRules(gameTypeId) {
         attack_radius: intOr(tpl.attack_radius, 0),
         limit_promote_checkmate_to_original: false,
         limit_promote_capture_to_original: false,
+        disable_promotion: false,
         promotion_pieces_override: null,
       });
     }
@@ -461,6 +465,7 @@ async function exportGameRules(gameTypeId) {
 
       can_hop_over_allies: toBool(p.can_hop_over_allies),
       can_hop_over_enemies: toBool(p.can_hop_over_enemies),
+      hop_stop_at_occupied: p.hop_stop_at_occupied != null ? toBool(p.hop_stop_at_occupied) : true,
       directional_hop_disabled: toBool(p.directional_hop_disabled),
       ghostwalk: toBool(p.ghostwalk),
       min_turns_per_move: intOr(p.min_turns_per_move, 0),
@@ -500,6 +505,7 @@ async function exportGameRules(gameTypeId) {
       ends_game_on_checkmate: toBool(p.ends_game_on_checkmate),
       can_promote_to_checkmate: toBool(p.can_promote_to_checkmate),
       can_promote_to_capture: toBool(p.can_promote_to_capture),
+      disable_promotion: toBool(p.disable_promotion),
       cannot_be_captured: toBool(p.cannot_be_captured),
 
       can_en_passant: toBool(p.can_en_passant),

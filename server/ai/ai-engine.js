@@ -276,6 +276,63 @@ function applyMove(state, move) {
     state.movesWithoutCapture = (state.movesWithoutCapture || 0) + 1;
   }
 
+  // Update control square tracking (mirrors updateControlSquareTracking in game-socket.js)
+  {
+    let controlSquares = {};
+    try {
+      if (state.gameType?.control_squares_string) {
+        const parsed = JSON.parse(state.gameType.control_squares_string);
+        if (parsed && typeof parsed === 'object') controlSquares = { ...parsed };
+      }
+    } catch (_) {}
+    try {
+      if (state.gameType?.special_squares_string) {
+        const custom = typeof state.gameType.special_squares_string === 'string'
+          ? JSON.parse(state.gameType.special_squares_string)
+          : state.gameType.special_squares_string;
+        if (custom && typeof custom === 'object') {
+          for (const [key, cfg] of Object.entries(custom)) {
+            if (cfg && cfg.asControl && !controlSquares[key]) {
+              controlSquares[key] = { type: 'control', fromCustom: true, ...(cfg.controlConfig || {}) };
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    if (Object.keys(controlSquares).length > 0) {
+      if (!state.controlSquareTracking) state.controlSquareTracking = {};
+      if (!state.controlSquareTracking.bySquare) state.controlSquareTracking.bySquare = {};
+      if (!state.controlSquareTracking.byPlayer) state.controlSquareTracking.byPlayer = {};
+      const playersControlling = new Set();
+      for (const [squareKey, config] of Object.entries(controlSquares)) {
+        const [row, col] = squareKey.split(',').map(Number);
+        const requireSpecific = !!config?.requireSpecificPiece;
+        const piecesOnSquare = state.pieces.filter(p => p.x === col && p.y === row);
+        const controllingPiece = requireSpecific
+          ? piecesOnSquare.find(p => p.can_control_squares)
+          : piecesOnSquare[0];
+        if (controllingPiece) {
+          const owner = parseInt(controllingPiece.team || controllingPiece.player_id);
+          playersControlling.add(owner);
+          state.controlSquareTracking.bySquare[squareKey] = { playerId: owner };
+        } else {
+          delete state.controlSquareTracking.bySquare[squareKey];
+        }
+      }
+      for (const player of (state.players || [])) {
+        const pos = player.position;
+        if (playersControlling.has(pos)) {
+          if (!state.controlSquareTracking.byPlayer[pos]) {
+            state.controlSquareTracking.byPlayer[pos] = { halfTurns: 0 };
+          }
+          state.controlSquareTracking.byPlayer[pos].halfTurns++;
+        } else {
+          delete state.controlSquareTracking.byPlayer[pos];
+        }
+      }
+    }
+  }
+
   return captured;
 }
 
@@ -344,6 +401,41 @@ function checkTerminal(state, captured = []) {
 function checkTerminalFull(state) {
   const basic = checkTerminal(state);
   if (basic.over) return basic;
+
+  // Check control square win condition
+  {
+    const { gameType, pieces, players } = state;
+    let controlSquares = {};
+    try {
+      if (gameType?.control_squares_string) {
+        const parsed = JSON.parse(gameType.control_squares_string);
+        if (parsed && typeof parsed === 'object') controlSquares = { ...parsed };
+      }
+    } catch (_) {}
+    try {
+      if (gameType?.special_squares_string) {
+        const custom = typeof gameType.special_squares_string === 'string'
+          ? JSON.parse(gameType.special_squares_string)
+          : gameType.special_squares_string;
+        if (custom && typeof custom === 'object') {
+          for (const [key, cfg] of Object.entries(custom)) {
+            if (cfg && cfg.asControl && !controlSquares[key]) {
+              controlSquares[key] = { type: 'control', fromCustom: true, ...(cfg.controlConfig || {}) };
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    if (Object.keys(controlSquares).length > 0 && state.controlSquareTracking?.byPlayer) {
+      const turnsRequired = Object.values(controlSquares)[0]?.turnsRequired || 1;
+      const halfTurnsRequired = turnsRequired * 2;
+      for (const [playerPosStr, tracking] of Object.entries(state.controlSquareTracking.byPlayer)) {
+        if (tracking.halfTurns >= halfTurnsRequired) {
+          return { over: true, winner: parseInt(playerPosStr), reason: 'control' };
+        }
+      }
+    }
+  }
 
   if (!state.gameType?.mate_condition) {
     // No mate condition: just check if current player has any moves
@@ -962,18 +1054,36 @@ function evaluatePosition(state, perspective) {
   }
 
   // --- Control square awareness ---
-  if (gameType?.control_squares_string) {
+  {
+    let controlSquares = {};
     try {
-      const controlSquares = JSON.parse(gameType.control_squares_string);
-      for (const key of Object.keys(controlSquares)) {
-        const [x, y] = key.split(',').map(Number);
-        const occupant = pieces.find(p => p.x === x && p.y === y);
-        if (occupant) {
-          const owner = occupant.team || occupant.player_id;
-          score += (owner === perspective ? 30 : -30);
+      if (gameType?.control_squares_string) {
+        const parsed = JSON.parse(gameType.control_squares_string);
+        if (parsed && typeof parsed === 'object') controlSquares = { ...parsed };
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      if (gameType?.special_squares_string) {
+        const custom = typeof gameType.special_squares_string === 'string'
+          ? JSON.parse(gameType.special_squares_string)
+          : gameType.special_squares_string;
+        if (custom && typeof custom === 'object') {
+          for (const [key, cfg] of Object.entries(custom)) {
+            if (cfg && cfg.asControl && !controlSquares[key]) {
+              controlSquares[key] = { type: 'control', fromCustom: true, ...(cfg.controlConfig || {}) };
+            }
+          }
         }
       }
     } catch (e) { /* ignore */ }
+    for (const key of Object.keys(controlSquares)) {
+      const [x, y] = key.split(',').map(Number);
+      const occupant = pieces.find(p => p.x === x && p.y === y);
+      if (occupant) {
+        const owner = occupant.team || occupant.player_id;
+        score += (owner === perspective ? 30 : -30);
+      }
+    }
   }
 
   // --- Check awareness (reduced weight — only valuable when it restricts opponent) ---

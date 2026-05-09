@@ -114,8 +114,10 @@ const PieceSelector = ({
   const [promotionSectionOpen, setPromotionSectionOpen] = useState(
     initialPromotionOverrideIds.length > 0 ||
     !!currentPlacement?.can_promote_to_checkmate ||
-    !!currentPlacement?.can_promote_to_capture
+    !!currentPlacement?.can_promote_to_capture ||
+    !!currentPlacement?.disable_promotion
   );
+  const [disablePromotion, setDisablePromotion] = useState(!!currentPlacement?.disable_promotion);
   const [customizePromotion, setCustomizePromotion] = useState(initialPromotionOverrideIds.length > 0);
   const [promotionPieceIds, setPromotionPieceIds] = useState(initialPromotionOverrideIds);
   const [canPromoteToCheckmate, setCanPromoteToCheckmate] = useState(!!currentPlacement?.can_promote_to_checkmate);
@@ -337,6 +339,7 @@ const PieceSelector = ({
       limit_promote_checkmate_to_original: !!(canPromoteToCheckmate && limitCheckmateOriginal),
       can_promote_to_capture: !!canPromoteToCapture,
       limit_promote_capture_to_original: !!(canPromoteToCapture && limitCaptureOriginal),
+      disable_promotion: !!disablePromotion,
       capture_points_gain: Math.max(0, parseInt(capturePointsGain) || 0),
       capture_points_loss: Math.max(0, parseInt(capturePointsLoss) || 0),
     });
@@ -1080,6 +1083,14 @@ const PieceSelector = ({
                       />
                     </div>
                   )}
+                  <div style={{ marginTop: 8 }}>
+                    <ToggleSwitch
+                      checked={disablePromotion}
+                      onChange={(v) => setDisablePromotion(v)}
+                      label="Cannot promote (disabled for this placement)"
+                      tooltip={<InfoTooltip text="Prevent this specific piece from promoting, even though the piece template has promotion enabled. Useful when you want some copies of a piece to be unable to promote." />}
+                    />
+                  </div>
                 </div>
               </div>
             )}

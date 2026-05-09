@@ -1159,7 +1159,7 @@ function squareKey(x, y) { return `${x},${y}`; }
  * async DB work and without filtering options.
  */
 function simulMoveLandsOnPromotionSquare(gameType, piece, destX, destY) {
-  if (!piece || !piece.can_promote || !gameType) return false;
+  if (!piece || !piece.can_promote || piece.disable_promotion || !gameType) return false;
   let promoSquares = {};
   try {
     if (gameType.promotion_squares_string) {
@@ -10863,6 +10863,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     can_promote_to_capture: false,
     limit_promote_checkmate_to_original: false,
     limit_promote_capture_to_original: false,
+    disable_promotion: false,
   };
 
   // Apply per-game junction overrides — these take precedence over piece defaults
@@ -10901,6 +10902,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
       limit_promote_checkmate_to_original: j.limit_promote_checkmate_to_original ?? false,
       can_promote_to_capture: j.can_promote_to_capture ?? false,
       limit_promote_capture_to_original: j.limit_promote_capture_to_original ?? false,
+      disable_promotion: j.disable_promotion ?? false,
       capture_points_gain: j.capture_points_gain ?? 0,
       capture_points_loss: j.capture_points_loss ?? 0,
     });
@@ -10918,7 +10920,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
  * @returns {Object|null} - Promotion info if eligible, null otherwise
  */
 async function checkPromotionEligibility(piece, targetSquare, gameState) {
-  if (!piece || !piece.can_promote) return null;
+  if (!piece || !piece.can_promote || piece.disable_promotion) return null;
   
   const gameType = gameState.gameType;
   if (!gameType) return null;
@@ -13288,6 +13290,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     // Repeating ratio: generate multiples of each L-jump direction
     if (piece.repeating_ratio) {
       const maxK = piece.max_ratio_iterations === -1 ? Math.max(boardWidth, boardHeight) : (piece.max_ratio_iterations || 1);
+      // hop_stop_at_occupied: default true (1). Only relevant when the piece can hop over
+      // both allies and enemies (ghostwalk pieces ignore this check entirely).
+      const hopStopAtOccupied = piece.hop_stop_at_occupied !== false && piece.hop_stop_at_occupied !== 0;
       for (const [dx, dy] of ratioMoves) {
         for (let k = 2; k <= maxK; k++) {
           const targetX = piece.x + dx * k;
@@ -13308,6 +13313,15 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
             }
           }
           if (!intermediatesClear) break;
+
+          // hop_stop_at_occupied: if the previous multiple (k-1) square is occupied by
+          // any piece, stop — the piece cannot hop past that occupied landable square.
+          if (hopStopAtOccupied && !hasGhostwalkGen && k > 2) {
+            const prevX = piece.x + dx * (k - 1);
+            const prevY = piece.y + dy * (k - 1);
+            const prevOccupant = findPieceAtSquare(allPieces, prevX, prevY);
+            if (prevOccupant && prevOccupant.id !== piece.id) break;
+          }
 
           const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
           if (targetPiece) {

@@ -824,17 +824,17 @@ const PieceStep3Attack = ({ pieceData, updatePieceData, hasManuallySetAttackStyl
                       <div className={styles["sub-option"]} style={{ marginLeft: '24px', marginTop: '8px' }}>
                         <ToggleSwitch
                           checked={pieceData.max_ratio_capture_iterations === -1}
-                          onChange={(v) => handleChange("max_ratio_capture_iterations", v ? -1 : 2)}
+                          onChange={(v) => handleChange("max_ratio_capture_iterations", v ? -1 : 1)}
                           label="Infinite"
                           tooltip={<InfoTooltip text="Allow unlimited ratio capture iterations in a single move." />}
                         />
                         {pieceData.max_ratio_capture_iterations !== -1 && (
                           <div style={{ marginTop: '8px' }}>
-                            <label>Max Iterations</label>
+                            <label style={{ display: 'block', marginBottom: '4px' }}>Max Iterations</label>
                             <NumberInput
-                              value={pieceData.max_ratio_capture_iterations || 2}
+                              value={pieceData.max_ratio_capture_iterations || 1}
                               onChange={(val) => handleChange("max_ratio_capture_iterations", val)}
-                              min={2}
+                              min={1}
                               max={50}
                             />
                           </div>

@@ -5,7 +5,7 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 8, 2026",
-    title: "Forum filters, match history game link, physical board improvements, AI analysis persistence",
+    title: "Forum filters, match history game link, physical board improvements, AI analysis persistence, piece abilities",
     items: [
       "Forums (all three pages) now support searching and filtering: sort by Activity, Date Created, Author, Category (general forums), Game (game forums), Replies, or Likes, with ascending/descending toggle. Search queries subject and author name — not post content. Game forum search also matches the game name.",
       "When searching forums with a filter active (e.g. Author), results where the filter field directly matches the search term are shown first.",
@@ -14,6 +14,12 @@ const changelogData = [
       "Requesting AI analysis for a game now persists across page reloads — the 'Request AI Analysis' button stays in its confirmed state when you return to the page.",
       "Physical board request form: dropdowns (wood type, dimension unit) are now styled to match the site's dark theme.",
       "Physical board request form: the site owner now receives an in-app notification whenever someone submits a request.",
+      "Game detail page now lists additional piece abilities: hopping (over allies, enemies, or both), ghostwalk, first-move-only movement/capture, zone restriction, capture points, and more.",
+      "Fixed: control square win conditions are now correctly tracked and detected by the AI bot (both during search and at final-move evaluation). Bots will now properly pursue and defend control square wins.",
+      "New per-placement ability in the game wizard: 'Cannot Promote' — prevent a specific piece placement from promoting even when the piece template has promotion enabled.",
+      "New piece ability: 'Stop Repeating Hops at Occupied Squares' — when a piece with both ally and enemy hop enabled makes repeating ratio (knight-style) jumps, it can no longer skip over an occupied intermediate multiple. Enabled by default for existing pieces.",
+      "Piece wizard: Max Iterations for repeating ratio movement and capture now defaults to 1 (minimum 1) instead of 2.",
+      "Fixed: the game detail page no longer shows a stray '0' character next to simultaneous-turn capture/checkmate win condition descriptions.",
     ],
   },
   {

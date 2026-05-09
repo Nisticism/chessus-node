@@ -983,6 +983,9 @@ const GameTypeView = () => {
         burn_duration: placement.burn_duration ?? 0,
         cannot_be_captured: placement.cannot_be_captured || false,
         show_hp_ad: placement.show_hp_ad || false,
+        capture_points_gain: placement.capture_points_gain ?? 0,
+        capture_points_loss: placement.capture_points_loss ?? 0,
+        disable_promotion: !!placement.disable_promotion,
       });
     });
 
@@ -1101,6 +1104,73 @@ const GameTypeView = () => {
           parts.push('Immune to capture');
         }
         description += `• **Piece Stats**: ${parts.join(' · ')}.\n`;
+      }
+
+      // Hopping abilities
+      const canHopAllies = pieceData.can_hop_over_allies === 1 || pieceData.can_hop_over_allies === true;
+      const canHopEnemies = pieceData.can_hop_over_enemies === 1 || pieceData.can_hop_over_enemies === true;
+      if (canHopAllies || canHopEnemies) {
+        const who = canHopAllies && canHopEnemies ? 'allies and enemies' : canHopAllies ? 'allies' : 'enemies';
+        const extras = [];
+        if (pieceData.exact_ratio_hop_only) extras.push('only on ratio moves');
+        if (pieceData.directional_hop_disabled) extras.push('disabled for directional moves');
+        const extrasStr = extras.length > 0 ? ` (${extras.join('; ')})` : '';
+        description += `• **Hop**: Can jump over ${who} during movement${extrasStr}.\n`;
+        // Stop at occupied only relevant when BOTH ally and enemy hop are on and repeating_ratio
+        const hopStopEnabled = canHopAllies && canHopEnemies && pieceData.repeating_ratio && (pieceData.hop_stop_at_occupied !== false && pieceData.hop_stop_at_occupied !== 0);
+        if (hopStopEnabled) {
+          description += `• **Repeating Hop Limit**: Stops if an intermediate multiple square is occupied.\n`;
+        }
+      }
+
+      // Ghostwalk (also shown in Special Rules section, show brief note here too)
+      if (pieceData.ghostwalk) {
+        description += `• **Ghostwalk**: Passes through any piece.\n`;
+      }
+
+      // First-move-only movement
+      if (pieceData.first_move_only) {
+        description += `• **First-Move-Only**: Certain movement abilities are only available on this piece's very first move.\n`;
+      }
+      if (pieceData.first_move_only_capture) {
+        description += `• **First-Move-Only Capture**: Certain capture abilities are only available on this piece's very first move.\n`;
+      }
+
+      // Die on capture (brief note here — full explanation in Special Rules)
+      if (pieceData.die_on_capture) {
+        const grantsWin = pieceData.die_on_capture_grants_win;
+        description += `• **Die on Capture**: Removed from board when it captures${grantsWin ? '; if this kills the opponent\'s last required piece, the attacker wins' : ''}.\n`;
+      }
+
+      // Attack radius
+      if ((pieceData.attack_radius || 0) > 0) {
+        description += `• **Attack Radius**: Damages all enemies within ${pieceData.attack_radius} square${pieceData.attack_radius > 1 ? 's' : ''} of the landing square on capture.\n`;
+      }
+
+      // Cannot move outside zone
+      if (pieceData.cannot_move_outside_zone) {
+        description += `• **Zone Restriction**: Can only move to squares marked as its restriction zone.\n`;
+      }
+
+      // Capture points
+      const hasCapturePointsGain = placements.some(p => (p.capture_points_gain || 0) > 0);
+      const hasCapturePointsLoss = placements.some(p => (p.capture_points_loss || 0) > 0);
+      if (hasCapturePointsGain || hasCapturePointsLoss) {
+        const gainVals = [...new Set(placements.map(p => p.capture_points_gain || 0).filter(v => v > 0))];
+        const lossVals = [...new Set(placements.map(p => p.capture_points_loss || 0).filter(v => v > 0))];
+        const parts2 = [];
+        if (gainVals.length > 0) parts2.push(`+${gainVals.join('/')} pts awarded when captured`);
+        if (lossVals.length > 0) parts2.push(`-${lossVals.join('/')} pts deducted when this piece captures`);
+        description += `• **Capture Points**: ${parts2.join('; ')}.\n`;
+      }
+
+      // Disable promotion (per-placement)
+      const allDisablePromotion = placements.length > 0 && placements.every(p => p.disable_promotion);
+      const someDisablePromotion = !allDisablePromotion && placements.some(p => p.disable_promotion);
+      if (allDisablePromotion) {
+        description += `• **Cannot Promote**: Promotion is disabled for this piece in this game.\n`;
+      } else if (someDisablePromotion) {
+        description += `• **Cannot Promote**: Promotion is disabled for some placements of this piece in this game.\n`;
       }
       
       pieceDescriptions.push(description);
@@ -2788,13 +2858,13 @@ const GameTypeView = () => {
                     ? 'Free moves work normally (one player may get an extra unanswered action).'
                     : 'Free moves after captures or promotions are disabled in simul-turns games.'}
               </li>
-              {(game.capture_condition || game.mate_condition) && game.simul_turns_simultaneous_capture_draw !== 0 && game.simul_turns_simultaneous_capture_draw !== false && (
+              {!!(game.capture_condition || game.mate_condition) && game.simul_turns_simultaneous_capture_draw !== 0 && game.simul_turns_simultaneous_capture_draw !== false && (
                 <li style={{ textAlign: 'left' }}>
                   <strong>Simultaneous capture draw:</strong>{' '}
                   If both players capture each other's required-to-win piece in the same round, the game ends in a draw by simultaneous capture.
                 </li>
               )}
-              {game.mate_condition && game.simul_turns_simultaneous_checkmate_draw !== 0 && game.simul_turns_simultaneous_checkmate_draw !== false && (
+              {!!game.mate_condition && game.simul_turns_simultaneous_checkmate_draw !== 0 && game.simul_turns_simultaneous_checkmate_draw !== false && (
                 <li style={{ textAlign: 'left' }}>
                   <strong>Simultaneous checkmate draw:</strong>{' '}
                   If both players' moves leave the other side in checkmate at the same time, the game ends in a draw by simultaneous checkmate.

@@ -593,17 +593,17 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               <div className={styles["sub-option"]} style={{ marginLeft: '24px', marginTop: '8px' }}>
                 <ToggleSwitch
                   checked={pieceData.max_ratio_iterations === -1}
-                  onChange={(v) => handleChange("max_ratio_iterations", v ? -1 : 2)}
+                  onChange={(v) => handleChange("max_ratio_iterations", v ? -1 : 1)}
                   label="Infinite"
                   tooltip={<InfoTooltip text="Allow unlimited ratio iterations in a single move." />}
                 />
                 {pieceData.max_ratio_iterations !== -1 && (
                   <div style={{ marginTop: '8px' }}>
-                    <label>Max Iterations</label>
+                    <label style={{ display: 'block', marginBottom: '4px' }}>Max Iterations</label>
                     <NumberInput
-                      value={pieceData.max_ratio_iterations || 2}
+                      value={pieceData.max_ratio_iterations || 1}
                       onChange={(val) => handleChange("max_ratio_iterations", val)}
-                      min={2}
+                      min={1}
                       max={50}
                     />
                   </div>
@@ -677,6 +677,14 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             onChange={(v) => handleChange("directional_hop_disabled", v)}
             label="Disable hopping for non-exact directional movement"
             tooltip={<InfoTooltip text="When enabled, hopping over pieces is disabled for non-exact directional (sliding) movements like rook or bishop movement. Hopping still works for exact directional movements, ratio (L-shape) movements, and step-by-step movements. Useful for hybrid pieces that should only hop with specific movement styles." />}
+          />
+        )}
+        {(pieceData.can_hop_over_allies && pieceData.can_hop_over_enemies) && pieceData.repeating_ratio && (
+          <ToggleSwitch
+            checked={pieceData.hop_stop_at_occupied !== false}
+            onChange={(v) => handleChange("hop_stop_at_occupied", v)}
+            label="Stop repeating hops if an intermediate multiple square is occupied"
+            tooltip={<InfoTooltip text="When making repeating ratio (knight-pattern) hops, the piece cannot jump to a further multiple if any earlier multiple in that same direction is occupied by any piece. For example, a 2-1 knight with this enabled cannot reach 4-2 if the 2-1 square is occupied. Enabled by default." />}
           />
         )}
       </div>

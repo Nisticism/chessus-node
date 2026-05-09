@@ -554,6 +554,14 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                             }
                         }
                         if !intermediates_clear { break; }
+                        // hop_stop_at_occupied: if k-1 multiple is occupied, stop.
+                        if tpl.hop_stop_at_occupied && k > 2 {
+                            let px = mover.x + dx * (k - 1);
+                            let py = mover.y + dy * (k - 1);
+                            if piece_occupying_excluding(board, rules, px, py, mover.id).is_some() {
+                                break;
+                            }
+                        }
                     }
                     if let Some(target) = piece_occupying(board, rules, tx, ty) {
                         if !cannot_be_captured(rules, target) {
@@ -881,7 +889,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
         }
     }
 
-    if tpl.can_promote {
+    if tpl.can_promote && !tpl.disable_promotion {
         let promo_y = if is_player2 { bh - 1 } else { 0 };
         // Collect indices of moves that land on a promotion square.
         let promo_indices: Vec<usize> = out.iter().enumerate()

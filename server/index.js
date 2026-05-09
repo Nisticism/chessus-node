@@ -1,4 +1,4 @@
-// --- Game Session Limits ---
+﻿// --- Game Session Limits ---
 const GAME_LIMITS = {
   live: 8,
   correspondence: 24,
@@ -2210,6 +2210,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'ratio_movement_style','repeating_ratio','repeating_capture','repeating_ratio_capture',
       'step_by_step_movement_style','step_by_step_attack_style',
       'can_hop_over_allies','can_hop_over_enemies','exact_ratio_hop_only','directional_hop_disabled',
+      'hop_stop_at_occupied',
       'can_hop_attack_over_allies','can_hop_attack_over_enemies',
       'can_fire_over_allies','can_fire_over_enemies',
       'can_capture_enemy_via_range','can_capture_enemy_on_move',
@@ -2307,6 +2308,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
         p.ratio_movement_style, p.ratio_one_movement, p.ratio_two_movement, p.repeating_ratio, p.max_ratio_iterations,
         p.step_by_step_movement_style, p.step_by_step_movement_value,
         p.can_hop_over_allies, p.can_hop_over_enemies, p.exact_ratio_hop_only, p.directional_hop_disabled,
+        p.hop_stop_at_occupied,
         p.min_turns_per_move, p.max_turns_per_move,
         p.special_scenario_moves,
         p.can_capture_enemy_via_range, p.can_capture_enemy_on_move,
@@ -2946,16 +2948,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
               piece.capture_points_loss ?? 0,
               piece.cannot_move_outside_zone || false,
               piece.is_neutral || false,
-              piece.die_on_capture_grants_win || false
-            );
-          }
-        }
-      } catch (parseError) {
-        console.error('Error parsing pieces_string:', parseError);
-      }
-    }
-
-    // If publishing a draft (was draft, now not), create forum and notify owner
+              piece.die_on_capture_grants_win || false,
+              piece.disable_promotion || false
+            ); (was draft, now not), create forum and notify owner
     if (existingGame.is_draft && !isDraft) {
       try {
         const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -4312,7 +4307,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'ratio_movement_style', 'ratio_one_movement', 'ratio_two_movement',
       'repeating_ratio', 'max_ratio_iterations', 'min_ratio_iterations',
       'step_by_step_movement_style', 'step_by_step_movement_value',
-      'can_hop_over_allies', 'can_hop_over_enemies',
+      'can_hop_over_allies', 'can_hop_over_enemies', 'hop_stop_at_occupied',
       'can_capture_enemy_via_range', 'can_capture_ally_via_range',
       'can_capture_enemy_on_move', 'can_capture_ally_on_range', 'can_attack_on_iteration',
       'up_left_attack_range', 'up_attack_range', 'up_right_attack_range', 'right_attack_range',
@@ -7309,7 +7304,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
               piece.capture_points_loss ?? 0,
               piece.cannot_move_outside_zone || false,
               piece.is_neutral || false,
-              piece.die_on_capture_grants_win || false
+              piece.die_on_capture_grants_win || false,
+              piece.disable_promotion || false
             );
           }
         }
@@ -7600,7 +7596,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         down_right_movement_available_for, down_movement_available_for, down_left_movement_available_for, left_movement_available_for,
         ratio_movement_style, ratio_one_movement, ratio_two_movement, repeating_ratio, max_ratio_iterations,
         step_by_step_movement_style, step_by_step_movement_value,
-        can_hop_over_allies, can_hop_over_enemies, exact_ratio_hop_only, directional_hop_disabled, min_turns_per_move, max_turns_per_move,
+        can_hop_over_allies, can_hop_over_enemies, exact_ratio_hop_only, directional_hop_disabled, hop_stop_at_occupied, min_turns_per_move, max_turns_per_move,
         first_move_only, available_for_moves, special_scenario_moves,
         can_capture_enemy_via_range, can_capture_enemy_on_move,
         first_move_only_capture, available_for_captures,
@@ -7688,6 +7684,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
       parseBooleanField(pieceData.directional_hop_disabled),
+      pieceData.hop_stop_at_occupied !== undefined ? parseBooleanField(pieceData.hop_stop_at_occupied) : 1,
       Math.min(8, parseInt(pieceData.min_turns_per_move) || 0) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
@@ -8139,6 +8136,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         can_hop_over_enemies = ?,
         exact_ratio_hop_only = ?,
         directional_hop_disabled = ?,
+        hop_stop_at_occupied = ?,
         min_turns_per_move = ?,
         max_turns_per_move = ?,
         first_move_only = ?,
@@ -8285,6 +8283,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
       parseBooleanField(pieceData.directional_hop_disabled),
+      pieceData.hop_stop_at_occupied !== undefined ? parseBooleanField(pieceData.hop_stop_at_occupied) : 1,
       Math.min(8, parseInt(pieceData.min_turns_per_move) || 0) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
