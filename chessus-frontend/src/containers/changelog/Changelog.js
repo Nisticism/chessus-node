@@ -15,6 +15,7 @@ const changelogData = [
       "Fixed: repeating ratio attack (and its max iterations) now correctly loads when editing an existing piece.",
       "Piece wizard Step 2 and Step 3 now each have a 'Clear all' button to reset all movement or attack data at once.",
       "All text on the site is now selectable and copy-pasteable by default.",
+      "Fixed: sorting and filtering on the Forums hub page now applies across all forums, not just the ones currently visible. The hub now queries the server with the active sort/filter instead of sorting a limited local cache.",
     ],
   },
   {
