@@ -255,6 +255,8 @@ const LiveGame = () => {
   const lastServerTickRef = useRef(null); // Timestamp of last server timeUpdate
   const serverTimesRef = useRef({}); // Last raw server playerTimes
   const activeClockPlayerRef = useRef(null); // Which player's clock is ticking
+  const playersRef = useRef(null); // Latest gameState.players — used in event handlers to avoid stale closure
+  useEffect(() => { playersRef.current = gameState?.players; }, [gameState?.players]);
 
   // Disconnect-forfeit banner: { userId, username, durationMs, expiresAt, paused, remainingMs }
   const [disconnectInfo, setDisconnectInfo] = useState(null);
@@ -613,6 +615,17 @@ const LiveGame = () => {
           setShowGameOver(true);
         }
 
+        // Restore pending draw offer state from server (handles initial load and reconnect)
+        if (state.pendingDrawOffer) {
+          if (state.pendingDrawOffer.from === currentUser?.id) {
+            setDrawOfferSent(true);
+            setPendingDrawOffer(null);
+          } else {
+            setPendingDrawOffer({ from: state.pendingDrawOffer.from, fromUsername: state.pendingDrawOffer.fromUsername });
+            setDrawOfferSent(false);
+          }
+        }
+
         // Anchor the local clock interpolation immediately so the displayed clock
         // ticks down smoothly from the moment the game loads (without waiting for
         // the first moveMade or botThinking event).
@@ -776,7 +789,7 @@ const LiveGame = () => {
           serverTimesRef.current = newState.playerTimes;
           lastServerTickRef.current = Date.now();
           if (newState.currentTurn != null) {
-            const playersList = newState.players || gameState?.players;
+            const playersList = newState.players || playersRef.current;
             if (playersList) {
               const nextPlayer = playersList.find(p => p.position === newState.currentTurn);
               activeClockPlayerRef.current = nextPlayer?.id ?? null;
@@ -963,7 +976,7 @@ const LiveGame = () => {
       if (parseInt(timerGameId) === parseInt(gameId)) {
         serverTimesRef.current = playerTimes || {};
         lastServerTickRef.current = Date.now();
-        const currentPlayer_ = gameState?.players?.find(p => p.position === currentTurn);
+        const currentPlayer_ = playersRef.current?.find(p => p.position === currentTurn);
         activeClockPlayerRef.current = currentPlayer_?.id || null;
         setGameState(prev => ({
           ...prev,
@@ -1511,7 +1524,7 @@ const LiveGame = () => {
       unsubscribeGameDeleted();
       unsubscribeSpectatorUpdate();
     };
-  }, [gameId, onGameEvent, navigate, currentUser?.id, gameState?.players, clearOptimisticMoveSnapshot, showIllegalMoveWarning]);
+  }, [gameId, onGameEvent, navigate, currentUser?.id, clearOptimisticMoveSnapshot, showIllegalMoveWarning]);
 
   // Get current player info
   /* eslint-disable react-hooks/exhaustive-deps */
