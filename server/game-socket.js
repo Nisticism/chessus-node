@@ -13323,41 +13323,47 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           const targetY = piece.y + dy * k;
           if (!isValidSquare(targetX, targetY)) break;
 
-          // Check intermediate landing positions are clear
-          let intermediatesClear = true;
+          // Check intermediate landing positions.
+          // Impassable squares always block further multiples.
+          // Occupied pieces only block when hopStopAtOccupied is true;
+          // when false the piece hops over intermediate occupied multiples.
+          let blockedLine = false;
           if (!hasGhostwalkGen) {
             for (let j = 1; j < k; j++) {
               const intX = piece.x + dx * j;
               const intY = piece.y + dy * j;
-              const blocking = findPieceAtSquare(allPieces, intX, intY);
-              if ((blocking && blocking.id !== piece.id) || (impassableSet && impassableSet.has(`${intY},${intX}`))) {
-                intermediatesClear = false;
+              if (impassableSet && impassableSet.has(`${intY},${intX}`)) {
+                blockedLine = true;
                 break;
+              }
+              if (hopStopAtOccupied) {
+                const blocking = findPieceAtSquare(allPieces, intX, intY);
+                if (blocking && blocking.id !== piece.id) {
+                  blockedLine = true;
+                  break;
+                }
               }
             }
           }
-          if (!intermediatesClear) break;
-
-          // hop_stop_at_occupied: if the previous multiple (k-1) square is occupied by
-          // any piece or is impassable, stop — the piece cannot hop past it.
-          if (hopStopAtOccupied && !hasGhostwalkGen && k > 2) {
-            const prevX = piece.x + dx * (k - 1);
-            const prevY = piece.y + dy * (k - 1);
-            const prevOccupant = findPieceAtSquare(allPieces, prevX, prevY);
-            if ((prevOccupant && prevOccupant.id !== piece.id) || (impassableSet && impassableSet.has(`${prevY},${prevX}`))) break;
-          }
+          if (blockedLine) break;
 
           const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
           if (targetPiece) {
             const targetOwner = targetPiece.team || targetPiece.player_id;
+            let addedCapture = false;
             if (!targetPiece.cannot_be_captured) {
               if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
                 moves.push({ x: targetX, y: targetY });
+                addedCapture = true;
               } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
                 moves.push({ x: targetX, y: targetY });
+                addedCapture = true;
               }
             }
-            break; // Can't move past a piece in the ratio line
+            // Stop iterating if hopStopAtOccupied (can't pass through any occupied target),
+            // or if we actually captured here (piece stops after capturing).
+            // When hopStopAtOccupied=false and no capture: hop over to next multiple.
+            if (hopStopAtOccupied || addedCapture) break;
           } else {
             moves.push({ x: targetX, y: targetY });
           }

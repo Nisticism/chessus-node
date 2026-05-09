@@ -3847,35 +3847,6 @@ const runMigrations = async () => {
     }
   }
 
-  // hop_continue_past_occupied: explicit opt-in flag shown as a badge when a piece's
-  // repeating ratio hops are configured to continue past occupied intermediate squares.
-  // Default 0 = not set (no badge). When 1, the badge "Repeating hops continue past
-  // occupied intermediates" appears on the piece detail page and game engine treats
-  // hop_stop_at_occupied as false for this piece.
-  {
-    const exists = await columnExists('pieces', 'hop_continue_past_occupied');
-    if (!exists) {
-      await runMigration(
-        `ALTER TABLE pieces ADD COLUMN hop_continue_past_occupied TINYINT(1) DEFAULT 0`,
-        'Add pieces.hop_continue_past_occupied'
-      );
-      migrationsRun++;
-    }
-  }
-
-  // One-time cleanup: drop hop_continue_past_occupied if it still exists.
-  // This column was added then removed from all application code.
-  {
-    const hopContinueExists = await columnExists('pieces', 'hop_continue_past_occupied');
-    if (hopContinueExists) {
-      await runMigration(
-        `ALTER TABLE pieces DROP COLUMN hop_continue_past_occupied`,
-        'Drop pieces.hop_continue_past_occupied'
-      );
-      migrationsRun++;
-    }
-  }
-
   // Physical board requests table (ad-hoc, outside the tableMigrations loop)
   await ensurePhysicalBoardRequestsTable();
 };
