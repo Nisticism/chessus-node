@@ -3832,10 +3832,8 @@ const runMigrations = async () => {
     }
   }
 
-  // hop_stop_at_occupied: when a ratio-moving piece with can_hop_over_allies AND
-  // can_hop_over_enemies repeats its L-jump, stop before an occupied landable square
-  // (k-1 multiple). Default 1 = enabled (matches old implicit behavior of "can't pass
-  // through an enemy you didn't hop over to a further square").
+  // hop_stop_at_occupied: when a ratio-moving piece repeats its L-jump, stop before
+  // an occupied intermediate multiple. Default 0 = off (piece hops over intermediates).
   {
     const exists = await columnExists('pieces', 'hop_stop_at_occupied');
     if (!exists) {
@@ -3846,15 +3844,6 @@ const runMigrations = async () => {
       migrationsRun++;
     }
   }
-
-  // Reset hop_stop_at_occupied from the old default (1) to the new default (0).
-  // The column was originally added with DEFAULT 1 (stop enabled), but the intended
-  // default is 0 (allow hopping past occupied intermediates).
-  // Runs unconditionally — safe to run multiple times (no-op if already 0).
-  await runMigration(
-    `UPDATE pieces SET hop_stop_at_occupied = 0 WHERE hop_stop_at_occupied = 1`,
-    'Reset pieces.hop_stop_at_occupied default to 0'
-  );
 
   // Physical board requests table (ad-hoc, outside the tableMigrations loop)
   await ensurePhysicalBoardRequestsTable();
