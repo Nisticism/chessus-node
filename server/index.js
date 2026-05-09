@@ -1,4 +1,4 @@
-﻿// --- Game Session Limits ---
+// --- Game Session Limits ---
 const GAME_LIMITS = {
   live: 8,
   correspondence: 24,
@@ -50,7 +50,7 @@ async function countUserActiveGames(identifier) {
 require("dotenv").config();
 
 // Patch console methods in production to prepend a CST timestamp.
-// Uses a single cached Intl.DateTimeFormat instance ï¿½ overhead is negligible
+// Uses a single cached Intl.DateTimeFormat instance � overhead is negligible
 // (< 1ms per call) even under high log volume.
 if (process.env.NODE_ENV === 'production') {
   const _cstFmt = new Intl.DateTimeFormat('en-US', {
@@ -193,7 +193,7 @@ const corsOptions = {
     if (isAllowed) {
       callback(null, true);
     } else {
-      // Silently reject ï¿½ callback(null, false) tells the cors middleware NOT
+      // Silently reject � callback(null, false) tells the cors middleware NOT
       // to set Access-Control-Allow-Origin, so the browser blocks the response.
       // Using callback(new Error()) instead would log an unhandled error in PM2
       // every time a bot or crawler hits the API from a foreign origin.
@@ -505,7 +505,7 @@ runMigrations().then(() => {
     const trainingManager = require('./ai/training-manager');
     return trainingManager.markInterruptedJobs();
   } catch (e) {
-    // Not fatal ï¿½ training is an optional subsystem.
+    // Not fatal � training is an optional subsystem.
     console.warn('AI training subsystem unavailable:', e.message);
   }
 }).catch(err => {
@@ -2186,7 +2186,7 @@ app.get("/api/pieces/community-images", async (req, res) => {
 // ---- Duplicate-ruleset check (used by the piece wizard before save) ----
 // Accepts { fields: <DB-column-named object>, excludeId: <number|null> }
 // Returns { matches: [{id, piece_name, creator_username, is_anonymous_creator}] }
-// Does NOT require authentication ï¿½ the wizard must call this for anonymous
+// Does NOT require authentication � the wizard must call this for anonymous
 // creators too. Read-only and returns only identity columns, no sensitive data.
 app.post("/api/pieces/duplicates", async (req, res) => {
   try {
@@ -2195,7 +2195,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       return res.json({ matches: [] });
     }
 
-    // These are ALL functional columns ï¿½ everything that controls how a piece
+    // These are ALL functional columns � everything that controls how a piece
     // actually behaves, excluding identity (name, images, description, category,
     // creator, timestamps). Comparison is field-by-field, short-circuits on
     // the first difference so the inner loop is fast.
@@ -2222,7 +2222,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'can_capture_ally_via_range','can_capture_ally_on_range','can_attack_on_iteration',
       'repeating_directional_ranged_attack','repeating_ratio_ranged_attack',
     ];
-    // Integer columns ï¿½ coerce null/undefined to 0 so that an older piece
+    // Integer columns � coerce null/undefined to 0 so that an older piece
     // (column was NULL from a migration default) and a newer piece (wizard sent 0)
     // are still considered functionally identical for disabled/inapplicable fields.
     // NOTE: available_for_moves is intentionally excluded from comparison.
@@ -2255,7 +2255,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'max_chain_hops',
       'available_for_captures',
     ];
-    // JSON / text columns ï¿½ compare by canonical JSON (or trimmed string).
+    // JSON / text columns � compare by canonical JSON (or trimmed string).
     // Empty arrays and empty objects are treated as null (= "not configured").
     const JSON_COLS = [
       'special_scenario_moves','special_scenario_captures',
@@ -2360,7 +2360,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
     res.json({ matches });
   } catch (err) {
     console.error("Error in /api/pieces/duplicates:", err);
-    res.json({ matches: [] }); // non-fatal ï¿½ wizard can still save
+    res.json({ matches: [] }); // non-fatal � wizard can still save
   }
 });
 
@@ -2589,7 +2589,7 @@ app.get("/api/games/:gameId", async (req, res) => {
       return res.status(404).send({ message: "Game not found" });
     }
     
-    // forum_id and upvote_count are independent ï¿½ run them in parallel
+    // forum_id and upvote_count are independent � run them in parallel
     const [forumRows, upvoteResult] = await Promise.all([
       db_pool.query('SELECT id FROM articles WHERE game_type_id = ? LIMIT 1', [gameId]),
       db_pool.query('SELECT COUNT(*) as count FROM game_type_upvotes WHERE game_type_id = ?', [gameId]),
@@ -2793,7 +2793,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       }
     }
     
-    // Dynamic UPDATE builder ï¿½ column name and value are always co-located so
+    // Dynamic UPDATE builder � column name and value are always co-located so
     // adding a new column in future cannot cause a placeholder/values mismatch.
     const updateMap = {
       game_name:                             gameData.game_name,
@@ -3062,12 +3062,12 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
 });
 
 // =====================================================================
-//   STANDALONE TRAINER ï¿½ user-facing trainer pack + upload endpoints
+//   STANDALONE TRAINER � user-facing trainer pack + upload endpoints
 // =====================================================================
 
-// ---- Trainer API key management (requires JWT ï¿½ web session only) --------
+// ---- Trainer API key management (requires JWT � web session only) --------
 
-// POST /api/trainer/keys ï¿½ generate a new trainer API key for the current user.
+// POST /api/trainer/keys � generate a new trainer API key for the current user.
 app.post('/api/trainer/keys', authenticateToken, async (req, res) => {
   try {
     const crypto = require('crypto');
@@ -3087,15 +3087,15 @@ app.post('/api/trainer/keys', authenticateToken, async (req, res) => {
       'INSERT INTO trainer_api_keys (user_id, key_hash, key_prefix, name) VALUES (?, ?, ?, ?)',
       [req.user.id, keyHash, keyPrefix, name],
     );
-    // Return the raw key once ï¿½ it is never stored and cannot be recovered
-    res.json({ key: rawKey, prefix: keyPrefix, name, message: 'Save this key ï¿½ it will not be shown again.' });
+    // Return the raw key once � it is never stored and cannot be recovered
+    res.json({ key: rawKey, prefix: keyPrefix, name, message: 'Save this key � it will not be shown again.' });
   } catch (err) {
     console.error('Error in POST /api/trainer/keys:', err);
     res.status(500).json({ message: err.message });
   }
 });
 
-// GET /api/trainer/keys ï¿½ list the current user's trainer API keys (no raw key, only metadata).
+// GET /api/trainer/keys � list the current user's trainer API keys (no raw key, only metadata).
 app.get('/api/trainer/keys', authenticateToken, async (req, res) => {
   try {
     const [rows] = await db_pool.query(
@@ -3108,7 +3108,7 @@ app.get('/api/trainer/keys', authenticateToken, async (req, res) => {
   }
 });
 
-// DELETE /api/trainer/keys/:keyId ï¿½ revoke a trainer API key (owner or admin only).
+// DELETE /api/trainer/keys/:keyId � revoke a trainer API key (owner or admin only).
 app.delete('/api/trainer/keys/:keyId', authenticateToken, async (req, res) => {
   try {
     const keyId = parseInt(req.params.keyId, 10);
@@ -3131,7 +3131,7 @@ app.delete('/api/trainer/keys/:keyId', authenticateToken, async (req, res) => {
 
 // ---- Global trainer game/rules endpoints (accept JWT or TrainerToken) ----
 
-// GET /api/trainer/my-games ï¿½ list games the current user can train.
+// GET /api/trainer/my-games � list games the current user can train.
 // Admins/owners get all published non-draft games.
 app.get('/api/trainer/my-games', authenticateTokenOrTrainerKey, async (req, res) => {
   try {
@@ -3158,7 +3158,7 @@ app.get('/api/trainer/my-games', authenticateTokenOrTrainerKey, async (req, res)
   }
 });
 
-// GET /api/trainer/game-rules/:gameId ï¿½ export and return rules.json for a game.
+// GET /api/trainer/game-rules/:gameId � export and return rules.json for a game.
 // Creator or admin only.
 app.get('/api/trainer/game-rules/:gameId', authenticateTokenOrTrainerKey, async (req, res) => {
   try {
@@ -3203,8 +3203,8 @@ app.get('/api/trainer/game-rules/:gameId', authenticateTokenOrTrainerKey, async 
   }
 });
 
-// GET /api/trainer/available-platforms ï¿½ returns which platforms have a built binary.
-// No auth required ï¿½ safe to call from the download UI before login check.
+// GET /api/trainer/available-platforms � returns which platforms have a built binary.
+// No auth required � safe to call from the download UI before login check.
 app.get('/api/trainer/available-platforms', (req, res) => {
   const fs = require('fs');
   const path = require('path');
@@ -3219,7 +3219,7 @@ app.get('/api/trainer/available-platforms', (req, res) => {
   res.json({ available });
 });
 
-// GET /api/trainer/global-pack?platform=win32|linux ï¿½ JWT auth (web session).
+// GET /api/trainer/global-pack?platform=win32|linux � JWT auth (web session).
 // Returns a ZIP with the binary + setup + train scripts + README. No rules.json.
 app.get('/api/trainer/global-pack', authenticateToken, async (req, res) => {
   try {
@@ -3322,7 +3322,7 @@ const trainerUploadLimiter = (() => {
   };
 })();
 
-// GET /api/trainer/version ï¿½ public, no auth.
+// GET /api/trainer/version � public, no auth.
 // Returns the current trainer binary version and which platforms are available.
 app.get('/api/trainer/version', async (_req, res) => {
   try {
@@ -3340,7 +3340,7 @@ app.get('/api/trainer/version', async (_req, res) => {
   }
 });
 
-// GET /api/trainer/download/:platform ï¿½ public, no auth.
+// GET /api/trainer/download/:platform � public, no auth.
 // Streams the compiled Rust binary for the requested platform.
 app.get('/api/trainer/download/:platform', async (req, res) => {
   try {
@@ -3367,7 +3367,7 @@ app.get('/api/trainer/download/:platform', async (req, res) => {
   }
 });
 
-// GET /api/games/:gameId/trainer-pack ï¿½ DEPRECATED. Returns 410 Gone.
+// GET /api/games/:gameId/trainer-pack � DEPRECATED. Returns 410 Gone.
 // Per-game packs are replaced by the global trainer pack.
 app.get('/api/games/:gameId/trainer-pack', authenticateToken, (req, res) => {
   const siteUrl = process.env.SITE_URL || 'https://gridgrove.gg';
@@ -3377,7 +3377,7 @@ app.get('/api/games/:gameId/trainer-pack', authenticateToken, (req, res) => {
   });
 });
 
-// POST /api/games/:gameId/training/upload ï¿½ game creator, admin, or trainer token holder.
+// POST /api/games/:gameId/training/upload � game creator, admin, or trainer token holder.
 const USER_UPLOAD_MAX_BYTES = 30 * 1024 * 1024; // 30 MB per-file limit for non-admin uploads
 const USER_UPLOAD_GAME_CAP_BYTES = 30 * 1024 * 1024; // 30 MB total per user per game
 const _userArtifactUpload = multer({
@@ -3447,7 +3447,7 @@ app.post(
             }
           }
         } catch (_e) {
-          // Non-fatal ï¿½ meta.json is optional
+          // Non-fatal � meta.json is optional
         }
       }
 
@@ -4213,7 +4213,7 @@ consistent with the site's privacy policy.
 `;
 }
 
-// Uniqueness checker ï¿½ compares a game's full configuration against all other games
+// Uniqueness checker � compares a game's full configuration against all other games
 app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, res) => {
   try {
     const { gameId } = req.params;
@@ -5818,7 +5818,7 @@ app.post("/api/admin/users/:userId/set-donations", authenticateToken, async (req
     const parsedAmount = parseFloat(amount);
 
     if (isNaN(parsedAmount) || parsedAmount < 0) {
-      return res.status(400).send({ message: "Invalid donation amount ï¿½ must be 0 or a positive number" });
+      return res.status(400).send({ message: "Invalid donation amount � must be 0 or a positive number" });
     }
 
     const [users] = await db_pool.query(
@@ -6124,7 +6124,7 @@ app.get("/api/forums", optionalAuthenticate, async (req, res) => {
     if (category) {
       whereConditions.push(`a.category = ${db_pool.escape(category)}`);
     }
-    // Search queries subject (title), author username, and game name ï¿½ NOT post content.
+    // Search queries subject (title), author username, and game name � NOT post content.
     if (search) {
       const term = db_pool.escape(`%${search}%`);
       whereConditions.push(`(a.title LIKE ${term} OR ua.username LIKE ${term} OR gt.game_name LIKE ${term})`);
@@ -6264,7 +6264,7 @@ app.get("/api/forum", async (params, res) => {
       forum.author_name = "Anonymous";
     }
 
-    // Get likes, game name, and comments ï¿½ run likes + game name in parallel,
+    // Get likes, game name, and comments � run likes + game name in parallel,
     // then fetch comments with author names in a single JOIN query.
     const [
       likes,
@@ -7172,13 +7172,13 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
           });
         }
       } catch (validationErr) {
-        // Don't block on validator failures ï¿½ log and continue. The admin
+        // Don't block on validator failures � log and continue. The admin
         // scan tool will catch persistent issues later.
         console.error('[initial-state] Pre-create validation error:', validationErr.message);
       }
     }
 
-    // Dynamic INSERT builder ï¿½ column name and value are always co-located so
+    // Dynamic INSERT builder � column name and value are always co-located so
     // adding a new column in future cannot cause a placeholder/values mismatch.
     const insertMap = {
       creator_id,
@@ -7696,7 +7696,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
       parseBooleanField(pieceData.directional_hop_disabled),
-      pieceData.hop_stop_at_occupied !== undefined ? parseBooleanField(pieceData.hop_stop_at_occupied) : 1,
+      pieceData.hop_stop_at_occupied !== undefined ? parseBooleanField(pieceData.hop_stop_at_occupied) : 0,
       Math.min(8, parseInt(pieceData.min_turns_per_move) || 0) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
@@ -8295,7 +8295,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
       parseBooleanField(pieceData.directional_hop_disabled),
-      pieceData.hop_stop_at_occupied !== undefined ? parseBooleanField(pieceData.hop_stop_at_occupied) : 1,
+      pieceData.hop_stop_at_occupied !== undefined ? parseBooleanField(pieceData.hop_stop_at_occupied) : 0,
       Math.min(8, parseInt(pieceData.min_turns_per_move) || 0) || null,
       parseInt(pieceData.max_turns_per_move) || null,
       // Movement special scenario fields
@@ -8404,7 +8404,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       // Must-move-if-able
       parseBooleanField(pieceData.must_move_if_able),
       parseBooleanField(pieceData.must_move_uses_action),
-      // Image sources ï¿½ combined from kept images (preserving original sources) + new images
+      // Image sources � combined from kept images (preserving original sources) + new images
       combinedSourcesJson,
       pieceId
     ];
@@ -8837,16 +8837,16 @@ app.post("/api/admin/pieces/:pieceId/approve-moderation", authenticateAdmin, asy
 });
 
 // =====================================================================
-//   AI TRAINING (admin) ï¿½ see AI_OVERHAUL_PLAN.md
+//   AI TRAINING (admin) � see AI_OVERHAUL_PLAN.md
 // =====================================================================
 //
 // Endpoints:
-//   GET  /api/admin/ai-training/status         ï¿½ engine availability + active job count
-//   GET  /api/admin/ai-training/jobs           ï¿½ recent jobs (any status)
-//   GET  /api/admin/ai-training/jobs/:id       ï¿½ one job + recent log events
-//   POST /api/admin/ai-training/jobs           ï¿½ start a new job
-//   POST /api/admin/ai-training/jobs/:id/stop  ï¿½ signal SIGTERM to a running job
-//   PUT  /api/admin/ai-training/memory-cap     ï¿½ update global memory budget
+//   GET  /api/admin/ai-training/status         � engine availability + active job count
+//   GET  /api/admin/ai-training/jobs           � recent jobs (any status)
+//   GET  /api/admin/ai-training/jobs/:id       � one job + recent log events
+//   POST /api/admin/ai-training/jobs           � start a new job
+//   POST /api/admin/ai-training/jobs/:id/stop  � signal SIGTERM to a running job
+//   PUT  /api/admin/ai-training/memory-cap     � update global memory budget
 //
 // All gated by `authenticateAdmin`. The trainer is sandboxed in a
 // subprocess (1 GB / 1 core by default) so the game server is unaffected.
@@ -8978,7 +8978,7 @@ app.post('/api/admin/ai-training/jobs/:id/resume', authenticateAdmin1, async (re
 
 // Package a job's on-disk directory as a ZIP for devs to download and
 // later upload into the production admin portal. Only available when the
-// trainer runs locally (same host as the backend) ï¿½ in REMOTE_MODE the
+// trainer runs locally (same host as the backend) � in REMOTE_MODE the
 // files live on a different machine, and the live-site admin portal
 // already accepts the uploads we'd be producing.
 // Download the plain-text game transcript written directly by the Rust trainer.
@@ -9120,7 +9120,7 @@ app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin1, async
 
     // Detect whether starting positions are randomized per game. If so, the
     // starting board shown in the replay will be the DB default layout, NOT the
-    // actual layout used in each game ï¿½ warn the user in the UI.
+    // actual layout used in each game � warn the user in the UI.
     let hasRandomizedPositions = false;
     if (gameTypeRow.randomized_starting_positions) {
       try {
@@ -9177,7 +9177,7 @@ app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin1, async
     const moves = [];
 
     if (targetBlock) {
-      const headerLine = targetBlock.match(/^=== Game #\d+ ï¿½ (.+?) ï¿½ \d+ moves ===/);
+      const headerLine = targetBlock.match(/^=== Game #\d+ � (.+?) � \d+ moves ===/);
       if (headerLine) outcome = headerLine[1].trim();
 
       for (const line of targetBlock.split('\n')) {
@@ -9252,7 +9252,7 @@ app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin1, async (re
     const { trainingDirFor } = require('./ai/export-game-rules');
     let deletedDir = false;
     if (trainingManager.REMOTE_MODE) {
-      // Data lives on the trainer-service host ï¿½ proxy the deletion there.
+      // Data lives on the trainer-service host � proxy the deletion there.
       const trainerClient = require('./ai/trainer-client');
       await trainerClient.deleteJobData(id);
       deletedDir = true; // best-effort; don't let remote error block DB update
@@ -9277,7 +9277,7 @@ app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin1, async (re
         [job.game_type_id],
       );
       if ((remaining?.c || 0) === 0) {
-        // No jobs with data left for this game type ï¿½ drop the cached
+        // No jobs with data left for this game type � drop the cached
         // analysis row entirely so the admin UI shows "No analysis yet"
         // instead of a stale (possibly schema-mismatched) summary.
         await _trainingAnalysis.deleteAnalysis(job.game_type_id);
@@ -9294,7 +9294,7 @@ app.delete('/api/admin/ai-training/jobs/:id/data', authenticateAdmin1, async (re
   }
 });
 
-// Delete a training job entirely ï¿½ wipes the on-disk directory AND removes
+// Delete a training job entirely � wipes the on-disk directory AND removes
 // the DB row from `ai_training_jobs`. Refuses to delete a running job;
 // admin must stop it first. Use this when a job is no longer wanted in
 // history at all (vs. /data which keeps the row for audit).
@@ -9349,7 +9349,7 @@ app.delete('/api/admin/ai-training/jobs/:id', authenticateAdmin1, async (req, re
   }
 });
 
-// Public endpoint ï¿½ used by the create-game UI to decide whether the
+// Public endpoint � used by the create-game UI to decide whether the
 // "Adaptive" computer difficulty should be enabled for a given game type.
 // No auth required: returns only an aggregate game-count and whether a
 // trained model exists, no PII.
@@ -9376,7 +9376,7 @@ app.get('/api/ai-models/:gameTypeId/availability', async (req, res) => {
 });
 
 // Admin: pause / resume new training jobs. Existing in-flight jobs are
-// not affected. Status is in-memory only ï¿½ a server restart resets to
+// not affected. Status is in-memory only � a server restart resets to
 // "not paused" (intentional: we don't want a forgotten pause to silently
 // block training forever).
 app.get('/api/admin/ai-training/pause-status', authenticateAdmin1, (req, res) => {
@@ -9413,7 +9413,7 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
       }
       gtids = [gtid];
     } else {
-      // Scan every game type that has at least one job ï¿½ not just those with
+      // Scan every game type that has at least one job � not just those with
       // games_played > 0.  This is critical after a restore, where files are
       // back on disk but the DB counts were zeroed and need to be recovered.
       const [rows] = await db_pool.query(
@@ -9434,7 +9434,7 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
           const result = await trainerClient.verifyDisk(gtid);
           diskJobs = result?.jobs || [];
           // gameDirExists tells us whether <TRAINING_ROOT>/<gtid>/ exists on the trainer host.
-          // If false, the trainer path is likely misconfigured ï¿½ do NOT zero out DB counts.
+          // If false, the trainer path is likely misconfigured � do NOT zero out DB counts.
           gameDirExists = result?.gameDirExists ?? true;
         } catch (e) {
           return res.status(502).send({ message: `Trainer service error: ${e.message}` });
@@ -9516,10 +9516,10 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
         const disk = diskMap[row.id];
         const diskGames = disk?.gamesOnDisk ?? 0;
         if (row.games_played > 0 && diskGames === 0) {
-          // Data is gone from disk ï¿½ zero out DB so UI reflects reality.
+          // Data is gone from disk � zero out DB so UI reflects reality.
           await db_pool.query(
             `UPDATE ai_training_jobs SET games_played = 0,
-               error_message = CONCAT(IFNULL(error_message, ''), ' [disk data missing ï¿½ zeroed by sync]')
+               error_message = CONCAT(IFNULL(error_message, ''), ' [disk data missing � zeroed by sync]')
              WHERE id = ?`,
             [row.id],
           );
@@ -9531,7 +9531,7 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
             reason: 'disk_data_missing',
           });
         } else if (disk && diskGames > 0 && diskGames !== row.games_played) {
-          // Disk says a different count than DB ï¿½ trust disk.
+          // Disk says a different count than DB � trust disk.
           await db_pool.query(
             `UPDATE ai_training_jobs SET games_played = ? WHERE id = ?`,
             [diskGames, row.id],
@@ -9798,7 +9798,7 @@ app.get('/api/admin/ai-training/rules/:gameTypeId', authenticateAdmin1, async (r
     const filePath = rulesPathFor(gtid);
     const fs = require('fs');
     if (!fs.existsSync(filePath)) {
-      return res.status(404).send({ message: 'rules.json not found after export ï¿½ check game type has pieces' });
+      return res.status(404).send({ message: 'rules.json not found after export � check game type has pieces' });
     }
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="rules-${gtid}.json"`);
@@ -9814,12 +9814,12 @@ app.get('/api/admin/ai-training/rules/:gameTypeId', authenticateAdmin1, async (r
 // live in this database instance (e.g. training locally for a remote site).
 //
 // Body: multipart/form-data with:
-//   rules        ï¿½ the rules.json file
-//   display_name ï¿½ optional human-readable name (default: "Imported #<id>")
+//   rules        � the rules.json file
+//   display_name � optional human-readable name (default: "Imported #<id>")
 //
 // Creates a minimal game_types row with is_training_only = 1, is_draft = 0.
 // Writes the uploaded rules.json to ai-training/<id>/rules.json directly
-// (bypasses exportGameRules ï¿½ the uploaded file IS the canonical rules).
+// (bypasses exportGameRules � the uploaded file IS the canonical rules).
 // Returns { gameTypeId, gameName }.
 app.post('/api/admin/ai-training/upload-rules', authenticateAdmin1, async (req, res) => {
   try {
@@ -9889,9 +9889,9 @@ app.post('/api/admin/ai-training/upload-rules', authenticateAdmin1, async (req, 
 
 // Bulk wipe: delete ALL training jobs (and their on-disk data) for every
 // game type, or for a single game type when `gameTypeId` is supplied in
-// the request body. Running jobs are refused ï¿½ caller must stop them first.
+// the request body. Running jobs are refused � caller must stop them first.
 //
-// This is a destructive nuclear option ï¿½ admin must pass `confirm: true`
+// This is a destructive nuclear option � admin must pass `confirm: true`
 // in the request body to prevent accidental invocations.
 app.delete('/api/admin/ai-training/wipe', authenticateAdmin1, async (req, res) => {
   try {
@@ -9928,7 +9928,7 @@ app.delete('/api/admin/ai-training/wipe', authenticateAdmin1, async (req, res) =
     const active = jobRows.filter((j) => j.status === 'running' || j.status === 'queued');
     if (active.length > 0) {
       return res.status(400).send({
-        message: `Cannot wipe ï¿½ ${active.length} job(s) are still running or queued. Stop them first.`,
+        message: `Cannot wipe � ${active.length} job(s) are still running or queued. Stop them first.`,
         activeIds: active.map((j) => j.id),
       });
     }
@@ -10090,12 +10090,12 @@ app.post(
 //   PUT    /api/admin/ai-training/analysis/:gameTypeId/visibility  (admin)
 //   GET    /api/ai-training/analysis/:gameTypeId                   (visibility-aware)
 //   GET    /api/ai-training/analysis/by-slug/:slug                 (public)
-//   GET    /api/admin/ai-training/trained-game-types               (admin) ï¿½ game type IDs that have any training data
+//   GET    /api/admin/ai-training/trained-game-types               (admin) � game type IDs that have any training data
 //
 // Visibility values:
-//   private  ï¿½ only admins/owner can view
-//   creator  ï¿½ game creator and admins/owner can view
-//   public   ï¿½ anyone (including unauthenticated) can view via slug
+//   private  � only admins/owner can view
+//   creator  � game creator and admins/owner can view
+//   public   � anyone (including unauthenticated) can view via slug
 
 const trainingAnalysis = require('./ai/training-analysis');
 
@@ -10235,7 +10235,7 @@ app.get('/api/ai-training/analysis/by-slug/:slug', async (req, res) => {
   }
 });
 
-// GET /api/game-types/:id/analysis-request-status ï¿½ returns whether the
+// GET /api/game-types/:id/analysis-request-status � returns whether the
 // authenticated user has already submitted an analysis request for this game.
 app.get('/api/game-types/:id/analysis-request-status', authenticateToken, async (req, res) => {
   try {
@@ -10311,7 +10311,7 @@ app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, 
         );
       }
     } catch (logErr) {
-      // Don't fail the request if the log write fails ï¿½ the notification path
+      // Don't fail the request if the log write fails � the notification path
       // below still gives the owner visibility.
       console.error('ai_analysis_requests log write failed:', logErr.message);
     }
@@ -10332,7 +10332,7 @@ app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, 
       sender_id: requester.id,
       type: 'ai_analysis_request',
       title: `AI analysis requested for "${gameType.game_name}"`,
-      content: `${requester.username} requested AI analysis training for game #${gameTypeId} ï¿½ "${gameType.game_name}".`,
+      content: `${requester.username} requested AI analysis training for game #${gameTypeId} � "${gameType.game_name}".`,
       related_id: gameTypeId,
       action_url: `/admin/dashboard?tab=ai-analysis-requests&gameTypeId=${gameTypeId}`,
     });
@@ -10520,7 +10520,7 @@ app.delete('/api/admin/ai-analysis-requests/:id', authenticateAdmin, async (req,
 // notification to every user, with a real-time socket emit to anyone
 // online.
 //
-//   POST   /api/announcements                  (admin) ï¿½ create + fan out
+//   POST   /api/announcements                  (admin) � create + fan out
 //   GET    /api/announcements?page=&limit=     (public, paginated)
 //   GET    /api/announcements/:id              (public)
 //   DELETE /api/announcements/:id              (admin)
@@ -10791,7 +10791,7 @@ function authenticateAdmin(req, res, next) {
   });
 }
 
-// Requires Admin 1 (full admin) or owner ï¿½ Admin 2 is blocked.
+// Requires Admin 1 (full admin) or owner � Admin 2 is blocked.
 function authenticateAdmin1(req, res, next) {
   authenticateToken(req, res, () => {
     const role = req.user.role;
@@ -11270,7 +11270,7 @@ app.get("/api/admin/anonymous-games", authenticateAdmin, async (req, res) => {
   }
 });
 
-// Admin: list games where the host disabled spectating. Read-only ï¿½ admins
+// Admin: list games where the host disabled spectating. Read-only � admins
 // cannot spectate these (per host's choice), but should still know they exist.
 app.get("/api/admin/private-games", authenticateAdmin, async (req, res) => {
   try {
@@ -11651,7 +11651,7 @@ app.put("/api/admin/forums/:articleId", authenticateAdmin, async (req, res) => {
     const { articleId } = req.params;
     const updates = req.body;
     
-    // author_name and game_name come from JOINs in the GET query ï¿½ not actual articles columns
+    // author_name and game_name come from JOINs in the GET query � not actual articles columns
     const NON_ARTICLE_FIELDS = new Set(['author_name', 'game_name']);
     const fields = Object.keys(updates).filter(key => key !== 'id' && !NON_ARTICLE_FIELDS.has(key));
     if (fields.length === 0) {
@@ -12026,7 +12026,7 @@ app.put("/api/users/:userId/notifications/:notificationId/action", authenticateT
   }
 });
 
-// POST /api/physical-board-request ï¿½ submits the "Request a Physical Board" form.
+// POST /api/physical-board-request � submits the "Request a Physical Board" form.
 // Sends the contact email AND creates an in-app notification for the site owner.
 app.post("/api/physical-board-request", async (req, res) => {
   try {
@@ -12066,7 +12066,7 @@ app.post("/api/physical-board-request", async (req, res) => {
         ]
       );
     } catch (dbErr) {
-      // Non-critical â€” email was sent successfully
+      // Non-critical — email was sent successfully
       console.error('physical-board-request DB save error:', dbErr.message);
     }
 
@@ -12096,7 +12096,7 @@ app.post("/api/physical-board-request", async (req, res) => {
         }
       }
     } catch (notifyErr) {
-      // Non-critical ï¿½ email was sent successfully
+      // Non-critical � email was sent successfully
       console.error('physical-board-request notification error:', notifyErr.message);
     }
 
@@ -12107,7 +12107,7 @@ app.post("/api/physical-board-request", async (req, res) => {
   }
 });
 
-// GET /api/admin/physical-board-requests â€” list all physical board requests (admin only)
+// GET /api/admin/physical-board-requests — list all physical board requests (admin only)
 app.get("/api/admin/physical-board-requests", authenticateAdmin, async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -12141,7 +12141,7 @@ app.get("/api/admin/physical-board-requests", authenticateAdmin, async (req, res
   }
 });
 
-// PATCH /api/admin/physical-board-requests/:id â€” update status
+// PATCH /api/admin/physical-board-requests/:id — update status
 app.patch("/api/admin/physical-board-requests/:id", authenticateAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -12160,7 +12160,7 @@ app.patch("/api/admin/physical-board-requests/:id", authenticateAdmin, async (re
   }
 });
 
-// DELETE /api/admin/physical-board-requests/:id â€” delete a request record
+// DELETE /api/admin/physical-board-requests/:id — delete a request record
 app.delete("/api/admin/physical-board-requests/:id", authenticateAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -12727,7 +12727,7 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin1, async (req, res) =>
 
 // Admin: upload a team-member picture for the About Us page. Reuses the
 // profile-picture multer pipeline (same dir, same size cap) but skips
-// the NSFW scan ï¿½ this endpoint is admin-only and the NSFW model cold-load
+// the NSFW scan � this endpoint is admin-only and the NSFW model cold-load
 // (~30 s) was exceeding nginx's upstream timeout (504) on first use.
 // Admins are trusted to upload appropriate images.
 app.post(
@@ -12758,7 +12758,7 @@ app.post(
 // POLL API
 // ----------------------------------------------------------------------------
 
-// GET /api/poll/active  ï¿½ public: returns the currently visible, non-expired
+// GET /api/poll/active  � public: returns the currently visible, non-expired
 // poll with aggregated vote counts plus the calling user's vote (if any).
 app.get("/api/poll/active", async (req, res) => {
   try {
@@ -12796,7 +12796,7 @@ app.get("/api/poll/active", async (req, res) => {
           [poll.id, decoded.id]
         );
         if (voteRow) myVote = voteRow.option_index;
-      } catch (_) { /* unauthenticated or expired token ï¿½ ignore */ }
+      } catch (_) { /* unauthenticated or expired token � ignore */ }
     }
 
     res.json({
@@ -12816,7 +12816,7 @@ app.get("/api/poll/active", async (req, res) => {
   }
 });
 
-// POST /api/poll/:id/vote  ï¿½ authenticated: cast or change vote
+// POST /api/poll/:id/vote  � authenticated: cast or change vote
 app.post("/api/poll/:id/vote", authenticateToken, async (req, res) => {
   try {
     const pollId = parseInt(req.params.id);
@@ -12835,7 +12835,7 @@ app.post("/api/poll/:id/vote", authenticateToken, async (req, res) => {
     const options = typeof poll.options === 'string' ? JSON.parse(poll.options) : poll.options;
     if (optionIndex >= options.length) return res.status(400).send({ message: "Invalid option index" });
 
-    // Upsert ï¿½ allows changing vote, never allows deleting
+    // Upsert � allows changing vote, never allows deleting
     await db_pool.query(
       `INSERT INTO poll_votes (poll_id, user_id, option_index)
        VALUES (?, ?, ?)
@@ -12862,7 +12862,7 @@ app.post("/api/poll/:id/vote", authenticateToken, async (req, res) => {
 
 // -- Admin poll endpoints ------------------------------------------------------
 
-// GET /api/admin/poll  ï¿½ return all polls (most recent first)
+// GET /api/admin/poll  � return all polls (most recent first)
 app.get("/api/admin/poll", authenticateAdmin1, async (req, res) => {
   try {
     const [polls] = await db_pool.query(
@@ -12879,7 +12879,7 @@ app.get("/api/admin/poll", authenticateAdmin1, async (req, res) => {
   }
 });
 
-// GET /api/admin/poll/:id/results  ï¿½ per-option voter list
+// GET /api/admin/poll/:id/results  � per-option voter list
 app.get("/api/admin/poll/:id/results", authenticateAdmin1, async (req, res) => {
   try {
     const pollId = parseInt(req.params.id);
@@ -12918,7 +12918,7 @@ app.get("/api/admin/poll/:id/results", authenticateAdmin1, async (req, res) => {
   }
 });
 
-// POST /api/admin/poll  ï¿½ create a new poll
+// POST /api/admin/poll  � create a new poll
 app.post("/api/admin/poll", authenticateAdmin1, async (req, res) => {
   try {
     let { question, options, is_visible, expires_at } = req.body;
@@ -12947,7 +12947,7 @@ app.post("/api/admin/poll", authenticateAdmin1, async (req, res) => {
   }
 });
 
-// PUT /api/admin/poll/:id  ï¿½ update poll settings
+// PUT /api/admin/poll/:id  � update poll settings
 app.put("/api/admin/poll/:id", authenticateAdmin1, async (req, res) => {
   try {
     const pollId = parseInt(req.params.id);
@@ -12992,7 +12992,7 @@ app.put("/api/admin/poll/:id", authenticateAdmin1, async (req, res) => {
   }
 });
 
-// DELETE /api/admin/poll/:id  ï¿½ delete poll and all its votes
+// DELETE /api/admin/poll/:id  � delete poll and all its votes
 app.delete("/api/admin/poll/:id", authenticateAdmin1, async (req, res) => {
   try {
     const pollId = parseInt(req.params.id);
@@ -13018,7 +13018,7 @@ server.listen(PORT, () => {
   console.log(`Socket.io ready for connections`);
 });
 
-// Rolling memory history ï¿½ keeps last 120 snapshots (2 hours at 1/min).
+// Rolling memory history � keeps last 120 snapshots (2 hours at 1/min).
 // Survives until process restart, giving post-crash forensics from the log.
 const MEMORY_HISTORY_MAX = 120;
 const memoryHistory = [];
@@ -13073,7 +13073,7 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[unhandledRejection] Unhandled promise rejection:', reason);
 });
 
-// Log uncaught synchronous exceptions ï¿½ don't let them silently kill the server.
+// Log uncaught synchronous exceptions � don't let them silently kill the server.
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException] Uncaught exception:', err);
 });
@@ -13207,9 +13207,9 @@ app.get("/api/admin/memory-stats", authenticateAdmin, (req, res) => {
     // DB pool introspection.
     // mysql2/promise createPool() returns a PromisePool; its underlying raw
     // Pool is at .pool. The raw Pool tracks three internal arrays:
-    //   _allConnections  ï¿½ every connection ever opened (grows up to connectionLimit)
-    //   _freeConnections ï¿½ connections currently idle and available
-    //   _connectionQueue ï¿½ callers waiting because the pool is exhausted
+    //   _allConnections  � every connection ever opened (grows up to connectionLimit)
+    //   _freeConnections � connections currently idle and available
+    //   _connectionQueue � callers waiting because the pool is exhausted
     //
     // On a quiet server mysql2 opens connections lazily, so _allConnections
     // may be less than connectionLimit. On a busy server all slots fill and
@@ -13231,7 +13231,7 @@ app.get("/api/admin/memory-stats", authenticateAdmin, (req, res) => {
       gameTimers: gsGameTimers ? gsGameTimers.size : 0,
       disconnectTimeouts: gsDisconnectTimeouts ? gsDisconnectTimeouts.size : 0,
       onlineUsers: onlineUsers ? onlineUsers.size : 0,
-      // 429 counter ï¿½ resets on process restart
+      // 429 counter � resets on process restart
       rateLimitHits,
       // DB connection pool
       dbPool,

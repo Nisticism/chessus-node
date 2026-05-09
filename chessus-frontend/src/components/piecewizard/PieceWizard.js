@@ -89,7 +89,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     can_hop_over_enemies: false,
     exact_ratio_hop_only: false,
     directional_hop_disabled: false,
-    hop_stop_at_occupied: true,
+    hop_stop_at_occupied: false,
     
     // Step 3: Attack/Capture Configuration
     repeating_capture: false,
