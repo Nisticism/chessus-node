@@ -986,6 +986,10 @@ const GameTypeView = () => {
         capture_points_gain: placement.capture_points_gain ?? 0,
         capture_points_loss: placement.capture_points_loss ?? 0,
         disable_promotion: !!placement.disable_promotion,
+        die_on_capture: !!placement.die_on_capture,
+        die_on_capture_grants_win: !!placement.die_on_capture_grants_win,
+        attack_radius: placement.attack_radius ?? 0,
+        cannot_move_outside_zone: !!placement.cannot_move_outside_zone,
       });
     });
 
@@ -1137,18 +1141,21 @@ const GameTypeView = () => {
       }
 
       // Die on capture (brief note here — full explanation in Special Rules)
-      if (pieceData.die_on_capture) {
-        const grantsWin = pieceData.die_on_capture_grants_win;
-        description += `• **Die on Capture**: Removed from board when it captures${grantsWin ? '; if this kills the opponent\'s last required piece, the attacker wins' : ''}.\n`;
+      const hasDieOnCapture = placements.some(p => p.die_on_capture);
+      if (hasDieOnCapture) {
+        const anyGrantsWin = placements.some(p => p.die_on_capture_grants_win);
+        description += `• **Die on Capture**: Removed from board when it captures${anyGrantsWin ? '; if this kills the opponent\'s last required piece, the attacker wins' : ''}.\n`;
       }
 
       // Attack radius
-      if ((pieceData.attack_radius || 0) > 0) {
-        description += `• **Attack Radius**: Damages all enemies within ${pieceData.attack_radius} square${pieceData.attack_radius > 1 ? 's' : ''} of the landing square on capture.\n`;
+      const attackRadii = [...new Set(placements.map(p => p.attack_radius || 0).filter(r => r > 0))];
+      if (attackRadii.length > 0) {
+        const rText = attackRadii.length === 1 ? attackRadii[0] : attackRadii.join('/');
+        description += `• **Attack Radius**: Damages all enemies within ${rText} square${rText > 1 ? 's' : ''} of the landing square on capture.\n`;
       }
 
       // Cannot move outside zone
-      if (pieceData.cannot_move_outside_zone) {
+      if (placements.some(p => p.cannot_move_outside_zone)) {
         description += `• **Zone Restriction**: Can only move to squares marked as its restriction zone.\n`;
       }
 
@@ -2600,7 +2607,7 @@ const GameTypeView = () => {
           </div>
         )}
 
-        {game.is_restricted && (
+        {!!game.is_restricted && (
           <div
             style={{
               background: 'rgba(255, 150, 0, 0.12)',

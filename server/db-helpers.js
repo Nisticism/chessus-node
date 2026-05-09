@@ -655,9 +655,15 @@ const getGameById = async (gameId) => {
         limit_promote_checkmate_to_original: Boolean(piece.limit_promote_checkmate_to_original),
         can_promote_to_capture: Boolean(piece.can_promote_to_capture),
         limit_promote_capture_to_original: Boolean(piece.limit_promote_capture_to_original),
-        // Points win condition � per-placement scoring values
+        disable_promotion: Boolean(piece.disable_promotion),
+        // Points win condition — per-placement scoring values
         capture_points_gain: piece.capture_points_gain ?? 0,
         capture_points_loss: piece.capture_points_loss ?? 0,
+        // Per-placement combat/movement abilities
+        die_on_capture: Boolean(piece.die_on_capture),
+        die_on_capture_grants_win: Boolean(piece.die_on_capture_grants_win),
+        attack_radius: piece.attack_radius ?? 0,
+        cannot_move_outside_zone: Boolean(piece.cannot_move_outside_zone),
         // Neutral piece
         is_neutral: isNeutralPiece,
         neutral_image_index: isNeutralPiece ? ((piece.image_index != null && piece.image_index >= 0) ? piece.image_index : 0) : null
