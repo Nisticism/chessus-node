@@ -414,6 +414,28 @@ const profilePictureUpload = multer({
   }
 });
 
+// Configure multer for DM image attachments
+const dmImageDir = path.join(__dirname, '../uploads/dm-images');
+if (!fs.existsSync(dmImageDir)) fs.mkdirSync(dmImageDir, { recursive: true });
+
+const dmImageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, dmImageDir),
+  filename: (_req, file, cb) => {
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname).toLowerCase().replace(/\+.*$/, '');
+    cb(null, 'dm-' + unique + ext);
+  },
+});
+const dmImageUpload = multer({
+  storage: dmImageStorage,
+  limits: { fileSize: 1 * 1024 * 1024 }, // 1 MB
+  fileFilter: (_req, file, cb) => {
+    const ok = /jpeg|jpg|png|gif|webp/.test(path.extname(file.originalname).toLowerCase())
+             && /image\/(jpeg|png|gif|webp)/.test(file.mimetype);
+    ok ? cb(null, true) : cb(new Error('Only image files are allowed (max 1 MB)'));
+  },
+});
+
 /**
  * Wraps a multer middleware so that MulterError (e.g. LIMIT_FILE_SIZE) is
  * caught before it reaches Express's default error handler and returned as a
@@ -12432,6 +12454,172 @@ app.put("/api/users/:userId/messages/:otherUserId/read", authenticateToken, asyn
     res.status(500).json({ error: "Failed to mark messages read" });
   }
 });
+
+// ── DM Image Attachments ────────────────────────────────────────────────────
+
+// GET /api/users/:userId/messages/:otherUserId/images
+// Returns all non-expired images for a conversation.
+app.get("/api/users/:userId/messages/:otherUserId/images", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) return res.status(403).json({ error: "Unauthorized" });
+    const otherUserId = parseInt(req.params.otherUserId);
+    if (isNaN(otherUserId)) return res.status(400).json({ error: "Invalid user ID" });
+    const u1 = Math.min(userId, otherUserId);
+    const u2 = Math.max(userId, otherUserId);
+    const [rows] = await db_pool.query(
+      `SELECT id, sender_id, filename, created_at, expires_at
+         FROM direct_message_images
+        WHERE user1_id = ? AND user2_id = ? AND expires_at > NOW()
+        ORDER BY created_at ASC`,
+      [u1, u2]
+    );
+    res.json({ images: rows });
+  } catch (err) {
+    console.error("Error fetching DM images:", err);
+    res.status(500).json({ error: "Failed to fetch images" });
+  }
+});
+
+// POST /api/users/:userId/messages/:otherUserId/images
+// Upload an image attachment (max 1 MB, max 5 non-expired per conversation).
+app.post(
+  "/api/users/:userId/messages/:otherUserId/images",
+  authenticateToken,
+  multerWrap(dmImageUpload.single('image'), '1 MB'),
+  async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      if (req.user.id !== userId) {
+        if (req.file) fs.unlink(req.file.path, () => {});
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      const otherUserId = parseInt(req.params.otherUserId);
+      if (isNaN(otherUserId) || otherUserId === userId) {
+        if (req.file) fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: "Invalid recipient" });
+      }
+      if (!req.file) return res.status(400).json({ error: "No image file provided" });
+
+      const u1 = Math.min(userId, otherUserId);
+      const u2 = Math.max(userId, otherUserId);
+
+      // Check per-conversation limit (max 5 non-expired images)
+      const [[countRow]] = await db_pool.query(
+        `SELECT COUNT(*) AS cnt FROM direct_message_images
+          WHERE user1_id = ? AND user2_id = ? AND expires_at > NOW()`,
+        [u1, u2]
+      );
+      if (countRow.cnt >= 5) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(429).json({
+          error: "Maximum of 5 images per conversation reached. Older images are removed after 24 hours."
+        });
+      }
+
+      const filename = req.file.filename;
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const [result] = await db_pool.query(
+        `INSERT INTO direct_message_images (sender_id, user1_id, user2_id, filename, expires_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, u1, u2, filename, expiresAt]
+      );
+      const imageRecord = {
+        id: result.insertId,
+        sender_id: userId,
+        filename,
+        created_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      };
+
+      // Notify the other participant in real-time
+      const io = req.app.get('io');
+      if (io) {
+        const { userSockets } = require('./game-socket');
+        const recipientSocketId = userSockets?.get(otherUserId.toString());
+        if (recipientSocketId) {
+          io.to(recipientSocketId).emit('newDirectMessageImage', {
+            ...imageRecord,
+            fromUserId: userId,
+          });
+        }
+      }
+
+      res.status(201).json({ image: imageRecord });
+    } catch (err) {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      console.error("Error uploading DM image:", err);
+      res.status(500).json({ error: "Failed to upload image" });
+    }
+  }
+);
+
+// DELETE /api/users/:userId/messages/images/:imageId
+// Either participant in the conversation can delete an image.
+app.delete("/api/users/:userId/messages/images/:imageId", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) return res.status(403).json({ error: "Unauthorized" });
+    const imageId = parseInt(req.params.imageId);
+    if (isNaN(imageId)) return res.status(400).json({ error: "Invalid image ID" });
+
+    const [[row]] = await db_pool.query(
+      `SELECT id, sender_id, user1_id, user2_id, filename
+         FROM direct_message_images WHERE id = ?`,
+      [imageId]
+    );
+    if (!row) return res.status(404).json({ error: "Image not found" });
+    // Either participant can delete (user must be one of the two parties)
+    if (row.user1_id !== userId && row.user2_id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    await db_pool.query(`DELETE FROM direct_message_images WHERE id = ?`, [imageId]);
+    const filePath = path.join(dmImageDir, row.filename);
+    fs.unlink(filePath, () => {}); // non-blocking; ignore if already gone
+
+    // Notify the other participant
+    const otherUserId = row.user1_id === userId ? row.user2_id : row.user1_id;
+    const io = req.app.get('io');
+    if (io) {
+      const { userSockets } = require('./game-socket');
+      const recipientSocketId = userSockets?.get(otherUserId.toString());
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit('directMessageImageDeleted', {
+          imageId,
+          fromUserId: userId,
+        });
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error deleting DM image:", err);
+    res.status(500).json({ error: "Failed to delete image" });
+  }
+});
+
+// Background job: purge expired DM images from disk + DB.
+// Runs once at startup (to catch images that expired while the server was
+// down) then every hour.
+async function purgeExpiredDmImages() {
+  try {
+    const [rows] = await db_pool.query(
+      `SELECT id, filename FROM direct_message_images WHERE expires_at <= NOW()`
+    );
+    if (rows.length === 0) return;
+    const ids = rows.map(r => r.id);
+    await db_pool.query(`DELETE FROM direct_message_images WHERE id IN (?)`, [ids]);
+    for (const row of rows) {
+      fs.unlink(path.join(dmImageDir, row.filename), () => {});
+    }
+    console.log(`[DM Images] Purged ${rows.length} expired image(s)`);
+  } catch (err) {
+    console.error('[DM Images] Error purging expired images:', err.message);
+  }
+}
+purgeExpiredDmImages();
+setInterval(purgeExpiredDmImages, 60 * 60 * 1000); // every hour
 
 // Get game chat history
 app.get("/api/games/:gameId/chat", async (req, res) => {

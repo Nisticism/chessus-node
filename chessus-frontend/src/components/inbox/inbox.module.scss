@@ -287,6 +287,9 @@
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-subtle, #1a3d2b);
   background: var(--bg-secondary, #0d1f14);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .messages-header-name {
@@ -350,6 +353,177 @@
   padding: 12px 16px;
   border-top: 1px solid var(--border-subtle, #1a3d2b);
   background: var(--bg-secondary, #0d1f14);
+}
+
+/* Image attach button */
+.attach-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-medium, #2a8b5d);
+  border-radius: 6px;
+  color: var(--text-dim, #5a7a63);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+
+  &:hover:not(:disabled) {
+    background: var(--bg-hover, #142e1f);
+    color: var(--accent-highlight, #81c784);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+}
+
+/* Image count badge in header */
+.image-count-badge {
+  font-size: 0.72rem;
+  color: var(--text-dim, #5a7a63);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Image bubble */
+.image-bubble {
+  padding: 6px;
+  max-width: 260px;
+
+  &.sent {
+    align-self: flex-end;
+  }
+
+  &.received {
+    align-self: flex-start;
+  }
+}
+
+.dm-image-wrapper {
+  position: relative;
+  display: inline-block;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.dm-image-thumb {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  width: auto;
+  height: auto;
+  border-radius: 6px;
+  cursor: pointer;
+  object-fit: contain;
+  background: rgba(0,0,0,0.2);
+
+  &:hover {
+    opacity: 0.88;
+  }
+}
+
+.dm-image-delete-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  border: none;
+  color: #fff;
+  font-size: 0.65rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  /* transition removed */
+
+  .dm-image-wrapper:hover & {
+    opacity: 1;
+  }
+}
+
+.image-expires-hint {
+  opacity: 0.55;
+  font-size: 0.65rem;
+}
+
+/* Image error bar */
+.image-error {
+  padding: 6px 16px;
+  background: rgba(200, 50, 50, 0.12);
+  border-top: 1px solid rgba(200, 50, 50, 0.3);
+  color: #ff8a8a;
+  font-size: 0.8rem;
+}
+
+/* Lightbox */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  padding: 16px;
+}
+
+.lightbox-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
+.lightbox-img {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(20, 20, 20, 0.9);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightbox-delete {
+  padding: 6px 18px;
+  background: rgba(180, 40, 40, 0.85);
+  border: 1px solid rgba(220, 80, 80, 0.5);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(200, 40, 40, 0.95);
+  }
 }
 
 .message-input {

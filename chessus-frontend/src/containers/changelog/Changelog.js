@@ -5,7 +5,7 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 10, 2026",
-    title: "Piece placement overhaul: right-click to place, placed pieces can now move, restricted-square shading",
+    title: "Piece placement overhaul: right-click to place, placed pieces can now move, restricted-square shading; DM image attachments, emoji picker and custom links in messages",
     items: [
       "Piece placement games now use right-click to place pieces by default, freeing left-click for normal piece movement. A 'Place pieces with left click (mobile)' toggle in the Options panel switches back to left-click for devices without a right-click.",
       "Fixed: pieces placed during a placement game can now be moved on subsequent turns. Previously the placed piece was missing its movement rules, making it impossible to move after placing.",
@@ -15,6 +15,9 @@ const changelogData = [
       "Game wizard: the 'Remove Entire Row' button in the special square and piece placement modals is now highlighted in amber for clarity, with consistent spacing.",
       "Fixed: navigating between live games no longer shows stale pieces from the previous game on the board.",
       "Fixed: game designs with a blank starting board (placement games) no longer incorrectly persist pieces from previous game sessions in the database.",
+      "Direct messages: you can now send images in conversations (up to 1 MB each, max 5 per conversation at a time). Images auto-delete after 24 hours and can be manually deleted by either party at any time. Click an image to view it full size.",
+      "Direct messages: emoji picker and custom link buttons added to the message input bar.",
+      "Fixed: games wouldn't load for users connected through a VPN. Socket connections now start with a more compatible transport mode.",
     ],
   },
   {

@@ -14,9 +14,13 @@ import axios from "axios";
 import authHeader from "../../services/auth-header";
 import styles from "./inbox.module.scss";
 import { parseServerDate } from "../../helpers/date-formatter";
+import EmojiPickerButton from "../common/EmojiPickerButton";
+import LinkInsertButton from "../common/LinkInsertButton";
+import { renderContent } from "../../helpers/render-content";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
+const DM_IMAGE_LIMIT = 5;
 
 const formatTimeAgo = (dateStr) => {
   const date = parseServerDate(dateStr);
@@ -49,11 +53,20 @@ const Inbox = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedUserInfo, setSelectedUserInfo] = useState(null);
+
+  // Image attachment state
+  const [dmImages, setDmImages] = useState([]); // images for the active conversation
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState(null);
+  const [lightboxImage, setLightboxImage] = useState(null); // { id, filename, sender_id }
+
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
   const searchTimerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const chatContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const messageInputRef = useRef(null);
 
   const selectedUserId = searchParams.get("user") ? parseInt(searchParams.get("user")) : null;
 
@@ -67,11 +80,22 @@ const Inbox = () => {
     dispatch(getUnreadDMCount(currentUser.id));
   }, [currentUser, dispatch]);
 
-  // Load messages when a conversation is selected
+  // Load messages + images when a conversation is selected
   useEffect(() => {
-    if (!currentUser || !selectedUserId || isNaN(selectedUserId)) return;
+    if (!currentUser || !selectedUserId || isNaN(selectedUserId)) {
+      setDmImages([]);
+      return;
+    }
     dispatch(getMessages(currentUser.id, selectedUserId));
     dispatch(markMessagesRead(currentUser.id, selectedUserId));
+
+    // Fetch existing images for this conversation
+    axios
+      .get(`${API_URL}users/${currentUser.id}/messages/${selectedUserId}/images`, {
+        headers: authHeader(),
+      })
+      .then((res) => setDmImages(res.data.images || []))
+      .catch(() => setDmImages([]));
   }, [currentUser, selectedUserId, dispatch]);
 
   // Fetch username if selected user isn't in conversations list
@@ -88,28 +112,47 @@ const Inbox = () => {
       .catch(() => {});
   }, [selectedUserId, conversations, selectedUserInfo]);
 
-  // Scroll to bottom when messages change (within the chat container only)
+  // Scroll to bottom when messages/images change
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [activeMessages]);
+  }, [activeMessages, dmImages]);
 
-  // Listen for incoming DMs via socket
+  // Listen for incoming DMs and DM image events via socket
   useEffect(() => {
     if (!socket || !currentUser) return;
 
     const handleNewDM = (message) => {
       dispatch(receiveDirectMessage(message));
-      // If this message is from the active conversation, mark it read
       if (message.sender_id === selectedUserId) {
         dispatch(markMessagesRead(currentUser.id, message.sender_id));
       }
     };
 
+    const handleNewImage = (imageData) => {
+      // Only add if it's for the currently open conversation
+      const other = imageData.fromUserId;
+      if (other === selectedUserId || imageData.sender_id === selectedUserId) {
+        setDmImages((prev) => {
+          if (prev.some((img) => img.id === imageData.id)) return prev;
+          return [...prev, imageData];
+        });
+      }
+    };
+
+    const handleImageDeleted = ({ imageId }) => {
+      setDmImages((prev) => prev.filter((img) => img.id !== imageId));
+      setLightboxImage((lb) => (lb?.id === imageId ? null : lb));
+    };
+
     socket.on("newDirectMessage", handleNewDM);
+    socket.on("newDirectMessageImage", handleNewImage);
+    socket.on("directMessageImageDeleted", handleImageDeleted);
     return () => {
       socket.off("newDirectMessage", handleNewDM);
+      socket.off("newDirectMessageImage", handleNewImage);
+      socket.off("directMessageImageDeleted", handleImageDeleted);
     };
   }, [socket, currentUser, selectedUserId, dispatch]);
 
@@ -117,6 +160,7 @@ const Inbox = () => {
     (userId) => {
       setSearchParams({ user: userId });
       setError(null);
+      setImageError(null);
     },
     [setSearchParams]
   );
@@ -134,6 +178,62 @@ const Inbox = () => {
       setError(err?.response?.data?.error || err?.message || "Failed to send message");
     }
     setSendingMessage(false);
+  };
+
+  const handleImageAttach = () => {
+    if (uploadingImage) return;
+    setImageError(null);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ""; // reset so same file can be re-selected
+
+    if (file.size > 1 * 1024 * 1024) {
+      setImageError("Image must be 1 MB or smaller.");
+      return;
+    }
+    if (dmImages.length >= DM_IMAGE_LIMIT) {
+      setImageError(`Maximum ${DM_IMAGE_LIMIT} images per conversation. Older ones expire after 24 hours.`);
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    setUploadingImage(true);
+    setImageError(null);
+    try {
+      const res = await axios.post(
+        `${API_URL}users/${currentUser.id}/messages/${selectedUserId}/images`,
+        formData,
+        { headers: { ...authHeader(), "Content-Type": "multipart/form-data" } }
+      );
+      const newImg = res.data.image;
+      setDmImages((prev) => (prev.some((i) => i.id === newImg.id) ? prev : [...prev, newImg]));
+    } catch (err) {
+      setImageError(
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        "Failed to upload image"
+      );
+    }
+    setUploadingImage(false);
+  };
+
+  const handleDeleteImage = async (imageId) => {
+    try {
+      await axios.delete(
+        `${API_URL}users/${currentUser.id}/messages/images/${imageId}`,
+        { headers: authHeader() }
+      );
+      setDmImages((prev) => prev.filter((img) => img.id !== imageId));
+      setLightboxImage((lb) => (lb?.id === imageId ? null : lb));
+    } catch (err) {
+      setImageError(err?.response?.data?.error || "Failed to delete image");
+    }
   };
 
   const searchUsers = useCallback(async (q) => {
@@ -163,7 +263,6 @@ const Inbox = () => {
 
   const handleSearchFocus = () => {
     setShowDropdown(true);
-    // Load initial results (friends) if empty
     if (searchResults.length === 0) {
       searchUsers(newConversationUsername);
     }
@@ -205,10 +304,16 @@ const Inbox = () => {
   const selectedConversation = conversations.find((c) => c.user_id === selectedUserId);
   const displayUsername = selectedConversation?.username || selectedUserInfo?.username;
 
+  // Merge messages and images into a single sorted thread
+  const threadItems = [
+    ...activeMessages.map((m) => ({ ...m, _type: "message", _ts: new Date(m.created_at).getTime() })),
+    ...dmImages.map((img) => ({ ...img, _type: "image", _ts: new Date(img.created_at).getTime() })),
+  ].sort((a, b) => a._ts - b._ts);
+
   return (
     <div className={styles["inbox-container"]}>
       <div className={styles["inbox-header"]}>
-        <h1 className={styles["inbox-title"]}>💬 Inbox</h1>
+        <h1 className={styles["inbox-title"]}>Inbox</h1>
         <button
           className={styles["new-conversation-btn"]}
           onClick={() => setShowNewConversation(!showNewConversation)}
@@ -327,25 +432,97 @@ const Inbox = () => {
                 ) : (
                   <span className={styles["messages-header-name"]}>Loading...</span>
                 )}
+                {dmImages.length > 0 && (
+                  <span className={styles["image-count-badge"]} title="Images in this conversation (expire after 24 h)">
+                    {dmImages.length}/{DM_IMAGE_LIMIT} images
+                  </span>
+                )}
               </div>
+
               <div className={styles["messages-list"]} ref={chatContainerRef}>
-                {activeMessages.map((msg, idx) => (
-                  <div
-                    key={msg.id || idx}
-                    className={`${styles["message-bubble"]} ${
-                      msg.sender_id === currentUser.id ? styles["sent"] : styles["received"]
-                    }`}
-                  >
-                    <div className={styles["message-content"]}>{msg.content}</div>
-                    <div className={styles["message-time"]}>
-                      {formatTimeAgo(msg.created_at)}
+                {threadItems.map((item, idx) => {
+                  const isSent = item.sender_id === currentUser.id;
+                  if (item._type === "image") {
+                    return (
+                      <div
+                        key={`img-${item.id}`}
+                        className={`${styles["message-bubble"]} ${styles["image-bubble"]} ${isSent ? styles["sent"] : styles["received"]}`}
+                      >
+                        <div className={styles["dm-image-wrapper"]}>
+                          <button
+                            className={styles["dm-image-delete-btn"]}
+                            onClick={() => handleDeleteImage(item.id)}
+                            title="Delete image"
+                            aria-label="Delete image"
+                          >
+                            ✕
+                          </button>
+                          <img
+                            src={`${ASSET_URL}/uploads/dm-images/${item.filename}`}
+                            alt="Shared image"
+                            className={styles["dm-image-thumb"]}
+                            onClick={() => setLightboxImage(item)}
+                            draggable={false}
+                          />
+                        </div>
+                        <div className={styles["message-time"]}>
+                          {formatTimeAgo(item.created_at)}
+                          <span className={styles["image-expires-hint"]} title="Images auto-delete after 24 hours"> · expires in {Math.max(0, Math.round((new Date(item.expires_at) - Date.now()) / 3600000))}h</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      key={item.id || idx}
+                      className={`${styles["message-bubble"]} ${isSent ? styles["sent"] : styles["received"]}`}
+                    >
+                      <div className={styles["message-content"]}>{renderContent(item.content)}</div>
+                      <div className={styles["message-time"]}>
+                        {formatTimeAgo(item.created_at)}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div ref={messagesEndRef} />
               </div>
+
+              {imageError && (
+                <div className={styles["image-error"]}>{imageError}</div>
+              )}
+
               <form className={styles["message-input-form"]} onSubmit={handleSendMessage}>
                 <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  style={{ display: "none" }}
+                  onChange={handleFileChange}
+                />
+                <button
+                  type="button"
+                  className={styles["attach-btn"]}
+                  onClick={handleImageAttach}
+                  disabled={uploadingImage || dmImages.length >= DM_IMAGE_LIMIT}
+                  title={
+                    dmImages.length >= DM_IMAGE_LIMIT
+                      ? `Max ${DM_IMAGE_LIMIT} images per conversation`
+                      : "Attach image (max 1 MB)"
+                  }
+                  aria-label="Attach image"
+                >
+                  {uploadingImage ? "..." : "📎"}
+                </button>
+                <EmojiPickerButton
+                  textareaRef={messageInputRef}
+                  onChange={setNewMessage}
+                />
+                <LinkInsertButton
+                  textareaRef={messageInputRef}
+                  onChange={setNewMessage}
+                />
+                <input
+                  ref={messageInputRef}
                   type="text"
                   placeholder="Type a message..."
                   value={newMessage}
@@ -371,6 +548,42 @@ const Inbox = () => {
           )}
         </div>
       </div>
+
+      {/* Image lightbox modal */}
+      {lightboxImage && (
+        <div
+          className={styles["lightbox-overlay"]}
+          onClick={() => setLightboxImage(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image preview"
+        >
+          <div
+            className={styles["lightbox-content"]}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className={styles["lightbox-close"]}
+              onClick={() => setLightboxImage(null)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <button
+              className={styles["lightbox-delete"]}
+              onClick={() => handleDeleteImage(lightboxImage.id)}
+              aria-label="Delete image"
+            >
+              Delete image
+            </button>
+            <img
+              src={`${ASSET_URL}/uploads/dm-images/${lightboxImage.filename}`}
+              alt="Full size"
+              className={styles["lightbox-img"]}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -3847,6 +3847,96 @@ const runMigrations = async () => {
 
   // Physical board requests table (ad-hoc, outside the tableMigrations loop)
   await ensurePhysicalBoardRequestsTable();
+
+  // ── Direct message image attachments ────────────────────────────────────
+  // Stores metadata for image files sent in DMs.  Files are stored under
+  // uploads/dm-images/ and auto-deleted 24 hours after upload.
+  // user1_id / user2_id are the sorted pair of participant IDs so we can
+  // quickly count and retrieve images for a given conversation.
+  try {
+    const dmImgExists = await tableExists('direct_message_images');
+    if (!dmImgExists) {
+      await db_pool.query(`
+        CREATE TABLE direct_message_images (
+          id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          sender_id   INT UNSIGNED NOT NULL,
+          user1_id    INT UNSIGNED NOT NULL,
+          user2_id    INT UNSIGNED NOT NULL,
+          filename    VARCHAR(255) NOT NULL,
+          created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          expires_at  DATETIME NOT NULL,
+          INDEX idx_dmi_conv    (user1_id, user2_id),
+          INDEX idx_dmi_expires (expires_at),
+          FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      console.log('[DB] Created table direct_message_images');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating direct_message_images table:', err.message);
+  }
+
+  // ── Performance indexes for forum queries ────────────────────────────────
+  // The GET /api/forums endpoint runs two aggregate subqueries (comment counts
+  // and like counts) plus a correlated per-row subquery for liked_by_user.
+  // These indexes make those sub-queries index-only scans instead of full scans.
+
+  // Composite (article_id, user_id) on likes — speeds up the correlated
+  // liked_by_user subquery: SELECT COUNT(*) FROM likes WHERE article_id = ? AND user_id = ?
+  try {
+    const [idxRows] = await db_pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'likes'
+           AND INDEX_NAME = 'idx_likes_article_user'
+         LIMIT 1`
+    );
+    if (idxRows.length === 0) {
+      await db_pool.query(`CREATE INDEX idx_likes_article_user ON likes (article_id, user_id)`);
+      console.log('[DB] Created index idx_likes_article_user on likes(article_id, user_id)');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating idx_likes_article_user:', err.message);
+  }
+
+  // Composite (article_id, created_at) on comments — speeds up the MAX(created_at)
+  // subquery used to find the last commenter for each forum post.
+  try {
+    const [idxRows] = await db_pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'comments'
+           AND INDEX_NAME = 'idx_comments_article_created'
+         LIMIT 1`
+    );
+    if (idxRows.length === 0) {
+      await db_pool.query(`CREATE INDEX idx_comments_article_created ON comments (article_id, created_at)`);
+      console.log('[DB] Created index idx_comments_article_created on comments(article_id, created_at)');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating idx_comments_article_created:', err.message);
+  }
+
+  // Index on articles(created_at) — supports ORDER BY created_at sort option.
+  try {
+    const [idxRows] = await db_pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'articles'
+           AND INDEX_NAME = 'idx_articles_created_at'
+         LIMIT 1`
+    );
+    if (idxRows.length === 0) {
+      await db_pool.query(`CREATE INDEX idx_articles_created_at ON articles (created_at)`);
+      console.log('[DB] Created index idx_articles_created_at on articles(created_at)');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating idx_articles_created_at:', err.message);
+  }
 };
 
 module.exports = { runMigrations };
