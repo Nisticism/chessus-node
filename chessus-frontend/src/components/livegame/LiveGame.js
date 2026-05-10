@@ -6713,7 +6713,7 @@ const LiveGame = () => {
                   : null;
                 return (
                   <button
-                    key={piece.piece_id || index}
+                    key={`${piece.piece_id ?? 'pp'}_${index}`}
                     className={styles["promotion-option"]}
                     onClick={() => handlePlacementSelect(piece)}
                     title={piece.piece_name || piece.name || 'Piece'}
