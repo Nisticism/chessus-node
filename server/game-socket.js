@@ -2630,7 +2630,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random' } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode: rawStartingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random' } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -2640,6 +2640,24 @@ function initializeSocket(server) {
         
         if (!gameType) {
           return socket.emit("error", { message: "Game type not found" });
+        }
+
+        // Validate startingMode against game type's configured allowed modes.
+        // If the game type explicitly lists allowed modes and the client-provided
+        // mode is not in that list, override with the game type's default or the
+        // first allowed mode. This prevents a client bug (or a stale dropdown) from
+        // silently bypassing mandatory randomization.
+        let startingMode = rawStartingMode;
+        if (gameType.randomized_starting_positions) {
+          try {
+            const randConfig = JSON.parse(gameType.randomized_starting_positions);
+            const allowedModes = Array.isArray(randConfig?.allowedModes) ? randConfig.allowedModes : [];
+            if (allowedModes.length > 0 && !allowedModes.includes(startingMode)) {
+              const gtDefault = gameType.default_starting_mode;
+              startingMode = (gtDefault && allowedModes.includes(gtDefault)) ? gtDefault : allowedModes[0];
+              console.log(`[createGame] startingMode "${rawStartingMode}" not in allowedModes for game type ${gameTypeId}; overriding to "${startingMode}"`);
+            }
+          } catch (_) { /* ignore malformed JSON */ }
         }
 
         // --- Restricted game enforcement ---
@@ -3268,7 +3286,7 @@ function initializeSocket(server) {
     // Create an anonymous game (no account required)
     socket.on("createAnonymousGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, guestName, allowSpectators = false, showPieceHelpers = false, allowPremoves = true, startingMode = 'none', isCorrespondence = false, correspondenceDays = null } = data;
+        const { gameTypeId, timeControl, increment, guestName, allowSpectators = false, showPieceHelpers = false, allowPremoves = true, startingMode: rawStartingMode = 'none', isCorrespondence = false, correspondenceDays = null } = data;
 
         // Generate a unique 6-character invite code
         const generateInviteCode = () => {
@@ -3303,6 +3321,20 @@ function initializeSocket(server) {
 
         if (!gameType) {
           return socket.emit("error", { message: "Game type not found" });
+        }
+
+        // Validate startingMode against game type's configured allowed modes (same guard as createGame).
+        let startingMode = rawStartingMode;
+        if (gameType.randomized_starting_positions) {
+          try {
+            const randConfig = JSON.parse(gameType.randomized_starting_positions);
+            const allowedModes = Array.isArray(randConfig?.allowedModes) ? randConfig.allowedModes : [];
+            if (allowedModes.length > 0 && !allowedModes.includes(startingMode)) {
+              const gtDefault = gameType.default_starting_mode;
+              startingMode = (gtDefault && allowedModes.includes(gtDefault)) ? gtDefault : allowedModes[0];
+              console.log(`[createAnonymousGame] startingMode "${rawStartingMode}" not in allowedModes for game type ${gameTypeId}; overriding to "${startingMode}"`);
+            }
+          } catch (_) { /* ignore malformed JSON */ }
         }
 
         // --- Anonymous game session limit enforcement ---
@@ -3746,74 +3778,19 @@ function initializeSocket(server) {
 
         // Apply randomized starting positions if needed
         if (gameState.startingMode && gameState.startingMode !== 'none') {
-          // Same randomization logic as joinGame
-          const boardWidth = gameState.gameType?.board_width || 8;
-          const boardHeight = gameState.gameType?.board_height || 8;
-          if (gameState.startingMode === 'randomized' || gameState.startingMode === 'mirrored') {
-            const team1Pieces = gameState.pieces.filter(p => (p.team || p.player_id) === 1);
-            const team2Pieces = gameState.pieces.filter(p => (p.team || p.player_id) === 2);
-            const shufflePositions = (pieces) => {
-              const positions = pieces.map(p => ({ x: p.x, y: p.y }));
-              for (let i = positions.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [positions[i], positions[j]] = [positions[j], positions[i]];
-              }
-              return pieces.map((p, i) => ({ ...p, x: positions[i].x, y: positions[i].y }));
-            };
-            const shuffledTeam1 = shufflePositions(team1Pieces);
-            let shuffledTeam2;
-            if (gameState.startingMode === 'mirrored') {
-              shuffledTeam2 = team2Pieces.map((p, i) => {
-                const mirrorP = shuffledTeam1[i];
-                if (mirrorP) {
-                  return { ...p, x: mirrorP.x, y: boardHeight - 1 - mirrorP.y };
-                }
-                return p;
+          try {
+            const rerollInfo = applyRandomizationWithRerollGuard(gameState, gameState.startingMode);
+            if (rerollInfo.rerollCount > 0) {
+              io.to(`game-${gameId}`).emit('gameRerolling', {
+                gameId,
+                attempts: rerollInfo.rerollCount,
+                reason: 'The randomized starting position would have decided the game immediately. Re-rolling…',
               });
-            } else {
-              shuffledTeam2 = shufflePositions(team2Pieces);
             }
-            gameState.pieces = [...shuffledTeam1, ...shuffledTeam2];
-
-            // Re-roll guard: if the rolled position is already in a decided
-            // state (checkmate, stalemate, capture-condition met, etc.),
-            // re-shuffle up to 12 times before accepting it. Notify both
-            // players so they understand the brief stall during loading.
-            try {
-              let rerollCount = 0;
-              const seen = new Set([hashPiecesPositions(gameState.pieces)]);
-              const MAX = 12;
-              let lastEval = evaluateInitialPosition(gameState.gameType, gameState.pieces);
-              while (lastEval && lastEval.decided && rerollCount < MAX) {
-                rerollCount++;
-                const reShuffledTeam1 = shufflePositions(team1Pieces);
-                let reShuffledTeam2;
-                if (gameState.startingMode === 'mirrored') {
-                  reShuffledTeam2 = team2Pieces.map((p, i) => {
-                    const mirrorP = reShuffledTeam1[i];
-                    if (mirrorP) return { ...p, x: mirrorP.x, y: boardHeight - 1 - mirrorP.y };
-                    return p;
-                  });
-                } else {
-                  reShuffledTeam2 = shufflePositions(team2Pieces);
-                }
-                const candidate = [...reShuffledTeam1, ...reShuffledTeam2];
-                const hash = hashPiecesPositions(candidate);
-                if (seen.has(hash)) continue;
-                seen.add(hash);
-                gameState.pieces = candidate;
-                lastEval = evaluateInitialPosition(gameState.gameType, gameState.pieces);
-              }
-              if (rerollCount > 0) {
-                io.to(`game-${gameId}`).emit('gameRerolling', {
-                  gameId,
-                  attempts: rerollCount,
-                  reason: 'The randomized starting position would have decided the game immediately. Re-rolling…',
-                });
-              }
-            } catch (rerollErr) {
-              console.warn(`[reroll] Game ${gameId} reroll guard failed:`, rerollErr.message);
-            }
+            // Snapshot the randomized position so match history replay is correct.
+            gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
+          } catch (rerollErr) {
+            console.warn(`[reroll] Game ${gameId} reroll guard failed:`, rerollErr.message);
           }
         }
 

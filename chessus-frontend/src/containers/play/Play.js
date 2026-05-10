@@ -590,6 +590,16 @@ const Play = () => {
     setFriendSearch("");
     setGameMode("live");
     setCorrespondenceDays("1");
+    // Reset startingMode to the game type's default so the next modal open
+    // shows the correct pre-selected mode (avoids a stale selection persisting
+    // when the user changes the dropdown, cancels, then re-opens the modal).
+    if (allowedStartingModes.length > 0) {
+      if (gameTypeDefaultMode && allowedStartingModes.includes(gameTypeDefaultMode)) {
+        setStartingMode(gameTypeDefaultMode);
+      } else {
+        setStartingMode(allowedStartingModes[0]);
+      }
+    }
   };
 
   // Accept an incoming challenge
@@ -899,7 +909,7 @@ const Play = () => {
         increment: anonIsCorrespondence ? 0 : (parseInt(anonIncrement) || 0),
         guestName: guestName || 'Guest',
         allowPremoves: true,
-        startingMode: 'none',
+        startingMode: startingMode || 'none',
         isCorrespondence: anonIsCorrespondence,
         correspondenceDays: anonIsCorrespondence ? parseInt(anonCorrDays) : null,
       });
