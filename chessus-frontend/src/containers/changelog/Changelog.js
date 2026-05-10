@@ -4,6 +4,20 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 10, 2026",
+    title: "Piece placement overhaul: right-click to place, placed pieces can now move, restricted-square shading",
+    items: [
+      "Piece placement games now use right-click to place pieces by default, freeing left-click for normal piece movement. A 'Place pieces with left click (mobile)' toggle in the Options panel switches back to left-click for devices without a right-click.",
+      "Fixed: pieces placed during a placement game can now be moved on subsequent turns. Previously the placed piece was missing its movement rules, making it impossible to move after placing.",
+      "Squares that restrict piece placement to a specific player are now shaded light red during placement games so you can easily see where you can and cannot place. A 'Hide placement restrictions' toggle in the Options panel lets you turn off the shading.",
+      "Clicking or right-clicking a square restricted to another player during piece placement now shows a clear error instead of silently failing.",
+      "Game wizard coordinate displays (Steps 3 and 4) now use algebraic notation (e.g. d8) instead of raw row/column numbers.",
+      "Game wizard: the 'Remove Entire Row' button in the special square and piece placement modals is now highlighted in amber for clarity, with consistent spacing.",
+      "Fixed: navigating between live games no longer shows stale pieces from the previous game on the board.",
+      "Fixed: game designs with a blank starting board (placement games) no longer incorrectly persist pieces from previous game sessions in the database.",
+    ],
+  },
+  {
     date: "May 9, 2026",
     title: "Impassable square move fix, admin Board Requests tab, piece wizard overhaul, text selectability",
     items: [

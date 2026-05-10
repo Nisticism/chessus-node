@@ -13,10 +13,16 @@ const SpecialSquareSelector = ({
   currentConfig,
   squarePosition,
   boardWidth = 8,  // For fill row functionality
+  boardHeight = 8, // For algebraic rank calculation
   playerCount = 2,  // Number of players (for dynamic player buttons)
   squaresConditionEnabled = false,
-  pointsWinConditionEnabled = false
+  pointsWinConditionEnabled = false,
+  placePiecesActionEnabled = false,  // Whether the per-turn place-pieces action is on in Step 2
+  onRemoveRow,  // (row: number) => void — clears all special squares in this row
 }) => {
+  // Algebraic notation helpers
+  const toFile = (col) => String.fromCharCode(97 + (col ?? 0));
+  const toRank = (row) => (boardHeight ?? 8) - (row ?? 0);
   const [fillRow, setFillRow] = useState(false);
   const [selectedType, setSelectedType] = useState(currentType || null);
   
@@ -46,6 +52,8 @@ const SpecialSquareSelector = ({
     disableFirstMoveHere: false,
     impassable: false,
     controlPoints: 0,
+    restrictPiecePlacement: false,
+    restrictPiecePlacementTo: 'all',
   });
 
   // Plain range square: how much the bonus increases piece range by.
@@ -95,6 +103,8 @@ const SpecialSquareSelector = ({
         disableFirstMoveHere: !!currentConfig.disableFirstMoveHere,
         impassable: !!currentConfig.impassable,
         controlPoints: Math.max(0, Math.min(999, currentConfig.controlPoints || 0)),
+        restrictPiecePlacement: !!currentConfig.restrictPiecePlacement,
+        restrictPiecePlacementTo: currentConfig.restrictPiecePlacementTo || 'all',
       });
       if (currentConfig.asControl && currentConfig.controlConfig) {
         setControlConfig({
@@ -156,6 +166,8 @@ const SpecialSquareSelector = ({
         disableFirstMoveHere: !!customCombo.disableFirstMoveHere,
         impassable: !!customCombo.impassable,
         controlPoints: Math.max(0, Math.min(999, customCombo.controlPoints || 0)),
+        restrictPiecePlacement: !!customCombo.restrictPiecePlacement,
+        restrictPiecePlacementTo: customCombo.restrictPiecePlacement ? (customCombo.restrictPiecePlacementTo || 'all') : 'all',
       };
     }
     
@@ -190,7 +202,7 @@ const SpecialSquareSelector = ({
     <div className={styles["modal-overlay"]} onClick={onCancel}>
       <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Enter' && selectedType) handleConfirm(); }}>
         <div className={styles["modal-header"]}>
-          <h2>Special Square at ({squarePosition?.row}, {squarePosition?.col})</h2>
+          <h2>Special Square at {toFile(squarePosition?.col)}{toRank(squarePosition?.row)}</h2>
           <button className={styles["close-button"]} onClick={onCancel}>✕</button>
         </div>
 
@@ -211,10 +223,40 @@ const SpecialSquareSelector = ({
                 Fill Entire Row
               </span>
               <span className={styles["fill-row-hint"]}>
-                Apply to all squares in row {squarePosition?.row}
+                Apply to all squares in rank {toRank(squarePosition?.row)}
               </span>
             </div>
           </div>
+
+          {/* Remove Row button */}
+          {onRemoveRow && (
+            <button
+              type="button"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                margin: '8px 0',
+                background: 'rgba(190, 140, 0, 0.15)',
+                border: '2px solid rgba(190, 140, 0, 0.5)',
+                borderRadius: '6px',
+                color: '#ffc94d',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                width: '100%',
+                textAlign: 'left',
+                transition: 'background 0.2s, border-color 0.2s',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(190,140,0,0.28)'; e.currentTarget.style.borderColor = 'rgba(190,140,0,0.8)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(190,140,0,0.15)'; e.currentTarget.style.borderColor = 'rgba(190,140,0,0.5)'; }}
+              onClick={() => { if (window.confirm(`Remove all special squares from rank ${toRank(squarePosition?.row)}?`)) onRemoveRow(squarePosition?.row); }}
+            >
+              <span style={{ fontSize: '16px' }}>✕</span>
+              Remove Entire Row
+            </button>
+          )}
 
           <div className={styles["square-type-grid"]}>
             {squareTypes.map(type => (
@@ -529,6 +571,57 @@ const SpecialSquareSelector = ({
                   tooltip={<InfoTooltip text="Pieces cannot land on or move through this square. Pieces with Ghostwalk can still pass through. Pieces with hopping ability can hop over it but cannot land on it. Ranged attacks cannot fire through impassable squares." />}
                 />
               </div>
+
+              {/* Restrict Piece Placement — only relevant when place_pieces_action is on */}
+              {placePiecesActionEnabled && (
+                <div className={styles["control-config-row"]}>
+                  <ToggleSwitch
+                    checked={!!customCombo.restrictPiecePlacement}
+                    onChange={(v) => handleCustomComboChange('restrictPiecePlacement', v)}
+                    label={<span style={{ color: 'var(--sq-custom, #ffd700)' }}>Restrict Piece Placement</span>}
+                    tooltip={<InfoTooltip text="Restricts which player can place a piece on this square via the per-turn 'Place Pieces' action. When enabled, choose which player (or all players) may use this square for placement." />}
+                  />
+                  {customCombo.restrictPiecePlacement && (
+                    <div className={styles["player-selection"]} style={{ marginTop: '8px', marginBottom: 0 }}>
+                      <label>Who can place pieces on this square:</label>
+                      <div className={styles["player-radio-group"]}>
+                        <label className={styles["player-radio-label"]}>
+                          <input
+                            type="radio"
+                            name="restrictPlacementTo"
+                            value="all"
+                            checked={customCombo.restrictPiecePlacementTo === 'all' || !customCombo.restrictPiecePlacementTo}
+                            onChange={() => handleCustomComboChange('restrictPiecePlacementTo', 'all')}
+                          />
+                          <span>All Players</span>
+                        </label>
+                        {Array.from({ length: playerCount }, (_, i) => i + 1).map(pid => (
+                          <label key={pid} className={styles["player-radio-label"]}>
+                            <input
+                              type="radio"
+                              name="restrictPlacementTo"
+                              value={`p${pid}`}
+                              checked={customCombo.restrictPiecePlacementTo === `p${pid}`}
+                              onChange={() => handleCustomComboChange('restrictPiecePlacementTo', `p${pid}`)}
+                            />
+                            <span>Player {pid} Only</span>
+                          </label>
+                        ))}
+                        <label className={styles["player-radio-label"]}>
+                          <input
+                            type="radio"
+                            name="restrictPlacementTo"
+                            value="neutral"
+                            checked={customCombo.restrictPiecePlacementTo === 'neutral'}
+                            onChange={() => handleCustomComboChange('restrictPiecePlacementTo', 'neutral')}
+                          />
+                          <span>Neutral Only</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Points win condition: control points */}
               <div className={styles["control-config-row"]} style={{ alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

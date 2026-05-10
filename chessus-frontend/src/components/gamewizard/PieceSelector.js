@@ -27,10 +27,16 @@ const PieceSelector = ({
   requireSpecificPieceControl,  // Whether any control square requires specific pieces
   piecePlacements = {},  // All piece placements on the board
   boardWidth = 8,        // Board width for finding pieces on same row
+  boardHeight = 8,       // Board height for algebraic rank calculation
   embedded = false,  // New prop: if true, don't render modal wrapper
   preloadedPieces = null,  // Optional: pre-loaded piece list to skip the fetch
-  hasRestrictionZones = false  // Whether any custom square has asRestrictionZone enabled
+  hasRestrictionZones = false,  // Whether any custom square has asRestrictionZone enabled
+  pointsCondition = false,  // Whether the Points Win Condition is active
+  onRemoveRow,  // (row: number) => void — clears all pieces in this row
 }) => {
+  // Algebraic notation helpers
+  const toFile = (col) => String.fromCharCode(97 + (col ?? 0));
+  const toRank = (row) => (boardHeight ?? 8) - (row ?? 0);
   const [pieces, setPieces] = useState(preloadedPieces || []);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(!preloadedPieces);
@@ -1190,6 +1196,7 @@ const PieceSelector = ({
         )}
 
         {/* Points Win Condition — per-piece capture points */}
+        {pointsCondition && (
         <div className={styles["hp-ad-section"]}>
           <h3
             onClick={() => setPointsSectionOpen(!pointsSectionOpen)}
@@ -1227,6 +1234,7 @@ const PieceSelector = ({
             </>
           )}
         </div>
+        )}
 
         {/* Fill Row Toggle */}
         <div 
@@ -1240,10 +1248,40 @@ const PieceSelector = ({
               Fill Entire Row
             </span>
             <span className={styles["fill-row-hint"]}>
-              Place this piece on all squares in row {squarePosition?.row}
+              Place this piece on all squares in rank {toRank(squarePosition?.row)}
             </span>
           </div>
         </div>
+
+        {/* Remove Row button */}
+        {onRemoveRow && (
+          <button
+            type="button"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 16px',
+              margin: '8px 0',
+              background: 'rgba(190, 140, 0, 0.15)',
+              border: '2px solid rgba(190, 140, 0, 0.5)',
+              borderRadius: '6px',
+              color: '#ffc94d',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              width: '100%',
+              textAlign: 'left',
+              transition: 'background 0.2s, border-color 0.2s',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(190,140,0,0.28)'; e.currentTarget.style.borderColor = 'rgba(190,140,0,0.8)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(190,140,0,0.15)'; e.currentTarget.style.borderColor = 'rgba(190,140,0,0.5)'; }}
+            onClick={() => { if (window.confirm(`Remove all pieces from rank ${toRank(squarePosition?.row)}?`)) onRemoveRow(squarePosition?.row); }}
+          >
+            <span style={{ fontSize: '16px' }}>✕</span>
+            Remove Entire Row
+          </button>
+        )}
       </div>
 
       <div className={styles["modal-footer"]}>
@@ -1284,7 +1322,7 @@ const PieceSelector = ({
     <div className={styles["modal-overlay"]} onClick={onCancel}>
       <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Enter' && selectedPieceId) handleConfirm(); }}>
         <div className={styles["modal-header"]}>
-          <h2>Select Piece for Square ({squarePosition?.row}, {squarePosition?.col})</h2>
+          <h2>Select Piece for {toFile(squarePosition?.col)}{toRank(squarePosition?.row)}</h2>
           <button className={styles["close-button"]} onClick={onCancel}>✕</button>
         </div>
         {selectorContent}

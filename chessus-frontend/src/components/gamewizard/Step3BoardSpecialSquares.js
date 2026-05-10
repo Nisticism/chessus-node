@@ -529,22 +529,37 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     const width = gameData.board_width;
     if (!height || !width) return;
     const lastRow = height - 1;
-    // Source rows are the half being copied FROM.
-    // For odd heights, the middle row (Math.floor(height/2)) is skipped automatically because
-    // its mirror equals itself.
     const sourceRows = [];
     if (direction === 'topToBottom') {
       for (let r = 0; r < Math.floor(height / 2); r++) sourceRows.push(r);
     } else {
-      // bottomToTop
       for (let r = lastRow; r > Math.floor(lastRow / 2); r--) sourceRows.push(r);
     }
     if (sourceRows.length === 0) return;
 
+    const allSquareMaps = [rangeSquares, promotionSquares, controlSquares, customSquares];
+
+    // Detect destination-only squares that would be deleted.
+    let willDelete = false;
+    for (const sourceRow of sourceRows) {
+      const destRow = lastRow - sourceRow;
+      for (let col = 0; col < width; col++) {
+        const srcKey = `${sourceRow},${col}`;
+        const destKey = `${destRow},${col}`;
+        const srcHasSquare = allSquareMaps.some(m => m[srcKey]);
+        const destHasSquare = allSquareMaps.some(m => m[destKey]);
+        if (destHasSquare && !srcHasSquare) { willDelete = true; break; }
+      }
+      if (willDelete) break;
+    }
+
     const action = direction === 'topToBottom' ? 'top half onto the bottom half' : 'bottom half onto the top half';
+    const deleteWarning = willDelete
+      ? ' Some destination squares have no counterpart in the source and will be removed.'
+      : '';
     if (!window.confirm(
-      `Mirror special squares: copy the ${action}? ` +
-      `Existing squares on the destination rows will be overwritten where the source has a square.`
+      `Mirror special squares: copy the ${action}?${deleteWarning} ` +
+      `Destination rows will be replaced to match the source.`
     )) return;
 
     snapshotSquaresForUndo();
@@ -558,8 +573,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
             const srcKey = `${sourceRow},${col}`;
             const destKey = `${destRow},${col}`;
             if (sourceMap[srcKey]) {
-              // Deep clone so dest doesn't share nested objects (controlConfig, etc.)
               next[destKey] = JSON.parse(JSON.stringify(sourceMap[srcKey]));
+            } else {
+              // Delete destination cells that have no source counterpart.
+              delete next[destKey];
             }
           }
         }
@@ -567,13 +584,30 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       });
     };
 
-    // Also clear destination rows of any types NOT present in source for that exact cell?
-    // We chose: only OVERWRITE where source has a square; destination cells with no source
-    // counterpart are left alone. This is the least-destructive behavior.
     cloneAndAssign(setRangeSquares, rangeSquares);
     cloneAndAssign(setPromotionSquares, promotionSquares);
     cloneAndAssign(setControlSquares, controlSquares);
     cloneAndAssign(setCustomSquares, customSquares);
+  };
+
+  const handleRemoveRow = (row) => {
+    snapshotSquaresForUndo();
+    const removeRowFromMap = (setter) => {
+      setter(prev => {
+        const next = { ...prev };
+        const width = gameData.board_width;
+        for (let col = 0; col < width; col++) {
+          delete next[`${row},${col}`];
+        }
+        return next;
+      });
+    };
+    removeRowFromMap(setRangeSquares);
+    removeRowFromMap(setPromotionSquares);
+    removeRowFromMap(setControlSquares);
+    removeRowFromMap(setCustomSquares);
+    setShowSquareSelector(false);
+    setSelectedSquare(null);
   };
 
   const renderBoard = React.useMemo(() => {
@@ -887,9 +921,12 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           }
           squarePosition={selectedSquare}
           boardWidth={gameData.board_width}
+          boardHeight={gameData.board_height || 8}
           playerCount={gameData.player_count || 2}
           squaresConditionEnabled={gameData.squares_condition === true}
           pointsWinConditionEnabled={gameData.points_to_win != null}
+          placePiecesActionEnabled={!!((() => { try { return JSON.parse(gameData.other_game_data || '{}'); } catch { return {}; } })().place_pieces_action)}
+          onRemoveRow={handleRemoveRow}
         />
       )}
     </div>

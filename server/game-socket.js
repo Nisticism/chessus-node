@@ -1230,6 +1230,26 @@ function validateSimulMoveProposal(gameState, playerId, move) {
     if (x == null || y == null) return { ok: false, reason: 'Invalid placement target' };
     const occupied = (gameState.pieces || []).find(p => p.x === x && p.y === y);
     if (occupied) return { ok: false, reason: 'Square is occupied' };
+    // Check restrictPiecePlacement on the target square
+    if (gameState.gameType?.special_squares_string) {
+      try {
+        const customSquares = typeof gameState.gameType.special_squares_string === 'string'
+          ? JSON.parse(gameState.gameType.special_squares_string)
+          : gameState.gameType.special_squares_string;
+        const squareCfg = customSquares?.[`${y},${x}`];
+        if (squareCfg?.restrictPiecePlacement) {
+          const restriction = squareCfg.restrictPiecePlacementTo || 'all';
+          if (restriction !== 'all') {
+            const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
+            const match2 = String(restriction).match(/^p(\d+)$/);
+            const allowedPosition = match2 ? parseInt(match2[1], 10) : null;
+            if (restriction === 'neutral' || (allowedPosition !== null && playerPosition !== allowedPosition)) {
+              return { ok: false, reason: 'You are not allowed to place a piece on this square' };
+            }
+          }
+        }
+      } catch (_) { /* ignore */ }
+    }
     return { ok: true, kind: 'place', destX: x, destY: y, isPlace: true, placePieceId: move.placePieceId };
   }
   const piece = (gameState.pieces || []).find(p => String(p.id) === String(move.pieceId));
@@ -1452,14 +1472,17 @@ function applySimulMovement(gameState, proposal, playerId, safelyMovingPieceIds)
     if (!placeable) return { applied: false };
     const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
     const newPiece = {
+      ...placeable,
       id: `placed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      piece_id: placeable.id,
-      name: placeable.name || 'Piece',
+      piece_id: placeable.piece_id || placeable.id,
+      piece_name: placeable.name || placeable.piece_name || 'Piece',
       x: proposal.destX,
       y: proposal.destY,
       team: playerPosition,
       player_id: playerPosition,
-      current_hp: placeable.hp || 1,
+      hit_points: placeable.hit_points ?? 1,
+      current_hp: placeable.hit_points ?? 1,
+      attack_damage: placeable.attack_damage ?? 1,
       image_location: placeable.image_location || null,
     };
     gameState.pieces.push(newPiece);
@@ -2998,6 +3021,31 @@ function initializeSocket(server) {
           }
         } catch (e) { /* ignore parse errors */ }
         
+        // Enrich placeable_pieces with full piece data from DB so the AI engine can
+        // evaluate placed pieces' movement/capture capabilities during search.
+        if (otherGameData.place_pieces_action && Array.isArray(otherGameData.placeable_pieces)) {
+          const pieceIds = otherGameData.placeable_pieces
+            .map(pp => pp.piece_id)
+            .filter(id => id != null);
+          if (pieceIds.length > 0) {
+            try {
+              const [pieceRows] = await db_pool.query('SELECT * FROM pieces WHERE id IN (?)', [pieceIds]);
+              for (const pp of otherGameData.placeable_pieces) {
+                const fullData = pieceRows.find(r => r.id === pp.piece_id);
+                if (fullData) {
+                  Object.assign(pp, fullData, {
+                    piece_id: pp.piece_id,            // keep original key
+                    name: pp.name || fullData.piece_name,
+                    image_location: pp.image_location || fullData.image_location,
+                  });
+                }
+              }
+            } catch (enrichErr) {
+              console.warn('[placeable_pieces] enrichment failed:', enrichErr.message);
+            }
+          }
+        }
+
         const globalHpRegen = otherGameData.global_hp_regen || 0;
         const showAllHpAd = !!otherGameData.show_all_hp_ad;
         
@@ -4585,6 +4633,31 @@ function initializeSocket(server) {
             return socket.emit("error", { message: "Square is already occupied" });
           }
 
+          // Validate restrictPiecePlacement on the target square (custom squares only)
+          if (gameState.gameType?.special_squares_string) {
+            try {
+              const customSquares = typeof gameState.gameType.special_squares_string === 'string'
+                ? JSON.parse(gameState.gameType.special_squares_string)
+                : gameState.gameType.special_squares_string;
+              const squareCfg = customSquares?.[`${placeY},${placeX}`];
+              if (squareCfg?.restrictPiecePlacement) {
+                const restriction = squareCfg.restrictPiecePlacementTo || 'all';
+                if (restriction !== 'all') {
+                  const playerPosition = gameState.currentTurn; // 1 or 2
+                  const match = String(restriction).match(/^p(\d+)$/);
+                  const allowedPosition = match ? parseInt(match[1], 10) : null;
+                  if (restriction === 'neutral') {
+                    // 'neutral' means only neutral-owned pieces can be placed here;
+                    // per-turn placement always assigns the current player's team, so this blocks all.
+                    return socket.emit("error", { message: "Piece placement is not allowed on this square" });
+                  } else if (allowedPosition !== null && playerPosition !== allowedPosition) {
+                    return socket.emit("error", { message: "You are not allowed to place a piece on this square" });
+                  }
+                }
+              }
+            } catch (_) { /* ignore malformed special_squares_string */ }
+          }
+
           // Resolve the placeable piece template
           const placeablePieces = otherData.placeable_pieces || [];
           const pieceTemplate = move.placePieceId != null 
@@ -4624,22 +4697,24 @@ function initializeSocket(server) {
               return socket.emit("error", { message: "Must place piece where it flanks opponent pieces" });
             }
 
-            // Add the new piece
+            // Add the new piece — spread the enriched template so movement/capture
+            // rules survive into the live game state (allows placed pieces to move).
             const newPiece = {
+              ...pieceTemplate,
               id: `placed_${Date.now()}_${placeX}_${placeY}`,
               piece_id: pieceTemplate.piece_id,
-              piece_name: pieceTemplate.name || 'Placed Piece',
+              piece_name: pieceTemplate.name || pieceTemplate.piece_name || 'Placed Piece',
               image_url: placedImageUrl,
               image_location: imageLocation,
               x: placeX,
               y: placeY,
               team: gameState.currentTurn,
               player_id: gameState.currentTurn,
-              hit_points: 1,
-              current_hp: 1,
-              attack_damage: 1,
-              piece_width: 1,
-              piece_height: 1
+              hit_points: pieceTemplate.hit_points ?? 1,
+              current_hp: pieceTemplate.hit_points ?? 1,
+              attack_damage: pieceTemplate.attack_damage ?? 1,
+              piece_width: pieceTemplate.piece_width ?? 1,
+              piece_height: pieceTemplate.piece_height ?? 1,
             };
             gameState.pieces.push(newPiece);
 
@@ -4650,20 +4725,21 @@ function initializeSocket(server) {
           } else {
             // No flanking — just place the piece
             const newPiece = {
+              ...pieceTemplate,
               id: `placed_${Date.now()}_${placeX}_${placeY}`,
               piece_id: pieceTemplate.piece_id,
-              piece_name: pieceTemplate.name || 'Placed Piece',
+              piece_name: pieceTemplate.name || pieceTemplate.piece_name || 'Placed Piece',
               image_url: placedImageUrl,
               image_location: imageLocation,
               x: placeX,
               y: placeY,
               team: gameState.currentTurn,
               player_id: gameState.currentTurn,
-              hit_points: 1,
-              current_hp: 1,
-              attack_damage: 1,
-              piece_width: 1,
-              piece_height: 1
+              hit_points: pieceTemplate.hit_points ?? 1,
+              current_hp: pieceTemplate.hit_points ?? 1,
+              attack_damage: pieceTemplate.attack_damage ?? 1,
+              piece_width: pieceTemplate.piece_width ?? 1,
+              piece_height: pieceTemplate.piece_height ?? 1,
             };
             gameState.pieces.push(newPiece);
           }
@@ -4842,6 +4918,11 @@ function initializeSocket(server) {
           });
 
           console.log(`Piece placed in game ${gameId} at (${placeX},${placeY}) by player ${gameState.currentTurn === 1 ? 2 : 1}, flipped ${flippedPieces.length} pieces${skippedTurn ? ', next turn skipped' : ''}`);
+
+          // Trigger bot turn if it's now the bot's turn
+          if (gameState.status !== 'completed' && gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position) {
+            processBotTurn(io, gameId, gameState);
+          }
           return; // Placement handled, exit early
         }
 
@@ -14361,6 +14442,11 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
   
   if (!gameType) return { gameOver: false };
 
+  // Placement games (Othello-style): a player having 0 pieces on the board is
+  // normal at game start and does not constitute a loss — they will gain pieces
+  // by placing them each turn. Suppress all zero-pieces-based eliminations.
+  const isPlacementGame = !!(gameState.otherGameData?.place_pieces_action);
+
   // Normalize to array for multi-tile multi-capture support
   const capturedPieces = Array.isArray(capturedPieceOrArray)
     ? capturedPieceOrArray
@@ -14457,7 +14543,7 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
         p.player === player.id ||
         p.player_number === player.position
       );
-      if (playerPieces.length === 0) {
+      if (playerPieces.length === 0 && !isPlacementGame) {
         // This player has lost all of their pieces — they WIN under anti-chess rules
         return {
           gameOver: true,
@@ -14499,8 +14585,10 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
         p.player === player.id
       );
       
-      // If this player has no pieces left, they lose
-      if (playerPieces.length === 0) {
+      // If this player has no pieces left, they lose.
+      // Exception: in placement games a player may legitimately start/be at 0 pieces
+      // and will gain pieces through placement actions.
+      if (playerPieces.length === 0 && !isPlacementGame) {
         const winner = players.find(p => p.id !== player.id);
         return {
           gameOver: true,
@@ -14570,7 +14658,8 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
                               gameType.value_condition || gameType.squares_condition || 
                               gameType.hill_condition || gameType.no_moves_condition ||
                               gameType.promotion_condition || gameType.lose_all_pieces_condition ||
-                              gameType.stalemate_win_condition || (gameType.points_to_win != null);
+                              gameType.stalemate_win_condition || (gameType.points_to_win != null) ||
+                              gameType.piece_count_condition || isPlacementGame;
   
   if (!hasAnyWinCondition) {
     for (const player of players) {
@@ -14817,6 +14906,189 @@ async function processBotTurn(io, gameId, gameState) {
         console.log(`[Bot] Game ${gameId} ended while bot was thinking, skipping move`);
         return;
       }
+
+      // ── PLACEMENT MOVE HANDLING ─────────────────────────────────────────────
+      // validateAndApplyMove requires a pieceId which placement moves lack,
+      // so we handle them here, mirroring the socket makeMove placement block.
+      if (bestMove.type === 'place') {
+        const otherData = gameState.otherGameData || {};
+        const placeX = bestMove.to?.x;
+        const placeY = bestMove.to?.y;
+        const boardWidth = gameState.gameType?.board_width || 8;
+        const boardHeight = gameState.gameType?.board_height || 8;
+
+        if (placeX == null || placeY == null || placeX < 0 || placeX >= boardWidth || placeY < 0 || placeY >= boardHeight) {
+          console.warn(`[Bot] Placement out of bounds (${placeX},${placeY}) in game ${gameId}`);
+          clearTimeout(safetyTimer);
+          return;
+        }
+        if (gameState.pieces.some(p => p.x === placeX && p.y === placeY)) {
+          console.warn(`[Bot] Placement square occupied (${placeX},${placeY}) in game ${gameId}`);
+          clearTimeout(safetyTimer);
+          return;
+        }
+
+        // Resolve piece template
+        const placeablePieces = otherData.placeable_pieces || [];
+        const pieceTemplate = bestMove.placePieceId != null
+          ? placeablePieces.find(pp => pp.piece_id === bestMove.placePieceId)
+          : placeablePieces[0];
+        if (!pieceTemplate) {
+          console.warn(`[Bot] No placeable piece template in game ${gameId}`);
+          clearTimeout(safetyTimer);
+          return;
+        }
+
+        // Look up image (may be missing from in-memory template)
+        let botPlaceImageLocation = pieceTemplate.image_location || null;
+        if (!botPlaceImageLocation && pieceTemplate.piece_id) {
+          try {
+            const [[imgRow]] = await db_pool.query('SELECT image_location FROM pieces WHERE id = ?', [pieceTemplate.piece_id]);
+            if (imgRow?.image_location) botPlaceImageLocation = imgRow.image_location;
+          } catch (_) {}
+        }
+        const botPlacedImageUrl = botPlaceImageLocation
+          ? getImageUrlForPlayer(botPlaceImageLocation, gameState.currentTurn)
+          : (pieceTemplate.image_url || null);
+
+        // Build and push the new piece — spread template so movement/capture rules are preserved
+        const botNewPiece = {
+          ...pieceTemplate,
+          id: `placed_${Date.now()}_${placeX}_${placeY}`,
+          piece_id: pieceTemplate.piece_id,
+          piece_name: pieceTemplate.name || pieceTemplate.piece_name || 'Placed Piece',
+          image_url: botPlacedImageUrl,
+          image_location: botPlaceImageLocation,
+          x: placeX,
+          y: placeY,
+          team: gameState.currentTurn,
+          player_id: gameState.currentTurn,
+          hit_points: pieceTemplate.hit_points ?? 1,
+          current_hp: pieceTemplate.hit_points ?? 1,
+          attack_damage: pieceTemplate.attack_damage ?? 1,
+          piece_width: pieceTemplate.piece_width ?? 1,
+          piece_height: pieceTemplate.piece_height ?? 1,
+        };
+        gameState.pieces.push(botNewPiece);
+
+        // Flanking captures (Othello-style)
+        let botFlippedPieces = [];
+        if (otherData.flanking_captures) {
+          const validPlacements = getValidFlankingPlacements(gameState, gameState.currentTurn);
+          const isValid = validPlacements.some(vp => vp.x === placeX && vp.y === placeY);
+          if (isValid) {
+            botFlippedPieces = applyFlankingCaptures(gameState, placeX, placeY, gameState.currentTurn);
+          }
+        }
+
+        // Record the placement
+        const placeMoveRecord = {
+          type: 'place',
+          to: { x: placeX, y: placeY },
+          player: botPlayer.id,
+          position: gameState.currentTurn,
+          timestamp: Date.now(),
+          isBot: true,
+          ...(botFlippedPieces.length > 0 ? { flipped: botFlippedPieces } : {}),
+        };
+        gameState.moveHistory.push(placeMoveRecord);
+
+        // Actions per turn → turn switch
+        const placeActionsPerTurn = gameState.gameType?.actions_per_turn || 1;
+        gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+        const botPlaceTurnSwitched = gameState.actionsThisTurn >= placeActionsPerTurn;
+        if (botPlaceTurnSwitched) {
+          gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+          gameState.actionsThisTurn = 0;
+        }
+
+        // Flanking skip-turn handling
+        let botPlaceSkippedTurn = false;
+        if (botPlaceTurnSwitched && otherData.flanking_captures && otherData.must_flank && otherData.skip_turn_no_flank) {
+          const nextValid = getValidFlankingPlacements(gameState, gameState.currentTurn);
+          if (nextValid.length === 0) {
+            botPlaceSkippedTurn = true;
+            gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+            // If original player also has no valid placements → game ends (both blocked)
+            const origValid = getValidFlankingPlacements(gameState, gameState.currentTurn);
+            if (origValid.length === 0) {
+              const p1Count = gameState.pieces.filter(p => (p.team || p.player_id) === 1).length;
+              const p2Count = gameState.pieces.filter(p => (p.team || p.player_id) === 2).length;
+              let botPlaceWinnerId = null;
+              const botPlaceReason = 'piece_count';
+              if (gameState.gameType?.piece_count_condition) {
+                if (p1Count > p2Count) botPlaceWinnerId = gameState.players.find(p => p.position === 1)?.id;
+                else if (p2Count > p1Count) botPlaceWinnerId = gameState.players.find(p => p.position === 2)?.id;
+              }
+              await finishBotGame(io, gameId, gameState, { gameOver: true, winner: botPlaceWinnerId, reason: botPlaceReason }, placeMoveRecord, {});
+              clearTimeout(safetyTimer);
+              return;
+            }
+          }
+        }
+
+        // Board full → piece-count win
+        const totalSquares = boardWidth * boardHeight;
+        if (gameState.pieces.length >= totalSquares && gameState.gameType?.piece_count_condition) {
+          const p1Count = gameState.pieces.filter(p => (p.team || p.player_id) === 1).length;
+          const p2Count = gameState.pieces.filter(p => (p.team || p.player_id) === 2).length;
+          let botFullWinnerId = null;
+          const botFullReason = 'piece_count';
+          if (p1Count > p2Count) botFullWinnerId = gameState.players.find(p => p.position === 1)?.id;
+          else if (p2Count > p1Count) botFullWinnerId = gameState.players.find(p => p.position === 2)?.id;
+          await finishBotGame(io, gameId, gameState, { gameOver: true, winner: botFullWinnerId, reason: botFullReason }, placeMoveRecord,
+            { player1Score: p1Count, player2Score: p2Count });
+          clearTimeout(safetyTimer);
+          return;
+        }
+
+        // Standard win check (capture / elimination / etc.)
+        const botPlaceWinResult = checkWinCondition(gameState, []);
+        if (botPlaceWinResult.gameOver) {
+          await finishBotGame(io, gameId, gameState, botPlaceWinResult, placeMoveRecord, {});
+          clearTimeout(safetyTimer);
+          return;
+        }
+
+        // Update DB and broadcast
+        try {
+          await db_pool.query(
+            'UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?',
+            [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+          );
+        } catch (dbErr) {
+          console.error('[Bot] DB update failed after placement:', dbErr);
+        }
+
+        io.to(`game-${gameId}`).emit('moveMade', {
+          gameId,
+          move: placeMoveRecord,
+          gameState: {
+            status: gameState.status,
+            pieces: gameState.pieces,
+            currentTurn: gameState.currentTurn,
+            playerTimes: gameState.playerTimes,
+            moveHistory: gameState.moveHistory,
+            actionsThisTurn: gameState.actionsThisTurn || 0,
+            actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+          },
+          ...(botFlippedPieces.length > 0 ? { flipped: botFlippedPieces } : {}),
+          ...(botPlaceSkippedTurn ? { skippedTurn: true } : {}),
+        });
+
+        console.log(`[Bot] Placed piece in game ${gameId} at (${placeX},${placeY}), flipped ${botFlippedPieces.length} pieces`);
+        clearTimeout(safetyTimer);
+
+        // Multi-action placement: trigger next bot turn if bot still has actions
+        // or if the opponent's turn was skipped and it's the bot again.
+        if (!botPlaceTurnSwitched || (botPlaceSkippedTurn && gameState.currentTurn === botPlayer.position)) {
+          setTimeout(() => processBotTurn(io, gameId, gameState).catch(e => console.error('[Bot] Next placement error:', e)), 200);
+        } else if (botPlaceTurnSwitched && gameState.currentTurn === botPlayer.position) {
+          setTimeout(() => processBotTurn(io, gameId, gameState).catch(e => console.error('[Bot] Skip-returned placement error:', e)), 200);
+        }
+        return;
+      }
+      // ── END PLACEMENT MOVE HANDLING ─────────────────────────────────────────
 
       // 2. Apply move via validateAndApplyMove (authoritative validation)
       let moveResult = await validateAndApplyMove(gameState, bestMove);
@@ -16155,11 +16427,28 @@ function evaluateInitialPosition(gameType, initialPieces) {
   const toMove = 1;
   const opponent = 2;
 
+  // Determine whether this is a placement-based game (Othello-style). When
+  // `place_pieces_action` is true, players gain pieces by placing them during
+  // the game, so a side starting with zero pieces is intentional and should
+  // NOT trigger elimination-based win conditions in the initial position check.
+  const isPlacementGame = (() => {
+    try {
+      const od = gameType.other_game_data
+        ? (typeof gameType.other_game_data === 'string'
+            ? JSON.parse(gameType.other_game_data)
+            : gameType.other_game_data)
+        : {};
+      return !!od.place_pieces_action;
+    } catch (e) { return false; }
+  })();
+
   const state = buildSyntheticInitialState(gameType, pieces, toMove);
 
   // --- 1. lose_all_pieces (anti-chess): if either side starts with 0 pieces,
   //         the game is already won by the side with none.
-  if (gameType.lose_all_pieces_condition) {
+  //         Skip this check for placement games: having 0 pieces at start is
+  //         intentional when players will be placing pieces during play.
+  if (gameType.lose_all_pieces_condition && !isPlacementGame) {
     const p1Pieces = pieces.filter(p => (p.team || p.player_id) === 1 && !p._occupied);
     const p2Pieces = pieces.filter(p => (p.team || p.player_id) === 2 && !p._occupied);
     if (p1Pieces.length === 0 && p2Pieces.length === 0) {
@@ -16228,7 +16517,8 @@ function evaluateInitialPosition(gameType, initialPieces) {
         }
       } else {
         // Capture-all: if the side has zero capturable pieces, opponent wins.
-        if (sidePieces.length === 0) {
+        // Skip for placement games — the player will gain pieces via placement.
+        if (sidePieces.length === 0 && !isPlacementGame) {
           triggered = true;
           label = `Player ${sidePos} starts with no pieces`;
         }

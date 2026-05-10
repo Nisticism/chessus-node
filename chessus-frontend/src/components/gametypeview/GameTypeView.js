@@ -2031,6 +2031,17 @@ const GameTypeView = () => {
         if (cfg?.restrictFirstMoveToCustom) parts.push('First-move abilities allowed only on these squares');
         if (cfg?.disableFirstMoveHere) parts.push('First-move abilities disabled while standing here');
         if (cfg?.impassable) parts.push('Impassable');
+        if (cfg?.restrictPiecePlacement) {
+          const r = cfg?.restrictPiecePlacementTo;
+          if (!r || r === 'all') {
+            parts.push('Piece placement: all players');
+          } else if (r === 'neutral') {
+            parts.push('Piece placement: neutral only (blocks per-turn placement)');
+          } else {
+            const m = r.match(/^p(\d+)$/);
+            parts.push(m ? `Piece placement: Player ${m[1]} only` : 'Piece placement restricted');
+          }
+        }
         return parts.length > 0 ? parts.join(' + ') : 'no combined behavior yet (visual placeholder)';
       };
       const coordFor = (key) => {
@@ -2052,6 +2063,8 @@ const GameTypeView = () => {
           restrictFirstMoveToCustom: !!cfg?.restrictFirstMoveToCustom,
           disableFirstMoveHere: !!cfg?.disableFirstMoveHere,
           impassable: !!cfg?.impassable,
+          restrictPiecePlacement: !!cfg?.restrictPiecePlacement,
+          restrictPiecePlacementTo: cfg?.restrictPiecePlacement ? (cfg?.restrictPiecePlacementTo || 'all') : 'all',
         });
         if (!groups.has(sig)) groups.set(sig, { cfg, coords: [] });
         groups.get(sig).coords.push(coordFor(key));
@@ -2063,7 +2076,7 @@ const GameTypeView = () => {
         return `• ${coordList} — ${labelFor(cfg)}`;
       });
       specialRulesContent.push(
-        `**Custom Squares**\nCustom squares can combine any of the other special-square behaviors (Range Boost, Promotion, Control) on a single square, and can also act as a **Restriction Zone** (pieces with "Cannot Move Outside Zone" enabled are bound to these squares), gate piece **first-move abilities** — either restricting "first move only" / "available for first N moves" abilities so they only work while standing on these squares, or disabling them while a piece is standing here — or be marked as **Impassable** (pieces cannot land on or move through these squares; pieces with Ghostwalk can still pass through; hopping pieces can hop over but cannot land; ranged attacks cannot fire through). Squares with the same configuration are grouped together below.\n\n${lines.join('\n')}\n\nSquares listed with no combined behavior are visual placeholders only.`
+        `**Custom Squares**\nCustom squares can combine any of the other special-square behaviors (Range Boost, Promotion, Control) on a single square, and can also act as a **Restriction Zone** (pieces with "Cannot Move Outside Zone" enabled are bound to these squares), gate piece **first-move abilities** — either restricting "first move only" / "available for first N moves" abilities so they only work while standing on these squares, or disabling them while a piece is standing here — be marked as **Impassable** (pieces cannot land on or move through these squares; pieces with Ghostwalk can still pass through; hopping pieces can hop over but cannot land; ranged attacks cannot fire through), or **restrict per-turn piece placement** (limit which player can use this square when placing pieces each turn). Squares with the same configuration are grouped together below.\n\n${lines.join('\n')}\n\nSquares listed with no combined behavior are visual placeholders only.`
       );
     }
 
@@ -3445,8 +3458,8 @@ const GameTypeView = () => {
                         <div className={styles["piece-links"]}>
                           <strong>Pieces used:</strong>
                           <ul className={styles["piece-link-list"]}>
-                            {section.pieceLinks.map((piece) => (
-                              <li key={piece.id}>
+                            {[...new Map(section.pieceLinks.map(p => [p.id, p])).values()].map((piece, idx) => (
+                              <li key={piece.id != null ? piece.id : idx}>
                                 <Link to={`/pieces/${piece.id}`} className={styles["piece-link"]}>
                                   {piece.name}
                                 </Link>

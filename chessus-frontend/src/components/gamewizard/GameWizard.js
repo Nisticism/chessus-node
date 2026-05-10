@@ -109,7 +109,7 @@ const GameWizard = ({ editGameId }) => {
   
   const stepLabels = [
     { num: 1, label: 'Basic Info' },
-    { num: 2, label: 'Win Conditions' },
+    { num: 2, label: 'Rules' },
     { num: 3, label: 'Board & Squares' },
     { num: 4, label: 'Pieces' }
   ];
@@ -350,6 +350,17 @@ const GameWizard = ({ editGameId }) => {
     if (!gameData.game_name || gameData.game_name.trim().length < 3) {
       missing.push({ field: 'Game Name (at least 3 characters)', step: 1 });
     }
+
+    // Block save if Place Pieces Action is enabled but no placeable pieces are configured
+    try {
+      const otherData = JSON.parse(gameData.other_game_data || '{}');
+      if (otherData.place_pieces_action === true) {
+        const placeablePieces = otherData.placeable_pieces;
+        if (!placeablePieces || placeablePieces.length === 0) {
+          missing.push({ field: 'Placeable Pieces — at least one piece must be added in the "Placeable Pieces" section', step: 4 });
+        }
+      }
+    } catch { /* ignore parse errors */ }
     
     if (missing.length > 0) {
       setMissingFields(missing);
@@ -428,7 +439,7 @@ const GameWizard = ({ editGameId }) => {
           setSaveError(
             '"Check ALL targets" requires each player to have 4 or fewer checkmate pieces. ' +
             `One or more players currently have ${maxCount}. Reduce the number of checkmate-flagged pieces, ` +
-            'or disable "Check ALL targets" in Win Conditions (Step 2).'
+            'or disable "Check ALL targets" in Rules (Step 2).'
           );
           return;
         }

@@ -2880,14 +2880,18 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       }
     }
 
-    // Update pieces in junction table if provided
-    if (gameData.pieces_string) {
+    // Always sync junction table to match what was written to game_types.pieces_string.
+    // Using `gameData.pieces_string || '{}'` mirrors the updateMap default so the
+    // junction table is never left with orphaned rows when pieces_string is omitted
+    // or explicitly cleared by the wizard.
+    {
+      const piecesStringToSync = gameData.pieces_string || '{}';
       try {
         // Remove existing pieces
         await dbHelpers.removeAllPiecesFromGameType(gameId);
 
         // Parse and insert new pieces
-        const piecesData = JSON.parse(gameData.pieces_string);
+        const piecesData = JSON.parse(piecesStringToSync);
         let piecesToInsert = [];
 
         // Handle both array and object formats

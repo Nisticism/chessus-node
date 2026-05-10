@@ -1552,6 +1552,20 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
     }
   }, [gameData.board_height, gameData.board_width, piecePlacements, snapshotPlacementsForUndo]);
 
+  const handleRemoveRow = (row) => {
+    snapshotPlacementsForUndo();
+    setPiecePlacements(prev => {
+      const next = {};
+      for (const [key, piece] of Object.entries(prev)) {
+        const pieceRow = parseInt(key.split(',')[0], 10);
+        if (pieceRow !== row) next[key] = piece;
+      }
+      return next;
+    });
+    setShowPieceSelector(false);
+    setSelectedSquare(null);
+  };
+
   const getPieceCounts = () => {
     const counts = {};
     Object.values(piecePlacements).forEach(placement => {
@@ -2031,8 +2045,11 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           requireSpecificPieceControl={requireSpecificPieceControl}
           piecePlacements={piecePlacements}
           boardWidth={gameData.board_width}
+          boardHeight={gameData.board_height || 8}
           preloadedPieces={Object.values(pieceDataMap)}
           hasRestrictionZones={hasRestrictionZones}
+          pointsCondition={gameData.points_to_win != null}
+          onRemoveRow={handleRemoveRow}
         />
       )}
     </div>

@@ -127,7 +127,10 @@ function cloneState(state) {
     lastMovedPieceId: state.lastMovedPieceId || null,
     lastMoveFrom: state.lastMoveFrom || null,
     lastMoveTo: state.lastMoveTo || null,
-    moveHistory: state.moveHistory || []
+    moveHistory: state.moveHistory || [],
+    // Required so applyMove can find placeable_pieces templates and orderMoves knows it's a
+    // placement game. Shared by reference (read-only in search — never mutated).
+    otherGameData: state.otherGameData || {},
   };
 }
 
@@ -503,7 +506,7 @@ function getMovesForSearch(state, playerPosition) {
     }
 
     // Also generate ranged attack moves (piece stays in place; targets enemies in range)
-    if (piece.can_capture_enemy_via_range && canRangedAttackTo && isRangedPathClear) {
+    if (piece.can_capture_enemy_via_range && canRangedAttackTo && isRangedPathClear) {  // (label kept for diff clarity)
       for (const target of state.pieces) {
         if (target.id === piece.id) continue;
         const targetOwner = target.team || target.player_id;
@@ -534,6 +537,40 @@ function getMovesForSearch(state, playerPosition) {
       }
     }
   }
+
+  // --- Placement moves (Othello-style / free-placement variants) ---
+  // Mirror the enumeration in getAllLegalMovesForPlayer so the search tree
+  // evaluates placement options alongside normal piece moves.
+  try {
+    const otherData = state.otherGameData || {};
+    if (otherData.place_pieces_action) {
+      const boardWidth = state.gameType?.board_width || 8;
+      const boardHeight = state.gameType?.board_height || 8;
+      const placeable = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
+      const piecesToPlace = placeable.length > 0 ? placeable : [{ piece_id: null }];
+
+      // Collect all occupied squares once for O(1) lookup
+      const occupiedSet = new Set();
+      for (const p of state.pieces) {
+        occupiedSet.add(`${p.x},${p.y}`);
+      }
+
+      for (let y = 0; y < boardHeight; y++) {
+        for (let x = 0; x < boardWidth; x++) {
+          if (occupiedSet.has(`${x},${y}`)) continue;
+          for (const pt of piecesToPlace) {
+            moves.push({
+              type: 'place',
+              from: { x, y },
+              to: { x, y },
+              placePieceId: pt.piece_id ?? null,
+              isPlacement: true,
+            });
+          }
+        }
+      }
+    }
+  } catch (_) { /* ignore */ }
 
   return moves;
 }
@@ -669,13 +706,135 @@ function orderMoves(moves, state) {
     posMap.set(`${p.x},${p.y}`, p);
   }
 
-  const isPieceCountGame = !!(state.gameType?.piece_count_condition || state.otherGameData?.place_pieces_action);
+  const otherData = state.otherGameData || {};
+  const isPlacementGame = !!otherData.place_pieces_action;
+  const isPieceCountGame = !!(state.gameType?.piece_count_condition || isPlacementGame);
+
+  // Determine whether placements should be ordered before regular moves.
+  // Default: yes for any piece-count / placement game.
+  // Refinement: if the current player already has pieces on the board, only
+  // prefer placement when the best placeable piece is at least as valuable as
+  // the average of their existing pieces (so the bot doesn't blindly place
+  // weak pieces when moving a strong existing piece is better).
+  let preferPlacement = isPieceCountGame;
+  if (isPlacementGame && isPieceCountGame) {
+    const curPos = state.currentTurn;
+    const myExisting = state.pieces.filter(p => (p.team || p.player_id) === curPos);
+    if (myExisting.length > 0) {
+      const avgVal = myExisting.reduce((s, p) => s + getPieceValue(p, bs), 0) / myExisting.length;
+      const placeables = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
+      const maxPlaceVal = placeables.length > 0
+        ? Math.max(...placeables.map(pp => getPieceValue(pp, bs)))
+        : 1; // unknown template — assume minimal value
+      preferPlacement = maxPlaceVal >= avgVal;
+    }
+  }
+
+  // Pre-compute placement quality score for each unique (x,y).
+  // Used for ordering placement moves so α-β explores the most promising
+  // squares first (threatening opponent pieces, avoiding immediate recapture).
+  // This is heuristic-only — correctness is handled by evaluatePosition.
+  const placementQuality = new Map();
+  if (isPlacementGame) {
+    const curPos = state.currentTurn;
+    const opponentPos = curPos === 1 ? 2 : 1;
+    const opponentPieces = state.pieces.filter(p => (p.team || p.player_id) === opponentPos);
+    const scoredKeys = new Set();
+
+    for (const move of moves) {
+      if (move.type !== 'place') continue;
+      const key = `${move.to.x},${move.to.y}`;
+      if (scoredKeys.has(key)) continue;
+      scoredKeys.add(key);
+
+      const x = move.to.x;
+      const y = move.to.y;
+      let q = 0;
+
+      for (const op of opponentPieces) {
+        const adx = Math.abs(op.x - x);
+        const ady = Math.abs(op.y - y);
+
+        // Proximity bonus: being near opponent pieces is tactically valuable
+        // (potential future threats, flanking, control pressure).
+        const dist = adx + ady;
+        if (dist === 1)      q += 20;
+        else if (dist === 2) q += 8;
+        else if (dist <= 3)  q += 3;
+
+        // Safety penalty: can this opponent piece immediately capture the placed square?
+        // Use the same coordinate-flip logic as evaluatePosition (player 2's "up"
+        // direction points toward increasing y in screen coordinates).
+        const dx = x - op.x;
+        const dy = y - op.y;
+        const flipY_op = (op.team || op.player_id) === 2 ? -1 : 1;
+        const ddx = dx;
+        const ddy = dy * flipY_op; // logical direction: negative = "up" for that player
+        const absDdx = Math.abs(ddx);
+        const absDdy = Math.abs(ddy);
+
+        let canCapture = false;
+
+        // Ratio (knight-like) captures
+        const rc1 = op.ratio_capture_1 || op.ratio_movement_1 || 0;
+        const rc2 = op.ratio_capture_2 || op.ratio_movement_2 || 0;
+        if (!canCapture && rc1 > 0 && rc2 > 0) {
+          if ((absDdx === rc1 && absDdy === rc2) || (absDdx === rc2 && absDdy === rc1)) canCapture = true;
+        }
+
+        // Directional (orthogonal / diagonal) captures — only relevant when aligned
+        if (!canCapture && (absDdx === 0 || absDdy === 0 || absDdx === absDdy)) {
+          const dist2 = Math.max(absDdx, absDdy);
+          if (dist2 > 0) {
+            let capRange = 0;
+            if      (absDdx === 0 && ddy < 0) capRange = op.up_capture || 0;
+            else if (absDdx === 0 && ddy > 0) capRange = op.down_capture || 0;
+            else if (absDdy === 0 && ddx < 0) capRange = op.left_capture || 0;
+            else if (absDdy === 0 && ddx > 0) capRange = op.right_capture || 0;
+            else if (ddx < 0 && ddy < 0)      capRange = op.up_left_capture || 0;
+            else if (ddx > 0 && ddy < 0)      capRange = op.up_right_capture || 0;
+            else if (ddx < 0 && ddy > 0)      capRange = op.down_left_capture || 0;
+            else if (ddx > 0 && ddy > 0)      capRange = op.down_right_capture || 0;
+            if (capRange >= dist2) canCapture = true;
+
+            // can_capture_enemy_on_move: movement directions also capture
+            if (!canCapture && op.can_capture_enemy_on_move) {
+              let moveRange = 0;
+              if      (absDdx === 0 && ddy < 0) moveRange = op.up_movement || 0;
+              else if (absDdx === 0 && ddy > 0) moveRange = op.down_movement || 0;
+              else if (absDdy === 0 && ddx < 0) moveRange = op.left_movement || 0;
+              else if (absDdy === 0 && ddx > 0) moveRange = op.right_movement || 0;
+              else if (ddx < 0 && ddy < 0)      moveRange = op.up_left_movement || 0;
+              else if (ddx > 0 && ddy < 0)      moveRange = op.up_right_movement || 0;
+              else if (ddx < 0 && ddy > 0)      moveRange = op.down_left_movement || 0;
+              else if (ddx > 0 && ddy > 0)      moveRange = op.down_right_movement || 0;
+              if (moveRange >= dist2) canCapture = true;
+            }
+          }
+        }
+
+        if (canCapture) q -= 30; // Opponent can immediately recapture — heavily penalise
+      }
+
+      placementQuality.set(key, q);
+    }
+  }
+
   moves.sort((a, b) => {
+    // Placement vs. regular move priority
     if (isPieceCountGame) {
       const aPlace = a.type === 'place' ? 1 : 0;
       const bPlace = b.type === 'place' ? 1 : 0;
-      if (aPlace !== bPlace) return bPlace - aPlace;
+      if (aPlace !== bPlace) return preferPlacement ? (bPlace - aPlace) : (aPlace - bPlace);
     }
+
+    // Among placement moves: rank by strategic quality (safe + threatening first)
+    if (a.type === 'place' && b.type === 'place') {
+      const qA = placementQuality.get(`${a.to.x},${a.to.y}`) ?? 0;
+      const qB = placementQuality.get(`${b.to.x},${b.to.y}`) ?? 0;
+      if (qA !== qB) return qB - qA;
+    }
+
     const targetA = posMap.get(`${a.to.x},${a.to.y}`);
     const targetB = posMap.get(`${b.to.x},${b.to.y}`);
 

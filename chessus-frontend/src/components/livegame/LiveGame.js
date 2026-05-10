@@ -248,6 +248,10 @@ const LiveGame = () => {
   const [showCapturedPieces, setShowCapturedPieces] = useState(true); // Show/hide captured pieces section
   const [showPlacementModal, setShowPlacementModal] = useState(false);
   const [placementTarget, setPlacementTarget] = useState(null); // {x, y} where user wants to place
+  // When true, placement uses left-click (fallback for mobile). Default: right-click.
+  const [placementUseLeftClick, setPlacementUseLeftClick] = useState(false);
+  // When false, squares restricted from piece placement are shaded red (default: shown).
+  const [hidePlacementRestrictions, setHidePlacementRestrictions] = useState(false);
   const [showGuestJoinModal, setShowGuestJoinModal] = useState(false);
   const [guestJoinName, setGuestJoinName] = useState('');
   const [isJoiningAsGuest, setIsJoiningAsGuest] = useState(false);
@@ -549,6 +553,37 @@ const LiveGame = () => {
       if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
     };
   }, []);
+
+  // Synchronous cleanup when gameId changes — clears stale board and game state
+  // immediately so pieces from the previous game never flash on the new board.
+  // This effect runs in source order BEFORE the async loadGame effect below,
+  // which means the board is blank during the async fetch.
+  useEffect(() => {
+    setGameState(null);
+    setError(null);
+    setGhostMoveIndex(null);
+    setBotThinking(false);
+    setMoveError(null);
+    setSelectedPiece(null);
+    setValidMoves([]);
+    setPreConfirmState(null);
+    setShowGameOver(false);
+    setGameOverData(null);
+    setDrawOfferSent(false);
+    setPendingDrawOffer(null);
+    setSimulSubmittedThisRound(false);
+    setSimulOpponentSubmitted(false);
+    setCheckedPieces([]);
+    setSpectators([]);
+    setSpecialSquares({ range: {}, promotion: {}, control: {}, special: {} });
+    setCaptureActionPieceId(null);
+    setCaptureActionData(null);
+    setInCheck(false);
+    initialPiecesRef.current = null;
+    serverTimesRef.current = {};
+    lastServerTickRef.current = null;
+    activeClockPlayerRef.current = null;
+  }, [gameId]);
 
   // Load game state on mount
   useEffect(() => {
@@ -3376,11 +3411,23 @@ const LiveGame = () => {
         setValidMoves([]);
       }
     } else {
-      // Check for piece placement action (Othello-style)
+      // Check for piece placement action (Othello-style) — only if left-click placement is enabled.
+      // By default placement is triggered via right-click; this left-click path is an opt-in for mobile.
       const otherData = gameState.otherGameData || {};
-      const canPlace = isMyTurn && otherData.place_pieces_action && !clickedPiece && 
+      const canPlace = placementUseLeftClick && isMyTurn && otherData.place_pieces_action && !clickedPiece && 
         (gameState.status === 'active' || gameState.status === 'ready');
       if (canPlace) {
+        // Check if the square is restricted to the other player only
+        const squareCfg = specialSquares?.special?.[`${y},${x}`];
+        const restrictTo = squareCfg?.restrictPiecePlacement ? (squareCfg.restrictPiecePlacementTo || 'all') : 'all';
+        const myPositionKey = `p${currentPlayer?.position}`;
+        const isRestrictedToOther = restrictTo === 'neutral' || (restrictTo !== 'all' && restrictTo !== myPositionKey);
+        if (isRestrictedToOther) {
+          showIllegalMoveWarning("You cannot place a piece on this square");
+          setSelectedPiece(null);
+          setValidMoves([]);
+          return;
+        }
         const placeablePieces = otherData.placeable_pieces || [];
         if (placeablePieces.length === 1) {
           // Single piece type — place directly without modal
@@ -3407,7 +3454,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, placementUseLeftClick, specialSquares]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Handle piece hover for movement helpers
@@ -4141,6 +4188,44 @@ const LiveGame = () => {
       return;
     }
 
+    // Piece placement via right-click (default mode; left-click mode handled in handleSquareClick)
+    if (!placementUseLeftClick && isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready')) {
+      const otherData = gameState.otherGameData || {};
+      if (otherData.place_pieces_action) {
+        const pieces = parsePieces(gameState.pieces || []);
+        const clickedPiece = findPieceAtSquare(pieces, x, y);
+        if (!clickedPiece) {
+          // Check if the square is restricted to the current player's placement
+          const squareKey = `${y},${x}`;
+          const squareCfg = specialSquares?.special?.[squareKey];
+          const restrictTo = squareCfg?.restrictPiecePlacement ? (squareCfg.restrictPiecePlacementTo || 'all') : 'all';
+          // 'neutral' blocks all players; 'p1'/'p2' blocks the other player
+          const myPositionKey = `p${currentPlayer?.position}`;
+          const isRestrictedToOther = restrictTo === 'neutral' || (restrictTo !== 'all' && restrictTo !== myPositionKey);
+          if (isRestrictedToOther) {
+            showIllegalMoveWarning("You cannot place a piece on this square");
+            rightClickDataRef.current = null;
+            return;
+          }
+          if (!isRestrictedToOther) {
+            const placeablePieces = otherData.placeable_pieces || [];
+            if (placeablePieces.length === 1) {
+              submitMove(parseInt(gameId), {
+                type: 'place',
+                to: { x, y },
+                placePieceId: placeablePieces[0].piece_id
+              });
+            } else if (placeablePieces.length > 1) {
+              setPlacementTarget({ x, y });
+              setShowPlacementModal(true);
+            }
+            rightClickDataRef.current = null;
+            return;
+          }
+        }
+      }
+    }
+
     // If a piece is selected and it's our turn, try to move to the right-clicked square
     const canMoveSelected = selectedPiece && isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
     if (canMoveSelected) {
@@ -4165,7 +4250,7 @@ const LiveGame = () => {
       setValidMoves([]);
     }
     rightClickDataRef.current = null;
-  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning]);
+  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning, placementUseLeftClick, currentPlayer, specialSquares, setPlacementTarget, setShowPlacementModal, canReachStepByStepRanged, setPremove, isRangedPathClear]);
 
   // Handle resign
   const handleResign = () => {
@@ -4579,6 +4664,15 @@ const LiveGame = () => {
         const sqCfg = specialSquares.special[`${gameY},${gameX}`];
         const isRestrictionZone = !!(sqCfg?.asRestrictionZone);
         const isImpassable = !!(sqCfg?.impassable);
+        // Placement restriction: square is restricted so the current player cannot place here
+        const isPlacementRestricted = !!(gameState?.otherGameData?.place_pieces_action && sqCfg?.restrictPiecePlacement && (() => {
+          const r = sqCfg.restrictPiecePlacementTo || 'all';
+          if (r === 'all') return false;
+          if (r === 'neutral') return true; // neutral blocks all players
+          const m = String(r).match(/^p(\d+)$/);
+          // r is the ALLOWED player — restricted if that player is NOT us
+          return m ? parseInt(m[1], 10) !== currentPlayer?.position : false;
+        })());
 
         // Ranged attack highlights
         const isRangedMove = !!rangedMove;
@@ -4656,6 +4750,7 @@ const LiveGame = () => {
               ${specialSquareType === 'control' ? styles["control-square"] : ''}
               ${specialSquareType === 'special' ? styles["special-square"] : ''}
               ${isRestrictionZone && !hideRestrictionZones && specialSquareType !== 'special' ? styles["restriction-zone-square"] : ''}
+              ${isPlacementRestricted && !hidePlacementRestrictions ? styles["placement-restricted-square"] : ''}
               ${isImpassable ? styles["impassable-square"] : ''}
               ${dotType ? styles["has-move-dot"] : ''}
               ${activeIsRanged ? styles["has-ranged-dot"] : ''}
@@ -5792,6 +5887,13 @@ const LiveGame = () => {
                 label="Hide restriction zones"
               />
             )}
+            {gameState?.otherGameData?.place_pieces_action && currentPlayer && (
+              <ToggleSwitch
+                checked={hidePlacementRestrictions}
+                onChange={(v) => setHidePlacementRestrictions(v)}
+                label="Hide placement restrictions"
+              />
+            )}
             <ToggleSwitch
               checked={showBoardNotation}
               onChange={(v) => setShowBoardNotation(v)}
@@ -5852,6 +5954,13 @@ const LiveGame = () => {
                   if (!v) setPendingMove(null);
                 }}
                 label="Confirm moves"
+              />
+            )}
+            {gameState?.otherGameData?.place_pieces_action && currentPlayer && (
+              <ToggleSwitch
+                checked={placementUseLeftClick}
+                onChange={(v) => setPlacementUseLeftClick(v)}
+                label="Place pieces with left click (mobile)"
               />
             )}
             </>)}
@@ -6286,6 +6395,13 @@ const LiveGame = () => {
               checked={hideRestrictionZones}
               onChange={(v) => setHideRestrictionZones(v)}
               label="Hide restriction zones"
+            />
+          )}
+          {gameState?.otherGameData?.place_pieces_action && currentPlayer && (
+            <ToggleSwitch
+              checked={hidePlacementRestrictions}
+              onChange={(v) => setHidePlacementRestrictions(v)}
+              label="Hide placement restrictions"
             />
           )}
           <ToggleSwitch

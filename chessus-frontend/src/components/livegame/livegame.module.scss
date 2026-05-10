@@ -2539,6 +2539,20 @@
     }
   }
 
+  &.placement-restricted-square {
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(200, 40, 40, 0.18);
+      pointer-events: none;
+      z-index: 1;
+    }
+  }
+
   &.impassable-square {
     // Solid border frame — slightly lighter gray, 80% opacity, same color on
     // all square colors. Thickness scales up at larger viewports.
