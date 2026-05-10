@@ -370,11 +370,9 @@ html {
   font-size: 16px;
 }
 
-/* Ensure buttons don't overflow containers on mobile */
+/* Ensure buttons never word-wrap */
 button, .btn, a.btn {
-  max-width: 100%;
-  word-wrap: break-word;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 /* Prevent horizontal scrolling on mobile */

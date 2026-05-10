@@ -355,11 +355,28 @@
   background: var(--bg-secondary, #0d1f14);
 }
 
+/* Shared size for all icon-buttons in the message input bar.
+   EmojiPickerButton and LinkInsertButton each render their own button;
+   we override their sizes here so all three are consistent. */
+.message-input-form {
+  :global(.emoji-picker-wrapper) button,
+  :global(.link-insert-wrapper) button:first-child {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 1.05rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+}
+
 /* Image attach button */
 .attach-btn {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -367,9 +384,10 @@
   border: 1px solid var(--border-medium, #2a8b5d);
   border-radius: 6px;
   color: var(--text-dim, #5a7a63);
-  font-size: 1rem;
+  font-size: 1.1rem;
   cursor: pointer;
   padding: 0;
+  line-height: 1;
 
   &:hover:not(:disabled) {
     background: var(--bg-hover, #142e1f);
@@ -546,7 +564,7 @@
 }
 
 .send-btn {
-  padding: 8px 20px;
+  padding: 8px 16px;
   background: var(--accent-primary, #4a9e5a);
   color: var(--text-heading);
   border: none;
@@ -554,6 +572,8 @@
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 
   &:hover:not(:disabled) {
     background: var(--accent-hover, #5ab56a);

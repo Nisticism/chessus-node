@@ -301,6 +301,7 @@
 
 .author-cell {
   text-align: left;
+  min-width: 140px;
 
   .forums-link {
     text-align: left;
@@ -342,7 +343,7 @@
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-dim);
-  max-width: 400px;
+  max-width: 300px;
 }
 
 .forum-title {

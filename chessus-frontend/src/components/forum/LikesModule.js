@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./likes-module.module.scss";
-import { AiOutlineLike } from "react-icons/ai";
-import { AiFillLike } from "react-icons/ai";
+import { AiOutlineHeart, AiFillHeart } from "react-icons/ai";
 import { newLike, deleteLike } from "../../actions/forums";
 
 const LikesModule = (props) => {
@@ -39,8 +38,8 @@ const LikesModule = (props) => {
       <div className={styles["likes-count"]}>{ currentForum.likes ? currentForum.likes.length : 0 }</div>
         { 
           currentForum.likes && currentForum.likes.filter((like) => like.user_id === props.userId).length === 0 ? 
-          <AiOutlineLike className={styles["likes"]} onClick={(event) => handleLike(event)}/>
-          : <AiFillLike className={styles["likes"]} onClick={(event) => handleDeleteLike(event)}/>
+          <AiOutlineHeart className={styles["likes"]} onClick={(event) => handleLike(event)}/>
+          : <AiFillHeart className={styles["likes"]} onClick={(event) => handleDeleteLike(event)}/>
         }
     </div>
   );

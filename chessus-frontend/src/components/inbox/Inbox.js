@@ -17,6 +17,7 @@ import { parseServerDate } from "../../helpers/date-formatter";
 import EmojiPickerButton from "../common/EmojiPickerButton";
 import LinkInsertButton from "../common/LinkInsertButton";
 import { renderContent } from "../../helpers/render-content";
+import { MdImage } from "react-icons/md";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
@@ -511,7 +512,7 @@ const Inbox = () => {
                   }
                   aria-label="Attach image"
                 >
-                  {uploadingImage ? "..." : "📎"}
+                  {uploadingImage ? "..." : <MdImage />}
                 </button>
                 <EmojiPickerButton
                   textareaRef={messageInputRef}
