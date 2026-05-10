@@ -49,7 +49,11 @@ export const SocketProvider = ({ children }) => {
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 10000,
-      transports: ['websocket', 'polling'], // Prefer websocket, fall back to polling
+      // Start with polling so the initial handshake works through VPNs, corporate
+      // proxies, and SSL-inspection firewalls that silently block WebSocket upgrades.
+      // Socket.io automatically upgrades to WebSocket after the polling handshake
+      // succeeds, so real-time performance is unaffected for users who support WS.
+      transports: ['polling', 'websocket'],
       withCredentials: true,
     });
 

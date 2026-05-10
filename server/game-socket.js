@@ -4951,10 +4951,15 @@ function initializeSocket(server) {
           }
         }
 
-        // Snapshot game state before the move so promotion cancel can fully revert it
-        const piecesBeforeMove = JSON.parse(JSON.stringify(gameState.pieces));
+        // Snapshot game state before the move so promotion cancel can fully revert it.
+        // Only deep-clone when the game actually has promotion capability — avoids an expensive
+        // JSON.stringify/parse of all pieces on every single move in non-promotion games.
+        const hasPromotion = !!(gameState.gameType?.promotion_condition) ||
+          (typeof gameState.gameType?.special_squares_string === 'string' &&
+            gameState.gameType.special_squares_string.includes('"asPromotion":true'));
+        const piecesBeforeMove = hasPromotion ? JSON.parse(JSON.stringify(gameState.pieces)) : null;
         const moveHistoryLengthBeforeMove = gameState.moveHistory.length;
-        const captureScoresBeforeMove = JSON.parse(JSON.stringify(gameState.captureScores || {}));
+        const captureScoresBeforeMove = hasPromotion ? JSON.parse(JSON.stringify(gameState.captureScores || {})) : null;
         const movesWithoutCaptureBeforeMove = gameState.movesWithoutCapture || 0;
 
         // Validate move (basic validation - full validation handled by game rules)

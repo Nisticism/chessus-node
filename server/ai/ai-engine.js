@@ -1903,7 +1903,7 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
   const lookback = Math.min(botMoveHistory.length, 6);
   for (let i = botMoveHistory.length - lookback; i < botMoveHistory.length; i++) {
     const m = botMoveHistory[i];
-    if (!m) continue;
+    if (!m || !m.from) continue; // placement moves have no `from`; skip them
     if (!recentBotPositions[m.pieceId]) recentBotPositions[m.pieceId] = [];
     recentBotPositions[m.pieceId].push({ x: m.from.x, y: m.from.y });
   }
@@ -1962,7 +1962,7 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
       }
 
       // Extra penalty for undoing the last move exactly (A→B then B→A)
-      if (lastBotMove && move.pieceId === lastBotMove.pieceId &&
+      if (lastBotMove && lastBotMove.from && move.pieceId === lastBotMove.pieceId &&
           move.to.x === lastBotMove.from.x && move.to.y === lastBotMove.from.y) {
         moveScore -= 30;
       }
