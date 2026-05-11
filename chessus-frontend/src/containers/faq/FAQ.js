@@ -113,6 +113,47 @@ const faqData = [
     ]
   },
   {
+    category: "Piece Values & Analysis",
+    questions: [
+      {
+        q: "What does the 'Approx. Value on 9×9' shown on a piece's detail page mean?",
+        a: "It is a simulation-based estimate of how powerful the piece is on a 9×9 board. The system places the piece at the center of an empty board, counts every square it can move to and every square it can attack (with higher weights for ranged attacks), then divides the total by 5.5 to produce a human-readable score. A standard rook scores roughly 5.0 as a reference point. The estimate is intentionally approximate — it cannot account for board position, opponent density, or the tactical context of a specific game variant."
+      },
+      {
+        q: "How are movement squares counted in the value estimate?",
+        a: "Every square the piece can reach through any movement type — directional, L-shaped (ratio/knight-style), step-by-step BFS, special scenario moves, or custom-defined squares — adds 1.0 to the internal score. Step-by-step movement squares add 1.2 instead of 1.0, because the ability to navigate around obstacles improves functional mobility beyond what a raw square count captures. The simulation runs on a fully empty board, so blocker pieces are not considered (hopping bonuses handle that separately)."
+      },
+      {
+        q: "How are attack squares counted?",
+        a: "Each square the piece can threaten adds to the internal score independently of movement: normal captures add 1.0 each, ranged attacks add 1.5 (reflecting their superior threat from a distance), and step-by-step attack squares also receive a ×1.2 bonus. First-move-only captures are halved to 0.5 since they are rarely available. When a square appears in both the move set and the attack set, each contribution is counted separately — a piece that can both move to and capture on the same square gets credit for both."
+      },
+      {
+        q: "What is the color-bound penalty?",
+        a: "If every square a piece can reach shares the same board color as its starting square — as a bishop does — it receives a ×0.7 penalty on that contribution, because it can never threaten half the board. The check compares each reachable square's parity against the center square's parity. A bishop lands on squares matching the center, so it is penalized. A knight always lands on the opposite parity from the center, so it is not penalized. Move and attack coverage are tested independently — a piece could be color-bound in its movement but not in its attacks."
+      },
+      {
+        q: "What is the directional coverage penalty?",
+        a: "A piece that cannot reach any square forward (above its starting position in the simulation) or any square backward (below it) receives a ×0.7 penalty, reflecting that strictly one-directional pieces are far easier to avoid. This check is based on what the piece can actually reach after all movement types have been processed — including custom squares and special scenario moves — so a piece with symmetric custom movement that covers both directions is correctly treated as bidirectional and not penalized."
+      },
+      {
+        q: "What global multipliers are applied to piece value?",
+        a: "After the base move and attack contributions are summed, several multipliers adjust the score in order: No attack ability at all ×0.6 (pure movement pieces are much weaker). Ghostwalk ×1.4 (can pass through blocking pieces). Cannot be captured ×1.6 (near-invincible pieces dominate). Can promote ×1.2. Dies on capture ×0.8. Hopping over both allied and enemy pieces ×1.15; one side only ×1.1. Attack or trample radius ×1.25 applied to the attack contribution (area damage is more effective per square). No forward movement or no backward movement ×0.7. HP degradation scales the value proportionally for pieces with hit points."
+      },
+      {
+        q: "How do special attack abilities affect the estimate?",
+        a: "Several wizard-configurable abilities add further multipliers on top of the global ones: multiple capture actions per turn add up to ×1.32 (×0.08 per extra action, capped at 4 extras); multiple ranged capture actions per turn add up to ×1.28 (×0.07 per extra); chain capture (checkers-style multi-hop) ×1.1; capture-on-hop ×1.1 (when hopping is enabled); fire-over allies or enemies for ranged pieces applies ×1.1 for one side or ×1.15 for both; the same scaling applies to hop-attack-over. A delay before the piece can move (min turns until movement) reduces the value by 10% per turn, down to a minimum multiplier of ×0.5."
+      },
+      {
+        q: "Is the piece value estimate used during live gameplay?",
+        a: "Yes. The server pre-computes piece values at game start using the actual board dimensions for that game variant. During play, the material balance display uses these values to show which player has an advantage in captured pieces — the difference is only shown when meaningful. The AI bot also uses piece values for move ordering (captures of high-value targets are searched first) and as part of its position evaluation function when deciding which moves to make."
+      },
+      {
+        q: "Why might the estimate seem lower than expected for my piece?",
+        a: "The most common causes are the directional coverage penalty (piece only moves in one direction), the color-bound penalty (piece is restricted to one board color), or having no attack squares at all (×0.6 multiplier). Pieces with step-by-step ranged attacks should show correctly — the system uses both the raw DB field (step_by_step_attack_value) and the computed live-game field interchangeably. If the value still seems off, remember the estimate is for a 9×9 empty board; the piece's true value in a specific game variant may differ significantly based on board size, starting position, and opponent piece composition."
+      }
+    ]
+  },
+  {
     category: "Account & Profile",
     questions: [
       {
