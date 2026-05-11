@@ -9785,7 +9785,7 @@ function computePieceValue(piece, bw, bh) {
     if (canHopAtkAllies || canHopAtkEnemies)
       internalValue *= (canHopAtkAllies && canHopAtkEnemies) ? 1.15 : 1.1;
   }
-  const minTurns = piece.min_turns_until_movement || 0;
+  const minTurns = piece.min_turns_per_move || piece.min_turns_until_movement || 0;
   if (minTurns > 0) internalValue *= Math.max(0.5, 1 - minTurns * 0.1);
 
   // No forward (up) OR no backward (down) directional movement/capture → ×0.7

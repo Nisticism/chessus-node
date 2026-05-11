@@ -850,7 +850,7 @@ function getPieceValue(piece, boardSize) {
     if (canHopAtkAllies || canHopAtkEnemies)
       internal *= (canHopAtkAllies && canHopAtkEnemies) ? 1.15 : 1.1;
   }
-  const minTurns = piece.min_turns_until_movement || 0;
+  const minTurns = piece.min_turns_per_move || piece.min_turns_until_movement || 0;
   if (minTurns > 0) internal *= Math.max(0.5, 1 - minTurns * 0.1);
 
   const hasRatioMove = r1 > 0 && r2 > 0;

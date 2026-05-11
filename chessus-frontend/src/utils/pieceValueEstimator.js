@@ -376,7 +376,8 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
       internal *= (canHopAtkAllies && canHopAtkEnemies) ? 1.15 : 1.1;
   }
   // Delay before piece can first move reduces effective value
-  const minTurns = piece.min_turns_until_movement || 0;
+  // DB column is min_turns_per_move; min_turns_until_movement is the wizard's internal state name.
+  const minTurns = piece.min_turns_per_move || piece.min_turns_until_movement || 0;
   if (minTurns > 0) internal *= Math.max(0.5, 1 - minTurns * 0.1);
 
   // Ratio movement (r1/r2 already resolved above) inherently covers both forward and
