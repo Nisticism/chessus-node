@@ -128,7 +128,13 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
         addAttack(key, 1.5);
       }
     }
-    const sar = piece.step_by_step_attack_range;
+    // step_by_step_attack_range is the remapped live-game field (computed in game-socket.js).
+    // Raw API/DB pieces have step_by_step_attack_value + step_by_step_attack_style instead.
+    const sarRaw = piece.step_by_step_attack_value;
+    const sar = piece.step_by_step_attack_range
+      ?? ((sarRaw != null && sarRaw !== 0)
+          ? (piece.step_by_step_attack_style ? -Math.abs(Number(sarRaw)) : Number(sarRaw))
+          : null);
     if (sar != null && sar !== 0) {
       const sarSteps = Math.abs(sar);
       const noDiag   = sar < 0;
