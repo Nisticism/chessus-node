@@ -4,6 +4,20 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 11, 2026",
+    title: "Twitch integration: link your channel, sign in with Twitch, live stream detection, admin stream monitoring",
+    items: [
+      "You can now sign in or create an account using your Twitch account. The Twitch sign-in button appears on the login page alongside Google and Lichess.",
+      "You can now add your Twitch channel username in your profile settings (Edit Account > Connected Accounts). Your channel will automatically appear in the Community Channels section on the Streams page.",
+      "The Streams page now shows a Live Now section at the top when any community member is streaming chess or a grid-based strategy game. Each live card shows the stream thumbnail, viewer count, stream title, and game category.",
+      "Live community streams are highlighted with a purple border and Live badge in the Community Channels section. Viewer counts and stream titles update automatically every 2 minutes.",
+      "Streams page redesigned: live streams appear first in a dedicated Live Now section; the Community Channels section shows all linked channels sorted live-first.",
+      "Admin dashboard: the Streams tab now shows all users who have linked a Twitch channel, their current live status, viewer count, and game category. Admins can remove a user's channel link if needed.",
+      "Twitch API credentials (Client ID and Secret) can be configured by the site owner from the Admin Dashboard > Settings tab, without needing to restart the server.",
+      "Fixed: in-game chat privacy is now enforced in match history. If either player kept chat private during the game, the chat will not be visible to anyone else in match history.",
+    ],
+  },
+  {
     date: "May 10, 2026",
     title: "Piece placement overhaul: right-click to place, placed pieces can now move, restricted-square shading; DM image attachments, emoji picker and custom links in messages",
     items: [

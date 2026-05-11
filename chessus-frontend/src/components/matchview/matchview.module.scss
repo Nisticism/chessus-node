@@ -614,6 +614,14 @@
   margin-left: 6px;
 }
 
+.chat-private-note {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  font-style: italic;
+  margin: 0;
+  padding: 10px 0;
+}
+
 /* Actions */
 .actions {
   display: flex;

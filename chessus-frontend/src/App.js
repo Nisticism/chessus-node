@@ -17,6 +17,7 @@ const ForgotPassword = lazy(() => import("./components/signin/ForgotPassword"));
 const ResetPassword = lazy(() => import("./components/signin/ResetPassword"));
 const Register = lazy(() => import("./components/register/Register"));
 const LichessCallback = lazy(() => import("./components/signin/LichessCallback"));
+const TwitchCallback = lazy(() => import("./components/signin/TwitchCallback"));
 const PlayerPage = lazy(() => import("./components/playerpage/PlayerPage"));
 const ProfileById = lazy(() => import("./components/playerpage/ProfileById"));
 const Pieces = lazy(() => import("./components/pieces/Pieces"));
@@ -176,6 +177,7 @@ function App() {
             <Route exact path="/reset-password/:token" element={<ResetPassword />} />
             <Route exact path="/register" element={<Register />} />
             <Route exact path="/auth/lichess/callback" element={<LichessCallback />} />
+            <Route exact path="/auth/twitch/callback" element={<TwitchCallback />} />
             <Route exact path="/profile" element={<PlayerPage />} />
             <Route exact path="/create/game" element={<GameCreate />} />
             <Route exact path="/create/game/edit/:gameId" element={<GameCreate />} />

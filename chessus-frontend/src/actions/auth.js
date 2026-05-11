@@ -68,9 +68,9 @@ export const getUser = (username) => async (dispatch) => {
   }
 };
 
-export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name, chess_com_username, lichess_username) => async (dispatch) => {
+export const edit = (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name, chess_com_username, lichess_username, twitch_channel) => async (dispatch) => {
   try {
-    const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name, chess_com_username, lichess_username);
+    const response = await AuthService.edit(current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name, chess_com_username, lichess_username, twitch_channel);
     if (!admin_id) {
       dispatch({
         type: EDIT_SUCCESS,
@@ -145,6 +145,27 @@ export const googleLogin = (credential) => async (dispatch) => {
 export const lichessLogin = (code, codeVerifier, redirectUri) => async (dispatch) => {
   try {
     const data = await AuthService.lichessLogin(code, codeVerifier, redirectUri);
+    dispatch({
+      type: LOGIN_SUCCESS,
+      payload: { user: data.result },
+    });
+    return Promise.resolve(data);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    dispatch({
+      type: LOGIN_FAIL,
+    });
+    dispatch({
+      type: SET_MESSAGE,
+      payload: message,
+    });
+    return Promise.reject();
+  }
+};
+
+export const twitchLogin = (code, redirectUri) => async (dispatch) => {
+  try {
+    const data = await AuthService.twitchLogin(code, redirectUri);
     dispatch({
       type: LOGIN_SUCCESS,
       payload: { user: data.result },

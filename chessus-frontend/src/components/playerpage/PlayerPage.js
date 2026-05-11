@@ -742,7 +742,7 @@ const PlayerPage = (props) => {
                 wrapperClassName={styles["info-card"]}
               />
 
-              {(playerPageUser?.chess_com_username || playerPageUser?.lichess_username) && (
+              {(playerPageUser?.chess_com_username || playerPageUser?.lichess_username || playerPageUser?.twitch_channel) && (
                 <div className={styles["info-card"]}>
                   <h2 className={styles["card-title"]}>Connected Accounts</h2>
                   <div className={styles["info-grid"]}>
@@ -771,6 +771,20 @@ const PlayerPage = (props) => {
                           style={{ wordBreak: 'break-all' }}
                         >
                           {playerPageUser.lichess_username}
+                        </a>
+                      </div>
+                    )}
+                    {playerPageUser?.twitch_channel && (
+                      <div className={styles["info-item"]}>
+                        <span className={styles["info-label"]}>Twitch</span>
+                        <a
+                          href={`https://twitch.tv/${encodeURIComponent(playerPageUser.twitch_channel)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles["info-value"]}
+                          style={{ wordBreak: 'break-all' }}
+                        >
+                          {playerPageUser.twitch_channel}
                         </a>
                       </div>
                     )}

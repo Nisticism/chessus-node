@@ -35,6 +35,7 @@ const EditAccount = (props) => {
   const [bio, setBio] = useState(currentUser && currentUser.bio ? currentUser.bio : "");
   const [chessComUsername, setChessComUsername] = useState(currentUser && currentUser.chess_com_username ? currentUser.chess_com_username : "");
   const [lichessUsername, setLichessUsername] = useState(currentUser && currentUser.lichess_username ? currentUser.lichess_username : "");
+  const [twitchChannel, setTwitchChannel] = useState(currentUser && currentUser.twitch_channel ? currentUser.twitch_channel : "");
   const [showDisplayName, setShowDisplayName] = useState(currentUser && currentUser.show_display_name ? true : false);
   const [profilePicture, setProfilePicture] = useState(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState(currentUser && currentUser.profile_picture ? currentUser.profile_picture : null);
@@ -216,6 +217,7 @@ const EditAccount = (props) => {
           setBio((res.data.result.bio ? res.data.result.bio : ""));
           setChessComUsername(res.data.result.chess_com_username || "");
           setLichessUsername(res.data.result.lichess_username || "");
+          setTwitchChannel(res.data.result.twitch_channel || "");
           setShowDisplayName(res.data.result.show_display_name ? true : false);
         }
       }
@@ -366,6 +368,10 @@ const EditAccount = (props) => {
     if (lichessUsername && lichessUsername.trim().length > 0 && !PROFILE_USERNAME_PATTERN.test(lichessUsername.trim())) {
       warnings.push("Lichess username can only contain letters, numbers, underscores, hyphens, and periods (max 50 chars).");
     }
+    const TWITCH_CHANNEL_PATTERN = /^[a-zA-Z0-9_]{1,25}$/;
+    if (twitchChannel && twitchChannel.trim().length > 0 && !TWITCH_CHANNEL_PATTERN.test(twitchChannel.trim())) {
+      warnings.push("Twitch channel name can only contain letters, numbers, and underscores (max 25 chars).");
+    }
     if (password && password.length > 0) {
       if (!oldPassword) warnings.push("Current password is required to change password.");
       if (password.length < 8) warnings.push("New password must be at least 8 characters.");
@@ -387,7 +393,7 @@ const EditAccount = (props) => {
     const adminEditTarget = userInfo || currentUser;
     const isAdminEditingSelf = !userInfo || userInfo.id === currentUser.id;
     if (isAdminOrOwner && !isAdminEditingSelf) {
-    dispatch(edit(adminEditTarget, username, password, email, firstName, lastName, bio, adminEditTarget.id, currentUser.id, null, showDisplayName, chessComUsername, lichessUsername))
+    dispatch(edit(adminEditTarget, username, password, email, firstName, lastName, bio, adminEditTarget.id, currentUser.id, null, showDisplayName, chessComUsername, lichessUsername, twitchChannel))
       .then(() => {
         console.log("user updated by adimn from the editaccount.js page")
         // Navigate to the edited user's profile with success state
@@ -408,7 +414,7 @@ const EditAccount = (props) => {
     }
     else {
       console.log(id);
-      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id, null, oldPassword, showDisplayName, chessComUsername, lichessUsername))
+      dispatch(edit(currentUser, username, password, email, firstName, lastName, bio, id, null, oldPassword, showDisplayName, chessComUsername, lichessUsername, twitchChannel))
         .then(() => {
           console.log("user updated from the editaccount.js page")
           // Clear password fields after successful update
@@ -550,6 +556,19 @@ const EditAccount = (props) => {
                       maxLength={50}
                       autoComplete="off"
                     />
+                  </div>
+                  <div className={styles["form-group-modern"]}>
+                    <label htmlFor="twitchChannel">Twitch Channel</label>
+                    <input
+                      type="text"
+                      name="twitch_channel"
+                      value={twitchChannel}
+                      onChange={(e) => setTwitchChannel(e.target.value)}
+                      placeholder="e.g. yourchannelname"
+                      maxLength={25}
+                      autoComplete="off"
+                    />
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Your channel will appear on the Streams page when you go live.</span>
                   </div>
                 </div>
               </div>

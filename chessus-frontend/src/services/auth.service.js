@@ -23,7 +23,7 @@ const updateUser = (updatedData) => {
   localStorage.setItem('user', JSON.stringify(user));
 }
 
-const edit = async (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name, chess_com_username, lichess_username) => {
+const edit = async (current_user, username, password, email, first_name, last_name, bio, id, admin_id, oldPassword, show_display_name, chess_com_username, lichess_username, twitch_channel) => {
   if (email === "") {
     email = null;
   }
@@ -51,6 +51,7 @@ const edit = async (current_user, username, password, email, first_name, last_na
   };
   if (chess_com_username !== undefined) payload.chess_com_username = chess_com_username;
   if (lichess_username !== undefined) payload.lichess_username = lichess_username;
+  if (twitch_channel !== undefined) payload.twitch_channel = twitch_channel;
 
   const response = await axios.post(API_URL + "profile/edit", payload);
   
@@ -191,6 +192,29 @@ const lichessLogin = async (code, codeVerifier, redirectUri) => {
   }
 };
 
+const twitchLogin = async (code, redirectUri) => {
+  try {
+    const response = await axios.post(API_URL + "auth/twitch", {
+      code,
+      redirectUri,
+    });
+    if (response && response.data && response.data.result) {
+      const result = response.data.result;
+      if (result && result.username) {
+        const userData = {
+          ...result,
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        };
+        localStorage.setItem("user", JSON.stringify(userData));
+      }
+      return response.data;
+    }
+  } catch (error) {
+    throw error;
+  }
+};
+
 // Request password reset email
 const forgotPassword = async (email) => {
   const response = await axios.post(API_URL + "forgot-password", { email });
@@ -216,6 +240,7 @@ const AuthService = {
   login,
   googleLogin,
   lichessLogin,
+  twitchLogin,
   logout,
   getCurrentUser,
   deleteUser,

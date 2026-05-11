@@ -2237,6 +2237,23 @@ const runMigrations = async () => {
     console.error('Error adding correspondence_days column to games:', err.message);
   }
 
+  // Add chat_is_public column to games table.
+  // Controls whether in-game chat is visible in match history.
+  // Defaults to 0 (private). Set to 1 only when both players explicitly opted
+  // into public spectator chat during the game. Existing games default to 0
+  // (private) since the original preference was never stored on the game record.
+  try {
+    if (!(await columnExists('games', 'chat_is_public'))) {
+      await runMigration(
+        "ALTER TABLE games ADD COLUMN chat_is_public TINYINT(1) NOT NULL DEFAULT 0",
+        "Add chat_is_public column to games table — controls match-history chat visibility"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding chat_is_public column to games:', err.message);
+  }
+
   // Create notifications table
   try {
     const notificationsExists = await tableExists('notifications');
@@ -2385,6 +2402,20 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error adding lichess_username column:', err.message);
+  }
+
+  // Add twitch_channel column to users table (for displaying Twitch stream on streams page)
+  try {
+    const twitchChannelCol = await columnExists('users', 'twitch_channel');
+    if (!twitchChannelCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN twitch_channel VARCHAR(50) DEFAULT NULL`,
+        "Add twitch_channel column to users table for linking Twitch stream"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding twitch_channel column:', err.message);
   }
 
   // Add created_at column to pieces table
@@ -3955,6 +3986,20 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error creating idx_articles_created_at:', err.message);
+  }
+
+  // Add twitch_id column to users for Twitch OAuth login
+  try {
+    const twitchIdCol = await columnExists('users', 'twitch_id');
+    if (!twitchIdCol) {
+      await runMigration(
+        `ALTER TABLE users ADD COLUMN twitch_id VARCHAR(50) DEFAULT NULL COMMENT 'Twitch numeric user ID for Twitch OAuth login'`,
+        "Add twitch_id column to users table for Twitch OAuth login"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding twitch_id column:', err.message);
   }
 };
 

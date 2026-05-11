@@ -5,7 +5,7 @@ import axios from "axios";
 import styles from "./matchview.module.scss";
 import API_URL from "../../global/global";
 import { colToFile, rowToRank, formatMoveNotation, replayToMove } from "../../helpers/pieceMovementUtils";
-
+import authHeader from "../../services/auth-header";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { parseServerDate } from "../../helpers/date-formatter";
 import { handlePieceImageError } from "../../utils/pieceFallback";
@@ -32,6 +32,7 @@ const MatchView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
+  const [chatIsPrivate, setChatIsPrivate] = useState(false);
   const [reviewMoveIndex, setReviewMoveIndex] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -69,8 +70,9 @@ const MatchView = () => {
 
   const fetchChatHistory = async () => {
     try {
-      const response = await axios.get(`${API_URL}games/${gameId}/chat`);
+      const response = await axios.get(`${API_URL}games/${gameId}/chat`, { headers: authHeader() });
       setChatHistory(response.data.messages || []);
+      setChatIsPrivate(!!response.data.chatIsPrivate);
     } catch (err) {
       // Chat history is optional, don't show error
     }
@@ -694,9 +696,9 @@ const MatchView = () => {
         )}
 
         {/* Chat History */}
-        {chatHistory.length > 0 && (
+        {chatHistory.length > 0 ? (
           <div className={styles["chat-history"]}>
-            <h3>💬 Game Chat</h3>
+            <h3>Game Chat</h3>
             <div className={styles["chat-history-list"]}>
               {chatHistory.map((msg, idx) => (
                 <div key={msg.id || idx} className={styles["chat-history-msg"]}>
@@ -709,7 +711,12 @@ const MatchView = () => {
               ))}
             </div>
           </div>
-        )}
+        ) : chatIsPrivate && isUserInGame && !currentUser ? (
+          <div className={styles["chat-history"]}>
+            <h3>Game Chat</h3>
+            <p className={styles["chat-private-note"]}>Log in to view this private game chat.</p>
+          </div>
+        ) : null}
 
         {/* Actions */}
         <div className={styles["actions"]}>

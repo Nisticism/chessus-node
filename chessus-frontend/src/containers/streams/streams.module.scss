@@ -300,6 +300,467 @@
   }
 }
 
+.streaming-info-link {
+  color: var(--text-info);
+  text-decoration: none;
+  font-weight: 600;
+
+  &:hover {
+    color: var(--accent-vivid, var(--accent-primary-text));
+  }
+}
+
+// Community Streams Section
+.community-streams-section {
+  margin-bottom: 50px;
+}
+
+.community-streams-title {
+  font-size: 2rem;
+  color: var(--accent-vivid, var(--accent-primary-text));
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.community-streams-subtitle {
+  color: var(--text-dim);
+  font-size: 1rem;
+  margin-bottom: 25px;
+}
+
+.community-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.community-card {
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+  &:hover {
+    transform: translateY(-4px);
+    border-color: var(--border-bright);
+    box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.2);
+  }
+}
+
+.community-card-live {
+  border-color: #6441a5; // Twitch purple
+}
+
+.community-card-top {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%; // 16:9
+  background: #18181b; // Twitch dark bg
+  overflow: hidden;
+}
+
+.community-thumbnail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.community-thumbnail-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6441a5;
+}
+
+.twitch-icon {
+  width: 48px;
+  height: 48px;
+  opacity: 0.6;
+}
+
+.community-card-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.community-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.community-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid var(--panel-card-border);
+}
+
+.community-avatar-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--button-primary-bg), var(--button-primary-hover));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text-heading);
+  flex-shrink: 0;
+}
+
+.community-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.community-username {
+  color: var(--text-heading);
+  font-weight: 600;
+  font-size: 1rem;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &:hover {
+    color: var(--accent-vivid, var(--accent-primary-text));
+  }
+}
+
+.community-status-live {
+  font-size: 0.82rem;
+  color: #ff4444;
+  font-weight: 600;
+}
+
+.community-status-offline {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+.community-stream-title {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
+}
+
+.community-game-name {
+  font-size: 0.82rem;
+  color: var(--text-info);
+  margin: 0;
+  font-weight: 500;
+}
+
+.community-watch-btn {
+  display: block;
+  text-align: center;
+  padding: 9px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  background: linear-gradient(135deg, var(--border-medium) 0%, var(--panel-bg-end) 100%);
+  color: var(--text-heading);
+  border: 2px solid var(--panel-card-border);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+  margin-top: 4px;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-bright);
+  }
+}
+
+.community-watch-btn-live {
+  background: linear-gradient(135deg, #6441a5 0%, #4b2d87 100%);
+  border-color: #7d5bbe;
+  color: #fff;
+
+  &:hover {
+    border-color: #9b6eff;
+  }
+}
+
+// ── Live Now section ─────────────────────────────────────────────────────────
+
+.live-section {
+  margin-bottom: 50px;
+}
+
+.section-heading {
+  margin-bottom: 24px;
+}
+
+.live-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px 6px 14px;
+  background: rgba(255, 68, 68, 0.12);
+  border: 2px solid rgba(255, 68, 68, 0.4);
+  border-radius: 10px;
+  color: #ff4444;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+
+  .pulse-dot {
+    width: 10px;
+    height: 10px;
+    background-color: #ff4444;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+    flex-shrink: 0;
+  }
+}
+
+.live-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 24px;
+}
+
+.live-card {
+  display: block;
+  text-decoration: none;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid #6441a5;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+
+  &:hover {
+    transform: translateY(-5px);
+    border-color: #9b6eff;
+    box-shadow: 0 10px 30px rgba(100, 65, 165, 0.4);
+  }
+}
+
+.live-card-thumb {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  background: #18181b;
+  overflow: hidden;
+}
+
+.thumb-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6441a5;
+}
+
+.live-card-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  background: #ff4444;
+  color: #fff;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+
+  .pulse-dot {
+    width: 7px;
+    height: 7px;
+    background-color: #fff;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+}
+
+.viewer-pill {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.live-card-body {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.live-card-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-card-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid #6441a5;
+}
+
+.live-card-avatar-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6441a5, #4b2d87);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.live-card-username {
+  display: block;
+  color: var(--text-heading);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.live-card-channel {
+  display: block;
+  color: #9b6eff;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.live-card-title {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
+}
+
+.live-card-game {
+  color: var(--text-info);
+  font-size: 0.82rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+// Community live badge (positioned over thumbnail)
+.community-live-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: #ff4444;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    background-color: #fff;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+}
+
+// Empty state for no community channels
+.no-channels {
+  text-align: center;
+  padding: 60px 20px;
+  margin-bottom: 40px;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
+  border-radius: 8px;
+  color: var(--text-dim);
+
+  h3 {
+    font-size: 1.5rem;
+    color: var(--text-heading);
+    margin: 16px 0 8px;
+  }
+
+  p {
+    font-size: 1rem;
+    max-width: 420px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+}
+
+.no-channels-icon {
+  display: flex;
+  justify-content: center;
+}
+
+.twitch-icon-lg {
+  width: 64px;
+  height: 64px;
+  color: #6441a5;
+  opacity: 0.5;
+}
+
+  &:hover {
+    border-color: #9b7fd4;
+  }
+}
+
 @media (max-width: 768px) {
   .streams-container {
     padding: 20px 10px;
@@ -319,6 +780,10 @@
   }
 
   .streams-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .community-grid {
     grid-template-columns: 1fr;
   }
 

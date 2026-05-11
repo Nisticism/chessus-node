@@ -65,21 +65,9 @@ const AdminDashboard = () => {
   const [availableGames, setAvailableGames] = useState([]);
   const [featuredLoading, setFeaturedLoading] = useState(false);
 
-  // Stream creation states
-  const [showStreamModal, setShowStreamModal] = useState(false);
-  const [streamFormData, setStreamFormData] = useState({
-    title: '',
-    streamer_name: '',
-    description: '',
-    stream_url: '',
-    thumbnail_url: '',
-    category: 'other',
-    platform: 'other',
-    is_live: false,
-    is_featured: false,
-    viewer_count: 0,
-    game_name: ''
-  });
+  // Community stream channels state (user-registered Twitch channels)
+  const [adminUserStreams, setAdminUserStreams] = useState([]);
+  const [adminUserStreamsLoading, setAdminUserStreamsLoading] = useState(false);
 
   // Site settings state
   const [siteSettings, setSiteSettings] = useState({});
@@ -87,6 +75,11 @@ const AdminDashboard = () => {
   // Draft state for the editable forum-invite text (so admins can type without saving on every keystroke)
   const [forumInviteDraft, setForumInviteDraft] = useState('');
   const [savingForumInvite, setSavingForumInvite] = useState(false);
+  const [twitchClientIdDraft, setTwitchClientIdDraft] = useState('');
+  const [twitchClientSecretDraft, setTwitchClientSecretDraft] = useState('');
+  const [savingTwitchCreds, setSavingTwitchCreds] = useState(false);
+  const [twitchCredsSaved, setTwitchCredsSaved] = useState(false);
+  const [twitchCredsError, setTwitchCredsError] = useState('');
   // About Us editor state — drafts are local until "Save" is clicked.
   // Mission is plain text (paragraphs separated by blank lines). Team is
   // a JSON array of { username, profile_link, role, contribution,
@@ -653,11 +646,12 @@ const AdminDashboard = () => {
     // this there is a one-render flash of "No X found" between the tab click
     // and the moment the fetch sets loading = true.
     const loadingTabs = new Set([
-      'users', 'pieces', 'games', 'drafts', 'forums', 'news', 'streams',
+      'users', 'pieces', 'games', 'drafts', 'forums', 'news',
       'anonymous-games', 'private-games', 'deleted-users',
     ]);
     if (loadingTabs.has(tab)) setLoading(true);
     if (tab === 'poll') fetchPolls();
+    if (tab === 'streams') fetchAdminUserStreams();
   };
 
   const handlePageChange = (newPage) => {
@@ -1750,93 +1744,28 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const handleCreateStream = () => {
-    setStreamFormData({
-      title: '',
-      streamer_name: '',
-      description: '',
-      stream_url: '',
-      thumbnail_url: '',
-      category: 'other',
-      platform: 'other',
-      is_live: false,
-      is_featured: false,
-      viewer_count: 0,
-      game_name: ''
-    });
-    setShowStreamModal(true);
-  };
-
-  const handleStreamFormChange = (field, value) => {
-    setStreamFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleSaveStream = async () => {
+  const fetchAdminUserStreams = async () => {
+    setAdminUserStreamsLoading(true);
     try {
-      if (!streamFormData.title || !streamFormData.streamer_name || !streamFormData.stream_url) {
-        setAlertMessage("Title, streamer name, and stream URL are required");
-        setAlertType('error');
-        setShowAlert(true);
-        return;
-      }
-
-      await axios.post(
-        `${API_URL}admin/streams`,
-        streamFormData,
-        { headers: authHeader() }
-      );
-
-      setAlertMessage("Stream created successfully");
-      setAlertType('success');
-      setShowAlert(true);
-      setShowStreamModal(false);
-      fetchData('streams', pagination.page);
-    } catch (error) {
-      console.error("Error creating stream:", error);
-      setAlertMessage("Failed to create stream: " + (error.response?.data?.message || error.message));
-      setAlertType('error');
-      setShowAlert(true);
+      const res = await axios.get(`${API_URL}user-streams`);
+      setAdminUserStreams(res.data || []);
+    } catch (err) {
+      console.error('Error fetching community streams:', err);
+    } finally {
+      setAdminUserStreamsLoading(false);
     }
   };
 
-  const handleToggleLive = async (stream) => {
+  const handleRemoveUserTwitchChannel = async (userId, username) => {
+    if (!window.confirm(`Remove Twitch channel link for ${username}? They can re-add it from their profile settings.`)) return;
     try {
-      await axios.post(
-        `${API_URL}admin/streams/${stream.id}/toggle-live`,
-        {},
-        { headers: authHeader() }
-      );
-
-      setAlertMessage(`Stream is now ${!stream.is_live ? 'live' : 'offline'}`);
+      await axios.delete(`${API_URL}admin/user-twitch-channel/${userId}`, { headers: authHeader() });
+      setAdminUserStreams(prev => prev.filter(u => u.user_id !== userId));
+      setAlertMessage(`Twitch channel removed for ${username}`);
       setAlertType('success');
       setShowAlert(true);
-      fetchData('streams', pagination.page);
-    } catch (error) {
-      console.error("Error toggling stream status:", error);
-      setAlertMessage("Failed to toggle stream status");
-      setAlertType('error');
-      setShowAlert(true);
-    }
-  };
-
-  const handleDeleteStream = async (stream) => {
-    if (!window.confirm(`Are you sure you want to delete the stream "${stream.title}"?`)) {
-      return;
-    }
-
-    try {
-      await axios.delete(
-        `${API_URL}admin/streams/${stream.id}`,
-        { headers: authHeader() }
-      );
-
-      setAlertMessage("Stream deleted successfully");
-      setAlertType('success');
-      setShowAlert(true);
-      fetchData('streams', pagination.page);
-    } catch (error) {
-      console.error("Error deleting stream:", error);
-      setAlertMessage("Failed to delete stream");
+    } catch (err) {
+      setAlertMessage('Failed to remove channel: ' + (err.response?.data?.message || err.message));
       setAlertType('error');
       setShowAlert(true);
     }
@@ -3132,72 +3061,71 @@ const AdminDashboard = () => {
 
   const renderStreamsTab = () => (
     <div className={styles["table-container"]}>
-      <div className={styles["table-header"]} style={{ marginBottom: '15px' }}>
-        <StandardButton onClick={handleCreateStream} buttonText="Add New Stream" />
+      <div className={styles["table-header"]} style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+          Users manage their own Twitch channel from their profile settings. This view shows all registered channels and their current live status.
+        </span>
+        <button
+          className={styles["edit-btn"]}
+          style={{ whiteSpace: 'nowrap' }}
+          onClick={fetchAdminUserStreams}
+          disabled={adminUserStreamsLoading}
+        >
+          {adminUserStreamsLoading ? 'Refreshing...' : 'Refresh Status'}
+        </button>
       </div>
       <table className={styles["data-table"]}>
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Title</th>
-            <th>Streamer</th>
-            <th>Platform</th>
-            <th>Category</th>
+            <th>User</th>
+            <th>Twitch Channel</th>
             <th>Status</th>
             <th>Viewers</th>
+            <th>Category</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {!data || data.length === 0 ? (
+          {adminUserStreamsLoading ? (
+            <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>Loading...</td></tr>
+          ) : adminUserStreams.length === 0 ? (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
-                {!data ? 'Loading...' : 'No streams found. Click "Add New Stream" to create one.'}
+              <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
+                No users have linked a Twitch channel yet. Users add their channel from{' '}
+                <strong>Profile &rarr; Edit Account &rarr; Connected Accounts</strong>.
               </td>
             </tr>
           ) : (
-            data.map(stream => (
-              <tr key={stream.id}>
-                <td>{stream.id}</td>
-                <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {stream.title}
+            adminUserStreams.map(u => (
+              <tr key={u.user_id}>
+                <td>
+                  <a href={`/profile/${u.username}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--link-color)' }}>
+                    {u.username}
+                  </a>
                 </td>
-                <td>{stream.streamer_name}</td>
-                <td style={{ textTransform: 'capitalize' }}>{stream.platform}</td>
-                <td style={{ textTransform: 'capitalize' }}>{stream.category}</td>
+                <td>
+                  <a href={`https://twitch.tv/${u.twitch_channel}`} target="_blank" rel="noopener noreferrer" style={{ color: '#6441a5' }}>
+                    {u.twitch_channel}
+                  </a>
+                </td>
                 <td>
                   <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    padding: '4px 10px',
-                    borderRadius: '12px',
-                    fontSize: '0.85rem',
-                    fontWeight: '600',
-                    background: stream.is_live ? '#22c55e' : '#64748b',
-                    color: '#fff'
+                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    padding: '4px 10px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: '600',
+                    background: u.is_live ? '#22c55e' : '#64748b', color: '#fff'
                   }}>
-                    {stream.is_live ? '● LIVE' : 'Offline'}
+                    {u.is_live ? '\u25CF LIVE' : 'Offline'}
                   </span>
                 </td>
-                <td>{stream.viewer_count || 0}</td>
+                <td>{u.is_live ? (u.viewer_count || 0) : '—'}</td>
+                <td>{u.is_live ? (u.game_name || '—') : '—'}</td>
                 <td>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button className={styles["edit-btn"]} onClick={() => handleEdit(stream)}>Edit</button>
-                    <button 
-                      className={styles["edit-btn"]} 
-                      style={{ background: stream.is_live ? '#64748b' : '#22c55e' }}
-                      onClick={() => handleToggleLive(stream)}
-                    >
-                      {stream.is_live ? 'Go Offline' : 'Go Live'}
-                    </button>
-                    <button 
-                      className={styles["ban-btn"]} 
-                      onClick={() => handleDeleteStream(stream)}
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  <button
+                    className={styles["ban-btn"]}
+                    onClick={() => handleRemoveUserTwitchChannel(u.user_id, u.username)}
+                  >
+                    Remove Channel
+                  </button>
                 </td>
               </tr>
             ))
@@ -3207,128 +3135,6 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const renderStreamModal = () => {
-    if (!showStreamModal) return null;
-
-    return (
-      <div className={styles["modal-overlay"]} onClick={() => setShowStreamModal(false)}>
-        <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-          <h2>Add New Stream</h2>
-          
-          <div className={styles["form-group"]}>
-            <label>Title <span style={{ color: 'red' }}>*</span></label>
-            <input
-              type="text"
-              value={streamFormData.title}
-              onChange={(e) => handleStreamFormChange('title', e.target.value)}
-              placeholder="Stream title..."
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
-            />
-          </div>
-
-          <div className={styles["form-group"]}>
-            <label>Streamer Name <span style={{ color: 'red' }}>*</span></label>
-            <input
-              type="text"
-              value={streamFormData.streamer_name}
-              onChange={(e) => handleStreamFormChange('streamer_name', e.target.value)}
-              placeholder="Streamer name..."
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
-            />
-          </div>
-
-          <div className={styles["form-group"]}>
-            <label>Stream URL <span style={{ color: 'red' }}>*</span></label>
-            <input
-              type="url"
-              value={streamFormData.stream_url}
-              onChange={(e) => handleStreamFormChange('stream_url', e.target.value)}
-              placeholder="https://twitch.tv/username or YouTube URL..."
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
-            />
-          </div>
-
-          <div className={styles["form-group"]}>
-            <label>Thumbnail URL</label>
-            <input
-              type="url"
-              value={streamFormData.thumbnail_url}
-              onChange={(e) => handleStreamFormChange('thumbnail_url', e.target.value)}
-              placeholder="https://example.com/thumbnail.jpg"
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-            <div className={styles["form-group"]}>
-              <label>Platform</label>
-              <select
-                value={streamFormData.platform}
-                onChange={(e) => handleStreamFormChange('platform', e.target.value)}
-                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
-              >
-                <option value="twitch">Twitch</option>
-                <option value="youtube">YouTube</option>
-                <option value="kick">Kick</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-
-            <div className={styles["form-group"]}>
-              <label>Category</label>
-              <select
-                value={streamFormData.category}
-                onChange={(e) => handleStreamFormChange('category', e.target.value)}
-                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
-              >
-                <option value="tournament">Tournament</option>
-                <option value="tutorial">Tutorial</option>
-                <option value="casual">Casual</option>
-                <option value="community">Community</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-          </div>
-
-          <div className={styles["form-group"]}>
-            <label>Game Name</label>
-            <input
-              type="text"
-              value={streamFormData.game_name}
-              onChange={(e) => handleStreamFormChange('game_name', e.target.value)}
-              placeholder="Name of the game being played..."
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
-            />
-          </div>
-
-          <div className={styles["form-group"]}>
-            <label>Description</label>
-            <textarea
-              value={streamFormData.description}
-              onChange={(e) => handleStreamFormChange('description', e.target.value)}
-              placeholder="Stream description..."
-              rows="3"
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '20px', marginTop: '10px' }}>
-            <ToggleSwitch checked={streamFormData.is_live} onChange={(v) => handleStreamFormChange('is_live', v)} label="Start as Live" />
-            <ToggleSwitch checked={streamFormData.is_featured} onChange={(v) => handleStreamFormChange('is_featured', v)} label="Featured" />
-          </div>
-
-          <div className={styles["modal-footer"]}>
-            <button className={styles["cancel-btn"]} onClick={() => setShowStreamModal(false)}>
-              Cancel
-            </button>
-            <button className={styles["save-btn"]} onClick={handleSaveStream}>
-              Add Stream
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   const renderEditModal = () => {
     if (!showEditModal || !editingItem) return null;
@@ -3785,6 +3591,82 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
+                {currentUser?.role?.toLowerCase() === 'owner' && (
+                  <>
+                    <h3 style={{ marginTop: '2rem' }}>Twitch Integration</h3>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                      Enter your Twitch application credentials to enable live stream detection on the Streams page.
+                      Get these from{' '}
+                      <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noopener noreferrer">dev.twitch.tv/console/apps</a>.
+                      Leave a field blank to keep the existing value.
+                    </p>
+                    <div className={styles["setting-textarea-row"]}>
+                      <div className={styles["setting-info"]}>
+                        <span className={styles["setting-label"]}>Client ID</span>
+                        <span className={styles["setting-desc"]}>The Client ID from your Twitch developer application</span>
+                      </div>
+                      <input
+                        type="password"
+                        className={styles["setting-input"] || undefined}
+                        style={{ width: '100%', padding: '0.5rem', background: 'var(--input-bg)', border: '1px solid var(--panel-card-border)', borderRadius: '4px', color: 'var(--text-primary)', fontFamily: 'monospace' }}
+                        value={twitchClientIdDraft}
+                        onChange={(e) => { setTwitchClientIdDraft(e.target.value); setTwitchCredsSaved(false); setTwitchCredsError(''); }}
+                        placeholder="Paste new Client ID (leave blank to keep current)"
+                        autoComplete="off"
+                        maxLength={100}
+                      />
+                    </div>
+                    <div className={styles["setting-textarea-row"]} style={{ marginTop: '0.75rem' }}>
+                      <div className={styles["setting-info"]}>
+                        <span className={styles["setting-label"]}>Client Secret</span>
+                        <span className={styles["setting-desc"]}>The Client Secret from your Twitch developer application</span>
+                      </div>
+                      <input
+                        type="password"
+                        className={styles["setting-input"] || undefined}
+                        style={{ width: '100%', padding: '0.5rem', background: 'var(--input-bg)', border: '1px solid var(--panel-card-border)', borderRadius: '4px', color: 'var(--text-primary)', fontFamily: 'monospace' }}
+                        value={twitchClientSecretDraft}
+                        onChange={(e) => { setTwitchClientSecretDraft(e.target.value); setTwitchCredsSaved(false); setTwitchCredsError(''); }}
+                        placeholder="Paste new Client Secret (leave blank to keep current)"
+                        autoComplete="off"
+                        maxLength={100}
+                      />
+                    </div>
+                    {twitchCredsError && (
+                      <p style={{ color: 'var(--error-color, #e05c5c)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{twitchCredsError}</p>
+                    )}
+                    {twitchCredsSaved && (
+                      <p style={{ color: 'var(--success-color, #4caf50)', fontSize: '0.85rem', marginTop: '0.5rem' }}>Credentials saved. Cache cleared — live status will refresh on the next poll.</p>
+                    )}
+                    <div className={styles["setting-textarea-actions"]}>
+                      <button
+                        className={styles["setting-save-button"]}
+                        disabled={savingTwitchCreds || (!twitchClientIdDraft.trim() && !twitchClientSecretDraft.trim())}
+                        onClick={async () => {
+                          setSavingTwitchCreds(true);
+                          setTwitchCredsError('');
+                          setTwitchCredsSaved(false);
+                          try {
+                            const payload = {};
+                            if (twitchClientIdDraft.trim()) payload.client_id = twitchClientIdDraft.trim();
+                            if (twitchClientSecretDraft.trim()) payload.client_secret = twitchClientSecretDraft.trim();
+                            await axios.put(`${API_URL}admin/twitch-credentials`, payload, { headers: authHeader() });
+                            setTwitchClientIdDraft('');
+                            setTwitchClientSecretDraft('');
+                            setTwitchCredsSaved(true);
+                          } catch (err) {
+                            setTwitchCredsError(err?.response?.data?.message || 'Failed to save credentials.');
+                          } finally {
+                            setSavingTwitchCreds(false);
+                          }
+                        }}
+                      >
+                        {savingTwitchCreds ? 'Saving...' : 'Save Twitch Credentials'}
+                      </button>
+                    </div>
+                  </>
+                )}
+
                 <h3 style={{ marginTop: '2rem' }}>Game Session Limits</h3>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
                   Maximum simultaneous games per user. Users already over the limit when it is lowered can finish their existing games.
@@ -4138,7 +4020,6 @@ const AdminDashboard = () => {
               </div>
             )}
             {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && activeTab !== "server-stats" && activeTab !== "moderation" && activeTab !== "user-growth" && renderPagination()}
-            {activeTab === "streams" && renderPagination()}
           </>
         )}
       </div>
@@ -4146,7 +4027,6 @@ const AdminDashboard = () => {
       {renderEditModal()}
       {renderBanModal()}
       {renderDonorModal()}
-      {renderStreamModal()}
       {renderDraftDetailModal()}
       {showDeleteConfirm && pendingDeleteUser && (
         <ConfirmDeleteModal

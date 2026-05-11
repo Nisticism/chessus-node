@@ -67,10 +67,10 @@ const createUser = async (username, hashedPassword, email) => {
  * @returns {Promise<Object>} Result of update
  */
 const updateUser = async (userData, id) => {
-  const { username, password, email, first_name, last_name, bio, show_display_name, chess_com_username, lichess_username } = userData;
+  const { username, password, email, first_name, last_name, bio, show_display_name, chess_com_username, lichess_username, twitch_channel } = userData;
 
   // Build SET clause dynamically: only include fields that were provided.
-  // For chess_com_username and lichess_username, undefined = preserve, anything else (including null/empty) = overwrite.
+  // For chess_com_username, lichess_username, and twitch_channel, undefined = preserve, anything else (including null/empty) = overwrite.
   const sets = [];
   const params = [];
 
@@ -90,6 +90,10 @@ const updateUser = async (userData, id) => {
   if (lichess_username !== undefined) {
     sets.push("lichess_username = ?");
     params.push(lichess_username || null);
+  }
+  if (twitch_channel !== undefined) {
+    sets.push("twitch_channel = ?");
+    params.push(twitch_channel || null);
   }
 
   params.push(id);

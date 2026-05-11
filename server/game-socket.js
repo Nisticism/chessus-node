@@ -444,6 +444,21 @@ function broadcastGameOver(io, gameId, gameState, payload) {
   // Bound memory: drop the marker after 10 minutes (long enough for any
   // duplicate-call window to close, short enough to not leak forever).
   setTimeout(() => _gameOverBroadcasted.delete(key), 10 * 60 * 1000);
+  // Persist whether chat was public so match-history respects the players'
+  // privacy preference. Both players must have explicitly opted in for chat
+  // to be considered public; otherwise it stays private (default 0).
+  try {
+    const isChatPublic = !!(
+      gameState?.chatPublic &&
+      Array.isArray(gameState?.players) &&
+      gameState.players.length === 2 &&
+      gameState.players.every(p => gameState.chatPublic[p.id])
+    );
+    db_pool.query(
+      'UPDATE games SET chat_is_public = ? WHERE id = ?',
+      [isChatPublic ? 1 : 0, gameId]
+    ).catch(e => console.error('[chat] Failed to persist chat_is_public:', e.message));
+  } catch (_) {}
   // Record adaptive bot games to the opening book for self-improvement.
   if (gameState?.botPlayer?.difficulty === 'adaptive' && !gameState?.gameType?.simultaneous_turns) {
     const gtid = gameState?.gameTypeId
@@ -2498,6 +2513,10 @@ function initializeSocket(server) {
   
   // Global error handler for socket.io engine
   io.engine.on("connection_error", (err) => {
+    // Code 1 = "Session ID unknown" — happens when a client reconnects with
+    // a stale sid from before a server restart. The client immediately opens
+    // a fresh connection, so this is harmless noise; skip logging it.
+    if (err.code === 1) return;
     console.error("Socket.io engine connection error:", {
       code: err.code,
       message: err.message,
@@ -4355,18 +4374,23 @@ function initializeSocket(server) {
         }
 
         // Check if this is a challenge game and if user is allowed to join
-        if (gameState.isChallenge && gameState.challengedUserId !== userId) {
+        if (gameState.isChallenge && String(gameState.challengedUserId) !== String(userId)) {
           return socket.emit("error", { message: "This is a private challenge. Only the challenged player can join." });
+        }
+
+        // If user is already in the game (e.g. they accepted the challenge but missed
+        // the playerJoined event due to a racing error), re-emit playerJoined to just
+        // this socket so the client can navigate without a full page reload.
+        const isAlreadyPlayer = gameState.players.some(p => String(p.id) === String(userId));
+        if (isAlreadyPlayer) {
+          socket.join(`game-${gameId}`);
+          socket.emit("playerJoined", { gameId, gameState, newPlayer: { id: userId, username } });
+          return;
         }
 
         // Check if game is full
         if (gameState.players.length >= 2) {
           return socket.emit("error", { message: "Game is full" });
-        }
-
-        // Check if user is already in the game
-        if (gameState.players.some(p => p.id === userId)) {
-          return socket.emit("error", { message: "You are already in this game" });
         }
 
         // --- Game session limit enforcement for the joiner ---

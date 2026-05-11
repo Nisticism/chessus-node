@@ -4738,7 +4738,7 @@ app.post("/api/register", registerLimiter, async (req, res) => {
 
 app.post("/api/profile/edit", authenticateToken, async (req, res) => {
   try {
-    const { username, current_user, password, oldPassword, bio, email, first_name, last_name, id, show_display_name, chess_com_username, lichess_username } = req.body;
+    const { username, current_user, password, oldPassword, bio, email, first_name, last_name, id, show_display_name, chess_com_username, lichess_username, twitch_channel } = req.body;
     const logged_in_username = current_user.username;
     const logged_in_email = current_user.email;
     const requesterRole = req.user.role?.toLowerCase();
@@ -4844,6 +4844,16 @@ app.post("/api/profile/edit", authenticateToken, async (req, res) => {
         return res.status(400).send({ message: "Lichess username can only contain letters, numbers, underscores, hyphens, and periods (max 50 chars)." });
       }
       updatedUser.lichess_username = trimmed.length > 0 ? trimmed : null;
+    }
+
+    // Validate and apply Twitch channel link (1–25 chars, letters/numbers/underscore)
+    const TWITCH_CHANNEL_PATTERN = /^[a-zA-Z0-9_]{1,25}$/;
+    if (twitch_channel !== undefined) {
+      const trimmed = (twitch_channel || "").trim();
+      if (trimmed.length > 0 && !TWITCH_CHANNEL_PATTERN.test(trimmed)) {
+        return res.status(400).send({ message: "Twitch channel name can only contain letters, numbers, and underscores (max 25 chars)." });
+      }
+      updatedUser.twitch_channel = trimmed.length > 0 ? trimmed : null;
     }
 
     // Hash password if provided
@@ -5450,6 +5460,209 @@ app.post("/api/auth/lichess", async (req, res) => {
   } catch (err) {
     console.error("Error in /api/auth/lichess:", err);
     res.status(500).send({ auth: false, message: "Lichess Sign-In failed", err: err.message });
+  }
+});
+
+// ── Twitch OAuth ─────────────────────────────────────────────────────────────
+// Exchange the authorization code Twitch sent to the frontend callback page for
+// a user access token, then look up (or create) the local account.
+app.post("/api/auth/twitch", async (req, res) => {
+  try {
+    const { code, redirectUri } = req.body;
+    if (!code || !redirectUri) {
+      return res.status(400).json({ auth: false, message: "Authorization code and redirect URI are required." });
+    }
+
+    const twitchClientId = process.env.TWITCH_CLIENT_ID;
+    const twitchClientSecret = process.env.TWITCH_CLIENT_SECRET;
+    if (!twitchClientId || !twitchClientSecret) {
+      return res.status(500).json({ auth: false, message: "Twitch OAuth is not configured on the server." });
+    }
+
+    // Exchange authorization code for access token
+    let tokenResponse;
+    try {
+      tokenResponse = await fetch("https://id.twitch.tv/oauth2/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: twitchClientId,
+          client_secret: twitchClientSecret,
+          code,
+          redirect_uri: redirectUri,
+        }),
+      });
+    } catch (fetchErr) {
+      return res.status(502).json({ auth: false, message: "Failed to connect to Twitch." });
+    }
+
+    if (!tokenResponse.ok) {
+      const errBody = await tokenResponse.text().catch(() => "");
+      console.error("[Twitch OAuth] Token exchange failed:", tokenResponse.status, errBody);
+      return res.status(401).json({ auth: false, message: "Invalid Twitch authorization code." });
+    }
+
+    const tokenData = await tokenResponse.json();
+    const twitchAccessToken = tokenData.access_token;
+    if (!twitchAccessToken) {
+      return res.status(401).json({ auth: false, message: "Failed to obtain Twitch access token." });
+    }
+
+    // Fetch the Twitch user profile
+    let profileResponse;
+    try {
+      profileResponse = await fetch("https://api.twitch.tv/helix/users", {
+        headers: {
+          "Authorization": `Bearer ${twitchAccessToken}`,
+          "Client-Id": twitchClientId,
+        },
+      });
+    } catch (fetchErr) {
+      return res.status(502).json({ auth: false, message: "Failed to fetch Twitch profile." });
+    }
+
+    if (!profileResponse.ok) {
+      return res.status(401).json({ auth: false, message: "Failed to verify Twitch account." });
+    }
+
+    const profileData = await profileResponse.json();
+    const twitchUser = profileData.data && profileData.data[0];
+    if (!twitchUser || !twitchUser.id) {
+      return res.status(400).json({ auth: false, message: "Could not retrieve Twitch user profile." });
+    }
+
+    const twitchId = twitchUser.id;           // permanent numeric ID
+    const twitchLogin = twitchUser.login;     // lowercase display name / channel slug
+    const twitchEmail = twitchUser.email || null;
+
+    // ── Find or create a local account ──────────────────────────────────────
+    let user;
+
+    // 1. Already linked by twitch_id → just log in
+    const [byId] = await db_pool.query(
+      "SELECT * FROM users WHERE twitch_id = ?", [twitchId]
+    );
+    if (byId.length > 0) {
+      user = byId[0];
+      // Keep twitch_channel in sync with their current Twitch login name
+      if (user.twitch_channel !== twitchLogin) {
+        await db_pool.query("UPDATE users SET twitch_channel = ? WHERE id = ?", [twitchLogin, user.id]);
+        user.twitch_channel = twitchLogin;
+      }
+    } else {
+      // 2. Check if someone already set this Twitch login as their twitch_channel
+      const [byChannel] = await db_pool.query(
+        "SELECT * FROM users WHERE twitch_channel = ?", [twitchLogin]
+      );
+      if (byChannel.length > 0) {
+        // Link the OAuth ID to that existing account and log in
+        user = byChannel[0];
+        await db_pool.query("UPDATE users SET twitch_id = ? WHERE id = ?", [twitchId, user.id]);
+        user.twitch_id = twitchId;
+      } else if (twitchEmail) {
+        // 3. Email match — link to existing account
+        const [byEmail] = await db_pool.query(
+          "SELECT * FROM users WHERE email = ?", [twitchEmail]
+        );
+        if (byEmail.length > 0) {
+          user = byEmail[0];
+          await db_pool.query(
+            "UPDATE users SET twitch_id = ?, twitch_channel = ? WHERE id = ?",
+            [twitchId, twitchLogin, user.id]
+          );
+          user.twitch_id = twitchId;
+          user.twitch_channel = twitchLogin;
+        }
+      }
+
+      if (!user) {
+        // 4. No match — create a new account
+        let baseUsername = twitchLogin.replace(/[^a-zA-Z0-9_-]/g, "").substring(0, 20);
+        if (baseUsername.length < 3) baseUsername = "user";
+
+        let username = baseUsername;
+        let suffix = 1;
+        while (await dbHelpers.findUserByUsername(username)) {
+          username = `${baseUsername.substring(0, 16)}${suffix}`;
+          suffix++;
+        }
+
+        const defaultLightColor = "#e3d4bf";
+        const defaultDarkColor = "#64472b";
+        await db_pool.query(
+          `INSERT INTO users
+            (username, password, email, twitch_id, twitch_channel,
+             light_square_color, dark_square_color, allow_non_friend_dms, sound_enabled)
+           VALUES (?,?,?,?,?,?,?,1,1)`,
+          [username, "", twitchEmail, twitchId, twitchLogin, defaultLightColor, defaultDarkColor]
+        );
+        user = await dbHelpers.findUserByUsername(username);
+
+        // Notify owner of new user registration (non-blocking)
+        dbHelpers.getOwnerUserId().then(async (ownerId) => {
+          if (ownerId && ownerId !== user.id) {
+            try {
+              await dbHelpers.createNotification({
+                user_id: ownerId,
+                sender_id: user.id,
+                type: "system",
+                title: `New user registered: ${username}`,
+                content: `A new user "${username}" has joined via Twitch sign-in.`,
+                action_url: `/profile/id/${user.id}`,
+              });
+              const gameSocket = require("./game-socket");
+              const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
+              if (ownerSocketId && gameSocket.getIO()) {
+                const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
+                gameSocket.getIO().to(ownerSocketId).emit("newNotification", { type: "system", title: `New user registered: ${username}` });
+                gameSocket.getIO().to(ownerSocketId).emit("unreadNotificationCount", { unreadCount });
+              }
+            } catch (err) { console.error("Owner notification (new Twitch user) failed:", err.message); }
+          }
+        }).catch(() => {});
+      }
+    }
+
+    // Check if user is banned
+    if (user.banned) {
+      if (user.ban_expires_at && new Date(user.ban_expires_at) < new Date()) {
+        await db_pool.query(
+          "UPDATE users SET banned = 0, ban_reason = NULL, banned_at = NULL, banned_by = NULL, ban_expires_at = NULL WHERE id = ?",
+          [user.id]
+        );
+      } else {
+        const banMessage = user.ban_expires_at
+          ? `Your account is temporarily banned until ${new Date(user.ban_expires_at).toLocaleString()}.`
+          : "Your account has been permanently banned.";
+        return res.status(403).json({ auth: false, message: banMessage, banned: true });
+      }
+    }
+
+    // Generate tokens
+    const userPayload = { id: user.id, username: user.username, role: user.role, admin_level: user.admin_level ?? null };
+    const accessToken = generateAccessToken(userPayload);
+    const refreshToken = generateRefreshToken(userPayload);
+
+    await db_pool.query(
+      "UPDATE users SET refresh_token = ?, last_active_at = NOW() WHERE id = ?",
+      [refreshToken, user.id]
+    );
+
+    user.accessToken = accessToken;
+    user.refreshToken = refreshToken;
+    delete user.password;
+    delete user.refresh_token;
+    delete user.banned;
+    delete user.ban_reason;
+    delete user.banned_at;
+    delete user.banned_by;
+    delete user.ban_expires_at;
+
+    res.json({ auth: true, result: user });
+  } catch (err) {
+    console.error("Error in /api/auth/twitch:", err);
+    res.status(500).json({ auth: false, message: "Twitch Sign-In failed.", err: err.message });
   }
 });
 
@@ -11882,6 +12095,209 @@ app.get("/api/streams", async (req, res) => {
   }
 });
 
+// --- Twitch live-status cache (shared across user-streams requests) ---
+const _twitchCache = { data: null, fetchedAt: 0, appToken: null, tokenExpiresAt: 0 };
+const TWITCH_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+async function _getTwitchCredentials() {
+  // Prefer DB-stored credentials (set via admin dashboard) over env vars.
+  try {
+    const [[cidRow], [secRow]] = await Promise.all([
+      db_pool.query("SELECT setting_value FROM site_settings WHERE setting_key = 'twitch_client_id' LIMIT 1"),
+      db_pool.query("SELECT setting_value FROM site_settings WHERE setting_key = 'twitch_client_secret' LIMIT 1"),
+    ]);
+    const clientId = (cidRow[0]?.setting_value || '').trim() || process.env.TWITCH_CLIENT_ID;
+    const clientSecret = (secRow[0]?.setting_value || '').trim() || process.env.TWITCH_CLIENT_SECRET;
+    return { clientId: clientId || null, clientSecret: clientSecret || null };
+  } catch (_) {
+    return { clientId: process.env.TWITCH_CLIENT_ID || null, clientSecret: process.env.TWITCH_CLIENT_SECRET || null };
+  }
+}
+
+async function _getTwitchAppToken() {
+  const { clientId, clientSecret } = await _getTwitchCredentials();
+  if (!clientId || !clientSecret) return null;
+  if (_twitchCache.appToken && Date.now() < _twitchCache.tokenExpiresAt) {
+    return _twitchCache.appToken;
+  }
+  try {
+    const https = require('https');
+    const body = `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&grant_type=client_credentials`;
+    const tokenData = await new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'id.twitch.tv',
+        path: '/oauth2/token',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
+      }, (res) => {
+        let raw = '';
+        res.on('data', d => { raw += d; });
+        res.on('end', () => { try { resolve(JSON.parse(raw)); } catch (e) { reject(e); } });
+      });
+      req.on('error', reject);
+      req.write(body);
+      req.end();
+    });
+    if (!tokenData.access_token) return null;
+    _twitchCache.appToken = tokenData.access_token;
+    _twitchCache.tokenExpiresAt = Date.now() + (tokenData.expires_in - 60) * 1000;
+    return _twitchCache.appToken;
+  } catch (e) {
+    console.error('[Twitch] Failed to obtain app token:', e.message);
+    return null;
+  }
+}
+
+// Only count a stream as live if the streamer is playing chess or a grid-based strategy game.
+// Uses keyword substring matching (case-insensitive) so that categories like "Chess.com",
+// "Speed Chess Championship", "Auto Chess", "Bullet Chess", etc. all qualify.
+// Short/ambiguous names (e.g. "go") are matched as whole words to avoid false positives.
+const ALLOWED_TWITCH_GAME_KEYWORDS = [
+  // Chess — substring match catches Chess, Chess.com, Bullet Chess, Speed Chess, etc.
+  'chess',
+  // Checkers / Draughts
+  'checkers', 'draughts',
+  // Shogi / Xiangqi / Janggi
+  'shogi', 'xiangqi', 'janggi',
+  // Othello / Reversi
+  'othello', 'reversi',
+  // Backgammon
+  'backgammon',
+  // Mancala family
+  'mancala', 'oware',
+  // Mahjong
+  'mahjong', 'mahjongg',
+  // Stratego
+  'stratego',
+  // Auto-chess genre and specific titles
+  'auto chess', 'autochess', 'underlords', 'chess rush',
+  // Popular auto-chess titles with unique names
+  'teamfight tactics', 'tft',
+  // Generic catch-all
+  'board game',
+  // Hex / abstract strategy
+  'hive (game)', 'hive game', 'blokus', 'azul', 'quoridor',
+];
+// Exact whole-word matches for very short names that would cause false positives as substrings.
+const ALLOWED_TWITCH_GAME_EXACT = new Set(['go', 'hex']);
+
+function _isTwitchGameAllowed(rawGameName) {
+  if (!rawGameName) return false;
+  const lower = rawGameName.trim().toLowerCase();
+  if (!lower) return false;
+  if (ALLOWED_TWITCH_GAME_EXACT.has(lower)) return true;
+  return ALLOWED_TWITCH_GAME_KEYWORDS.some(k => lower.includes(k));
+}
+
+async function _fetchTwitchStatus(channels) {
+  const { clientId } = await _getTwitchCredentials();
+  if (!clientId) {
+    console.warn('[Twitch] TWITCH_CLIENT_ID is not set — skipping live status fetch');
+    return {};
+  }
+  if (channels.length === 0) return {};
+  const token = await _getTwitchAppToken();
+  if (!token) {
+    console.warn('[Twitch] Could not obtain app token — skipping live status fetch');
+    return {};
+  }
+  try {
+    const https = require('https');
+    const query = channels.map(c => `user_login=${encodeURIComponent(c)}`).join('&');
+    console.log(`[Twitch] Fetching live status for channels: ${channels.join(', ')}`);
+    const liveData = await new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'api.twitch.tv',
+        path: `/helix/streams?${query}`,
+        method: 'GET',
+        headers: { 'Client-ID': clientId, 'Authorization': `Bearer ${token}` }
+      }, (res) => {
+        let raw = '';
+        res.on('data', d => { raw += d; });
+        res.on('end', () => { try { resolve(JSON.parse(raw)); } catch (e) { reject(e); } });
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    console.log(`[Twitch] API response: ${liveData?.data?.length ?? 0} live stream(s) found`);
+    if (liveData?.error) {
+      console.error(`[Twitch] API error: ${liveData.error} — ${liveData.message}`);
+      return {};
+    }
+    const result = {};
+    if (liveData && Array.isArray(liveData.data)) {
+      for (const stream of liveData.data) {
+        const gameName = (stream.game_name || '').trim();
+        const qualifies = _isTwitchGameAllowed(gameName);
+        console.log(`[Twitch] ${stream.user_login} is live — category: "${gameName}" — qualifies: ${qualifies}`);
+        if (!qualifies) continue; // live but wrong category — treat as offline
+        result[stream.user_login.toLowerCase()] = {
+          is_live: true,
+          viewer_count: stream.viewer_count || 0,
+          game_name: gameName || null,
+          stream_title: stream.title || null,
+          thumbnail_url: stream.thumbnail_url
+            ? stream.thumbnail_url.replace('{width}', '320').replace('{height}', '180')
+            : null,
+        };
+      }
+    }
+    return result;
+  } catch (e) {
+    console.error('[Twitch] Failed to fetch stream status:', e.message);
+    return {};
+  }
+}
+
+// Public: Get all user-registered Twitch streams with live status
+app.get("/api/user-streams", async (req, res) => {
+  try {
+    const [users] = await db_pool.query(
+      `SELECT id, username, profile_picture, twitch_channel
+       FROM users
+       WHERE twitch_channel IS NOT NULL AND twitch_channel != ''
+       ORDER BY username ASC`
+    );
+
+    console.log(`[Twitch] /api/user-streams called — ${users.length} user(s) with twitch_channel in DB`);
+
+    if (users.length === 0) {
+      return res.json([]);
+    }
+
+    // Return cached data if fresh
+    const now = Date.now();
+    if (_twitchCache.data && (now - _twitchCache.fetchedAt) < TWITCH_CACHE_TTL_MS) {
+      console.log(`[Twitch] Serving cached data (age: ${Math.round((now - _twitchCache.fetchedAt) / 1000)}s)`);
+      const cached = _twitchCache.data;
+      return res.json(users.map(u => ({
+        user_id: u.id,
+        username: u.username,
+        profile_picture: u.profile_picture,
+        twitch_channel: u.twitch_channel,
+        ...(cached[u.twitch_channel.toLowerCase()] || { is_live: false, viewer_count: 0, game_name: null, stream_title: null, thumbnail_url: null }),
+      })));
+    }
+
+    // Refresh Twitch status
+    const channels = users.map(u => u.twitch_channel);
+    const liveMap = await _fetchTwitchStatus(channels);
+    _twitchCache.data = liveMap;
+    _twitchCache.fetchedAt = now;
+
+    res.json(users.map(u => ({
+      user_id: u.id,
+      username: u.username,
+      profile_picture: u.profile_picture,
+      twitch_channel: u.twitch_channel,
+      ...(liveMap[u.twitch_channel.toLowerCase()] || { is_live: false, viewer_count: 0, game_name: null, stream_title: null, thumbnail_url: null }),
+    })));
+  } catch (err) {
+    console.error("Error in /api/user-streams:", err);
+    res.status(500).send({ message: "Failed to fetch user streams", err: err.message });
+  }
+});
+
 // Admin: Get all streams with pagination
 app.get("/api/admin/streams", authenticateAdmin, async (req, res) => {
   try {
@@ -12756,12 +13172,37 @@ async function purgeExpiredDmImages() {
 purgeExpiredDmImages();
 setInterval(purgeExpiredDmImages, 60 * 60 * 1000); // every hour
 
-// Get game chat history
-app.get("/api/games/:gameId/chat", async (req, res) => {
+// Get game chat history — respects per-game chat privacy
+app.get("/api/games/:gameId/chat", optionalAuthenticate, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
+    if (!gameId || isNaN(gameId)) return res.status(400).json({ error: "Invalid game ID" });
+
+    // Check whether the game's chat was marked public at game-end
+    const [gameRows] = await db_pool.query(
+      "SELECT chat_is_public FROM games WHERE id = ?",
+      [gameId]
+    );
+    if (gameRows.length === 0) return res.status(404).json({ error: "Game not found" });
+
+    const chatIsPublic = !!gameRows[0].chat_is_public;
+
+    if (!chatIsPublic) {
+      // Private chat — only the game's players may view it
+      if (!req.user) {
+        return res.json({ messages: [], chatIsPrivate: true });
+      }
+      const [playerRows] = await db_pool.query(
+        "SELECT id FROM players WHERE game_id = ? AND user_id = ? LIMIT 1",
+        [gameId, req.user.id]
+      );
+      if (playerRows.length === 0) {
+        return res.json({ messages: [], chatIsPrivate: true });
+      }
+    }
+
     const messages = await dbHelpers.getGameChatMessages(gameId);
-    res.json({ messages });
+    res.json({ messages, chatIsPrivate: false });
   } catch (err) {
     console.error("Error fetching game chat:", err);
     res.status(500).json({ error: "Failed to fetch game chat" });
@@ -13049,6 +13490,77 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin1, async (req, res) =>
   } catch (err) {
     console.error("Error updating site setting:", err.message);
     res.status(500).json({ message: "Failed to update setting" });
+  }
+});
+
+// Owner-only: Save Twitch API credentials into site_settings.
+// Secrets are stored as plain text in the DB (same security boundary as .env).
+// Saving new credentials also invalidates the cached app token so the next
+// request picks them up immediately.
+app.put("/api/admin/twitch-credentials", authenticateToken, async (req, res) => {  try {
+    const role = (req.user?.role || '').toLowerCase();
+    if (role !== 'owner') {
+      return res.status(403).json({ message: "Only the site owner can update Twitch credentials." });
+    }
+    const { client_id, client_secret } = req.body;
+    // Validate: only allow printable ASCII, no whitespace, reasonable length
+    const credPattern = /^[\x21-\x7E]{1,100}$/;
+    if (client_id !== undefined) {
+      const v = (client_id || '').trim();
+      if (v.length > 0 && !credPattern.test(v)) {
+        return res.status(400).json({ message: "Invalid client ID format." });
+      }
+      await db_pool.query(
+        "INSERT INTO site_settings (setting_key, setting_value) VALUES ('twitch_client_id', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+        [v, v]
+      );
+    }
+    if (client_secret !== undefined) {
+      const v = (client_secret || '').trim();
+      if (v.length > 0 && !credPattern.test(v)) {
+        return res.status(400).json({ message: "Invalid client secret format." });
+      }
+      await db_pool.query(
+        "INSERT INTO site_settings (setting_key, setting_value) VALUES ('twitch_client_secret', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+        [v, v]
+      );
+    }
+    // Bust the token cache so the new credentials take effect immediately
+    _twitchCache.appToken = null;
+    _twitchCache.tokenExpiresAt = 0;
+    _twitchCache.data = null;
+    _twitchCache.fetchedAt = 0;
+    console.log('[Twitch] Credentials updated by owner — cache cleared');
+    res.json({ message: "Twitch credentials saved." });
+  } catch (err) {
+    console.error("Error saving Twitch credentials:", err.message);
+    res.status(500).json({ message: "Failed to save credentials." });
+  }
+});
+
+// Admin: Remove a user's linked Twitch channel (sets twitch_channel = NULL).
+// The user can re-add it themselves from profile settings.
+app.delete("/api/admin/user-twitch-channel/:userId", authenticateAdmin, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(400).json({ message: "Invalid user ID." });
+    }
+    const [result] = await db_pool.query(
+      "UPDATE users SET twitch_channel = NULL WHERE id = ?",
+      [userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    // Bust the stream status cache so the removed channel disappears immediately
+    _twitchCache.data = null;
+    _twitchCache.fetchedAt = 0;
+    console.log(`[Admin] Twitch channel cleared for user ${userId}`);
+    res.json({ message: "Twitch channel removed." });
+  } catch (err) {
+    console.error("Error removing user Twitch channel:", err.message);
+    res.status(500).json({ message: "Failed to remove channel." });
   }
 });
 
