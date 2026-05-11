@@ -2424,6 +2424,11 @@ async function recoverActiveGames() {
           }
         }
         activeGames.set(gameIdStr, gameState);
+        gameState.pieceValues = computeAllPieceValues(
+          gameState.pieces,
+          gameState.gameType?.board_width  || 8,
+          gameState.gameType?.board_height || 8,
+        );
         startGameTimer(ioInstance, game.id);
         count++;
       } catch (e) {
@@ -3142,6 +3147,15 @@ function initializeSocket(server) {
 
         activeGames.set(gameId.toString(), gameState);
 
+        // Pre-compute piece values for the captured-pieces display.  This runs
+        // synchronously and is fast (pure geometry), so it finishes before the
+        // first client can even join.
+        gameState.pieceValues = computeAllPieceValues(
+          gameState.pieces,
+          gameState.gameType?.board_width  || 8,
+          gameState.gameType?.board_height || 8,
+        );
+
         // Join the game room
         socket.join(`game-${gameId}`);
 
@@ -3640,6 +3654,11 @@ function initializeSocket(server) {
         };
 
         activeGames.set(gameId.toString(), gameState);
+        gameState.pieceValues = computeAllPieceValues(
+          gameState.pieces,
+          gameState.gameType?.board_width  || 8,
+          gameState.gameType?.board_height || 8,
+        );
         socket.join(`game-${gameId}`);
 
         // Map this socket to the temp ID for game communications
@@ -4326,6 +4345,13 @@ function initializeSocket(server) {
           };
 
           activeGames.set(gameIdStr, gameState);
+          if (!gameState.pieceValues) {
+            gameState.pieceValues = computeAllPieceValues(
+              gameState.pieces,
+              gameState.gameType?.board_width  || 8,
+              gameState.gameType?.board_height || 8,
+            );
+          }
         }
 
         // Check if this is a challenge game and if user is allowed to join
@@ -9314,6 +9340,509 @@ async function getMyBotGames(userId) {
  * Estimate a piece's value based on movement/attack capabilities.
  * Used for material clock slowdown calculations.
  */
+/**
+ * Compute the standardized value for a single piece based on board-coverage simulation.
+ *
+ * The piece is placed at the center of an empty board of the given dimensions.
+ * For each unique square it can reach:
+ *   +1.0  for every square it can MOVE to
+ *   +1.0  for every square it can ATTACK  (or +1.5 if via ranged attack)
+ *   ×0.5  for attack squares accessible only on the first move
+ *
+ * Ranged pieces (attack_radius / trample_radius) gain a ×1.25 multiplier on all
+ * attack contributions.  Additional whole-piece multipliers are applied afterward
+ * (ghostwalk, cannot_be_captured, can_promote, die_on_capture, no-directional-coverage).
+ *
+ * User-facing value = internalValue / 5.5, rounded to 1 decimal.
+ * Rook baseline: 14 move + 14 attack = 28 → 5.1 on 8×8.
+ *
+ * @param {Object} piece  - Fully-hydrated piece object (all movement/capture fields present)
+ * @param {number} bw     - Board width
+ * @param {number} bh     - Board height
+ * @returns {number}      - User-facing piece value (e.g. 5.1 for a rook on 8×8)
+ */
+function computePieceValue(piece, bw, bh) {
+  if (!piece) return 0;
+  if (piece.is_neutral || piece.player_id === 0) return 0;
+  bw = bw || 8;
+  bh = bh || 8;
+
+  // Center square — upper-left center for even-dimension boards
+  const cx = Math.floor((bw - 1) / 2);
+  const cy = Math.floor((bh - 1) / 2);
+  const DIVISOR = 5.5;
+  const isOnBoard = (x, y) => x >= 0 && x < bw && y >= 0 && y < bh;
+
+  // moveSet: keys of squares the piece can move to
+  // attackMap: key → attack-contribution weight
+  //   1.0 = normal attack, 1.5 = ranged attack, 0.5 = first-move-only attack
+  //   (a square's weight is always the maximum applied to it)
+  const moveSet      = new Set();
+  const stepMoveSet   = new Set(); // squares reached via step-by-step movement (weighted ×1.2)
+  const attackMap    = new Map();
+  const stepAttackSet = new Set(); // squares attacked via step movement/capture (weighted ×1.2)
+
+  const addAttack = (key, weight) => {
+    const existing = attackMap.get(key);
+    if (existing === undefined || weight > existing) attackMap.set(key, weight);
+  };
+
+  // Walk a direction from center on an empty board; return square keys.
+  // range = 99 → infinite (up to board edge); negative range → exact/Manhattan
+  function walkDir(dx, dy, range, exact, repeating) {
+    if (!range || range === 0) return [];
+    const absRange = Math.abs(range);
+    const isExact  = exact || range < 0;
+    const limit    = absRange === 99 ? Math.max(bw, bh) : absRange;
+    const maxIter  = (isExact && repeating) ? Math.max(bw, bh) : limit;
+    const result   = [];
+    for (let dist = 1; dist <= maxIter; dist++) {
+      const x = cx + dx * dist, y = cy + dy * dist;
+      if (!isOnBoard(x, y)) break;
+      if (!isExact || (repeating ? dist % absRange === 0 : dist === absRange)) {
+        result.push(`${x},${y}`);
+      }
+    }
+    return result;
+  }
+
+  // --- DIRECTIONAL MOVEMENT & CAPTURE ---
+  const hasDedicatedCap = !!(
+    piece.up_capture    || piece.down_capture    ||
+    piece.left_capture  || piece.right_capture   ||
+    piece.up_left_capture   || piece.up_right_capture  ||
+    piece.down_left_capture || piece.down_right_capture ||
+    piece.ratio_capture_1   || piece.ratio_capture_2
+  );
+  const canCaptureOnMove     = !!(piece.can_capture_enemy_on_move);
+  const firstMoveOnlyCapture = !!(piece.first_move_only_capture);
+  const repM = !!piece.repeating_movement;
+  const repC = !!piece.repeating_capture;
+
+  const dirs = [
+    { name: 'up',         dx: 0,  dy: -1 },
+    { name: 'down',       dx: 0,  dy:  1 },
+    { name: 'left',       dx: -1, dy:  0 },
+    { name: 'right',      dx:  1, dy:  0 },
+    { name: 'up_left',    dx: -1, dy: -1 },
+    { name: 'up_right',   dx:  1, dy: -1 },
+    { name: 'down_left',  dx: -1, dy:  1 },
+    { name: 'down_right', dx:  1, dy:  1 },
+  ];
+
+  for (const dir of dirs) {
+    const moveRange = piece[`${dir.name}_movement`] || 0;
+    const capRange  = piece[`${dir.name}_capture`]  || 0;
+    const moveExact = !!piece[`${dir.name}_movement_exact`];
+    const capExact  = !!piece[`${dir.name}_capture_exact`];
+    // Per-direction first-move restriction (available_for = max-move-count allowed)
+    const dirAvailFor      = piece[`${dir.name}_movement_available_for`] || 0;
+    const dirFirstMoveOnly = dirAvailFor > 0;
+
+    if (moveRange > 0) {
+      const sqs = walkDir(dir.dx, dir.dy, moveRange, moveExact, repM && moveExact);
+      for (const key of sqs) {
+        moveSet.add(key);
+        // This direction allows capture via movement when:
+        //   (a) piece can capture on move, AND
+        //   (b) no dedicated cap dirs exist, OR this dir has a cap range of its own
+        if (canCaptureOnMove && (!hasDedicatedCap || capRange > 0)) {
+          const w = (firstMoveOnlyCapture || dirFirstMoveOnly) ? 0.5 : 1.0;
+          addAttack(key, w);
+        }
+      }
+    }
+
+    if (capRange > 0) {
+      const sqs = walkDir(dir.dx, dir.dy, capRange, capExact, repC && capExact);
+      for (const key of sqs) {
+        addAttack(key, firstMoveOnlyCapture ? 0.5 : 1.0);
+      }
+    }
+  }
+
+  // --- RANGED ATTACK (directional attack-range fields) ---
+  if (piece.can_capture_enemy_via_range) {
+    const rangedDirs = [
+      { field: 'up_attack_range',         dx: 0,  dy: -1 },
+      { field: 'down_attack_range',        dx: 0,  dy:  1 },
+      { field: 'left_attack_range',        dx: -1, dy:  0 },
+      { field: 'right_attack_range',       dx:  1, dy:  0 },
+      { field: 'up_left_attack_range',     dx: -1, dy: -1 },
+      { field: 'up_right_attack_range',    dx:  1, dy: -1 },
+      { field: 'down_left_attack_range',   dx: -1, dy:  1 },
+      { field: 'down_right_attack_range',  dx:  1, dy:  1 },
+    ];
+    for (const d of rangedDirs) {
+      const range = piece[d.field] || 0;
+      if (!range) continue;
+      const exact = !!piece[`${d.field}_exact`];
+      for (const key of walkDir(d.dx, d.dy, range, exact, false)) {
+        addAttack(key, 1.5);
+      }
+    }
+
+    // Step-based ranged attack (step_by_step_attack_range)
+    const sar = piece.step_by_step_attack_range;
+    if (sar != null && sar !== 0) {
+      const sarSteps = Math.abs(sar);
+      const noDiagSAR = sar < 0;
+      const sarDirs   = noDiagSAR
+        ? [[1,0],[-1,0],[0,1],[0,-1]]
+        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      const sarVisited = new Set([`${cx},${cy}`]);
+      const sarQueue   = [{ x: cx, y: cy, steps: 0 }];
+      while (sarQueue.length) {
+        const curr = sarQueue.shift();
+        if (curr.steps >= sarSteps) continue;
+        for (const [dx, dy] of sarDirs) {
+          const nx = curr.x + dx, ny = curr.y + dy;
+          if (!isOnBoard(nx, ny)) continue;
+          const key = `${nx},${ny}`;
+          if (sarVisited.has(key)) continue;
+          sarVisited.add(key);
+          stepAttackSet.add(key);
+          addAttack(key, 1.5);
+          sarQueue.push({ x: nx, y: ny, steps: curr.steps + 1 });
+        }
+      }
+    }
+
+    // Ratio ranged attack
+    const rar1 = piece.ratio_one_attack_range || 0;
+    const rar2 = piece.ratio_two_attack_range || 0;
+    if (rar1 > 0 && rar2 > 0) {
+      for (const [dx, dy] of [
+        [rar1, rar2],[rar1,-rar2],[-rar1, rar2],[-rar1,-rar2],
+        [rar2, rar1],[rar2,-rar1],[-rar2, rar1],[-rar2,-rar1],
+      ]) {
+        const x = cx + dx, y = cy + dy;
+        if (isOnBoard(x, y)) addAttack(`${x},${y}`, 1.5);
+      }
+    }
+  }
+
+  // --- RATIO MOVEMENT ---
+  const r1 = piece.ratio_movement_1 || 0;
+  const r2 = piece.ratio_movement_2 || 0;
+  if (r1 > 0 && r2 > 0) {
+    const maxK = piece.repeating_ratio
+      ? (piece.max_ratio_iterations === -1
+          ? Math.max(bw, bh)
+          : (piece.max_ratio_iterations || 2))
+      : 1;
+    const ratioJumps = [
+      [r1, r2],[r1,-r2],[-r1, r2],[-r1,-r2],
+      [r2, r1],[r2,-r1],[-r2, r1],[-r2,-r1],
+    ];
+    for (const [dx, dy] of ratioJumps) {
+      for (let k = 1; k <= maxK; k++) {
+        const x = cx + dx * k, y = cy + dy * k;
+        if (!isOnBoard(x, y)) break;
+        const key = `${x},${y}`;
+        moveSet.add(key);
+        if (canCaptureOnMove && !hasDedicatedCap) {
+          addAttack(key, firstMoveOnlyCapture ? 0.5 : 1.0);
+        }
+      }
+    }
+  }
+
+  // --- RATIO CAPTURE (separate from movement) ---
+  const rc1 = piece.ratio_capture_1 || 0;
+  const rc2 = piece.ratio_capture_2 || 0;
+  if (rc1 > 0 && rc2 > 0) {
+    const maxK = piece.repeating_ratio_capture
+      ? (piece.max_ratio_capture_iterations === -1
+          ? Math.max(bw, bh)
+          : (piece.max_ratio_capture_iterations || 2))
+      : 1;
+    for (const [dx, dy] of [
+      [rc1, rc2],[rc1,-rc2],[-rc1, rc2],[-rc1,-rc2],
+      [rc2, rc1],[rc2,-rc1],[-rc2, rc1],[-rc2,-rc1],
+    ]) {
+      for (let k = 1; k <= maxK; k++) {
+        const x = cx + dx * k, y = cy + dy * k;
+        if (!isOnBoard(x, y)) break;
+        addAttack(`${x},${y}`, firstMoveOnlyCapture ? 0.5 : 1.0);
+      }
+    }
+  }
+
+  // --- STEP MOVEMENT (BFS on empty board) ---
+  const stepStyle = piece.step_by_step_movement_style || piece.step_movement_style;
+  if (stepStyle) {
+    const stepValRaw = piece.step_by_step_movement_value ?? piece.step_movement_value;
+    const stepVal    = Number(stepValRaw ?? 0);
+    if (!isNaN(stepVal) && stepVal !== 0) {
+      const maxMoveSteps = Math.abs(stepVal);
+      const noDiagMove   = stepVal < 0;
+      const moveDirs8    = noDiagMove
+        ? [[1,0],[-1,0],[0,1],[0,-1]]
+        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+      // BFS: collect all squares reachable within maxMoveSteps on an empty board
+      const stepVisited = new Set([`${cx},${cy}`]);
+      const stepQueue   = [{ x: cx, y: cy, steps: 0 }];
+      while (stepQueue.length) {
+        const curr = stepQueue.shift();
+        if (curr.steps >= maxMoveSteps) continue;
+        for (const [dx, dy] of moveDirs8) {
+          const nx = curr.x + dx, ny = curr.y + dy;
+          if (!isOnBoard(nx, ny)) continue;
+          const key = `${nx},${ny}`;
+          if (stepVisited.has(key)) continue;
+          stepVisited.add(key);
+          moveSet.add(key);
+          stepMoveSet.add(key);
+          stepQueue.push({ x: nx, y: ny, steps: curr.steps + 1 });
+        }
+      }
+
+      // Step capture range
+      const capValRaw    = piece.step_capture_value;
+      const capVal       = Number(capValRaw ?? 0);
+      const hasStepCap   = capValRaw != null && capValRaw !== 0 && !isNaN(capVal);
+      const capSteps     = hasStepCap ? Math.abs(capVal) : 0;
+      const noDiagCap    = hasStepCap ? capVal < 0 : noDiagMove;
+      const capDirs8     = noDiagCap
+        ? [[1,0],[-1,0],[0,1],[0,-1]]
+        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+      if (hasStepCap) {
+        // Re-BFS: from every move position, mark adjacent squares as attackable
+        const capVisited = new Set([`${cx},${cy}`]);
+        const capQueue   = [{ x: cx, y: cy, steps: 0 }];
+        while (capQueue.length) {
+          const curr = capQueue.shift();
+          // Try to attack from here
+          for (const [dx, dy] of capDirs8) {
+            const nx = curr.x + dx, ny = curr.y + dy;
+            if (!isOnBoard(nx, ny)) continue;
+            if (curr.steps + 1 <= capSteps) {
+              stepAttackSet.add(`${nx},${ny}`);
+              addAttack(`${nx},${ny}`, firstMoveOnlyCapture ? 0.5 : 1.0);
+            }
+          }
+          // Continue traversing movement squares
+          if (curr.steps < maxMoveSteps) {
+            for (const [dx, dy] of moveDirs8) {
+              const nx = curr.x + dx, ny = curr.y + dy;
+              if (!isOnBoard(nx, ny)) continue;
+              const key = `${nx},${ny}`;
+              if (!capVisited.has(key)) {
+                capVisited.add(key);
+                capQueue.push({ x: nx, y: ny, steps: curr.steps + 1 });
+              }
+            }
+          }
+        }
+      } else if (canCaptureOnMove && !hasDedicatedCap) {
+        // No dedicated step-capture: movement squares are also attack squares
+        for (const sq of moveSet) {
+          if (stepMoveSet.has(sq)) stepAttackSet.add(sq);
+          addAttack(sq, firstMoveOnlyCapture ? 0.5 : 1.0);
+        }
+      }
+    }
+  }
+
+  // --- ADDITIONAL MOVEMENTS (special_scenario_moves JSON) ---
+  let additionalMovements = {};
+  if (piece.special_scenario_moves) {
+    try {
+      const parsed = typeof piece.special_scenario_moves === 'string'
+        ? JSON.parse(piece.special_scenario_moves)
+        : piece.special_scenario_moves;
+      additionalMovements = parsed.additionalMovements || {};
+    } catch (_) { /* ignore */ }
+  }
+  const dirMapAdd = {
+    up:         [0, -1], down:       [0,  1], left:       [-1, 0], right:      [1,  0],
+    up_left:    [-1,-1], up_right:   [1, -1], down_left:  [-1, 1], down_right: [1,  1],
+  };
+  for (const [direction, options] of Object.entries(additionalMovements)) {
+    const [dx, dy] = dirMapAdd[direction] || [0, 0];
+    if (dx === 0 && dy === 0) continue;
+    for (const opt of options) {
+      const isFMO = !!(opt.firstMoveOnly || (opt.availableForMoves > 0));
+      let maxDist = opt.value || 0;
+      if (opt.infinite) maxDist = 99;
+      for (const key of walkDir(dx, dy, maxDist, !!opt.exact, false)) {
+        moveSet.add(key);
+        if (canCaptureOnMove && !hasDedicatedCap) {
+          addAttack(key, (firstMoveOnlyCapture || isFMO) ? 0.5 : 1.0);
+        }
+      }
+    }
+  }
+
+  // --- CUSTOM MOVEMENT SQUARES (pixel-offset arrays) ---
+  if (piece.custom_movement_squares) {
+    try {
+      const customs = typeof piece.custom_movement_squares === 'string'
+        ? JSON.parse(piece.custom_movement_squares)
+        : piece.custom_movement_squares;
+      if (Array.isArray(customs)) {
+        for (const sq of customs) {
+          const x = cx + (sq.col || 0), y = cy + (sq.row || 0);
+          if (!isOnBoard(x, y)) continue;
+          const key = `${x},${y}`;
+          moveSet.add(key);
+          if (canCaptureOnMove && !hasDedicatedCap) {
+            addAttack(key, firstMoveOnlyCapture ? 0.5 : 1.0);
+          }
+        }
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  // --- CUSTOM ATTACK SQUARES (capture-only offsets) ---
+  if (piece.custom_attack_squares) {
+    try {
+      const customs = typeof piece.custom_attack_squares === 'string'
+        ? JSON.parse(piece.custom_attack_squares)
+        : piece.custom_attack_squares;
+      if (Array.isArray(customs)) {
+        for (const sq of customs) {
+          const x = cx + (sq.col || 0), y = cy + (sq.row || 0);
+          if (!isOnBoard(x, y)) continue;
+          addAttack(`${x},${y}`, firstMoveOnlyCapture ? 0.5 : 1.0);
+        }
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  // --- COMPUTE RAW INTERNAL VALUE ---
+  const centerParity = (cx + cy) % 2;
+  function isColorBound(keys) {
+    const arr = [...keys];
+    if (arr.length === 0) return false;
+    return arr.every(k => { const [x, y] = k.split(',').map(Number); return (x + y) % 2 === centerParity; });
+  }
+
+  let moveContrib = 0;
+  for (const key of moveSet) {
+    moveContrib += stepMoveSet.has(key) ? 1.2 : 1.0;
+  }
+  if (isColorBound(moveSet)) moveContrib *= 0.7;
+
+  let attackContrib = 0;
+  for (const [key, w] of attackMap) {
+    attackContrib += stepAttackSet.has(key) ? w * 1.2 : w;
+  }
+  if (isColorBound(attackMap.keys())) attackContrib *= 0.7;
+
+  // Attack radius / trample radius → multiply attack contribution by 1.25
+  if ((piece.attack_radius || 0) > 0 || (piece.trample_radius || 0) > 0) {
+    attackContrib *= 1.25;
+  }
+
+  let internalValue = moveContrib + attackContrib;
+
+  // --- GLOBAL MULTIPLIERS ---
+  // No attack ability → ×0.6
+  if (attackContrib === 0) internalValue *= 0.6;
+
+  // Ghostwalk → ×1.4
+  if (piece.ghostwalk) internalValue *= 1.4;
+
+  // Can promote → ×1.2
+  if (piece.can_promote) internalValue *= 1.2;
+
+  // Cannot be captured → ×1.6
+  if (piece.cannot_be_captured) internalValue *= 1.6;
+
+  // Dies on capture → ×0.8
+  if (piece.die_on_capture || piece.dies_on_capture) internalValue *= 0.8;
+
+  // Hop bonus: hopping lets a piece ignore blocker pieces
+  const canHopAlliesV  = !!(piece.can_hop_over_allies);
+  const canHopEnemiesV = !!(piece.can_hop_over_enemies);
+  if (canHopAlliesV && canHopEnemiesV) internalValue *= 1.15;
+  else if (canHopAlliesV || canHopEnemiesV) internalValue *= 1.1;
+
+  // Additional wizard-level attack/mobility features
+  const captureActionsPerTurn = piece.capture_actions_per_turn || 1;
+  if (captureActionsPerTurn > 1 || captureActionsPerTurn === -1) {
+    const extra = captureActionsPerTurn === -1 ? 4 : Math.min(captureActionsPerTurn - 1, 4);
+    internalValue *= 1 + extra * 0.08;
+  }
+  const rangedCaptureActionsPerTurn = piece.ranged_capture_actions_per_turn || 1;
+  if (rangedCaptureActionsPerTurn > 1 || rangedCaptureActionsPerTurn === -1) {
+    const extra = rangedCaptureActionsPerTurn === -1 ? 4 : Math.min(rangedCaptureActionsPerTurn - 1, 4);
+    internalValue *= 1 + extra * 0.07;
+  }
+  if (piece.capture_on_hop && (canHopAlliesV || canHopEnemiesV)) internalValue *= 1.1;
+  if (piece.chain_capture_enabled) internalValue *= 1.1;
+  if (piece.can_capture_enemy_via_range) {
+    const canFireOverAllies  = !!(piece.can_fire_over_allies);
+    const canFireOverEnemies = !!(piece.can_fire_over_enemies);
+    if (canFireOverAllies || canFireOverEnemies)
+      internalValue *= (canFireOverAllies && canFireOverEnemies) ? 1.15 : 1.1;
+    const canHopAtkAllies  = !!(piece.can_hop_attack_over_allies);
+    const canHopAtkEnemies = !!(piece.can_hop_attack_over_enemies);
+    if (canHopAtkAllies || canHopAtkEnemies)
+      internalValue *= (canHopAtkAllies && canHopAtkEnemies) ? 1.15 : 1.1;
+  }
+  const minTurns = piece.min_turns_until_movement || 0;
+  if (minTurns > 0) internalValue *= Math.max(0.5, 1 - minTurns * 0.1);
+
+  // No forward (up) OR no backward (down) directional movement/capture → ×0.7
+  const hasRatioMove = r1 > 0 && r2 > 0;
+  const hasStepMove  = !!(stepStyle && Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0) !== 0);
+  const hasForward = !!(
+    piece.up_movement     || piece.up_capture     ||
+    piece.up_left_movement || piece.up_right_movement ||
+    piece.up_left_capture  || piece.up_right_capture
+  ) || hasRatioMove || hasStepMove;
+  const hasBackward = !!(
+    piece.down_movement      || piece.down_capture     ||
+    piece.down_left_movement || piece.down_right_movement ||
+    piece.down_left_capture  || piece.down_right_capture
+  ) || hasRatioMove || hasStepMove;
+  if (!hasForward || !hasBackward) internalValue *= 0.7;
+
+  // User-facing value = internal / 5.5, rounded to 1 decimal place
+  return Math.round((internalValue / DIVISOR) * 10) / 10;
+}
+
+/**
+ * Compute values for all unique piece template types in the game.
+ * Returns a plain object: { [piece_id]: computedValue }
+ * Neutral pieces are excluded (value 0).
+ */
+function computeAllPieceValues(pieces, boardWidth, boardHeight) {
+  const values = {};
+  const seen   = new Set();
+  for (const piece of (pieces || [])) {
+    const pid = piece.piece_id;
+    if (!pid || seen.has(pid)) continue;
+    seen.add(pid);
+    values[pid] = (piece.is_neutral || piece.player_id === 0)
+      ? 0
+      : computePieceValue(piece, boardWidth, boardHeight);
+  }
+  return values;
+}
+
+/**
+ * Get the live (current) value of a piece instance, factoring in HP degradation.
+ * Uses a pre-computed template value from gameState.pieceValues when available.
+ */
+function getLivePieceValue(piece, gameState) {
+  if (!piece) return 0;
+  if (piece.is_neutral || piece.player_id === 0) return 0;
+  const bw = gameState?.gameType?.board_width  || 8;
+  const bh = gameState?.gameType?.board_height || 8;
+  const baseVal = (gameState?.pieceValues && piece.piece_id !== undefined)
+    ? (gameState.pieceValues[piece.piece_id] ?? computePieceValue(piece, bw, bh))
+    : computePieceValue(piece, bw, bh);
+  const hp    = piece.current_hp ?? piece.hit_points ?? 1;
+  const maxHp = piece.hit_points || 1;
+  return maxHp > 1 ? baseVal * (0.5 + 0.5 * hp / maxHp) : baseVal;
+}
+
 function estimatePieceValue(piece, boardSize) {
   if (!piece) return 0;
   if (piece.ends_game_on_checkmate || piece.ends_game_on_capture) return 100;
@@ -9376,14 +9905,13 @@ function estimatePieceValue(piece, boardSize) {
  * Returns a positive value when the player is behind in material.
  */
 function getMaterialDeficit(gameState, playerId) {
-  const bs = Math.max(gameState.gameType?.board_width || 8, gameState.gameType?.board_height || 8);
   let myMaterial = 0, opMaterial = 0;
-  const player = gameState.players.find(p => p.id === playerId);
-  const myPos = player?.position;
+  const player  = gameState.players.find(p => p.id === playerId);
+  const myPos   = player?.position;
   for (const piece of gameState.pieces) {
     if (piece.captured) continue;
     const owner = piece.team || piece.player_id;
-    const val = estimatePieceValue(piece, bs);
+    const val   = getLivePieceValue(piece, gameState);
     if (owner === myPos) myMaterial += val;
     else opMaterial += val;
   }

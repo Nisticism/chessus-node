@@ -3731,21 +3731,29 @@ const LiveGame = () => {
   // Compute approximate total value of captured pieces for each player.
   // Self-captured (ally) pieces count toward the OPPONENT's material advantage
   // since the capturing player lost their own material.
+  //
+  // Uses server-pre-computed pieceValues (piece_id → base value) when available;
+  // falls back to client-side computation for older/in-flight game states.
   const capturedValues = useMemo(() => {
-    const bs = Math.max(gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8);
-    const p1Normal = capturedPieces.player1.filter(p => !p._isAllyCapture);
-    const p2Normal = capturedPieces.player2.filter(p => !p._isAllyCapture);
-    const p1SelfCaptures = capturedPieces.player1.filter(p => p._isAllyCapture);
-    const p2SelfCaptures = capturedPieces.player2.filter(p => p._isAllyCapture);
+    const bw = gameState?.gameType?.board_width  || 8;
+    const bh = gameState?.gameType?.board_height || 8;
+    const pv = gameState?.pieceValues || null; // pre-computed map from server
+    const p1Normal       = capturedPieces.player1.filter(p => !p._isAllyCapture);
+    const p2Normal       = capturedPieces.player2.filter(p => !p._isAllyCapture);
+    const p1SelfCaptures = capturedPieces.player1.filter(p =>  p._isAllyCapture);
+    const p2SelfCaptures = capturedPieces.player2.filter(p =>  p._isAllyCapture);
     // Player 1's material = enemy pieces they took + Player 2's self-sacrifices
-    const p1Val = totalMaterialValue(p1Normal, bs) + totalMaterialValue(p2SelfCaptures, bs);
+    const p1Val = totalMaterialValue(p1Normal,       bw, bh, pv)
+                + totalMaterialValue(p2SelfCaptures, bw, bh, pv);
     // Player 2's material = enemy pieces they took + Player 1's self-sacrifices
-    const p2Val = totalMaterialValue(p2Normal, bs) + totalMaterialValue(p1SelfCaptures, bs);
+    const p2Val = totalMaterialValue(p2Normal,       bw, bh, pv)
+                + totalMaterialValue(p1SelfCaptures, bw, bh, pv);
     return {
       player1: Math.round(p1Val * 10) / 10,
-      player2: Math.round(p2Val * 10) / 10
+      player2: Math.round(p2Val * 10) / 10,
+      ready: !!pv,
     };
-  }, [capturedPieces, gameState?.gameType?.board_width, gameState?.gameType?.board_height]);
+  }, [capturedPieces, gameState?.gameType?.board_width, gameState?.gameType?.board_height, gameState?.pieceValues]);
 
   // Convert display coordinates to game coordinates
   const toGameCoords = useCallback((displayX, displayY, boardWidth, boardHeight) => {
@@ -6202,9 +6210,15 @@ const LiveGame = () => {
                     {gameState?.players?.find(p => p.position === 1)?.username || 'White'} captured:
                     {capturedPieces.player1.length > 0 && (
                       <span className={styles["captured-value"]}>
-                        {' '}≈{capturedValues.player1}
-                        {capturedValues.player1 > capturedValues.player2 && (
-                          <span className={styles["material-advantage"]}> (+{Math.round((capturedValues.player1 - capturedValues.player2) * 10) / 10})</span>
+                        {capturedValues.ready ? (
+                          <>
+                            {' '}≈{capturedValues.player1}
+                            {capturedValues.player1 > capturedValues.player2 && (
+                              <span className={styles["material-advantage"]}> (+{Math.round((capturedValues.player1 - capturedValues.player2) * 10) / 10})</span>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ fontSize: '0.75em', opacity: 0.6 }}> …</span>
                         )}
                       </span>
                     )}
@@ -6243,9 +6257,15 @@ const LiveGame = () => {
                     {gameState?.players?.find(p => p.position === 2)?.username || 'Black'} captured:
                     {capturedPieces.player2.length > 0 && (
                       <span className={styles["captured-value"]}>
-                        {' '}≈{capturedValues.player2}
-                        {capturedValues.player2 > capturedValues.player1 && (
-                          <span className={styles["material-advantage"]}> (+{Math.round((capturedValues.player2 - capturedValues.player1) * 10) / 10})</span>
+                        {capturedValues.ready ? (
+                          <>
+                            {' '}≈{capturedValues.player2}
+                            {capturedValues.player2 > capturedValues.player1 && (
+                              <span className={styles["material-advantage"]}> (+{Math.round((capturedValues.player2 - capturedValues.player1) * 10) / 10})</span>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ fontSize: '0.75em', opacity: 0.6 }}> …</span>
                         )}
                       </span>
                     )}

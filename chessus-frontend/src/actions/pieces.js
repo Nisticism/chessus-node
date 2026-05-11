@@ -3,6 +3,8 @@ import { getErrorMessage } from "../helpers/error-handler";
 import {
   LIST_PIECES,
   LIST_PIECES_FAIL,
+  SET_PIECE_VALUE_CACHE,
+  INVALIDATE_PIECE_VALUE_CACHE,
 } from "./types";
 
 export const getPieces = (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '') => async (dispatch) => {
@@ -95,3 +97,14 @@ export const checkPieceDuplicates = async (fields, excludeId = null) => {
     return { matches: [] }; // non-fatal
   }
 };
+
+// Redux action creators for piece value cache
+export const setPieceValueCache = (pieceId, value) => ({
+  type: SET_PIECE_VALUE_CACHE,
+  payload: { pieceId, value },
+});
+
+export const invalidatePieceValueCache = (pieceId) => ({
+  type: INVALIDATE_PIECE_VALUE_CACHE,
+  payload: { pieceId },
+});

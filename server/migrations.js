@@ -3333,6 +3333,25 @@ const runMigrations = async () => {
     console.error('Error creating ai_training_analyses:', err.message);
   }
 
+  // Rate-limit columns for creator-initiated analysis regeneration (5/day).
+  try {
+    if (await tableExists('ai_training_analyses')) {
+      if (!(await columnExists('ai_training_analyses', 'creator_regen_count'))) {
+        await runMigration(
+          `ALTER TABLE ai_training_analyses
+             ADD COLUMN creator_regen_count INT NOT NULL DEFAULT 0
+               COMMENT 'Number of creator-initiated regenerations today',
+             ADD COLUMN creator_regen_date DATE DEFAULT NULL
+               COMMENT 'UTC date when creator_regen_count was last reset'`,
+          "Add creator_regen_count and creator_regen_date to ai_training_analyses"
+        );
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error adding creator regen columns:', err.message);
+  }
+
   // Announcements: site-wide one-shot updates the team posts and that fan
   // out as `announcement`-type notifications to every user.
   try {

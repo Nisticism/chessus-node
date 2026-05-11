@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from 'react-router-dom';
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import styles from "./piecewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import Divider from "../Divider/Divider";
-import { createPiece, updatePiece, getPieceById, checkPieceDuplicates } from "../../actions/pieces";
+import { createPiece, updatePiece, getPieceById, checkPieceDuplicates, invalidatePieceValueCache } from "../../actions/pieces";
 import { trackPieceCreation, trackEvent } from "../../analytics/GoogleAnalytics";
 import { validateContent } from "../../utils/contentModeration";
 import PieceStep1BasicInfo from "./PieceStep1BasicInfo";
@@ -14,6 +14,7 @@ import PieceStep4Special from "./PieceStep4Special";
 
 const PieceWizard = ({ editPieceId = null }) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
+  const dispatch = useDispatch();
   const navigate = useNavigate();
   
   const [currentStep, setCurrentStep] = useState(1);
@@ -624,6 +625,7 @@ const PieceWizard = ({ editPieceId = null }) => {
       if (isEditMode && editPieceId) {
         // Update existing piece
         await updatePiece(editPieceId, formData);
+        dispatch(invalidatePieceValueCache(editPieceId));
         trackEvent('Piece', 'Update', pieceData.piece_name);
         navigate("/create/pieces");
       } else {

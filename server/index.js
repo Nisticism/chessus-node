@@ -10261,6 +10261,141 @@ app.get('/api/ai-training/analysis/by-slug/:slug', async (req, res) => {
   }
 });
 
+// POST /api/games/:gameId/analysis/regenerate
+// Creator-initiated analysis regeneration.  The game creator (or any admin/owner)
+// can call this to recompute and publish analysis for their own game.  Rate-limited
+// to 5 times per day (UTC calendar day) per game type.  The result is always stored
+// with at least "creator" visibility so the creator can see it immediately.
+const CREATOR_REGEN_DAILY_LIMIT = 5;
+app.post('/api/games/:gameId/analysis/regenerate', authenticateToken, async (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.gameId, 10);
+    if (!Number.isFinite(gameTypeId)) return res.status(400).send({ message: 'Invalid game id' });
+
+    // Verify the caller is the creator or an admin/owner.
+    const [[gt]] = await db_pool.query(
+      'SELECT creator_id FROM game_types WHERE id = ? LIMIT 1',
+      [gameTypeId],
+    );
+    if (!gt) return res.status(404).send({ message: 'Game not found' });
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'owner';
+    const isCreator = Number(gt.creator_id) === Number(req.user.id);
+    if (!isAdmin && !isCreator) return res.status(403).send({ message: 'Not authorized' });
+
+    // Rate-limit check (admins/owners bypass the daily cap).
+    if (!isAdmin) {
+      const [rows] = await db_pool.query(
+        `SELECT creator_regen_count, creator_regen_date
+           FROM ai_training_analyses WHERE game_type_id = ? LIMIT 1`,
+        [gameTypeId],
+      );
+      const todayUtc = new Date().toISOString().slice(0, 10);
+      let regenCount = 0;
+      if (rows.length > 0) {
+        const row = rows[0];
+        const rowDate = row.creator_regen_date
+          ? (row.creator_regen_date instanceof Date
+              ? row.creator_regen_date.toISOString().slice(0, 10)
+              : String(row.creator_regen_date).slice(0, 10))
+          : null;
+        regenCount = rowDate === todayUtc ? (row.creator_regen_count || 0) : 0;
+      }
+      if (regenCount >= CREATOR_REGEN_DAILY_LIMIT) {
+        return res.status(429).send({
+          message: `You have used all ${CREATOR_REGEN_DAILY_LIMIT} analysis regenerations for today. Try again tomorrow.`,
+          remaining: 0,
+        });
+      }
+    }
+
+    // Verify there is actually training data before regenerating.
+    const [jobRows] = await db_pool.query(
+      `SELECT COUNT(*) AS cnt FROM ai_training_jobs
+         WHERE game_type_id = ? AND games_played > 0`,
+      [gameTypeId],
+    );
+    if ((jobRows[0]?.cnt || 0) === 0) {
+      return res.status(422).send({ message: 'No training data available yet for this game. Upload training results first.' });
+    }
+
+    // Regenerate and persist.
+    const stored = await trainingAnalysis.regenerateAndStore(gameTypeId, req.user.id);
+
+    // Ensure visibility is at least "creator" so the creator can view it.
+    if (stored.visibility === 'private') {
+      await trainingAnalysis.setVisibility(gameTypeId, 'creator');
+      stored.visibility = 'creator';
+    }
+
+    // Increment creator rate-limit counter (skip for admins/owners).
+    if (!isAdmin) {
+      const todayUtc = new Date().toISOString().slice(0, 10);
+      await db_pool.query(
+        `INSERT INTO ai_training_analyses (game_type_id, summary_json, visibility, generated_by_user_id, creator_regen_count, creator_regen_date)
+           VALUES (?, '{}', 'creator', ?, 1, ?)
+           ON DUPLICATE KEY UPDATE
+             creator_regen_count = IF(creator_regen_date = ?, creator_regen_count + 1, 1),
+             creator_regen_date  = ?`,
+        [gameTypeId, req.user.id, todayUtc, todayUtc, todayUtc],
+      );
+      // Re-read the updated counter to return remaining to client.
+      const [[updated]] = await db_pool.query(
+        `SELECT creator_regen_count FROM ai_training_analyses WHERE game_type_id = ? LIMIT 1`,
+        [gameTypeId],
+      );
+      stored.regenRemaining = CREATOR_REGEN_DAILY_LIMIT - (updated?.creator_regen_count || 1);
+    } else {
+      stored.regenRemaining = CREATOR_REGEN_DAILY_LIMIT; // admins always see full quota
+    }
+
+    res.json(stored);
+  } catch (err) {
+    console.error('Creator analysis regenerate error:', err);
+    res.status(500).send({ message: err.message || 'Failed to regenerate analysis' });
+  }
+});
+
+// GET /api/games/:gameId/analysis/regen-status
+// Returns the creator's remaining daily regeneration count without side effects.
+app.get('/api/games/:gameId/analysis/regen-status', authenticateToken, async (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.gameId, 10);
+    if (!Number.isFinite(gameTypeId)) return res.status(400).send({ message: 'Invalid game id' });
+
+    const [[gt]] = await db_pool.query(
+      'SELECT creator_id FROM game_types WHERE id = ? LIMIT 1',
+      [gameTypeId],
+    );
+    if (!gt) return res.status(404).send({ message: 'Game not found' });
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'owner';
+    const isCreator = Number(gt.creator_id) === Number(req.user.id);
+    if (!isAdmin && !isCreator) return res.status(403).send({ message: 'Not authorized' });
+
+    if (isAdmin) return res.json({ remaining: CREATOR_REGEN_DAILY_LIMIT, limit: CREATOR_REGEN_DAILY_LIMIT });
+
+    const [rows] = await db_pool.query(
+      `SELECT creator_regen_count, creator_regen_date
+         FROM ai_training_analyses WHERE game_type_id = ? LIMIT 1`,
+      [gameTypeId],
+    );
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    let regenCount = 0;
+    if (rows.length > 0) {
+      const row = rows[0];
+      const rowDate = row.creator_regen_date
+        ? (row.creator_regen_date instanceof Date
+            ? row.creator_regen_date.toISOString().slice(0, 10)
+            : String(row.creator_regen_date).slice(0, 10))
+        : null;
+      regenCount = rowDate === todayUtc ? (row.creator_regen_count || 0) : 0;
+    }
+    res.json({ remaining: Math.max(0, CREATOR_REGEN_DAILY_LIMIT - regenCount), limit: CREATOR_REGEN_DAILY_LIMIT });
+  } catch (err) {
+    console.error('Regen status error:', err);
+    res.status(500).send({ message: 'Failed to get regen status' });
+  }
+});
+
 // GET /api/game-types/:id/analysis-request-status � returns whether the
 // authenticated user has already submitted an analysis request for this game.
 app.get('/api/game-types/:id/analysis-request-status', authenticateToken, async (req, res) => {

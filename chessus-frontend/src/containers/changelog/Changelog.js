@@ -18,6 +18,8 @@ const changelogData = [
       "Direct messages: you can now send images in conversations (up to 1 MB each, max 5 per conversation at a time). Images auto-delete after 24 hours and can be manually deleted by either party at any time. Click an image to view it full size.",
       "Direct messages: emoji picker and custom link buttons added to the message input bar.",
       "Fixed: games wouldn't load for users connected through a VPN. Socket connections now start with a more compatible transport mode.",
+      "Game creators can now generate an AI balance analysis report directly from the 'Train AI Locally' section on their game's detail page, up to 5 times per day. The report covers win rates by side, draw breakdown, and sample size, and is immediately viewable on the game's AI Analysis page.",
+      "Piece values in the Captured Pieces section now use a more accurate board-coverage algorithm: each piece is simulated at the center of the board and the exact number of squares it can move to and attack are counted. Ranged attacks, step/BFS movement, ratio jumps, custom squares, ghostwalk, trample/attack radius, cannot-be-captured, and directional restrictions are all factored in. Values scale naturally with board size, so infinite-range pieces are correctly worth more on larger boards.",
     ],
   },
   {

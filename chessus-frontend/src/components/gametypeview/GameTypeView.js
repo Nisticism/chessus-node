@@ -469,6 +469,11 @@ const GameTypeView = () => {
   const [trainerUploadResult, setTrainerUploadResult] = useState(null);
   const [trainerUploadError, setTrainerUploadError] = useState(null);
   const [isDraggingTrainer, setIsDraggingTrainer] = useState(false);
+  // Analysis regeneration state (inside Train AI Locally panel)
+  const [analysisRegenBusy, setAnalysisRegenBusy] = useState(false);
+  const [analysisRegenResult, setAnalysisRegenResult] = useState(null);
+  const [analysisRegenError, setAnalysisRegenError] = useState(null);
+  const [analysisRegenRemaining, setAnalysisRegenRemaining] = useState(null); // null = not yet loaded
 
   // Fetch available trainer platforms when the local-train panel opens.
   React.useEffect(() => {
@@ -519,6 +524,39 @@ const GameTypeView = () => {
       setTrainerDownloading(false);
     }
   };
+
+  const handleCreatorRegenAnalysis = async () => {
+    if (analysisRegenBusy) return;
+    setAnalysisRegenBusy(true);
+    setAnalysisRegenResult(null);
+    setAnalysisRegenError(null);
+    try {
+      const res = await axios.post(
+        `${API_URL}games/${gameId}/analysis/regenerate`,
+        {},
+        { headers: authHeader() },
+      );
+      const remaining = res.data?.regenRemaining ?? null;
+      if (remaining !== null) setAnalysisRegenRemaining(remaining);
+      setAnalysisRegenResult('Analysis generated! View it on the AI Analysis page.');
+      // Refresh the availability flag so the "AI Analysis" header button appears.
+      setAiAnalysisAvailable(true);
+    } catch (e) {
+      setAnalysisRegenError(e?.response?.data?.message || e.message || 'Failed to generate analysis');
+      // If rate-limited, surface remaining = 0
+      if (e?.response?.status === 429) setAnalysisRegenRemaining(0);
+    } finally {
+      setAnalysisRegenBusy(false);
+    }
+  };
+
+  // Load remaining regen count when the train panel opens.
+  React.useEffect(() => {
+    if (!trainerLocalOpen || !currentUser || analysisRegenRemaining !== null) return;
+    axios.get(`${API_URL}games/${gameId}/analysis/regen-status`, { headers: authHeader() })
+      .then((r) => setAnalysisRegenRemaining(r.data?.remaining ?? null))
+      .catch(() => { /* non-critical */ });
+  }, [trainerLocalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTrainerUpload = async () => {
     if (!trainerUploadFile) return;
@@ -3067,6 +3105,61 @@ const GameTypeView = () => {
               {trainerUploadError && (
                 <div style={{ color: '#ff8080', fontSize: '0.88em', marginTop: 8 }}>
                   {trainerUploadError}
+                </div>
+              )}
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid rgba(120,160,255,0.15)', margin: '12px 0' }} />
+
+            {/* Analysis generation section */}
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 6, color: '#c8d8ff', fontSize: '0.9em' }}>
+                Step 3 — Generate AI Analysis
+              </div>
+              <p style={{ margin: '0 0 10px', fontSize: '0.85em', color: '#8a9abf' }}>
+                Once you have uploaded training results, generate an analysis report that summarises
+                win rates, draw breakdown, and balance data. The report will appear on the{' '}
+                <strong>AI Analysis</strong> page for this game and is visible to you and admins by
+                default. You can regenerate up to <strong>5 times per day</strong>.
+                {analysisRegenRemaining !== null && (
+                  <span style={{ marginLeft: 6, color: analysisRegenRemaining > 0 ? '#7ab0ff' : '#ff8080' }}>
+                    ({analysisRegenRemaining} regeneration{analysisRegenRemaining !== 1 ? 's' : ''} remaining today)
+                  </span>
+                )}
+              </p>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={styles["play-button"]}
+                  onClick={handleCreatorRegenAnalysis}
+                  disabled={analysisRegenBusy || analysisRegenRemaining === 0}
+                  style={{ padding: '6px 18px', fontSize: '0.88em' }}
+                >
+                  {analysisRegenBusy
+                    ? 'Generating…'
+                    : analysisRegenRemaining === 0
+                      ? 'Daily limit reached'
+                      : '📊 Generate Analysis'}
+                </button>
+                {(aiAnalysisAvailable || analysisRegenResult) && (
+                  <button
+                    type="button"
+                    className={styles["play-button"]}
+                    onClick={() => window.open(`/games/${gameId}/analysis`, '_blank')}
+                    style={{ padding: '6px 18px', fontSize: '0.88em', background: 'rgba(50,100,180,0.35)' }}
+                  >
+                    View Analysis ↗
+                  </button>
+                )}
+              </div>
+              {analysisRegenResult && (
+                <div style={{ color: '#6fcf6f', fontSize: '0.88em', marginTop: 8 }}>
+                  {analysisRegenResult}
+                </div>
+              )}
+              {analysisRegenError && (
+                <div style={{ color: '#ff8080', fontSize: '0.88em', marginTop: 8 }}>
+                  {analysisRegenError}
                 </div>
               )}
             </div>

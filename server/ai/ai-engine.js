@@ -585,112 +585,287 @@ function getMovesForSearch(state, playerPosition) {
  */
 function getPieceValue(piece, boardSize) {
   if (!piece) return 0;
-  let value = piece.piece_value || 1;
+  if (piece.is_neutral || piece.player_id === 0) return 0;
 
-  // Critical piece flags
-  if (piece.ends_game_on_checkmate) value += 1000;
-  if (piece.ends_game_on_capture) value += 1000;
-  if (piece.can_control_squares) value += 3;
+  // Use pre-computed value from game state if available
+  // (pieceValues is keyed by piece_id and set on the state object)
+  const bw = boardSize || 8;
+  const bh = boardSize || 8; // AI engine uses a single boardSize; treat as square
 
-  // Board scale factor: infinite pieces are worth more on larger boards
-  const bs = boardSize || 8;
-  const boardScale = bs / 8; // 1.0 for standard, 1.5 for 12x12, etc.
+  const cx = Math.floor((bw - 1) / 2);
+  const cy = Math.floor((bh - 1) / 2);
+  const DIVISOR = 5.5;
+  const isOnBoard = (x, y) => x >= 0 && x < bw && y >= 0 && y < bh;
 
-  // Mobility proxy from movement AND capture properties
-  const moveDirs = [
-    'up_movement', 'down_movement', 'left_movement', 'right_movement',
-    'up_left_movement', 'up_right_movement', 'down_left_movement', 'down_right_movement'
+  const moveSet      = new Set();
+  const stepMoveSet   = new Set(); // squares reached via step-by-step movement (weighted ×1.2)
+  const attackMap    = new Map();
+  const stepAttackSet = new Set(); // squares attacked via step movement/capture (weighted ×1.2)
+  const addAttack = (key, w) => {
+    const cur = attackMap.get(key);
+    if (cur === undefined || w > cur) attackMap.set(key, w);
+  };
+
+  function walkDir(dx, dy, range, exact, repeating) {
+    if (!range || range === 0) return [];
+    const absRange = Math.abs(range);
+    const isExact  = exact || range < 0;
+    const limit    = absRange === 99 ? Math.max(bw, bh) : absRange;
+    const maxIter  = (isExact && repeating) ? Math.max(bw, bh) : limit;
+    const result   = [];
+    for (let dist = 1; dist <= maxIter; dist++) {
+      const x = cx + dx * dist, y = cy + dy * dist;
+      if (!isOnBoard(x, y)) break;
+      if (!isExact || (repeating ? dist % absRange === 0 : dist === absRange)) result.push(`${x},${y}`);
+    }
+    return result;
+  }
+
+  const hasDedicatedCap = !!(
+    piece.up_capture || piece.down_capture || piece.left_capture || piece.right_capture ||
+    piece.up_left_capture || piece.up_right_capture || piece.down_left_capture || piece.down_right_capture ||
+    piece.ratio_capture_1 || piece.ratio_capture_2
+  );
+  const canCaptureOnMove     = !!(piece.can_capture_enemy_on_move);
+  const firstMoveOnlyCapture = !!(piece.first_move_only_capture);
+  const repM = !!piece.repeating_movement;
+  const repC = !!piece.repeating_capture;
+  const dirs = [
+    { name: 'up', dx: 0, dy: -1 }, { name: 'down', dx: 0, dy: 1 },
+    { name: 'left', dx: -1, dy: 0 }, { name: 'right', dx: 1, dy: 0 },
+    { name: 'up_left', dx: -1, dy: -1 }, { name: 'up_right', dx: 1, dy: -1 },
+    { name: 'down_left', dx: -1, dy: 1 }, { name: 'down_right', dx: 1, dy: 1 },
   ];
-  const capDirs = [
-    'up_capture', 'down_capture', 'left_capture', 'right_capture',
-    'up_left_capture', 'up_right_capture', 'down_left_capture', 'down_right_capture'
-  ];
-
-  let moveDirections = 0;
-  let hasInfiniteMove = false;
-  for (const dir of moveDirs) {
-    if (piece[dir] && piece[dir] > 0) {
-      moveDirections++;
-      if (piece[dir] === 99) {
-        hasInfiniteMove = true;
-        value += 1.5 * boardScale; // Infinite range scales with board
-      } else {
-        value += Math.min(piece[dir], 8) * 0.3;
+  for (const dir of dirs) {
+    const moveRange = piece[`${dir.name}_movement`] || 0;
+    const capRange  = piece[`${dir.name}_capture`]  || 0;
+    const dirFMO    = (piece[`${dir.name}_movement_available_for`] || 0) > 0;
+    if (moveRange > 0) {
+      for (const key of walkDir(dir.dx, dir.dy, moveRange, !!piece[`${dir.name}_movement_exact`], repM && !!piece[`${dir.name}_movement_exact`])) {
+        moveSet.add(key);
+        if (canCaptureOnMove && (!hasDedicatedCap || capRange > 0)) addAttack(key, (firstMoveOnlyCapture || dirFMO) ? 0.5 : 1.0);
+      }
+    }
+    if (capRange > 0) {
+      for (const key of walkDir(dir.dx, dir.dy, capRange, !!piece[`${dir.name}_capture_exact`], repC && !!piece[`${dir.name}_capture_exact`])) {
+        addAttack(key, firstMoveOnlyCapture ? 0.5 : 1.0);
       }
     }
   }
 
-  let captureDirections = 0;
-  let hasInfiniteCapture = false;
-  for (const dir of capDirs) {
-    if (piece[dir] && piece[dir] > 0) {
-      captureDirections++;
-      if (piece[dir] === 99) {
-        hasInfiniteCapture = true;
-        value += 1.0 * boardScale;
-      } else {
-        value += Math.min(piece[dir], 8) * 0.2;
+  if (piece.can_capture_enemy_via_range) {
+    const rd = [
+      { f: 'up_attack_range', dx: 0, dy: -1 }, { f: 'down_attack_range', dx: 0, dy: 1 },
+      { f: 'left_attack_range', dx: -1, dy: 0 }, { f: 'right_attack_range', dx: 1, dy: 0 },
+      { f: 'up_left_attack_range', dx: -1, dy: -1 }, { f: 'up_right_attack_range', dx: 1, dy: -1 },
+      { f: 'down_left_attack_range', dx: -1, dy: 1 }, { f: 'down_right_attack_range', dx: 1, dy: 1 },
+    ];
+    for (const d of rd) {
+      const range = piece[d.f] || 0;
+      if (!range) continue;
+      for (const key of walkDir(d.dx, d.dy, range, !!piece[`${d.f}_exact`], false)) addAttack(key, 1.5);
+    }
+    const sar = piece.step_by_step_attack_range;
+    if (sar != null && sar !== 0) {
+      const sarSteps = Math.abs(sar);
+      const sarDirs  = sar < 0 ? [[1,0],[-1,0],[0,1],[0,-1]] : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      const vis = new Set([`${cx},${cy}`]);
+      const q   = [{ x: cx, y: cy, steps: 0 }];
+      while (q.length) {
+        const c = q.shift();
+        if (c.steps >= sarSteps) continue;
+        for (const [dx, dy] of sarDirs) {
+          const nx = c.x + dx, ny = c.y + dy;
+          if (!isOnBoard(nx, ny)) continue;
+          const key = `${nx},${ny}`;
+          if (vis.has(key)) continue;
+          vis.add(key); stepAttackSet.add(key); addAttack(key, 1.5);
+          q.push({ x: nx, y: ny, steps: c.steps + 1 });
+        }
+      }
+    }
+    const rar1 = piece.ratio_one_attack_range || 0, rar2 = piece.ratio_two_attack_range || 0;
+    if (rar1 > 0 && rar2 > 0) {
+      for (const [dx, dy] of [[rar1,rar2],[rar1,-rar2],[-rar1,rar2],[-rar1,-rar2],[rar2,rar1],[rar2,-rar1],[-rar2,rar1],[-rar2,-rar1]]) {
+        const x = cx + dx, y = cy + dy;
+        if (isOnBoard(x, y)) addAttack(`${x},${y}`, 1.5);
       }
     }
   }
 
-  // Total mobility bonus: more directions = more versatile
-  value += moveDirections * 0.5;
-  value += captureDirections * 0.3;
-
-  // Bonus for pieces that can both move and capture in many directions
-  if (moveDirections >= 4 && captureDirections >= 4) value += 2 * boardScale;
-
-  // Board coverage: cardinal directions let a piece reach every square;
-  // diagonal-only pieces are color-bound (can never reach half the board).
-  const hasCardinalMove = !!(
-    piece.up_movement > 0 || piece.down_movement > 0 ||
-    piece.left_movement > 0 || piece.right_movement > 0
-  );
-  const hasDiagonalMove = !!(
-    piece.up_left_movement > 0 || piece.up_right_movement > 0 ||
-    piece.down_left_movement > 0 || piece.down_right_movement > 0
-  );
-  const hasCardinalCap = !!(
-    piece.up_capture > 0 || piece.down_capture > 0 ||
-    piece.left_capture > 0 || piece.right_capture > 0
-  );
-  const hasDiagonalCap = !!(
-    piece.up_left_capture > 0 || piece.up_right_capture > 0 ||
-    piece.down_left_capture > 0 || piece.down_right_capture > 0
-  );
-
-  // Full board coverage bonus (can reach any square given enough moves)
-  if (hasCardinalMove && hasDiagonalMove) {
-    // Queen-like: covers all squares and all angles
-    value += 1.5 * boardScale;
-  } else if (hasCardinalMove) {
-    // Rook-like: covers all squares via two axes
-    value += 0.75 * boardScale;
-  }
-  // Diagonal-only (bishop-like): color-bound — subtract a penalty scaled by
-  // how infinite the diagonals are, since the limitation is most costly on
-  // long-range sliders that can never switch color.
-  if (!hasCardinalMove && !hasCardinalCap && hasDiagonalMove) {
-    const infiniteDiagonals = [
-      'up_left_movement', 'up_right_movement', 'down_left_movement', 'down_right_movement'
-    ].filter(d => piece[d] === 99).length;
-    value -= 1.0 + infiniteDiagonals * 0.4;
+  const r1 = piece.ratio_movement_1 || 0, r2 = piece.ratio_movement_2 || 0;
+  if (r1 > 0 && r2 > 0) {
+    const maxK = piece.repeating_ratio ? (piece.max_ratio_iterations === -1 ? Math.max(bw, bh) : (piece.max_ratio_iterations || 2)) : 1;
+    for (const [dx, dy] of [[r1,r2],[r1,-r2],[-r1,r2],[-r1,-r2],[r2,r1],[r2,-r1],[-r2,r1],[-r2,-r1]]) {
+      for (let k = 1; k <= maxK; k++) {
+        const x = cx + dx * k, y = cy + dy * k;
+        if (!isOnBoard(x, y)) break;
+        const key = `${x},${y}`; moveSet.add(key);
+        if (canCaptureOnMove && !hasDedicatedCap) addAttack(key, firstMoveOnlyCapture ? 0.5 : 1.0);
+      }
+    }
   }
 
-  if (piece.ratio_movement_1 && piece.ratio_movement_2) value += 2.5 * boardScale;
-  if (piece.step_movement_value) value += Math.abs(piece.step_movement_value) * 0.8;
-  if (piece.can_capture_enemy_via_range) value += 2;
-  if (piece.can_hop_over_allies || piece.can_hop_over_enemies) value += 1;
+  const rc1 = piece.ratio_capture_1 || 0, rc2 = piece.ratio_capture_2 || 0;
+  if (rc1 > 0 && rc2 > 0) {
+    const maxK = piece.repeating_ratio_capture ? (piece.max_ratio_capture_iterations === -1 ? Math.max(bw, bh) : (piece.max_ratio_capture_iterations || 2)) : 1;
+    for (const [dx, dy] of [[rc1,rc2],[rc1,-rc2],[-rc1,rc2],[-rc1,-rc2],[rc2,rc1],[rc2,-rc1],[-rc2,rc1],[-rc2,-rc1]]) {
+      for (let k = 1; k <= maxK; k++) {
+        const x = cx + dx * k, y = cy + dy * k;
+        if (!isOnBoard(x, y)) break;
+        addAttack(`${x},${y}`, firstMoveOnlyCapture ? 0.5 : 1.0);
+      }
+    }
+  }
+
+  const stepStyle = piece.step_by_step_movement_style || piece.step_movement_style;
+  if (stepStyle) {
+    const stepVal = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0);
+    if (!isNaN(stepVal) && stepVal !== 0) {
+      const maxS   = Math.abs(stepVal);
+      const mDirs  = stepVal < 0 ? [[1,0],[-1,0],[0,1],[0,-1]] : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      const vis    = new Set([`${cx},${cy}`]);
+      const q      = [{ x: cx, y: cy, steps: 0 }];
+      while (q.length) {
+        const c = q.shift();
+        if (c.steps >= maxS) continue;
+        for (const [dx, dy] of mDirs) {
+          const nx = c.x + dx, ny = c.y + dy;
+          if (!isOnBoard(nx, ny)) continue;
+          const key = `${nx},${ny}`;
+          if (vis.has(key)) continue; vis.add(key); moveSet.add(key); stepMoveSet.add(key);
+          q.push({ x: nx, y: ny, steps: c.steps + 1 });
+        }
+      }
+      const capVal     = Number(piece.step_capture_value ?? 0);
+      const hasStepCap = piece.step_capture_value != null && piece.step_capture_value !== 0 && !isNaN(capVal);
+      if (hasStepCap) {
+        const cS   = Math.abs(capVal);
+        const cDirs = capVal < 0 ? [[1,0],[-1,0],[0,1],[0,-1]] : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+        const cv = new Set([`${cx},${cy}`]); const cq = [{ x: cx, y: cy, steps: 0 }];
+        while (cq.length) {
+          const c = cq.shift();
+          for (const [dx, dy] of cDirs) { const nx = c.x+dx, ny = c.y+dy; if (!isOnBoard(nx,ny)) continue; if (c.steps+1<=cS) { stepAttackSet.add(`${nx},${ny}`); addAttack(`${nx},${ny}`, firstMoveOnlyCapture?0.5:1.0); } }
+          if (c.steps < maxS) {
+            for (const [dx, dy] of mDirs) { const nx=c.x+dx, ny=c.y+dy; if (!isOnBoard(nx,ny)) continue; const key=`${nx},${ny}`; if (!cv.has(key)){cv.add(key);cq.push({x:nx,y:ny,steps:c.steps+1});} }
+          }
+        }
+      } else if (canCaptureOnMove && !hasDedicatedCap) {
+        for (const sq of moveSet) {
+          if (stepMoveSet.has(sq)) stepAttackSet.add(sq);
+          addAttack(sq, firstMoveOnlyCapture ? 0.5 : 1.0);
+        }
+      }
+    }
+  }
+
+  let additionalMovements = {};
+  if (piece.special_scenario_moves) {
+    try {
+      const p = typeof piece.special_scenario_moves === 'string' ? JSON.parse(piece.special_scenario_moves) : piece.special_scenario_moves;
+      additionalMovements = p.additionalMovements || {};
+    } catch (_) {}
+  }
+  const dmap = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0], up_left:[-1,-1], up_right:[1,-1], down_left:[-1,1], down_right:[1,1] };
+  for (const [dir, opts] of Object.entries(additionalMovements)) {
+    const [dx, dy] = dmap[dir] || [0, 0];
+    if (!dx && !dy) continue;
+    for (const opt of opts) {
+      const fmo = !!(opt.firstMoveOnly || opt.availableForMoves > 0);
+      let maxD = opt.value || 0; if (opt.infinite) maxD = 99;
+      for (const key of walkDir(dx, dy, maxD, !!opt.exact, false)) {
+        moveSet.add(key);
+        if (canCaptureOnMove && !hasDedicatedCap) addAttack(key, (firstMoveOnlyCapture || fmo) ? 0.5 : 1.0);
+      }
+    }
+  }
+
+  if (piece.custom_movement_squares) {
+    try {
+      const c = typeof piece.custom_movement_squares === 'string' ? JSON.parse(piece.custom_movement_squares) : piece.custom_movement_squares;
+      if (Array.isArray(c)) for (const sq of c) { const x=cx+(sq.col||0), y=cy+(sq.row||0); if (!isOnBoard(x,y)) continue; const key=`${x},${y}`; moveSet.add(key); if (canCaptureOnMove && !hasDedicatedCap) addAttack(key, firstMoveOnlyCapture?0.5:1.0); }
+    } catch (_) {}
+  }
+  if (piece.custom_attack_squares) {
+    try {
+      const c = typeof piece.custom_attack_squares === 'string' ? JSON.parse(piece.custom_attack_squares) : piece.custom_attack_squares;
+      if (Array.isArray(c)) for (const sq of c) { const x=cx+(sq.col||0), y=cy+(sq.row||0); if (isOnBoard(x,y)) addAttack(`${x},${y}`, firstMoveOnlyCapture?0.5:1.0); }
+    } catch (_) {}
+  }
+
+  const centerParity = (cx + cy) % 2;
+  function isColorBound(keys) {
+    const arr = [...keys];
+    if (arr.length === 0) return false;
+    return arr.every(k => { const [x, y] = k.split(',').map(Number); return (x + y) % 2 === centerParity; });
+  }
+
+  let moveContrib = 0;
+  for (const key of moveSet) {
+    moveContrib += stepMoveSet.has(key) ? 1.2 : 1.0;
+  }
+  if (isColorBound(moveSet)) moveContrib *= 0.7;
+
+  let attackContrib = 0;
+  for (const [key, w] of attackMap) {
+    attackContrib += stepAttackSet.has(key) ? w * 1.2 : w;
+  }
+  if (isColorBound(attackMap.keys())) attackContrib *= 0.7;
+
+  if ((piece.attack_radius || 0) > 0 || (piece.trample_radius || 0) > 0) attackContrib *= 1.25;
+  let internal = moveContrib + attackContrib;
+
+  if (attackContrib === 0)                            internal *= 0.6;
+  if (piece.ghostwalk)                                internal *= 1.4;
+  if (piece.can_promote)                              internal *= 1.2;
+  if (piece.cannot_be_captured)                       internal *= 1.6;
+  if (piece.die_on_capture || piece.dies_on_capture)  internal *= 0.8;
+
+  // Hop bonus
+  const canHopAllies  = !!(piece.can_hop_over_allies);
+  const canHopEnemies = !!(piece.can_hop_over_enemies);
+  if (canHopAllies && canHopEnemies) internal *= 1.15;
+  else if (canHopAllies || canHopEnemies) internal *= 1.1;
+
+  // Additional wizard-level attack/mobility features
+  const captureActionsPerTurn = piece.capture_actions_per_turn || 1;
+  if (captureActionsPerTurn > 1 || captureActionsPerTurn === -1) {
+    const extra = captureActionsPerTurn === -1 ? 4 : Math.min(captureActionsPerTurn - 1, 4);
+    internal *= 1 + extra * 0.08;
+  }
+  const rangedCaptureActionsPerTurn = piece.ranged_capture_actions_per_turn || 1;
+  if (rangedCaptureActionsPerTurn > 1 || rangedCaptureActionsPerTurn === -1) {
+    const extra = rangedCaptureActionsPerTurn === -1 ? 4 : Math.min(rangedCaptureActionsPerTurn - 1, 4);
+    internal *= 1 + extra * 0.07;
+  }
+  if (piece.capture_on_hop && (canHopAllies || canHopEnemies)) internal *= 1.1;
+  if (piece.chain_capture_enabled) internal *= 1.1;
+  if (piece.can_capture_enemy_via_range) {
+    const canFireOverAllies  = !!(piece.can_fire_over_allies);
+    const canFireOverEnemies = !!(piece.can_fire_over_enemies);
+    if (canFireOverAllies || canFireOverEnemies)
+      internal *= (canFireOverAllies && canFireOverEnemies) ? 1.15 : 1.1;
+    const canHopAtkAllies  = !!(piece.can_hop_attack_over_allies);
+    const canHopAtkEnemies = !!(piece.can_hop_attack_over_enemies);
+    if (canHopAtkAllies || canHopAtkEnemies)
+      internal *= (canHopAtkAllies && canHopAtkEnemies) ? 1.15 : 1.1;
+  }
+  const minTurns = piece.min_turns_until_movement || 0;
+  if (minTurns > 0) internal *= Math.max(0.5, 1 - minTurns * 0.1);
+
+  const hasRatioMove = r1 > 0 && r2 > 0;
+  const hasStepMove  = !!(stepStyle && Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0) !== 0);
+  const hasForward  = !!(piece.up_movement    || piece.up_capture    || piece.up_left_movement    || piece.up_right_movement    || piece.up_left_capture    || piece.up_right_capture)   || hasRatioMove || hasStepMove;
+  const hasBackward = !!(piece.down_movement  || piece.down_capture  || piece.down_left_movement  || piece.down_right_movement  || piece.down_left_capture  || piece.down_right_capture) || hasRatioMove || hasStepMove;
+  if (!hasForward || !hasBackward) internal *= 0.7;
 
   // HP scaling
-  const hp = piece.current_hp ?? piece.hit_points ?? 1;
+  const hp    = piece.current_hp ?? piece.hit_points ?? 1;
   const maxHp = piece.hit_points || 1;
-  if (maxHp > 1) value *= (0.5 + 0.5 * hp / maxHp);
+  if (maxHp > 1) internal *= (0.5 + 0.5 * hp / maxHp);
 
-  return value;
+  return Math.max(0.1, Math.round((internal / DIVISOR) * 10) / 10);
 }
-
 /**
  * Order moves for better alpha-beta pruning.
  * Captures of high-value targets come first, then center moves.

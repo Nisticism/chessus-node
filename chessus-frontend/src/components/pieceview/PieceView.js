@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import axios from "../../services/axios-interceptor";
-import { getPieceById, getGamesByPieceId, deletePiece, checkPieceDuplicates } from "../../actions/pieces";
+import { getPieceById, getGamesByPieceId, deletePiece, checkPieceDuplicates, setPieceValueCache } from "../../actions/pieces";
+import { estimatePieceValue } from "../../utils/pieceValueEstimator";
 import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import Pagination from "../pagination/Pagination";
@@ -18,6 +19,8 @@ const PieceView = () => {
   const { pieceId } = useParams();
   const navigate = useNavigate();
   const { user: currentUser } = useSelector((state) => state.authReducer);
+  const dispatch = useDispatch();
+  const pieceValueCache = useSelector((state) => state.pieces?.pieceValueCache || {});
   const [piece, setPiece] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -323,6 +326,18 @@ const PieceView = () => {
     return sanitized;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderedPieceImages, piece]);
+
+  // Compute (or retrieve from Redux cache) the base piece value on an 8×8 board.
+  // The cache is keyed by piece_id so navigating away and back skips the recalculation.
+  // It is invalidated by PieceWizard after a successful edit.
+  const pieceBaseValue = useMemo(() => {
+    if (!piece) return null;
+    const id = piece.piece_id;
+    if (pieceValueCache[id] !== undefined) return pieceValueCache[id];
+    const val = estimatePieceValue(piece, 9, 9);
+    dispatch(setPieceValueCache(id, val));
+    return val;
+  }, [piece, pieceValueCache, dispatch]);
 
   // Helper to get additional movements from special_scenario_moves
   const getAdditionalMovements = useMemo(() => {
@@ -864,6 +879,15 @@ const PieceView = () => {
             <span className={styles["stat-value"]}>
               {(piece.up_movement_exact || piece.down_movement_exact || piece.left_movement_exact || piece.right_movement_exact ||
                 piece.up_left_movement_exact || piece.up_right_movement_exact || piece.down_left_movement_exact || piece.down_right_movement_exact) ? 'Yes' : 'No'}
+            </span>
+          </div>
+          <div className={styles["stat-card"]}>
+            <div className={styles["stat-header"]}>
+              <span className={styles["stat-label"]}>Approx. Value on 9×9</span>
+              <InfoTooltip text="Estimated piece value calculated by simulating this piece at the center of an empty 9×9 board and counting every square it can move to and attack. Includes penalties for color-bound movement or attack. Does not include per-game ability overrides. A standard rook scores ~5.0." />
+            </div>
+            <span className={styles["stat-value"]}>
+              {pieceBaseValue !== null ? pieceBaseValue : '…'}
             </span>
           </div>
         </div>
