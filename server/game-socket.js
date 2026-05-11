@@ -9791,16 +9791,19 @@ function computePieceValue(piece, bw, bh) {
   // No forward (up) OR no backward (down) directional movement/capture → ×0.7
   const hasRatioMove = r1 > 0 && r2 > 0;
   const hasStepMove  = !!(stepStyle && Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0) !== 0);
+  // Also check moveSet for custom_movement_squares / special_scenario_moves coverage
+  const hasMoveSetForward  = [...moveSet].some(k => { const [,y] = k.split(',').map(Number); return y < cy; });
+  const hasMoveSetBackward = [...moveSet].some(k => { const [,y] = k.split(',').map(Number); return y > cy; });
   const hasForward = !!(
     piece.up_movement     || piece.up_capture     ||
     piece.up_left_movement || piece.up_right_movement ||
     piece.up_left_capture  || piece.up_right_capture
-  ) || hasRatioMove || hasStepMove;
+  ) || hasRatioMove || hasStepMove || hasMoveSetForward;
   const hasBackward = !!(
     piece.down_movement      || piece.down_capture     ||
     piece.down_left_movement || piece.down_right_movement ||
     piece.down_left_capture  || piece.down_right_capture
-  ) || hasRatioMove || hasStepMove;
+  ) || hasRatioMove || hasStepMove || hasMoveSetBackward;
   if (!hasForward || !hasBackward) internalValue *= 0.7;
 
   // User-facing value = internal / 5.5, rounded to 1 decimal place
