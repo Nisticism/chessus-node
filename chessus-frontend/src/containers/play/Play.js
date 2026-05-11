@@ -1648,7 +1648,7 @@ const Play = () => {
                               ? 'Watch'
                               : game.player_turn == null
                                 ? 'Re-join'
-                                : game.simultaneous_turns && game.simulSubmittedPlayerIds?.includes(currentUser.id)
+                                : game.simultaneous_turns && Array.isArray(game.simulSubmittedPlayerIds) && game.simulSubmittedPlayerIds.includes(currentUser.id)
                                   ? 'Move Submitted'
                                   : game.simultaneous_turns
                                     ? 'Make Move'
@@ -1754,7 +1754,7 @@ const Play = () => {
                               ? 'Watch'
                               : game.player_turn == null
                                 ? 'Re-join'
-                                : game.simultaneous_turns && game.simulSubmittedPlayerIds?.includes(currentUser.id)
+                                : game.simultaneous_turns && Array.isArray(game.simulSubmittedPlayerIds) && game.simulSubmittedPlayerIds.includes(currentUser.id)
                                   ? 'Move Submitted'
                                   : game.simultaneous_turns
                                     ? 'Make Move'

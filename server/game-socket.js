@@ -9225,7 +9225,7 @@ async function getOngoingGames() {
         let simulSubmittedPlayerIds = [];
         try { anonLivePlayers = g.anon_live_players_json ? JSON.parse(g.anon_live_players_json) : null; } catch (_) {}
         try { anonCorresPlayers = g.anon_corres_players_json ? JSON.parse(g.anon_corres_players_json) : null; } catch (_) {}
-        try { simulSubmittedPlayerIds = g.simul_submitted_json ? JSON.parse(g.simul_submitted_json) : []; } catch (_) {}
+        try { const _sp = g.simul_submitted_json ? JSON.parse(g.simul_submitted_json) : []; simulSubmittedPlayerIds = Array.isArray(_sp) ? _sp : []; } catch (_) {}
 
         let playerNames = g.player_names;
         if (isBotGame && botDifficulty) {
