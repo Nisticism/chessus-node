@@ -72,23 +72,17 @@ const Streams = () => {
         <p className={styles["subtitle"]}>
           Watch GridGrove community members play live on Twitch
         </p>
-        {liveCount > 0 && (
-          <div className={styles["live-indicator"]}>
-            <span className={styles["live-dot"]}></span>
-            {liveCount} {liveCount === 1 ? 'stream' : 'streams'} live now
-          </div>
-        )}
+
       </div>
 
       {/* ── Live Now ─────────────────────────────────────────── */}
-      {liveStreams.length > 0 && (
-        <section className={styles["live-section"]}>
-          <div className={styles["section-heading"]}>
-            <span className={styles["live-label"]}>
-              <span className={styles["pulse-dot"]}></span>
-              Live Now
-            </span>
+      <section className={styles["live-section"]}>
+        <h2 className={styles["community-streams-title"]}>Live Now</h2>
+        {liveStreams.length === 0 ? (
+          <div className={styles["no-live-streams"]}>
+            <p>No streams are live right now. Check back later!</p>
           </div>
+        ) : (
           <div className={styles["live-grid"]}>
             {liveStreams.map(us => (
               <a
@@ -150,8 +144,8 @@ const Streams = () => {
               </a>
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* ── Community Channels ───────────────────────────────── */}
       {userStreams.length > 0 ? (
