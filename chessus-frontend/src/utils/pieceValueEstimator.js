@@ -279,6 +279,10 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
     }
   }
 
+  // Snapshot pre-custom sets so we can identify squares NEWLY added by custom squares
+  const preCustMoveKeys   = new Set(moveSet);
+  const preCustAttackKeys = new Set(attackMap.keys());
+
   // Custom movement squares
   if (piece.custom_movement_squares) {
     try {
@@ -310,6 +314,10 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
     } catch (_) {}
   }
 
+  // Keys newly contributed by custom squares (used for 1.25× bonus)
+  const customMoveKeys   = new Set([...moveSet].filter(k => !preCustMoveKeys.has(k)));
+  const customAttackKeys = new Set([...attackMap.keys()].filter(k => !preCustAttackKeys.has(k)));
+
   // Compute internal value
   // Color-bound check: every target square is compared against the parity of
   // the CENTER square. If every reachable square matches the center's parity,
@@ -326,13 +334,15 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
 
   let moveContrib = 0;
   for (const key of moveSet) {
-    moveContrib += stepMoveSet.has(key) ? 1.2 : 1.0;
+    const base = stepMoveSet.has(key) ? 1.2 : 1.0;
+    moveContrib += customMoveKeys.has(key) ? base * 1.25 : base;
   }
   if (isColorBound(moveSet)) moveContrib *= 0.7;
 
   let attackContrib = 0;
   for (const [key, w] of attackMap) {
-    attackContrib += stepAttackSet.has(key) ? w * 1.2 : w;
+    const base = stepAttackSet.has(key) ? w * 1.2 : w;
+    attackContrib += customAttackKeys.has(key) ? base * 1.25 : base;
   }
   if (isColorBound(attackMap.keys())) attackContrib *= 0.7;
 
@@ -396,7 +406,8 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
   const maxHp = piece.hit_points || 1;
   if (maxHp > 1) internal *= (0.5 + 0.5 * hp / maxHp);
 
-  return Math.max(0.1, Math.round((internal / DIVISOR) * 10) / 10);
+  const baseVal = Math.max(0.1, Math.round((internal / DIVISOR) * 10) / 10);
+  return piece.can_promote ? Math.round((baseVal + 0.5) * 10) / 10 : baseVal;
 }
 
 /**

@@ -147,6 +147,10 @@ const Preferences = () => {
     return localStorage.getItem('persistLastMoveHighlight') !== 'false';
   });
 
+  const [hideMoveArrow, setHideMoveArrow] = useState(() => {
+    return localStorage.getItem('hideMoveArrow') === 'true';
+  });
+
   const [siteTheme, setSiteTheme] = useState(() => {
     return localStorage.getItem('siteTheme') || 'grove';
   });
@@ -255,6 +259,10 @@ const Preferences = () => {
   useEffect(() => {
     localStorage.setItem('persistLastMoveHighlight', persistLastMoveHighlight ? 'true' : 'false');
   }, [persistLastMoveHighlight]);
+
+  useEffect(() => {
+    localStorage.setItem('hideMoveArrow', hideMoveArrow ? 'true' : 'false');
+  }, [hideMoveArrow]);
 
   useEffect(() => {
     localStorage.setItem('pieceShadow', pieceShadow ? 'true' : 'false');
@@ -573,6 +581,12 @@ const Preferences = () => {
               onChange={(v) => setPersistLastMoveHighlight(v)}
               label="Persist last-move highlight"
               tooltip={<InfoTooltip text="Keeps the previous move's highlight on the board for 1 second after a new move is made (with a fade-out), so you can see what just changed." />}
+            />
+            <ToggleSwitch
+              checked={!hideMoveArrow}
+              onChange={(v) => setHideMoveArrow(!v)}
+              label="Show last-move arrow"
+              tooltip={<InfoTooltip text="Displays a directional arrow on the square a piece moved from, indicating which direction it moved. Uncheck to hide the arrow while keeping the square highlight." />}
             />
           </div>
 

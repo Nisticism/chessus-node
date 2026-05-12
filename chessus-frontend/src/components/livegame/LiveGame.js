@@ -284,6 +284,7 @@ const LiveGame = () => {
   const boardAnimationsEnabled = typeof window !== 'undefined' && localStorage.getItem('boardAnimations') !== 'false';
   const pieceShadowEnabled = typeof window !== 'undefined' && localStorage.getItem('pieceShadow') === 'true';
   const persistLastMoveHighlight = typeof window !== 'undefined' && localStorage.getItem('persistLastMoveHighlight') === 'true';
+  const hideMoveArrow = typeof window !== 'undefined' && localStorage.getItem('hideMoveArrow') === 'true';
 
   // Track previous lastMove so we can fade out the prior move's highlight for ~1s
   // after a new move is made.
@@ -2158,10 +2159,17 @@ const LiveGame = () => {
     const hasGhostwalk = pieceData?.ghostwalk === 1 || pieceData?.ghostwalk === true;
     if (hasGhostwalk) return true;
 
-    const directionalHopDisabled = pieceData?.directional_hop_disabled === 1 || pieceData?.directional_hop_disabled === true;
-    const canHopAllies = !directionalHopDisabled && (pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true);
-    const canHopEnemies = !directionalHopDisabled && (pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true);
     const pieceTeam = pieceData?.player_id || pieceData?.team;
+    let canHopAllies, canHopEnemies;
+    if (isCapture) {
+      const dirHopDisabledAtk = pieceData?.directional_hop_disabled_attack === 1 || pieceData?.directional_hop_disabled_attack === true;
+      canHopAllies = !dirHopDisabledAtk && (pieceData?.can_hop_attack_over_allies === 1 || pieceData?.can_hop_attack_over_allies === true);
+      canHopEnemies = !dirHopDisabledAtk && (pieceData?.can_hop_attack_over_enemies === 1 || pieceData?.can_hop_attack_over_enemies === true);
+    } else {
+      const directionalHopDisabled = pieceData?.directional_hop_disabled === 1 || pieceData?.directional_hop_disabled === true;
+      canHopAllies = !directionalHopDisabled && (pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true);
+      canHopEnemies = !directionalHopDisabled && (pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true);
+    }
 
     const dx = Math.sign(toX - fromX);
     const dy = Math.sign(toY - fromY);
@@ -2955,7 +2963,11 @@ const LiveGame = () => {
         // re-validate excluding exact directional and ratio abilities.
         // If the move only works via exact/ratio, reject it (nothing was hopped over).
         // Skip for premoves — the server validates the actual board state when the premove executes.
-        if (!forPremove && piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && !isStepMove && !isRatioMove) {
+        const isAttackMove = isCapture || isPotentialCapture;
+        const exactRatioHopOnlyApplies = isAttackMove
+          ? (piece.exact_ratio_hop_only_attack === 1 || piece.exact_ratio_hop_only_attack === true)
+          : (piece.exact_ratio_hop_only === 1 || piece.exact_ratio_hop_only === true);
+        if (!forPremove && exactRatioHopOnlyApplies && isValidMove && pathClear && !isHopCapture && !isStepMove && !isRatioMove) {
           const stillValid = isCapture
             ? canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true)
             : canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true);
@@ -2980,8 +2992,48 @@ const LiveGame = () => {
           }
         }
         // For ratio moves with hop-only: always require a hop
-        if (!forPremove && piece.exact_ratio_hop_only && isValidMove && pathClear && !isHopCapture && isRatioMove) {
+        if (!forPremove && exactRatioHopOnlyApplies && isValidMove && pathClear && !isHopCapture && isRatioMove) {
           isValidMove = false;
+        }
+
+        // directional_hop_only: directional movement requires a piece to be hopped in the path
+        if (!forPremove && isValidMove && !isCapture && !isPotentialCapture && !isHopCapture &&
+            (piece.directional_hop_only === 1 || piece.directional_hop_only === true)) {
+          const xDiff = toX - piece.x;
+          const yDiff = toY - piece.y;
+          if (xDiff === 0 || yDiff === 0 || Math.abs(xDiff) === Math.abs(yDiff)) {
+            const dx = Math.sign(xDiff);
+            const dy = Math.sign(yDiff);
+            let hasHopPiece = false;
+            let cx = piece.x + dx;
+            let cy = piece.y + dy;
+            while ((cx !== toX || cy !== toY) && !hasHopPiece) {
+              if (findPieceAtSquare(pieces, cx, cy)) hasHopPiece = true;
+              cx += dx;
+              cy += dy;
+            }
+            if (!hasHopPiece) isValidMove = false;
+          }
+        }
+
+        // directional_hop_only_attack: directional attacks require a piece to be hopped in the path
+        if (!forPremove && isValidMove && (isCapture || isPotentialCapture) && !isHopCapture &&
+            (piece.directional_hop_only_attack === 1 || piece.directional_hop_only_attack === true)) {
+          const xDiff = toX - piece.x;
+          const yDiff = toY - piece.y;
+          if (xDiff === 0 || yDiff === 0 || Math.abs(xDiff) === Math.abs(yDiff)) {
+            const dx = Math.sign(xDiff);
+            const dy = Math.sign(yDiff);
+            let hasHopPiece = false;
+            let cx = piece.x + dx;
+            let cy = piece.y + dy;
+            while ((cx !== toX || cy !== toY) && !hasHopPiece) {
+              if (findPieceAtSquare(pieces, cx, cy)) hasHopPiece = true;
+              cx += dx;
+              cy += dy;
+            }
+            if (!hasHopPiece) isValidMove = false;
+          }
         }
         
         if (isValidMove && pathClear) {
@@ -3751,7 +3803,7 @@ const LiveGame = () => {
     return {
       player1: Math.round(p1Val * 10) / 10,
       player2: Math.round(p2Val * 10) / 10,
-      ready: !!pv,
+      ready: true,
     };
   }, [capturedPieces, gameState?.gameType?.board_width, gameState?.gameType?.board_height, gameState?.pieceValues]);
 
@@ -4780,7 +4832,7 @@ const LiveGame = () => {
             {/* Ranged move indicator — single span, no container, avoids DOM churn */}
             {activeIsRanged && <span className={styles["ranged-icon"]}>{`\uD83D\uDCA5`}</span>}
             {/* Directional arrow on last-move "from" square */}
-            {arrowAngleDeg !== null && (
+            {arrowAngleDeg !== null && !hideMoveArrow && (
               <svg
                 className={`${styles["last-move-arrow"]}${isFadingLastMoveFrom ? ` ${styles["last-move-arrow-fading"]}` : ''}`}
                 style={{ transform: `rotate(${arrowAngleDeg}deg)` }}

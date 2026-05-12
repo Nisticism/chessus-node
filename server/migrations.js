@@ -4001,6 +4001,92 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error adding twitch_id column:', err.message);
   }
+
+  // Attack-hopping modifier columns — allow separate configuration of
+  // exact/ratio-hop-only, directional-hop-disabled, and stop-at-occupied
+  // for attack (Step 3) independently from movement (Step 2).
+  {
+    const exists = await columnExists('pieces', 'exact_ratio_hop_only_attack');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN exact_ratio_hop_only_attack TINYINT(1) DEFAULT 0 COMMENT 'When enabled, exact and ratio attacks only work when the piece is actually hopping over another piece'`,
+        'Add pieces.exact_ratio_hop_only_attack'
+      );
+      migrationsRun++;
+    }
+  }
+
+  {
+    const exists = await columnExists('pieces', 'directional_hop_disabled_attack');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN directional_hop_disabled_attack TINYINT(1) DEFAULT 0 COMMENT 'When enabled, hopping is disabled for non-exact directional attacks'`,
+        'Add pieces.directional_hop_disabled_attack'
+      );
+      migrationsRun++;
+    }
+  }
+
+  {
+    const exists = await columnExists('pieces', 'hop_stop_at_occupied_attack');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN hop_stop_at_occupied_attack TINYINT(1) DEFAULT 0 COMMENT 'When making repeating ratio attacks, stop if an earlier multiple square is occupied'`,
+        'Add pieces.hop_stop_at_occupied_attack'
+      );
+      migrationsRun++;
+    }
+  }
+
+  {
+    const exists = await columnExists('pieces', 'directional_hop_only');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN directional_hop_only TINYINT(1) DEFAULT 0 COMMENT 'When enabled, directional movement requires hopping over a piece in the path'`,
+        'Add pieces.directional_hop_only'
+      );
+      migrationsRun++;
+    }
+  }
+
+  {
+    const exists = await columnExists('pieces', 'directional_hop_only_attack');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN directional_hop_only_attack TINYINT(1) DEFAULT 0 COMMENT 'When enabled, directional attacks require hopping over a piece in the path'`,
+        'Add pieces.directional_hop_only_attack'
+      );
+      migrationsRun++;
+    }
+  }
+
+  // ── Feature TODO list ────────────────────────────────────────────────────
+  // Internal admin tool to track potential features (unstarted -> in_progress
+  // -> completed | abandoned).
+  try {
+    const featureTodoExists = await tableExists('feature_todo_items');
+    if (!featureTodoExists) {
+      await db_pool.query(`
+        CREATE TABLE feature_todo_items (
+          id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          title       VARCHAR(255) NOT NULL,
+          description TEXT NULL,
+          status      ENUM('unstarted', 'in_progress', 'completed', 'abandoned') NOT NULL DEFAULT 'unstarted',
+          created_by  INT UNSIGNED NULL,
+          sort_order  INT NOT NULL DEFAULT 0,
+          created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_fti_status (status),
+          INDEX idx_fti_sort   (sort_order),
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      console.log('[DB] Created table feature_todo_items');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating feature_todo_items table:', err.message);
+  }
 };
 
 module.exports = { runMigrations };

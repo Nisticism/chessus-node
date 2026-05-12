@@ -2944,8 +2944,13 @@ function initializeSocket(server) {
               hop_stop_at_occupied: fullPieceData.hop_stop_at_occupied,
               exact_ratio_hop_only: fullPieceData.exact_ratio_hop_only,
               directional_hop_disabled: fullPieceData.directional_hop_disabled,
+              directional_hop_only: fullPieceData.directional_hop_only,
               can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
               can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
+              exact_ratio_hop_only_attack: fullPieceData.exact_ratio_hop_only_attack,
+              directional_hop_disabled_attack: fullPieceData.directional_hop_disabled_attack,
+              directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
+              hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -3517,8 +3522,13 @@ function initializeSocket(server) {
               hop_stop_at_occupied: fullPieceData.hop_stop_at_occupied,
               exact_ratio_hop_only: fullPieceData.exact_ratio_hop_only,
               directional_hop_disabled: fullPieceData.directional_hop_disabled,
+              directional_hop_only: fullPieceData.directional_hop_only,
               can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
               can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
+              exact_ratio_hop_only_attack: fullPieceData.exact_ratio_hop_only_attack,
+              directional_hop_disabled_attack: fullPieceData.directional_hop_disabled_attack,
+              directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
+              hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               attacks_like_movement: fullPieceData.attacks_like_movement,
               up_capture: fullPieceData.up_capture,
@@ -8175,8 +8185,13 @@ function initializeSocket(server) {
                     hop_stop_at_occupied: fullPieceData.hop_stop_at_occupied,
                     exact_ratio_hop_only: fullPieceData.exact_ratio_hop_only,
                     directional_hop_disabled: fullPieceData.directional_hop_disabled,
+                    directional_hop_only: fullPieceData.directional_hop_only,
                     can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
                     can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
+                    exact_ratio_hop_only_attack: fullPieceData.exact_ratio_hop_only_attack,
+                    directional_hop_disabled_attack: fullPieceData.directional_hop_disabled_attack,
+                    directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
+                    hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
                     attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -11535,8 +11550,13 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     hop_stop_at_occupied: fullPieceData.hop_stop_at_occupied,
     exact_ratio_hop_only: fullPieceData.exact_ratio_hop_only,
     directional_hop_disabled: fullPieceData.directional_hop_disabled,
+    directional_hop_only: fullPieceData.directional_hop_only,
     can_hop_attack_over_allies: fullPieceData.can_hop_attack_over_allies,
     can_hop_attack_over_enemies: fullPieceData.can_hop_attack_over_enemies,
+    exact_ratio_hop_only_attack: fullPieceData.exact_ratio_hop_only_attack,
+    directional_hop_disabled_attack: fullPieceData.directional_hop_disabled_attack,
+    directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
+    hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
     attacks_like_movement: fullPieceData.attacks_like_movement,
     up_capture: fullPieceData.up_capture,
@@ -12375,12 +12395,28 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   // Ghostwalk: piece can pass through any piece
   // Hopping: piece can pass through allies/enemies depending on flags
   // hasGhostwalk already declared above
-  const canHopAlliesAtk = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true ||
-                          piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true ||
+  const canHopAlliesAtk = piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true ||
                           piece.chain_hop_allies === 1 || piece.chain_hop_allies === true;
-  const canHopEnemiesAtk = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true ||
-                           piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
-  const dirHopDisabledAtk = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
+  const canHopEnemiesAtk = piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
+  const dirHopDisabledAtk = piece.directional_hop_disabled_attack === 1 || piece.directional_hop_disabled_attack === true;
+  const exactRatioHopOnlyAtk = piece.exact_ratio_hop_only_attack === 1 || piece.exact_ratio_hop_only_attack === true;
+  const hopStopAtOccupiedAtk = piece.hop_stop_at_occupied_attack === 1 || piece.hop_stop_at_occupied_attack === true;
+  const directionalHopOnlyAtk = piece.directional_hop_only_attack === 1 || piece.directional_hop_only_attack === true;
+  // Returns true if any intermediate exact-distance multiple between piece and target is occupied
+  // Used for hop_stop_at_occupied_attack when repeating exact directional capture is active
+  const hasOccupiedExactMultipleAtk = (exactDist) => {
+    const sX = targetX > piece.x ? 1 : targetX < piece.x ? -1 : 0;
+    const sY = targetY > piece.y ? 1 : targetY < piece.y ? -1 : 0;
+    let cx = piece.x + sX * exactDist;
+    let cy = piece.y + sY * exactDist;
+    while (cx !== targetX || cy !== targetY) {
+      if (findPieceAtSquare(allPieces, cx, cy)) return true;
+      cx += sX * exactDist;
+      cy += sY * exactDist;
+      if (Math.abs(cx - piece.x) > Math.max(boardWidth, boardHeight) + 2 || Math.abs(cy - piece.y) > Math.max(boardWidth, boardHeight) + 2) break;
+    }
+    return false;
+  };
   const isPathClear = (fromX, fromY, toX, toY, allowHop = false) => {
     if (hasGhostwalk) return true; // Ghostwalk ignores all blocking
     const pw = piece.piece_width || 1;
@@ -12407,6 +12443,25 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       }
     }
     return true;
+  };
+  // Returns true if any piece is in the straight-line path from start to target (excluding target)
+  const pathHasPieceAtk = (fromX, fromY, toX, toY) => {
+    const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
+    const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
+    let x = fromX + sX, y = fromY + sY;
+    while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) return true; x += sX; y += sY; }
+    return false;
+  };
+  // Returns true if any piece is in either L-path from start to target (excluding target)
+  const ratioPathHasPieceAtk = (fromX, fromY, toX, toY) => {
+    const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
+    const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
+    const aX = Math.abs(toX - fromX), aY = Math.abs(toY - fromY);
+    for (let i = 1; i <= aX; i++) { const cx = fromX + sX * i, cy = fromY; if ((cx !== toX || cy !== toY) && findPieceAtSquare(allPieces, cx, cy)) return true; }
+    for (let i = 1; i <= aY; i++) { const cx = fromX + sX * aX, cy = fromY + sY * i; if ((cx !== toX || cy !== toY) && findPieceAtSquare(allPieces, cx, cy)) return true; }
+    for (let i = 1; i <= aY; i++) { const cx = fromX, cy = fromY + sY * i; if ((cx !== toX || cy !== toY) && findPieceAtSquare(allPieces, cx, cy)) return true; }
+    for (let i = 1; i <= aX; i++) { const cx = fromX + sX * i, cy = fromY + sY * aY; if ((cx !== toX || cy !== toY) && findPieceAtSquare(allPieces, cx, cy)) return true; }
+    return false;
   };
 
   // Check additional captures first
@@ -12456,27 +12511,45 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         if (absDx === absDy && Math.sign(dx) === Math.sign(dirDx) && Math.sign(dy) === Math.sign(dirDy)) {
           const dist = absDx;
           if (captureOption.exact) {
-            if (dist === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+            if (dist === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
+              if (!exactRatioHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+                if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+              }
+            }
           } else {
-            if ((maxDist === 99 || dist <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+            if ((maxDist === 99 || dist <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
+              if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+            }
           }
         }
       } else if (dirDx !== 0) {
         // Horizontal - check axis AND direction sign
         if (dy === 0 && Math.sign(dx) === Math.sign(dirDx)) {
           if (captureOption.exact) {
-            if (absDx === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+            if (absDx === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
+              if (!exactRatioHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+                if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+              }
+            }
           } else {
-            if ((maxDist === 99 || absDx <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+            if ((maxDist === 99 || absDx <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
+              if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+            }
           }
         }
       } else if (dirDy !== 0) {
         // Vertical - check axis AND direction sign
         if (dx === 0 && Math.sign(dy) === Math.sign(dirDy)) {
           if (captureOption.exact) {
-            if (absDy === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+            if (absDy === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
+              if (!exactRatioHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+                if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+              }
+            }
           } else {
-            if ((maxDist === 99 || absDy <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) return true;
+            if ((maxDist === 99 || absDy <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
+              if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+            }
           }
         }
       }
@@ -12528,7 +12601,11 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       if (maxDist === 99 || exactFlag || absDy <= Math.abs(maxDist)) {
         const canHopDirAtk = (canHopAlliesAtk || canHopEnemiesAtk) && (!dirHopDisabledAtk || exactFlag);
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
-          return true;
+          if (!exactRatioHopOnlyAtk || !exactFlag || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+            if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+              if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
+            }
+          }
         }
       }
     }
@@ -12545,7 +12622,11 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       if (maxDist === 99 || exactFlag || absDx <= Math.abs(maxDist)) {
         const canHopDirAtk = (canHopAlliesAtk || canHopEnemiesAtk) && (!dirHopDisabledAtk || exactFlag);
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
-          return true;
+          if (!exactRatioHopOnlyAtk || !exactFlag || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+            if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+              if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
+            }
+          }
         }
       }
     }
@@ -12579,7 +12660,11 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       if (maxDist === 99 || exactFlag || absDx <= Math.abs(maxDist)) {
         const canHopDirAtk = (canHopAlliesAtk || canHopEnemiesAtk) && (!dirHopDisabledAtk || exactFlag);
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
-          return true;
+          if (!exactRatioHopOnlyAtk || !exactFlag || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+            if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+              if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
+            }
+          }
         }
       }
     }
@@ -12605,15 +12690,16 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       }
     }
     if (isRatioMatch) {
-      // For attacks, check attack-specific hopping first, then fallback to movement hopping
+      // For attacks, only attack-specific hopping flags allow path traversal
       // Also check chain_hop_allies which allows hopping over allies during chain capture sequences
       // Ghostwalk can pass through everything
-      if (hasGhostwalk) return true;
+      if (hasGhostwalk) {
+        if (!exactRatioHopOnlyAtk || ratioPathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+        return false;
+      }
       const canHopAllies = (piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true) ||
-                           (piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true) ||
                            (piece.chain_hop_allies === 1 || piece.chain_hop_allies === true);
-      const canHopEnemies = (piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true) ||
-                            (piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true);
+      const canHopEnemies = piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
       const pieceOwner = piece.team || piece.player_id;
       
       // Debug hopping values
@@ -12631,7 +12717,8 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       // If can hop over everything, attack is valid
       if (canHopAllies && canHopEnemies) {
         vlog('Allowing hop - can hop over both');
-        return true;
+        if (!exactRatioHopOnlyAtk || ratioPathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+        return false;
       }
       
       // If no hopping ability at all, path must be completely clear
@@ -12695,6 +12782,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
           }
         }
         
+        if (exactRatioHopOnlyAtk) return false; // No hop ability — hop-required is never satisfied
         return path1Clear || path2Clear;
       }
       
@@ -12767,6 +12855,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         }
       }
       
+      if (exactRatioHopOnlyAtk && !ratioPathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return false;
       return path1Clear || path2Clear;
     }
   }
@@ -12978,7 +13067,24 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
   const canHopAlliesBase = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
   const canHopEnemiesBase = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
   const dirHopDisabled = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
-  // hasGhostwalkMove already declared above
+  const exactRatioHopOnly = piece.exact_ratio_hop_only === 1 || piece.exact_ratio_hop_only === true;
+  const hopStopAtOccupiedMove = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
+  const directionalHopOnlyMove = piece.directional_hop_only === 1 || piece.directional_hop_only === true;
+  // Helper: returns true if any intermediate exact-distance multiple in the movement direction is occupied
+  const hasOccupiedExactMultipleMove = (exactDist) => {
+    const sX = targetX > piece.x ? 1 : targetX < piece.x ? -1 : 0;
+    const sY = targetY > piece.y ? 1 : targetY < piece.y ? -1 : 0;
+    let cx = piece.x + sX * exactDist;
+    let cy = piece.y + sY * exactDist;
+    const limit = Math.max(boardWidth, boardHeight) + 2;
+    while (cx !== targetX || cy !== targetY) {
+      if (findPieceAtSquare(allPieces, cx, cy)) return true;
+      cx += sX * exactDist;
+      cy += sY * exactDist;
+      if (Math.abs(cx - piece.x) > limit || Math.abs(cy - piece.y) > limit) break;
+    }
+    return false;
+  };
 
   const canHopOverPiece = (blocker) => {
     if (hasGhostwalkMove) return true; // Ghostwalk ignores all blocking
@@ -13017,6 +13123,25 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
       }
     }
     return true;
+  };
+  // Returns true if any piece is in the straight-line path from start to target (excluding target)
+  const pathHasPieceMove = (fromX, fromY, toX, toY) => {
+    const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
+    const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
+    let x = fromX + sX, y = fromY + sY;
+    while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) return true; x += sX; y += sY; }
+    return false;
+  };
+  // Returns true if any piece is in either L-path from start to target (excluding target)
+  const ratioPathHasPieceMove = (fromX, fromY, toX, toY) => {
+    const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
+    const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
+    const aX = Math.abs(toX - fromX), aY = Math.abs(toY - fromY);
+    for (let i = 1; i <= aX; i++) { const cx = fromX + sX * i, cy = fromY; if ((cx !== toX || cy !== toY) && findPieceAtSquare(allPieces, cx, cy)) return true; }
+    for (let i = 1; i <= aY; i++) { const cx = fromX + sX * aX, cy = fromY + sY * i; if ((cx !== toX || cy !== toY) && findPieceAtSquare(allPieces, cx, cy)) return true; }
+    for (let i = 1; i <= aY; i++) { const cx = fromX, cy = fromY + sY * i; if ((cx !== toX || cy !== toY) && findPieceAtSquare(allPieces, cx, cy)) return true; }
+    for (let i = 1; i <= aX; i++) { const cx = fromX + sX * i, cy = fromY + sY * aY; if ((cx !== toX || cy !== toY) && findPieceAtSquare(allPieces, cx, cy)) return true; }
+    return false;
   };
 
   const canReachStepByStep = (fromX, fromY, toX, toY, maxSteps, noDiagonal) => {
@@ -13105,7 +13230,11 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
       if (moveVal === 99 || (exactFlag ? (repM ? (absDy > 0 && absDy % maxDist === 0) : absDy === maxDist) : absDy <= maxDist)) {
         const canHopDir = (canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || exactFlag);
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
-          return true;
+          if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
+            if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
+              if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
+            }
+          }
         }
       }
     }
@@ -13121,7 +13250,11 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
       if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0) : absDx === maxDist) : absDx <= maxDist)) {
         const canHopDir = (canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || exactFlag);
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
-          return true;
+          if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
+            if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
+              if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
+            }
+          }
         }
       }
     }
@@ -13150,7 +13283,11 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
       if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0) : absDx === maxDist) : absDx <= maxDist)) {
         const canHopDir = (canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || exactFlag);
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
-          return true;
+          if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
+            if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
+              if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
+            }
+          }
         }
       }
     }
@@ -13178,7 +13315,8 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
       
       // Ghostwalk or can hop over everything - no need to check path
       if (hasGhostwalkMove || (canHopAllies && canHopEnemies)) {
-        return true;
+        if (!exactRatioHopOnly || ratioPathHasPieceMove(piece.x, piece.y, targetX, targetY)) return true;
+        return false;
       }
       
       // Helper to determine if can hop over a piece
@@ -13249,6 +13387,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
         }
       }
       
+      if (exactRatioHopOnly && !ratioPathHasPieceMove(piece.x, piece.y, targetX, targetY)) return false;
       return path1Clear || path2Clear;
     }
   }
@@ -13307,7 +13446,9 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
             const addlExact = !!(movementOption.exact || movementOption.infinite);
             const canHopDir = hasGhostwalkMove || ((canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || addlExact));
             if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
-              return true;
+              if (!exactRatioHopOnly || !addlExact || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
+                if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) return true;
+              }
             }
           }
         }
@@ -13699,6 +13840,17 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   const canHopEnemiesGen = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
   const dirHopDisabledGen = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
   const hasGhostwalkGen = piece.ghostwalk === 1 || piece.ghostwalk === true;
+  // Attack-hop flags (Step 3): allow landing on enemies after hopping; separate from movement hop
+  const canHopAttackAlliesGen = piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true ||
+                                piece.chain_hop_allies === 1 || piece.chain_hop_allies === true;
+  const canHopAttackEnemiesGen = piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
+  const dirHopDisabledAtkGen = piece.directional_hop_disabled_attack === 1 || piece.directional_hop_disabled_attack === true;
+  const exactRatioHopOnly = piece.exact_ratio_hop_only === 1 || piece.exact_ratio_hop_only === true;
+  const exactRatioHopOnlyAtkGen = piece.exact_ratio_hop_only_attack === 1 || piece.exact_ratio_hop_only_attack === true;
+  const hopStopAtOccupiedGen = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
+  const hopStopAtOccupiedAtkGen = piece.hop_stop_at_occupied_attack === 1 || piece.hop_stop_at_occupied_attack === true;
+  const directionalHopOnly = piece.directional_hop_only === 1 || piece.directional_hop_only === true;
+  const directionalHopOnlyAtkGen = piece.directional_hop_only_attack === 1 || piece.directional_hop_only_attack === true;
 
   const canHopOverPieceGen = (blocker) => {
     if (hasGhostwalkGen) return true; // Ghostwalk ignores all blocking
@@ -13743,6 +13895,14 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     }
     return true;
   };
+  // Returns true if any piece is in the straight-line path from start to target (excluding target)
+  const pathHasPieceGen = (fromX, fromY, toX, toY) => {
+    const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
+    const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
+    let x = fromX + sX, y = fromY + sY;
+    while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) return true; x += sX; y += sY; }
+    return false;
+  };
   
   // Helper to check directional moves
   // captureOnly: only generate moves where an enemy can be captured (no empty square moves)
@@ -13768,6 +13928,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     // Determine if hopping is allowed for this directional move
     // Ghostwalk always allows passing through pieces
     const canHopDir = hasGhostwalkGen || ((canHopAlliesGen || canHopEnemiesGen) && (!dirHopDisabledGen || exactFlag));
+    // Attack hop: also allows landing on enemies after a hop (Step 3 flags only)
+    const canHopDirAtk = hasGhostwalkGen || ((canHopAttackAlliesGen || canHopAttackEnemiesGen) && (!dirHopDisabledAtkGen || exactFlag));
     
     const limit = maxDist === 99 ? Math.max(boardWidth, boardHeight) : Math.abs(maxDist);
     const exactDist = exactFlag ? Math.abs(maxDist) : 0;
@@ -13800,18 +13962,35 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         // Can capture enemy (or ally if can_capture_allies) on valid landing squares
         if (isLandingSquare && !targetPiece.cannot_be_captured) {
           if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && canCaptureInDir && !hasGlobalFirstMoveOnlyCaptureRestriction) {
-            moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+            // Movement-only hops cannot yield captures; attack hop flags or a clear path required
+            if (!canHopDir || canHopDirAtk || isPathClear(piece.x, piece.y, targetX, targetY, false)) {
+              // exact_ratio_hop_only_attack: exact capture requires a hop
+              if (!exactRatioHopOnlyAtkGen || !exactFlag || pathHasPieceGen(piece.x, piece.y, targetX, targetY)) {
+                // directional_hop_only_attack: all directional attacks require a hop
+                if (!directionalHopOnlyAtkGen || pathHasPieceGen(piece.x, piece.y, targetX, targetY)) {
+                  moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+                }
+              }
+            }
           } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
             moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
           }
         }
         // If hopping, continue past this piece; otherwise stop
         if (!canHopDir || !canHopOverPieceGen(targetPiece)) break;
+        // hop_stop_at_occupied: if this is an exact landing multiple and it was occupied, stop repeating
+        else if (repeating && isLandingSquare && hopStopAtOccupiedGen) break;
       } else {
         // For exact moves, only add valid landing squares (skip for capture-only directions)
         const isLandingSquare = exactFlag ? (repeating ? (dist % exactDist === 0) : (dist === exactDist)) : true;
         if (isLandingSquare && !captureOnly) {
-          moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+          // exact_ratio_hop_only: exact movement requires a hop
+          if (!exactRatioHopOnly || !exactFlag || pathHasPieceGen(piece.x, piece.y, targetX, targetY)) {
+            // directional_hop_only: all directional movement requires a hop
+            if (!directionalHopOnly || pathHasPieceGen(piece.x, piece.y, targetX, targetY)) {
+              moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
+            }
+          }
         }
       }
     }
@@ -13923,6 +14102,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     
     const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
     const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+    const canHopAlliesAtk = piece.can_hop_attack_over_allies === 1 || piece.can_hop_attack_over_allies === true ||
+                            piece.chain_hop_allies === 1 || piece.chain_hop_allies === true;
+    const canHopEnemiesAtk = piece.can_hop_attack_over_enemies === 1 || piece.can_hop_attack_over_enemies === true;
     const pieceOwner = piece.team || piece.player_id;
     
     for (const [dx, dy] of ratioMoves) {
@@ -13930,7 +14112,23 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       const targetY = piece.y + dy;
       
       if (!isValidSquare(targetX, targetY)) continue;
-      
+
+      // Track whether movement-only hopping was used to reach this target (for capture gating)
+      let movementHopUsed = false;
+      // Lazy check: returns true if any piece is in either L-path to this target (excluding target)
+      let _ratioHasAnyPiece = null;
+      const getRatioHasAnyPiece = () => {
+        if (_ratioHasAnyPiece !== null) return _ratioHasAnyPiece;
+        const sX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+        const sY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+        const aX = Math.abs(dx), aY = Math.abs(dy);
+        for (let i = 1; i <= aX; i++) { const cx = piece.x + sX * i, cy = piece.y; if ((cx !== targetX || cy !== targetY) && findPieceAtSquare(allPieces, cx, cy)) return (_ratioHasAnyPiece = true); }
+        for (let i = 1; i <= aY; i++) { const cx = piece.x + sX * aX, cy = piece.y + sY * i; if ((cx !== targetX || cy !== targetY) && findPieceAtSquare(allPieces, cx, cy)) return (_ratioHasAnyPiece = true); }
+        for (let i = 1; i <= aY; i++) { const cx = piece.x, cy = piece.y + sY * i; if ((cx !== targetX || cy !== targetY) && findPieceAtSquare(allPieces, cx, cy)) return (_ratioHasAnyPiece = true); }
+        for (let i = 1; i <= aX; i++) { const cx = piece.x + sX * i, cy = piece.y + sY * aY; if ((cx !== targetX || cy !== targetY) && findPieceAtSquare(allPieces, cx, cy)) return (_ratioHasAnyPiece = true); }
+        return (_ratioHasAnyPiece = false);
+      };
+
       // Check if piece has NO hopping ability at all
       const noHoppingAbility = !hasGhostwalkGen && !canHopAllies && !canHopEnemies;
       
@@ -14011,12 +14209,14 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         const secondaryDir = primaryIsX ? 0 : (dy > 0 ? 1 : -1);
         const tertiaryDir = primaryIsX ? (dy > 0 ? 1 : -1) : (dx > 0 ? 1 : -1);
         
-        // Helper to check if piece can hop over an obstruction
+        // Helper to check if piece can hop over an obstruction (tracks if movement hop was used)
         const canHopOver = (obstruction) => {
           if (hasGhostwalkGen) return true; // Ghostwalk ignores all blocking
           const obstructionOwner = obstruction.team || obstruction.player_id;
           const isAlly = obstructionOwner === pieceOwner;
-          return (isAlly && canHopAllies) || (!isAlly && canHopEnemies);
+          const canHop = (isAlly && canHopAllies) || (!isAlly && canHopEnemies);
+          if (canHop) movementHopUsed = true;
+          return canHop;
         };
         
         // Check path 1: move in primary direction first
@@ -14086,22 +14286,33 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         
         if (!targetPiece.cannot_be_captured) {
           if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
-            moves.push({ x: targetX, y: targetY });
+            // Movement-only hops cannot yield captures; attack hop flags or clear path required
+            if (!movementHopUsed || hasGhostwalkGen || canHopAlliesAtk || canHopEnemiesAtk) {
+              // exact_ratio_hop_only_attack: ratio capture requires a hop
+              if (!exactRatioHopOnlyAtkGen || getRatioHasAnyPiece()) {
+                moves.push({ x: targetX, y: targetY });
+              }
+            }
           } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
             moves.push({ x: targetX, y: targetY });
           }
         }
       } else {
-        moves.push({ x: targetX, y: targetY });
+        // exact_ratio_hop_only: ratio movement requires a hop
+        if (!exactRatioHopOnly || getRatioHasAnyPiece()) {
+          moves.push({ x: targetX, y: targetY });
+        }
       }
     }
 
     // Repeating ratio: generate multiples of each L-jump direction
     if (piece.repeating_ratio) {
       const maxK = piece.max_ratio_iterations === -1 ? Math.max(boardWidth, boardHeight) : (piece.max_ratio_iterations || 1);
-      // hop_stop_at_occupied: only true when explicitly set to 1/true.
+      // hop_stop_at_occupied: movement-only flag; only true when explicitly set to 1/true.
+      // hop_stop_at_occupied_attack: attack-only flag; same default.
       // NULL and 0 both mean "allow hopping past occupied intermediates".
       const hopStopAtOccupied = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
+      const hopStopAtOccupiedAtk = piece.hop_stop_at_occupied_attack === 1 || piece.hop_stop_at_occupied_attack === true;
       for (const [dx, dy] of ratioMoves) {
         for (let k = 2; k <= maxK; k++) {
           const targetX = piece.x + dx * k;
@@ -14110,8 +14321,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
 
           // Check intermediate landing positions.
           // Impassable squares always block further multiples.
-          // Occupied pieces only block when hopStopAtOccupied is true;
-          // when false the piece hops over intermediate occupied multiples.
+          // Occupied pieces block when either hop-stop flag is set (we check both since
+          // both movement and captures share the same intermediate path).
           let blockedLine = false;
           if (!hasGhostwalkGen) {
             for (let j = 1; j < k; j++) {
@@ -14121,7 +14332,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
                 blockedLine = true;
                 break;
               }
-              if (hopStopAtOccupied) {
+              if (hopStopAtOccupied || hopStopAtOccupiedAtk) {
                 const blocking = findPieceAtSquare(allPieces, intX, intY);
                 if (blocking && blocking.id !== piece.id) {
                   blockedLine = true;
@@ -14145,12 +14356,14 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
                 addedCapture = true;
               }
             }
-            // Stop iterating if hopStopAtOccupied (can't pass through any occupied target),
+            // Stop iterating captures if hopStopAtOccupiedAtk (can't pass through occupied target for attacks),
             // or if we actually captured here (piece stops after capturing).
-            // When hopStopAtOccupied=false and no capture: hop over to next multiple.
-            if (hopStopAtOccupied || addedCapture) break;
+            // When hopStopAtOccupiedAtk=false and no capture: hop over to next multiple.
+            if (hopStopAtOccupiedAtk || addedCapture) break;
           } else {
+            // Empty square: stop movement iteration if hopStopAtOccupied.
             moves.push({ x: targetX, y: targetY });
+            if (hopStopAtOccupied) break;
           }
         }
       }

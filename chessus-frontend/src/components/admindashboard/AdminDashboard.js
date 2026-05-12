@@ -166,6 +166,14 @@ const AdminDashboard = () => {
   const [physicalBoardRequestsFilter, setPhysicalBoardRequestsFilter] = useState('pending');
   const [physicalBoardRequestsPagination, setPhysicalBoardRequestsPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 0 });
 
+  // Feature TODO state
+  const [featureTodoItems, setFeatureTodoItems] = useState([]);
+  const [featureTodoLoading, setFeatureTodoLoading] = useState(false);
+  const [featureTodoFilter, setFeatureTodoFilter] = useState('all');
+  const [featureTodoForm, setFeatureTodoForm] = useState({ title: '', description: '' });
+  const [featureTodoSaving, setFeatureTodoSaving] = useState(false);
+  const [featureTodoEditingId, setFeatureTodoEditingId] = useState(null);
+
   // Restriction modal state
   const [showRestrictModal, setShowRestrictModal] = useState(false);
   const [restrictTarget, setRestrictTarget] = useState(null);
@@ -250,6 +258,9 @@ const AdminDashboard = () => {
     } else if (activeTab === 'physical-board-requests') {
       setLoading(false);
       fetchPhysicalBoardRequests(1, physicalBoardRequestsFilter);
+    } else if (activeTab === 'feature-todo') {
+      setLoading(false);
+      fetchFeatureTodoItems();
     } else {
       fetchData(activeTab, 1);
     }
@@ -1926,8 +1937,91 @@ const AdminDashboard = () => {
     }
   };
 
-  // ── Poll admin helpers ────────────────────────────────────────────────────
+  // ── Feature TODO helpers ─────────────────────────────────────────────────
+  const fetchFeatureTodoItems = async (statusFilter) => {
+    const filter = statusFilter !== undefined ? statusFilter : featureTodoFilter;
+    setFeatureTodoLoading(true);
+    try {
+      const qs = filter && filter !== 'all' ? `?status=${encodeURIComponent(filter)}` : '';
+      const res = await axios.get(`${API_URL}admin/feature-todo${qs}`, { headers: authHeader() });
+      setFeatureTodoItems(res.data?.data || []);
+    } catch (err) {
+      console.error('fetchFeatureTodoItems failed', err);
+      setAlertMessage('Failed to load feature todos: ' + (err?.response?.data?.error || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setFeatureTodoLoading(false);
+    }
+  };
 
+  const saveFeatureTodoItem = async () => {
+    if (!featureTodoForm.title.trim()) return;
+    setFeatureTodoSaving(true);
+    try {
+      if (featureTodoEditingId) {
+        await axios.patch(
+          `${API_URL}admin/feature-todo/${featureTodoEditingId}`,
+          { title: featureTodoForm.title, description: featureTodoForm.description },
+          { headers: authHeader() }
+        );
+      } else {
+        await axios.post(
+          `${API_URL}admin/feature-todo`,
+          { title: featureTodoForm.title, description: featureTodoForm.description },
+          { headers: authHeader() }
+        );
+      }
+      setFeatureTodoForm({ title: '', description: '' });
+      setFeatureTodoEditingId(null);
+      await fetchFeatureTodoItems(featureTodoFilter);
+    } catch (err) {
+      console.error('saveFeatureTodoItem failed', err);
+      setAlertMessage('Failed to save: ' + (err?.response?.data?.error || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setFeatureTodoSaving(false);
+    }
+  };
+
+  const updateFeatureTodoStatus = async (id, newStatus) => {
+    try {
+      await axios.patch(
+        `${API_URL}admin/feature-todo/${id}`,
+        { status: newStatus },
+        { headers: authHeader() }
+      );
+      setFeatureTodoItems(prev =>
+        prev.map(item => item.id === id ? { ...item, status: newStatus } : item)
+      );
+    } catch (err) {
+      console.error('updateFeatureTodoStatus failed', err);
+      setAlertMessage('Failed to update status: ' + (err?.response?.data?.error || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const deleteFeatureTodoItem = async (id) => {
+    if (!window.confirm('Delete this feature item? This cannot be undone.')) return;
+    try {
+      await axios.delete(`${API_URL}admin/feature-todo/${id}`, { headers: authHeader() });
+      setFeatureTodoItems(prev => prev.filter(item => item.id !== id));
+    } catch (err) {
+      console.error('deleteFeatureTodoItem failed', err);
+      setAlertMessage('Failed to delete: ' + (err?.response?.data?.error || err.message));
+      setAlertType('error');
+      setShowAlert(true);
+    }
+  };
+
+  const startEditFeatureTodo = (item) => {
+    setFeatureTodoEditingId(item.id);
+    setFeatureTodoForm({ title: item.title, description: item.description || '' });
+  };
+
+  // ── Poll admin helpers ────────────────────────────────────────────────────
   const fetchPolls = async () => {
     setPollsLoading(true);
     try {
@@ -2361,6 +2455,151 @@ const AdminDashboard = () => {
     } finally {
       setUserGrowthLoading(false);
     }
+  };
+
+  const renderFeatureTodoTab = () => {
+    const STATUS_META = {
+      unstarted:   { label: 'Unstarted',    bg: 'rgba(150,150,150,0.15)', border: 'rgba(150,150,150,0.4)',  text: '#aaa' },
+      in_progress: { label: 'In Progress',  bg: 'rgba(100,160,255,0.15)', border: 'rgba(100,160,255,0.4)',  text: '#64a0ff' },
+      completed:   { label: 'Completed',    bg: 'rgba(80,200,120,0.15)',  border: 'rgba(80,200,120,0.4)',   text: '#50c878' },
+      abandoned:   { label: 'Abandoned',    bg: 'rgba(255,80,80,0.15)',   border: 'rgba(255,80,80,0.4)',    text: '#ff5050' },
+    };
+
+    const statusBadge = (status) => {
+      const m = STATUS_META[status] || STATUS_META.unstarted;
+      return (
+        <span style={{
+          display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
+          background: m.bg, border: `1px solid ${m.border}`, color: m.text,
+          fontSize: '0.78em', fontWeight: 600, whiteSpace: 'nowrap',
+        }}>
+          {m.label}
+        </span>
+      );
+    };
+
+    const STATUSES = ['unstarted', 'in_progress', 'completed', 'abandoned'];
+    const FILTER_OPTIONS = [{ value: 'all', label: 'All' }, ...STATUSES.map(s => ({ value: s, label: STATUS_META[s].label }))];
+
+    return (
+      <div className={styles["table-container"]}>
+        {/* ── Form ── */}
+        <div style={{ marginBottom: '20px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '16px' }}>
+          <div style={{ fontWeight: 600, marginBottom: '12px' }}>
+            {featureTodoEditingId ? `Editing Feature #${featureTodoEditingId}` : 'Add New Feature Idea'}
+          </div>
+          <div style={{ marginBottom: '10px' }}>
+            <label style={{ display: 'block', fontSize: '0.85em', color: 'var(--text-dim)', marginBottom: '4px' }}>Title *</label>
+            <input
+              type="text"
+              value={featureTodoForm.title}
+              onChange={e => setFeatureTodoForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="Feature title…"
+              maxLength={255}
+              style={{ width: '100%', background: 'var(--input-bg, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '8px 10px', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '0.85em', color: 'var(--text-dim)', marginBottom: '4px' }}>Description (optional)</label>
+            <textarea
+              value={featureTodoForm.description}
+              onChange={e => setFeatureTodoForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="More details about this feature…"
+              rows={3}
+              style={{ width: '100%', background: 'var(--input-bg, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '8px 10px', boxSizing: 'border-box', resize: 'vertical' }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <StandardButton
+              buttonText={featureTodoSaving ? 'Saving…' : (featureTodoEditingId ? 'Save Changes' : 'Add Feature')}
+              onClick={saveFeatureTodoItem}
+              disabled={featureTodoSaving || !featureTodoForm.title.trim()}
+            />
+            {featureTodoEditingId && (
+              <StandardButton
+                buttonText="Cancel"
+                onClick={() => { setFeatureTodoEditingId(null); setFeatureTodoForm({ title: '', description: '' }); }}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* ── Filter + header ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {FILTER_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => {
+                  setFeatureTodoFilter(opt.value);
+                  fetchFeatureTodoItems(opt.value);
+                }}
+                style={{
+                  padding: '4px 12px', borderRadius: '4px', border: '1px solid var(--border)',
+                  background: featureTodoFilter === opt.value ? 'var(--accent, #7289da)' : 'transparent',
+                  color: featureTodoFilter === opt.value ? '#fff' : 'var(--text-dim)',
+                  cursor: 'pointer', fontSize: '0.85em',
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <StandardButton buttonText="Refresh" onClick={() => fetchFeatureTodoItems(featureTodoFilter)} disabled={featureTodoLoading} />
+        </div>
+
+        {/* ── List ── */}
+        {featureTodoLoading ? (
+          <div className={styles["loading"]}>Loading…</div>
+        ) : featureTodoItems.length === 0 ? (
+          <p style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '24px 0' }}>No feature ideas yet. Add one above!</p>
+        ) : (
+          <table className={styles["table"]}>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Description</th>
+                <th>Status</th>
+                <th>Added by</th>
+                <th>Date</th>
+                <th>Move to</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {featureTodoItems.map(item => (
+                <tr key={item.id}>
+                  <td>{item.id}</td>
+                  <td style={{ fontWeight: 500, maxWidth: '200px' }}>{item.title}</td>
+                  <td style={{ fontSize: '0.82em', color: 'var(--text-dim)', maxWidth: '260px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {item.description || <span style={{ opacity: 0.4 }}>—</span>}
+                  </td>
+                  <td>{statusBadge(item.status)}</td>
+                  <td style={{ fontSize: '0.82em' }}>{item.created_by_username || '—'}</td>
+                  <td style={{ fontSize: '0.78em', whiteSpace: 'nowrap' }}>{new Date(item.created_at).toLocaleDateString()}</td>
+                  <td>
+                    <select
+                      value={item.status}
+                      onChange={e => updateFeatureTodoStatus(item.id, e.target.value)}
+                      style={{ background: 'var(--input-bg, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '4px 6px', fontSize: '0.82em' }}
+                    >
+                      {STATUSES.map(s => (
+                        <option key={s} value={s}>{STATUS_META[s].label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <StandardButton buttonText="Edit" onClick={() => startEditFeatureTodo(item)} />
+                    <StandardButton buttonText="Delete" onClick={() => deleteFeatureTodoItem(item.id)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    );
   };
 
   const renderPhysicalBoardRequestsTab = () => {
@@ -3511,10 +3750,16 @@ const AdminDashboard = () => {
         >
           Board Requests
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "feature-todo" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("feature-todo")}
+        >
+          Feature TODO
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && activeTab !== 'feature-todo' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -3539,6 +3784,7 @@ const AdminDashboard = () => {
             {activeTab === "poll" && renderPollTab()}
             {activeTab === "user-growth" && renderUserGrowthTab()}
             {activeTab === "physical-board-requests" && renderPhysicalBoardRequestsTab()}
+            {activeTab === "feature-todo" && renderFeatureTodoTab()}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>

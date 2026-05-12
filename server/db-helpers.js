@@ -347,7 +347,15 @@ const getAllPiecesWithMovement = async () => {
       p.cannot_be_captured,
       p.max_chain_hops,
       p.custom_movement_squares,
-      p.custom_attack_squares
+      p.custom_attack_squares,
+      p.directional_hop_only,
+      p.can_hop_attack_over_allies,
+      p.can_hop_attack_over_enemies,
+      p.exact_ratio_hop_only_attack,
+      p.directional_hop_disabled_attack,
+      p.hop_stop_at_occupied_attack,
+      p.directional_hop_only_attack,
+      p.chain_hop_allies
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     ORDER BY p.id DESC
@@ -503,6 +511,10 @@ const getPieceById = async (pieceId) => {
       p.chain_hop_allies,
       p.can_hop_attack_over_allies,
       p.can_hop_attack_over_enemies,
+      p.exact_ratio_hop_only_attack,
+      p.directional_hop_disabled_attack,
+      p.hop_stop_at_occupied_attack,
+      p.directional_hop_only_attack,
       p.free_move_after_promotion,
       p.promotion_pieces_ids,
       p.can_capture_allies,
@@ -517,6 +529,7 @@ const getPieceById = async (pieceId) => {
       p.can_attack_on_iteration,
       p.repeating_directional_ranged_attack,
       p.repeating_ratio_ranged_attack,
+      p.directional_hop_only,
       p.moderation_status,
       p.created_at
     FROM chessusnode.pieces p

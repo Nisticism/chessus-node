@@ -9,6 +9,7 @@ import authHeader from "../../services/auth-header";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { parseServerDate } from "../../helpers/date-formatter";
 import { handlePieceImageError } from "../../utils/pieceFallback";
+import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 
@@ -162,6 +163,45 @@ const MatchView = () => {
     if (!match.winnerId) return 'draw';
     return match.winnerId === playerId ? 'win' : 'loss';
   };
+
+  // Derive captured pieces from move history (same logic as LiveGame)
+  const capturedPieces = useMemo(() => {
+    if (!match?.moveHistory) return { player1: [], player2: [] };
+    const result = { player1: [], player2: [] };
+    match.moveHistory.forEach(move => {
+      if (!move.captured && !move.allCaptured) return;
+      const captures = move.allCaptured && move.allCaptured.length > 1
+        ? move.allCaptured
+        : [move.captured];
+      const validCaptures = captures.filter(Boolean);
+      const taggedCaptures = validCaptures.map(p => {
+        // Ally capture: the captured piece belongs to the same player who moved
+        const isAlly = p && (p.player_id === move.position || p.team === move.position);
+        return isAlly ? { ...p, _isAllyCapture: true } : p;
+      });
+      if (move.position === 1) result.player1.push(...taggedCaptures);
+      else if (move.position === 2) result.player2.push(...taggedCaptures);
+    });
+    return result;
+  }, [match?.moveHistory]);
+
+  const capturedValues = useMemo(() => {
+    if (!match) return { player1: 0, player2: 0 };
+    const bw = match.boardWidth  || 8;
+    const bh = match.boardHeight || 8;
+    const p1Normal       = capturedPieces.player1.filter(p => !p._isAllyCapture);
+    const p2Normal       = capturedPieces.player2.filter(p => !p._isAllyCapture);
+    const p1SelfCaptures = capturedPieces.player1.filter(p =>  p._isAllyCapture);
+    const p2SelfCaptures = capturedPieces.player2.filter(p =>  p._isAllyCapture);
+    const p1Val = totalMaterialValue(p1Normal,       bw, bh, null)
+                + totalMaterialValue(p2SelfCaptures, bw, bh, null);
+    const p2Val = totalMaterialValue(p2Normal,       bw, bh, null)
+                + totalMaterialValue(p1SelfCaptures, bw, bh, null);
+    return {
+      player1: Math.round(p1Val * 10) / 10,
+      player2: Math.round(p2Val * 10) / 10,
+    };
+  }, [capturedPieces, match?.boardWidth, match?.boardHeight]);
 
   const renderBoard = () => {
     if (!match || !match.pieces) return null;
@@ -507,6 +547,47 @@ const MatchView = () => {
           )}
           {renderBoard()}
         </div>
+
+        {/* Captured Pieces */}
+        {(capturedPieces.player1.length > 0 || capturedPieces.player2.length > 0) && (
+          <div className={styles["captured-section"]}>
+            <h3 className={styles["captured-section-title"]}>Captured Pieces</h3>
+            {[
+              { key: 'p1', label: (match.players?.find(p => p.position === 1)?.username || 'White') + ' captured', pieces: capturedPieces.player1, myVal: capturedValues.player1, oppVal: capturedValues.player2 },
+              { key: 'p2', label: (match.players?.find(p => p.position === 2)?.username || 'Black') + ' captured', pieces: capturedPieces.player2, myVal: capturedValues.player2, oppVal: capturedValues.player1 },
+            ].map(({ key, label, pieces: rowPieces, myVal, oppVal }) => (
+              <div key={key} className={styles["captured-row"]}>
+                <span className={styles["captured-label"]}>
+                  {label}:
+                  {rowPieces.length > 0 && (
+                    <span className={styles["captured-value"]}>
+                      {' '}≈{myVal}
+                      {myVal > oppVal && (
+                        <span className={styles["material-advantage"]}> (+{Math.round((myVal - oppVal) * 10) / 10})</span>
+                      )}
+                    </span>
+                  )}
+                </span>
+                <div className={styles["captured-pieces"]}>
+                  {rowPieces.length > 0 ? rowPieces.map((piece, idx) => {
+                    const imgSrc = (piece?.image || piece?.image_url)
+                      ? ((piece.image || piece.image_url).startsWith('http') ? (piece.image || piece.image_url) : `${ASSET_URL}${piece.image || piece.image_url}`)
+                      : null;
+                    return (
+                      <div key={idx} className={`${styles["captured-piece"]}${piece._isAllyCapture ? ` ${styles["ally-capture"]}` : ''}`} title={piece?.piece_name}>
+                        {imgSrc ? (
+                          <img src={imgSrc} alt={piece?.piece_name} onError={(e) => handlePieceImageError(e, piece?.piece_name, piece?.player_id)} />
+                        ) : (
+                          <span className={styles["piece-symbol"]}>{(piece?.player_id === 1 || piece?.team === 1) ? '♙' : '♟'}</span>
+                        )}
+                      </div>
+                    );
+                  }) : <span className={styles["no-captures"]}>None</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Game Details */}
         <div className={styles["game-details"]}>

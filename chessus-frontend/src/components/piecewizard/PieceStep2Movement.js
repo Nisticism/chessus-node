@@ -686,31 +686,41 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
 
       {/* Hopping */}
       <div className={styles["condition-section"]}>
-        <h3>Hopping Ability <InfoTooltip text="Controls whether this piece can hop over other pieces during movement — it jumps over a piece in its path and lands on the square beyond. This does NOT capture the hopped-over piece by itself. For checkers-style 'capture on hop' (where hopping over an enemy captures it), see Step 3: Checkers-style Capture." /></h3>
+        <h3>Movement Hopping <InfoTooltip text="Controls whether this piece can hop over other pieces during movement — it jumps over a piece in its path and lands on the square beyond. This does NOT capture the hopped-over piece by itself. For attack-specific hopping (including checkers-style 'capture on hop'), see Step 3: Attack Hopping." /></h3>
         <ToggleSwitch
           checked={pieceData.can_hop_over_allies}
           onChange={(v) => handleChange("can_hop_over_allies", v)}
           label="Can hop over allied pieces"
+          tooltip={<InfoTooltip text="During movement, this piece can jump over allied pieces in its path and land on the square beyond. The hopped-over piece is unaffected. Movement hopping alone will not allow capturing an enemy on the landing square — also enable 'Can attack hop over allied pieces' in Step 3 for that." />}
         />
         <ToggleSwitch
           checked={pieceData.can_hop_over_enemies}
           onChange={(v) => handleChange("can_hop_over_enemies", v)}
           label="Can hop over enemy pieces"
+          tooltip={<InfoTooltip text="During movement, this piece can jump over enemy pieces in its path and land on the square beyond. The hopped-over piece is unaffected. Movement hopping alone will not allow capturing an enemy on the landing square — also enable 'Can attack hop over enemy pieces' in Step 3 for that." />}
         />
         {(pieceData.can_hop_over_allies || pieceData.can_hop_over_enemies) && (
           <ToggleSwitch
             checked={pieceData.exact_ratio_hop_only}
             onChange={(v) => handleChange("exact_ratio_hop_only", v)}
-            label="Require hopping for exact and ratio movement/attacks"
-            tooltip={<InfoTooltip text="When enabled, any movement or attack that uses exact distance or ratio (L-shape) patterns will only work when the piece is actually hopping over another piece in its path. Non-exact (up-to) and step-by-step movement still work normally. Essential for checkers-style pieces that should only jump at their full range when hopping." />}
+            label="Require hopping for exact and ratio movement"
+            tooltip={<InfoTooltip text="When enabled, any movement that uses exact distance or ratio (L-shape) patterns will only work when the piece is actually hopping over another piece in its path. Non-exact (up-to) and step-by-step movement still work normally. Essential for checkers-style pieces that should only jump at their full range when hopping." />}
           />
         )}
         {(pieceData.can_hop_over_allies || pieceData.can_hop_over_enemies) && (
           <ToggleSwitch
             checked={pieceData.directional_hop_disabled}
             onChange={(v) => handleChange("directional_hop_disabled", v)}
-            label="Disable hopping for non-exact directional movement"
-            tooltip={<InfoTooltip text="When enabled, hopping over pieces is disabled for non-exact directional (sliding) movements like rook or bishop movement. Hopping still works for exact directional movements, ratio (L-shape) movements, and step-by-step movements. Useful for hybrid pieces that should only hop with specific movement styles." />}
+            label="Disable movement hopping for non-exact directional movement"
+            tooltip={<InfoTooltip text="When enabled, movement hopping over pieces is disabled for non-exact directional (sliding) movements like rook or bishop movement. Hopping still works for exact directional movements, ratio (L-shape) movements, and step-by-step movements. Useful for hybrid pieces that should only hop with specific movement styles." />}
+          />
+        )}
+        {(pieceData.can_hop_over_allies || pieceData.can_hop_over_enemies) && (
+          <ToggleSwitch
+            checked={pieceData.directional_hop_only || false}
+            onChange={(v) => handleChange("directional_hop_only", v)}
+            label="Require hopping for any directional movement"
+            tooltip={<InfoTooltip text="When enabled, this piece can only move in directional paths (up, down, left, right, diagonal) if there is at least one piece in the path to hop over. Does not affect step-by-step movement or custom square movement. Unlike 'Require hopping for exact and ratio movement', this applies to all directional movement distances including sliding ranges." />}
           />
         )}
         {pieceData.repeating_ratio && (Number(pieceData.max_ratio_iterations) === -1 || (pieceData.max_ratio_iterations || 1) > 1) && (

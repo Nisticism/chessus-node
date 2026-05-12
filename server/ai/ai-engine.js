@@ -780,6 +780,10 @@ function getPieceValue(piece, boardSize) {
     }
   }
 
+  // Snapshot pre-custom sets so we can identify squares NEWLY added by custom squares
+  const preCustMoveKeys   = new Set(moveSet);
+  const preCustAttackKeys = new Set(attackMap.keys());
+
   if (piece.custom_movement_squares) {
     try {
       const c = typeof piece.custom_movement_squares === 'string' ? JSON.parse(piece.custom_movement_squares) : piece.custom_movement_squares;
@@ -793,6 +797,10 @@ function getPieceValue(piece, boardSize) {
     } catch (_) {}
   }
 
+  // Keys newly contributed by custom squares (used for 1.25x bonus)
+  const customMoveKeys   = new Set([...moveSet].filter(k => !preCustMoveKeys.has(k)));
+  const customAttackKeys = new Set([...attackMap.keys()].filter(k => !preCustAttackKeys.has(k)));
+
   const centerParity = (cx + cy) % 2;
   function isColorBound(keys) {
     const arr = [...keys];
@@ -802,13 +810,15 @@ function getPieceValue(piece, boardSize) {
 
   let moveContrib = 0;
   for (const key of moveSet) {
-    moveContrib += stepMoveSet.has(key) ? 1.2 : 1.0;
+    const base = stepMoveSet.has(key) ? 1.2 : 1.0;
+    moveContrib += customMoveKeys.has(key) ? base * 1.25 : base;
   }
   if (isColorBound(moveSet)) moveContrib *= 0.7;
 
   let attackContrib = 0;
   for (const [key, w] of attackMap) {
-    attackContrib += stepAttackSet.has(key) ? w * 1.2 : w;
+    const base = stepAttackSet.has(key) ? w * 1.2 : w;
+    attackContrib += customAttackKeys.has(key) ? base * 1.25 : base;
   }
   if (isColorBound(attackMap.keys())) attackContrib *= 0.7;
 
@@ -867,7 +877,8 @@ function getPieceValue(piece, boardSize) {
   const maxHp = piece.hit_points || 1;
   if (maxHp > 1) internal *= (0.5 + 0.5 * hp / maxHp);
 
-  return Math.max(0.1, Math.round((internal / DIVISOR) * 10) / 10);
+  const baseVal = Math.max(0.1, Math.round((internal / DIVISOR) * 10) / 10);
+  return piece.can_promote ? Math.round((baseVal + 0.5) * 10) / 10 : baseVal;
 }
 /**
  * Order moves for better alpha-beta pruning.

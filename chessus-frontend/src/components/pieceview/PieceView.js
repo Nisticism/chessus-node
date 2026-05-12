@@ -277,6 +277,12 @@ const PieceView = () => {
       can_hop_over_enemies: !!piece.can_hop_over_enemies,
       exact_ratio_hop_only: !!piece.exact_ratio_hop_only,
       directional_hop_disabled: !!piece.directional_hop_disabled,
+      directional_hop_only: !!piece.directional_hop_only,
+      can_hop_attack_over_allies: !!piece.can_hop_attack_over_allies,
+      can_hop_attack_over_enemies: !!piece.can_hop_attack_over_enemies,
+      exact_ratio_hop_only_attack: !!piece.exact_ratio_hop_only_attack,
+      directional_hop_disabled_attack: !!piece.directional_hop_disabled_attack,
+      directional_hop_only_attack: !!piece.directional_hop_only_attack,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -317,6 +323,10 @@ const PieceView = () => {
       down_attack_range_exact: !!piece.down_attack_range_exact,
       down_left_attack_range_exact: !!piece.down_left_attack_range_exact,
       left_attack_range_exact: !!piece.left_attack_range_exact,
+      hop_stop_at_occupied: !!piece.hop_stop_at_occupied,
+      repeating_ratio_capture: !!piece.repeating_ratio_capture,
+      hop_stop_at_occupied_attack: !!piece.hop_stop_at_occupied_attack,
+      chain_hop_allies: !!piece.chain_hop_allies,
       piece_image_previews: orderedPieceImages,
       // Use database field names directly for PieceBoardPreview
       special_scenario_moves: piece.special_scenario_moves || "",
@@ -525,6 +535,12 @@ const PieceView = () => {
       can_hop_over_enemies: !!piece.can_hop_over_enemies,
       exact_ratio_hop_only: !!piece.exact_ratio_hop_only,
       directional_hop_disabled: !!piece.directional_hop_disabled,
+      directional_hop_only: !!piece.directional_hop_only,
+      can_hop_attack_over_allies: !!piece.can_hop_attack_over_allies,
+      can_hop_attack_over_enemies: !!piece.can_hop_attack_over_enemies,
+      exact_ratio_hop_only_attack: !!piece.exact_ratio_hop_only_attack,
+      directional_hop_disabled_attack: !!piece.directional_hop_disabled_attack,
+      directional_hop_only_attack: !!piece.directional_hop_only_attack,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -552,7 +568,10 @@ const PieceView = () => {
       must_move_if_able: !!piece.must_move_if_able,
       must_move_uses_action: !!piece.must_move_uses_action,
       repeating_ratio: !!piece.repeating_ratio,
+      repeating_ratio_capture: !!piece.repeating_ratio_capture,
       hop_stop_at_occupied: piece.hop_stop_at_occupied !== undefined ? !!piece.hop_stop_at_occupied : true,
+      hop_stop_at_occupied_attack: !!piece.hop_stop_at_occupied_attack,
+      chain_hop_allies: !!piece.chain_hop_allies,
     };
   }, [piece]);
 
@@ -1049,30 +1068,6 @@ const PieceView = () => {
 
           {/* Movement Modifiers */}
           <div className={styles["modifiers-grid"]}>
-            {pieceToDisplay.can_hop_over_allies && (
-              <div className={styles["modifier-badge"]}>
-                <span className={styles["modifier-icon"]}>🦘</span>
-                Hop Over Allies
-              </div>
-            )}
-            {pieceToDisplay.can_hop_over_enemies && (
-              <div className={styles["modifier-badge"]}>
-                <span className={styles["modifier-icon"]}>🦘</span>
-                Hop Over Enemies
-              </div>
-            )}
-            {pieceToDisplay.exact_ratio_hop_only && (
-              <div className={styles["modifier-badge"]}>
-                <span className={styles["modifier-icon"]}>⤵️</span>
-                Require Hopping for Exact/Ratio Movement
-              </div>
-            )}
-            {pieceToDisplay.directional_hop_disabled && (
-              <div className={styles["modifier-badge"]}>
-                <span className={styles["modifier-icon"]}>🚫</span>
-                Hopping Disabled for Directional Movement
-              </div>
-            )}
             {pieceToDisplay.min_turns_per_move != null && pieceToDisplay.min_turns_per_move > 0 && (
               <div className={styles["modifier-badge"]}>
                 <span className={styles["modifier-icon"]}>⏱️</span>
@@ -1085,13 +1080,62 @@ const PieceView = () => {
                 Max {pieceToDisplay.max_turns_per_move} turn{pieceToDisplay.max_turns_per_move !== 1 ? 's' : ''} per move
               </div>
             )}
-            {pieceToDisplay.repeating_ratio && (pieceToDisplay.max_ratio_iterations === -1 || (pieceToDisplay.max_ratio_iterations || 1) > 1) && pieceToDisplay.hop_stop_at_occupied && (
-              <div className={styles["modifier-badge"]}>
-                <span className={styles["modifier-icon"]}>⛔</span>
-                Repeating hops stop at occupied intermediates
-              </div>
-            )}
           </div>
+
+          {/* Hopping Section */}
+          {(() => {
+            const hasMovHop = pieceToDisplay.can_hop_over_allies || pieceToDisplay.can_hop_over_enemies
+              || pieceToDisplay.exact_ratio_hop_only || pieceToDisplay.directional_hop_disabled || pieceToDisplay.directional_hop_only;
+            const hasAtkHop = pieceToDisplay.can_hop_attack_over_allies || pieceToDisplay.can_hop_attack_over_enemies
+              || pieceToDisplay.exact_ratio_hop_only_attack || pieceToDisplay.directional_hop_disabled_attack || pieceToDisplay.directional_hop_only_attack
+              || (pieceToDisplay.chain_capture_enabled && pieceToDisplay.chain_hop_allies);
+            if (!hasMovHop && !hasAtkHop) return null;
+
+            const movWho = pieceToDisplay.can_hop_over_allies && pieceToDisplay.can_hop_over_enemies
+              ? 'allies and enemies'
+              : pieceToDisplay.can_hop_over_allies ? 'allies' : pieceToDisplay.can_hop_over_enemies ? 'enemies' : null;
+            const atkWho = pieceToDisplay.can_hop_attack_over_allies && pieceToDisplay.can_hop_attack_over_enemies
+              ? 'allies and enemies'
+              : pieceToDisplay.can_hop_attack_over_allies ? 'allies' : pieceToDisplay.can_hop_attack_over_enemies ? 'enemies' : null;
+            const movHopStop = pieceToDisplay.repeating_ratio
+              && (pieceToDisplay.max_ratio_iterations === -1 || (pieceToDisplay.max_ratio_iterations || 1) > 1)
+              && pieceToDisplay.hop_stop_at_occupied;
+            const atkHopStop = pieceToDisplay.repeating_ratio_capture
+              && (pieceToDisplay.max_ratio_capture_iterations === -1 || (pieceToDisplay.max_ratio_capture_iterations || 1) > 1)
+              && pieceToDisplay.hop_stop_at_occupied_attack;
+
+            return (
+              <div className={styles["hop-section"]}>
+                <div className={styles["hop-section-header"]}>
+                  <span className={styles["hop-section-icon"]}>🦘</span>
+                  <span>Hopping</span>
+                </div>
+                <ul className={styles["hop-list"]}>
+                  {hasMovHop && (
+                    <li>
+                      <strong>Movement</strong>
+                      {movWho ? `: can hop over ${movWho}` : ''}
+                      {pieceToDisplay.exact_ratio_hop_only ? ' · only on ratio/exact moves' : ''}
+                      {pieceToDisplay.directional_hop_only ? ' · required for directional moves' : ''}
+                      {pieceToDisplay.directional_hop_disabled ? ' · disabled for directional moves' : ''}
+                      {movHopStop ? ' · stops at occupied intermediates when repeating' : ''}
+                    </li>
+                  )}
+                  {hasAtkHop && (
+                    <li>
+                      <strong>Attack</strong>
+                      {atkWho ? `: can hop over ${atkWho}` : ''}
+                      {pieceToDisplay.exact_ratio_hop_only_attack ? ' · only on ratio/exact attacks' : ''}
+                      {pieceToDisplay.directional_hop_only_attack ? ' · required for directional attacks' : ''}
+                      {pieceToDisplay.directional_hop_disabled_attack ? ' · disabled for directional attacks' : ''}
+                      {atkHopStop ? ' · stops at occupied intermediates when repeating' : ''}
+                      {pieceToDisplay.chain_capture_enabled && pieceToDisplay.chain_hop_allies ? ' · hops over allies during chain captures' : ''}
+                    </li>
+                  )}
+                </ul>
+              </div>
+            );
+          })()}
         </div>
 
         <div className={styles["section"]}>

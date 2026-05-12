@@ -1102,6 +1102,42 @@ const GameTypeView = () => {
         description += `• **Hop Capture**: ${hopText}.\n`;
       }
 
+      // Hopping abilities (template-level) — kept adjacent to Hop Capture
+      const canHopAllies = pieceData.can_hop_over_allies === 1 || pieceData.can_hop_over_allies === true;
+      const canHopEnemies = pieceData.can_hop_over_enemies === 1 || pieceData.can_hop_over_enemies === true;
+      if (canHopAllies || canHopEnemies) {
+        const who = canHopAllies && canHopEnemies ? 'allies and enemies' : canHopAllies ? 'allies' : 'enemies';
+        const extras = [];
+        if (pieceData.exact_ratio_hop_only) extras.push('only on ratio moves');
+        if (pieceData.directional_hop_disabled) extras.push('disabled for directional moves');
+        if (pieceData.directional_hop_only) extras.push('required for all directional moves');
+        const extrasStr = extras.length > 0 ? ` (${extras.join('; ')})` : '';
+        description += `• **Hop**: Can jump over ${who} during movement${extrasStr}.\n`;
+        const hopStopAtOccupied = pieceData.repeating_ratio && (pieceData.max_ratio_iterations === -1 || (pieceData.max_ratio_iterations || 1) > 1) && (pieceData.hop_stop_at_occupied !== false && pieceData.hop_stop_at_occupied !== 0);
+        if (hopStopAtOccupied) {
+          description += `• **Repeating Hop Limit**: Stops if an intermediate multiple square is occupied.\n`;
+        }
+      }
+
+      // Attack hopping abilities — adjacent to movement hopping
+      const chainHopAllies = pieceData.chain_hop_allies === 1 || pieceData.chain_hop_allies === true;
+      const canHopAttackAllies = pieceData.can_hop_attack_over_allies === 1 || pieceData.can_hop_attack_over_allies === true || chainHopAllies;
+      const canHopAttackEnemies = pieceData.can_hop_attack_over_enemies === 1 || pieceData.can_hop_attack_over_enemies === true;
+      if (canHopAttackAllies || canHopAttackEnemies) {
+        const whoAtk = canHopAttackAllies && canHopAttackEnemies ? 'allies and enemies' : canHopAttackAllies ? 'allies' : 'enemies';
+        const atkExtras = [];
+        if (pieceData.exact_ratio_hop_only_attack) atkExtras.push('only on ratio attacks');
+        if (pieceData.directional_hop_disabled_attack) atkExtras.push('disabled for directional attacks');
+        if (pieceData.directional_hop_only_attack) atkExtras.push('required for all directional attacks');
+        if (chainHopAllies) atkExtras.push('chain-capture hops over allies');
+        const atkExtrasStr = atkExtras.length > 0 ? ` (${atkExtras.join('; ')})` : '';
+        description += `• **Attack Hop**: Can jump over ${whoAtk} when attacking${atkExtrasStr}.\n`;
+        const hopStopAtOccupiedAtk = pieceData.repeating_ratio_capture && (pieceData.max_ratio_capture_iterations === -1 || (pieceData.max_ratio_capture_iterations || 1) > 1) && (pieceData.hop_stop_at_occupied_attack !== false && pieceData.hop_stop_at_occupied_attack !== 0);
+        if (hopStopAtOccupiedAtk) {
+          description += `• **Repeating Attack Hop Limit**: Stops if an intermediate multiple square is occupied during attacks.\n`;
+        }
+      }
+
       // Ally capture
       if (pieceData.can_capture_allies) {
         description += `• **Ally Capture**: Can capture friendly pieces.\n`;
@@ -1113,22 +1149,6 @@ const GameTypeView = () => {
           ? 'Counts as one of the player\'s actions per turn.'
           : 'Does NOT consume an action — it is a free mandatory move.';
         description += `• **Must Move If Able**: On its owner's turn, this piece is forced to move if it has any legal move. ${actionNote}\n`;
-      }
-
-      // Hopping abilities (template-level)
-      const canHopAllies = pieceData.can_hop_over_allies === 1 || pieceData.can_hop_over_allies === true;
-      const canHopEnemies = pieceData.can_hop_over_enemies === 1 || pieceData.can_hop_over_enemies === true;
-      if (canHopAllies || canHopEnemies) {
-        const who = canHopAllies && canHopEnemies ? 'allies and enemies' : canHopAllies ? 'allies' : 'enemies';
-        const extras = [];
-        if (pieceData.exact_ratio_hop_only) extras.push('only on ratio moves');
-        if (pieceData.directional_hop_disabled) extras.push('disabled for directional moves');
-        const extrasStr = extras.length > 0 ? ` (${extras.join('; ')})` : '';
-        description += `• **Hop**: Can jump over ${who} during movement${extrasStr}.\n`;
-        const hopStopAtOccupied = pieceData.repeating_ratio && (pieceData.max_ratio_iterations === -1 || (pieceData.max_ratio_iterations || 1) > 1) && (pieceData.hop_stop_at_occupied !== false && pieceData.hop_stop_at_occupied !== 0);
-        if (hopStopAtOccupied) {
-          description += `• **Repeating Hop Limit**: Stops if an intermediate multiple square is occupied.\n`;
-        }
       }
 
       // First-move-only movement (template-level, not per-placement)

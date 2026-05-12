@@ -2232,8 +2232,9 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'ratio_movement_style','repeating_ratio','repeating_capture','repeating_ratio_capture',
       'step_by_step_movement_style','step_by_step_attack_style',
       'can_hop_over_allies','can_hop_over_enemies','exact_ratio_hop_only','directional_hop_disabled',
-      'hop_stop_at_occupied',
+      'hop_stop_at_occupied','directional_hop_only',
       'can_hop_attack_over_allies','can_hop_attack_over_enemies',
+      'exact_ratio_hop_only_attack','directional_hop_disabled_attack','hop_stop_at_occupied_attack','directional_hop_only_attack',
       'can_fire_over_allies','can_fire_over_enemies',
       'can_capture_enemy_via_range','can_capture_enemy_on_move',
       'can_capture_allies','cannot_be_captured',
@@ -2355,6 +2356,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
         p.can_fire_over_allies, p.can_fire_over_enemies, p.can_en_passant,
         p.capture_on_hop, p.chain_capture_enabled, p.free_move_after_promotion, p.promotion_pieces_ids,
         p.can_hop_attack_over_allies, p.can_hop_attack_over_enemies, p.chain_hop_allies,
+        p.exact_ratio_hop_only_attack, p.directional_hop_disabled_attack, p.hop_stop_at_occupied_attack, p.directional_hop_only, p.directional_hop_only_attack,
         p.can_capture_allies, p.cannot_be_captured, p.max_chain_hops,
         p.custom_movement_squares, p.custom_attack_squares,
         p.must_move_if_able, p.must_move_uses_action,
@@ -4361,6 +4363,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'piece_width', 'piece_height',
       'can_fire_over_allies', 'can_fire_over_enemies', 'can_en_passant',
       'exact_ratio_hop_only', 'directional_hop_disabled',
+      'exact_ratio_hop_only_attack', 'directional_hop_disabled_attack', 'hop_stop_at_occupied_attack', 'directional_hop_only', 'directional_hop_only_attack',
       'repeating_capture', 'repeating_ratio_capture', 'max_ratio_capture_iterations',
       'can_capture_allies', 'cannot_be_captured', 'max_chain_hops',
       'promotion_pieces_ids'
@@ -7869,12 +7872,13 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         can_fire_over_allies, can_fire_over_enemies, can_en_passant,
         capture_on_hop, chain_capture_enabled, free_move_after_promotion, promotion_pieces_ids,
         can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies,
+        exact_ratio_hop_only_attack, directional_hop_disabled_attack, hop_stop_at_occupied_attack, directional_hop_only, directional_hop_only_attack,
         can_capture_allies, cannot_be_captured, max_chain_hops,
         custom_movement_squares, custom_attack_squares,
         must_move_if_able, must_move_uses_action,
         image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -8032,6 +8036,13 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseBooleanField(pieceData.can_hop_attack_over_enemies),
       // Chain hop allies
       parseBooleanField(pieceData.chain_hop_allies),
+      // Attack-specific hopping modifiers
+      parseBooleanField(pieceData.exact_ratio_hop_only_attack),
+      parseBooleanField(pieceData.directional_hop_disabled_attack),
+      pieceData.hop_stop_at_occupied_attack !== undefined ? parseBooleanField(pieceData.hop_stop_at_occupied_attack) : 0,
+      // Directional-hop-only
+      parseBooleanField(pieceData.directional_hop_only),
+      parseBooleanField(pieceData.directional_hop_only_attack),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
@@ -8468,6 +8479,11 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         can_hop_attack_over_allies = ?,
         can_hop_attack_over_enemies = ?,
         chain_hop_allies = ?,
+        exact_ratio_hop_only_attack = ?,
+        directional_hop_disabled_attack = ?,
+        hop_stop_at_occupied_attack = ?,
+        directional_hop_only = ?,
+        directional_hop_only_attack = ?,
         can_capture_allies = ?,
         cannot_be_captured = ?,
         max_chain_hops = ?,
@@ -8631,6 +8647,13 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseBooleanField(pieceData.can_hop_attack_over_enemies),
       // Chain hop allies
       parseBooleanField(pieceData.chain_hop_allies),
+      // Attack-specific hopping modifiers
+      parseBooleanField(pieceData.exact_ratio_hop_only_attack),
+      parseBooleanField(pieceData.directional_hop_disabled_attack),
+      pieceData.hop_stop_at_occupied_attack !== undefined ? parseBooleanField(pieceData.hop_stop_at_occupied_attack) : 0,
+      // Directional-hop-only
+      parseBooleanField(pieceData.directional_hop_only),
+      parseBooleanField(pieceData.directional_hop_only_attack),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
@@ -12746,6 +12769,127 @@ app.delete("/api/admin/physical-board-requests/:id", authenticateAdmin, async (r
   } catch (err) {
     console.error('DELETE /api/admin/physical-board-requests error:', err);
     res.status(500).json({ error: 'Failed to delete request' });
+  }
+});
+
+// ===================== FEATURE TODO LIST API =====================
+
+// GET /api/admin/feature-todo — list all feature todo items, optionally filtered by status
+app.get("/api/admin/feature-todo", authenticateAdmin, async (req, res) => {
+  try {
+    const statusFilter = req.query.status;
+    const validStatuses = ['unstarted', 'in_progress', 'completed', 'abandoned'];
+    let where = '';
+    const params = [];
+    if (statusFilter && validStatuses.includes(statusFilter)) {
+      where = 'WHERE f.status = ?';
+      params.push(statusFilter);
+    }
+    const [rows] = await db_pool.query(
+      `SELECT f.id, f.title, f.description, f.status, f.sort_order,
+              f.created_at, f.updated_at, u.username AS created_by_username
+       FROM feature_todo_items f
+       LEFT JOIN users u ON f.created_by = u.id
+       ${where}
+       ORDER BY f.sort_order ASC, f.created_at DESC`,
+      params
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    console.error('GET /api/admin/feature-todo error:', err);
+    res.status(500).json({ error: 'Failed to fetch feature todo items' });
+  }
+});
+
+// POST /api/admin/feature-todo — create a new feature todo item
+app.post("/api/admin/feature-todo", authenticateAdmin, async (req, res) => {
+  try {
+    const { title, description } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+    const sanitizedTitle = title.trim().substring(0, 255);
+    const sanitizedDesc = description ? String(description).trim().substring(0, 5000) : null;
+    const createdBy = req.user?.id || null;
+    const [result] = await db_pool.query(
+      `INSERT INTO feature_todo_items (title, description, status, created_by, sort_order)
+       VALUES (?, ?, 'unstarted', ?, 0)`,
+      [sanitizedTitle, sanitizedDesc, createdBy]
+    );
+    const [[newItem]] = await db_pool.query(
+      `SELECT f.id, f.title, f.description, f.status, f.sort_order,
+              f.created_at, f.updated_at, u.username AS created_by_username
+       FROM feature_todo_items f
+       LEFT JOIN users u ON f.created_by = u.id
+       WHERE f.id = ?`,
+      [result.insertId]
+    );
+    res.status(201).json({ message: 'Created', data: newItem });
+  } catch (err) {
+    console.error('POST /api/admin/feature-todo error:', err);
+    res.status(500).json({ error: 'Failed to create feature todo item' });
+  }
+});
+
+// PATCH /api/admin/feature-todo/:id — update title, description, and/or status
+app.patch("/api/admin/feature-todo/:id", authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+
+    const validStatuses = ['unstarted', 'in_progress', 'completed', 'abandoned'];
+    const updates = [];
+    const params = [];
+
+    if (req.body.title !== undefined) {
+      const sanitizedTitle = String(req.body.title).trim().substring(0, 255);
+      if (!sanitizedTitle) return res.status(400).json({ error: 'Title cannot be empty' });
+      updates.push('title = ?');
+      params.push(sanitizedTitle);
+    }
+    if (req.body.description !== undefined) {
+      updates.push('description = ?');
+      params.push(req.body.description ? String(req.body.description).trim().substring(0, 5000) : null);
+    }
+    if (req.body.status !== undefined) {
+      if (!validStatuses.includes(req.body.status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      updates.push('status = ?');
+      params.push(req.body.status);
+    }
+    if (req.body.sort_order !== undefined) {
+      const order = parseInt(req.body.sort_order, 10);
+      if (!isNaN(order)) {
+        updates.push('sort_order = ?');
+        params.push(order);
+      }
+    }
+
+    if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+    params.push(id);
+    await db_pool.query(
+      `UPDATE feature_todo_items SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
+      params
+    );
+    res.json({ message: 'Updated' });
+  } catch (err) {
+    console.error('PATCH /api/admin/feature-todo error:', err);
+    res.status(500).json({ error: 'Failed to update feature todo item' });
+  }
+});
+
+// DELETE /api/admin/feature-todo/:id — delete a feature todo item
+app.delete("/api/admin/feature-todo/:id", authenticateAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+    await db_pool.query('DELETE FROM feature_todo_items WHERE id = ?', [id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    console.error('DELETE /api/admin/feature-todo error:', err);
+    res.status(500).json({ error: 'Failed to delete feature todo item' });
   }
 });
 

@@ -4,6 +4,17 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 12, 2026",
+    title: "Hop abilities: all 6 movement and attack hop types now enforced in-game; piece detail shows grouped hop section; game detail page lists all hop types together",
+    items: [
+      "Fixed: hop abilities (can hop over allies/enemies, exact-ratio hop only, directional hop only, directional hop disabled, stop at occupied) were not being applied during live games due to the server not forwarding the attack-hop fields to the game state. All hop abilities now work correctly for both movement and attacks.",
+      "Attack hopping (Step 3 of the piece wizard) now correctly uses its own set of hop flags, separate from movement hopping. Moves and captures each check the appropriate hop settings.",
+      "The piece detail page now shows a grouped Hopping section inside the Movement Details area, listing movement-hop and attack-hop settings together instead of scattering them across different sections.",
+      "The game detail page now lists all hop-related abilities together (Hop Capture, Movement Hopping, Attack Hopping) for easier reading.",
+      "Migration script added: run 'node scripts/migrate-hop-flags-to-attack.js' once on the server to copy existing movement-hop settings to their attack equivalents for all pieces created before attack hopping was added.",
+    ],
+  },
+  {
     date: "May 11, 2026",
     title: "Twitch integration: link your channel, sign in with Twitch, live stream detection, admin stream monitoring",
     items: [
