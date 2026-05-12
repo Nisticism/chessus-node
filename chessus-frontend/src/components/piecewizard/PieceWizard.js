@@ -92,6 +92,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     directional_hop_disabled: false,
     hop_stop_at_occupied: false,
     directional_hop_only: false,
+    max_directional_hop_pieces: null,
     
     // Step 3: Attack/Capture Configuration
     repeating_capture: false,
@@ -103,6 +104,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     directional_hop_disabled_attack: false,
     hop_stop_at_occupied_attack: false,
     directional_hop_only_attack: false,
+    max_directional_hop_pieces_attack: null,
     can_capture_enemy_via_range: false,
     can_capture_enemy_on_move: true,
     
@@ -306,6 +308,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             directional_hop_disabled: !!piece.directional_hop_disabled,
             hop_stop_at_occupied: piece.hop_stop_at_occupied !== undefined ? !!piece.hop_stop_at_occupied : true,
             directional_hop_only: !!piece.directional_hop_only,
+            max_directional_hop_pieces: piece.max_directional_hop_pieces != null ? parseInt(piece.max_directional_hop_pieces) || null : null,
             
             // Attack/Capture fields
             repeating_capture: !!piece.repeating_capture,
@@ -315,6 +318,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             directional_hop_disabled_attack: !!piece.directional_hop_disabled_attack,
             hop_stop_at_occupied_attack: piece.hop_stop_at_occupied_attack !== undefined ? !!piece.hop_stop_at_occupied_attack : false,
             directional_hop_only_attack: !!piece.directional_hop_only_attack,
+            max_directional_hop_pieces_attack: piece.max_directional_hop_pieces_attack != null ? parseInt(piece.max_directional_hop_pieces_attack) || null : null,
             can_capture_enemy_via_range: hasAnyRangedAttack,
             can_capture_ally_via_range: !!piece.can_capture_ally_via_range,
             can_capture_enemy_on_move: !!piece.can_capture_enemy_on_move,

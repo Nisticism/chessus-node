@@ -327,6 +327,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
       directional_hop_disabled_attack: pieceData.directional_hop_disabled,
       hop_stop_at_occupied_attack: pieceData.hop_stop_at_occupied,
       directional_hop_only_attack: pieceData.directional_hop_only,
+      max_directional_hop_pieces_attack: pieceData.max_directional_hop_pieces,
     });
   };
 
@@ -851,6 +852,14 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
         />
         {(pieceData.can_hop_attack_over_allies || pieceData.can_hop_attack_over_enemies) && (
           <ToggleSwitch
+            checked={pieceData.directional_hop_disabled_attack || false}
+            onChange={(v) => handleChange("directional_hop_disabled_attack", v)}
+            label="Disable attack hopping for non-exact directional attacks"
+            tooltip={<InfoTooltip text="When enabled, hopping over pieces is disabled for non-exact directional (sliding) attacks. Hopping still works for exact directional attacks, ratio (L-shape) attacks, and step-by-step attacks." />}
+          />
+        )}
+        {(pieceData.can_hop_attack_over_allies || pieceData.can_hop_attack_over_enemies) && (
+          <ToggleSwitch
             checked={pieceData.exact_ratio_hop_only_attack || false}
             onChange={(v) => handleChange("exact_ratio_hop_only_attack", v)}
             label="Require attack hopping for exact and ratio attacks"
@@ -865,13 +874,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
             tooltip={<InfoTooltip text="When enabled, this piece can only attack in directional paths if there is at least one piece in the path to hop over. Does not affect step-by-step attacks or custom attack squares. This is the attack equivalent of 'Require hopping for any directional movement'." />}
           />
         )}
-        {(pieceData.can_hop_attack_over_allies || pieceData.can_hop_attack_over_enemies) && (
+        {(pieceData.can_hop_attack_over_allies || pieceData.can_hop_attack_over_enemies) && pieceData.directional_hop_only_attack && (
           <ToggleSwitch
-            checked={pieceData.directional_hop_disabled_attack || false}
-            onChange={(v) => handleChange("directional_hop_disabled_attack", v)}
-            label="Disable attack hopping for non-exact directional attacks"
-            tooltip={<InfoTooltip text="When enabled, hopping over pieces is disabled for non-exact directional (sliding) attacks. Hopping still works for exact directional attacks, ratio (L-shape) attacks, and step-by-step attacks." />}
+            checked={pieceData.max_directional_hop_pieces_attack != null}
+            onChange={(v) => handleChange("max_directional_hop_pieces_attack", v ? 1 : null)}
+            label="Limit max pieces in path per directional attack"
+            tooltip={<InfoTooltip text="When enabled, this piece can only hop over a limited number of pieces in a single directional attack. Set the maximum between 1 and 4. When disabled, there is no limit." />}
           />
+        )}
+        {(pieceData.can_hop_attack_over_allies || pieceData.can_hop_attack_over_enemies) && pieceData.directional_hop_only_attack && pieceData.max_directional_hop_pieces_attack != null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', paddingLeft: '4px' }}>
+            <span style={{ fontSize: '0.9em' }}>Max pieces to hop over per directional attack:</span>
+            <NumberInput
+              value={pieceData.max_directional_hop_pieces_attack}
+              onChange={(val) => handleChange("max_directional_hop_pieces_attack", Math.max(1, val || 1))}
+              options={{ min: 1, max: 4, placeholder: "1" }}
+            />
+          </div>
         )}
         {pieceData.repeating_ratio_capture && (Number(pieceData.max_ratio_capture_iterations) === -1 || (pieceData.max_ratio_capture_iterations || 1) > 1) && (
           <ToggleSwitch

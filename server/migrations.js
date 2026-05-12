@@ -781,6 +781,18 @@ const migrations = [
     column: 'name_review_status',
     sql: "ALTER TABLE pieces ADD COLUMN name_review_status ENUM('approved', 'pending_review', 'rejected') DEFAULT 'approved'",
     description: "Add name_review_status to pieces - tracks whether the piece name passed the professional name review"
+  },
+  {
+    table: 'pieces',
+    column: 'max_directional_hop_pieces',
+    sql: "ALTER TABLE pieces ADD COLUMN max_directional_hop_pieces TINYINT DEFAULT NULL",
+    description: "Add max_directional_hop_pieces column - when set (1-4), limits the maximum number of pieces this piece may hop over in a single directional move. Works alongside directional_hop_only."
+  },
+  {
+    table: 'pieces',
+    column: 'max_directional_hop_pieces_attack',
+    sql: "ALTER TABLE pieces ADD COLUMN max_directional_hop_pieces_attack TINYINT DEFAULT NULL",
+    description: "Add max_directional_hop_pieces_attack column - when set (1-4), limits the maximum number of pieces this piece may hop over in a single directional attack. Works alongside directional_hop_only_attack."
   }
 ];
 

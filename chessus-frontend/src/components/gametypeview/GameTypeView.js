@@ -1111,6 +1111,7 @@ const GameTypeView = () => {
         if (pieceData.exact_ratio_hop_only) extras.push('only on ratio moves');
         if (pieceData.directional_hop_disabled) extras.push('disabled for directional moves');
         if (pieceData.directional_hop_only) extras.push('required for all directional moves');
+        if (pieceData.directional_hop_only && pieceData.max_directional_hop_pieces) extras.push(`max ${pieceData.max_directional_hop_pieces} piece${pieceData.max_directional_hop_pieces !== 1 ? 's' : ''} in path`);
         const extrasStr = extras.length > 0 ? ` (${extras.join('; ')})` : '';
         description += `• **Hop**: Can jump over ${who} during movement${extrasStr}.\n`;
         const hopStopAtOccupied = pieceData.repeating_ratio && (pieceData.max_ratio_iterations === -1 || (pieceData.max_ratio_iterations || 1) > 1) && (pieceData.hop_stop_at_occupied !== false && pieceData.hop_stop_at_occupied !== 0);
@@ -1129,6 +1130,7 @@ const GameTypeView = () => {
         if (pieceData.exact_ratio_hop_only_attack) atkExtras.push('only on ratio attacks');
         if (pieceData.directional_hop_disabled_attack) atkExtras.push('disabled for directional attacks');
         if (pieceData.directional_hop_only_attack) atkExtras.push('required for all directional attacks');
+        if (pieceData.directional_hop_only_attack && pieceData.max_directional_hop_pieces_attack) atkExtras.push(`max ${pieceData.max_directional_hop_pieces_attack} piece${pieceData.max_directional_hop_pieces_attack !== 1 ? 's' : ''} in path`);
         if (chainHopAllies) atkExtras.push('chain-capture hops over allies');
         const atkExtrasStr = atkExtras.length > 0 ? ` (${atkExtras.join('; ')})` : '';
         description += `• **Attack Hop**: Can jump over ${whoAtk} when attacking${atkExtrasStr}.\n`;

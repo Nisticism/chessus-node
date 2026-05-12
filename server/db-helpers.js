@@ -349,6 +349,8 @@ const getAllPiecesWithMovement = async () => {
       p.custom_movement_squares,
       p.custom_attack_squares,
       p.directional_hop_only,
+      p.max_directional_hop_pieces,
+      p.max_directional_hop_pieces_attack,
       p.can_hop_attack_over_allies,
       p.can_hop_attack_over_enemies,
       p.exact_ratio_hop_only_attack,
@@ -530,6 +532,8 @@ const getPieceById = async (pieceId) => {
       p.repeating_directional_ranged_attack,
       p.repeating_ratio_ranged_attack,
       p.directional_hop_only,
+      p.max_directional_hop_pieces,
+      p.max_directional_hop_pieces_attack,
       p.moderation_status,
       p.created_at
     FROM chessusnode.pieces p

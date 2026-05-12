@@ -2958,6 +2958,8 @@ function initializeSocket(server) {
               exact_ratio_hop_only_attack: fullPieceData.exact_ratio_hop_only_attack,
               directional_hop_disabled_attack: fullPieceData.directional_hop_disabled_attack,
               directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
+              max_directional_hop_pieces: fullPieceData.max_directional_hop_pieces,
+              max_directional_hop_pieces_attack: fullPieceData.max_directional_hop_pieces_attack,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -3546,6 +3548,8 @@ function initializeSocket(server) {
               exact_ratio_hop_only_attack: fullPieceData.exact_ratio_hop_only_attack,
               directional_hop_disabled_attack: fullPieceData.directional_hop_disabled_attack,
               directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
+              max_directional_hop_pieces: fullPieceData.max_directional_hop_pieces,
+              max_directional_hop_pieces_attack: fullPieceData.max_directional_hop_pieces_attack,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -8353,6 +8357,8 @@ function initializeSocket(server) {
                     exact_ratio_hop_only_attack: fullPieceData.exact_ratio_hop_only_attack,
                     directional_hop_disabled_attack: fullPieceData.directional_hop_disabled_attack,
                     directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
+                    max_directional_hop_pieces: fullPieceData.max_directional_hop_pieces,
+                    max_directional_hop_pieces_attack: fullPieceData.max_directional_hop_pieces_attack,
                     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -11732,6 +11738,8 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     exact_ratio_hop_only_attack: fullPieceData.exact_ratio_hop_only_attack,
     directional_hop_disabled_attack: fullPieceData.directional_hop_disabled_attack,
     directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
+    max_directional_hop_pieces: fullPieceData.max_directional_hop_pieces,
+    max_directional_hop_pieces_attack: fullPieceData.max_directional_hop_pieces_attack,
     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
     attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -12589,6 +12597,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   const exactRatioHopOnlyAtk = piece.exact_ratio_hop_only_attack === 1 || piece.exact_ratio_hop_only_attack === true;
   const hopStopAtOccupiedAtk = piece.hop_stop_at_occupied_attack === 1 || piece.hop_stop_at_occupied_attack === true;
   const directionalHopOnlyAtk = piece.directional_hop_only_attack === 1 || piece.directional_hop_only_attack === true;
+  const maxHopPiecesAtk = (piece.max_directional_hop_pieces_attack != null && piece.max_directional_hop_pieces_attack > 0) ? parseInt(piece.max_directional_hop_pieces_attack) : null;
   // Returns true if any intermediate exact-distance multiple between piece and target is occupied
   // Used for hop_stop_at_occupied_attack when repeating exact directional capture is active
   const hasOccupiedExactMultipleAtk = (exactDist) => {
@@ -12638,6 +12647,14 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     let x = fromX + sX, y = fromY + sY;
     while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) return true; x += sX; y += sY; }
     return false;
+  };
+  // Returns count of pieces in the straight-line path from start to target (excluding target)
+  const countPiecesInPathAtk = (fromX, fromY, toX, toY) => {
+    const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
+    const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
+    let x = fromX + sX, y = fromY + sY, count = 0;
+    while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) count++; x += sX; y += sY; }
+    return count;
   };
   // Returns true if any piece is in either L-path from start to target (excluding target)
   const ratioPathHasPieceAtk = (fromX, fromY, toX, toY) => {
@@ -12700,12 +12717,16 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
           if (captureOption.exact) {
             if (dist === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
               if (!exactRatioHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-                if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+                if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+                  if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+                }
               }
             }
           } else {
             if ((maxDist === 99 || dist <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
-              if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+              if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+                if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+              }
             }
           }
         }
@@ -12715,12 +12736,16 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
           if (captureOption.exact) {
             if (absDx === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
               if (!exactRatioHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-                if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+                if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+                  if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+                }
               }
             }
           } else {
             if ((maxDist === 99 || absDx <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
-              if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+              if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+                if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+              }
             }
           }
         }
@@ -12730,12 +12755,16 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
           if (captureOption.exact) {
             if (absDy === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
               if (!exactRatioHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-                if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+                if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+                  if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+                }
               }
             }
           } else {
             if ((maxDist === 99 || absDy <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
-              if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
+              if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
+                if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+              }
             }
           }
         }
@@ -12790,7 +12819,9 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
           if (!exactRatioHopOnlyAtk || !exactFlag || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-              if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
+              if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) {
+                if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
+              }
             }
           }
         }
@@ -12811,7 +12842,9 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
           if (!exactRatioHopOnlyAtk || !exactFlag || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-              if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
+              if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) {
+                if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
+              }
             }
           }
         }
@@ -12849,7 +12882,9 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
           if (!exactRatioHopOnlyAtk || !exactFlag || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-              if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
+              if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) {
+                if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
+              }
             }
           }
         }
@@ -13257,6 +13292,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
   const exactRatioHopOnly = piece.exact_ratio_hop_only === 1 || piece.exact_ratio_hop_only === true;
   const hopStopAtOccupiedMove = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
   const directionalHopOnlyMove = piece.directional_hop_only === 1 || piece.directional_hop_only === true;
+  const maxHopPiecesMove = (piece.max_directional_hop_pieces != null && piece.max_directional_hop_pieces > 0) ? parseInt(piece.max_directional_hop_pieces) : null;
   // Helper: returns true if any intermediate exact-distance multiple in the movement direction is occupied
   const hasOccupiedExactMultipleMove = (exactDist) => {
     const sX = targetX > piece.x ? 1 : targetX < piece.x ? -1 : 0;
@@ -13318,6 +13354,14 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
     let x = fromX + sX, y = fromY + sY;
     while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) return true; x += sX; y += sY; }
     return false;
+  };
+  // Returns count of pieces in the straight-line path from start to target (excluding target)
+  const countPiecesInPathMove = (fromX, fromY, toX, toY) => {
+    const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
+    const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
+    let x = fromX + sX, y = fromY + sY, count = 0;
+    while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) count++; x += sX; y += sY; }
+    return count;
   };
   // Returns true if any piece is in either L-path from start to target (excluding target)
   const ratioPathHasPieceMove = (fromX, fromY, toX, toY) => {
@@ -13419,7 +13463,9 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
-              if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
+              if (maxHopPiecesMove == null || countPiecesInPathMove(piece.x, piece.y, targetX, targetY) <= maxHopPiecesMove) {
+                if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
+              }
             }
           }
         }
@@ -13439,7 +13485,9 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
-              if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
+              if (maxHopPiecesMove == null || countPiecesInPathMove(piece.x, piece.y, targetX, targetY) <= maxHopPiecesMove) {
+                if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
+              }
             }
           }
         }
@@ -13472,7 +13520,9 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
-              if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
+              if (maxHopPiecesMove == null || countPiecesInPathMove(piece.x, piece.y, targetX, targetY) <= maxHopPiecesMove) {
+                if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
+              }
             }
           }
         }
@@ -13634,7 +13684,9 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
             const canHopDir = hasGhostwalkMove || ((canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || addlExact));
             if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
               if (!exactRatioHopOnly || !addlExact || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
-                if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) return true;
+                if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
+                  if (maxHopPiecesMove == null || countPiecesInPathMove(piece.x, piece.y, targetX, targetY) <= maxHopPiecesMove) return true;
+                }
               }
             }
           }

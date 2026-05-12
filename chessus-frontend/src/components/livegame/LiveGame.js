@@ -3047,6 +3047,26 @@ const LiveGame = () => {
           }
         }
 
+        // max_directional_hop_pieces: limit how many pieces may be hopped over per directional move
+        if (!forPremove && isValidMove && !isCapture && !isPotentialCapture && !isHopCapture &&
+            piece.max_directional_hop_pieces != null && piece.max_directional_hop_pieces > 0) {
+          const xDiff = toX - piece.x;
+          const yDiff = toY - piece.y;
+          if (xDiff === 0 || yDiff === 0 || Math.abs(xDiff) === Math.abs(yDiff)) {
+            const dx = Math.sign(xDiff);
+            const dy = Math.sign(yDiff);
+            let hopCount = 0;
+            let cx = piece.x + dx;
+            let cy = piece.y + dy;
+            while (cx !== toX || cy !== toY) {
+              if (findPieceAtSquare(pieces, cx, cy)) hopCount++;
+              cx += dx;
+              cy += dy;
+            }
+            if (hopCount > piece.max_directional_hop_pieces) isValidMove = false;
+          }
+        }
+
         // directional_hop_only_attack: directional attacks require a piece to be hopped in the path
         if (!forPremove && isValidMove && (isCapture || isPotentialCapture) && !isHopCapture &&
             (piece.directional_hop_only_attack === 1 || piece.directional_hop_only_attack === true)) {
@@ -3064,6 +3084,26 @@ const LiveGame = () => {
               cy += dy;
             }
             if (!hasHopPiece) isValidMove = false;
+          }
+        }
+
+        // max_directional_hop_pieces_attack: limit how many pieces may be hopped over per directional attack
+        if (!forPremove && isValidMove && (isCapture || isPotentialCapture) && !isHopCapture &&
+            piece.max_directional_hop_pieces_attack != null && piece.max_directional_hop_pieces_attack > 0) {
+          const xDiff = toX - piece.x;
+          const yDiff = toY - piece.y;
+          if (xDiff === 0 || yDiff === 0 || Math.abs(xDiff) === Math.abs(yDiff)) {
+            const dx = Math.sign(xDiff);
+            const dy = Math.sign(yDiff);
+            let hopCount = 0;
+            let cx = piece.x + dx;
+            let cy = piece.y + dy;
+            while (cx !== toX || cy !== toY) {
+              if (findPieceAtSquare(pieces, cx, cy)) hopCount++;
+              cx += dx;
+              cy += dy;
+            }
+            if (hopCount > piece.max_directional_hop_pieces_attack) isValidMove = false;
           }
         }
         

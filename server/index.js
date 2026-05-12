@@ -2276,6 +2276,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'step_by_step_attack_value',
       'capture_actions_per_turn','ranged_capture_actions_per_turn',
       'max_chain_hops',
+      'max_directional_hop_pieces','max_directional_hop_pieces_attack',
       'available_for_captures',
     ];
     // JSON / text columns � compare by canonical JSON (or trimmed string).
@@ -2357,6 +2358,7 @@ app.post("/api/pieces/duplicates", async (req, res) => {
         p.capture_on_hop, p.chain_capture_enabled, p.free_move_after_promotion, p.promotion_pieces_ids,
         p.can_hop_attack_over_allies, p.can_hop_attack_over_enemies, p.chain_hop_allies,
         p.exact_ratio_hop_only_attack, p.directional_hop_disabled_attack, p.hop_stop_at_occupied_attack, p.directional_hop_only, p.directional_hop_only_attack,
+        p.max_directional_hop_pieces, p.max_directional_hop_pieces_attack,
         p.can_capture_allies, p.cannot_be_captured, p.max_chain_hops,
         p.custom_movement_squares, p.custom_attack_squares,
         p.must_move_if_able, p.must_move_uses_action,
@@ -4366,6 +4368,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'can_fire_over_allies', 'can_fire_over_enemies', 'can_en_passant',
       'exact_ratio_hop_only', 'directional_hop_disabled',
       'exact_ratio_hop_only_attack', 'directional_hop_disabled_attack', 'hop_stop_at_occupied_attack', 'directional_hop_only', 'directional_hop_only_attack',
+      'max_directional_hop_pieces', 'max_directional_hop_pieces_attack',
       'repeating_capture', 'repeating_ratio_capture', 'max_ratio_capture_iterations',
       'can_capture_allies', 'cannot_be_captured', 'max_chain_hops',
       'promotion_pieces_ids'
@@ -7881,12 +7884,13 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         capture_on_hop, chain_capture_enabled, free_move_after_promotion, promotion_pieces_ids,
         can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies,
         exact_ratio_hop_only_attack, directional_hop_disabled_attack, hop_stop_at_occupied_attack, directional_hop_only, directional_hop_only_attack,
+        max_directional_hop_pieces, max_directional_hop_pieces_attack,
         can_capture_allies, cannot_be_captured, max_chain_hops,
         custom_movement_squares, custom_attack_squares,
         must_move_if_able, must_move_uses_action,
         image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -8051,6 +8055,9 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       // Directional-hop-only
       parseBooleanField(pieceData.directional_hop_only),
       parseBooleanField(pieceData.directional_hop_only_attack),
+      // Max directional hop pieces
+      pieceData.max_directional_hop_pieces != null ? Math.min(4, Math.max(1, parseInt(pieceData.max_directional_hop_pieces) || 1)) : null,
+      pieceData.max_directional_hop_pieces_attack != null ? Math.min(4, Math.max(1, parseInt(pieceData.max_directional_hop_pieces_attack) || 1)) : null,
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
@@ -8492,6 +8499,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         hop_stop_at_occupied_attack = ?,
         directional_hop_only = ?,
         directional_hop_only_attack = ?,
+        max_directional_hop_pieces = ?,
+        max_directional_hop_pieces_attack = ?,
         can_capture_allies = ?,
         cannot_be_captured = ?,
         max_chain_hops = ?,
@@ -8662,6 +8671,9 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       // Directional-hop-only
       parseBooleanField(pieceData.directional_hop_only),
       parseBooleanField(pieceData.directional_hop_only_attack),
+      // Max directional hop pieces
+      pieceData.max_directional_hop_pieces != null ? Math.min(4, Math.max(1, parseInt(pieceData.max_directional_hop_pieces) || 1)) : null,
+      pieceData.max_directional_hop_pieces_attack != null ? Math.min(4, Math.max(1, parseInt(pieceData.max_directional_hop_pieces_attack) || 1)) : null,
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
