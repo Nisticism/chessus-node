@@ -25,6 +25,11 @@ const changelogData = [
       "Fixed (placement games vs computer): the computer player no longer freezes when it has no valid flanking placements. It now correctly skips its turn and returns control to the human player, or ends the game if both players are blocked.",
       "Fixed (placement games vs computer): the computer player now correctly flips opponent pieces when it makes a flanking placement. Previously a placement ordering bug meant flanking captures were never applied.",
       "Fixed (placement games vs computer): the computer player's search now only considers valid flanking squares in must-flank games, and correctly applies flanking flips to the board during its thinking. This gives it a much more accurate evaluation of Othello-style positions.",
+      "Reposition phase: your pieces that can be repositioned now show a light green highlight during your reposition turn, making it easy to see which pieces you can move.",
+      "Reposition phase: the waiting indicator now shows 'Reposition Phase — waiting for opponent to reposition (N remaining)' so both players can track how many repositions are left.",
+      "Reposition phase: pre-moves can no longer be queued while you still have repositions pending. Once your own repositions are done you can queue pre-moves as normal.",
+      "Fixed (reposition phase, human vs human): the reposition phase now correctly triggers in logged-in human vs human games. Previously it only worked in invite-code and guest-join game flows.",
+      "Fixed (reposition phase): if a player ends up in checkmate after repositioning, the game now ends immediately in favor of their opponent with no ELO change. If both players somehow end up in simultaneous checkmate, the game ends as a draw — shown as 'Draw — Simultaneous Checkmate' in the game-over screen and match history.",
     ],
   },
   {

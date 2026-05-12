@@ -1633,6 +1633,16 @@ const LiveGame = () => {
     return !!(rp?.active && rp.currentTurn === currentPlayer.position);
   }, [currentPlayer, gameState]);
 
+  // True when the current player has no remaining repositions (or is not in reposition phase).
+  // Premoves are only allowed once this player's own repositions are done.
+  const myRepositionsDone = useMemo(() => {
+    if (!gameState?.repositionPhase?.active) return true;
+    if (!currentPlayer) return true;
+    const rp = gameState.repositionPhase;
+    const remaining = currentPlayer.position === 1 ? rp.p1Remaining : rp.p2Remaining;
+    return remaining === 0;
+  }, [currentPlayer, gameState]);
+
   // Clear premove when it becomes your turn (premove didn't execute or was cancelled)
   // In bot games, don't clear — premove persists until bot moves and server executes it
   useEffect(() => {
@@ -3357,7 +3367,7 @@ const LiveGame = () => {
     // OR allow selecting own pieces when it's opponent's turn for premoves
     // In bot games, also allow premove selection on your own turn since the bot responds quickly
     const isBotGame = !!gameState.botPlayer;
-    const canSelectForPremove = ((!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && isOwnPiece);
+    const canSelectForPremove = ((!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && isOwnPiece && myRepositionsDone);
     // If selected piece can capture allies and there's a valid capture move to this ally, skip re-selection
     const hasAllyCaptureMove = selectedPiece && isOwnPiece && clickedPiece && selectedPiece.can_capture_allies &&
       clickedPiece.id !== selectedPiece.id &&
@@ -3384,7 +3394,7 @@ const LiveGame = () => {
 
     // If piece is selected and clicking on valid move, make the move (during ready or active game)
     const canMakeMove = selectedPiece && isMyTurn && (gameState.status === 'active' || gameState.status === 'ready');
-    const canPremove = selectedPiece && (!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false;
+    const canPremove = selectedPiece && (!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && myRepositionsDone;
     
     if (canMakeMove) {
       // Find move: exact match first, then check multi-tile footprint overlap
@@ -3777,7 +3787,7 @@ const LiveGame = () => {
     if (validMove) {
       // Check if this is a regular move or premove
       const canMakeMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
-      const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false;
+      const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && myRepositionsDone;
       
       if (canMakeMove) {
         const moveData = {
@@ -3818,7 +3828,7 @@ const LiveGame = () => {
     setValidMoves([]);
     setDraggedPiece(null);
     setDragValidMoves([]);
-  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
+  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
 
   // Check if board should be flipped (player 2 sees board from their perspective)
   const shouldFlipBoard = useMemo(() => {
@@ -4058,7 +4068,7 @@ const LiveGame = () => {
 
           if (validMove) {
             const canMakeMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
-            const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false;
+            const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && myRepositionsDone;
 
             if (canMakeMove) {
               const moveData = {
@@ -4123,7 +4133,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [gameState, shouldFlipBoard, isMyTurn, isMyRepositionTurn, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
+  }, [gameState, shouldFlipBoard, isMyTurn, isMyRepositionTurn, myRepositionsDone, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
 
   // Handle right-click mousedown for ranged attack drag detection.
   // Global listeners are added synchronously here (not via a state-gated useEffect)
@@ -4143,7 +4153,7 @@ const LiveGame = () => {
       isDrag: false, isOwnRangedPiece: !!(isOwnPiece && clickedPiece?.can_capture_enemy_via_range)
     };
 
-    const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
+    const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false && myRepositionsDone;
     if (!isOwnPiece || !clickedPiece?.can_capture_enemy_via_range ||
         (!isMyTurn && !canPremoveRanged) ||
         (gameState?.status !== 'active' && gameState?.status !== 'ready')) {
@@ -4315,7 +4325,7 @@ const LiveGame = () => {
         ? canReachStepByStepRanged(rangedSelectedPiece, x, y, pieces, bw, bh)
         : canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam);
       const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
-      const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false;
+      const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false && myRepositionsDone;
       const pathBlocked = !isStepRanged && !isRangedPathClear(rangedSelectedPiece.x, rangedSelectedPiece.y, x, y, rangedSelectedPiece, pieces, sourceTeam);
 
       if (isValidTarget && pathBlocked && (isEnemyTarget || canPremoveRanged)) {
@@ -4788,6 +4798,14 @@ const LiveGame = () => {
         
         // Check if this piece can move (only shown when it's your turn)
         const canMove = piece && movablePieceIds.has(piece.id);
+
+        // Highlight pieces that are eligible to be repositioned this turn
+        const isRepositionable = isMyRepositionTurn && isAnchor && !!piece && (() => {
+          const pieceTeamLocal = piece.player_id != null ? Number(piece.player_id) : Number(piece.team);
+          if (pieceTeamLocal !== currentPlayer?.position) return false;
+          const repoKeyOnly = !!gameState?.gameType?.reposition_key_pieces_only;
+          return !repoKeyOnly || piece.ends_game_on_capture || piece.ends_game_on_checkmate;
+        })();
         
         // Check if this square shows a hovered piece's possible move (separate regular/ranged)
         const hpw = hoveredPiece?.piece_width || 1;
@@ -4921,6 +4939,7 @@ const LiveGame = () => {
               ${isImpassable ? styles["impassable-square"] : ''}
               ${dotType ? styles["has-move-dot"] : ''}
               ${activeIsRanged ? styles["has-ranged-dot"] : ''}
+              ${isRepositionable ? styles["reposition-eligible"] : ''}
             `}
             onClick={() => handleSquareClick(gameX, gameY)}
             onDragOver={handleDragOver}
@@ -5568,7 +5587,12 @@ const LiveGame = () => {
                     </button>
                   </>
                 ) : (
-                  <span className={styles["waiting-turn"]}>Waiting for opponent to reposition...</span>
+                  <span className={styles["waiting-turn"]}>
+                    Reposition Phase &mdash; waiting for opponent to reposition
+                    {' '}({gameState.repositionPhase.currentTurn === 1
+                      ? gameState.repositionPhase.p1Remaining
+                      : gameState.repositionPhase.p2Remaining} remaining)
+                  </span>
                 )}
               </>
             ) : isMyTurn ? (

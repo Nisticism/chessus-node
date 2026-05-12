@@ -992,6 +992,12 @@
     box-shadow: inset 0 0 0 3px rgba(0, 255, 0, 0.6);
   }
 
+  // Highlight pieces that can be repositioned during the pre-game reposition phase
+  &.reposition-eligible {
+    background: rgba(100, 220, 120, 0.22) !important;
+    box-shadow: inset 0 0 0 2px rgba(60, 200, 80, 0.7);
+  }
+
   // Highlight pieces that are in check
   &.in-check {
     background: rgba(255, 0, 0, 0.5) !important;

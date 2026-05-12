@@ -520,9 +520,16 @@ async function endIfInitialPositionDecided(io, gameId, gameState) {
   }
   // 'draw' and 'invalid' leave winnerId = null.
 
+  // Use a specific reason string for known draw codes so the frontend can
+  // display the right label (e.g. 'simultaneous_checkmate_draw' is already
+  // handled in the game-over modal, match history, and match view).
+  const broadcastReason = evalResult.code === 'simultaneous_checkmate'
+    ? 'simultaneous_checkmate_draw'
+    : 'initial_position';
+
   gameState.status = 'completed';
   gameState.winner = winnerId;
-  gameState.winReason = 'initial_position';
+  gameState.winReason = broadcastReason;
   gameState.initialPositionEval = evalResult;
   if (!gameState.initialPieces) {
     try { gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces)); } catch (_) {}
@@ -538,7 +545,7 @@ async function endIfInitialPositionDecided(io, gameId, gameState) {
         JSON.stringify(gameState.pieces),
         buildOtherData(gameState, {
           winner: winnerId,
-          reason: 'initial_position',
+          reason: broadcastReason,
           initialPositionEval: evalResult,
           eloChanges: null,
         }),
@@ -554,7 +561,7 @@ async function endIfInitialPositionDecided(io, gameId, gameState) {
   broadcastGameOver(io, gameId, gameState, {
     gameId,
     winner: winnerId,
-    reason: 'initial_position',
+    reason: broadcastReason,
     initialPositionReason: evalResult.reason,
     initialPositionType: evalResult.type,
     initialPositionForPlayer: evalResult.forPlayer || null,
@@ -4529,9 +4536,16 @@ function initializeSocket(server) {
 
         // Update game status to ready
         gameState.status = 'ready';
+
+        // Initialize reposition phase if the game type requires it
+        const _repoCountJoin = gameState.gameType?.start_repositions || 0;
+        if (_repoCountJoin > 0) {
+          gameState.repositionPhase = { active: true, p1Remaining: _repoCountJoin, p2Remaining: _repoCountJoin, currentTurn: 1 };
+        }
+
         await db_pool.query(
-          "UPDATE games SET status = 'ready' WHERE id = ?",
-          [gameId]
+          "UPDATE games SET status = 'ready', other_data = ? WHERE id = ?",
+          [buildOtherData(gameState), gameId]
         );
         
         // Initialize castling partners so they're available during the 'ready' phase
@@ -7761,6 +7775,13 @@ function initializeSocket(server) {
         // Trigger bot's first move if phase ended and it's the bot's turn
         if (!phase.active && gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position) {
           processBotTurn(io, gameIdStr, gameState);
+        }
+
+        // Human game: check if the post-reposition position is already decided
+        // (e.g. player 1 left themselves in checkmate). Uses the same logic as
+        // the initial-position safety net, but runs after all repositions finish.
+        if (!phase.active && !gameState.botPlayer) {
+          await endIfInitialPositionDecided(io, gameIdStr, gameState);
         }
       } catch (err) {
         console.error("Error in submitReposition:", err);
@@ -17781,7 +17802,17 @@ function evaluateInitialPosition(gameType, initialPieces) {
     } catch (e) { /* ignore */ }
     if (!placementGameType) {
       try {
-        if (isCheckmate(state, toMove)) {
+        const p1Mated = isCheckmate(state, toMove);
+        const p2Mated = isCheckmate(state, opponent);
+        if (p1Mated && p2Mated) {
+          return {
+            decided: true,
+            type: 'draw',
+            code: 'simultaneous_checkmate',
+            reason: `Both players start in checkmate simultaneously — the game is a draw.`,
+          };
+        }
+        if (p1Mated) {
           return {
             decided: true,
             type: 'loss',
@@ -17790,11 +17821,7 @@ function evaluateInitialPosition(gameType, initialPieces) {
             reason: `Player ${toMove} starts in checkmate, so the game would end immediately.`,
           };
         }
-        // Also check the opponent: if they are already in checkmate from a
-        // theoretical previous move, the position is still degenerate. The
-        // engine wouldn't normally fire this until that side has the move,
-        // but it's still bad design.
-        if (isCheckmate(state, opponent)) {
+        if (p2Mated) {
           return {
             decided: true,
             type: 'loss',
